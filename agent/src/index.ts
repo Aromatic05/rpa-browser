@@ -87,10 +87,6 @@ const handleCommand = async (command?: CommandPayload) => {
     return { ok: true, tabToken, pageUrl: page.url(), title };
   }
 
-  if (command.cmd === 'getA11y') {
-    return { ok: false, tabToken, error: 'getA11y not supported in this build' };
-  }
-
   if (command.cmd === 'click') {
     await clickByTarget(page, command.target, CLICK_DELAY_MS);
     return { ok: true, tabToken, pageUrl: page.url() };
