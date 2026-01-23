@@ -16,16 +16,49 @@ export const clipboardHandlers: Record<string, ActionHandler> = {
   'clipboard.write': async (ctx, command) => {
     const args = (command as ClipboardWriteCommand).args;
     await withClipboardPermission(ctx.page);
-    const ok = await ctx.page.evaluate(async (text) => {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }, args.text);
+    let ok = false;
+    try {
+      ok = await ctx.page.evaluate(async (text) => {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }, args.text);
+    } catch {
+      ok = await ctx.page.evaluate((text) => {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const copied = document.execCommand('copy');
+        textarea.remove();
+        return copied;
+      }, args.text);
+    }
     if (!ok) throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, 'clipboard write failed');
     return { ok: true, tabToken: ctx.tabToken, data: { length: args.text.length } };
   },
   'clipboard.read': async (ctx, _command) => {
     await withClipboardPermission(ctx.page);
-    const text = await ctx.page.evaluate(async () => navigator.clipboard.readText());
+    let text = '';
+    try {
+      text = await ctx.page.evaluate(async () => navigator.clipboard.readText());
+    } catch {
+      text = await ctx.page.evaluate(() => {
+        const textarea = document.createElement('textarea');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        const pasted = document.execCommand('paste');
+        const value = textarea.value;
+        textarea.remove();
+        if (!pasted) {
+          throw new Error('paste blocked');
+        }
+        return value;
+      });
+    }
     return { ok: true, tabToken: ctx.tabToken, data: { text } };
   },
   'element.copy': async (ctx, command) => {
