@@ -71,6 +71,15 @@ Agent 启动后会自动用 Playwright 打开 Chromium，并加载 `extension/di
 6. 点击 **Show Recording** 查看录制事件
 7. 点击 **Replay Recording** 在当前 tab 回放
 
+## 测试
+
+```
+pnpm -C agent test
+pnpm -C agent test:headed
+```
+
+测试夹具在 `agent/tests/fixtures`，覆盖导航、点击、表单、选择、日期、滚动、对话框、弹窗、剪贴板、键鼠、文件上传、断言等动作模块。
+
 ## Debug 提示
 
 - 扩展前端日志（页面 console）：
