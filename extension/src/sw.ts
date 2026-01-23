@@ -136,29 +136,30 @@ chrome.runtime.onMessage.addListener(
     return;
   }
 
-  if (
-    message.type === 'START_RECORDING' ||
-    message.type === 'STOP_RECORDING' ||
-    message.type === 'GET_RECORDING' ||
-    message.type === 'REPLAY_RECORDING'
-  ) {
+  if (message.type === 'CMD') {
     (async () => {
-      const active = await getActiveTabToken();
-      if (!active) {
-        sendResponse({ ok: false, error: 'tab token unavailable' });
+      const requestId = crypto.randomUUID();
+      let tabToken = message.tabToken as string | undefined;
+      let tabId = message.tabId as number | undefined;
+      if (!tabToken) {
+        const active = await getActiveTabToken();
+        if (!active) {
+          sendResponse({ ok: false, error: 'tab token unavailable' });
+          return;
+        }
+        tabToken = active.tabToken;
+        tabId = active.tabId;
+      }
+      if (!message.cmd) {
+        sendResponse({ ok: false, error: 'missing cmd' });
         return;
       }
-      const cmdMap: Record<string, string> = {
-        START_RECORDING: 'startRecording',
-        STOP_RECORDING: 'stopRecording',
-        GET_RECORDING: 'getRecording',
-        REPLAY_RECORDING: 'replayRecording'
-      };
       const command = {
-        cmd: cmdMap[message.type],
-        tabToken: active.tabToken,
-        tabId: active.tabId,
-        urlHint: active.urlHint
+        cmd: message.cmd,
+        tabToken,
+        args: message.args || {},
+        requestId,
+        tabId
       };
       log('panel command', command);
       sendToAgent(command, sendResponse);

@@ -8,8 +8,8 @@ const render = (response: unknown) => {
   outEl.textContent = JSON.stringify(response, null, 2);
 };
 
-const sendPanelCommand = (type: string) => {
-  chrome.runtime.sendMessage({ type }, (response: any) => {
+const sendPanelCommand = (cmd: string, args?: Record<string, unknown>) => {
+  chrome.runtime.sendMessage({ type: 'CMD', cmd, args }, (response: any) => {
     if (chrome.runtime.lastError) {
       render({ ok: false, error: chrome.runtime.lastError.message });
       return;
@@ -18,7 +18,7 @@ const sendPanelCommand = (type: string) => {
   });
 };
 
-startButton.addEventListener('click', () => sendPanelCommand('START_RECORDING'));
-stopButton.addEventListener('click', () => sendPanelCommand('STOP_RECORDING'));
-showButton.addEventListener('click', () => sendPanelCommand('GET_RECORDING'));
-replayButton.addEventListener('click', () => sendPanelCommand('REPLAY_RECORDING'));
+startButton.addEventListener('click', () => sendPanelCommand('record.start'));
+stopButton.addEventListener('click', () => sendPanelCommand('record.stop'));
+showButton.addEventListener('click', () => sendPanelCommand('record.get'));
+replayButton.addEventListener('click', () => sendPanelCommand('record.replay'));

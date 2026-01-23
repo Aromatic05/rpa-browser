@@ -9,6 +9,7 @@
     tabToken = crypto.randomUUID();
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
   }
+  (window as any).__TAB_TOKEN__ = tabToken;
 
   const sendHello = () => {
     console.log('[RPA] HELLO', { tabToken, url: location.href });
@@ -143,9 +144,9 @@
     out.textContent = JSON.stringify(payload, null, 2);
   };
 
-  const sendPanelCommand = (type: string) => {
-    console.log('[RPA] send command', type);
-    chrome.runtime.sendMessage({ type }, (response: any) => {
+  const sendPanelCommand = (cmd: string, args?: Record<string, unknown>) => {
+    console.log('[RPA] send command', cmd);
+    chrome.runtime.sendMessage({ type: 'CMD', cmd, tabToken, args }, (response: any) => {
       console.log('[RPA] response', response);
       if (chrome.runtime.lastError) {
         render({ ok: false, error: chrome.runtime.lastError.message });
@@ -155,8 +156,8 @@
     });
   };
 
-  startBtn.addEventListener('click', () => sendPanelCommand('START_RECORDING'));
-  stopBtn.addEventListener('click', () => sendPanelCommand('STOP_RECORDING'));
-  showBtn.addEventListener('click', () => sendPanelCommand('GET_RECORDING'));
-  replayBtn.addEventListener('click', () => sendPanelCommand('REPLAY_RECORDING'));
+  startBtn.addEventListener('click', () => sendPanelCommand('record.start'));
+  stopBtn.addEventListener('click', () => sendPanelCommand('record.stop'));
+  showBtn.addEventListener('click', () => sendPanelCommand('record.get'));
+  replayBtn.addEventListener('click', () => sendPanelCommand('record.replay'));
 })();
