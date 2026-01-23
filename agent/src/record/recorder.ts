@@ -1,0 +1,53 @@
+import type { Page } from 'playwright';
+import { RECORDER_SOURCE } from './recorder_payload';
+
+const installedPages = new WeakSet<Page>();
+const bindingName = '__rpa_record';
+
+export type RecordedEventType =
+  | 'click'
+  | 'input'
+  | 'change'
+  | 'keydown'
+  | 'navigate'
+  | 'scroll';
+
+export type RecordedEvent = {
+  tabToken: string;
+  ts: number;
+  type: RecordedEventType;
+  url?: string;
+  selector?: string;
+  targetHint?: string;
+  value?: string;
+  key?: string;
+  source?: 'click' | 'direct';
+  pageUrl?: string | null;
+};
+
+export const installRecorder = async (
+  page: Page,
+  onEvent: (event: RecordedEvent) => void
+) => {
+  if (installedPages.has(page)) return;
+  installedPages.add(page);
+
+  try {
+    await page.exposeBinding(bindingName, (source, event: RecordedEvent) => {
+      console.log('[RPA:agent]', 'record event', event.type, event.url || event.selector || '');
+      onEvent({
+        ...event,
+        pageUrl: source.page?.url?.() || null
+      });
+    });
+  } catch {
+    // ignore if binding already exists
+  }
+
+  await page.addInitScript({ content: RECORDER_SOURCE });
+  try {
+    await page.evaluate(RECORDER_SOURCE);
+  } catch {
+    // ignore if page is not ready yet
+  }
+};

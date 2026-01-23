@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import type { RecordedEvent } from '../recorder';
+import type { RecordedEvent } from '../record/recorder';
 import { clickBySelector } from '../runner/actions/click';
 import { typeBySelector } from '../runner/actions/type';
 import { pressKey } from '../runner/actions/keydown';

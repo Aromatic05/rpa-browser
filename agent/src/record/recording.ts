@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { installRecorder, type RecordedEvent } from '../recorder';
+import { installRecorder, type RecordedEvent } from './recorder';
 
 export type RecordingState = {
   recordingEnabled: Set<string>;
