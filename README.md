@@ -71,6 +71,16 @@ Agent 启动后会自动用 Playwright 打开 Chromium，并加载 `extension/di
 6. 点击 **Show Recording** 查看录制事件
 7. 点击 **Replay Recording** 在当前 tab 回放
 
+## Command 协议（简版）
+
+扩展通过 SW 转发命令给 agent，统一结构：
+
+```
+{ cmd: string; tabToken: string; args?: object; requestId?: string }
+```
+
+所有具体动作由 `agent/src/runner/actions/` 实现，`agent/src/runner/execute.ts` 负责路由与错误封装。
+
 ## 测试
 
 ```
