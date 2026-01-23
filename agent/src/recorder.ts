@@ -53,9 +53,9 @@ const recorderSource = `
     const dataAttrs = ['data-testid', 'data-test', 'data-qa'];
     for (const attr of dataAttrs) {
       const val = el.getAttribute(attr);
-      if (val) return `[${attr}="${safeEscape(val)}"]`;
+      if (val) return `[\${attr}="\${safeEscape(val)}"]`;
     }
-    if (el.id) return `#${safeEscape(el.id)}`;
+    if (el.id) return `#\${safeEscape(el.id)}`;
     const parts = [];
     let node = el;
     let depth = 0;
@@ -64,7 +64,7 @@ const recorderSource = `
       let part = tag;
       const classList = Array.from(node.classList || []).slice(0, 2).map(safeEscape);
       if (classList.length) {
-        part += `.${classList.join('.')}`;
+        part += `.\${classList.join('.')}`;
       }
       if (node.parentElement) {
         const siblings = Array.from(node.parentElement.children).filter(
@@ -72,7 +72,7 @@ const recorderSource = `
         );
         if (siblings.length > 1) {
           const index = siblings.indexOf(node) + 1;
-          part += `:nth-of-type(${index})`;
+          part += `:nth-of-type(\${index})`;
         }
       }
       parts.unshift(part);
