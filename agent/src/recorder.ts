@@ -24,13 +24,11 @@ export type RecordedEvent = {
   pageUrl?: string | null;
 };
 
-const recorderSource = `
-(() => {
-  if (window.__rpa_recorder_installed) return;
-  window.__rpa_recorder_installed = true;
+const recorderScript = () => {
+  if ((window as any).__rpa_recorder_installed) return;
+  (window as any).__rpa_recorder_installed = true;
 
   const tokenKey = '__rpa_tab_token';
-  const bindingName = '__rpa_record';
   const specialKeys = new Set([
     'Enter',
     'Escape',
@@ -43,12 +41,12 @@ const recorderSource = `
 
   const getToken = () => sessionStorage.getItem(tokenKey);
 
-  const safeEscape = (value) => {
+  const safeEscape = (value: string) => {
     if (window.CSS && CSS.escape) return CSS.escape(value);
     return value.replace(/[^a-zA-Z0-9_-]/g, '');
   };
 
-  const selectorFor = (el) => {
+  const selectorFor = (el: Element | null) => {
     if (!el || !el.tagName) return null;
     const dataAttrs = ['data-testid', 'data-test', 'data-qa'];
     for (const attr of dataAttrs) {
@@ -56,8 +54,8 @@ const recorderSource = `
       if (val) return `[${attr}="${safeEscape(val)}"]`;
     }
     if (el.id) return `#${safeEscape(el.id)}`;
-    const parts = [];
-    let node = el;
+    const parts: string[] = [];
+    let node: Element | null = el;
     let depth = 0;
     while (node && node.nodeType === 1 && depth < 7) {
       const tag = node.tagName.toLowerCase();
@@ -68,7 +66,7 @@ const recorderSource = `
       }
       if (node.parentElement) {
         const siblings = Array.from(node.parentElement.children).filter(
-          (child) => child.tagName === node.tagName
+          (child) => child.tagName === node!.tagName
         );
         if (siblings.length > 1) {
           const index = siblings.indexOf(node) + 1;
@@ -83,10 +81,10 @@ const recorderSource = `
     return parts.join(' > ');
   };
 
-  const emit = (payload) => {
+  const emit = (payload: Record<string, unknown>) => {
     const tabToken = getToken();
     if (!tabToken) return;
-    window[bindingName]({
+    (window as any)[bindingName]({
       tabToken,
       ts: Date.now(),
       url: location.href,
@@ -94,21 +92,21 @@ const recorderSource = `
     });
   };
 
-  const isPassword = (el) => {
+  const isPassword = (el: Element) => {
     const type = (el.getAttribute('type') || '').toLowerCase();
     return type === 'password' || el.getAttribute('autocomplete') === 'current-password';
   };
 
-  const getValue = (el) => {
+  const getValue = (el: Element) => {
     if (isPassword(el)) return '***';
-    if ('value' in el) return el.value;
+    if ('value' in el) return (el as HTMLInputElement).value;
     return el.textContent || '';
   };
 
   document.addEventListener(
     'click',
     (event) => {
-      const target = event.target;
+      const target = event.target as Element | null;
       if (!(target instanceof Element)) return;
       const selector = selectorFor(target);
       if (!selector) return;
@@ -120,7 +118,7 @@ const recorderSource = `
   document.addEventListener(
     'input',
     (event) => {
-      const target = event.target;
+      const target = event.target as Element | null;
       if (!(target instanceof Element)) return;
       const selector = selectorFor(target);
       if (!selector) return;
@@ -132,7 +130,7 @@ const recorderSource = `
   document.addEventListener(
     'change',
     (event) => {
-      const target = event.target;
+      const target = event.target as Element | null;
       if (!(target instanceof Element)) return;
       const selector = selectorFor(target);
       if (!selector) return;
@@ -145,14 +143,14 @@ const recorderSource = `
     'keydown',
     (event) => {
       if (!specialKeys.has(event.key)) return;
-      const target = event.target;
+      const target = event.target as Element | null;
       const selector = target instanceof Element ? selectorFor(target) : null;
       emit({ type: 'keydown', selector, key: event.key });
     },
     true
   );
 
-  let scrollTimer = null;
+  let scrollTimer: number | null = null;
   const onScroll = () => {
     if (scrollTimer) {
       clearTimeout(scrollTimer);
@@ -163,8 +161,7 @@ const recorderSource = `
     }, 200);
   };
   window.addEventListener('scroll', onScroll, { capture: true, passive: true });
-})();
-`;
+};
 
 export const installRecorder = async (
   page: Page,
@@ -184,9 +181,9 @@ export const installRecorder = async (
     // ignore if binding already exists
   }
 
-  await page.addInitScript({ content: recorderSource });
+  await page.addInitScript(recorderScript);
   try {
-    await page.evaluate(recorderSource);
+    await page.evaluate(recorderScript);
   } catch {
     // ignore if page is not ready yet
   }
