@@ -5,11 +5,25 @@
 - Agent (Node + Playwright) 负责打开 Chromium、注入 recorder、执行录制与回放
 - 扩展与 Agent 通过 WebSocket `ws://127.0.0.1:17333` 通信
 
-## 目录结构
+## 项目结构
 
 ```
-agent/        # Playwright + WS server
-extension/    # MV3 extension (TS -> dist)
+agent/                       # Node + Playwright + WS server
+  src/
+    index.ts                 # 入口：WS 命令路由、会话管理
+    runtime/                 # Chromium context、page registry、tabToken 绑定
+    record/                  # 录制：注入 recorder、事件归档
+      recorder.ts            # 注入器（installRecorder）
+      recorder_payload.ts    # 注入脚本字符串（页面内监听事件）
+      recording.ts           # 录制状态与存储
+    play/                    # 回放：按记录执行步骤
+    runner/                  # 执行动作（click/type/scroll/navigate...）
+extension/                   # Chrome Extension (MV3)
+  src/
+    content.ts               # 注入悬浮球 UI、tabToken 上报
+    sw.ts                    # Service Worker：与 agent 通过 WS 通信
+    panel.ts                 # side panel（保留）
+  dist/                      # 构建产物（加载到 Chrome 的扩展目录）
 ```
 
 ## 环境要求
