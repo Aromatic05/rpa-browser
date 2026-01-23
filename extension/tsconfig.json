@@ -8,7 +8,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "lib": ["ES2022", "DOM"],
-    "types": []
+    "types": ["chrome"]
   },
   "include": ["src/**/*.ts"]
 }

@@ -19,7 +19,8 @@
     });
   };
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener(
+    (message: any, _sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
     if (message?.type === 'RPA_GET_TOKEN') {
       sendResponse({ ok: true, tabToken, url: location.href });
       return true;
@@ -29,7 +30,7 @@
   const patchHistory = () => {
     const wrap = (method: typeof history.pushState) =>
       function (...args: Parameters<typeof history.pushState>) {
-        const result = method.apply(this, args as unknown as [any, any, any]);
+        const result = method.apply(history, args as unknown as [any, any, any]);
         sendHello();
         return result;
       };
@@ -141,7 +142,7 @@
   };
 
   const sendPanelCommand = (type: string) => {
-    chrome.runtime.sendMessage({ type }, (response) => {
+    chrome.runtime.sendMessage({ type }, (response: any) => {
       if (chrome.runtime.lastError) {
         render({ ok: false, error: chrome.runtime.lastError.message });
         return;

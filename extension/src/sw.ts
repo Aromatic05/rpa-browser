@@ -23,7 +23,7 @@ const getActiveTabId = async () => {
 
 const requestTokenFromTab = (tabId: number) =>
   new Promise<{ ok: boolean; tabToken?: string; url?: string; error?: string }>((resolve) => {
-    chrome.tabs.sendMessage(tabId, { type: 'RPA_GET_TOKEN' }, (response) => {
+    chrome.tabs.sendMessage(tabId, { type: 'RPA_GET_TOKEN' }, (response: any) => {
       if (chrome.runtime.lastError) {
         resolve({ ok: false, error: chrome.runtime.lastError.message });
         return;
@@ -98,19 +98,19 @@ const getActiveTabToken = async () => {
   return { tabId, tabToken: tabInfo.tabToken, urlHint: tabInfo.lastUrl };
 };
 
-chrome.tabs.onActivated.addListener((info) => {
+chrome.tabs.onActivated.addListener((info: chrome.tabs.TabActiveInfo) => {
   activeTabId = info.tabId;
   log('active tab', activeTabId);
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+chrome.tabs.onRemoved.addListener((tabId: number) => {
   tabState.delete(tabId);
   if (activeTabId === tabId) {
     activeTabId = null;
   }
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
   if (changeInfo.url) {
     const existing = tabState.get(tabId);
     if (existing?.tabToken) {
@@ -119,7 +119,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(
+  (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
   if (!message?.type) return;
 
   if (message.type === 'RPA_HELLO') {

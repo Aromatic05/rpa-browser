@@ -9,7 +9,7 @@ const render = (response: unknown) => {
 };
 
 const sendPanelCommand = (type: string) => {
-  chrome.runtime.sendMessage({ type }, (response) => {
+  chrome.runtime.sendMessage({ type }, (response: any) => {
     if (chrome.runtime.lastError) {
       render({ ok: false, error: chrome.runtime.lastError.message });
       return;
