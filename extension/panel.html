@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RPA Browser Demo</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 16px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 12px;
+      }
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      button {
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+      pre {
+        margin-top: 12px;
+        background: #f5f5f5;
+        padding: 8px;
+        border-radius: 4px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>RPA Browser Demo</h1>
+    <div class="controls">
+      <button id="startRec">Start Recording</button>
+      <button id="stopRec">Stop Recording</button>
+      <button id="showRec">Show Recording</button>
+      <button id="replayRec">Replay Recording</button>
+    </div>
+    <pre id="out"></pre>
+    <script src="panel.js"></script>
+  </body>
+</html>
