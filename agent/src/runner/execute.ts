@@ -57,6 +57,14 @@ export const executeCommand = async (
       command.requestId
     );
   }
+  const selector = (command as any).args?.target?.selector;
+  ctx.log('execute', {
+    cmd: command.cmd,
+    tabToken: ctx.tabToken,
+    requestId: command.requestId,
+    selector,
+    pageUrl: ctx.page.url()
+  });
   try {
     const result = await handler(ctx, command);
     if (result.ok) {
