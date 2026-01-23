@@ -38,20 +38,14 @@ const pageRegistry = createPageRegistry({
 });
 
 
-type CommandPayload = {
-  cmd?: Command;
-};
-
-const handleCommand = async (command?: CommandPayload) => {
-  const payload = command?.cmd;
+const handleCommand = async (payload?: Command) => {
   if (!payload?.cmd) {
     return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing cmd');
   }
   if (!payload.tabToken) {
     return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken', payload.requestId);
   }
-  const urlHint =
-    typeof payload.args?.url === 'string' ? payload.args.url : undefined;
+  const urlHint = typeof payload.args?.url === 'string' ? payload.args.url : undefined;
   const page = await pageRegistry.getPage(payload.tabToken, urlHint);
   const ctx: ActionContext = {
     page,
@@ -80,7 +74,7 @@ wss.on('listening', () => {
 
 wss.on('connection', (socket) => {
   socket.on('message', (data) => {
-    let payload: { cmd?: CommandPayload } | undefined;
+    let payload: { cmd?: Command } | undefined;
     try {
       payload = JSON.parse(data.toString());
     } catch {
