@@ -8,9 +8,14 @@ export type RecordedEventType =
   | 'click'
   | 'input'
   | 'change'
+  | 'check'
+  | 'select'
+  | 'date'
   | 'keydown'
   | 'navigate'
-  | 'scroll';
+  | 'scroll'
+  | 'paste'
+  | 'copy';
 
 export type RecordedEvent = {
   tabToken: string;
@@ -20,7 +25,12 @@ export type RecordedEvent = {
   selector?: string;
   targetHint?: string;
   value?: string;
+  label?: string;
+  checked?: boolean;
+  inputType?: string;
   key?: string;
+  scrollX?: number;
+  scrollY?: number;
   source?: 'click' | 'direct';
   pageUrl?: string | null;
 };

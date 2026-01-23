@@ -35,6 +35,17 @@ export const recordEvent = (
     state.lastNavigateTs.set(tabToken, event.ts);
   }
 
+  if (event.value && event.value !== '***') {
+    const value = event.value.trim();
+    if (value.length > 200) {
+      event.value = '***';
+    } else if (value.length > 80) {
+      event.value = value.slice(0, 80);
+    } else {
+      event.value = value;
+    }
+  }
+
   const list = state.recordings.get(tabToken) || [];
   list.push(event);
   state.recordings.set(tabToken, list);

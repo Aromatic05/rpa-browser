@@ -91,6 +91,22 @@ export const RECORDER_SOURCE = String.raw`(function () {
     if (!(target instanceof Element)) return;
     var selector = selectorFor(target);
     if (!selector) return;
+    if (target instanceof HTMLInputElement) {
+      var inputType = (target.type || '').toLowerCase();
+      if (inputType === 'checkbox' || inputType === 'radio') {
+        emit({ type: 'check', selector: selector, checked: target.checked, inputType: inputType });
+        return;
+      }
+      if (inputType === 'date') {
+        emit({ type: 'date', selector: selector, value: target.value });
+        return;
+      }
+    }
+    if (target instanceof HTMLSelectElement) {
+      var option = target.selectedOptions && target.selectedOptions[0];
+      emit({ type: 'select', selector: selector, value: target.value, label: option ? option.label : '' });
+      return;
+    }
     emit({ type: 'change', selector: selector, value: getValue(target) });
   }, true);
 
@@ -101,12 +117,29 @@ export const RECORDER_SOURCE = String.raw`(function () {
     emit({ type: 'keydown', selector: selector, key: event.key });
   }, true);
 
+  document.addEventListener('paste', function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    var selector = selectorFor(target);
+    if (!selector) return;
+    if (isPassword(target)) return;
+    emit({ type: 'paste', selector: selector, value: getValue(target) });
+  }, true);
+
+  document.addEventListener('copy', function (event) {
+    var target = event.target;
+    if (!(target instanceof Element)) return;
+    var selector = selectorFor(target);
+    if (!selector) return;
+    emit({ type: 'copy', selector: selector });
+  }, true);
+
   var scrollTimer = null;
   var onScroll = function () {
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollTimer = window.setTimeout(function () {
       scrollTimer = null;
-      emit({ type: 'scroll' });
+      emit({ type: 'scroll', scrollX: window.scrollX, scrollY: window.scrollY });
     }, 200);
   };
   window.addEventListener('scroll', onScroll, { capture: true, passive: true });
