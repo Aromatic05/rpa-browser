@@ -18,6 +18,13 @@ type CommandWithArgs<C extends string, A> = {
 };
 
 export type EnsureSessionCommand = CommandWithArgs<'ensureSession', { url?: string }>;
+export type RecordStartCommand = CommandWithArgs<'record.start', Record<string, never>>;
+export type RecordStopCommand = CommandWithArgs<'record.stop', Record<string, never>>;
+export type RecordGetCommand = CommandWithArgs<'record.get', Record<string, never>>;
+export type RecordReplayCommand = CommandWithArgs<
+  'record.replay',
+  { stopOnError?: boolean }
+>;
 
 export type PageGotoCommand = CommandWithArgs<'page.goto', { url: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' }>;
 export type PageBackCommand = CommandWithArgs<'page.back', Record<string, never>>;
@@ -90,6 +97,10 @@ export type AssertVisibleCommand = CommandWithArgs<'assert.visible', { target: T
 
 export type Command =
   | EnsureSessionCommand
+  | RecordStartCommand
+  | RecordStopCommand
+  | RecordGetCommand
+  | RecordReplayCommand
   | PageGotoCommand
   | PageBackCommand
   | PageForwardCommand

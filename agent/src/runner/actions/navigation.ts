@@ -1,5 +1,6 @@
 import type { ActionHandler } from '../execute';
 import type {
+  EnsureSessionCommand,
   PageBackCommand,
   PageForwardCommand,
   PageGotoCommand,
@@ -9,6 +10,13 @@ import type {
 } from '../commands';
 
 export const navigationHandlers: Record<string, ActionHandler> = {
+  ensureSession: async (ctx, command) => {
+    const args = (command as EnsureSessionCommand).args;
+    if (args?.url) {
+      await ctx.page.goto(args.url, { waitUntil: 'domcontentloaded' });
+    }
+    return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
+  },
   'page.goto': async (ctx, command) => {
     const args = (command as PageGotoCommand).args;
     await ctx.page.goto(args.url, { waitUntil: args.waitUntil || 'domcontentloaded' });

@@ -1,12 +1,11 @@
 import { WebSocketServer } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
-import { createRecordingState, startRecording, stopRecording, getRecording, cleanupRecording, ensureRecorder } from './record/recording';
-import { replayRecording } from './play/replay';
-import { resolveTarget } from './runner/actions/locators';
-import { clickByTarget } from './runner/actions/click';
-import { typeByTarget } from './runner/actions/type';
-import { highlightLocator, clearHighlight } from './runner/actions/highlight';
+import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
+import { executeCommand, type ActionContext } from './runner/execute';
+import type { Command } from './runner/commands';
+import { errorResult } from './runner/results';
+import { ERROR_CODES } from './runner/error_codes';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -40,72 +39,37 @@ const pageRegistry = createPageRegistry({
 
 
 type CommandPayload = {
-  cmd: string;
-  tabToken?: string;
-  urlHint?: string;
-  target?: any;
-  text?: string;
+  cmd?: Command;
 };
 
 const handleCommand = async (command?: CommandPayload) => {
-  if (!command?.cmd) {
-    return { ok: false, error: 'missing cmd' };
+  const payload = command?.cmd;
+  if (!payload?.cmd) {
+    return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing cmd');
   }
-
-  const tabToken = command.tabToken || '';
-  const page = await pageRegistry.getPage(tabToken, command.urlHint);
-
-  if (command.cmd === 'startRecording') {
-    await startRecording(recordingState, page, tabToken, NAV_DEDUPE_WINDOW_MS);
-    log('recording start', { tabToken, pageUrl: page.url() });
-    return { ok: true, tabToken, data: { pageUrl: page.url() } };
+  if (!payload.tabToken) {
+    return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken', payload.requestId);
   }
-
-  if (command.cmd === 'stopRecording') {
-    stopRecording(recordingState, tabToken);
-    log('recording stop', { tabToken, pageUrl: page.url() });
-    return { ok: true, tabToken, data: { pageUrl: page.url() } };
-  }
-
-  if (command.cmd === 'getRecording') {
-    const events = getRecording(recordingState, tabToken);
-    return { ok: true, tabToken, data: { events } };
-  }
-
-  if (command.cmd === 'replayRecording') {
-    const events = getRecording(recordingState, tabToken);
-    const response = await replayRecording(page, events, {
+  const urlHint =
+    typeof payload.args?.url === 'string' ? payload.args.url : undefined;
+  const page = await pageRegistry.getPage(payload.tabToken, urlHint);
+  const ctx: ActionContext = {
+    page,
+    tabToken: payload.tabToken,
+    pageRegistry,
+    log,
+    recordingState,
+    replayOptions: {
       clickDelayMs: CLICK_DELAY_MS,
       stepDelayMs: REPLAY_STEP_DELAY_MS,
       scroll: SCROLL_CONFIG
-    });
-    return { ...response, tabToken };
-  }
-
-  if (command.cmd === 'runDemo') {
-    const title = await page.title();
-    return { ok: true, tabToken, pageUrl: page.url(), title };
-  }
-
-  if (command.cmd === 'click') {
-    await clickByTarget(page, command.target, CLICK_DELAY_MS);
-    return { ok: true, tabToken, pageUrl: page.url() };
-  }
-
-  if (command.cmd === 'type') {
-    await typeByTarget(page, command.target, command.text || '', CLICK_DELAY_MS);
-    return { ok: true, tabToken, pageUrl: page.url() };
-  }
-
-  if (command.cmd === 'highlight') {
-    const locator = await resolveTarget(page, command.target);
-    await highlightLocator(locator);
-    await page.waitForTimeout(500);
-    await clearHighlight(locator);
-    return { ok: true, tabToken, pageUrl: page.url() };
-  }
-
-  return { ok: false, tabToken, error: 'unknown cmd' };
+    },
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    execute: undefined
+  };
+  ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
+  log('cmd', { cmd: payload.cmd, tabToken: payload.tabToken, requestId: payload.requestId });
+  return executeCommand(ctx, payload);
 };
 
 const wss = new WebSocketServer({ host: '127.0.0.1', port: 17333 });

@@ -10,6 +10,7 @@ import { clipboardHandlers } from './clipboard';
 import { keyboardMouseHandlers } from './keyboard_mouse';
 import { fileUploadHandlers } from './file_upload';
 import { waitsAssertsHandlers } from './waits_asserts';
+import { recordingHandlers } from './recording';
 
 export const actionHandlers: Record<string, ActionHandler> = {
   ...navigationHandlers,
@@ -22,5 +23,6 @@ export const actionHandlers: Record<string, ActionHandler> = {
   ...clipboardHandlers,
   ...keyboardMouseHandlers,
   ...fileUploadHandlers,
-  ...waitsAssertsHandlers
+  ...waitsAssertsHandlers,
+  ...recordingHandlers
 };

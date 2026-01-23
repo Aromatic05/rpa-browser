@@ -4,12 +4,17 @@ import type { Command } from './commands';
 import { errorResult, okResult, type Result } from './results';
 import { actionHandlers } from './actions';
 import type { PageRegistry } from '../runtime/page_registry';
+import type { RecordingState } from '../record/recording';
+import type { ReplayOptions } from '../play/replay';
 
 export type ActionContext = {
   page: Page;
   tabToken: string;
   pageRegistry: PageRegistry;
   log: (...args: unknown[]) => void;
+  recordingState: RecordingState;
+  replayOptions: ReplayOptions;
+  navDedupeWindowMs: number;
   execute?: (command: Command) => Promise<Result>;
 };
 
