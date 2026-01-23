@@ -7,7 +7,14 @@ export type PageRegistryOptions = {
   onTokenClosed?: (token: string) => void;
 };
 
-export const createPageRegistry = (options: PageRegistryOptions) => {
+export type PageRegistry = {
+  bindPage: (page: Page, hintedToken?: string) => Promise<string | null>;
+  getPage: (tabToken: string, urlHint?: string) => Promise<Page>;
+  listPages: () => Array<{ tabToken: string; page: Page }>;
+  cleanup: (tabToken?: string) => void;
+};
+
+export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
   const tokenToPage = new Map<string, Page>();
 
   const waitForToken = async (page: Page, attempts = 20, delayMs = 200) => {
@@ -68,7 +75,7 @@ export const createPageRegistry = (options: PageRegistryOptions) => {
     }
   };
 
-  const getPageForToken = async (tabToken: string, urlHint?: string) => {
+  const getPage = async (tabToken: string, urlHint?: string) => {
     if (!tabToken) {
       throw new Error('missing tabToken');
     }
@@ -95,5 +102,16 @@ export const createPageRegistry = (options: PageRegistryOptions) => {
     return page;
   };
 
-  return { bindPage, getPageForToken };
+  const listPages = () =>
+    Array.from(tokenToPage.entries()).map(([tabToken, page]) => ({ tabToken, page }));
+
+  const cleanup = (tabToken?: string) => {
+    if (!tabToken) {
+      tokenToPage.clear();
+      return;
+    }
+    tokenToPage.delete(tabToken);
+  };
+
+  return { bindPage, getPage, listPages, cleanup };
 };

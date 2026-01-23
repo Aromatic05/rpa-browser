@@ -1,5 +1,5 @@
 import { WebSocketServer } from 'ws';
-import { createContextManager, resolvePaths } from './runtime/context';
+import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRecordingState, startRecording, stopRecording, getRecording, cleanupRecording, ensureRecorder } from './record/recording';
 import { replayRecording } from './play/replay';
@@ -53,7 +53,7 @@ const handleCommand = async (command?: CommandPayload) => {
   }
 
   const tabToken = command.tabToken || '';
-  const page = await pageRegistry.getPageForToken(tabToken, command.urlHint);
+  const page = await pageRegistry.getPage(tabToken, command.urlHint);
 
   if (command.cmd === 'startRecording') {
     await startRecording(recordingState, page, tabToken, NAV_DEDUPE_WINDOW_MS);
