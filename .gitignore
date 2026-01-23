@@ -1,0 +1,11 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+tsconfig.tsbuildinfo
+extension/dist
+agent/.user-data
+agent/node_modules
+extension/node_modules
