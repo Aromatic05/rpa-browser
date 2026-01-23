@@ -38,17 +38,6 @@ const pageRegistry = createPageRegistry({
   onTokenClosed: (token) => cleanupRecording(recordingState, token)
 });
 
-const getA11ySnapshot = async (page: import('playwright').Page) => {
-  const accessibility = (page as any).accessibility;
-  if (accessibility && typeof accessibility.snapshot === 'function') {
-    return accessibility.snapshot({ interestingOnly: false });
-  }
-
-  const cdp = await page.context().newCDPSession(page);
-  const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-  await cdp.detach();
-  return { nodes };
-};
 
 type CommandPayload = {
   cmd: string;
@@ -99,8 +88,7 @@ const handleCommand = async (command?: CommandPayload) => {
   }
 
   if (command.cmd === 'getA11y') {
-    const snapshot = await getA11ySnapshot(page);
-    return { ok: true, tabToken, pageUrl: page.url(), snapshot };
+    return { ok: false, tabToken, error: 'getA11y not supported in this build' };
   }
 
   if (command.cmd === 'click') {

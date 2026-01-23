@@ -58,11 +58,10 @@ export const createPageRegistry = (options: PageRegistryOptions) => {
   const ensureTokenOnPage = async (page: Page, tabToken: string) => {
     try {
       await page.evaluate(
-        (token: string, key: string) => {
-          sessionStorage.setItem(key, token);
+        (args: { token: string; key: string }) => {
+          sessionStorage.setItem(args.key, args.token);
         },
-        tabToken,
-        options.tabTokenKey
+        { token: tabToken, key: options.tabTokenKey }
       );
     } catch {
       // ignore if sessionStorage is unavailable
