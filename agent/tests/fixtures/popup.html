@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Popup Fixture</title>
+</head>
+<body>
+  <button id="openPopup">Open Popup</button>
+  <script>
+    document.getElementById('openPopup').addEventListener('click', () => {
+      window.open('popup_child.html', '_blank', 'width=300,height=200');
+    });
+  </script>
+</body>
+</html>
