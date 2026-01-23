@@ -21,11 +21,13 @@
 
   chrome.runtime.onMessage.addListener(
     (message: any, _sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
-    if (message?.type === 'RPA_GET_TOKEN') {
-      sendResponse({ ok: true, tabToken, url: location.href });
-      return true;
+      console.log('[RPA] message', message);
+      if (message?.type === 'RPA_GET_TOKEN') {
+        sendResponse({ ok: true, tabToken, url: location.href });
+        return true;
+      }
     }
-  });
+  );
 
   const patchHistory = () => {
     const wrap = (method: typeof history.pushState) =>
@@ -142,7 +144,9 @@
   };
 
   const sendPanelCommand = (type: string) => {
+    console.log('[RPA] send command', type);
     chrome.runtime.sendMessage({ type }, (response: any) => {
+      console.log('[RPA] response', response);
       if (chrome.runtime.lastError) {
         render({ ok: false, error: chrome.runtime.lastError.message });
         return;

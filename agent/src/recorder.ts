@@ -172,6 +172,7 @@ export const installRecorder = async (
 
   try {
     await page.exposeBinding(bindingName, (source, event: RecordedEvent) => {
+      console.log('[RPA:agent]', 'record event', event.type, event.url || event.selector || '');
       onEvent({
         ...event,
         pageUrl: source.page?.url?.() || null

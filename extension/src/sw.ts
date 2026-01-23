@@ -44,6 +44,7 @@ const ensureTabToken = async (tabId: number) => {
 };
 
 const sendToAgent = (command: Record<string, unknown>, sendResponse: (payload: unknown) => void) => {
+  log('ws open', command);
   const ws = new WebSocket('ws://127.0.0.1:17333');
   let responded = false;
   const timeoutId = setTimeout(() => {
@@ -63,10 +64,12 @@ const sendToAgent = (command: Record<string, unknown>, sendResponse: (payload: u
   };
 
   ws.addEventListener('open', () => {
+    log('ws send', command);
     ws.send(JSON.stringify({ cmd: command }));
   });
 
   ws.addEventListener('message', (event) => {
+    log('ws message', event.data);
     let payload: unknown = event.data;
     if (typeof payload === 'string') {
       try {
@@ -80,11 +83,13 @@ const sendToAgent = (command: Record<string, unknown>, sendResponse: (payload: u
   });
 
   ws.addEventListener('error', () => {
+    log('ws error');
     respondOnce({ ok: false, error: 'ws error' });
   });
 
   ws.addEventListener('close', () => {
     if (!responded) {
+      log('ws close');
       respondOnce({ ok: false, error: 'ws closed' });
     }
   });
@@ -122,6 +127,7 @@ chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabCha
 chrome.runtime.onMessage.addListener(
   (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
   if (!message?.type) return;
+  log('onMessage', message);
 
   if (message.type === 'RPA_HELLO') {
     const tabId = sender.tab?.id;
