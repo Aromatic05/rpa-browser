@@ -1,0 +1,12 @@
+{
+  "name": "rpa-extension-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev:agent": "pnpm --filter ./agent dev",
+    "build:extension": "pnpm --filter ./extension build",
+    "dev": "pnpm dev:agent",
+    "setup": "pnpm -r install",
+    "pw:install": "pnpm --filter ./agent pw:install"
+  }
+}
