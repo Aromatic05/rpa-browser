@@ -39,8 +39,9 @@ const pageRegistry = createPageRegistry({
 });
 
 const getA11ySnapshot = async (page: import('playwright').Page) => {
-  if (page.accessibility && typeof page.accessibility.snapshot === 'function') {
-    return page.accessibility.snapshot({ interestingOnly: false });
+  const accessibility = (page as any).accessibility;
+  if (accessibility && typeof accessibility.snapshot === 'function') {
+    return accessibility.snapshot({ interestingOnly: false });
   }
 
   const cdp = await page.context().newCDPSession(page);

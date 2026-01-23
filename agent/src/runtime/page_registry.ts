@@ -58,7 +58,7 @@ export const createPageRegistry = (options: PageRegistryOptions) => {
   const ensureTokenOnPage = async (page: Page, tabToken: string) => {
     try {
       await page.evaluate(
-        (token, key) => {
+        (token: string, key: string) => {
           sessionStorage.setItem(key, token);
         },
         tabToken,
@@ -82,13 +82,10 @@ export const createPageRegistry = (options: PageRegistryOptions) => {
 
     const context = await options.getContext();
     page = await context.newPage();
-    await page.addInitScript(
-      (token, key) => {
-        sessionStorage.setItem(key, token);
-      },
-      tabToken,
+    const initContent = `sessionStorage.setItem(${JSON.stringify(
       options.tabTokenKey
-    );
+    )}, ${JSON.stringify(tabToken)});`;
+    await page.addInitScript({ content: initContent });
 
     if (urlHint) {
       await page.goto(urlHint, { waitUntil: 'domcontentloaded' });
