@@ -19,10 +19,10 @@ test.describe('keyboard_mouse', () => {
     await context.close();
   });
 
-  test('dragAndDrop fails for missing target', async ({ browser, baseURL }) => {
+  test('dragAndDrop fails for missing target', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/drag.html`);
+    await page.goto(`${fixtureURL}/drag.html`);
     const ctx = createCtx(page, 'drag-fail');
     const res = await ctx.execute!({
       cmd: 'mouse.dragAndDrop',

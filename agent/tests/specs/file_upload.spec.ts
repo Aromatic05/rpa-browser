@@ -5,10 +5,10 @@ import { promises as fs } from 'fs';
 
 
 test.describe('file_upload', () => {
-  test('set files from path', async ({ browser, baseURL }) => {
+  test('set files from path', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'file-token');
     const tmpPath = path.join(process.cwd(), 'tests/fixtures/tmp.txt');
     await fs.writeFile(tmpPath, 'hello');
@@ -22,10 +22,10 @@ test.describe('file_upload', () => {
     await context.close();
   });
 
-  test('set files from missing path fails', async ({ browser, baseURL }) => {
+  test('set files from missing path fails', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'file-fail');
     const res = await ctx.execute!({
       cmd: 'element.setFilesFromPath',

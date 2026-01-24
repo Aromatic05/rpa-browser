@@ -3,10 +3,10 @@ import { createCtx } from '../helpers/context';
 
 
 test.describe('clipboard', () => {
-  test('clipboard write/read', async ({ browser, baseURL }) => {
+  test('clipboard write/read', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'clip-token');
     const writeRes = await ctx.execute!({
       cmd: 'clipboard.write',
@@ -26,10 +26,10 @@ test.describe('clipboard', () => {
     await context.close();
   });
 
-  test('paste requires allowSensitive', async ({ browser, baseURL }) => {
+  test('paste requires allowSensitive', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'clip-fail');
     const res = await ctx.execute!({
       cmd: 'element.paste',

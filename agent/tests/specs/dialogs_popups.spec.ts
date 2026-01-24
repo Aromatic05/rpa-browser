@@ -3,10 +3,10 @@ import { createCtx } from '../helpers/context';
 
 
 test.describe('dialogs_popups', () => {
-  test('handle next dialog', async ({ browser, baseURL }) => {
+  test('handle next dialog', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/dialog.html`);
+    await page.goto(`${fixtureURL}/dialog.html`);
     const ctx = createCtx(page, 'dialog-token');
     const handle = await ctx.execute!({
       cmd: 'page.handleNextDialog',
@@ -23,10 +23,10 @@ test.describe('dialogs_popups', () => {
     await context.close();
   });
 
-  test('expectPopup fails when blocked', async ({ browser, baseURL }) => {
+  test('expectPopup fails when blocked', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'popup-fail');
     const res = await ctx.execute!({
       cmd: 'page.expectPopup',

@@ -3,10 +3,10 @@ import { createCtx } from '../helpers/context';
 
 
 test.describe('a11y scan', () => {
-  test('detects violations', async ({ browser, baseURL }) => {
+  test('detects violations', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/a11y-broken.html`);
+    await page.goto(`${fixtureURL}/a11y-broken.html`);
     const ctx = createCtx(page, 'a11y-token');
     const res = await ctx.execute!({
       cmd: 'page.a11yScan',
@@ -20,10 +20,10 @@ test.describe('a11y scan', () => {
     await context.close();
   });
 
-  test('ok page returns zero violations', async ({ browser, baseURL }) => {
+  test('ok page returns zero violations', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/a11y-ok.html`);
+    await page.goto(`${fixtureURL}/a11y-ok.html`);
     const ctx = createCtx(page, 'a11y-ok');
     const res = await ctx.execute!({
       cmd: 'page.a11yScan',
@@ -37,10 +37,10 @@ test.describe('a11y scan', () => {
     await context.close();
   });
 
-  test('impact filter works', async ({ browser, baseURL }) => {
+  test('impact filter works', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/a11y-broken.html`);
+    await page.goto(`${fixtureURL}/a11y-broken.html`);
     const ctx = createCtx(page, 'a11y-filter');
     const res = await ctx.execute!({
       cmd: 'page.a11yScan',

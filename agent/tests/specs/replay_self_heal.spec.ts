@@ -3,10 +3,10 @@ import { createCtx } from '../helpers/context';
 
 
 test.describe('replay self heal', () => {
-  test('fallback from css to role within scope', async ({ browser, baseURL }) => {
+  test('fallback from css to role within scope', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/menu-replay.html`);
+    await page.goto(`${fixtureURL}/menu-replay.html`);
     const ctx = createCtx(page, 'replay-token');
     const events = [
       {
@@ -29,10 +29,10 @@ test.describe('replay self heal', () => {
     await context.close();
   });
 
-  test('ambiguous candidate skipped', async ({ browser, baseURL }) => {
+  test('ambiguous candidate skipped', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/menu-replay.html`);
+    await page.goto(`${fixtureURL}/menu-replay.html`);
     const ctx = createCtx(page, 'replay-token-2');
     const events = [
       {

@@ -3,10 +3,10 @@ import { createCtx } from '../helpers/context';
 
 
 test.describe('element_choice', () => {
-  test('check and select option', async ({ browser, baseURL }) => {
+  test('check and select option', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'choice-token');
     const check = await ctx.execute!({
       cmd: 'element.setChecked',
@@ -23,10 +23,10 @@ test.describe('element_choice', () => {
     await context.close();
   });
 
-  test('select option missing fails', async ({ browser, baseURL }) => {
+  test('select option missing fails', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'choice-fail');
     const res = await ctx.execute!({
       cmd: 'element.selectOption',

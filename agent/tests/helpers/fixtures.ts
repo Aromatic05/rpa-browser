@@ -4,7 +4,7 @@ import { startFixtureServer } from './server';
 
 type Fixtures = {
   browser: Browser;
-  baseURL: string;
+  fixtureURL: string;
 };
 
 export const test = base.extend<Fixtures>({
@@ -16,7 +16,7 @@ export const test = base.extend<Fixtures>({
     },
     { scope: 'worker' }
   ],
-  baseURL: [
+  fixtureURL: [
     async ({}, use) => {
       const server = await startFixtureServer();
       await use(server.baseURL);

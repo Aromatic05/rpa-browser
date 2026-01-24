@@ -3,10 +3,10 @@ import { createCtx } from '../helpers/context';
 
 
 test.describe('element_form', () => {
-  test('fill writes text', async ({ browser, baseURL }) => {
+  test('fill writes text', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'form-token');
     const res = await ctx.execute!({
       cmd: 'element.fill',
@@ -18,10 +18,10 @@ test.describe('element_form', () => {
     await context.close();
   });
 
-  test('type fails on missing selector', async ({ browser, baseURL }) => {
+  test('type fails on missing selector', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'form-fail');
     const res = await ctx.execute!({
       cmd: 'element.type',

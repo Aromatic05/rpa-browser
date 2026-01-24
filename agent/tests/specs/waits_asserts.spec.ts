@@ -3,10 +3,10 @@ import { createCtx } from '../helpers/context';
 
 
 test.describe('waits_asserts', () => {
-  test('assert text contains', async ({ browser, baseURL }) => {
+  test('assert text contains', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`${baseURL}/choices.html`);
+    await page.goto(`${fixtureURL}/choices.html`);
     const ctx = createCtx(page, 'assert-token');
     const res = await ctx.execute!({
       cmd: 'assert.text',
