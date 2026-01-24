@@ -37,7 +37,7 @@ export const replayRecording = async (
         command = {
           cmd: 'element.click',
           tabToken: event.tabToken,
-          args: { target: { selector: event.selector } }
+          args: { target: { selector: event.selector }, options: { timeout: 5000, noWaitAfter: true } }
         };
       } else if ((event.type === 'input' || event.type === 'change') && event.selector) {
         if (event.value === '***') {

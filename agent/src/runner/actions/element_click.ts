@@ -16,7 +16,8 @@ export const elementClickHandlers: Record<string, ActionHandler> = {
       target: args.target,
       pageRegistry: ctx.pageRegistry
     });
-    await locator.click(args.options || {});
+    const options = { timeout: 5000, ...args.options };
+    await locator.click(options);
     return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
   },
   'element.dblclick': async (ctx, command) => {
@@ -27,7 +28,8 @@ export const elementClickHandlers: Record<string, ActionHandler> = {
       target: args.target,
       pageRegistry: ctx.pageRegistry
     });
-    await locator.dblclick(args.options || {});
+    const options = { timeout: 5000, ...args.options };
+    await locator.dblclick(options);
     return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
   },
   'element.rightclick': async (ctx, command) => {
@@ -38,7 +40,8 @@ export const elementClickHandlers: Record<string, ActionHandler> = {
       target: args.target,
       pageRegistry: ctx.pageRegistry
     });
-    await locator.click({ button: 'right', ...(args.options || {}) });
+    const options = { timeout: 5000, button: 'right', ...(args.options || {}) };
+    await locator.click(options);
     return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
   },
   'element.hover': async (ctx, command) => {
@@ -49,7 +52,8 @@ export const elementClickHandlers: Record<string, ActionHandler> = {
       target: args.target,
       pageRegistry: ctx.pageRegistry
     });
-    await locator.hover(args.options || {});
+    const options = { timeout: 5000, ...args.options };
+    await locator.hover(options);
     return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
   }
 };

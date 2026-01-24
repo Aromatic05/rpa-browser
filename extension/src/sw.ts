@@ -49,7 +49,7 @@ const sendToAgent = (command: Record<string, unknown>, sendResponse: (payload: u
   let responded = false;
   const timeoutId = setTimeout(() => {
     respondOnce({ ok: false, error: 'ws timeout' });
-  }, 8000);
+  }, 20000);
 
   const respondOnce = (payload: unknown) => {
     if (responded) return;
