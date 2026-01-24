@@ -1,40 +1,40 @@
-# Development Guide
+# 开发指南
 
-## Install
+## 安装
 
 ```
 pnpm install
 ```
 
-## Run
+## 运行
 
-- Build extension:
+- 构建扩展：
 ```
 pnpm -C extension build
 ```
 
-- Start agent:
+- 启动 agent：
 ```
 pnpm -C agent dev
 ```
 
-- Load extension from `extension/dist` in Chrome.
+- 在 Chrome 中从 `extension/dist` 加载扩展。
 
-## Tests
+## 测试
 
 ```
 pnpm -C agent test
 pnpm -C agent test:headed
 ```
 
-## Extension Build
+## 扩展构建
 
-`extension/build.mjs` copies `manifest.json` and `panel.html` into `extension/dist` after TS compile.
+`extension/build.mjs` 在 TypeScript 编译后将 `manifest.json` 和 `panel.html` 复制到 `extension/dist`。
 
-## Common Paths
+## 常用路径
 
-- Extension UI: `extension/src/content.ts`
-- Service worker: `extension/src/sw.ts`
-- Runner actions: `agent/src/runner/actions/*`
-- Replay logic: `agent/src/play/replay.ts`
+- 扩展 UI：`extension/src/content.ts`
+- Service worker：`extension/src/sw.ts`
+- Runner 动作：`agent/src/runner/actions/*`
+- 回放逻辑：`agent/src/play/replay.ts`
 

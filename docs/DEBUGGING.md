@@ -1,35 +1,36 @@
-# Debugging
+# 调试
 
-## Common Logs
+## 常见日志
 
-- Extension content script: `[RPA] HELLO`, `[RPA] send command`, `[RPA] response`
-- Service worker: `[RPA:sw] ws open/send/message/close`, `onMessage`
-- Agent: `[RPA:agent] cmd`, `[RPA:agent] execute`
+- 扩展内容脚本：`[RPA] HELLO`, `[RPA] send command`, `[RPA] response`
+- Service worker：`[RPA:sw] ws open/send/message/close`, `onMessage`
+- Agent：`[RPA:agent] cmd`, `[RPA:agent] execute`
 
-## Typical Issues
+## 典型问题
 
 ### 1) `missing cmd`
-Cause: mismatched message envelope or outdated extension build.
-Fix:
+原因：消息包不匹配或扩展构建已过时。
+修复：
 - `pnpm -C extension build`
-- Reload extension and refresh page
+- 重新加载扩展并刷新页面
 
 ### 2) `Extension context invalidated`
-Cause: extension reloaded but page not refreshed.
-Fix: refresh the page.
+原因：扩展已重新加载但页面未刷新。
+修复：刷新页面。
 
-### 3) Replay timeout
-Cause: brittle selector, hidden menu, or dynamic class.
-Fix:
-- Record semantic locators (role/label/text)
-- Ensure menu open step exists
+### 3) 回放超时
+原因：选择器脆弱、隐藏菜单或动态类。
+修复：
+- 录制语义定位器（role/label/text）
+- 确保存在打开菜单的步骤
 
-### 4) Stop recording seems ineffective
-Cause: recorder still emits events but they are ignored when recording disabled.
-Check only `record { ... }` logs, not raw event logs.
+### 4) 停止录制看起来无效
+原因：录制器仍在发出事件，但在禁用录制时这些事件被忽略。
+仅检查 `record { ... }` 日志，而非原始事件日志。
 
-## Artifacts
+## 工件
 
-- Replay evidence: `.artifacts/replay/<tabToken>/<ts>.png`
-- A11y evidence: `.artifacts/a11y/<ts>.png`
+- 回放证据：`.artifacts/replay/<tabToken>/<ts>.png`
+- 无障碍证据：`.artifacts/a11y/<ts>.png`
+
 

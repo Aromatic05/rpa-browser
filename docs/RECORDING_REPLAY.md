@@ -1,36 +1,35 @@
-# Recording & Replay
+# 录制与回放
 
-## Recording
+## 录制
 
-Recording is handled by injected script in `agent/src/record/recorder_payload.ts`.
+录制由注入脚本处理，见 `agent/src/record/recorder_payload.ts`。
 
-Captured events (subset):
+捕获的事件（子集）：
 - click
-- input/change (except select/checkbox/radio)
-- check (checkbox/radio)
+- input/change（不包含 select/checkbox/radio）
+- check（checkbox/radio）
 - select
 - date
 - paste/copy
 - keydown
 - scroll
-- navigate (from page navigation)
+- navigate（来自页面导航）
 
-Each event stores:
-- `locatorCandidates`: ordered list of semantic locators + css fallback
-- `scopeHint`: `aside` | `header` | `main`
+每个事件存储：
+- `locatorCandidates`：按顺序的语义定位器列表 + CSS 回退
+- `scopeHint`：`aside` | `header` | `main`
 
-## Replay
+## 回放
 
-Replay uses self-heal locator resolution:
+回放使用自愈（self-heal）定位器解析：
 
-1) Try each candidate in order (testid > role > label > placeholder > text > css)
-2) Skip candidates with count 0 or count > 1 (ambiguous)
-3) On success: wait visible -> scrollIntoView -> perform action
-4) On failure: write screenshot to `.artifacts/replay/<tabToken>/<ts>.png` and include evidence
+1) 按顺序尝试每个候选（testid > role > label > placeholder > text > css）
+2) 跳过计数为 0 或计数 > 1（不明确）的候选
+3) 成功时：等待可见 -> scrollIntoView -> 执行动作
+4) 失败时：将截图写入 `.artifacts/replay/<tabToken>/<ts>.png` 并包含证据
 
-## Common Failure Modes
+## 常见失败模式
 
-- Dynamic classes (`.active`, nth-of-type): avoid in CSS; use semantic locators.
-- Hidden menus: record should include the action opening menus.
-- Select elements: handled via `select` events only (input events are ignored).
-
+- 动态类（`.active`、nth-of-type）：避免在 CSS 中使用；使用语义定位器。
+- 隐藏菜单：录制时应包含打开菜单的操作步骤。
+- Select 元素：仅通过 `select` 事件处理（忽略 input 事件）。

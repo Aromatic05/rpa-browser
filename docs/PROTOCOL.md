@@ -1,30 +1,30 @@
-# Protocol
+# 协议
 
-## Message envelope (Extension -> Agent)
+## 消息封装（扩展 -> Agent）
 
-Service worker sends:
+Service worker 发送：
 
 ```
 { cmd: { cmd, tabToken, args, requestId } }
 ```
 
-Where:
+含义：
 
-- `cmd`: string
-- `tabToken`: per-tab stable token
-- `args`: command-specific args
-- `requestId`: optional UUID
+- `cmd`：字符串
+- `tabToken`：每个标签页的稳定 token
+- `args`：命令特定的参数
+- `requestId`：可选 UUID
 
-## Result
+## 结果
 
-Runner returns:
+Runner 返回：
 
 ```
 { ok: true, tabToken, requestId?, data }
 { ok: false, tabToken, requestId?, error: { code, message, details? } }
 ```
 
-## Key Commands (recording)
+## 关键命令（录制相关）
 
 - `record.start`
 - `record.stop`
@@ -33,7 +33,7 @@ Runner returns:
 - `record.replay`
 - `record.stopReplay`
 
-## A11y
+## 无障碍
 
-- `page.a11yScan` (see `docs/A11Y.md`)
+- `page.a11yScan`（参见 `docs/A11Y.md`）
 
