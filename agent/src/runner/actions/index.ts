@@ -11,6 +11,7 @@ import { keyboardMouseHandlers } from './keyboard_mouse';
 import { fileUploadHandlers } from './file_upload';
 import { waitsAssertsHandlers } from './waits_asserts';
 import { recordingHandlers } from './recording';
+import { a11yHandlers } from './a11y';
 
 export const actionHandlers: Record<string, ActionHandler> = {
   ...navigationHandlers,
@@ -24,5 +25,6 @@ export const actionHandlers: Record<string, ActionHandler> = {
   ...keyboardMouseHandlers,
   ...fileUploadHandlers,
   ...waitsAssertsHandlers,
-  ...recordingHandlers
+  ...recordingHandlers,
+  ...a11yHandlers
 };

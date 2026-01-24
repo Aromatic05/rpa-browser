@@ -13,6 +13,7 @@
     "test:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "playwright": "^1.57.0",
     "ws": "^8.19.0"
   },

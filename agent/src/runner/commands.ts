@@ -1,3 +1,5 @@
+import type { A11yScanOptions } from './a11y_types';
+
 export type Target = {
   selector: string;
   frame?: string;
@@ -94,6 +96,9 @@ export type WaitForSelectorCommand = CommandWithArgs<
 export type AssertTextCommand = CommandWithArgs<'assert.text', { target: Target; contains?: string; equals?: string }>;
 export type AssertCheckedCommand = CommandWithArgs<'assert.checked', { target: Target; value: boolean }>;
 export type AssertVisibleCommand = CommandWithArgs<'assert.visible', { target: Target; value: boolean }>;
+import type { A11yScanOptions } from './a11y_types';
+
+export type PageA11yScanCommand = CommandWithArgs<'page.a11yScan', A11yScanOptions>;
 
 export type Command =
   | EnsureSessionCommand
@@ -140,4 +145,5 @@ export type Command =
   | WaitForSelectorCommand
   | AssertTextCommand
   | AssertCheckedCommand
-  | AssertVisibleCommand;
+  | AssertVisibleCommand
+  | PageA11yScanCommand;
