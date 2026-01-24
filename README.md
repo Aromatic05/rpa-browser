@@ -1,6 +1,7 @@
 # RPA Extension Demo
 
 一个最小可运行的“浏览器录制/回放”Demo：
+
 - Chrome Extension (MV3) 负责 UI、tabToken 绑定、发指令
 - Agent (Node + Playwright) 负责打开 Chromium、注入 recorder、执行录制与回放
 - 扩展与 Agent 通过 WebSocket `ws://127.0.0.1:17333` 通信
@@ -85,9 +86,9 @@ Agent 启动后会自动用 Playwright 打开 Chromium，并加载 `extension/di
 
 - 录制时生成 `locatorCandidates`（优先 role/label/placeholder/text，最后兜底 css）
 - 回放时按候选顺序逐个尝试：
-  - count=0 继续
-  - count>1 视为歧义，跳过
-  - count=1 则 wait visible + scrollIntoView + click
+    - count=0 继续
+    - count>1 视为歧义，跳过
+    - count=1 则 wait visible + scrollIntoView + click
 - 失败会在 `.artifacts/replay/<tabToken>/` 输出 screenshot 与候选证据
 
 简化示例：
@@ -120,19 +121,19 @@ pnpm -C agent test:headed
 ## Debug 提示
 
 - 扩展前端日志（页面 console）：
-  - `[RPA] HELLO` / `[RPA] send command` / `[RPA] response`
+    - `[RPA] HELLO` / `[RPA] send command` / `[RPA] response`
 - Service Worker 日志：
-  - `ws open/send/message/close` / `onMessage`
+    - `ws open/send/message/close` / `onMessage`
 - Agent 日志：
-  - `[RPA:agent] record event` / `recording start/stop`
+    - `[RPA:agent] record event` / `recording start/stop`
 
 ## 常见问题
 
 - **点击/滚动未录制**
-  - 确认扩展已加载 `extension/dist` 最新构建
-  - 确认页面 console 没有 `__name is not defined` 报错
+    - 确认扩展已加载 `extension/dist` 最新构建
+    - 确认页面 console 没有 `__name is not defined` 报错
 - **没有看到悬浮球**
-  - 确认扩展已加载、页面非受限（如 chrome://）
+    - 确认扩展已加载、页面非受限（如 chrome://）
 
 ## 备注
 

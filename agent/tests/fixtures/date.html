@@ -1,34 +1,41 @@
 <!doctype html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <title>Date Fixture</title>
-  <style>
-    #picker { display: none; border: 1px solid #ddd; padding: 8px; width: 200px; }
-    #picker button { margin: 2px; }
-  </style>
-</head>
-<body>
-  <input id="nativeDate" type="date" />
-  <div>
-    <input id="customDate" type="text" placeholder="YYYY-MM-DD" />
-    <div id="picker">
-      <button aria-label="January 1, 2025">1</button>
-      <button aria-label="January 2, 2025">2</button>
-      <button aria-label="January 3, 2025">3</button>
-    </div>
-  </div>
-  <script>
-    const input = document.getElementById('customDate');
-    const picker = document.getElementById('picker');
-    input.addEventListener('focus', () => {
-      picker.style.display = 'block';
-    });
-    picker.addEventListener('click', (e) => {
-      if (!(e.target instanceof HTMLButtonElement)) return;
-      input.value = '2025-01-' + e.target.textContent.padStart(2, '0');
-      picker.style.display = 'none';
-    });
-  </script>
-</body>
+    <head>
+        <meta charset="utf-8" />
+        <title>Date Fixture</title>
+        <style>
+            #picker {
+                display: none;
+                border: 1px solid #ddd;
+                padding: 8px;
+                width: 200px;
+            }
+            #picker button {
+                margin: 2px;
+            }
+        </style>
+    </head>
+    <body>
+        <input id="nativeDate" type="date" />
+        <div>
+            <input id="customDate" type="text" placeholder="YYYY-MM-DD" />
+            <div id="picker">
+                <button aria-label="January 1, 2025">1</button>
+                <button aria-label="January 2, 2025">2</button>
+                <button aria-label="January 3, 2025">3</button>
+            </div>
+        </div>
+        <script>
+            const input = document.getElementById('customDate');
+            const picker = document.getElementById('picker');
+            input.addEventListener('focus', () => {
+                picker.style.display = 'block';
+            });
+            picker.addEventListener('click', (e) => {
+                if (!(e.target instanceof HTMLButtonElement)) return;
+                input.value = '2025-01-' + e.target.textContent.padStart(2, '0');
+                picker.style.display = 'none';
+            });
+        </script>
+    </body>
 </html>

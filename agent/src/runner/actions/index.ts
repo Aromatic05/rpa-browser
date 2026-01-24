@@ -14,17 +14,17 @@ import { recordingHandlers } from './recording';
 import { a11yHandlers } from './a11y';
 
 export const actionHandlers: Record<string, ActionHandler> = {
-  ...navigationHandlers,
-  ...elementClickHandlers,
-  ...elementFormHandlers,
-  ...elementChoiceHandlers,
-  ...elementDateHandlers,
-  ...elementScrollHandlers,
-  ...dialogPopupHandlers,
-  ...clipboardHandlers,
-  ...keyboardMouseHandlers,
-  ...fileUploadHandlers,
-  ...waitsAssertsHandlers,
-  ...recordingHandlers,
-  ...a11yHandlers
+    ...navigationHandlers,
+    ...elementClickHandlers,
+    ...elementFormHandlers,
+    ...elementChoiceHandlers,
+    ...elementDateHandlers,
+    ...elementScrollHandlers,
+    ...dialogPopupHandlers,
+    ...clipboardHandlers,
+    ...keyboardMouseHandlers,
+    ...fileUploadHandlers,
+    ...waitsAssertsHandlers,
+    ...recordingHandlers,
+    ...a11yHandlers,
 };

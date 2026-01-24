@@ -7,17 +7,17 @@ const stopReplayButton = document.getElementById('stopReplay') as HTMLButtonElem
 const outEl = document.getElementById('out') as HTMLPreElement;
 
 const render = (response: unknown) => {
-  outEl.textContent = JSON.stringify(response, null, 2);
+    outEl.textContent = JSON.stringify(response, null, 2);
 };
 
 const sendPanelCommand = (cmd: string, args?: Record<string, unknown>) => {
-  chrome.runtime.sendMessage({ type: 'CMD', cmd, args }, (response: any) => {
-    if (chrome.runtime.lastError) {
-      render({ ok: false, error: chrome.runtime.lastError.message });
-      return;
-    }
-    render(response);
-  });
+    chrome.runtime.sendMessage({ type: 'CMD', cmd, args }, (response: any) => {
+        if (chrome.runtime.lastError) {
+            render({ ok: false, error: chrome.runtime.lastError.message });
+            return;
+        }
+        render(response);
+    });
 };
 
 startButton.addEventListener('click', () => sendPanelCommand('record.start'));

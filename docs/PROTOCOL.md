@@ -36,4 +36,3 @@ Runner 返回：
 ## 无障碍
 
 - `page.a11yScan`（参见 `docs/A11Y.md`）
-

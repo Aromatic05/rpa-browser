@@ -1,13 +1,13 @@
 {
-  "name": "rpa-extension",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "tsc -p tsconfig.json && node build.mjs"
-  },
-  "devDependencies": {
-    "@types/chrome": "^0.0.279",
-    "typescript": "^5.9.2"
-  }
+    "name": "rpa-extension",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "tsc -p tsconfig.json && node build.mjs"
+    },
+    "devDependencies": {
+        "@types/chrome": "^0.0.279",
+        "typescript": "^5.9.2"
+    }
 }

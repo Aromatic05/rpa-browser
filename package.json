@@ -1,23 +1,22 @@
 {
-  "name": "rpa-extension-monorepo",
-  "private": true,
-  "packageManager": "pnpm@10.28.0",
-  "scripts": {
-    "dev:agent": "pnpm --filter ./agent dev",
-    "build:extension": "pnpm --filter ./extension build",
-    "dev": "pnpm build:extension && pnpm dev:agent",
-    "setup": "pnpm -r install",
-    "pw:install": "pnpm --filter ./agent pw:install",
-    "lint": "eslint \"**/*.{ts,tsx,js,jsx}\" --ext .ts,.tsx,.js --max-warnings=0",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\""
-  }
-  ,
-  "devDependencies": {
-    "eslint": "^8.47.0",
-    "prettier": "^2.8.8",
-    "@typescript-eslint/parser": "^6.8.0",
-    "@typescript-eslint/eslint-plugin": "^6.8.0",
-    "eslint-config-prettier": "^9.2.0",
-    "eslint-plugin-prettier": "^4.2.1"
-  }
+    "name": "rpa-extension-monorepo",
+    "private": true,
+    "packageManager": "pnpm@10.28.0",
+    "scripts": {
+        "dev:agent": "pnpm --filter ./agent dev",
+        "build:extension": "pnpm --filter ./extension build",
+        "dev": "pnpm build:extension && pnpm dev:agent",
+        "setup": "pnpm -r install",
+        "pw:install": "pnpm --filter ./agent pw:install",
+        "lint": "npx eslint \"**/*.{ts,tsx,js,jsx}\" --ext .ts,.tsx,.js --max-warnings=0",
+        "format": "npx prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\""
+    },
+    "devDependencies": {
+        "eslint": "^8.47.0",
+        "prettier": "^2.8.8",
+        "@typescript-eslint/parser": "^6.8.0",
+        "@typescript-eslint/eslint-plugin": "^6.8.0",
+        "eslint-config-prettier": "^9.2.0",
+        "eslint-plugin-prettier": "^4.2.1"
+    }
 }

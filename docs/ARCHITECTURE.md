@@ -11,11 +11,11 @@
 
 ## 数据流
 
-1) `content.ts` 生成 `tabToken` 并向 SW 发送 `RPA_HELLO`。
-2) UI 按钮 -> `content.ts` -> `chrome.runtime.sendMessage({ type:'CMD', cmd, tabToken, args })`。
-3) `sw.ts` 在缺失时附加活动标签 token，并将 `{ cmd: { cmd, tabToken, args, requestId } }` 发送到 WS。
-4) `agent/src/index.ts` 解析 WS，按 `tabToken` 解析页面，并分派到 runner。
-5) Runner 执行动作并返回标准结果。
+1. `content.ts` 生成 `tabToken` 并向 SW 发送 `RPA_HELLO`。
+2. UI 按钮 -> `content.ts` -> `chrome.runtime.sendMessage({ type:'CMD', cmd, tabToken, args })`。
+3. `sw.ts` 在缺失时附加活动标签 token，并将 `{ cmd: { cmd, tabToken, args, requestId } }` 发送到 WS。
+4. `agent/src/index.ts` 解析 WS，按 `tabToken` 解析页面，并分派到 runner。
+5. Runner 执行动作并返回标准结果。
 
 ## 运行时
 

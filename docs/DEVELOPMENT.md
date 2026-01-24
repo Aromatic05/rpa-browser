@@ -9,11 +9,13 @@ pnpm install
 ## 运行
 
 - 构建扩展：
+
 ```
 pnpm -C extension build
 ```
 
 - 启动 agent：
+
 ```
 pnpm -C agent dev
 ```
@@ -37,4 +39,3 @@ pnpm -C agent test:headed
 - Service worker：`extension/src/sw.ts`
 - Runner 动作：`agent/src/runner/actions/*`
 - 回放逻辑：`agent/src/play/replay.ts`
-
