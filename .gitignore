@@ -11,3 +11,4 @@ agent/node_modules
 extension/node_modules
 agent/test-results
 agent/playwright-report
+.artifacts
