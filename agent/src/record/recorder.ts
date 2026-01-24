@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
 import { RECORDER_SOURCE } from './recorder_payload';
 
 const installedPages = new WeakSet<Page>();
@@ -23,6 +24,8 @@ export type RecordedEvent = {
   type: RecordedEventType;
   url?: string;
   selector?: string;
+  locatorCandidates?: LocatorCandidate[];
+  scopeHint?: ScopeHint;
   targetHint?: string;
   value?: string;
   label?: string;
