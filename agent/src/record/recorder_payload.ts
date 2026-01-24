@@ -192,6 +192,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     if (isCheckboxOrRadio(target)) return;
+    if (target instanceof HTMLSelectElement) return;
     var selector = selectorFor(target);
     if (!selector) return;
     emit({
