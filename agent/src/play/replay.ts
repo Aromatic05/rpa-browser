@@ -1,12 +1,121 @@
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
 import type { RecordedEvent } from '../record/recorder';
 import type { Command } from '../runner/commands';
 import type { Result } from '../runner/results';
+import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
+import path from 'path';
+import { promises as fs } from 'fs';
 
 export type ReplayOptions = {
   clickDelayMs: number;
   stepDelayMs: number;
   scroll: { minDelta: number; maxDelta: number; minSteps: number; maxSteps: number };
+};
+
+type CandidateAttempt = {
+  kind: string;
+  detail: string;
+  count: number;
+  error?: string;
+};
+
+const ensureDir = async (dir: string) => {
+  try {
+    await fs.mkdir(dir, { recursive: true });
+  } catch {
+    // ignore
+  }
+};
+
+const buildScope = (page: Page, scopeHint?: ScopeHint) => {
+  if (!scopeHint) return page;
+  const selector = scopeHint;
+  const locator = page.locator(selector).first();
+  return locator;
+};
+
+const buildLocator = (scope: Page | Locator, candidate: LocatorCandidate) => {
+  if (candidate.kind === 'testid' && candidate.testId) {
+    return (scope as any).getByTestId(candidate.testId);
+  }
+  if (candidate.kind === 'role' && candidate.role && candidate.name) {
+    return (scope as any).getByRole(candidate.role as any, { name: candidate.name });
+  }
+  if (candidate.kind === 'label' && candidate.text) {
+    return (scope as any).getByLabel(candidate.text, { exact: candidate.exact ?? true });
+  }
+  if (candidate.kind === 'placeholder' && candidate.text) {
+    return (scope as any).getByPlaceholder(candidate.text, { exact: candidate.exact ?? true });
+  }
+  if (candidate.kind === 'text' && candidate.text) {
+    return (scope as any).getByText(candidate.text, { exact: candidate.exact ?? true });
+  }
+  if (candidate.kind === 'css' && candidate.selector) {
+    return (scope as any).locator(candidate.selector);
+  }
+  return null;
+};
+
+const describeCandidate = (candidate: LocatorCandidate) => {
+  if (candidate.kind === 'css') return candidate.selector || '';
+  if (candidate.kind === 'testid') return candidate.testId || '';
+  if (candidate.kind === 'role') return `${candidate.role}:${candidate.name || ''}`;
+  return candidate.text || '';
+};
+
+const resolveByCandidates = async (
+  page: Page,
+  candidates: LocatorCandidate[],
+  scopeHint: ScopeHint | undefined,
+  timeoutMs: number
+) => {
+  const scope = buildScope(page, scopeHint);
+  const attempts: CandidateAttempt[] = [];
+  for (const candidate of candidates) {
+    const locator = buildLocator(scope, candidate);
+    if (!locator) {
+      attempts.push({
+        kind: candidate.kind,
+        detail: describeCandidate(candidate),
+        count: 0,
+        error: 'invalid candidate'
+      });
+      continue;
+    }
+    let count = 0;
+    try {
+      count = await locator.count();
+      if (count === 0) {
+        attempts.push({
+          kind: candidate.kind,
+          detail: describeCandidate(candidate),
+          count
+        });
+        continue;
+      }
+      if (count > 1) {
+        attempts.push({
+          kind: candidate.kind,
+          detail: describeCandidate(candidate),
+          count,
+          error: 'ambiguous'
+        });
+        continue;
+      }
+      const first = locator.first();
+      await first.waitFor({ state: 'visible', timeout: timeoutMs });
+      await first.scrollIntoViewIfNeeded();
+      return { locator: first, attempts };
+    } catch (error) {
+      attempts.push({
+        kind: candidate.kind,
+        detail: describeCandidate(candidate),
+        count,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+  return { locator: null, attempts };
 };
 
 export const replayRecording = async (
@@ -22,6 +131,8 @@ export const replayRecording = async (
   for (const event of events) {
     try {
       let command: Command | null = null;
+      const candidates = event.locatorCandidates;
+      const scopeHint = event.scopeHint;
       if (event.type === 'navigate' && event.url) {
         command = {
           cmd: 'page.goto',
@@ -33,6 +144,29 @@ export const replayRecording = async (
         if (pendingScroll) {
           await page.locator(event.selector).first().scrollIntoViewIfNeeded();
           pendingScroll = false;
+        }
+        if (candidates?.length) {
+          const { locator, attempts } = await resolveByCandidates(page, candidates, scopeHint, 5000);
+          if (!locator) {
+            const ts = Date.now();
+            const outDir = path.resolve(process.cwd(), '.artifacts/replay', event.tabToken);
+            await ensureDir(outDir);
+            const screenshotPath = path.join(outDir, `${ts}.png`);
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            results.push({
+              ts: event.ts,
+              ok: false,
+              type: event.type,
+              error: 'locator not found',
+              evidence: { attempts, url: page.url(), screenshotPath }
+            });
+            if (opts.stopOnError) return { ok: false, data: { results } };
+            continue;
+          }
+          await locator.click({ timeout: 5000, noWaitAfter: true });
+          await page.waitForTimeout(options.stepDelayMs);
+          results.push({ ts: event.ts, ok: true, type: event.type, pageUrl: page.url() });
+          continue;
         }
         command = {
           cmd: 'element.click',
@@ -47,6 +181,29 @@ export const replayRecording = async (
         if (pendingScroll) {
           await page.locator(event.selector).first().scrollIntoViewIfNeeded();
           pendingScroll = false;
+        }
+        if (candidates?.length) {
+          const { locator, attempts } = await resolveByCandidates(page, candidates, scopeHint, 5000);
+          if (!locator) {
+            const ts = Date.now();
+            const outDir = path.resolve(process.cwd(), '.artifacts/replay', event.tabToken);
+            await ensureDir(outDir);
+            const screenshotPath = path.join(outDir, `${ts}.png`);
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            results.push({
+              ts: event.ts,
+              ok: false,
+              type: event.type,
+              error: 'locator not found',
+              evidence: { attempts, url: page.url(), screenshotPath }
+            });
+            if (opts.stopOnError) return { ok: false, data: { results } };
+            continue;
+          }
+          await locator.fill(event.value || '', { timeout: 5000 });
+          await page.waitForTimeout(options.stepDelayMs);
+          results.push({ ts: event.ts, ok: true, type: event.type, pageUrl: page.url() });
+          continue;
         }
         command = {
           cmd: 'element.fill',
