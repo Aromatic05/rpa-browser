@@ -73,6 +73,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   document.addEventListener('click', function (event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
+    if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
     emit({ type: 'click', selector: selector, targetHint: target.tagName.toLowerCase() });
@@ -81,6 +82,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   document.addEventListener('input', function (event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
+    if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
     emit({ type: 'input', selector: selector, value: getValue(target) });
@@ -89,6 +91,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   document.addEventListener('change', function (event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
+    if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
     if (target instanceof HTMLInputElement) {
@@ -113,6 +116,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   document.addEventListener('keydown', function (event) {
     if (!specialKeys.has(event.key)) return;
     var target = event.target;
+    if (target && target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = target instanceof Element ? selectorFor(target) : null;
     emit({ type: 'keydown', selector: selector, key: event.key });
   }, true);
@@ -120,6 +124,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   document.addEventListener('paste', function (event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
+    if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
     if (isPassword(target)) return;
@@ -129,6 +134,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   document.addEventListener('copy', function (event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
+    if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
     emit({ type: 'copy', selector: selector });
