@@ -63,6 +63,10 @@ export const elementChoiceHandlers: Record<string, ActionHandler> = {
       target: args.target,
       pageRegistry: ctx.pageRegistry
     });
+    const count = await locator.count();
+    if (count === 0) {
+      throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, 'select target not found');
+    }
     if (
       typeof args.value === 'undefined' &&
       typeof args.label === 'undefined' &&
@@ -70,11 +74,15 @@ export const elementChoiceHandlers: Record<string, ActionHandler> = {
     ) {
       throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'selectOption requires value/label/index');
     }
-    const selected = await locator.selectOption({
-      value: args.value,
-      label: args.label,
-      index: args.index
-    });
+    const options = { timeout: 5000, ...(args.options || {}) } as any;
+    const selected = await locator.selectOption(
+      {
+        value: args.value,
+        label: args.label,
+        index: args.index
+      },
+      options
+    );
     if (!selected?.length) {
       throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, 'option not found');
     }

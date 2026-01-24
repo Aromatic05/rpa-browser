@@ -1,6 +1,8 @@
 import type { ActionHandler } from '../execute';
 import type { KeyboardHotkeyCommand, KeyboardPressCommand, MouseDragAndDropCommand, MouseWheelCommand } from '../commands';
 import { resolveTarget } from '../../runtime/target_resolver';
+import { ActionError } from '../execute';
+import { ERROR_CODES } from '../error_codes';
 
 export const keyboardMouseHandlers: Record<string, ActionHandler> = {
   'keyboard.press': async (ctx, command) => {
@@ -32,10 +34,17 @@ export const keyboardMouseHandlers: Record<string, ActionHandler> = {
       target: args.to,
       pageRegistry: ctx.pageRegistry
     });
-    await fromResolved.locator.scrollIntoViewIfNeeded();
-    await toResolved.locator.scrollIntoViewIfNeeded();
-    const fromBox = await fromResolved.locator.boundingBox();
-    const toBox = await toResolved.locator.boundingBox();
+    const fromCount = await fromResolved.locator.count();
+    const toCount = await toResolved.locator.count();
+    if (fromCount === 0 || toCount === 0) {
+      throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, 'dragAndDrop target not found');
+    }
+    await fromResolved.locator.first().waitFor({ state: 'visible', timeout: 5000 });
+    await toResolved.locator.first().waitFor({ state: 'visible', timeout: 5000 });
+    await fromResolved.locator.first().scrollIntoViewIfNeeded();
+    await toResolved.locator.first().scrollIntoViewIfNeeded();
+    const fromBox = await fromResolved.locator.first().boundingBox();
+    const toBox = await toResolved.locator.first().boundingBox();
     if (!fromBox || !toBox) {
       throw new Error('dragAndDrop target not visible');
     }

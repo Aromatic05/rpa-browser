@@ -1,6 +1,8 @@
 import type { ActionHandler } from '../execute';
 import type { ElementScrollIntoViewCommand, PageScrollByCommand, PageScrollToCommand } from '../commands';
 import { resolveTarget } from '../../runtime/target_resolver';
+import { ActionError } from '../execute';
+import { ERROR_CODES } from '../error_codes';
 
 export const elementScrollHandlers: Record<string, ActionHandler> = {
   'page.scrollBy': async (ctx, command) => {
@@ -33,7 +35,12 @@ export const elementScrollHandlers: Record<string, ActionHandler> = {
       target: args.target,
       pageRegistry: ctx.pageRegistry
     });
-    await locator.scrollIntoViewIfNeeded();
+    const count = await locator.count();
+    if (count === 0) {
+      throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, 'scroll target not found');
+    }
+    await locator.first().waitFor({ state: 'visible', timeout: 5000 });
+    await locator.first().scrollIntoViewIfNeeded();
     return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
   }
 };
