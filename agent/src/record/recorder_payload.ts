@@ -165,10 +165,17 @@ export const RECORDER_SOURCE = String.raw`(function () {
     return el.textContent || '';
   };
 
+  var isCheckboxOrRadio = function (el) {
+    if (!(el instanceof HTMLInputElement)) return false;
+    var type = (el.type || '').toLowerCase();
+    return type === 'checkbox' || type === 'radio';
+  };
+
   document.addEventListener('click', function (event) {
     var target = event.target;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
+    if (isCheckboxOrRadio(target) || target.closest('label input[type=\"checkbox\"], label input[type=\"radio\"]')) return;
     var selector = selectorFor(target);
     if (!selector) return;
     emit({
@@ -184,6 +191,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
     var target = event.target;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
+    if (isCheckboxOrRadio(target)) return;
     var selector = selectorFor(target);
     if (!selector) return;
     emit({

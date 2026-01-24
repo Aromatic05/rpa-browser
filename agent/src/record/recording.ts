@@ -6,13 +6,15 @@ export type RecordingState = {
   recordings: Map<string, RecordedEvent[]>;
   lastNavigateTs: Map<string, number>;
   lastClickTs: Map<string, number>;
+  replaying: Set<string>;
 };
 
 export const createRecordingState = (): RecordingState => ({
   recordingEnabled: new Set(),
   recordings: new Map(),
   lastNavigateTs: new Map(),
-  lastClickTs: new Map()
+  lastClickTs: new Map(),
+  replaying: new Set()
 });
 
 export const recordEvent = (
@@ -22,6 +24,7 @@ export const recordEvent = (
 ) => {
   const tabToken = event.tabToken;
   if (!tabToken || !state.recordingEnabled.has(tabToken)) return;
+  if (state.replaying.has(tabToken)) return;
 
   if (event.type === 'click') {
     state.lastClickTs.set(tabToken, event.ts);
@@ -113,6 +116,14 @@ export const stopRecording = (state: RecordingState, tabToken: string) => {
   state.lastClickTs.delete(tabToken);
 };
 
+export const beginReplay = (state: RecordingState, tabToken: string) => {
+  state.replaying.add(tabToken);
+};
+
+export const endReplay = (state: RecordingState, tabToken: string) => {
+  state.replaying.delete(tabToken);
+};
+
 export const getRecording = (state: RecordingState, tabToken: string) =>
   state.recordings.get(tabToken) || [];
 
@@ -121,4 +132,5 @@ export const cleanupRecording = (state: RecordingState, tabToken: string) => {
   state.recordings.delete(tabToken);
   state.lastNavigateTs.delete(tabToken);
   state.lastClickTs.delete(tabToken);
+  state.replaying.delete(tabToken);
 };
