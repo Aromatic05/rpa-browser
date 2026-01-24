@@ -28,6 +28,10 @@
 3) 成功时：等待可见 -> scrollIntoView -> 执行动作
 4) 失败时：将截图写入 `.artifacts/replay/<tabToken>/<ts>.png` 并包含证据
 
+## 导航去重
+
+回放 `page.goto` 会比较当前 URL 与目标 URL 的 `origin + pathname`。如果一致则跳过跳转，避免覆盖当前页面状态。
+
 ## 常见失败模式
 
 - 动态类（`.active`、nth-of-type）：避免在 CSS 中使用；使用语义定位器。

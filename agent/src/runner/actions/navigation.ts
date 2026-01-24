@@ -9,6 +9,15 @@ import type {
   WaitForURLCommand
 } from '../commands';
 
+const normalizeUrl = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
+};
+
 export const navigationHandlers: Record<string, ActionHandler> = {
   ensureSession: async (ctx, command) => {
     const args = (command as EnsureSessionCommand).args;
@@ -19,6 +28,11 @@ export const navigationHandlers: Record<string, ActionHandler> = {
   },
   'page.goto': async (ctx, command) => {
     const args = (command as PageGotoCommand).args;
+    const current = normalizeUrl(ctx.page.url());
+    const target = normalizeUrl(args.url);
+    if (current && target && current === target) {
+      return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url(), skipped: true } };
+    }
     await ctx.page.goto(args.url, { waitUntil: args.waitUntil || 'domcontentloaded' });
     return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
   },
