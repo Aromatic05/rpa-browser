@@ -114,14 +114,22 @@
   row2.className = 'row';
   const showBtn = document.createElement('button');
   showBtn.textContent = 'Show Rec';
+  const clearBtn = document.createElement('button');
+  clearBtn.textContent = 'Clear Rec';
   const replayBtn = document.createElement('button');
   replayBtn.className = 'primary';
   replayBtn.textContent = 'Replay';
-  row2.append(showBtn, replayBtn);
+  row2.append(showBtn, clearBtn);
+
+  const row3 = document.createElement('div');
+  row3.className = 'row';
+  const stopReplayBtn = document.createElement('button');
+  stopReplayBtn.textContent = 'Stop Replay';
+  row3.append(replayBtn, stopReplayBtn);
 
   const out = document.createElement('pre');
 
-  panel.append(meta, row1, row2, out);
+  panel.append(meta, row1, row2, row3, out);
   wrap.append(ball, panel);
   shadow.append(style, wrap);
 
@@ -159,5 +167,7 @@
   startBtn.addEventListener('click', () => sendPanelCommand('record.start'));
   stopBtn.addEventListener('click', () => sendPanelCommand('record.stop'));
   showBtn.addEventListener('click', () => sendPanelCommand('record.get'));
+  clearBtn.addEventListener('click', () => sendPanelCommand('record.clear'));
   replayBtn.addEventListener('click', () => sendPanelCommand('record.replay'));
+  stopReplayBtn.addEventListener('click', () => sendPanelCommand('record.stopReplay'));
 })();

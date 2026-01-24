@@ -23,10 +23,12 @@ export type EnsureSessionCommand = CommandWithArgs<'ensureSession', { url?: stri
 export type RecordStartCommand = CommandWithArgs<'record.start', Record<string, never>>;
 export type RecordStopCommand = CommandWithArgs<'record.stop', Record<string, never>>;
 export type RecordGetCommand = CommandWithArgs<'record.get', Record<string, never>>;
+export type RecordClearCommand = CommandWithArgs<'record.clear', Record<string, never>>;
 export type RecordReplayCommand = CommandWithArgs<
   'record.replay',
   { stopOnError?: boolean }
 >;
+export type RecordStopReplayCommand = CommandWithArgs<'record.stopReplay', Record<string, never>>;
 
 export type PageGotoCommand = CommandWithArgs<'page.goto', { url: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' }>;
 export type PageBackCommand = CommandWithArgs<'page.back', Record<string, never>>;
@@ -105,7 +107,9 @@ export type Command =
   | RecordStartCommand
   | RecordStopCommand
   | RecordGetCommand
+  | RecordClearCommand
   | RecordReplayCommand
+  | RecordStopReplayCommand
   | PageGotoCommand
   | PageBackCommand
   | PageForwardCommand

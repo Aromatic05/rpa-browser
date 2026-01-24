@@ -123,12 +123,17 @@ export const replayRecording = async (
   events: RecordedEvent[],
   options: ReplayOptions,
   opts: { stopOnError: boolean },
-  execute: (command: Command) => Promise<Result>
+  execute: (command: Command) => Promise<Result>,
+  shouldStop?: () => boolean
 ) => {
   const results: Array<Record<string, unknown>> = [];
   let pendingScroll = false;
 
   for (const event of events) {
+    if (shouldStop?.()) {
+      results.push({ ts: Date.now(), ok: true, type: 'replay.stop', pageUrl: page.url() });
+      return { ok: true, data: { results, stopped: true } };
+    }
     try {
       let command: Command | null = null;
       const candidates = event.locatorCandidates;
