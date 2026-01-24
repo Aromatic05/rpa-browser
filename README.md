@@ -115,7 +115,7 @@ pnpm -C agent test
 pnpm -C agent test:headed
 ```
 
-测试夹具在 `agent/tests/fixtures`，覆盖导航、点击、表单、选择、日期、滚动、对话框、弹窗、剪贴板、键鼠、文件上传、断言等动作模块。
+测试文件位于 `agent/tests/specs`，夹具在 `agent/tests/fixtures`，覆盖导航、点击、表单、选择、日期、滚动、对话框、弹窗、剪贴板、键鼠、文件上传、断言等动作模块。
 
 ## Debug 提示
 
