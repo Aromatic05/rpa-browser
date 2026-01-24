@@ -48,6 +48,101 @@ export const RECORDER_SOURCE = String.raw`(function () {
     return parts.join(' > ');
   };
 
+  var normalizeText = function (value) {
+    return (value || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
+  };
+
+  var getRole = function (el) {
+    var explicit = el.getAttribute('role');
+    if (explicit) return explicit;
+    var tag = el.tagName.toLowerCase();
+    if (tag === 'button') return 'button';
+    if (tag === 'a' && el.getAttribute('href')) return 'link';
+    if (tag === 'select') return 'combobox';
+    if (tag === 'textarea') return 'textbox';
+    if (tag === 'input') {
+      var type = (el.getAttribute('type') || 'text').toLowerCase();
+      if (type === 'checkbox') return 'checkbox';
+      if (type === 'radio') return 'radio';
+      if (type === 'submit' || type === 'button' || type === 'reset') return 'button';
+      return 'textbox';
+    }
+    return null;
+  };
+
+  var getLabelText = function (el) {
+    var aria = el.getAttribute('aria-label');
+    if (aria) return normalizeText(aria);
+    var labelledBy = el.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      var ids = labelledBy.split(/\\s+/);
+      var parts = ids.map(function (id) {
+        var node = document.getElementById(id);
+        return node ? normalizeText(node.innerText || node.textContent || '') : '';
+      }).filter(Boolean);
+      if (parts.length) return parts.join(' ');
+    }
+    var id = el.getAttribute('id');
+    if (id) {
+      var label = document.querySelector('label[for="' + id + '"]');
+      if (label) return normalizeText(label.innerText || label.textContent || '');
+    }
+    var wrapLabel = el.closest('label');
+    if (wrapLabel) return normalizeText(wrapLabel.innerText || wrapLabel.textContent || '');
+    return null;
+  };
+
+  var getTestId = function (el) {
+    var node = el.closest('[data-testid],[data-test],[data-qa]');
+    if (!node) return null;
+    return node.getAttribute('data-testid') || node.getAttribute('data-test') || node.getAttribute('data-qa');
+  };
+
+  var getScopeHint = function (el) {
+    if (el.closest('aside')) return 'aside';
+    if (el.closest('header')) return 'header';
+    if (el.closest('main')) return 'main';
+    return null;
+  };
+
+  var getTextCandidate = function (el) {
+    var tag = el.tagName.toLowerCase();
+    if (tag === 'button' || tag === 'a' || tag === 'li' || tag === 'span') {
+      return normalizeText(el.innerText || el.textContent || '');
+    }
+    return null;
+  };
+
+  var buildCandidates = function (el) {
+    var candidates = [];
+    var testId = getTestId(el);
+    if (testId) {
+      candidates.push({ kind: 'testid', testId: testId, note: 'data-testid' });
+    }
+    var role = getRole(el);
+    var name = getLabelText(el) || normalizeText(el.innerText || el.textContent || '') || el.getAttribute('title') || el.getAttribute('alt') || el.getAttribute('value');
+    if (role && name) {
+      candidates.push({ kind: 'role', role: role, name: normalizeText(String(name)), exact: true });
+    }
+    var labelText = getLabelText(el);
+    if (labelText) {
+      candidates.push({ kind: 'label', text: labelText, exact: true });
+    }
+    var placeholder = el.getAttribute('placeholder');
+    if (placeholder) {
+      candidates.push({ kind: 'placeholder', text: normalizeText(placeholder), exact: true });
+    }
+    var text = getTextCandidate(el);
+    if (text) {
+      candidates.push({ kind: 'text', text: text, exact: true });
+    }
+    var css = selectorFor(el);
+    if (css) {
+      candidates.push({ kind: 'css', selector: css });
+    }
+    return candidates;
+  };
+
   var emit = function (payload) {
     var tabToken = getToken();
     if (!tabToken) return;
@@ -76,7 +171,13 @@ export const RECORDER_SOURCE = String.raw`(function () {
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
-    emit({ type: 'click', selector: selector, targetHint: target.tagName.toLowerCase() });
+    emit({
+      type: 'click',
+      selector: selector,
+      targetHint: target.tagName.toLowerCase(),
+      locatorCandidates: buildCandidates(target),
+      scopeHint: getScopeHint(target)
+    });
   }, true);
 
   document.addEventListener('input', function (event) {
@@ -85,7 +186,13 @@ export const RECORDER_SOURCE = String.raw`(function () {
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
-    emit({ type: 'input', selector: selector, value: getValue(target) });
+    emit({
+      type: 'input',
+      selector: selector,
+      value: getValue(target),
+      locatorCandidates: buildCandidates(target),
+      scopeHint: getScopeHint(target)
+    });
   }, true);
 
   document.addEventListener('change', function (event) {
@@ -97,20 +204,46 @@ export const RECORDER_SOURCE = String.raw`(function () {
     if (target instanceof HTMLInputElement) {
       var inputType = (target.type || '').toLowerCase();
       if (inputType === 'checkbox' || inputType === 'radio') {
-        emit({ type: 'check', selector: selector, checked: target.checked, inputType: inputType });
+        emit({
+          type: 'check',
+          selector: selector,
+          checked: target.checked,
+          inputType: inputType,
+          locatorCandidates: buildCandidates(target),
+          scopeHint: getScopeHint(target)
+        });
         return;
       }
       if (inputType === 'date') {
-        emit({ type: 'date', selector: selector, value: target.value });
+        emit({
+          type: 'date',
+          selector: selector,
+          value: target.value,
+          locatorCandidates: buildCandidates(target),
+          scopeHint: getScopeHint(target)
+        });
         return;
       }
     }
     if (target instanceof HTMLSelectElement) {
       var option = target.selectedOptions && target.selectedOptions[0];
-      emit({ type: 'select', selector: selector, value: target.value, label: option ? option.label : '' });
+      emit({
+        type: 'select',
+        selector: selector,
+        value: target.value,
+        label: option ? option.label : '',
+        locatorCandidates: buildCandidates(target),
+        scopeHint: getScopeHint(target)
+      });
       return;
     }
-    emit({ type: 'change', selector: selector, value: getValue(target) });
+    emit({
+      type: 'change',
+      selector: selector,
+      value: getValue(target),
+      locatorCandidates: buildCandidates(target),
+      scopeHint: getScopeHint(target)
+    });
   }, true);
 
   document.addEventListener('keydown', function (event) {
@@ -118,7 +251,13 @@ export const RECORDER_SOURCE = String.raw`(function () {
     var target = event.target;
     if (target && target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = target instanceof Element ? selectorFor(target) : null;
-    emit({ type: 'keydown', selector: selector, key: event.key });
+    emit({
+      type: 'keydown',
+      selector: selector,
+      key: event.key,
+      locatorCandidates: target instanceof Element ? buildCandidates(target) : undefined,
+      scopeHint: target instanceof Element ? getScopeHint(target) : undefined
+    });
   }, true);
 
   document.addEventListener('paste', function (event) {
@@ -128,7 +267,13 @@ export const RECORDER_SOURCE = String.raw`(function () {
     var selector = selectorFor(target);
     if (!selector) return;
     if (isPassword(target)) return;
-    emit({ type: 'paste', selector: selector, value: getValue(target) });
+    emit({
+      type: 'paste',
+      selector: selector,
+      value: getValue(target),
+      locatorCandidates: buildCandidates(target),
+      scopeHint: getScopeHint(target)
+    });
   }, true);
 
   document.addEventListener('copy', function (event) {
@@ -137,7 +282,12 @@ export const RECORDER_SOURCE = String.raw`(function () {
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
     if (!selector) return;
-    emit({ type: 'copy', selector: selector });
+    emit({
+      type: 'copy',
+      selector: selector,
+      locatorCandidates: buildCandidates(target),
+      scopeHint: getScopeHint(target)
+    });
   }, true);
 
   var scrollTimer = null;
