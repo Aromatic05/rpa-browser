@@ -81,6 +81,33 @@ Agent 启动后会自动用 Playwright 打开 Chromium，并加载 `extension/di
 
 所有具体动作由 `agent/src/runner/actions/` 实现，`agent/src/runner/execute.ts` 负责路由与错误封装。
 
+## 回放自愈定位（要点）
+
+- 录制时生成 `locatorCandidates`（优先 role/label/placeholder/text，最后兜底 css）
+- 回放时按候选顺序逐个尝试：
+  - count=0 继续
+  - count>1 视为歧义，跳过
+  - count=1 则 wait visible + scrollIntoView + click
+- 失败会在 `.artifacts/replay/<tabToken>/` 输出 screenshot 与候选证据
+
+简化示例：
+
+```
+{
+  "type": "click",
+  "scopeHint": "aside",
+  "locatorCandidates": [
+    { "kind": "role", "role": "link", "name": "Orders", "exact": true },
+    { "kind": "text", "text": "Orders", "exact": true },
+    { "kind": "css", "selector": "aside nav.menu > a:nth-of-type(5)" }
+  ]
+}
+```
+
+## A11y 扫描
+
+支持 `page.a11yScan` 命令（基于 `@axe-core/playwright`），默认返回精简 summary。
+
 ## 测试
 
 ```
