@@ -413,3 +413,106 @@ test.describe('waits_asserts', () => {
     await context.close();
   });
 });
+
+test.describe('replay self heal', () => {
+  test('fallback from css to role within scope', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${baseURL}/menu-replay.html`);
+    const ctx = createCtx(page, 'replay-token');
+    const events = [
+      {
+        tabToken: 'replay-token',
+        ts: Date.now(),
+        type: 'click',
+        selector: 'aside nav.menu > a:nth-of-type(5)',
+        scopeHint: 'aside',
+        locatorCandidates: [
+          { kind: 'css', selector: 'aside nav.menu > a:nth-of-type(5)' },
+          { kind: 'role', role: 'link', name: 'Orders', exact: true },
+          { kind: 'text', text: 'Orders', exact: true }
+        ]
+      }
+    ];
+    const replay = await import('../src/play/replay');
+    const res = await replay.replayRecording(page, events as any, ctx.replayOptions, { stopOnError: true }, ctx.execute!);
+    expect(res.ok).toBe(true);
+    await expect(page.locator('body')).toHaveAttribute('data-clicked', 'Orders');
+    await context.close();
+  });
+
+  test('ambiguous candidate skipped', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${baseURL}/menu-replay.html`);
+    const ctx = createCtx(page, 'replay-token-2');
+    const events = [
+      {
+        tabToken: 'replay-token-2',
+        ts: Date.now(),
+        type: 'click',
+        selector: 'a',
+        scopeHint: 'aside',
+        locatorCandidates: [
+          { kind: 'css', selector: 'a' },
+          { kind: 'role', role: 'link', name: 'Orders', exact: true }
+        ]
+      }
+    ];
+    const replay = await import('../src/play/replay');
+    const res = await replay.replayRecording(page, events as any, ctx.replayOptions, { stopOnError: true }, ctx.execute!);
+    expect(res.ok).toBe(true);
+    await expect(page.locator('body')).toHaveAttribute('data-clicked', 'Orders');
+    await context.close();
+  });
+});
+
+test.describe('a11y scan', () => {
+  test('detects violations', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${baseURL}/a11y-broken.html`);
+    const ctx = createCtx(page, 'a11y-token');
+    const res = await executeCommand(ctx, {
+      cmd: 'page.a11yScan',
+      tabToken: 'a11y-token',
+      args: { resultDetail: 'summary' }
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.violations.length).toBeGreaterThan(0);
+    }
+    await context.close();
+  });
+
+  test('ok page returns zero violations', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${baseURL}/a11y-ok.html`);
+    const ctx = createCtx(page, 'a11y-ok');
+    const res = await executeCommand(ctx, {
+      cmd: 'page.a11yScan',
+      tabToken: 'a11y-ok',
+      args: { resultDetail: 'summary' }
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.violations.length).toBe(0);
+    }
+    await context.close();
+  });
+
+  test('impact filter works', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${baseURL}/a11y-broken.html`);
+    const ctx = createCtx(page, 'a11y-filter');
+    const res = await executeCommand(ctx, {
+      cmd: 'page.a11yScan',
+      tabToken: 'a11y-filter',
+      args: { includedImpacts: ['critical'] }
+    });
+    expect(res.ok).toBe(true);
+    await context.close();
+  });
+});

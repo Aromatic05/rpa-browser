@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Menu Record</title>
+  <style>
+    aside { width: 220px; }
+    .menu a { display: block; padding: 6px; }
+    .menu .active { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <aside>
+    <nav class="menu">
+      <a href="#one">One</a>
+      <a href="#two">Two</a>
+      <a href="#three">Three</a>
+      <a href="#four">Four</a>
+      <a href="#five" class="active">Orders</a>
+      <a href="#six">Six</a>
+    </nav>
+  </aside>
+  <script>
+    document.querySelectorAll('a').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.body.dataset.clicked = a.textContent;
+      });
+    });
+  </script>
+</body>
+</html>
