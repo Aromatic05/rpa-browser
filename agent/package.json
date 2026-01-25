@@ -10,7 +10,8 @@
         "dev": "tsx src/index.ts",
         "pw:install": "npx playwright install chromium",
         "test": "playwright test",
-        "test:headed": "playwright test --headed"
+        "test:headed": "playwright test --headed",
+        "dev:watch": "tsx watch src/index.ts"
     },
     "dependencies": {
         "@axe-core/playwright": "^4.10.2",
