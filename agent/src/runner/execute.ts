@@ -3,6 +3,8 @@ import { ERROR_CODES, type ErrorCode } from './error_codes';
 import type { Command } from './commands';
 import { errorResult, okResult, type Result } from './results';
 import { actionHandlers } from './actions';
+import { resolveTarget } from '../runtime/target_resolver';
+import { highlightLocator, clearHighlight } from './actions/highlight';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
@@ -30,6 +32,15 @@ export class ActionError extends Error {
         this.details = details;
     }
 }
+
+
+const shouldHighlight = (command: Command) => {
+    const target = (command as any).args?.target;
+    if (!target) return false;
+    const cmd = command.cmd;
+    if (cmd === 'page.scrollBy' || cmd === 'page.scrollTo' || cmd === 'element.scrollIntoView') return false;
+    return true;
+};
 
 const mapError = (tabToken: string, requestId: string | undefined, error: unknown): Result => {
     if (error instanceof ActionError) {
@@ -62,7 +73,24 @@ export const executeCommand = async (ctx: ActionContext, command: Command): Prom
         selector,
         pageUrl: ctx.page.url(),
     });
+    let highlighted = null as null | { locator: any };
     try {
+        if (shouldHighlight(command)) {
+            try {
+                const target = (command as any).args?.target;
+                const resolved = await resolveTarget({
+                    page: ctx.page,
+                    tabToken: ctx.tabToken,
+                    target,
+                    pageRegistry: ctx.pageRegistry,
+                });
+                highlighted = { locator: resolved.locator };
+                await highlightLocator(resolved.locator);
+                await ctx.page.waitForTimeout(150);
+            } catch {
+                // ignore highlight failures
+            }
+        }
         const result = await handler(ctx, command);
         if (result.ok) {
             return okResult(ctx.tabToken, result.data, command.requestId);
@@ -70,5 +98,13 @@ export const executeCommand = async (ctx: ActionContext, command: Command): Prom
         return result.requestId ? result : { ...result, requestId: command.requestId };
     } catch (error) {
         return mapError(ctx.tabToken, command.requestId, error);
+    } finally {
+        if (highlighted?.locator) {
+            try {
+                await clearHighlight(highlighted.locator);
+            } catch {
+                // ignore
+            }
+        }
     }
 };
