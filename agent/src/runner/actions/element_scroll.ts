@@ -18,11 +18,10 @@ export const elementScrollHandlers: Record<string, ActionHandler> = {
                 const targetX = startX + dx;
                 const targetY = startY + dy;
                 const start = performance.now();
-                const ease = (t: number) => t * (2 - t);
-                await new Promise<void>((resolve) => {
-                    const tick = (now: number) => {
+                                await new Promise<void>((resolve) => {
+                    const tick = (now) => {
                         const elapsed = Math.min(1, (now - start) / duration);
-                        const eased = ease(elapsed);
+                        const eased = elapsed * (2 - elapsed);
                         window.scrollTo(
                             startX + (targetX - startX) * eased,
                             startY + (targetY - startY) * eased,
@@ -50,11 +49,10 @@ export const elementScrollHandlers: Record<string, ActionHandler> = {
                 const targetX = x;
                 const targetY = y;
                 const start = performance.now();
-                const ease = (t: number) => t * (2 - t);
-                await new Promise<void>((resolve) => {
-                    const tick = (now: number) => {
+                                await new Promise<void>((resolve) => {
+                    const tick = (now) => {
                         const elapsed = Math.min(1, (now - start) / duration);
-                        const eased = ease(elapsed);
+                        const eased = elapsed * (2 - elapsed);
                         window.scrollTo(
                             startX + (targetX - startX) * eased,
                             startY + (targetY - startY) * eased,
