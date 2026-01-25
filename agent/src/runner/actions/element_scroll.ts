@@ -11,64 +11,26 @@ import { ERROR_CODES } from '../error_codes';
 export const elementScrollHandlers: Record<string, ActionHandler> = {
     'page.scrollBy': async (ctx, command) => {
         const args = (command as PageScrollByCommand).args;
-        const result = await ctx.page.evaluate(
-            async ({ dx, dy, duration }) => {
-                const startX = window.scrollX;
-                const startY = window.scrollY;
-                const targetX = startX + dx;
-                const targetY = startY + dy;
-                const start = performance.now();
-                                await new Promise<void>((resolve) => {
-                    const tick = (now) => {
-                        const elapsed = Math.min(1, (now - start) / duration);
-                        const eased = elapsed * (2 - elapsed);
-                        window.scrollTo(
-                            startX + (targetX - startX) * eased,
-                            startY + (targetY - startY) * eased,
-                        );
-                        if (elapsed < 1) {
-                            requestAnimationFrame(tick);
-                        } else {
-                            resolve();
-                        }
-                    };
-                    requestAnimationFrame(tick);
-                });
-                return { scrollX: window.scrollX, scrollY: window.scrollY };
+        await ctx.page.evaluate(
+            ({ dx, dy }) => {
+                window.scrollBy({ left: dx, top: dy, behavior: 'smooth' });
             },
-            { dx: args.dx, dy: args.dy, duration: 450 },
+            { dx: args.dx, dy: args.dy },
         );
+        await ctx.page.waitForTimeout(450);
+        const result = await ctx.page.evaluate(() => ({ scrollX: window.scrollX, scrollY: window.scrollY }));
         return { ok: true, tabToken: ctx.tabToken, data: result };
     },
     'page.scrollTo': async (ctx, command) => {
         const args = (command as PageScrollToCommand).args;
-        const result = await ctx.page.evaluate(
-            async ({ x, y, duration }) => {
-                const startX = window.scrollX;
-                const startY = window.scrollY;
-                const targetX = x;
-                const targetY = y;
-                const start = performance.now();
-                                await new Promise<void>((resolve) => {
-                    const tick = (now) => {
-                        const elapsed = Math.min(1, (now - start) / duration);
-                        const eased = elapsed * (2 - elapsed);
-                        window.scrollTo(
-                            startX + (targetX - startX) * eased,
-                            startY + (targetY - startY) * eased,
-                        );
-                        if (elapsed < 1) {
-                            requestAnimationFrame(tick);
-                        } else {
-                            resolve();
-                        }
-                    };
-                    requestAnimationFrame(tick);
-                });
-                return { scrollX: window.scrollX, scrollY: window.scrollY };
+        await ctx.page.evaluate(
+            ({ x, y }) => {
+                window.scrollTo({ left: x, top: y, behavior: 'smooth' });
             },
-            { x: args.x, y: args.y, duration: 450 },
+            { x: args.x, y: args.y },
         );
+        await ctx.page.waitForTimeout(450);
+        const result = await ctx.page.evaluate(() => ({ scrollX: window.scrollX, scrollY: window.scrollY }));
         return { ok: true, tabToken: ctx.tabToken, data: result };
     },
     'element.scrollIntoView': async (ctx, command) => {
