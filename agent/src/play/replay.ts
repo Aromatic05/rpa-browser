@@ -3,6 +3,7 @@ import type { RecordedEvent } from '../record/recorder';
 import type { Command } from '../runner/commands';
 import type { Result } from '../runner/results';
 import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
+import { highlightLocator, clearHighlight } from '../runner/actions/highlight';
 import path from 'path';
 import { promises as fs } from 'fs';
 
@@ -12,6 +13,15 @@ export type ReplayOptions = {
     scroll: { minDelta: number; maxDelta: number; minSteps: number; maxSteps: number };
 };
 
+
+const flashHighlight = async (locator: Locator) => {
+    try {
+        await highlightLocator(locator);
+        await locator.page().waitForTimeout(150);
+    } catch {
+        // ignore
+    }
+};
 type CandidateAttempt = {
     kind: string;
     detail: string;
@@ -177,7 +187,9 @@ export const replayRecording = async (
                         if (opts.stopOnError) return { ok: false, data: { results } };
                         continue;
                     }
+                    await flashHighlight(locator);
                     await locator.click({ timeout: 5000, noWaitAfter: true });
+                    await clearHighlight(locator);
                     await page.waitForTimeout(options.stepDelayMs);
                     results.push({ ts: event.ts, ok: true, type: event.type, pageUrl: page.url() });
                     continue;
@@ -226,7 +238,9 @@ export const replayRecording = async (
                         if (opts.stopOnError) return { ok: false, data: { results } };
                         continue;
                     }
+                    await flashHighlight(locator);
                     await locator.fill(event.value || '', { timeout: 5000 });
+                    await clearHighlight(locator);
                     await page.waitForTimeout(options.stepDelayMs);
                     results.push({ ts: event.ts, ok: true, type: event.type, pageUrl: page.url() });
                     continue;
