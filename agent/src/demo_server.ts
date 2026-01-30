@@ -7,6 +7,7 @@ import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createWorkspaceManager } from './demo/workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from './record/recording';
+import { runAgentLoop } from './demo/agent_loop';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,6 +78,22 @@ const workspaceManager = createWorkspaceManager({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
 });
 
+const buildToolDeps = () => ({
+    pageRegistry,
+    recordingState,
+    log: (...args: unknown[]) => console.log('[RPA:demo]', ...args),
+    replayOptions: {
+        clickDelayMs: CLICK_DELAY_MS,
+        stepDelayMs: REPLAY_STEP_DELAY_MS,
+        scroll: SCROLL_CONFIG,
+    },
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    getActiveTabToken: async () => {
+        const workspace = await workspaceManager.ensureActiveWorkspace();
+        return workspace.tabToken;
+    },
+});
+
 const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
     if (url.pathname === '/api/config') {
@@ -117,6 +134,28 @@ const server = http.createServer((req, res) => {
     }
     if (url.pathname === '/api/env/status' && req.method === 'GET') {
         void workspaceManager.getActiveWorkspacePublicInfo().then((info) => sendJson(res, 200, info));
+        return;
+    }
+    if (url.pathname === '/api/chat' && req.method === 'POST') {
+        void (async () => {
+            const body = (await readJsonBody(req)) || {};
+            const message = typeof body.message === 'string' ? body.message : '';
+            if (!message) {
+                sendJson(res, 400, { error: 'missing message' });
+                return;
+            }
+            await workspaceManager.ensureActiveWorkspace();
+            const config = await readConfig();
+            const result = await runAgentLoop({
+                message,
+                config,
+                toolDeps: buildToolDeps(),
+            });
+            sendJson(res, 200, result);
+        })().catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            sendJson(res, 500, { error: message });
+        });
         return;
     }
     if (url.pathname === '/' || url.pathname === '/index.html') {
