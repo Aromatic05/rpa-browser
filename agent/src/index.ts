@@ -44,7 +44,8 @@ const handleCommand = async (payload?: Command) => {
     if (!payload.tabToken) {
         return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken', payload.requestId);
     }
-    const urlHint = typeof payload.args?.url === 'string' ? payload.args.url : undefined;
+    const urlHint =
+        typeof (payload as any).args?.url === 'string' ? ((payload as any).args.url as string) : undefined;
     const page = await pageRegistry.getPage(payload.tabToken, urlHint);
     const ctx: ActionContext = {
         page,

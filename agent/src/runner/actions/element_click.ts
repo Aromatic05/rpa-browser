@@ -40,7 +40,7 @@ export const elementClickHandlers: Record<string, ActionHandler> = {
             target: args.target,
             pageRegistry: ctx.pageRegistry,
         });
-        const options = { timeout: 5000, button: 'right', ...(args.options || {}) };
+        const options = { timeout: 5000, button: 'right' as const, ...(args.options || {}) };
         await locator.click(options);
         return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
     },

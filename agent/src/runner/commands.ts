@@ -175,7 +175,6 @@ export type AssertVisibleCommand = CommandWithArgs<
     'assert.visible',
     { target: Target; value: boolean }
 >;
-import type { A11yScanOptions } from './a11y_types';
 
 export type PageA11yScanCommand = CommandWithArgs<'page.a11yScan', A11yScanOptions>;
 
