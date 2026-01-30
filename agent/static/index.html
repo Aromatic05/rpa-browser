@@ -4,9 +4,260 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Local Chat Demo</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #161a22;
+        --ink: #f5f7ff;
+        --muted: #9aa3b2;
+        --accent: #4fd1c5;
+        --accent-strong: #2fb7a9;
+        --border: #2a3242;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top left, #1d2433, #0f1115 55%);
+        color: var(--ink);
+        font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        padding: 24px;
+      }
+      .app {
+        width: min(1100px, 100%);
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 20px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 8px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+      }
+      .stack { display: flex; flex-direction: column; gap: 12px; }
+      label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+      input, select, textarea {
+        background: #0f131b;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: var(--ink);
+        padding: 8px 10px;
+        font-size: 14px;
+      }
+      button {
+        background: var(--accent);
+        border: none;
+        color: #051312;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover { background: var(--accent-strong); }
+      .muted { color: var(--muted); font-size: 12px; }
+      .env-status { font-size: 13px; line-height: 1.5; }
+      .chat {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .messages {
+        flex: 1;
+        min-height: 360px;
+        max-height: 60vh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .message {
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: #0f131b;
+        border: 1px solid #232c3d;
+      }
+      .message.user { border-left: 4px solid var(--accent); }
+      .message.assistant { border-left: 4px solid #5a87ff; }
+      .message.tool { border-left: 4px solid #f6ad55; }
+      .composer {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+      }
+      details { background: #0e141d; border: 1px solid #212a3a; border-radius: 12px; padding: 8px 12px; }
+      summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+      pre { white-space: pre-wrap; word-break: break-word; margin: 8px 0 0; font-size: 12px; color: #cbd5e1; }
+      @media (max-width: 900px) {
+        .app { grid-template-columns: 1fr; }
+      }
+    </style>
   </head>
   <body>
-    <h1>Local Chat Demo</h1>
-    <p>UI scaffold in progress.</p>
+    <div class="app">
+      <div class="stack">
+        <div class="panel">
+          <h1>Settings</h1>
+          <div class="stack">
+            <div>
+              <label>API Base</label>
+              <input id="apiBase" placeholder="http://127.0.0.1:11434" />
+            </div>
+            <div>
+              <label>API Key</label>
+              <input id="apiKey" type="password" placeholder="Set / update" />
+              <div class="muted" id="apiKeyMasked"></div>
+            </div>
+            <div>
+              <label>Model</label>
+              <input id="model" placeholder="gpt-4.1-mini" />
+            </div>
+            <div>
+              <label>Temperature</label>
+              <input id="temperature" type="number" step="0.1" min="0" max="2" placeholder="0.2" />
+            </div>
+            <div>
+              <label>Max Tokens</label>
+              <input id="maxTokens" type="number" min="1" placeholder="512" />
+            </div>
+            <button id="saveSettings">Save Settings</button>
+            <div class="muted" id="saveStatus"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h1>Environment</h1>
+          <div class="stack">
+            <div>
+              <label>Prepare URL (optional)</label>
+              <input id="prepareUrl" placeholder="https://catos.info" />
+            </div>
+            <button id="prepareBtn">Prepare Workspace</button>
+            <div class="env-status" id="envStatus">No active workspace.</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel chat">
+        <h1>Chat</h1>
+        <div class="messages" id="messages"></div>
+        <div class="composer">
+          <input id="chatInput" placeholder="帮我在 catos.info 网页上找到谷歌网盘下载链接" />
+          <button id="sendBtn">Send</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      const qs = (id) => document.getElementById(id);
+      const messagesEl = qs('messages');
+
+      const addMessage = (text, kind) => {
+        const div = document.createElement('div');
+        div.className = `message ${kind}`;
+        div.textContent = text;
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      };
+
+      const addToolEvents = (events) => {
+        if (!events || !events.length) return;
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = `Tool events (${events.length})`;
+        details.appendChild(summary);
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(events, null, 2);
+        details.appendChild(pre);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message tool';
+        wrapper.appendChild(details);
+        messagesEl.appendChild(wrapper);
+      };
+
+      const refreshConfig = async () => {
+        const resp = await fetch('/api/config');
+        const data = await resp.json();
+        qs('apiBase').value = data.apiBase || '';
+        qs('model').value = data.model || '';
+        qs('temperature').value = data.temperature ?? '';
+        qs('maxTokens').value = data.maxTokens ?? '';
+        qs('apiKeyMasked').textContent = data.apiKey ? `stored key: ${data.apiKey}` : 'stored key: (none)';
+      };
+
+      const refreshEnv = async () => {
+        const resp = await fetch('/api/env/status');
+        const data = await resp.json();
+        if (!data) {
+          qs('envStatus').textContent = 'No active workspace.';
+          return;
+        }
+        qs('envStatus').textContent = `Workspace ${data.workspaceId}\n${data.title || '(untitled)'}\n${data.url || ''}`;
+      };
+
+      qs('saveSettings').addEventListener('click', async () => {
+        const payload = {
+          apiBase: qs('apiBase').value,
+          apiKey: qs('apiKey').value,
+          model: qs('model').value,
+          temperature: qs('temperature').value ? Number(qs('temperature').value) : undefined,
+          maxTokens: qs('maxTokens').value ? Number(qs('maxTokens').value) : undefined,
+        };
+        const resp = await fetch('/api/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        qs('saveStatus').textContent = resp.ok ? 'Saved.' : 'Save failed.';
+        qs('apiKey').value = '';
+        qs('apiKeyMasked').textContent = data.apiKey ? `stored key: ${data.apiKey}` : 'stored key: (none)';
+      });
+
+      qs('prepareBtn').addEventListener('click', async () => {
+        const url = qs('prepareUrl').value;
+        const resp = await fetch('/api/env/prepare', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data) {
+          qs('envStatus').textContent = `Workspace ${data.workspaceId}\n${data.title || '(untitled)'}\n${data.url || ''}`;
+        }
+      });
+
+      const sendChat = async () => {
+        const input = qs('chatInput');
+        const message = input.value.trim();
+        if (!message) return;
+        addMessage(message, 'user');
+        input.value = '';
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          addToolEvents(data.toolEvents);
+          addMessage(data.finalAnswer || '(no response)', 'assistant');
+        } else {
+          addMessage(data.error || 'Chat failed.', 'assistant');
+        }
+      };
+
+      qs('sendBtn').addEventListener('click', sendChat);
+      qs('chatInput').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') sendChat();
+      });
+
+      refreshConfig();
+      refreshEnv();
+    </script>
   </body>
 </html>
