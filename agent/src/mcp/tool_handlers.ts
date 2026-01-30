@@ -9,11 +9,13 @@ import type {
     ElementClickCommand,
     ElementFillCommand,
     ElementTypeCommand,
+    PageA11yScanCommand,
     PageGotoCommand,
     Target,
 } from '../runner/commands';
 import { ERROR_CODES } from '../runner/error_codes';
 import { errorResult, okResult, type Result } from '../runner/results';
+import type { A11yScanResult } from '../runner/a11y_types';
 import {
     browserClickInputSchema,
     browserGotoInputSchema,
@@ -127,16 +129,33 @@ const handleType = (deps: McpToolDeps) => async (args: unknown): Promise<Result>
     return executeCommand(ctx, command);
 };
 
+const trimA11yNodes = (result: A11yScanResult, maxNodes?: number): A11yScanResult => {
+    if (maxNodes === undefined) return result;
+    const normalized = Math.max(0, maxNodes);
+    return {
+        ...result,
+        violations: result.violations.map((violation) => ({
+            ...violation,
+            nodes: violation.nodes.slice(0, normalized),
+        })),
+    };
+};
+
 const handleSnapshot = (deps: McpToolDeps) => async (args: unknown): Promise<Result> => {
     const parsed = parseInput<BrowserSnapshotInput>(browserSnapshotInputSchema, args);
     if (!parsed.ok) return parsed.result;
     const input = parsed.data;
     if (input.includeA11y) {
-        return errorResult(
-            input.tabToken,
-            ERROR_CODES.ERR_UNSUPPORTED,
-            'includeA11y is not supported yet',
-        );
+        const ctx = await buildActionContext(deps, input.tabToken);
+        const command: PageA11yScanCommand = {
+            cmd: 'page.a11yScan',
+            tabToken: input.tabToken,
+            args: {},
+        };
+        const result = await executeCommand(ctx, command);
+        if (!result.ok) return result;
+        const data = trimA11yNodes(result.data as A11yScanResult, input.maxNodes);
+        return okResult(input.tabToken, data, result.requestId);
     }
     const page = await getOrCreatePage(deps.pageRegistry, input.tabToken);
     const title = await page.title();
