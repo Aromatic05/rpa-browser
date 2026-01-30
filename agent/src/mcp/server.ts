@@ -32,7 +32,7 @@ export const createMcpServer = (deps: McpToolDeps) => {
             },
             {
                 name: 'browser.snapshot',
-                description: 'Return basic page metadata (and optional a11y scan in later phase).',
+                description: 'Return page metadata or run an a11y scan.',
                 inputSchema: toolInputJsonSchemas['browser.snapshot'],
             },
             {
