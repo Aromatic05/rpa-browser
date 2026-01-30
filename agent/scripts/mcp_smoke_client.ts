@@ -14,7 +14,7 @@ type JsonRpcResponse = {
 };
 
 const startServer = () => {
-    const child = spawn(process.execPath, ['--loader', 'tsx', 'src/mcp_main.ts'], {
+    const child = spawn(process.execPath, ['--import', 'tsx/esm', 'src/mcp_main.ts'], {
         cwd: agentRoot,
         stdio: ['pipe', 'pipe', 'inherit'],
         env: { ...process.env },
