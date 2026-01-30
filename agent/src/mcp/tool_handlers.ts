@@ -1,21 +1,10 @@
-import type { Page } from 'playwright';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
 import { z } from 'zod';
-import { executeCommand, type ActionContext } from '../runner/execute';
-import type {
-    Command,
-    ElementClickCommand,
-    ElementFillCommand,
-    ElementTypeCommand,
-    PageA11yScanCommand,
-    PageGotoCommand,
-    Target,
-} from '../runner/commands';
+import { executeTool } from '../tool_registry';
 import { ERROR_CODES } from '../runner/error_codes';
-import { errorResult, okResult, type Result } from '../runner/results';
-import type { A11yScanResult } from '../runner/a11y_types';
+import { errorResult, type Result } from '../runner/results';
 import {
     browserClickInputSchema,
     browserGotoInputSchema,
@@ -37,32 +26,6 @@ export type McpToolDeps = {
 
 export type McpToolHandler = (args: unknown) => Promise<Result>;
 
-const getOrCreatePage = async (
-    pageRegistry: PageRegistry,
-    tabToken: string,
-    urlHint?: string,
-): Promise<Page> => pageRegistry.getPage(tabToken, urlHint);
-
-const buildActionContext = async (
-    deps: McpToolDeps,
-    tabToken: string,
-    urlHint?: string,
-): Promise<ActionContext> => {
-    const page = await getOrCreatePage(deps.pageRegistry, tabToken, urlHint);
-    const ctx: ActionContext = {
-        page,
-        tabToken,
-        pageRegistry: deps.pageRegistry,
-        log: deps.log,
-        recordingState: deps.recordingState,
-        replayOptions: deps.replayOptions,
-        navDedupeWindowMs: deps.navDedupeWindowMs,
-        execute: undefined,
-    };
-    ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
-    return ctx;
-};
-
 const validationError = (input: unknown, message: string, details?: unknown) => {
     const tabToken = typeof (input as any)?.tabToken === 'string' ? ((input as any).tabToken as string) : '';
     return errorResult(tabToken, ERROR_CODES.ERR_BAD_ARGS, message, undefined, details);
@@ -79,87 +42,61 @@ const parseInput = <T>(schema: z.ZodType<T>, input: unknown) => {
     return { ok: true as const, data: parsed.data };
 };
 
-const toTarget = (target: unknown): Target => target as Target;
+const buildRegistryDeps = (deps: McpToolDeps, tabToken: string) => ({
+    pageRegistry: deps.pageRegistry,
+    recordingState: deps.recordingState,
+    log: deps.log,
+    replayOptions: deps.replayOptions,
+    navDedupeWindowMs: deps.navDedupeWindowMs,
+    getActiveTabToken: async () => tabToken,
+});
 
 const handleGoto = (deps: McpToolDeps) => async (args: unknown): Promise<Result> => {
     const parsed = parseInput<BrowserGotoInput>(browserGotoInputSchema, args);
     if (!parsed.ok) return parsed.result;
     const input = parsed.data;
-    const ctx = await buildActionContext(deps, input.tabToken, input.url);
-    const command: PageGotoCommand = {
-        cmd: 'page.goto',
-        tabToken: input.tabToken,
-        args: { url: input.url, waitUntil: 'domcontentloaded' },
-    };
-    return executeCommand(ctx, command);
+    return executeTool(
+        buildRegistryDeps(deps, input.tabToken),
+        'browser.goto',
+        { url: input.url },
+        { tabTokenOverride: input.tabToken },
+    );
 };
 
 const handleClick = (deps: McpToolDeps) => async (args: unknown): Promise<Result> => {
     const parsed = parseInput<BrowserClickInput>(browserClickInputSchema, args);
     if (!parsed.ok) return parsed.result;
     const input = parsed.data;
-    const ctx = await buildActionContext(deps, input.tabToken);
-    const command: ElementClickCommand = {
-        cmd: 'element.click',
-        tabToken: input.tabToken,
-        args: { target: toTarget(input.target), options: { timeout: 5000, noWaitAfter: true } },
-    };
-    return executeCommand(ctx, command);
+    return executeTool(
+        buildRegistryDeps(deps, input.tabToken),
+        'browser.click',
+        { target: input.target },
+        { tabTokenOverride: input.tabToken },
+    );
 };
 
 const handleType = (deps: McpToolDeps) => async (args: unknown): Promise<Result> => {
     const parsed = parseInput<BrowserTypeInput>(browserTypeInputSchema, args);
     if (!parsed.ok) return parsed.result;
     const input = parsed.data;
-    const ctx = await buildActionContext(deps, input.tabToken);
-    const target = toTarget(input.target);
-    if (input.clearFirst) {
-        const command: ElementFillCommand = {
-            cmd: 'element.fill',
-            tabToken: input.tabToken,
-            args: { target, text: input.text },
-        };
-        return executeCommand(ctx, command);
-    }
-    const command: ElementTypeCommand = {
-        cmd: 'element.type',
-        tabToken: input.tabToken,
-        args: { target, text: input.text },
-    };
-    return executeCommand(ctx, command);
-};
-
-const trimA11yNodes = (result: A11yScanResult, maxNodes?: number): A11yScanResult => {
-    if (maxNodes === undefined) return result;
-    const normalized = Math.max(0, maxNodes);
-    return {
-        ...result,
-        violations: result.violations.map((violation) => ({
-            ...violation,
-            nodes: violation.nodes.slice(0, normalized),
-        })),
-    };
+    return executeTool(
+        buildRegistryDeps(deps, input.tabToken),
+        'browser.type',
+        { target: input.target, text: input.text, clearFirst: input.clearFirst },
+        { tabTokenOverride: input.tabToken },
+    );
 };
 
 const handleSnapshot = (deps: McpToolDeps) => async (args: unknown): Promise<Result> => {
     const parsed = parseInput<BrowserSnapshotInput>(browserSnapshotInputSchema, args);
     if (!parsed.ok) return parsed.result;
     const input = parsed.data;
-    if (input.includeA11y) {
-        const ctx = await buildActionContext(deps, input.tabToken);
-        const command: PageA11yScanCommand = {
-            cmd: 'page.a11yScan',
-            tabToken: input.tabToken,
-            args: {},
-        };
-        const result = await executeCommand(ctx, command);
-        if (!result.ok) return result;
-        const data = trimA11yNodes(result.data as A11yScanResult, input.maxNodes);
-        return okResult(input.tabToken, data, result.requestId);
-    }
-    const page = await getOrCreatePage(deps.pageRegistry, input.tabToken);
-    const title = await page.title();
-    return okResult(input.tabToken, { url: page.url(), title });
+    return executeTool(
+        buildRegistryDeps(deps, input.tabToken),
+        'browser.snapshot',
+        { includeA11y: input.includeA11y, maxNodes: input.maxNodes },
+        { tabTokenOverride: input.tabToken },
+    );
 };
 
 export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHandler> => ({
