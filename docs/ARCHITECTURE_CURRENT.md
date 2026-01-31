@@ -67,7 +67,7 @@
 ## Data Flow
 
 1) `extension/src/content.ts` 生成 `tabToken`，向 SW 发送 `RPA_HELLO`。
-2) UI 按钮触发 `CMD` 消息，经 `extension/src/sw.ts` 获取 active tabToken（兼容旧协议）与可选 scope。
+2) Side panel UI 触发 `CMD` 消息，经 `extension/src/sw.ts` 获取 active tabToken（兼容旧协议）与可选 scope。
 3) `sw.ts` 通过 WebSocket 向 `agent/src/index.ts` 发送 `{ cmd, tabToken?, scope?, args, requestId }`。
 4) `agent/src/index.ts` 按 `scope(workspaceId/tabId)` 解析 Page（缺省为 active workspace/tab）。
 5) `runner/execute.ts` 解析命令、解析 target、映射错误、调用 `actions/*`。
@@ -83,7 +83,8 @@
 
 ## Key Modules
 
-- `extension/src/content.ts`：注入 UI、生成并维护 tabToken、转发 panel 命令。
+- `extension/src/content.ts`：注入悬浮 UI、生成并维护 tabToken、转发 panel 命令。
+- `extension/src/panel.ts`：Side panel Workspace Explorer（workspace/tab 列表与操作）。
 - `extension/src/sw.ts`：维持 tabId->tabToken 映射，WS 转发与超时处理。
 - `agent/src/runtime/context_manager.ts`：启动带扩展的 Chromium persistent context。
 - `agent/src/runtime/page_registry.ts`：workspace -> tabs -> Page 绑定与重建（tabToken 作为内部绑定）。

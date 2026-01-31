@@ -150,11 +150,11 @@
 
 ### P0
 
-- [P0] UI 简陋且缺乏状态面板
-  - Where: `extension/src/content.ts`, `extension/src/panel.ts`
-  - Problem: UI 功能有限且缺少状态/错误提示
-  - Impact: 影响录制/调试效率
-  - Evidence: content script 内置极简浮层 panel
+- [P0] Workspace Explorer 已实现最小闭环，但缺少人机协同与调试面板增强
+  - Where: `extension/src/panel.ts`, `extension/panel.html`
+  - Problem: 仅支持基础 workspace/tab 切换与日志输出，缺少人类纠错与更丰富的状态反馈
+  - Impact: 复杂场景下可用性与诊断能力不足
+  - Evidence: Side panel 仅展示列表与基础日志，无 human-in-loop 交互
 
 - [P0] WS 错误处理粗糙
   - Where: `extension/src/sw.ts`

@@ -76,8 +76,8 @@
   - Why first: 需要基础可视化反馈与可解释性
   - Depends on: P1 结构化日志与 candidates 可用
 
-- UI 简陋且缺乏状态面板
-  - Why first: 需要可操作入口与状态反馈
+- Workspace Explorer UI 最小闭环已完成（继续完善）
+  - Why first: 已具备基础入口，需补齐 human-in-loop 与调试能力
   - Depends on: P1 日志与 DSL 已清晰
 
 - 人机协同缺失
