@@ -1,0 +1,193 @@
+# Code Review TODOs
+
+> 说明：以下仅列出“需要改什么与问题在哪里”，不包含实施方案。
+
+## Agent
+
+### P0
+
+- [P0] 统一等待与超时策略
+  - Where: `agent/src/runner/actions/*`, `agent/src/runner/execute.ts`
+  - Problem: 各动作使用的 `timeout`/`waitForTimeout`/`waitForLoadState` 不一致且分散
+  - Impact: 不稳定的等待导致 flaky、超时与行为不一致
+  - Evidence: `element_click.ts`/`element_scroll.ts`/`navigation.ts`/`click.ts`/`type.ts` 各自硬编码等待与超时
+
+- [P0] 录制/回放缺少串行队列与状态机
+  - Where: `agent/src/record/recording.ts`, `agent/src/play/replay.ts`, `agent/src/runner/actions/recording.ts`
+  - Problem: 回放执行与录制状态并发管理依赖散落的 flag，未统一串行控制
+  - Impact: 并发操作时可能导致遗漏/重复执行或停不下来
+  - Evidence: `recording.ts` 使用 `recordingEnabled`/`replayCancel` 集合；`replay.ts` 直接遍历执行
+
+- [P0] 工具输入校验与错误结构不一致
+  - Where: `agent/src/runner/execute.ts`, `agent/src/runner/actions/*`
+  - Problem: 仅部分路径返回结构化错误，部分异常直接抛出
+  - Impact: 调用端难以统一处理失败原因
+  - Evidence: `execute.ts` 中依赖 ActionError，但 actions 内仍直接 throw Error
+
+- [P0] Selector/Target 解析分裂
+  - Where: `agent/src/runtime/target_resolver.ts`, `agent/src/runner/actions/locators.ts`, `agent/src/runner/actions/click.ts`
+  - Problem: 同时存在运行时 target_resolver 与 actions 内部的 locators
+  - Impact: 行为不一致，难以统一定位策略
+  - Evidence: `click.ts`/`type.ts` 使用 `actions/locators.ts`，而 execute 走 `runtime/target_resolver.ts`
+
+- [P0] A11y 输出与错误信息结构化不足
+  - Where: `agent/src/runner/actions/a11y.ts`
+  - Problem: 报告结构未与工具统一抽象/缺乏策略化输出
+  - Impact: 上层难以直接消费、审计与过滤
+  - Evidence: 直接返回 Axe 原始结构或简单封装
+
+### P1
+
+- [P1] 录制日志未形成可审计 Task DSL
+  - Where: `agent/src/record/recorder_payload.ts`, `agent/src/record/recording.ts`, `agent/src/play/replay.ts`
+  - Problem: 录制事件结构偏原始，缺乏 DSL 语义层
+  - Impact: 难以审查与复现复杂任务
+  - Evidence: `RecordedEvent` 直接存 selector/text/value，缺少 DSL 结构
+  - Notes: Architecture Evolution
+
+- [P1] 行为参数分散
+  - Where: `agent/src/index.ts`, `agent/src/demo/server.ts`, `agent/src/play/replay.ts`, `agent/src/runner/actions/*`
+  - Problem: 延迟/滚动/人类化参数散落在多个模块
+  - Impact: 无法统一控制行为策略
+  - Evidence: `CLICK_DELAY_MS`/`REPLAY_STEP_DELAY_MS`/`SCROLL_CONFIG` 分别存在
+  - Notes: Architecture Evolution
+
+- [P1] 工具体系缺乏层次结构
+  - Where: `agent/src/runner/actions/*`, `agent/src/runner/tool_registry.ts`
+  - Problem: L0/L1/L2 动作混杂，缺乏清晰层次
+  - Impact: 复用困难，策略难以编排
+  - Evidence: `element_click.ts` 与 `click.ts` 等重复实现
+  - Notes: Architecture Evolution
+
+### P2
+
+- [P2] Session/Workspace 概念未持久化
+  - Where: `agent/src/demo/workspace_manager.ts`, `agent/src/runtime/page_registry.ts`
+  - Problem: demo 的 workspace 仅内存级，agent 端缺少持久状态
+  - Impact: 无法恢复会话或并行多个 session
+  - Evidence: workspace 仅在 demo 进程内维护
+  - Notes: Architecture Evolution
+
+- [P2] 行为模式（fast vs humanlike）未统一
+  - Where: `agent/src/runner/actions/*`, `agent/src/play/replay.ts`
+  - Problem: 人类化行为仅部分 actions 覆盖
+  - Impact: 行为一致性与可复现性不足
+  - Evidence: `scroll.ts` 仅在特定路径使用人类化滚动
+  - Notes: Architecture Evolution
+
+## MCP & Demo
+
+### P0
+
+- [P0] 工具调用稳定性不足
+  - Where: `agent/src/runner/tool_registry.ts`, `agent/src/demo/agent_loop.ts`
+  - Problem: tool schema 允许 selector 直接输入，模型可能产生不受控 selector
+  - Impact: 导致执行失败或点击错误元素
+  - Evidence: tool schema 中 `target.selector` 直接开放
+
+- [P0] Demo 缺少实时输出流
+  - Where: `agent/src/demo/server.ts`, `agent/static/index.html`
+  - Problem: /api/chat 为一次性返回，缺少 SSE/流式进度
+  - Impact: 用户无法看到即时执行过程
+  - Evidence: 仅提供一次性 JSON 响应
+
+### P1
+
+- [P1] 缺少 Task DSL 运行日志
+  - Where: `agent/src/demo/agent_loop.ts`, `agent/src/record/*`
+  - Problem: toolEvents 与 messages 仅用于 UI 展示，未形成 DSL 日志
+  - Impact: 无法做审计与回放复现
+  - Evidence: 无 DSL 结构化日志模块
+  - Notes: Architecture Evolution
+
+- [P1] Prompt 约束不足
+  - Where: `agent/src/demo/agent_loop.ts`
+  - Problem: LLM 仍可能直接回答不调用工具
+  - Impact: 任务结果不可靠
+  - Evidence: 依赖模型行为，没有强制执行策略
+
+### P2
+
+- [P2] MCP 与 Demo 的观察性不足
+  - Where: `agent/src/mcp/server.ts`, `agent/src/demo/server.ts`
+  - Problem: 缺少统一日志/事件订阅
+  - Impact: 无法统一审计或回放
+  - Evidence: 仅 stderr/stdout 打印
+  - Notes: Architecture Evolution
+
+## Extension
+
+### P0
+
+- [P0] UI 简陋且缺乏状态面板
+  - Where: `extension/src/content.ts`, `extension/src/panel.ts`
+  - Problem: UI 功能有限且缺少状态/错误提示
+  - Impact: 影响录制/调试效率
+  - Evidence: content script 内置极简浮层 panel
+
+- [P0] WS 错误处理粗糙
+  - Where: `extension/src/sw.ts`
+  - Problem: WS 连接失败仅返回文本错误
+  - Impact: 用户难以诊断问题
+  - Evidence: `respondOnce({ ok: false, error: 'ws error' })`
+
+### P1
+
+- [P1] 录制引擎仍依赖 CSS 选择器
+  - Where: `agent/src/record/recorder_payload.ts`
+  - Problem: CSS selector 易碎，语义候选不足
+  - Impact: 回放易失败
+  - Evidence: selectorFor 主要输出 css 结构，候选数量有限
+
+- [P1] 人机协同缺失
+  - Where: `extension/src/panel.ts`, `extension/src/content.ts`
+  - Problem: 目标歧义时没有人工选择与回写
+  - Impact: 自动化稳定性下降
+  - Evidence: 无相关 UI/flow
+  - Notes: Architecture Evolution
+
+### P2
+
+- [P2] Session/TabGroup UI 缺失
+  - Where: `extension/src/*`
+  - Problem: 无多会话管理视图
+  - Impact: 无法进行并行或恢复
+  - Evidence: panel 未支持 session 列表
+  - Notes: Architecture Evolution
+
+## Tooling Layering Audit
+
+### 粗分类（疑似层级）
+
+- L0 Primitives（基础原语）
+  - `runner/actions/keyboard_mouse.ts`
+  - `runner/actions/scroll.ts`
+  - `runner/actions/locators.ts`
+  - `runner/actions/highlight.ts`
+
+- L1 Interactions（用户交互）
+  - `runner/actions/element_click.ts`
+  - `runner/actions/element_form.ts`
+  - `runner/actions/element_choice.ts`
+  - `runner/actions/element_date.ts`
+  - `runner/actions/element_scroll.ts`
+  - `runner/actions/type.ts`
+  - `runner/actions/click.ts`
+
+- L2 Strategies（策略/流程）
+  - `play/replay.ts`
+  - `record/recording.ts`
+  - `runner/actions/recording.ts`
+  - `runner/actions/dialogs_popups.ts`
+
+### 重复/交叉
+
+- `click.ts` vs `element_click.ts`：两套 click 实现
+- `scroll.ts` vs `element_scroll.ts`：滚动行为分散
+- `type.ts` vs `element_form.ts`：输入逻辑分散
+
+### 需要下沉为 primitives 的缺口（只列问题）
+
+- 统一的 `wait/timeout` 原语缺失
+- 统一的 `humanlike` 行为策略缺失
+- 统一的 `target/locator` 解析与错误包装缺失
