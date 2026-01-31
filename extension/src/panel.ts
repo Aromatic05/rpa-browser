@@ -21,14 +21,22 @@ const newWorkspaceButton = document.getElementById('newWorkspace') as HTMLButton
 const refreshWorkspaceButton = document.getElementById('refreshWorkspaces') as HTMLButtonElement;
 const newTabButton = document.getElementById('newTab') as HTMLButtonElement;
 const refreshTabsButton = document.getElementById('refreshTabs') as HTMLButtonElement;
+const enableVerticalTabsButton = document.getElementById('enableVerticalTabs') as HTMLButtonElement;
+const enableTabGroupsButton = document.getElementById('enableTabGroups') as HTMLButtonElement;
 const workspaceList = document.getElementById('workspaceList') as HTMLDivElement;
 const tabList = document.getElementById('tabList') as HTMLDivElement;
 const outEl = document.getElementById('out') as HTMLPreElement;
 
 let state: PanelState = initState();
+const workspaceGroups = new Map<string, number>();
+const supportsGroups = typeof chrome !== 'undefined' && !!chrome.tabs && !!chrome.tabGroups;
 
 const renderLog = (response: unknown) => {
     outEl.textContent = JSON.stringify(response, null, 2);
+};
+
+const logMessage = (message: string) => {
+    renderLog({ ok: true, message });
 };
 
 const setState = (next: PanelState) => {
@@ -143,15 +151,42 @@ const refreshTabs = async () => {
     }
 };
 
+const tryGroupCurrentTab = async (workspaceId: string) => {
+    if (!supportsGroups || typeof chrome.tabs.group !== 'function') {
+        logMessage('Tab groups not available; skipping grouping.');
+        return;
+    }
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const active = tabs[0];
+    if (!active?.id) return;
+    let groupId = workspaceGroups.get(workspaceId);
+    try {
+        if (groupId == null) {
+            groupId = await chrome.tabs.group({ tabIds: [active.id] });
+            workspaceGroups.set(workspaceId, groupId);
+        } else {
+            await chrome.tabs.group({ tabIds: [active.id], groupId });
+        }
+    } catch {
+        logMessage('Failed to group tab; continuing without grouping.');
+    }
+};
+
 newWorkspaceButton.addEventListener('click', async () => {
-    await sendPanelCommand('workspace.create');
+    const response = await sendPanelCommand('workspace.create');
     await refreshWorkspaces();
+    if (response?.data?.workspaceId) {
+        await tryGroupCurrentTab(response.data.workspaceId);
+    }
 });
 refreshWorkspaceButton.addEventListener('click', refreshWorkspaces);
 newTabButton.addEventListener('click', async () => {
     const scope = planNewTabScope(state);
-    await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId });
+    const response = await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId });
     await refreshTabs();
+    if (scope.workspaceId && response?.data?.tabId) {
+        await tryGroupCurrentTab(scope.workspaceId);
+    }
 });
 refreshTabsButton.addEventListener('click', refreshTabs);
 
@@ -161,3 +196,15 @@ const init = async () => {
 };
 
 void init();
+
+enableVerticalTabsButton.addEventListener('click', () => {
+    logMessage('Vertical tabs cannot be enabled programmatically. Please enable in Chrome settings/flags.');
+});
+
+enableTabGroupsButton.addEventListener('click', () => {
+    if (!supportsGroups) {
+        logMessage('Tab groups API not available in this Chrome context.');
+        return;
+    }
+    logMessage('Tab groups API is available. New tabs will be grouped by workspace when possible.');
+});
