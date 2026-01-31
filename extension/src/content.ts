@@ -78,6 +78,8 @@
     }
     .panel.open { display: block; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .panel-section { margin-top: 8px; }
+    .list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
     button {
       padding: 6px 8px; font-size: 12px; border-radius: 8px;
       border: 1px solid #cbd5f5; background: #fff; cursor: pointer;
@@ -131,9 +133,39 @@
     stopReplayBtn.textContent = 'Stop Replay';
     row3.append(replayBtn, stopReplayBtn);
 
+    const wsSection = document.createElement('div');
+    wsSection.className = 'panel-section';
+    const wsTitle = document.createElement('div');
+    wsTitle.className = 'meta';
+    wsTitle.textContent = 'Workspaces';
+    const wsList = document.createElement('div');
+    wsList.className = 'list';
+    const wsActions = document.createElement('div');
+    wsActions.className = 'row';
+    const newWorkspaceBtn = document.createElement('button');
+    newWorkspaceBtn.textContent = 'New Workspace';
+    wsActions.append(newWorkspaceBtn);
+    wsSection.append(wsTitle, wsList, wsActions);
+
+    const tabSection = document.createElement('div');
+    tabSection.className = 'panel-section';
+    const tabTitle = document.createElement('div');
+    tabTitle.className = 'meta';
+    tabTitle.textContent = 'Tabs';
+    const tabList = document.createElement('div');
+    tabList.className = 'list';
+    const tabActions = document.createElement('div');
+    tabActions.className = 'row';
+    const newTabBtn = document.createElement('button');
+    newTabBtn.textContent = 'New Tab';
+    const closeTabBtn = document.createElement('button');
+    closeTabBtn.textContent = 'Close Tab';
+    tabActions.append(newTabBtn, closeTabBtn);
+    tabSection.append(tabTitle, tabList, tabActions);
+
     const out = document.createElement('pre');
 
-    panel.append(meta, row1, row2, row3, out);
+    panel.append(meta, row1, row2, row3, wsSection, tabSection, out);
     wrap.append(ball, panel);
     shadow.append(style, wrap);
 
@@ -156,16 +188,29 @@
         out.textContent = JSON.stringify(payload, null, 2);
     };
 
-    const sendPanelCommand = (cmd: string, args?: Record<string, unknown>) => {
+    let activeWorkspaceId: string | null = null;
+    let activeTabId: string | null = null;
+
+    const sendPanelCommand = (
+        cmd: string,
+        args?: Record<string, unknown>,
+        scope?: { workspaceId?: string; tabId?: string },
+        onResponse?: (payload: any) => void,
+    ) => {
         console.log('[RPA] send command', cmd);
-        chrome.runtime.sendMessage({ type: 'CMD', cmd, tabToken, args }, (response: any) => {
+        chrome.runtime.sendMessage(
+            { type: 'CMD', cmd, tabToken, args, ...(scope || {}) },
+            (response: any) => {
             console.log('[RPA] response', response);
             if (chrome.runtime.lastError) {
                 render({ ok: false, error: chrome.runtime.lastError.message });
                 return;
             }
             render(response);
-        });
+            interceptResponse(response);
+            onResponse?.(response);
+        },
+        );
     };
 
     startBtn.addEventListener('click', () => sendPanelCommand('record.start'));
@@ -174,4 +219,105 @@
     clearBtn.addEventListener('click', () => sendPanelCommand('record.clear'));
     replayBtn.addEventListener('click', () => sendPanelCommand('record.replay'));
     stopReplayBtn.addEventListener('click', () => sendPanelCommand('record.stopReplay'));
+
+    const renderWorkspaces = (workspaces: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>) => {
+        wsList.innerHTML = '';
+        if (!activeWorkspaceId && workspaces.length) {
+            activeWorkspaceId = workspaces[0].workspaceId;
+        }
+        workspaces.forEach((ws) => {
+            const btn = document.createElement('button');
+            btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${ws.tabCount})`;
+            if (activeWorkspaceId === ws.workspaceId) {
+                btn.classList.add('primary');
+            }
+            btn.addEventListener('click', () => {
+                activeWorkspaceId = ws.workspaceId;
+                sendPanelCommand('workspace.setActive', { workspaceId: ws.workspaceId });
+                refreshTabs();
+            });
+            wsList.appendChild(btn);
+        });
+    };
+
+    const renderTabs = (tabs: Array<{ tabId: string; url: string; title: string; active: boolean }>) => {
+        tabList.innerHTML = '';
+        tabs.forEach((tab) => {
+            const btn = document.createElement('button');
+            btn.textContent = `${tab.tabId.slice(0, 6)}… ${tab.title || tab.url || ''}`;
+            if (tab.active) {
+                btn.classList.add('primary');
+                activeTabId = tab.tabId;
+            }
+            btn.addEventListener('click', () => {
+                activeTabId = tab.tabId;
+                if (activeWorkspaceId) {
+                    sendPanelCommand('tab.setActive', { workspaceId: activeWorkspaceId, tabId: tab.tabId });
+                } else {
+                    sendPanelCommand('tab.setActive', { tabId: tab.tabId });
+                }
+                refreshTabs();
+            });
+            tabList.appendChild(btn);
+        });
+    };
+
+    const refreshWorkspaces = () => {
+        sendPanelCommand('workspace.list', {}, undefined);
+    };
+
+    const refreshTabs = () => {
+        if (activeWorkspaceId) {
+            sendPanelCommand('tab.list', { workspaceId: activeWorkspaceId });
+        } else {
+            sendPanelCommand('tab.list', {});
+        }
+    };
+
+    newWorkspaceBtn.addEventListener('click', () => {
+        sendPanelCommand('workspace.create', {}, undefined, (payload) => {
+            if (payload?.data?.workspaceId) {
+                activeWorkspaceId = payload.data.workspaceId;
+            }
+            refreshWorkspaces();
+            refreshTabs();
+        });
+    });
+
+    newTabBtn.addEventListener('click', () => {
+        if (activeWorkspaceId) {
+            sendPanelCommand('tab.create', { workspaceId: activeWorkspaceId }, undefined, () => {
+                refreshTabs();
+            });
+        } else {
+            sendPanelCommand('tab.create', {}, undefined, () => {
+                refreshTabs();
+            });
+        }
+    });
+
+    closeTabBtn.addEventListener('click', () => {
+        if (!activeTabId) return;
+        if (activeWorkspaceId) {
+            sendPanelCommand('tab.close', { workspaceId: activeWorkspaceId, tabId: activeTabId }, undefined, () => {
+                refreshTabs();
+            });
+        } else {
+            sendPanelCommand('tab.close', { tabId: activeTabId }, undefined, () => {
+                refreshTabs();
+            });
+        }
+    });
+
+    const interceptResponse = (payload: any) => {
+        if (payload?.data?.workspaces) {
+            renderWorkspaces(payload.data.workspaces);
+        }
+        if (payload?.data?.tabs) {
+            renderTabs(payload.data.tabs);
+        }
+    };
+
+    refreshWorkspaces();
+    refreshTabs();
 })();

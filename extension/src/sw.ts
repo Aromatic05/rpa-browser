@@ -143,7 +143,9 @@ chrome.runtime.onMessage.addListener(
             (async () => {
                 const requestId = crypto.randomUUID();
                 let tabToken = message.tabToken as string | undefined;
-                let tabId = message.tabId as number | undefined;
+                let browserTabId: number | undefined;
+                const workspaceId = message.workspaceId as string | undefined;
+                const scopeTabId = message.tabId as string | undefined;
                 if (!tabToken) {
                     const active = await getActiveTabToken();
                     if (!active) {
@@ -151,7 +153,7 @@ chrome.runtime.onMessage.addListener(
                         return;
                     }
                     tabToken = active.tabToken;
-                    tabId = active.tabId;
+                    browserTabId = active.tabId;
                 }
                 if (!message.cmd) {
                     sendResponse({ ok: false, error: 'missing cmd' });
@@ -162,7 +164,9 @@ chrome.runtime.onMessage.addListener(
                     tabToken,
                     args: message.args || {},
                     requestId,
-                    tabId,
+                    browserTabId,
+                    workspaceId,
+                    tabId: scopeTabId,
                 };
                 log('panel command', command);
                 sendToAgent(command, sendResponse);
