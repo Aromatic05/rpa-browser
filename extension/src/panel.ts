@@ -11,6 +11,7 @@ import {
     type WorkspaceItem,
 } from './workspace_state';
 import { getStartPageUrl } from './start_page';
+import { withTabDisplayNames, withWorkspaceDisplayNames } from './name_store';
 
 const startButton = document.getElementById('startRec') as HTMLButtonElement;
 const stopButton = document.getElementById('stopRec') as HTMLButtonElement;
@@ -52,7 +53,8 @@ const renderWorkspaceList = () => {
         const row = document.createElement('div');
         row.className = 'item';
         const btn = document.createElement('button');
-        btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${ws.tabCount})`;
+        const label = ws.displayName || `Workspace ${ws.workspaceId.slice(0, 6)}`;
+        btn.textContent = `${label} (${ws.tabCount})`;
         if (state.activeWorkspaceId === ws.workspaceId) {
             btn.classList.add('active');
         }
@@ -72,7 +74,9 @@ const renderTabList = () => {
         const row = document.createElement('div');
         row.className = 'item';
         const btn = document.createElement('button');
-        btn.textContent = `${tab.title || tab.url || tab.tabId.slice(0, 6)}`;
+        const label = tab.displayName || tab.title || tab.url || tab.tabId.slice(0, 6);
+        const extra = tab.displayName && (tab.title || tab.url) ? ` — ${tab.title || tab.url}` : '';
+        btn.textContent = `${label}${extra}`;
         if (tab.active) {
             btn.classList.add('active');
         }
@@ -150,7 +154,8 @@ stopReplayButton.addEventListener('click', () => sendPanelCommand('record.stopRe
 const refreshWorkspaces = async () => {
     const response = await sendPanelCommand('workspace.list');
     if (response?.data?.workspaces) {
-        setState(applyWorkspaces(state, response.data.workspaces as WorkspaceItem[]));
+        const named = await withWorkspaceDisplayNames(response.data.workspaces as WorkspaceItem[]);
+        setState(applyWorkspaces(state, named));
     }
 };
 
@@ -158,8 +163,12 @@ const refreshTabs = async () => {
     const response = await sendPanelCommand('tab.list', {
         workspaceId: state.activeWorkspaceId || undefined,
     });
-    if (response?.data?.tabs) {
-        setState(applyTabs(state, response.data.tabs as TabItem[]));
+    if (response?.data?.tabs && state.activeWorkspaceId) {
+        const named = await withTabDisplayNames(
+            state.activeWorkspaceId,
+            response.data.tabs as TabItem[],
+        );
+        setState(applyTabs(state, named));
     }
 };
 

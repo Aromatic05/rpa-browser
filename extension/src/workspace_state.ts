@@ -3,6 +3,7 @@ export type WorkspaceItem = {
     tabCount: number;
     activeTabId?: string;
     status?: 'idle' | 'running' | 'error';
+    displayName?: string;
 };
 
 export type TabItem = {
@@ -10,6 +11,7 @@ export type TabItem = {
     title?: string;
     url?: string;
     active: boolean;
+    displayName?: string;
 };
 
 export type PanelState = {
