@@ -11,6 +11,7 @@ import {
     type WorkspaceItem,
 } from './workspace_state.js';
 import { withTabDisplayNames, withWorkspaceDisplayNames } from './name_store.js';
+import { getMockStartUrl } from './mock_config.js';
 
 const startButton = document.getElementById('startRec') as HTMLButtonElement;
 const stopButton = document.getElementById('stopRec') as HTMLButtonElement;
@@ -160,15 +161,17 @@ const sendPanelCommand = (
         });
     });
 
-const startPageUrl = 'about:blank';
-
 const openStartPage = async (workspaceId?: string, tabId?: string) => {
     if (!workspaceId || !tabId) return;
-    await sendPanelCommand(
+    const startPageUrl = await getMockStartUrl();
+    const result = await sendPanelCommand(
         'page.goto',
         { url: startPageUrl, waitUntil: 'domcontentloaded' },
         { workspaceId, tabId },
     );
+    if (result?.ok === false) {
+        logMessage(`Mock start page unreachable: ${startPageUrl}`);
+    }
 };
 
 startButton.addEventListener('click', () => sendPanelCommand('record.start'));

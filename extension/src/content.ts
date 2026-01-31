@@ -213,11 +213,31 @@
         );
     };
 
-    const startPageUrl = 'about:blank';
+    const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
+    const DEFAULT_MOCK_PATH = '/pages/start.html#beta';
+
+    const getMockStartUrl = (onUrl: (url: string) => void) => {
+        chrome.storage.local.get('mockBaseUrl', (data: any) => {
+            const base = (data?.mockBaseUrl as string | undefined) || DEFAULT_MOCK_ORIGIN;
+            const normalized = base.endsWith('/') ? base.slice(0, -1) : base;
+            onUrl(`${normalized}${DEFAULT_MOCK_PATH}`);
+        });
+    };
 
     const openStartPage = (workspaceId?: string, tabId?: string) => {
         if (!workspaceId || !tabId) return;
-        sendPanelCommand('page.goto', { url: startPageUrl, waitUntil: 'domcontentloaded' }, { workspaceId, tabId });
+        getMockStartUrl((startPageUrl) => {
+            sendPanelCommand(
+                'page.goto',
+                { url: startPageUrl, waitUntil: 'domcontentloaded' },
+                { workspaceId, tabId },
+                (payload) => {
+                    if (payload?.ok === false) {
+                        render({ ok: false, error: `Mock start page unreachable: ${startPageUrl}` });
+                    }
+                },
+            );
+        });
     };
 
     startBtn.addEventListener('click', () => sendPanelCommand('record.start'));
