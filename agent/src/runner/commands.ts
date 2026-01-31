@@ -1,10 +1,25 @@
+/**
+ * commands：定义 agent 支持的命令联合类型。
+ *
+ * 设计约束：
+ * - cmd 字符串用于协议路由（extension/WS/MCP 等一致）
+ * - tabToken 仅为内部绑定字段；外部 UI 推荐使用 workspaceId/tabId
+ * - scope 可选，未提供时默认使用 active workspace/tab
+ */
 import type { A11yScanOptions } from './a11y_types';
 
+/**
+ * Target：当前仍使用 selector 直连 Locator 的最小结构。
+ * 后续可扩展为语义定位/候选列表，但该层仅定义数据形态。
+ */
 export type Target = {
     selector: string;
     frame?: string;
 };
 
+/**
+ * CommandScope：显式指定 workspace/tab；缺省时走 active scope。
+ */
 export type CommandScope = {
     workspaceId?: string;
     tabId?: string;

@@ -1,3 +1,16 @@
+/**
+ * PageRegistry：维护 tabToken 与 Playwright Page 的映射，并在此之上提供
+ * workspace -> tabs 的抽象（对外暴露 workspaceId/tabId）。
+ *
+ * 依赖关系：
+ * - 上游：agent/index.ts 通过 createPageRegistry 管理页面生命周期
+ * - 下游：runner/execute 与 target_resolver 通过 resolvePage/resolveScope 获取 Page
+ *
+ * 关键约束：
+ * - tabToken 是内部绑定键，不应对外暴露给 AI 或 UI
+ * - workspace/tab 仅作为 UI/协议层的稳定标识，仍由 tabToken 驱动具体 Page
+ * - Page 可能在浏览器事件中被关闭，需要容错与重建映射
+ */
 import type { BrowserContext, Page } from 'playwright';
 import crypto from 'crypto';
 
@@ -72,16 +85,27 @@ export type PageRegistry = {
 
 const randomId = () => crypto.randomUUID();
 
+/**
+ * 创建 PageRegistry。负责：
+ * - tabToken <-> Page 的绑定
+ * - workspace/tab 的创建、切换、关闭
+ * - scope 解析（workspaceId/tabId -> Page）
+ */
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
     const tokenToPage = new Map<string, Page>();
     const tokenToTab = new Map<string, { workspaceId: WorkspaceId; tabId: TabId }>();
     const workspaces = new Map<WorkspaceId, Workspace>();
     let activeWorkspaceId: WorkspaceId | null = null;
 
+    // 统一更新 workspace 的更新时间戳，便于 UI 层排序/高亮。
     const touchWorkspace = (workspace: Workspace) => {
         workspace.updatedAt = Date.now();
     };
 
+    /**
+     * 等待页面中写入 tabToken（content script 负责注入）。
+     * 若页面尚未可执行脚本，则重试并容错。
+     */
     const waitForToken = async (page: Page, attempts = 20, delayMs = 200) => {
         for (let i = 0; i < attempts; i += 1) {
             if (page.isClosed()) return null;
@@ -103,6 +127,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return null;
     };
 
+    /**
+     * 将 tabToken 写入 sessionStorage，保障后续回连与重建映射。
+     */
     const ensureTokenOnPage = async (page: Page, tabToken: string) => {
         try {
             await page.evaluate(
@@ -116,6 +143,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         }
     };
 
+    /**
+     * 在 workspace 内部建立 tabId -> tabToken -> Page 的映射。
+     */
     const attachTabToWorkspace = (
         workspace: Workspace,
         tabId: TabId,
@@ -136,6 +166,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         tokenToTab.set(tabToken, { workspaceId: workspace.id, tabId });
     };
 
+    /**
+     * 内部创建 workspace，并用当前 page 作为首个 tab。
+     * 对外只返回 workspaceId/tabId。
+     */
     const createWorkspaceInternal = (
         tabToken: string,
         page: Page,
@@ -156,6 +190,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return { workspaceId, tabId };
     };
 
+    /**
+     * 绑定 Page 与 tabToken，必要时创建新的 workspace。
+     * 用于 context 的 page 事件，以及新页面的显式绑定。
+     */
     const bindPage = async (page: Page, hintedToken?: string) => {
         try {
             if (page.isClosed()) return null;
@@ -192,6 +230,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         }
     };
 
+    /**
+     * 当 tokenToPage 缓存失效时，尝试从当前 context 的 pages 重建映射。
+     */
     const rebuildTokenMap = async () => {
         const context = await options.getContext();
         const pages = context.pages();
@@ -206,6 +247,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         }
     };
 
+    /**
+     * 根据 tabToken 获取 Page。若已关闭或不存在则新建并写入 token。
+     */
     const getPage = async (tabToken: string, urlHint?: string) => {
         if (!tabToken) {
             throw new Error('missing tabToken');
@@ -236,6 +280,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const listPages = () =>
         Array.from(tokenToPage.entries()).map(([tabToken, page]) => ({ tabToken, page }));
 
+    /**
+     * 清理映射：可按 tabToken 精确清理，或全量清空。
+     */
     const cleanup = (tabToken?: string) => {
         if (!tabToken) {
             tokenToPage.clear();
@@ -259,6 +306,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         tokenToTab.delete(tabToken);
     };
 
+    /**
+     * 创建新 workspace，并同时创建首个 tab。
+     */
     const createWorkspace = async () => {
         const context = await options.getContext();
         const page = await context.newPage();
@@ -282,6 +332,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             updatedAt: workspace.updatedAt,
         }));
 
+    /**
+     * 设置 active workspace，仅在存在时生效。
+     */
     const setActiveWorkspace = (workspaceId: WorkspaceId) => {
         if (workspaces.has(workspaceId)) {
             activeWorkspaceId = workspaceId;
@@ -290,6 +343,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const getActiveWorkspace = () => (activeWorkspaceId ? workspaces.get(activeWorkspaceId) || null : null);
 
+    /**
+     * 在指定 workspace 内创建新 tab，并更新 activeTabId。
+     */
     const createTab = async (workspaceId: WorkspaceId) => {
         const workspace = workspaces.get(workspaceId);
         if (!workspace) {
@@ -310,6 +366,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return tabId;
     };
 
+    /**
+     * 关闭 tab，并在必要时回收空 workspace。
+     */
     const closeTab = async (workspaceId: WorkspaceId, tabId: TabId) => {
         const workspace = workspaces.get(workspaceId);
         if (!workspace) return;
@@ -341,6 +400,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         touchWorkspace(workspace);
     };
 
+    /**
+     * 读取 workspace 内所有 tab 的可展示信息。
+     */
     const listTabs = async (workspaceId: WorkspaceId) => {
         const workspace = workspaces.get(workspaceId);
         if (!workspace) return [];
@@ -358,6 +420,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return items;
     };
 
+    /**
+     * 解析 scope（workspaceId/tabId），用于“只检查、不过度创建”的场景。
+     */
     const resolveScope = (scope?: WorkspaceScope) => {
         let workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
         if (!workspace) {
@@ -370,6 +435,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return { workspaceId: workspace.id, tabId };
     };
 
+    /**
+     * 解析 scope 并返回 Page；若缺少 workspace/tab 则自动创建。
+     * 该策略主要用于“默认作用于 active workspace/tab”的工具调用。
+     */
     const resolvePage = async (scope?: WorkspaceScope) => {
         let workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
         if (!workspace) {

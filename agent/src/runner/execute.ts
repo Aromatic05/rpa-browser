@@ -1,3 +1,17 @@
+/**
+ * execute：统一命令路由入口，负责：
+ * - 根据 cmd 找到对应 action handler
+ * - 处理高亮与可视化辅助
+ * - 将异常映射为标准 Result 结构
+ *
+ * 依赖关系：
+ * - 上游：agent/index.ts 负责构造 ActionContext 并调用 executeCommand
+ * - 下游：runner/actions/* 执行具体动作；runtime/target_resolver 解析定位
+ *
+ * 错误约定：
+ * - ActionError 会带 ErrorCode/详情并原样映射
+ * - 其它异常统一映射为 ERR_BAD_ARGS / ERR_TIMEOUT
+ */
 import type { Page } from 'playwright';
 import { ERROR_CODES, type ErrorCode } from './error_codes';
 import type { Command } from './commands';
@@ -33,7 +47,10 @@ export class ActionError extends Error {
     }
 }
 
-
+/**
+ * 仅在“可定位元素”的命令上做高亮提示。
+ * 该辅助失败不影响动作执行。
+ */
 const shouldHighlight = (command: Command) => {
     const target = (command as any).args?.target;
     if (!target) return false;
@@ -42,6 +59,9 @@ const shouldHighlight = (command: Command) => {
     return true;
 };
 
+/**
+ * 将异常转为标准 Result，避免抛出到 WS 层。
+ */
 const mapError = (tabToken: string, requestId: string | undefined, error: unknown): Result => {
     if (error instanceof ActionError) {
         return errorResult(tabToken, error.code, error.message, requestId, error.details);
@@ -55,6 +75,9 @@ const mapError = (tabToken: string, requestId: string | undefined, error: unknow
     return errorResult(tabToken, ERROR_CODES.ERR_BAD_ARGS, String(error), requestId);
 };
 
+/**
+ * 执行单条命令。内部负责高亮、调用 handler、统一结果包装。
+ */
 export const executeCommand = async (ctx: ActionContext, command: Command): Promise<Result> => {
     const handler = actionHandlers[command.cmd];
     if (!handler) {
