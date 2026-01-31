@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RPA Tool Sandbox</title>
+    <link rel="stylesheet" href="start.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <h1>RPA Tool Sandbox</h1>
+      <p>Stable controls for click/type/scroll/select/upload/dialogs/clipboard/a11y tests.</p>
+    </header>
+
+    <section class="card" aria-labelledby="checklist-title">
+      <h2 id="checklist-title">Tool Test Checklist</h2>
+      <ol>
+        <li>Click <code>#btn-primary</code></li>
+        <li>Type into <code>#input-text</code></li>
+        <li>Scroll <code>#scroll-box</code> to item 150</li>
+        <li>Upload a file to <code>#file-upload</code></li>
+        <li>Trigger confirm dialog and choose OK/Cancel</li>
+        <li>Copy text with <code>#btn-copy</code> and read status</li>
+      </ol>
+    </section>
+
+    <section class="card" aria-labelledby="nav-title">
+      <h2 id="nav-title">Navigation Links</h2>
+      <nav class="row" aria-label="Sample links">
+        <a href="#alpha" class="link">Sample Link</a>
+        <a href="#beta" class="link">Sample Link</a>
+        <a href="https://example.com" class="link">External Example</a>
+      </nav>
+    </section>
+
+    <section class="card" aria-labelledby="buttons-title">
+      <h2 id="buttons-title">Buttons</h2>
+      <div class="row">
+        <button id="btn-primary" type="button">Primary Action</button>
+        <button id="btn-disabled" type="button" disabled>Disabled Action</button>
+        <button id="btn-alert" type="button">Alert Dialog</button>
+        <button id="btn-confirm" type="button">Confirm Dialog</button>
+        <button id="btn-prompt" type="button">Prompt Dialog</button>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="form-title">
+      <h2 id="form-title">Form Controls</h2>
+      <form class="form" aria-label="Form controls">
+        <label for="input-text">Text Input</label>
+        <input id="input-text" name="input-text" type="text" placeholder="Type here" />
+
+        <label for="input-password">Password Input</label>
+        <input id="input-password" name="input-password" type="password" placeholder="Password" />
+
+        <label for="textarea">Textarea</label>
+        <textarea id="textarea" name="textarea" rows="3" placeholder="Longer input"></textarea>
+
+        <fieldset>
+          <legend>Checkboxes</legend>
+          <label><input type="checkbox" id="check-a" /> Option A</label>
+          <label><input type="checkbox" id="check-b" /> Option B</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Radio</legend>
+          <label><input type="radio" name="radio-group" id="radio-a" /> Choice A</label>
+          <label><input type="radio" name="radio-group" id="radio-b" /> Choice B</label>
+        </fieldset>
+
+        <label for="select-basic">Select</label>
+        <select id="select-basic" name="select-basic">
+          <option value="">Choose...</option>
+          <option value="alpha">Alpha</option>
+          <option value="beta">Beta</option>
+          <option value="gamma">Gamma</option>
+        </select>
+
+        <div class="pseudo" role="listbox" aria-label="Pseudo dropdown">
+          <div role="option" aria-selected="true">Option One</div>
+          <div role="option">Option Two</div>
+          <div role="option">Option Three</div>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="file-title">
+      <h2 id="file-title">File Upload</h2>
+      <label for="file-upload">Choose file</label>
+      <input id="file-upload" name="file-upload" type="file" />
+    </section>
+
+    <section class="card" aria-labelledby="clipboard-title">
+      <h2 id="clipboard-title">Clipboard</h2>
+      <p id="copy-source">Copy this sentence to the clipboard.</p>
+      <button id="btn-copy" type="button">Copy Text</button>
+      <div id="copy-status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="card" aria-labelledby="scroll-title">
+      <h2 id="scroll-title">Scroll Box</h2>
+      <div id="scroll-box" class="scroll-box" role="region" aria-label="Scrollable list"></div>
+      <button id="btn-load-more" type="button">Load more</button>
+    </section>
+
+    <section class="card" aria-labelledby="table-title">
+      <h2 id="table-title">Table</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Alpha</td>
+            <td>Ready</td>
+            <td><button type="button" class="row-action">Open</button></td>
+          </tr>
+          <tr>
+            <td>Beta</td>
+            <td>Pending</td>
+            <td><a href="#beta" class="row-link">View</a></td>
+          </tr>
+          <tr>
+            <td>Gamma</td>
+            <td>Blocked</td>
+            <td><button type="button" class="row-action">Retry</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" aria-labelledby="iframe-title">
+      <h2 id="iframe-title">Iframe Sandbox</h2>
+      <iframe
+        title="Iframe Sandbox"
+        class="sandbox-frame"
+        srcdoc="<!doctype html><html><body><label for='frame-input'>Frame Input</label><input id='frame-input' type='text' /><button id='frame-btn'>Frame Button</button></body></html>"
+      ></iframe>
+    </section>
+
+    <script src="start.js"></script>
+  </body>
+</html>
