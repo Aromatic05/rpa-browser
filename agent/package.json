@@ -12,6 +12,8 @@
         "mcp": "tsx src/mcp_main.ts",
         "mcp:dev": "tsx watch src/mcp_main.ts",
         "mcp:smoke": "tsx scripts/mcp_smoke_client.ts",
+        "trace:demo": "tsx scripts/trace_demo.ts",
+        "test:trace": "node --import tsx --test src/runner/trace/__tests__/trace_call.test.ts src/runner/trace/__tests__/a11y_adopt.test.ts",
         "pw:install": "npx playwright install chromium",
         "test": "playwright test",
         "test:headed": "playwright test --headed",
