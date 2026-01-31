@@ -1,5 +1,3 @@
-import { getStartPageUrl } from './start_page';
-
 (() => {
     if (window.top !== window) return;
     if ((window as any).__rpaTokenInjected) return;
@@ -215,7 +213,7 @@ import { getStartPageUrl } from './start_page';
         );
     };
 
-    const startPageUrl = getStartPageUrl();
+    const startPageUrl = 'about:blank';
 
     const openStartPage = (workspaceId?: string, tabId?: string) => {
         if (!workspaceId || !tabId) return;

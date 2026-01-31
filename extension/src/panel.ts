@@ -9,9 +9,8 @@ import {
     type PanelState,
     type TabItem,
     type WorkspaceItem,
-} from './workspace_state';
-import { getStartPageUrl } from './start_page';
-import { withTabDisplayNames, withWorkspaceDisplayNames } from './name_store';
+} from './workspace_state.js';
+import { withTabDisplayNames, withWorkspaceDisplayNames } from './name_store.js';
 
 const startButton = document.getElementById('startRec') as HTMLButtonElement;
 const stopButton = document.getElementById('stopRec') as HTMLButtonElement;
@@ -161,7 +160,7 @@ const sendPanelCommand = (
         });
     });
 
-const startPageUrl = getStartPageUrl();
+const startPageUrl = 'about:blank';
 
 const openStartPage = async (workspaceId?: string, tabId?: string) => {
     if (!workspaceId || !tabId) return;
