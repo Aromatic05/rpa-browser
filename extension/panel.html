@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>RPA Browser Demo</title>
+        <title>RPA Workspace Explorer</title>
         <style>
             body {
                 font-family: Arial, sans-serif;
@@ -13,10 +13,21 @@
                 font-size: 18px;
                 margin: 0 0 12px;
             }
-            .controls {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
+            h2 {
+                font-size: 14px;
+                margin: 16px 0 8px;
+            }
+            .row {
+                display: flex;
                 gap: 8px;
+                flex-wrap: wrap;
+                margin-bottom: 8px;
+            }
+            .list {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                margin-bottom: 8px;
             }
             button {
                 padding: 8px 12px;
@@ -29,11 +40,41 @@
                 border-radius: 4px;
                 white-space: pre-wrap;
             }
+            .muted {
+                color: #6b7280;
+                font-size: 12px;
+            }
+            .active {
+                border: 2px solid #2563eb;
+            }
+            .item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+            }
         </style>
     </head>
     <body>
-        <h1>RPA Browser Demo</h1>
-        <div class="controls">
+        <h1>Workspace Explorer</h1>
+        <div class="muted">UI 仅负责展示与转发命令</div>
+
+        <h2>Workspaces</h2>
+        <div class="row">
+            <button id="newWorkspace">New Workspace</button>
+            <button id="refreshWorkspaces">Refresh</button>
+        </div>
+        <div id="workspaceList" class="list"></div>
+
+        <h2>Tabs</h2>
+        <div class="row">
+            <button id="newTab">New Tab</button>
+            <button id="refreshTabs">Refresh</button>
+        </div>
+        <div id="tabList" class="list"></div>
+
+        <h2>Controls</h2>
+        <div class="row">
             <button id="startRec">Start Recording</button>
             <button id="stopRec">Stop Recording</button>
             <button id="showRec">Show Recording</button>
