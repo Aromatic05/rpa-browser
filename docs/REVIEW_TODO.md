@@ -156,6 +156,13 @@
   - Impact: 复杂场景下可用性与诊断能力不足
   - Evidence: Side panel 仅展示列表与基础日志，无 human-in-loop 交互
 
+- [P0] （已解决）新建标签页悬浮球不显示（NTP/内置页不可注入）
+  - Where: `extension/pages/start.html`, `extension/src/panel.ts`, `extension/src/content.ts`
+  - Problem: chrome://newtab 等页面无法注入 content script，导致浮层缺失
+  - Impact: 新建 tab 无法稳定自动化
+  - Evidence: 新建 tab 默认导航到可注入的 start page（`chrome-extension://.../pages/start.html`）
+  - Notes: Resolved by start page
+
 - [P0] WS 错误处理粗糙
   - Where: `extension/src/sw.ts`
   - Problem: WS 连接失败仅返回文本错误
@@ -185,6 +192,12 @@
   - Impact: 无法进行并行或恢复
   - Evidence: panel 未支持 session 列表
   - Notes: Architecture Evolution
+
+- [P2] tabGroups/垂直标签页属于增强能力（需降级路径与用户引导）
+  - Where: `extension/src/sw.ts`, `extension/src/panel.ts`
+  - Problem: 分组与垂直标签页仅能尽力而为，浏览器配置不可控
+  - Impact: 功能视觉增强不可用时需要明确降级
+  - Evidence: 目前仅在可用时执行分组，失败需提示
 
 ## Tooling Layering Audit
 

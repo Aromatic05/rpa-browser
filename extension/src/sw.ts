@@ -1,10 +1,11 @@
 import { ensureWorkspaceMeta, updateWorkspaceMeta } from './name_store';
+import { safeGroupActiveTab, supportsTabGrouping } from './tab_grouping';
 
 const tabState = new Map<number, { tabToken: string; lastUrl: string; updatedAt: number }>();
 let activeTabId: number | null = null;
 let activeWorkspaceId: string | null = null;
 let activeScopeTabId: string | null = null;
-const supportsTabGroups = typeof chrome !== 'undefined' && !!chrome.tabs?.group && !!chrome.tabGroups;
+const supportsTabGroups = supportsTabGrouping(chrome);
 
 const log = (...args: unknown[]) => console.log('[RPA:sw]', ...args);
 
@@ -113,34 +114,24 @@ const getActiveTabToken = async () => {
 
 const ensureGroupedActiveTab = async (workspaceId: string) => {
     if (!supportsTabGroups) return;
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const active = tabs[0];
-    if (!active?.id) return;
     const meta = await ensureWorkspaceMeta(workspaceId);
     let groupId = meta.groupId;
     try {
-        if (groupId != null) {
+        if (groupId != null && chrome.tabGroups?.get) {
             try {
                 await chrome.tabGroups.get(groupId);
             } catch {
                 groupId = undefined;
             }
         }
-        if (groupId == null) {
-            groupId = await chrome.tabs.group({ tabIds: [active.id] });
+        const result = await safeGroupActiveTab(chrome, {
+            groupId,
+            title: meta.displayName,
+            color: meta.color || 'blue',
+        });
+        if (result.ok) {
+            groupId = result.groupId;
             await updateWorkspaceMeta(workspaceId, { groupId });
-        } else {
-            await chrome.tabs.group({ tabIds: [active.id], groupId });
-        }
-        if (groupId != null) {
-            try {
-                await chrome.tabGroups.update(groupId, {
-                    title: meta.displayName,
-                    color: meta.color || 'blue',
-                });
-            } catch {
-                // ignore tab group update failures
-            }
         }
     } catch {
         log('tab group failed', { workspaceId });

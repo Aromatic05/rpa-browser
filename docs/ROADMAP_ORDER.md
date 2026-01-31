@@ -80,6 +80,14 @@
   - Why first: 已具备基础入口，需补齐 human-in-loop 与调试能力
   - Depends on: P1 日志与 DSL 已清晰
 
+- Start Page / Sandbox 与友好命名已落地（UI 可用性提升）
+  - Why first: 新建 tab 可自动化的稳定入口已建立
+  - Depends on: P0 稳定工具内核
+
+- tabGroups 分组作为增强已推进（仍需更完善的 UX 提示）
+  - Why first: 视觉组织改善，但需配合更强的状态反馈
+  - Depends on: workspace displayName 与基础 Workspace Explorer 已就绪
+
 - 人机协同缺失
   - Why first: 解决歧义定位与纠错场景
   - Depends on: P1 DSL 与结构化 candidates
