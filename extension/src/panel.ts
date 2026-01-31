@@ -1,6 +1,7 @@
 import {
     applyTabs,
     applyWorkspaces,
+    handleCloseTab,
     initState,
     planNewTabScope,
     selectTab,
@@ -74,7 +75,29 @@ const renderTabList = () => {
             });
             await refreshTabs();
         });
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close';
+        closeBtn.addEventListener('click', async () => {
+            await sendPanelCommand('tab.close', {
+                workspaceId: state.activeWorkspaceId || undefined,
+                tabId: tab.tabId,
+            });
+            const workspacesResp = await sendPanelCommand('workspace.list');
+            const tabsResp = await sendPanelCommand('tab.list', {
+                workspaceId: state.activeWorkspaceId || undefined,
+            });
+            const nextWorkspaces = (workspacesResp?.data?.workspaces || []) as WorkspaceItem[];
+            const nextTabs = (tabsResp?.data?.tabs || []) as TabItem[];
+            setState(handleCloseTab(state, state.activeWorkspaceId || '', nextTabs, nextWorkspaces));
+            if (!nextTabs.length && nextWorkspaces.length) {
+                const newActive = nextWorkspaces[0].workspaceId;
+                await sendPanelCommand('workspace.setActive', { workspaceId: newActive });
+                setState(selectWorkspace(state, newActive));
+                await refreshTabs();
+            }
+        });
         row.appendChild(btn);
+        row.appendChild(closeBtn);
         tabList.appendChild(row);
     });
 };

@@ -1,5 +1,7 @@
 const tabState = new Map<number, { tabToken: string; lastUrl: string; updatedAt: number }>();
 let activeTabId: number | null = null;
+let activeWorkspaceId: string | null = null;
+let activeScopeTabId: string | null = null;
 
 const log = (...args: unknown[]) => console.log('[RPA:sw]', ...args);
 
@@ -144,8 +146,8 @@ chrome.runtime.onMessage.addListener(
                 const requestId = crypto.randomUUID();
                 let tabToken = message.tabToken as string | undefined;
                 let browserTabId: number | undefined;
-                const workspaceId = message.workspaceId as string | undefined;
-                const scopeTabId = message.tabId as string | undefined;
+                const workspaceId = (message.workspaceId as string | undefined) || activeWorkspaceId || undefined;
+                const scopeTabId = (message.tabId as string | undefined) || activeScopeTabId || undefined;
                 if (!tabToken) {
                     const active = await getActiveTabToken();
                     if (!active) {
@@ -168,6 +170,12 @@ chrome.runtime.onMessage.addListener(
                     workspaceId,
                     tabId: scopeTabId,
                 };
+                if (workspaceId) {
+                    activeWorkspaceId = workspaceId;
+                }
+                if (scopeTabId) {
+                    activeScopeTabId = scopeTabId;
+                }
                 log('panel command', command);
                 sendToAgent(command, sendResponse);
             })();
