@@ -9,6 +9,18 @@ export const createRegistry = (page: Page, tabToken: string): PageRegistry => ({
     getPage: async () => page,
     listPages: () => [{ tabToken, page }],
     cleanup: () => {},
+    createWorkspace: async () => ({ workspaceId: 'ws-test', tabId: 'tab-test' }),
+    listWorkspaces: () => [{ workspaceId: 'ws-test', activeTabId: 'tab-test', tabCount: 1, createdAt: Date.now(), updatedAt: Date.now() }],
+    setActiveWorkspace: () => {},
+    getActiveWorkspace: () => null,
+    createTab: async () => 'tab-test',
+    closeTab: async () => {},
+    setActiveTab: () => {},
+    listTabs: async () => [{ tabId: 'tab-test', url: page.url(), title: '', active: true, createdAt: Date.now(), updatedAt: Date.now() }],
+    resolvePage: async () => page,
+    resolveScope: () => ({ workspaceId: 'ws-test', tabId: 'tab-test' }),
+    resolveScopeFromToken: () => ({ workspaceId: 'ws-test', tabId: 'tab-test' }),
+    resolveTabToken: () => tabToken,
 });
 
 export const createCtx = (page: Page, tabToken: string): ActionContext => {
