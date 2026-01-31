@@ -54,6 +54,8 @@ export type TraceEvent =
           op: TraceOpName;
           ok: boolean;
           durationMs: number;
+          args?: unknown;
+          result?: unknown;
           error?: ToolError;
       };
 

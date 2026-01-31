@@ -37,6 +37,8 @@ export const traceCall = async <T>(
             op: meta.op,
             ok: true,
             durationMs: Date.now() - startTs,
+            args: meta.args,
+            result: data,
         };
         await Promise.all(ctx.sinks.map((sink) => sink.write(endEvent)));
         await ctx.hooks.afterOp?.(endEvent);
@@ -49,9 +51,11 @@ export const traceCall = async <T>(
             op: meta.op,
             ok: false,
             durationMs: Date.now() - startTs,
+            args: meta.args,
             error: mapped,
         };
         await Promise.all(ctx.sinks.map((sink) => sink.write(endEvent)));
+        await ctx.hooks.afterOp?.(endEvent);
         await ctx.hooks.onError?.(endEvent, mapped);
         return { ok: false, error: mapped };
     }

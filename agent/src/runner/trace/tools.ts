@@ -17,7 +17,7 @@ import type {
 } from './types';
 import { traceCall } from './trace_call';
 import { adoptA11yNode, cacheA11ySnapshot } from './a11y_adopt';
-import { createNoopHooks } from './hooks';
+import { createLoggingHooks } from './hooks';
 
 export type BrowserAutomationTools = {
     'trace.context.newPage': () => Promise<ToolResult<void>>;
@@ -41,7 +41,8 @@ export const createTraceContext = (opts: {
     hooks?: TraceHooks;
 }): TraceContext => ({
     sinks: opts.sinks || [],
-    hooks: opts.hooks || createNoopHooks(),
+    // 默认启用日志 hooks，便于 demo/人工验收；调用方可显式覆盖为 noop
+    hooks: opts.hooks || createLoggingHooks(),
     cache: {},
 });
 
