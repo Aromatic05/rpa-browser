@@ -16,7 +16,7 @@ import type {
     TraceOpName,
 } from './types';
 import { traceCall } from './trace_call';
-import { cacheA11ySnapshot } from './a11y_adopt';
+import { adoptA11yNode, cacheA11ySnapshot } from './a11y_adopt';
 import { createNoopHooks } from './hooks';
 
 export type BrowserAutomationTools = {
@@ -96,39 +96,53 @@ export const createTraceTools = (opts: {
                 const buffer = await currentPage.screenshot({ fullPage: args.fullPage });
                 return buffer.toString('base64');
             }),
-        // locator/mouse/keyboard ops 在后续 commit 实现
-        'trace.locator.waitForVisible': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
-        'trace.locator.scrollIntoView': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
-        'trace.locator.click': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
-        'trace.locator.focus': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
-        'trace.locator.fill': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
-        'trace.mouse.click': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
-        'trace.page.scrollTo': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
-        'trace.keyboard.press': async () => ({
-            ok: false,
-            error: { code: 'ERR_UNKNOWN', message: 'not implemented', phase: 'trace' },
-        }),
+        'trace.locator.waitForVisible': async (args) =>
+            run('trace.locator.waitForVisible', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.waitFor({ state: 'visible', timeout: args.timeout });
+            }),
+        'trace.locator.scrollIntoView': async (args) =>
+            run('trace.locator.scrollIntoView', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.scrollIntoViewIfNeeded();
+            }),
+        'trace.locator.click': async (args) =>
+            run('trace.locator.click', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.click({ timeout: args.timeout });
+            }),
+        'trace.locator.focus': async (args) =>
+            run('trace.locator.focus', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.focus();
+            }),
+        'trace.locator.fill': async (args) =>
+            run('trace.locator.fill', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.fill(args.value);
+            }),
+        'trace.mouse.click': async (args) =>
+            run('trace.mouse.click', args, async () => {
+                await currentPage.mouse.click(args.x, args.y);
+            }),
+        'trace.page.scrollTo': async (args) =>
+            run('trace.page.scrollTo', args, async () => {
+                await currentPage.evaluate(
+                    ({ x, y }) => {
+                        window.scrollTo(x, y);
+                    },
+                    { x: args.x, y: args.y },
+                );
+            }),
+        'trace.keyboard.press': async (args) =>
+            run('trace.keyboard.press', args, async () => {
+                await currentPage.keyboard.press(args.key);
+            }),
     };
 
     return { tools, ctx };

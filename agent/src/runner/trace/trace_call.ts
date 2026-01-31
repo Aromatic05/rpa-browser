@@ -58,11 +58,26 @@ export const traceCall = async <T>(
 };
 
 const mapTraceError = (error: unknown): ToolError => {
+    if (isToolErrorLike(error)) {
+        return error;
+    }
     if (error instanceof Error) {
         if (error.name === 'TimeoutError' || /timeout/i.test(error.message)) {
             return { code: 'ERR_TIMEOUT', message: 'timeout', phase: 'trace' };
+        }
+        if (isAmbiguousError(error.message)) {
+            return { code: 'ERR_AMBIGUOUS', message: 'ambiguous', phase: 'trace' };
         }
         return { code: 'ERR_UNKNOWN', message: error.message || 'unknown', phase: 'trace' };
     }
     return { code: 'ERR_UNKNOWN', message: 'unknown', phase: 'trace', details: error };
 };
+
+const isToolErrorLike = (error: unknown): error is ToolError => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as ToolError;
+    return typeof candidate.code === 'string' && typeof candidate.message === 'string' && candidate.phase === 'trace';
+};
+
+const isAmbiguousError = (message: string) =>
+    /strict mode|multiple elements|ambiguous|matches\\s+\\d+\\s+elements/i.test(message);
