@@ -245,3 +245,25 @@
 - 统一的 `wait/timeout` 原语缺失
 - 统一的 `humanlike` 行为策略缺失
 - 统一的 `target/locator` 解析与错误包装缺失
+
+## Agent Cleanup Notes (2026-01-31)
+
+### Removed
+
+- `agent/src/runner/actions/clipboard.ts`：移除未使用的类型导入 `ClipboardReadCommand`
+- `agent/src/runner/actions/navigation.ts`：移除未使用的类型导入 `PageBackCommand`/`PageForwardCommand`
+- `agent/src/runner/actions/recording.ts`：移除未使用的类型导入 `RecordGetCommand`/`RecordStartCommand`/`RecordStopCommand`
+- `agent/src/runner/actions/workspace.ts`：移除未使用的类型导入 `WorkspaceListCommand`
+- `agent/src/demo/workspace_manager.ts`：移除未使用的解构变量 `pageRegistry`
+- `agent/src/runtime/page_registry.ts`：移除每次绑定页面的噪声日志
+- `agent/src/record/recording.ts`：移除每条录制事件的噪声日志
+
+### Kept (risk)
+
+- `runner/actions/index.ts` 的 handler 聚合依赖显式导入顺序，未做自动化静态裁剪（需额外工具验证）
+- `record/recorder_payload.ts` 为字符串注入脚本，无法通过静态引用分析判定细粒度可删点
+
+### Next
+
+- 统一 action 层的错误包装与候选定位输出（与结构化错误对齐）
+- 录制/回放链路的可审计日志结构化（Task DSL 方向）
