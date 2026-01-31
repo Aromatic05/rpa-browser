@@ -1,3 +1,5 @@
+import { getStartPageUrl } from './start_page';
+
 (() => {
     if (window.top !== window) return;
     if ((window as any).__rpaTokenInjected) return;
@@ -213,6 +215,13 @@
         );
     };
 
+    const startPageUrl = getStartPageUrl();
+
+    const openStartPage = (workspaceId?: string, tabId?: string) => {
+        if (!workspaceId || !tabId) return;
+        sendPanelCommand('page.goto', { url: startPageUrl, waitUntil: 'domcontentloaded' }, { workspaceId, tabId });
+    };
+
     startBtn.addEventListener('click', () => sendPanelCommand('record.start'));
     stopBtn.addEventListener('click', () => sendPanelCommand('record.stop'));
     showBtn.addEventListener('click', () => sendPanelCommand('record.get'));
@@ -279,6 +288,7 @@
             if (payload?.data?.workspaceId) {
                 activeWorkspaceId = payload.data.workspaceId;
             }
+            openStartPage(payload?.data?.workspaceId, payload?.data?.tabId);
             refreshWorkspaces();
             refreshTabs();
         });
@@ -286,11 +296,13 @@
 
     newTabBtn.addEventListener('click', () => {
         if (activeWorkspaceId) {
-            sendPanelCommand('tab.create', { workspaceId: activeWorkspaceId }, undefined, () => {
+            sendPanelCommand('tab.create', { workspaceId: activeWorkspaceId }, undefined, (payload) => {
+                openStartPage(activeWorkspaceId ?? undefined, payload?.data?.tabId);
                 refreshTabs();
             });
         } else {
-            sendPanelCommand('tab.create', {}, undefined, () => {
+            sendPanelCommand('tab.create', {}, undefined, (payload) => {
+                openStartPage(payload?.data?.workspaceId, payload?.data?.tabId);
                 refreshTabs();
             });
         }

@@ -10,6 +10,7 @@ import {
     type TabItem,
     type WorkspaceItem,
 } from './workspace_state';
+import { getStartPageUrl } from './start_page';
 
 const startButton = document.getElementById('startRec') as HTMLButtonElement;
 const stopButton = document.getElementById('stopRec') as HTMLButtonElement;
@@ -128,6 +129,17 @@ const sendPanelCommand = (
         });
     });
 
+const startPageUrl = getStartPageUrl();
+
+const openStartPage = async (workspaceId?: string, tabId?: string) => {
+    if (!workspaceId || !tabId) return;
+    await sendPanelCommand(
+        'page.goto',
+        { url: startPageUrl, waitUntil: 'domcontentloaded' },
+        { workspaceId, tabId },
+    );
+};
+
 startButton.addEventListener('click', () => sendPanelCommand('record.start'));
 stopButton.addEventListener('click', () => sendPanelCommand('record.stop'));
 showButton.addEventListener('click', () => sendPanelCommand('record.get'));
@@ -174,6 +186,7 @@ const tryGroupCurrentTab = async (workspaceId: string) => {
 
 newWorkspaceButton.addEventListener('click', async () => {
     const response = await sendPanelCommand('workspace.create');
+    await openStartPage(response?.data?.workspaceId, response?.data?.tabId);
     await refreshWorkspaces();
     if (response?.data?.workspaceId) {
         await tryGroupCurrentTab(response.data.workspaceId);
@@ -183,6 +196,7 @@ refreshWorkspaceButton.addEventListener('click', refreshWorkspaces);
 newTabButton.addEventListener('click', async () => {
     const scope = planNewTabScope(state);
     const response = await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId });
+    await openStartPage(scope.workspaceId, response?.data?.tabId);
     await refreshTabs();
     if (scope.workspaceId && response?.data?.tabId) {
         await tryGroupCurrentTab(scope.workspaceId);
