@@ -29,26 +29,34 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             } catch {
                 // ignore evaluation failures while page is loading
             }
-            await page.waitForTimeout(delayMs);
+            try {
+                await page.waitForTimeout(delayMs);
+            } catch {
+                return null;
+            }
         }
         return null;
     };
 
     const bindPage = async (page: Page, hintedToken?: string) => {
-        if (page.isClosed()) return null;
-        const token = hintedToken || (await waitForToken(page));
-        if (!token) return null;
-        tokenToPage.set(token, page);
-        console.log('[RPA:agent]', 'bind page', { tabToken: token, pageUrl: page.url() });
-        page.on('close', () => {
-            const current = tokenToPage.get(token);
-            if (current === page) {
-                tokenToPage.delete(token);
-                options.onTokenClosed?.(token);
-            }
-        });
-        options.onPageBound?.(page, token);
-        return token;
+        try {
+            if (page.isClosed()) return null;
+            const token = hintedToken || (await waitForToken(page));
+            if (!token) return null;
+            tokenToPage.set(token, page);
+            console.log('[RPA:agent]', 'bind page', { tabToken: token, pageUrl: page.url() });
+            page.on('close', () => {
+                const current = tokenToPage.get(token);
+                if (current === page) {
+                    tokenToPage.delete(token);
+                    options.onTokenClosed?.(token);
+                }
+            });
+            options.onPageBound?.(page, token);
+            return token;
+        } catch {
+            return null;
+        }
     };
 
     const rebuildTokenMap = async () => {

@@ -1,7 +1,6 @@
 import { z } from 'zod';
-import type { Page } from 'playwright';
-import type { PageRegistry } from './runtime/page_registry';
-import { executeCommand, type ActionContext } from './runner/execute';
+import type { PageRegistry } from '../runtime/page_registry';
+import { executeCommand, type ActionContext } from './execute';
 import type {
     Command,
     ElementClickCommand,
@@ -10,12 +9,12 @@ import type {
     PageA11yScanCommand,
     PageGotoCommand,
     Target,
-} from './runner/commands';
-import { ERROR_CODES } from './runner/error_codes';
-import { errorResult, okResult, type Result } from './runner/results';
-import type { RecordingState } from './record/recording';
-import type { ReplayOptions } from './play/replay';
-import type { A11yScanResult } from './runner/a11y_types';
+} from './commands';
+import { ERROR_CODES } from './error_codes';
+import { errorResult, okResult, type Result } from './results';
+import type { RecordingState } from '../record/recording';
+import type { ReplayOptions } from '../play/replay';
+import type { A11yScanResult } from './a11y_types';
 
 export type ToolSpec = {
     name: string;

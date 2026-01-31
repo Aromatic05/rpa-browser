@@ -8,7 +8,7 @@
     },
     "scripts": {
         "dev": "tsx src/index.ts",
-        "dev:demo": "tsx src/demo_server.ts",
+        "dev:demo": "tsx src/demo/server.ts",
         "mcp": "tsx src/mcp_main.ts",
         "mcp:dev": "tsx watch src/mcp_main.ts",
         "mcp:smoke": "tsx scripts/mcp_smoke_client.ts",

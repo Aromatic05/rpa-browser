@@ -2,16 +2,17 @@ import http from 'http';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './demo/config_store';
-import { createContextManager, resolvePaths } from './runtime/context_manager';
-import { createPageRegistry } from './runtime/page_registry';
-import { createWorkspaceManager } from './demo/workspace_manager';
-import { cleanupRecording, createRecordingState, ensureRecorder } from './record/recording';
-import { runAgentLoop } from './demo/agent_loop';
+import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_store';
+import { createContextManager, resolvePaths } from '../runtime/context_manager';
+import { createPageRegistry } from '../runtime/page_registry';
+import { createWorkspaceManager } from './workspace_manager';
+import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
+import { runAgentLoop } from './agent_loop';
+import { createChatCompletion } from './openai_compat_client';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const STATIC_DIR = path.resolve(__dirname, '../static');
+const STATIC_DIR = path.resolve(__dirname, '../../static');
 const HOST = '127.0.0.1';
 const PORT = 17334;
 const TAB_TOKEN_KEY = '__rpa_tab_token';
@@ -155,6 +156,32 @@ const server = http.createServer((req, res) => {
         })().catch((error) => {
             const message = error instanceof Error ? error.message : String(error);
             sendJson(res, 500, { error: message });
+        });
+        return;
+    }
+    if (url.pathname === '/api/llm/debug' && req.method === 'POST') {
+        void (async () => {
+            const config = await readConfig();
+            const start = Date.now();
+            const response = await createChatCompletion({
+                apiBase: config.apiBase || 'http://127.0.0.1:11434',
+                apiKey: config.apiKey,
+                model: config.model || 'gpt-4.1-mini',
+                temperature: config.temperature,
+                maxTokens: config.maxTokens,
+                messages: [
+                    { role: 'system', content: 'You are a concise assistant.' },
+                    { role: 'user', content: 'Say OK.' },
+                ],
+            });
+            sendJson(res, 200, {
+                ok: true,
+                latencyMs: Date.now() - start,
+                message: response.message?.content || '',
+            });
+        })().catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            sendJson(res, 500, { ok: false, error: message });
         });
         return;
     }

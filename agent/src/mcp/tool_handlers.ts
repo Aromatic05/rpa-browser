@@ -2,7 +2,7 @@ import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
 import { z } from 'zod';
-import { executeTool } from '../tool_registry';
+import { executeTool } from '../runner/tool_registry';
 import { ERROR_CODES } from '../runner/error_codes';
 import { errorResult, type Result } from '../runner/results';
 import {

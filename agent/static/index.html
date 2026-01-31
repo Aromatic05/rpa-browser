@@ -127,7 +127,10 @@
               <label>Max Tokens</label>
               <input id="maxTokens" type="number" min="1" placeholder="512" />
             </div>
-            <button id="saveSettings">Save Settings</button>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="saveSettings">Save Settings</button>
+              <button id="debugLlm" style="background:#334155;color:#e2e8f0;">Debug LLM</button>
+            </div>
             <div class="muted" id="saveStatus"></div>
           </div>
         </div>
@@ -179,6 +182,23 @@
         messagesEl.appendChild(wrapper);
       };
 
+      const addLlmTrace = (messages) => {
+        if (!messages || !messages.length) return;
+        const filtered = messages.filter((m) => m.role === 'assistant');
+        if (!filtered.length) return;
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = `LLM replies (${filtered.length})`;
+        details.appendChild(summary);
+        const pre = document.createElement('pre');
+        pre.textContent = JSON.stringify(filtered, null, 2);
+        details.appendChild(pre);
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message tool';
+        wrapper.appendChild(details);
+        messagesEl.appendChild(wrapper);
+      };
+
       const refreshConfig = async () => {
         const resp = await fetch('/api/config');
         const data = await resp.json();
@@ -218,6 +238,16 @@
         qs('apiKeyMasked').textContent = data.apiKey ? `stored key: ${data.apiKey}` : 'stored key: (none)';
       });
 
+      qs('debugLlm').addEventListener('click', async () => {
+        qs('saveStatus').textContent = 'Pinging LLM...';
+        const resp = await fetch('/api/llm/debug', { method: 'POST' });
+        const data = await resp.json();
+        if (resp.ok) {
+          qs('saveStatus').textContent = `LLM ok (${data.latencyMs}ms): ${data.message || ''}`;
+        } else {
+          qs('saveStatus').textContent = `LLM error: ${data.error || 'unknown'}`;
+        }
+      });
       qs('prepareBtn').addEventListener('click', async () => {
         const url = qs('prepareUrl').value;
         const resp = await fetch('/api/env/prepare', {
@@ -245,6 +275,7 @@
         const data = await resp.json();
         if (resp.ok) {
           addToolEvents(data.toolEvents);
+          addLlmTrace(data.messages);
           addMessage(data.finalAnswer || '(no response)', 'assistant');
         } else {
           addMessage(data.error || 'Chat failed.', 'assistant');

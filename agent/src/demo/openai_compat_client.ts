@@ -27,22 +27,32 @@ export type ChatCompletionRequest = {
     maxTokens?: number;
     messages: ChatMessage[];
     tools?: ChatTool[];
+    toolChoice?: 'auto' | { type: 'function'; function: { name: string } };
 };
 
 export type ChatCompletionResponse = {
     message: ChatMessage;
 };
 
+const buildChatUrl = (apiBase: string) => {
+    const trimmed = apiBase.replace(/\/$/, '');
+    if (trimmed.endsWith('/v1/chat/completions')) return trimmed;
+    if (trimmed.endsWith('/chat/completions')) return trimmed;
+    if (trimmed.endsWith('/v1')) return `${trimmed}/chat/completions`;
+    return `${trimmed}/v1/chat/completions`;
+};
+
 export const createChatCompletion = async (
     request: ChatCompletionRequest,
 ): Promise<ChatCompletionResponse> => {
-    const url = request.apiBase.replace(/\/$/, '') + '/v1/chat/completions';
+    const url = buildChatUrl(request.apiBase);
     const payload = {
         model: request.model,
         temperature: request.temperature,
         max_tokens: request.maxTokens,
         messages: request.messages,
         tools: request.tools,
+        tool_choice: request.toolChoice ?? (request.tools?.length ? 'auto' : undefined),
     };
 
     const resp = await fetch(url, {
