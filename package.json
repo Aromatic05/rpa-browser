@@ -6,6 +6,7 @@
         "dev:agent": "pnpm --filter ./agent dev",
         "build:extension": "pnpm --filter ./extension build",
         "dev": "pnpm build:extension && pnpm dev:agent",
+        "mock:dev": "node mock/server.js",
         "setup": "pnpm -r install",
         "pw:install": "pnpm --filter ./agent pw:install",
         "lint": "npx eslint \"**/*.{ts,tsx,js,jsx}\" --ext .ts,.tsx,.js --max-warnings=0",
