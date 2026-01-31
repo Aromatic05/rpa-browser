@@ -214,7 +214,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                     }
                 }
             }
-            console.log('[RPA:agent]', 'bind page', { tabToken: token, pageUrl: page.url() });
             page.on('close', () => {
                 const current = tokenToPage.get(token);
                 if (current === page) {

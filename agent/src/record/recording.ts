@@ -74,12 +74,6 @@ export const recordEvent = (
     const list = state.recordings.get(tabToken) || [];
     list.push(event);
     state.recordings.set(tabToken, list);
-    console.log('[RPA:agent]', 'record', {
-        tabToken,
-        type: event.type,
-        url: event.url,
-        selector: event.selector,
-    });
 };
 
 const navListenerPages = new WeakSet<Page>();
