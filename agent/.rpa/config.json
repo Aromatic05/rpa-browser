@@ -1,6 +1,0 @@
-{
-  "apiBase": "https://api.deepseek.com",
-  "model": "deepseek-chat",
-  "maxTokens": 1024,
-  "apiKey": "sk-72636f36b8cb43c3928001dce3813c19"
-}
