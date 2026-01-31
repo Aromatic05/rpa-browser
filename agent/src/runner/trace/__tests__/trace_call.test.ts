@@ -7,7 +7,17 @@ import { createNoopHooks } from '../hooks';
 
 test('traceCall success writes start/end and returns ok', async () => {
     const sink = new MemorySink();
-    const ctx: TraceContext = { sinks: [sink], hooks: createNoopHooks(), cache: {} };
+    let afterOpCalled = 0;
+    const ctx: TraceContext = {
+        sinks: [sink],
+        hooks: {
+            ...createNoopHooks(),
+            afterOp: async () => {
+                afterOpCalled += 1;
+            },
+        },
+        cache: {},
+    };
 
     const result = await traceCall(ctx, { op: 'trace.page.getInfo' }, async () => ({
         url: 'https://example.com',
@@ -20,11 +30,22 @@ test('traceCall success writes start/end and returns ok', async () => {
     assert.equal(events[0].type, 'op.start');
     assert.equal(events[1].type, 'op.end');
     assert.equal(events[1].ok, true);
+    assert.equal(afterOpCalled, 1);
 });
 
 test('traceCall timeout maps to ERR_TIMEOUT', async () => {
     const sink = new MemorySink();
-    const ctx: TraceContext = { sinks: [sink], hooks: createNoopHooks(), cache: {} };
+    let afterOpCalled = 0;
+    const ctx: TraceContext = {
+        sinks: [sink],
+        hooks: {
+            ...createNoopHooks(),
+            afterOp: async () => {
+                afterOpCalled += 1;
+            },
+        },
+        cache: {},
+    };
 
     const result = await traceCall(ctx, { op: 'trace.page.goto' }, async () => {
         const err = new Error('Timeout 1000ms');
@@ -36,4 +57,5 @@ test('traceCall timeout maps to ERR_TIMEOUT', async () => {
     if (!result.ok) {
         assert.equal(result.error.code, 'ERR_TIMEOUT');
     }
+    assert.equal(afterOpCalled, 1);
 });
