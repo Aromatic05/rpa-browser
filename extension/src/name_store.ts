@@ -30,6 +30,7 @@ export type WorkspaceMeta = {
     displayName: string;
     groupId?: number;
     color?: TabGroupColor;
+    tabIds?: number[];
     createdAt: number;
     updatedAt: number;
 };
@@ -81,6 +82,10 @@ export const saveMetaStore = async (meta: MetaStore, storage?: StorageLike) => {
     await store.set({ [STORAGE_KEY]: meta });
 };
 
+export const resetMetaStore = async (storage?: StorageLike) => {
+    await saveMetaStore(defaultStore(), storage);
+};
+
 export const ensureWorkspaceMeta = async (
     workspaceId: string,
     storage?: StorageLike,
@@ -126,6 +131,38 @@ export const updateWorkspaceMeta = async (
     };
     await saveMetaStore(meta, storage);
     return meta.workspaces[workspaceId];
+};
+
+export const addWorkspaceTabId = async (
+    workspaceId: string,
+    tabId: number,
+    storage?: StorageLike,
+): Promise<void> => {
+    const meta = await loadMetaStore(storage);
+    const workspace = meta.workspaces[workspaceId];
+    if (!workspace) return;
+    const tabIds = new Set(workspace.tabIds || []);
+    tabIds.add(tabId);
+    workspace.tabIds = Array.from(tabIds);
+    workspace.updatedAt = Date.now();
+    meta.workspaces[workspaceId] = workspace;
+    await saveMetaStore(meta, storage);
+};
+
+export const removeWorkspaceTabId = async (tabId: number, storage?: StorageLike): Promise<void> => {
+    const meta = await loadMetaStore(storage);
+    let changed = false;
+    for (const [workspaceId, workspace] of Object.entries(meta.workspaces)) {
+        if (!workspace.tabIds?.length) continue;
+        const next = workspace.tabIds.filter((id) => id !== tabId);
+        if (next.length !== workspace.tabIds.length) {
+            meta.workspaces[workspaceId] = { ...workspace, tabIds: next, updatedAt: Date.now() };
+            changed = true;
+        }
+    }
+    if (changed) {
+        await saveMetaStore(meta, storage);
+    }
 };
 
 export const ensureTabMeta = async (

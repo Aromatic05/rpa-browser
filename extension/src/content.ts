@@ -251,7 +251,9 @@
     replayBtn.addEventListener('click', () => sendPanelCommand('record.replay'));
     stopReplayBtn.addEventListener('click', () => sendPanelCommand('record.stopReplay'));
 
-    const renderWorkspaces = (workspaces: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>) => {
+    const renderWorkspaces = (
+        workspaces: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>,
+    ) => {
         wsList.innerHTML = '';
         if (!activeWorkspaceId && workspaces.length) {
             activeWorkspaceId = workspaces[0].workspaceId;
@@ -376,6 +378,9 @@
 
     const interceptResponse = (payload: any) => {
         if (payload?.data?.workspaces) {
+            if (payload.data.activeWorkspaceId) {
+                activeWorkspaceId = payload.data.activeWorkspaceId;
+            }
             renderWorkspaces(payload.data.workspaces);
         }
         if (payload?.data?.tabs) {
@@ -386,9 +391,19 @@
     refreshWorkspaces();
     refreshTabs();
 
+    let refreshPending = false;
+    const scheduleRefresh = () => {
+        if (refreshPending) return;
+        refreshPending = true;
+        queueMicrotask(() => {
+            refreshPending = false;
+            refreshWorkspaces();
+            refreshTabs();
+        });
+    };
+
     chrome.runtime.onMessage.addListener((message: any) => {
         if (message?.type !== 'RPA_REFRESH') return;
-        refreshWorkspaces();
-        refreshTabs();
+        scheduleRefresh();
     });
 })();

@@ -14,6 +14,29 @@ export type ContextManagerOptions = {
 export const createContextManager = (options: ContextManagerOptions) => {
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
+    const startUrl =
+        process.env.RPA_START_URL || 'http://localhost:4173/pages/start.html#beta';
+
+    const ensureStartPage = async (context: BrowserContext) => {
+        try {
+            const pages = context.pages();
+            const primary = await context.newPage();
+            await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
+            await primary.bringToFront();
+            const toClose = pages.filter((page) => page !== primary);
+            for (const page of toClose) {
+                try {
+                    if (!page.isClosed()) {
+                        await page.close({ runBeforeUnload: true });
+                    }
+                } catch {
+                    // ignore close errors
+                }
+            }
+        } catch {
+            // ignore start page navigation failures
+        }
+    };
 
     const getContext = async () => {
         if (contextRef) return contextRef;
@@ -28,7 +51,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
                     `--load-extension=${options.extensionPath}`,
                 ],
             })
-            .then((context) => {
+            .then(async (context) => {
                 contextRef = context;
                 context.on('close', () => {
                     contextRef = undefined;
@@ -37,6 +60,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
                 if (options.onPage) {
                     context.on('page', options.onPage);
                 }
+                await ensureStartPage(context);
                 return context;
             })
             .catch((error) => {

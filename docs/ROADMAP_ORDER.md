@@ -80,6 +80,10 @@
   - Why first: 已具备基础入口，需补齐 human-in-loop 与调试能力
   - Depends on: P1 日志与 DSL 已清晰
 
+- WS 事件通道已具备雏形（仍需重连/诊断完善）
+  - Why first: 事件驱动刷新提高一致性，但需更强的可观测性
+  - Depends on: 基础 WS 通道稳定
+
 - Start Page / Sandbox 与友好命名已落地（UI 可用性提升）
   - Why first: 新建 tab 可自动化的稳定入口已建立（基于本地 mock 站点）
   - Depends on: P0 稳定工具内核

@@ -167,7 +167,7 @@
   - Where: `extension/src/sw.ts`
   - Problem: WS 连接失败仅返回文本错误
   - Impact: 用户难以诊断问题
-  - Evidence: `respondOnce({ ok: false, error: 'ws error' })`
+  - Evidence: 目前为长连接 WS，但仍仅返回文本错误（`error: 'ws error'`）
 
 ### P1
 

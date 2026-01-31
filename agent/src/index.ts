@@ -38,7 +38,12 @@ const pageRegistry = createPageRegistry({
             const scope = pageRegistry.resolveScopeFromToken(token);
             broadcast({
                 event: 'page.bound',
-                data: { workspaceId: scope.workspaceId, tabId: scope.tabId, url: page.url() },
+                data: {
+                    workspaceId: scope.workspaceId,
+                    tabId: scope.tabId,
+                    tabToken: token,
+                    url: page.url(),
+                },
             });
         } catch {
             // ignore scope resolution failures
@@ -143,7 +148,13 @@ wss.on('connection', (socket) => {
                 }
                 if (command?.cmd && response?.ok) {
                     const data = response.data as any;
-                    if (command.cmd.startsWith('workspace.') || command.cmd.startsWith('tab.')) {
+                    const mutating =
+                        command.cmd === 'workspace.create' ||
+                        command.cmd === 'workspace.setActive' ||
+                        command.cmd === 'tab.create' ||
+                        command.cmd === 'tab.setActive' ||
+                        command.cmd === 'tab.close';
+                    if (mutating) {
                         broadcast({
                             event: 'workspace.changed',
                             data: {

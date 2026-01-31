@@ -12,8 +12,6 @@ let activeTabId: number | null = null;
 let activeWorkspaceId: string | null = null;
 let activeScopeTabId: string | null = null;
 const supportsTabGroups = supportsTabGrouping(chrome);
-const unassignedTabs: Array<{ tabId: number; createdAt: number }> = [];
-const claimedTabs = new Set<number>();
 const tokenToWorkspace = new Map<string, string>();
 
 const log = (...args: unknown[]) => console.log('[RPA:sw]', ...args);
@@ -74,7 +72,25 @@ const notifyRefresh = () => {
 };
 
 const handleEvent = (payload: any) => {
-    if (payload?.event === 'workspace.changed' || payload?.event === 'page.bound') {
+    if (payload?.event === 'page.bound') {
+        const data = payload.data || {};
+        if (data.tabToken && data.workspaceId) {
+            tokenToWorkspace.set(data.tabToken, data.workspaceId);
+        }
+        if (!activeWorkspaceId && data.workspaceId) {
+            activeWorkspaceId = data.workspaceId;
+        }
+        if (data.workspaceId) {
+            void ensureGroupedActiveTab(data.workspaceId);
+            void ensureWorkspaceTabsGrouped(data.workspaceId);
+        }
+        notifyRefresh();
+        return;
+    }
+    if (payload?.event === 'workspace.changed') {
+        if (payload?.data?.workspaceId) {
+            activeWorkspaceId = payload.data.workspaceId;
+        }
         notifyRefresh();
     }
 };
@@ -213,18 +229,6 @@ chrome.runtime.onInstalled?.addListener(() => {
     void resetMetaStore();
 });
 
-const claimRecentTab = () => {
-    const now = Date.now();
-    for (let i = unassignedTabs.length - 1; i >= 0; i -= 1) {
-        const entry = unassignedTabs[i];
-        if (now - entry.createdAt > 5000) continue;
-        if (claimedTabs.has(entry.tabId)) continue;
-        claimedTabs.add(entry.tabId);
-        return entry.tabId;
-    }
-    return null;
-};
-
 chrome.tabs.onActivated.addListener((info: chrome.tabs.TabActiveInfo) => {
     activeTabId = info.tabId;
     log('active tab', activeTabId);
@@ -237,14 +241,6 @@ chrome.tabs.onRemoved.addListener((tabId: number) => {
         activeTabId = null;
     }
     void removeWorkspaceTabId(tabId);
-});
-
-chrome.tabs.onCreated.addListener((tab) => {
-    if (typeof tab.id !== 'number') return;
-    unassignedTabs.push({ tabId: tab.id, createdAt: Date.now() });
-    if (unassignedTabs.length > 20) {
-        unassignedTabs.shift();
-    }
 });
 
 chrome.tabs.onUpdated.addListener((tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
@@ -316,10 +312,6 @@ chrome.runtime.onMessage.addListener(
                         payload?.data?.workspaceId || workspaceId || activeWorkspaceId;
                     if (!payload?.ok || !effectiveWorkspaceId) return;
                     if (message.cmd === 'workspace.create' || message.cmd === 'tab.create') {
-                        const claimed = claimRecentTab();
-                        if (typeof claimed === 'number') {
-                            void addWorkspaceTabId(effectiveWorkspaceId, claimed);
-                        }
                         if (payload?.data?.tabToken) {
                             tokenToWorkspace.set(payload.data.tabToken, effectiveWorkspaceId);
                         }

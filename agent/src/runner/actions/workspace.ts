@@ -37,14 +37,39 @@ const bringWorkspaceTabToFront = async (
 export const workspaceHandlers: Record<string, ActionHandler> = {
     'workspace.list': async (ctx, _command) => {
         const list = ctx.pageRegistry.listWorkspaces();
-        return { ok: true, tabToken: ctx.tabToken, data: { workspaces: list } };
-    },
-    'workspace.create': async (ctx, _command) => {
-        const created = await ctx.pageRegistry.createWorkspace();
+        const active = ctx.pageRegistry.getActiveWorkspace?.();
         return {
             ok: true,
             tabToken: ctx.tabToken,
-            data: { workspaceId: created.workspaceId, tabId: created.tabId },
+            data: { workspaces: list, activeWorkspaceId: active?.id || null },
+        };
+    },
+    'workspace.create': async (ctx, _command) => {
+        const command = _command as WorkspaceCreateCommand;
+        const created = await ctx.pageRegistry.createWorkspace();
+        const createdTabToken = ctx.pageRegistry.resolveTabToken({
+            workspaceId: created.workspaceId,
+            tabId: created.tabId,
+        });
+        const startUrl = command.args?.startUrl;
+        if (startUrl) {
+            try {
+                const page = await ctx.pageRegistry.resolvePage({
+                    workspaceId: created.workspaceId,
+                    tabId: created.tabId,
+                });
+                await page.goto(startUrl, {
+                    waitUntil: command.args?.waitUntil || 'domcontentloaded',
+                });
+                await page.bringToFront();
+            } catch {
+                // ignore navigation failures
+            }
+        }
+        return {
+            ok: true,
+            tabToken: ctx.tabToken,
+            data: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: createdTabToken },
         };
     },
     'workspace.setActive': async (ctx, command) => {
@@ -69,7 +94,17 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         const tabId = await ctx.pageRegistry.createTab(workspaceId);
-        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId } };
+        const createdTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId, tabId });
+        if (args.startUrl) {
+            try {
+                const page = await ctx.pageRegistry.resolvePage({ workspaceId, tabId });
+                await page.goto(args.startUrl, { waitUntil: args.waitUntil || 'domcontentloaded' });
+                await page.bringToFront();
+            } catch {
+                // ignore navigation failures
+            }
+        }
+        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId, tabToken: createdTabToken } };
     },
     'tab.close': async (ctx, command) => {
         const args = (command as TabCloseCommand).args;

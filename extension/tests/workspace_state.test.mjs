@@ -58,6 +58,19 @@ log('Switching workspace clears tabs and updates active state', () => {
     assert.equal(state.tabs.length, 0);
 });
 
+log('applyWorkspaces prefers activeWorkspaceId when provided', () => {
+    let state = initState();
+    state = applyWorkspaces(
+        state,
+        [
+            { workspaceId: 'ws-1', tabCount: 1 },
+            { workspaceId: 'ws-2', tabCount: 1 },
+        ],
+        'ws-2',
+    );
+    assert.equal(state.activeWorkspaceId, 'ws-2');
+});
+
 log('tabGroups API unavailable -> still works (fallback)', () => {
     assert.equal(supportsTabGroups(undefined), false);
     assert.equal(supportsTabGroups({}), false);

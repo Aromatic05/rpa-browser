@@ -35,11 +35,17 @@ export type RecordReplayCommand = CommandWithArgs<'record.replay', { stopOnError
 export type RecordStopReplayCommand = CommandWithArgs<'record.stopReplay', Record<string, never>>;
 
 export type WorkspaceListCommand = CommandWithArgs<'workspace.list', Record<string, never>>;
-export type WorkspaceCreateCommand = CommandWithArgs<'workspace.create', Record<string, never>>;
+export type WorkspaceCreateCommand = CommandWithArgs<
+    'workspace.create',
+    { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' }
+>;
 export type WorkspaceSetActiveCommand = CommandWithArgs<'workspace.setActive', { workspaceId: string }>;
 
 export type TabListCommand = CommandWithArgs<'tab.list', { workspaceId?: string }>;
-export type TabCreateCommand = CommandWithArgs<'tab.create', { workspaceId?: string }>;
+export type TabCreateCommand = CommandWithArgs<
+    'tab.create',
+    { workspaceId?: string; startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' }
+>;
 export type TabCloseCommand = CommandWithArgs<'tab.close', { workspaceId?: string; tabId: string }>;
 export type TabSetActiveCommand = CommandWithArgs<
     'tab.setActive',

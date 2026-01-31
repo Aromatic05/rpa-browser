@@ -30,9 +30,18 @@ export const initState = (): PanelState => ({
     logs: [],
 });
 
-export const applyWorkspaces = (state: PanelState, workspaces: WorkspaceItem[]): PanelState => {
+export const applyWorkspaces = (
+    state: PanelState,
+    workspaces: WorkspaceItem[],
+    preferredActiveId?: string | null,
+): PanelState => {
     const next = { ...state, workspaces: [...workspaces] };
-    if (!next.activeWorkspaceId || !workspaces.find((w) => w.workspaceId === next.activeWorkspaceId)) {
+    if (preferredActiveId && workspaces.find((w) => w.workspaceId === preferredActiveId)) {
+        next.activeWorkspaceId = preferredActiveId;
+    } else if (
+        !next.activeWorkspaceId ||
+        !workspaces.find((w) => w.workspaceId === next.activeWorkspaceId)
+    ) {
         next.activeWorkspaceId = workspaces[0]?.workspaceId || null;
     }
     return next;

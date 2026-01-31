@@ -68,7 +68,8 @@
 
 1) `extension/src/content.ts` 生成 `tabToken`，向 SW 发送 `RPA_HELLO`。
 2) Side panel UI 触发 `CMD` 消息，经 `extension/src/sw.ts` 获取 active tabToken（兼容旧协议）与可选 scope。
-3) `sw.ts` 通过 WebSocket 向 `agent/src/index.ts` 发送 `{ cmd, tabToken?, scope?, args, requestId }`。
+3) `sw.ts` 通过长连接 WebSocket 向 `agent/src/index.ts` 发送 `{ cmd, tabToken?, scope?, args, requestId }`。
+4) `agent/src/index.ts` 可主动广播 `workspace.changed` / `page.bound` 事件，extension 收到后触发 UI 刷新。
 4) `agent/src/index.ts` 按 `scope(workspaceId/tabId)` 解析 Page（缺省为 active workspace/tab）。
 5) `runner/execute.ts` 解析命令、解析 target、映射错误、调用 `actions/*`。
 6) 动作返回 `Result`，经 WS 回传给 extension。
@@ -86,7 +87,7 @@
 
 - `extension/src/content.ts`：注入悬浮 UI、生成并维护 tabToken、转发 panel 命令。
 - `extension/src/panel.ts`：Side panel Workspace Explorer（workspace/tab 列表与操作）。
-- `extension/src/sw.ts`：维持 tabId->tabToken 映射，WS 转发与超时处理。
+- `extension/src/sw.ts`：维持 tabId->tabToken 映射，WS 长连接转发、事件分发与超时处理。
 - `extension/src/name_store.ts`：workspace/tab displayName 与 tabGroup 颜色/元数据存储（`chrome.storage.local`）。
 - `extension/src/tab_grouping.ts`：tabGroups 分组的安全封装与降级处理。
 - `mock/pages/start.html`：工具测试样例页面（start page / sandbox，供本地 mock server 使用）。

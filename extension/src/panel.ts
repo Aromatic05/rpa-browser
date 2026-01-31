@@ -185,7 +185,8 @@ const refreshWorkspaces = async () => {
             return refreshWorkspaces();
         }
         const named = await withWorkspaceDisplayNames(response.data.workspaces as WorkspaceItem[]);
-        setState(applyWorkspaces(state, named));
+        const preferred = response.data.activeWorkspaceId as string | null | undefined;
+        setState(applyWorkspaces(state, named, preferred ?? undefined));
         rememberWorkspace(state.activeWorkspaceId);
     }
 };
@@ -224,6 +225,17 @@ newTabButton.addEventListener('click', async () => {
 });
 refreshTabsButton.addEventListener('click', refreshTabs);
 
+let refreshPending = false;
+const scheduleRefresh = () => {
+    if (refreshPending) return;
+    refreshPending = true;
+    queueMicrotask(async () => {
+        refreshPending = false;
+        await refreshWorkspaces();
+        await refreshTabs();
+    });
+};
+
 const init = async () => {
     await refreshWorkspaces();
     await refreshTabs();
@@ -233,8 +245,7 @@ void init();
 
 chrome.runtime.onMessage.addListener((message: any) => {
     if (message?.type !== 'RPA_REFRESH') return;
-    void refreshWorkspaces();
-    void refreshTabs();
+    scheduleRefresh();
 });
 
 enableVerticalTabsButton.addEventListener('click', () => {
