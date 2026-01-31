@@ -6,6 +6,8 @@ import {
     selectTab,
     selectWorkspace,
     type PanelState,
+    type TabItem,
+    type WorkspaceItem,
 } from './workspace_state';
 
 const startButton = document.getElementById('startRec') as HTMLButtonElement;
@@ -44,8 +46,10 @@ const renderWorkspaceList = () => {
         if (state.activeWorkspaceId === ws.workspaceId) {
             btn.classList.add('active');
         }
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             setState(selectWorkspace(state, ws.workspaceId));
+            await sendPanelCommand('workspace.setActive', { workspaceId: ws.workspaceId });
+            await refreshTabs();
         });
         row.appendChild(btn);
         workspaceList.appendChild(row);
@@ -62,23 +66,36 @@ const renderTabList = () => {
         if (tab.active) {
             btn.classList.add('active');
         }
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             setState(selectTab(state, tab.tabId));
+            await sendPanelCommand('tab.setActive', {
+                workspaceId: state.activeWorkspaceId || undefined,
+                tabId: tab.tabId,
+            });
+            await refreshTabs();
         });
         row.appendChild(btn);
         tabList.appendChild(row);
     });
 };
 
-const sendPanelCommand = (cmd: string, args?: Record<string, unknown>) => {
-    chrome.runtime.sendMessage({ type: 'CMD', cmd, args }, (response: any) => {
-        if (chrome.runtime.lastError) {
-            renderLog({ ok: false, error: chrome.runtime.lastError.message });
-            return;
-        }
-        renderLog(response);
+const sendPanelCommand = (
+    cmd: string,
+    args?: Record<string, unknown>,
+    scope?: { workspaceId?: string; tabId?: string },
+): Promise<any> =>
+    new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'CMD', cmd, args, ...(scope || {}) }, (response: any) => {
+            if (chrome.runtime.lastError) {
+                const errorPayload = { ok: false, error: chrome.runtime.lastError.message };
+                renderLog(errorPayload);
+                resolve(errorPayload);
+                return;
+            }
+            renderLog(response);
+            resolve(response);
+        });
     });
-};
 
 startButton.addEventListener('click', () => sendPanelCommand('record.start'));
 stopButton.addEventListener('click', () => sendPanelCommand('record.stop'));
@@ -87,17 +104,37 @@ clearButton.addEventListener('click', () => sendPanelCommand('record.clear'));
 replayButton.addEventListener('click', () => sendPanelCommand('record.replay'));
 stopReplayButton.addEventListener('click', () => sendPanelCommand('record.stopReplay'));
 
-newWorkspaceButton.addEventListener('click', () => {
-    setState({ ...state, workspaces: state.workspaces });
-});
-refreshWorkspaceButton.addEventListener('click', () => {
-    setState({ ...state, workspaces: state.workspaces });
-});
-newTabButton.addEventListener('click', () => {
-    planNewTabScope(state);
-});
-refreshTabsButton.addEventListener('click', () => {
-    setState(applyTabs(state, state.tabs));
-});
+const refreshWorkspaces = async () => {
+    const response = await sendPanelCommand('workspace.list');
+    if (response?.data?.workspaces) {
+        setState(applyWorkspaces(state, response.data.workspaces as WorkspaceItem[]));
+    }
+};
 
-setState(applyWorkspaces(state, []));
+const refreshTabs = async () => {
+    const response = await sendPanelCommand('tab.list', {
+        workspaceId: state.activeWorkspaceId || undefined,
+    });
+    if (response?.data?.tabs) {
+        setState(applyTabs(state, response.data.tabs as TabItem[]));
+    }
+};
+
+newWorkspaceButton.addEventListener('click', async () => {
+    await sendPanelCommand('workspace.create');
+    await refreshWorkspaces();
+});
+refreshWorkspaceButton.addEventListener('click', refreshWorkspaces);
+newTabButton.addEventListener('click', async () => {
+    const scope = planNewTabScope(state);
+    await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId });
+    await refreshTabs();
+});
+refreshTabsButton.addEventListener('click', refreshTabs);
+
+const init = async () => {
+    await refreshWorkspaces();
+    await refreshTabs();
+};
+
+void init();
