@@ -2,6 +2,7 @@ import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { startMcpServer } from './mcp/index';
+import { createRunnerScopeRegistry } from './runner/runner_scope';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -33,6 +34,7 @@ const pageRegistry = createPageRegistry({
     },
     onTokenClosed: (token) => cleanupRecording(recordingState, token),
 });
+const runnerScope = createRunnerScopeRegistry(2);
 
 (async () => {
     try {
@@ -48,6 +50,7 @@ const pageRegistry = createPageRegistry({
                 scroll: SCROLL_CONFIG,
             },
             navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+            runInWorkspace: runnerScope.run,
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

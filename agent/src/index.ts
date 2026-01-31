@@ -6,6 +6,7 @@ import { executeCommand, type ActionContext } from './runner/execute';
 import type { Command } from './runner/commands';
 import { errorResult } from './runner/results';
 import { ERROR_CODES } from './runner/error_codes';
+import { createRunnerScopeRegistry } from './runner/runner_scope';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -36,6 +37,7 @@ const pageRegistry = createPageRegistry({
     },
     onTokenClosed: (token) => cleanupRecording(recordingState, token),
 });
+const runnerScope = createRunnerScopeRegistry(2);
 
 const handleCommand = async (payload?: Command) => {
     if (!payload?.cmd) {
@@ -47,23 +49,26 @@ const handleCommand = async (payload?: Command) => {
     const urlHint =
         typeof (payload as any).args?.url === 'string' ? ((payload as any).args.url as string) : undefined;
     const page = await pageRegistry.getPage(payload.tabToken, urlHint);
-    const ctx: ActionContext = {
-        page,
-        tabToken: payload.tabToken,
-        pageRegistry,
-        log,
-        recordingState,
-        replayOptions: {
-            clickDelayMs: CLICK_DELAY_MS,
-            stepDelayMs: REPLAY_STEP_DELAY_MS,
-            scroll: SCROLL_CONFIG,
-        },
-        navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-        execute: undefined,
-    };
-    ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
-    log('cmd', { cmd: payload.cmd, tabToken: payload.tabToken, requestId: payload.requestId });
-    return executeCommand(ctx, payload);
+    const scope = pageRegistry.resolveScopeFromToken(payload.tabToken);
+    return runnerScope.run(scope.workspaceId, async () => {
+        const ctx: ActionContext = {
+            page,
+            tabToken: payload.tabToken,
+            pageRegistry,
+            log,
+            recordingState,
+            replayOptions: {
+                clickDelayMs: CLICK_DELAY_MS,
+                stepDelayMs: REPLAY_STEP_DELAY_MS,
+                scroll: SCROLL_CONFIG,
+            },
+            navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+            execute: undefined,
+        };
+        ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
+        log('cmd', { cmd: payload.cmd, tabToken: payload.tabToken, requestId: payload.requestId });
+        return executeCommand(ctx, payload);
+    });
 };
 
 const wss = new WebSocketServer({ host: '127.0.0.1', port: 17333 });

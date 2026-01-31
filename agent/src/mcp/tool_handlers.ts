@@ -22,6 +22,7 @@ export type McpToolDeps = {
     log: (...args: unknown[]) => void;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
+    runInWorkspace?: <T>(workspaceId: string, task: () => Promise<T>) => Promise<T>;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<Result>;
@@ -49,6 +50,7 @@ const buildRegistryDeps = (deps: McpToolDeps, tabToken: string) => ({
     replayOptions: deps.replayOptions,
     navDedupeWindowMs: deps.navDedupeWindowMs,
     getActiveTabToken: async () => tabToken,
+    runInWorkspace: deps.runInWorkspace,
 });
 
 const handleGoto = (deps: McpToolDeps) => async (args: unknown): Promise<Result> => {

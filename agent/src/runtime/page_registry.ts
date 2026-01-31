@@ -66,6 +66,7 @@ export type PageRegistry = {
     listTabs: (workspaceId: WorkspaceId) => Promise<TabPublicInfo[]>;
     resolvePage: (scope?: WorkspaceScope) => Promise<Page>;
     resolveScope: (scope?: WorkspaceScope) => { workspaceId: WorkspaceId; tabId: TabId };
+    resolveScopeFromToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId };
 };
 
 const randomId = () => crypto.randomUUID();
@@ -394,5 +395,12 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         listTabs,
         resolvePage,
         resolveScope,
+        resolveScopeFromToken: (tabToken: string) => {
+            const ref = tokenToTab.get(tabToken);
+            if (!ref) {
+                throw new Error('workspace scope not found for tabToken');
+            }
+            return { workspaceId: ref.workspaceId, tabId: ref.tabId };
+        },
     };
 };

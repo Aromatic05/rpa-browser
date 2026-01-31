@@ -8,6 +8,7 @@ import { createPageRegistry } from '../runtime/page_registry';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
 import { runAgentLoop } from './agent_loop';
+import { createRunnerScopeRegistry } from '../runner/runner_scope';
 import { createChatCompletion } from './openai_compat_client';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,6 +80,8 @@ const workspaceManager = createWorkspaceManager({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
 });
 
+const runnerScope = createRunnerScopeRegistry(2);
+
 const buildToolDeps = () => ({
     pageRegistry,
     recordingState,
@@ -93,6 +96,7 @@ const buildToolDeps = () => ({
         const workspace = await workspaceManager.ensureActiveWorkspace();
         return workspace.tabToken;
     },
+    runInWorkspace: runnerScope.run,
 });
 
 const server = http.createServer((req, res) => {

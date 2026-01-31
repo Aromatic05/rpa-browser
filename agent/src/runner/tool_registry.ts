@@ -155,6 +155,7 @@ export type ToolRegistryDeps = {
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
     getActiveTabToken: () => Promise<string>;
+    runInWorkspace?: <T>(workspaceId: string, task: () => Promise<T>) => Promise<T>;
 };
 
 export type ExecuteToolOptions = {
@@ -236,74 +237,86 @@ export const executeTool = async (
     options?: ExecuteToolOptions,
 ): Promise<Result> => {
     const tabToken = await resolveTabToken(deps, options);
+    const scope = deps.pageRegistry.resolveScopeFromToken(tabToken);
+    const run = deps.runInWorkspace
+        ? (task: () => Promise<Result>) => deps.runInWorkspace!(scope.workspaceId, task)
+        : (task: () => Promise<Result>) => task();
 
     if (name === 'browser.goto') {
-        const parsed = parseInput(gotoInputSchema, args, tabToken);
-        if ('ok' in (parsed as Result)) return parsed as Result;
-        const input = parsed as z.infer<typeof gotoInputSchema>;
-        const ctx = await buildActionContext(deps, tabToken);
-        const command: PageGotoCommand = {
-            cmd: 'page.goto',
-            tabToken,
-            args: { url: input.url, waitUntil: 'domcontentloaded' },
-        };
-        return executeCommand(ctx, command);
+        return run(async () => {
+            const parsed = parseInput(gotoInputSchema, args, tabToken);
+            if ('ok' in (parsed as Result)) return parsed as Result;
+            const input = parsed as z.infer<typeof gotoInputSchema>;
+            const ctx = await buildActionContext(deps, tabToken);
+            const command: PageGotoCommand = {
+                cmd: 'page.goto',
+                tabToken,
+                args: { url: input.url, waitUntil: 'domcontentloaded' },
+            };
+            return executeCommand(ctx, command);
+        });
     }
 
     if (name === 'browser.click') {
-        const parsed = parseInput(clickInputSchema, args, tabToken);
-        if ('ok' in (parsed as Result)) return parsed as Result;
-        const input = parsed as z.infer<typeof clickInputSchema>;
-        const ctx = await buildActionContext(deps, tabToken);
-        const command: ElementClickCommand = {
-            cmd: 'element.click',
-            tabToken,
-            args: { target: input.target as Target, options: { timeout: 5000, noWaitAfter: true } },
-        };
-        return executeCommand(ctx, command);
+        return run(async () => {
+            const parsed = parseInput(clickInputSchema, args, tabToken);
+            if ('ok' in (parsed as Result)) return parsed as Result;
+            const input = parsed as z.infer<typeof clickInputSchema>;
+            const ctx = await buildActionContext(deps, tabToken);
+            const command: ElementClickCommand = {
+                cmd: 'element.click',
+                tabToken,
+                args: { target: input.target as Target, options: { timeout: 5000, noWaitAfter: true } },
+            };
+            return executeCommand(ctx, command);
+        });
     }
 
     if (name === 'browser.type') {
-        const parsed = parseInput(typeInputSchema, args, tabToken);
-        if ('ok' in (parsed as Result)) return parsed as Result;
-        const input = parsed as z.infer<typeof typeInputSchema>;
-        const ctx = await buildActionContext(deps, tabToken);
-        const target = input.target as Target;
-        if (input.clearFirst) {
-            const command: ElementFillCommand = {
-                cmd: 'element.fill',
+        return run(async () => {
+            const parsed = parseInput(typeInputSchema, args, tabToken);
+            if ('ok' in (parsed as Result)) return parsed as Result;
+            const input = parsed as z.infer<typeof typeInputSchema>;
+            const ctx = await buildActionContext(deps, tabToken);
+            const target = input.target as Target;
+            if (input.clearFirst) {
+                const command: ElementFillCommand = {
+                    cmd: 'element.fill',
+                    tabToken,
+                    args: { target, text: input.text },
+                };
+                return executeCommand(ctx, command);
+            }
+            const command: ElementTypeCommand = {
+                cmd: 'element.type',
                 tabToken,
                 args: { target, text: input.text },
             };
             return executeCommand(ctx, command);
-        }
-        const command: ElementTypeCommand = {
-            cmd: 'element.type',
-            tabToken,
-            args: { target, text: input.text },
-        };
-        return executeCommand(ctx, command);
+        });
     }
 
     if (name === 'browser.snapshot') {
-        const parsed = parseInput(snapshotInputSchema, args, tabToken);
-        if ('ok' in (parsed as Result)) return parsed as Result;
-        const input = parsed as z.infer<typeof snapshotInputSchema>;
-        if (input.includeA11y) {
-            const ctx = await buildActionContext(deps, tabToken);
-            const command: PageA11yScanCommand = {
-                cmd: 'page.a11yScan',
-                tabToken,
-                args: {},
-            };
-            const result = await executeCommand(ctx, command);
-            if (!result.ok) return result;
-            const data = trimA11yNodes(result.data as A11yScanResult, input.maxNodes);
-            return okResult(tabToken, data, result.requestId);
-        }
-        const page = await deps.pageRegistry.getPage(tabToken);
-        const title = await page.title();
-        return okResult(tabToken, { url: page.url(), title });
+        return run(async () => {
+            const parsed = parseInput(snapshotInputSchema, args, tabToken);
+            if ('ok' in (parsed as Result)) return parsed as Result;
+            const input = parsed as z.infer<typeof snapshotInputSchema>;
+            if (input.includeA11y) {
+                const ctx = await buildActionContext(deps, tabToken);
+                const command: PageA11yScanCommand = {
+                    cmd: 'page.a11yScan',
+                    tabToken,
+                    args: {},
+                };
+                const result = await executeCommand(ctx, command);
+                if (!result.ok) return result;
+                const data = trimA11yNodes(result.data as A11yScanResult, input.maxNodes);
+                return okResult(tabToken, data, result.requestId);
+            }
+            const page = await deps.pageRegistry.getPage(tabToken);
+            const title = await page.title();
+            return okResult(tabToken, { url: page.url(), title });
+        });
     }
 
     return errorResult(tabToken, ERROR_CODES.ERR_UNSUPPORTED, `unknown tool: ${name}`);
