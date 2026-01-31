@@ -12,7 +12,6 @@
     (window as any).__TAB_TOKEN__ = tabToken;
 
     const sendHello = () => {
-        console.log('[RPA] HELLO', { tabToken, url: location.href });
         chrome.runtime.sendMessage({
             type: 'RPA_HELLO',
             tabToken,
@@ -26,7 +25,6 @@
             _sender: chrome.runtime.MessageSender,
             sendResponse: (response?: any) => void,
         ) => {
-            console.log('[RPA] message', message);
             if (message?.type === 'RPA_GET_TOKEN') {
                 sendResponse({ ok: true, tabToken, url: location.href });
                 return true;
@@ -197,11 +195,9 @@
         scope?: { workspaceId?: string; tabId?: string },
         onResponse?: (payload: any) => void,
     ) => {
-        console.log('[RPA] send command', cmd);
         chrome.runtime.sendMessage(
             { type: 'CMD', cmd, tabToken, args, ...(scope || {}) },
             (response: any) => {
-            console.log('[RPA] response', response);
             if (chrome.runtime.lastError) {
                 render({ ok: false, error: chrome.runtime.lastError.message });
                 return;

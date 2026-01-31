@@ -12,6 +12,7 @@ let activeTabId: number | null = null;
 let activeWorkspaceId: string | null = null;
 let activeScopeTabId: string | null = null;
 const supportsTabGroups = supportsTabGrouping(chrome);
+// Map Playwright tabToken -> workspaceId to group the first page reliably.
 const tokenToWorkspace = new Map<string, string>();
 
 const log = (...args: unknown[]) => console.log('[RPA:sw]', ...args);
@@ -60,6 +61,7 @@ let wsRef: WebSocket | null = null;
 let wsReady: Promise<void> | null = null;
 const pending = new Map<string, (payload: any) => void>();
 
+// Bridge agent events into UI refreshes (panel + floating overlay).
 const notifyRefresh = () => {
     chrome.runtime.sendMessage({ type: 'RPA_REFRESH' });
     if (activeTabId != null) {
@@ -95,6 +97,7 @@ const handleEvent = (payload: any) => {
     }
 };
 
+// Keep a single WS connection for bidirectional events + command results.
 const connectWs = () => {
     if (wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
         return wsReady || Promise.resolve();
@@ -274,7 +277,6 @@ chrome.runtime.onMessage.addListener(
             (async () => {
                 const requestId = crypto.randomUUID();
                 let tabToken = message.tabToken as string | undefined;
-                let browserTabId: number | undefined;
                 const workspaceId = (message.workspaceId as string | undefined) || activeWorkspaceId || undefined;
                 const scopeTabId = (message.tabId as string | undefined) || activeScopeTabId || undefined;
                 if (!tabToken) {
@@ -284,7 +286,6 @@ chrome.runtime.onMessage.addListener(
                         return;
                     }
                     tabToken = active.tabToken;
-                    browserTabId = active.tabId;
                 }
                 if (!message.cmd) {
                     sendResponse({ ok: false, error: 'missing cmd' });
@@ -295,7 +296,6 @@ chrome.runtime.onMessage.addListener(
                     tabToken,
                     args: message.args || {},
                     requestId,
-                    browserTabId,
                     workspaceId,
                     tabId: scopeTabId,
                 };
