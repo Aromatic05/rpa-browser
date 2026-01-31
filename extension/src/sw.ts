@@ -1,5 +1,5 @@
-import { ensureWorkspaceMeta, updateWorkspaceMeta } from './name_store';
-import { safeGroupActiveTab, supportsTabGrouping } from './tab_grouping';
+import { ensureWorkspaceMeta, updateWorkspaceMeta } from './name_store.js';
+import { safeGroupActiveTab, supportsTabGrouping } from './tab_grouping.js';
 
 const tabState = new Map<number, { tabToken: string; lastUrl: string; updatedAt: number }>();
 let activeTabId: number | null = null;

@@ -12,7 +12,8 @@
         "default_title": "RPA Demo"
     },
     "background": {
-        "service_worker": "sw.js"
+        "service_worker": "sw.js",
+        "type": "module"
     },
     "content_scripts": [
         {
