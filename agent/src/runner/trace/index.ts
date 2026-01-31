@@ -7,3 +7,4 @@ export * from './sink';
 export * from './hooks';
 export * from './trace_call';
 export * from './a11y_adopt';
+export * from './tools';
