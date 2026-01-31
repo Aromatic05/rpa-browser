@@ -6,11 +6,35 @@
 
 ### P0
 
-- [P0] 统一等待与超时策略
-  - Where: `agent/src/runner/actions/*`, `agent/src/runner/execute.ts`
-  - Problem: 各动作使用的 `timeout`/`waitForTimeout`/`waitForLoadState` 不一致且分散
-  - Impact: 不稳定的等待导致 flaky、超时与行为不一致
+- [P0] 工具统一等待/超时策略入口缺失
+  - Where: `agent/src/runner/execute.ts`, `agent/src/runner/actions/*`
+  - Problem: 等待与超时分散在各动作，缺少统一入口
+  - Impact: 行为不一致、易 flake、难调参
   - Evidence: `element_click.ts`/`element_scroll.ts`/`navigation.ts`/`click.ts`/`type.ts` 各自硬编码等待与超时
+
+- [P0] 行为参数分散（BehaviorPolicy/Persona 入口缺失）
+  - Where: `agent/src/index.ts`, `agent/src/demo/server.ts`, `agent/src/play/replay.ts`, `agent/src/runner/actions/scroll.ts`
+  - Problem: 人类化延迟、滚动、鼠标行为散落在多处
+  - Impact: 无法统一控制行为策略、难以复现
+  - Evidence: `CLICK_DELAY_MS`/`REPLAY_STEP_DELAY_MS`/`SCROLL_CONFIG` 与 `scroll.ts` 内随机逻辑并存
+
+- [P0] strict violation/歧义目标未结构化处理（需要 candidates）
+  - Where: `agent/src/runtime/target_resolver.ts`, `agent/src/runner/tool_registry.ts`, `agent/src/runner/actions/locators.ts`
+  - Problem: tool schema 允许裸 selector；失败时仅返回文本错误
+  - Impact: 模型可能乱写 selector，错误不可审查
+  - Evidence: `tool_registry.ts` 中 `target.selector` 必填；`target_resolver.ts` 仅接受 selector；错误映射为 `ERR_BAD_ARGS`
+
+- [P0] 工具 API 与人类操作模型不统一（仅用变量区分）
+  - Where: `agent/src/runner/commands.ts`, `agent/src/record/recorder_payload.ts`, `agent/src/play/replay.ts`, `agent/src/runner/tool_registry.ts`
+  - Problem: 录制/回放/工具调用的模型未统一到同一 Action/Command 体系
+  - Impact: 审计与回放难以一致化
+  - Evidence: `RecordedEvent` 与 `Command` 结构不同，回放中手工映射 `RecordedEvent -> Command`
+
+- [P0] Idle 行为缺少集中管理与可复现控制
+  - Where: `agent/src/runner/*`, `agent/src/demo/agent_loop.ts`
+  - Problem: 无统一 idle/think 行为管理
+  - Impact: 行为不可复现，难以审计
+  - Evidence: Not found / missing module（未发现 idle policy 或开关）
 
 - [P0] 录制/回放缺少串行队列与状态机
   - Where: `agent/src/record/recording.ts`, `agent/src/play/replay.ts`, `agent/src/runner/actions/recording.ts`
@@ -22,13 +46,13 @@
   - Where: `agent/src/runner/execute.ts`, `agent/src/runner/actions/*`
   - Problem: 仅部分路径返回结构化错误，部分异常直接抛出
   - Impact: 调用端难以统一处理失败原因
-  - Evidence: `execute.ts` 中依赖 ActionError，但 actions 内仍直接 throw Error
+  - Evidence: `execute.ts` 依赖 ActionError，但多个 actions 内直接 `throw new Error(...)`
 
 - [P0] Selector/Target 解析分裂
   - Where: `agent/src/runtime/target_resolver.ts`, `agent/src/runner/actions/locators.ts`, `agent/src/runner/actions/click.ts`
   - Problem: 同时存在运行时 target_resolver 与 actions 内部的 locators
   - Impact: 行为不一致，难以统一定位策略
-  - Evidence: `click.ts`/`type.ts` 使用 `actions/locators.ts`，而 execute 走 `runtime/target_resolver.ts`
+  - Evidence: `click.ts`/`type.ts` 使用 `actions/locators.ts`，而 `execute.ts` 走 `runtime/target_resolver.ts`
 
 - [P0] A11y 输出与错误信息结构化不足
   - Where: `agent/src/runner/actions/a11y.ts`
@@ -61,12 +85,19 @@
 
 ### P2
 
-- [P2] Session/Workspace 概念未持久化
-  - Where: `agent/src/demo/workspace_manager.ts`, `agent/src/runtime/page_registry.ts`
-  - Problem: demo 的 workspace 仅内存级，agent 端缺少持久状态
-  - Impact: 无法恢复会话或并行多个 session
-  - Evidence: workspace 仅在 demo 进程内维护
-  - Notes: Architecture Evolution
+- [P2] Session/Workspace registry 缺失（并行/恢复边界）
+  - Where: `agent/src/runtime/page_registry.ts`, `agent/src/demo/workspace_manager.ts`
+  - Problem: 仅有 tabToken->Page 映射，没有 session 级 registry
+  - Impact: 无法并行/恢复 session；DSL 日志无法关联 sessionId
+  - Evidence: `page_registry.ts` 只维护 token->page；demo workspace 仅内存级
+  - Notes: Architecture Evolution（DSL/日志字段需预留 sessionId）
+
+- [P2] TabGroup 模型缺失（跨页面读写）
+  - Where: `agent/src/runtime/page_registry.ts`, `agent/src/play/replay.ts`
+  - Problem: 当前仅支持单 Page 绑定，不存在 tabGroup 抽象
+  - Impact: 无法跨页面读写与分组管理
+  - Evidence: Not found / missing module（未发现 tabGroup 结构）
+  - Notes: Architecture Evolution（DSL/日志字段需预留 tabId/groupId）
 
 - [P2] 行为模式（fast vs humanlike）未统一
   - Where: `agent/src/runner/actions/*`, `agent/src/play/replay.ts`
@@ -180,11 +211,21 @@
   - `runner/actions/recording.ts`
   - `runner/actions/dialogs_popups.ts`
 
+- L3 Orchestration（编排层）
+  - `demo/agent_loop.ts`
+  - `demo/server.ts`
+  - `mcp/server.ts`
+  - `mcp/tool_handlers.ts`
+  - `runner/tool_registry.ts`
+
 ### 重复/交叉
 
 - `click.ts` vs `element_click.ts`：两套 click 实现
 - `scroll.ts` vs `element_scroll.ts`：滚动行为分散
 - `type.ts` vs `element_form.ts`：输入逻辑分散
+- `navigate.ts` vs `navigation.ts`：导航命令实现分裂
+- `keydown.ts` vs `keyboard_mouse.ts`：键盘操作入口重复
+- `locators.ts` vs `element_choice.ts`：定位与选择策略交叉
 
 ### 需要下沉为 primitives 的缺口（只列问题）
 
