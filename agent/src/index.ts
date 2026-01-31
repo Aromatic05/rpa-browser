@@ -1,4 +1,4 @@
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
@@ -33,6 +33,15 @@ const pageRegistry = createPageRegistry({
     onPageBound: (page, token) => {
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
+        }
+        try {
+            const scope = pageRegistry.resolveScopeFromToken(token);
+            broadcast({
+                event: 'page.bound',
+                data: { workspaceId: scope.workspaceId, tabId: scope.tabId, url: page.url() },
+            });
+        } catch {
+            // ignore scope resolution failures
         }
     },
     onTokenClosed: (token) => cleanupRecording(recordingState, token),
@@ -87,12 +96,27 @@ const handleCommand = async (payload?: Command) => {
 };
 
 const wss = new WebSocketServer({ host: '127.0.0.1', port: 17333 });
+const wsClients = new Set<WebSocket>();
+
+const broadcast = (event: { event: string; data?: Record<string, unknown> }) => {
+    const payload = JSON.stringify({ type: 'event', ...event });
+    wsClients.forEach((client) => {
+        try {
+            if (client.readyState === client.OPEN) {
+                client.send(payload);
+            }
+        } catch {
+            // ignore send failures
+        }
+    });
+};
 
 wss.on('listening', () => {
     log('WS listening on ws://127.0.0.1:17333');
 });
 
 wss.on('connection', (socket) => {
+    wsClients.add(socket);
     socket.on('message', (data) => {
         let payload: { cmd?: Command } | undefined;
         try {
@@ -104,8 +128,32 @@ wss.on('connection', (socket) => {
 
         (async () => {
             try {
-                const response = await handleCommand(payload?.cmd);
-                socket.send(JSON.stringify(response));
+                const command = (payload as any)?.type === 'cmd' ? (payload as any).cmd : payload?.cmd;
+                const response = await handleCommand(command);
+                if ((payload as any)?.type === 'cmd') {
+                    socket.send(
+                        JSON.stringify({
+                            type: 'result',
+                            requestId: command?.requestId,
+                            payload: response,
+                        }),
+                    );
+                } else {
+                    socket.send(JSON.stringify(response));
+                }
+                if (command?.cmd && response?.ok) {
+                    const data = response.data as any;
+                    if (command.cmd.startsWith('workspace.') || command.cmd.startsWith('tab.')) {
+                        broadcast({
+                            event: 'workspace.changed',
+                            data: {
+                                workspaceId: data?.workspaceId,
+                                tabId: data?.tabId,
+                                cmd: command.cmd,
+                            },
+                        });
+                    }
+                }
             } catch (error) {
                 socket.send(
                     JSON.stringify({
@@ -115,6 +163,9 @@ wss.on('connection', (socket) => {
                 );
             }
         })();
+    });
+    socket.on('close', () => {
+        wsClients.delete(socket);
     });
 });
 
