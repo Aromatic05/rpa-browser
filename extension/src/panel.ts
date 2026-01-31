@@ -31,6 +31,7 @@ const outEl = document.getElementById('out') as HTMLPreElement;
 
 let state: PanelState = initState();
 const supportsGroups = typeof chrome !== 'undefined' && !!chrome.tabs && !!chrome.tabGroups;
+const recentWorkspaceIds: string[] = [];
 
 const renderLog = (response: unknown) => {
     outEl.textContent = JSON.stringify(response, null, 2);
@@ -46,6 +47,22 @@ const setState = (next: PanelState) => {
     renderTabList();
 };
 
+const rememberWorkspace = (workspaceId: string | null) => {
+    if (!workspaceId) return;
+    const index = recentWorkspaceIds.indexOf(workspaceId);
+    if (index >= 0) {
+        recentWorkspaceIds.splice(index, 1);
+    }
+    recentWorkspaceIds.unshift(workspaceId);
+};
+
+const pickFallbackWorkspace = (workspaces: WorkspaceItem[]) => {
+    for (const id of recentWorkspaceIds) {
+        if (workspaces.find((ws) => ws.workspaceId === id)) return id;
+    }
+    return workspaces[0]?.workspaceId || null;
+};
+
 const renderWorkspaceList = () => {
     workspaceList.innerHTML = '';
     state.workspaces.forEach((ws) => {
@@ -59,6 +76,7 @@ const renderWorkspaceList = () => {
         }
         btn.addEventListener('click', async () => {
             setState(selectWorkspace(state, ws.workspaceId));
+            rememberWorkspace(ws.workspaceId);
             await sendPanelCommand('workspace.setActive', { workspaceId: ws.workspaceId });
             await refreshTabs();
         });
@@ -95,18 +113,29 @@ const renderTabList = () => {
                 tabId: tab.tabId,
             });
             const workspacesResp = await sendPanelCommand('workspace.list');
-            const tabsResp = await sendPanelCommand('tab.list', {
-                workspaceId: state.activeWorkspaceId || undefined,
-            });
-            const nextWorkspaces = (workspacesResp?.data?.workspaces || []) as WorkspaceItem[];
-            const nextTabs = (tabsResp?.data?.tabs || []) as TabItem[];
-            setState(handleCloseTab(state, state.activeWorkspaceId || '', nextTabs, nextWorkspaces));
-            if (!nextTabs.length && nextWorkspaces.length) {
-                const newActive = nextWorkspaces[0].workspaceId;
-                await sendPanelCommand('workspace.setActive', { workspaceId: newActive });
-                setState(selectWorkspace(state, newActive));
+            const rawWorkspaces = (workspacesResp?.data?.workspaces || []) as WorkspaceItem[];
+            if (!rawWorkspaces.length) {
+                const created = await sendPanelCommand('workspace.create');
+                await openStartPage(created?.data?.workspaceId, created?.data?.tabId);
+                await refreshWorkspaces();
                 await refreshTabs();
+                return;
             }
+            const namedWorkspaces = await withWorkspaceDisplayNames(rawWorkspaces);
+            const filtered = namedWorkspaces.filter((ws) => ws.tabCount > 0);
+            const fallbackId = pickFallbackWorkspace(filtered);
+            if (fallbackId) {
+                await sendPanelCommand('workspace.setActive', { workspaceId: fallbackId });
+                setState(selectWorkspace(state, fallbackId));
+                rememberWorkspace(fallbackId);
+            }
+            const tabsResp = await sendPanelCommand('tab.list', {
+                workspaceId: fallbackId || undefined,
+            });
+            const rawTabs = (tabsResp?.data?.tabs || []) as TabItem[];
+            const namedTabs =
+                fallbackId && rawTabs.length ? await withTabDisplayNames(fallbackId, rawTabs) : [];
+            setState(handleCloseTab(state, state.activeWorkspaceId || '', namedTabs, filtered));
         });
         row.appendChild(btn);
         row.appendChild(closeBtn);
@@ -153,8 +182,14 @@ stopReplayButton.addEventListener('click', () => sendPanelCommand('record.stopRe
 const refreshWorkspaces = async () => {
     const response = await sendPanelCommand('workspace.list');
     if (response?.data?.workspaces) {
+        if (response.data.workspaces.length === 0) {
+            const created = await sendPanelCommand('workspace.create');
+            await openStartPage(created?.data?.workspaceId, created?.data?.tabId);
+            return refreshWorkspaces();
+        }
         const named = await withWorkspaceDisplayNames(response.data.workspaces as WorkspaceItem[]);
         setState(applyWorkspaces(state, named));
+        rememberWorkspace(state.activeWorkspaceId);
     }
 };
 
@@ -174,6 +209,7 @@ const refreshTabs = async () => {
 newWorkspaceButton.addEventListener('click', async () => {
     const response = await sendPanelCommand('workspace.create');
     await openStartPage(response?.data?.workspaceId, response?.data?.tabId);
+    rememberWorkspace(response?.data?.workspaceId || null);
     await refreshWorkspaces();
 });
 refreshWorkspaceButton.addEventListener('click', refreshWorkspaces);

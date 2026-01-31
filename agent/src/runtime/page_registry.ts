@@ -325,6 +325,12 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             workspace.activeTabId = workspace.tabs.keys().next().value;
         }
         touchWorkspace(workspace);
+        if (workspace.tabs.size === 0) {
+            workspaces.delete(workspaceId);
+            if (activeWorkspaceId === workspaceId) {
+                activeWorkspaceId = workspaces.keys().next().value || null;
+            }
+        }
     };
 
     const setActiveTab = (workspaceId: WorkspaceId, tabId: TabId) => {

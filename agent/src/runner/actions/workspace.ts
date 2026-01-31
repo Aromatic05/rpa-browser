@@ -22,6 +22,18 @@ const resolveWorkspaceId = (
     return active?.id || null;
 };
 
+const bringWorkspaceTabToFront = async (
+    ctx: { pageRegistry: any },
+    scope: { workspaceId: string; tabId?: string },
+) => {
+    try {
+        const page = await ctx.pageRegistry.resolvePage(scope);
+        await page.bringToFront();
+    } catch {
+        // ignore tab focus failures
+    }
+};
+
 export const workspaceHandlers: Record<string, ActionHandler> = {
     'workspace.list': async (ctx, _command) => {
         const list = ctx.pageRegistry.listWorkspaces();
@@ -38,6 +50,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     'workspace.setActive': async (ctx, command) => {
         const args = (command as WorkspaceSetActiveCommand).args;
         ctx.pageRegistry.setActiveWorkspace(args.workspaceId);
+        await bringWorkspaceTabToFront(ctx, { workspaceId: args.workspaceId });
         return { ok: true, tabToken: ctx.tabToken, data: { workspaceId: args.workspaceId } };
     },
     'tab.list': async (ctx, command) => {
@@ -74,6 +87,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         ctx.pageRegistry.setActiveTab(workspaceId, args.tabId);
+        await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: args.tabId });
         return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId: args.tabId } };
     },
 };

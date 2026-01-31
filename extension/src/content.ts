@@ -311,12 +311,45 @@ import { getStartPageUrl } from './start_page';
     closeTabBtn.addEventListener('click', () => {
         if (!activeTabId) return;
         if (activeWorkspaceId) {
-            sendPanelCommand('tab.close', { workspaceId: activeWorkspaceId, tabId: activeTabId }, undefined, () => {
-                refreshTabs();
-            });
+            sendPanelCommand(
+                'tab.close',
+                { workspaceId: activeWorkspaceId, tabId: activeTabId },
+                undefined,
+                () => {
+                    sendPanelCommand('workspace.list', {}, undefined, (payload) => {
+                        const workspaces = payload?.data?.workspaces || [];
+                        if (!workspaces.length) {
+                            sendPanelCommand('workspace.create', {}, undefined, (created) => {
+                                activeWorkspaceId = created?.data?.workspaceId || null;
+                                openStartPage(created?.data?.workspaceId, created?.data?.tabId);
+                                refreshWorkspaces();
+                                refreshTabs();
+                            });
+                            return;
+                        }
+                        activeWorkspaceId = workspaces[0].workspaceId;
+                        sendPanelCommand('workspace.setActive', { workspaceId: activeWorkspaceId });
+                        refreshTabs();
+                    });
+                },
+            );
         } else {
             sendPanelCommand('tab.close', { tabId: activeTabId }, undefined, () => {
-                refreshTabs();
+                sendPanelCommand('workspace.list', {}, undefined, (payload) => {
+                    const workspaces = payload?.data?.workspaces || [];
+                    if (!workspaces.length) {
+                        sendPanelCommand('workspace.create', {}, undefined, (created) => {
+                            activeWorkspaceId = created?.data?.workspaceId || null;
+                            openStartPage(created?.data?.workspaceId, created?.data?.tabId);
+                            refreshWorkspaces();
+                            refreshTabs();
+                        });
+                        return;
+                    }
+                    activeWorkspaceId = workspaces[0].workspaceId;
+                    sendPanelCommand('workspace.setActive', { workspaceId: activeWorkspaceId });
+                    refreshTabs();
+                });
             });
         }
     });
