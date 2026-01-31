@@ -13,7 +13,7 @@ import {
     resetMetaStore,
     updateWorkspaceMeta,
 } from '../services/name_store.js';
-import { safeGroupActiveTab, supportsTabGrouping } from '../tab_grouping.js';
+import { safeGroupActiveTab, supportsTabGrouping } from '../services/tab_grouping.js';
 import { createLogger } from '../shared/logger.js';
 import type { CmdEnvelope, WsEventPayload } from '../shared/types.js';
 import { resolveScope } from './scope_resolver.js';

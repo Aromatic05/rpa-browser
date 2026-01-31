@@ -1,4 +1,12 @@
-import type { TabGroupColor } from './services/name_store.js';
+/**
+ * tabGroups 分组服务：封装 chrome.tabGroups/tabs.group 细节。
+ *
+ * 降级策略：
+ * - API 不可用时返回 unsupported，不抛出异常。
+ * - 调用失败返回 failed，业务层继续运行。
+ */
+
+import type { TabGroupColor } from './name_store.js';
 
 export type GroupingResult =
     | { ok: true; groupId: number }

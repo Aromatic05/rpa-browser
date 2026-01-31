@@ -19,7 +19,7 @@ import {
     type WorkspaceItem,
 } from '../../state/workspace_state.js';
 import { withTabDisplayNames, withWorkspaceDisplayNames } from '../../services/name_store.js';
-import { getMockStartUrl } from '../../mock_config.js';
+import { getMockStartUrl } from '../../services/mock_config.js';
 import { createUiLogger } from '../log/ui_log.js';
 
 export const initPanelApp = () => {
