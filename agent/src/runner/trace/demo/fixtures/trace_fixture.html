@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Trace Fixture</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                padding: 16px;
+            }
+            #scroll-box {
+                height: 120px;
+                overflow: auto;
+                border: 1px solid #ccc;
+                padding: 8px;
+                margin-top: 12px;
+            }
+            .item {
+                height: 24px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Trace Fixture</h1>
+        <p id="status">idle</p>
+
+        <button id="btn-action">Do Action</button>
+
+        <div style="margin-top: 12px;">
+            <label for="name-input">Name</label>
+            <input id="name-input" type="text" />
+        </div>
+
+        <div id="scroll-box" role="region" aria-label="Scroll Area">
+            <div class="item">Item 1</div>
+            <div class="item">Item 2</div>
+            <div class="item">Item 3</div>
+            <div class="item">Item 4</div>
+            <div class="item">Item 5</div>
+            <div class="item">Item 6</div>
+            <div class="item">Item 7</div>
+            <div class="item">Item 8</div>
+            <div class="item">Item 9</div>
+            <div class="item">Item 10</div>
+        </div>
+
+        <script>
+            const btn = document.getElementById('btn-action');
+            const status = document.getElementById('status');
+            btn.addEventListener('click', () => {
+                status.textContent = 'clicked';
+            });
+        </script>
+    </body>
+</html>
