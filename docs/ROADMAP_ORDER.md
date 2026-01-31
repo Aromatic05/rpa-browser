@@ -32,6 +32,8 @@
   - Why first: 会话抽象是后续 DSL 与多 tab 的基础
   - Depends on: 0A 的工具链稳定（避免在不稳定基础上固化抽象）
 
+> 当前仓库已具备 **workspace -> tabs** 的最小运行时模型（内存态）；后续重点转向持久化与恢复能力。
+
 - TabGroup 模型缺失（跨页面读写）
   - Why first: 数据模型字段需尽早预留以避免后续返工
   - Depends on: Session/Workspace 抽象先确立
@@ -88,8 +90,8 @@
 
 ## Optional Phase 3 (P3) Full Parallel Sessions + Recovery + TabGroup UI polish
 
-- Session/Workspace 持久化
-  - Why first: 支撑恢复与并行
+- Session/Workspace 持久化与恢复
+  - Why first: 支撑重启后恢复与并行管理
   - Depends on: P0B 会话抽象与 P1 DSL 日志落地
 
 - TabGroup 支持跨页面读取/写入

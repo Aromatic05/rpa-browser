@@ -85,11 +85,11 @@
 
 ### P2
 
-- [P2] Session/Workspace registry 缺失（并行/恢复边界）
-  - Where: `agent/src/runtime/page_registry.ts`, `agent/src/demo/workspace_manager.ts`
-  - Problem: 仅有 tabToken->Page 映射，没有 session 级 registry
-  - Impact: 无法并行/恢复 session；DSL 日志无法关联 sessionId
-  - Evidence: `page_registry.ts` 只维护 token->page；demo workspace 仅内存级
+- [P2] Session/Workspace 持久化与恢复缺失
+  - Where: `agent/src/runtime/page_registry.ts`
+  - Problem: 已有 workspace/tabs 运行时模型，但缺少持久化与恢复能力
+  - Impact: 重启后会话丢失，无法恢复并行 session
+  - Evidence: `page_registry.ts` 仅内存 Map，无落盘/恢复逻辑
   - Notes: Architecture Evolution（DSL/日志字段需预留 sessionId）
 
 - [P2] TabGroup 模型缺失（跨页面读写）
