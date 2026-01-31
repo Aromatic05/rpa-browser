@@ -1,7 +1,10 @@
+import { ensureWorkspaceMeta, updateWorkspaceMeta } from './name_store';
+
 const tabState = new Map<number, { tabToken: string; lastUrl: string; updatedAt: number }>();
 let activeTabId: number | null = null;
 let activeWorkspaceId: string | null = null;
 let activeScopeTabId: string | null = null;
+const supportsTabGroups = typeof chrome !== 'undefined' && !!chrome.tabs?.group && !!chrome.tabGroups;
 
 const log = (...args: unknown[]) => console.log('[RPA:sw]', ...args);
 
@@ -108,6 +111,42 @@ const getActiveTabToken = async () => {
     return { tabId, tabToken: tabInfo.tabToken, urlHint: tabInfo.lastUrl };
 };
 
+const ensureGroupedActiveTab = async (workspaceId: string) => {
+    if (!supportsTabGroups) return;
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const active = tabs[0];
+    if (!active?.id) return;
+    const meta = await ensureWorkspaceMeta(workspaceId);
+    let groupId = meta.groupId;
+    try {
+        if (groupId != null) {
+            try {
+                await chrome.tabGroups.get(groupId);
+            } catch {
+                groupId = undefined;
+            }
+        }
+        if (groupId == null) {
+            groupId = await chrome.tabs.group({ tabIds: [active.id] });
+            await updateWorkspaceMeta(workspaceId, { groupId });
+        } else {
+            await chrome.tabs.group({ tabIds: [active.id], groupId });
+        }
+        if (groupId != null) {
+            try {
+                await chrome.tabGroups.update(groupId, {
+                    title: meta.displayName,
+                    color: meta.color || 'blue',
+                });
+            } catch {
+                // ignore tab group update failures
+            }
+        }
+    } catch {
+        log('tab group failed', { workspaceId });
+    }
+};
+
 chrome.tabs.onActivated.addListener((info: chrome.tabs.TabActiveInfo) => {
     activeTabId = info.tabId;
     log('active tab', activeTabId);
@@ -177,7 +216,20 @@ chrome.runtime.onMessage.addListener(
                     activeScopeTabId = scopeTabId;
                 }
                 log('panel command', command);
-                sendToAgent(command, sendResponse);
+                const handleResponse = (payload: any) => {
+                    sendResponse(payload);
+                    const effectiveWorkspaceId =
+                        payload?.data?.workspaceId || workspaceId || activeWorkspaceId;
+                    if (!payload?.ok || !effectiveWorkspaceId) return;
+                    if (
+                        message.cmd === 'workspace.create' ||
+                        message.cmd === 'tab.create' ||
+                        message.cmd === 'workspace.setActive'
+                    ) {
+                        void ensureGroupedActiveTab(effectiveWorkspaceId);
+                    }
+                };
+                sendToAgent(command, handleResponse);
             })();
             return true;
         }

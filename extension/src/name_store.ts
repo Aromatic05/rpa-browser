@@ -9,6 +9,23 @@ export type TabGroupColor =
     | 'cyan'
     | 'orange';
 
+export const ALLOWED_GROUP_COLORS: TabGroupColor[] = [
+    'grey',
+    'blue',
+    'red',
+    'yellow',
+    'green',
+    'pink',
+    'purple',
+    'cyan',
+    'orange',
+];
+
+export const pickRandomGroupColor = (rng: () => number = Math.random): TabGroupColor => {
+    const index = Math.floor(rng() * ALLOWED_GROUP_COLORS.length);
+    return ALLOWED_GROUP_COLORS[index] || 'blue';
+};
+
 export type WorkspaceMeta = {
     displayName: string;
     groupId?: number;
@@ -76,14 +93,39 @@ export const ensureWorkspaceMeta = async (
             displayName: `Workspace ${meta.nextWorkspaceIndex}`,
             createdAt: now,
             updatedAt: now,
+            color: pickRandomGroupColor(),
         };
         meta.nextWorkspaceIndex += 1;
         meta.workspaces[workspaceId] = workspace;
         meta.tabs[workspaceId] = meta.tabs[workspaceId] || {};
         meta.nextTabIndexByWorkspace[workspaceId] = meta.nextTabIndexByWorkspace[workspaceId] || 1;
         await saveMetaStore(meta, storage);
+        return workspace;
+    }
+    if (!workspace.color) {
+        workspace.color = pickRandomGroupColor();
+        workspace.updatedAt = Date.now();
+        meta.workspaces[workspaceId] = workspace;
+        await saveMetaStore(meta, storage);
     }
     return workspace;
+};
+
+export const updateWorkspaceMeta = async (
+    workspaceId: string,
+    updates: Partial<WorkspaceMeta>,
+    storage?: StorageLike,
+): Promise<WorkspaceMeta | null> => {
+    const meta = await loadMetaStore(storage);
+    const existing = meta.workspaces[workspaceId];
+    if (!existing) return null;
+    meta.workspaces[workspaceId] = {
+        ...existing,
+        ...updates,
+        updatedAt: Date.now(),
+    };
+    await saveMetaStore(meta, storage);
+    return meta.workspaces[workspaceId];
 };
 
 export const ensureTabMeta = async (
@@ -122,6 +164,7 @@ export const withWorkspaceDisplayNames = async <T extends { workspaceId: string 
                 displayName: `Workspace ${meta.nextWorkspaceIndex}`,
                 createdAt: now,
                 updatedAt: now,
+                color: pickRandomGroupColor(),
             };
             meta.nextWorkspaceIndex += 1;
             meta.tabs[workspace.workspaceId] = meta.tabs[workspace.workspaceId] || {};

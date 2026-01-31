@@ -30,7 +30,6 @@ const tabList = document.getElementById('tabList') as HTMLDivElement;
 const outEl = document.getElementById('out') as HTMLPreElement;
 
 let state: PanelState = initState();
-const workspaceGroups = new Map<string, number>();
 const supportsGroups = typeof chrome !== 'undefined' && !!chrome.tabs && !!chrome.tabGroups;
 
 const renderLog = (response: unknown) => {
@@ -172,34 +171,10 @@ const refreshTabs = async () => {
     }
 };
 
-const tryGroupCurrentTab = async (workspaceId: string) => {
-    if (!supportsGroups || typeof chrome.tabs.group !== 'function') {
-        logMessage('Tab groups not available; skipping grouping.');
-        return;
-    }
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const active = tabs[0];
-    if (!active?.id) return;
-    let groupId = workspaceGroups.get(workspaceId);
-    try {
-        if (groupId == null) {
-            groupId = await chrome.tabs.group({ tabIds: [active.id] });
-            workspaceGroups.set(workspaceId, groupId);
-        } else {
-            await chrome.tabs.group({ tabIds: [active.id], groupId });
-        }
-    } catch {
-        logMessage('Failed to group tab; continuing without grouping.');
-    }
-};
-
 newWorkspaceButton.addEventListener('click', async () => {
     const response = await sendPanelCommand('workspace.create');
     await openStartPage(response?.data?.workspaceId, response?.data?.tabId);
     await refreshWorkspaces();
-    if (response?.data?.workspaceId) {
-        await tryGroupCurrentTab(response.data.workspaceId);
-    }
 });
 refreshWorkspaceButton.addEventListener('click', refreshWorkspaces);
 newTabButton.addEventListener('click', async () => {
@@ -207,9 +182,6 @@ newTabButton.addEventListener('click', async () => {
     const response = await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId });
     await openStartPage(scope.workspaceId, response?.data?.tabId);
     await refreshTabs();
-    if (scope.workspaceId && response?.data?.tabId) {
-        await tryGroupCurrentTab(scope.workspaceId);
-    }
 });
 refreshTabsButton.addEventListener('click', refreshTabs);
 

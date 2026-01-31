@@ -3,7 +3,7 @@
     "name": "RPA Browser Demo",
     "version": "0.1.0",
     "description": "MV3 tabToken demo with agent recording.",
-    "permissions": ["storage", "activeTab", "scripting", "tabs"],
+    "permissions": ["storage", "activeTab", "scripting", "tabs", "tabGroups"],
     "host_permissions": ["<all_urls>"],
     "side_panel": {
         "default_path": "panel.html"
