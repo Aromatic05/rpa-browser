@@ -224,17 +224,21 @@
         });
     };
 
-    const openStartPage = (workspaceId?: string, tabId?: string) => {
-        if (!workspaceId || !tabId) return;
+    const createWithStartUrl = (
+        cmd: 'workspace.create' | 'tab.create',
+        args: Record<string, unknown>,
+        onDone?: (payload: any) => void,
+    ) => {
         getMockStartUrl((startPageUrl) => {
             sendPanelCommand(
-                'page.goto',
-                { url: startPageUrl, waitUntil: 'domcontentloaded' },
-                { workspaceId, tabId },
+                cmd,
+                { ...args, startUrl: startPageUrl },
+                undefined,
                 (payload) => {
                     if (payload?.ok === false) {
                         render({ ok: false, error: `Mock start page unreachable: ${startPageUrl}` });
                     }
+                    onDone?.(payload);
                 },
             );
         });
@@ -302,11 +306,10 @@
     };
 
     newWorkspaceBtn.addEventListener('click', () => {
-        sendPanelCommand('workspace.create', {}, undefined, (payload) => {
+        createWithStartUrl('workspace.create', {}, (payload) => {
             if (payload?.data?.workspaceId) {
                 activeWorkspaceId = payload.data.workspaceId;
             }
-            openStartPage(payload?.data?.workspaceId, payload?.data?.tabId);
             refreshWorkspaces();
             refreshTabs();
         });
@@ -314,13 +317,14 @@
 
     newTabBtn.addEventListener('click', () => {
         if (activeWorkspaceId) {
-            sendPanelCommand('tab.create', { workspaceId: activeWorkspaceId }, undefined, (payload) => {
-                openStartPage(activeWorkspaceId ?? undefined, payload?.data?.tabId);
+            createWithStartUrl('tab.create', { workspaceId: activeWorkspaceId }, (payload) => {
+                activeTabId = payload?.data?.tabId || activeTabId;
                 refreshTabs();
             });
         } else {
-            sendPanelCommand('tab.create', {}, undefined, (payload) => {
-                openStartPage(payload?.data?.workspaceId, payload?.data?.tabId);
+            createWithStartUrl('tab.create', {}, (payload) => {
+                activeWorkspaceId = payload?.data?.workspaceId || activeWorkspaceId;
+                activeTabId = payload?.data?.tabId || activeTabId;
                 refreshTabs();
             });
         }
@@ -337,9 +341,8 @@
                     sendPanelCommand('workspace.list', {}, undefined, (payload) => {
                         const workspaces = payload?.data?.workspaces || [];
                         if (!workspaces.length) {
-                            sendPanelCommand('workspace.create', {}, undefined, (created) => {
+                            createWithStartUrl('workspace.create', {}, (created) => {
                                 activeWorkspaceId = created?.data?.workspaceId || null;
-                                openStartPage(created?.data?.workspaceId, created?.data?.tabId);
                                 refreshWorkspaces();
                                 refreshTabs();
                             });
@@ -356,9 +359,8 @@
                 sendPanelCommand('workspace.list', {}, undefined, (payload) => {
                     const workspaces = payload?.data?.workspaces || [];
                     if (!workspaces.length) {
-                        sendPanelCommand('workspace.create', {}, undefined, (created) => {
+                        createWithStartUrl('workspace.create', {}, (created) => {
                             activeWorkspaceId = created?.data?.workspaceId || null;
-                            openStartPage(created?.data?.workspaceId, created?.data?.tabId);
                             refreshWorkspaces();
                             refreshTabs();
                         });
@@ -383,4 +385,10 @@
 
     refreshWorkspaces();
     refreshTabs();
+
+    chrome.runtime.onMessage.addListener((message: any) => {
+        if (message?.type !== 'RPA_REFRESH') return;
+        refreshWorkspaces();
+        refreshTabs();
+    });
 })();

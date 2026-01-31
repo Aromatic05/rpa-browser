@@ -115,8 +115,11 @@ const renderTabList = () => {
             const workspacesResp = await sendPanelCommand('workspace.list');
             const rawWorkspaces = (workspacesResp?.data?.workspaces || []) as WorkspaceItem[];
             if (!rawWorkspaces.length) {
-                const created = await sendPanelCommand('workspace.create');
-                await openStartPage(created?.data?.workspaceId, created?.data?.tabId);
+                const startUrl = await prepareStartUrl();
+                const created = await sendPanelCommand('workspace.create', { startUrl });
+                if (created?.ok === false) {
+                    logMessage(`Mock start page unreachable: ${startUrl}`);
+                }
                 await refreshWorkspaces();
                 await refreshTabs();
                 return;
@@ -161,18 +164,7 @@ const sendPanelCommand = (
         });
     });
 
-const openStartPage = async (workspaceId?: string, tabId?: string) => {
-    if (!workspaceId || !tabId) return;
-    const startPageUrl = await getMockStartUrl();
-    const result = await sendPanelCommand(
-        'page.goto',
-        { url: startPageUrl, waitUntil: 'domcontentloaded' },
-        { workspaceId, tabId },
-    );
-    if (result?.ok === false) {
-        logMessage(`Mock start page unreachable: ${startPageUrl}`);
-    }
-};
+const prepareStartUrl = async () => getMockStartUrl();
 
 startButton.addEventListener('click', () => sendPanelCommand('record.start'));
 stopButton.addEventListener('click', () => sendPanelCommand('record.stop'));
@@ -185,8 +177,11 @@ const refreshWorkspaces = async () => {
     const response = await sendPanelCommand('workspace.list');
     if (response?.data?.workspaces) {
         if (response.data.workspaces.length === 0) {
-            const created = await sendPanelCommand('workspace.create');
-            await openStartPage(created?.data?.workspaceId, created?.data?.tabId);
+            const startUrl = await prepareStartUrl();
+            const created = await sendPanelCommand('workspace.create', { startUrl });
+            if (created?.ok === false) {
+                logMessage(`Mock start page unreachable: ${startUrl}`);
+            }
             return refreshWorkspaces();
         }
         const named = await withWorkspaceDisplayNames(response.data.workspaces as WorkspaceItem[]);
@@ -209,16 +204,22 @@ const refreshTabs = async () => {
 };
 
 newWorkspaceButton.addEventListener('click', async () => {
-    const response = await sendPanelCommand('workspace.create');
-    await openStartPage(response?.data?.workspaceId, response?.data?.tabId);
+    const startUrl = await prepareStartUrl();
+    const response = await sendPanelCommand('workspace.create', { startUrl });
+    if (response?.ok === false) {
+        logMessage(`Mock start page unreachable: ${startUrl}`);
+    }
     rememberWorkspace(response?.data?.workspaceId || null);
     await refreshWorkspaces();
 });
 refreshWorkspaceButton.addEventListener('click', refreshWorkspaces);
 newTabButton.addEventListener('click', async () => {
     const scope = planNewTabScope(state);
-    const response = await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId });
-    await openStartPage(scope.workspaceId, response?.data?.tabId);
+    const startUrl = await prepareStartUrl();
+    const response = await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId, startUrl });
+    if (response?.ok === false) {
+        logMessage(`Mock start page unreachable: ${startUrl}`);
+    }
     await refreshTabs();
 });
 refreshTabsButton.addEventListener('click', refreshTabs);
@@ -229,6 +230,12 @@ const init = async () => {
 };
 
 void init();
+
+chrome.runtime.onMessage.addListener((message: any) => {
+    if (message?.type !== 'RPA_REFRESH') return;
+    void refreshWorkspaces();
+    void refreshTabs();
+});
 
 enableVerticalTabsButton.addEventListener('click', () => {
     logMessage('Vertical tabs cannot be enabled programmatically. Please enable in Chrome settings/flags.');
