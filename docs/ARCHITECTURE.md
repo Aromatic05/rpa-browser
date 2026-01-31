@@ -6,6 +6,8 @@
 
 - `extension/`：MV3 Chrome 扩展，注入 UI、生成 `tabToken` 并转发命令。
 - `agent/`：基于 Node + Playwright 的代理，负责浏览器、录制、回放和执行动作。
+- `agent/src/demo/*`：本地 Chat Demo（HTTP 服务 + UI + LLM agent loop）。
+- `agent/src/mcp/*`：MCP stdio server 入口（可选模式）。
 
 扩展不会直接执行自动化操作。它只向 service worker 发送 `CMD` 消息。由 agent 在 Playwright 中执行所有动作。
 
@@ -29,6 +31,7 @@
 - `agent/src/runner/actions/*`：动作实现。
 - `agent/src/runner/commands.ts`：命令联合类型。
 - `agent/src/runner/results.ts`：标准响应类型。
+- `agent/src/runner/tool_registry.ts`：工具定义与执行（被 MCP 与 Demo 复用）。
 
 ## 录制
 
@@ -43,3 +46,17 @@
 ## 无障碍（A11y）
 
 - `agent/src/runner/actions/a11y.ts`：基于 `@axe-core/playwright` 的 `page.a11yScan`。
+
+## 本地 Chat Demo
+
+- `agent/src/demo/server.ts`：本地 HTTP 服务（仅监听 `127.0.0.1`）。
+- `agent/src/demo/agent_loop.ts`：LLM tool-calling 循环。
+- `agent/src/demo/openai_compat_client.ts`：OpenAI-compatible API 调用封装。
+- `agent/src/demo/workspace_manager.ts`：workspace 管理（隐藏 `tabToken`）。
+- `agent/static/index.html`：纯 HTML UI（Settings / Environment / Chat）。
+
+## MCP（stdio）
+
+- `agent/src/mcp/server.ts`：MCP server。
+- `agent/src/mcp/tool_handlers.ts`：调用 tool registry 执行真实动作。
+- `agent/src/mcp/schemas.ts`：zod 输入校验。

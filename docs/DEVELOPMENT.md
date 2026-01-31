@@ -22,6 +22,26 @@ pnpm -C agent dev
 
 - 在 Chrome 中从 `extension/dist` 加载扩展。
 
+- 启动本地 Chat Demo（HTTP + UI）：
+
+```
+pnpm -C agent dev:demo
+```
+
+访问 `http://127.0.0.1:17334`。
+
+- 启动 MCP stdio server：
+
+```
+pnpm -C agent mcp
+```
+
+- MCP smoke client：
+
+```
+pnpm -C agent mcp:smoke
+```
+
 ## 测试
 
 ```
@@ -38,4 +58,7 @@ pnpm -C agent test:headed
 - 扩展 UI：`extension/src/content.ts`
 - Service worker：`extension/src/sw.ts`
 - Runner 动作：`agent/src/runner/actions/*`
+- Tool registry：`agent/src/runner/tool_registry.ts`
 - 回放逻辑：`agent/src/play/replay.ts`
+- Demo 服务：`agent/src/demo/server.ts`
+- Demo UI：`agent/static/index.html`

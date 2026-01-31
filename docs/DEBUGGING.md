@@ -38,3 +38,15 @@
 
 - 回放证据：`.artifacts/replay/<tabToken>/<ts>.png`
 - 无障碍证据：`.artifacts/a11y/<ts>.png`
+
+## 本地 Chat Demo 调试
+
+- **LLM 连接检查**：Settings 区点击 `Debug LLM`，后端调用 `/api/llm/debug`，返回最小响应与延迟。
+- **工具调用是否触发**：在 Chat 区域查看 `Tool events` 折叠区。
+- **查看 LLM 原始回复**：`LLM replies` 折叠区展示所有 assistant 消息（含 tool calls）。
+- **apiBase 生效检查**：调用 `GET /api/config`，确认保存的 `apiBase` 值。
+
+## MCP 调试
+
+- MCP server 日志输出在 stderr。
+- 使用 `pnpm -C agent mcp:smoke` 进行最小闭环验证。

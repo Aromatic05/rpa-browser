@@ -6,3 +6,4 @@
 - `A11Y.md` — 无障碍扫描细节
 - `DEBUGGING.md` — 常见问题与日志
 - `DEVELOPMENT.md` — 本地开发与测试
+- `../agent/docs/LOCAL_CHAT_DEMO.md` — 本地 Chat Demo 说明（含 UI 与 API）
