@@ -1,3 +1,14 @@
+/**
+ * replay：将录制事件转换为可执行命令，并在必要时尝试自愈定位。
+ *
+ * 依赖关系：
+ * - 上游：runner/actions/recording 调用 replayRecording
+ * - 下游：runner/execute 执行命令，actions 完成实际操作
+ *
+ * 关键约束：
+ * - 录制事件可能包含候选定位器（locatorCandidates）
+ * - 回放失败时生成 evidence（截图/候选尝试）用于排错
+ */
 import type { Locator, Page } from 'playwright';
 import type { RecordedEvent } from '../record/recorder';
 import type { Command } from '../runner/commands';
@@ -29,6 +40,7 @@ type CandidateAttempt = {
     error?: string;
 };
 
+// 回放证据目录，失败时写入截图。
 const ensureDir = async (dir: string) => {
     try {
         await fs.mkdir(dir, { recursive: true });
@@ -37,6 +49,7 @@ const ensureDir = async (dir: string) => {
     }
 };
 
+// scopeHint 是录制侧给出的区域提示（如 header/main）。
 const buildScope = (page: Page, scopeHint?: ScopeHint) => {
     if (!scopeHint) return page;
     const selector = scopeHint;
@@ -44,6 +57,7 @@ const buildScope = (page: Page, scopeHint?: ScopeHint) => {
     return locator;
 };
 
+// 将候选定位结构转为具体 locator（优先语义定位）。
 const buildLocator = (scope: Page | Locator, candidate: LocatorCandidate) => {
     if (candidate.kind === 'testid' && candidate.testId) {
         return (scope as any).getByTestId(candidate.testId);
@@ -73,6 +87,9 @@ const describeCandidate = (candidate: LocatorCandidate) => {
     return candidate.text || '';
 };
 
+/**
+ * 依次尝试候选定位器，返回第一个可见唯一匹配。
+ */
 const resolveByCandidates = async (
     page: Page,
     candidates: LocatorCandidate[],
@@ -128,6 +145,10 @@ const resolveByCandidates = async (
     return { locator: null, attempts };
 };
 
+/**
+ * 回放录制事件序列。会在必要时尝试 locatorCandidates 自愈。
+ * stopOnError 为 true 时遇到失败立即停止。
+ */
 export const replayRecording = async (
     page: Page,
     events: RecordedEvent[],

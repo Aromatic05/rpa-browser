@@ -1,3 +1,11 @@
+/**
+ * recorder_payload：注入到页面的录制脚本（纯字符串）。
+ *
+ * 说明：
+ * - 该脚本运行在浏览器上下文，负责采集用户操作并通过绑定上报
+ * - 仅收集可复现的动作与定位候选，不执行自动化
+ * - 严格限制采样量与敏感信息（密码/长文本会被脱敏）
+ */
 export const RECORDER_SOURCE = String.raw`(function () {
   if (window.__rpa_recorder_installed) return;
   window.__rpa_recorder_installed = true;

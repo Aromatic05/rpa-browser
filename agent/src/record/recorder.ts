@@ -1,3 +1,14 @@
+/**
+ * recorder：负责在 Playwright Page 上安装录制脚本并接收事件。
+ *
+ * 依赖关系：
+ * - 上游：recording.ts 调用 installRecorder
+ * - 下游：recorder_payload.ts 的注入脚本通过绑定回传事件
+ *
+ * 关键约束：
+ * - 同一 Page 只安装一次，避免重复监听
+ * - 事件携带 locatorCandidates，用于回放时的自愈定位
+ */
 import type { Page } from 'playwright';
 import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
 import { RECORDER_SOURCE } from './recorder_payload';
@@ -38,6 +49,9 @@ export type RecordedEvent = {
     pageUrl?: string | null;
 };
 
+/**
+ * 在 Page 上安装录制脚本，并通过 binding 把事件转发回 Node 侧。
+ */
 export const installRecorder = async (page: Page, onEvent: (event: RecordedEvent) => void) => {
     if (installedPages.has(page)) return;
     installedPages.add(page);
