@@ -4,7 +4,7 @@ import {
     removeWorkspaceTabId,
     resetMetaStore,
     updateWorkspaceMeta,
-} from './name_store.js';
+} from './services/name_store.js';
 import { safeGroupActiveTab, supportsTabGrouping } from './tab_grouping.js';
 
 const tabState = new Map<number, { tabToken: string; lastUrl: string; updatedAt: number }>();

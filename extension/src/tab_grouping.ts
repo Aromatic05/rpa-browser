@@ -1,4 +1,4 @@
-import type { TabGroupColor } from './name_store.js';
+import type { TabGroupColor } from './services/name_store.js';
 
 export type GroupingResult =
     | { ok: true; groupId: number }

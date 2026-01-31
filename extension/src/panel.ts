@@ -9,8 +9,8 @@ import {
     type PanelState,
     type TabItem,
     type WorkspaceItem,
-} from './workspace_state.js';
-import { withTabDisplayNames, withWorkspaceDisplayNames } from './name_store.js';
+} from './state/workspace_state.js';
+import { withTabDisplayNames, withWorkspaceDisplayNames } from './services/name_store.js';
 import { getMockStartUrl } from './mock_config.js';
 
 const startButton = document.getElementById('startRec') as HTMLButtonElement;

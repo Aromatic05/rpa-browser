@@ -1,3 +1,11 @@
+/**
+ * 状态模型：只做纯逻辑计算，不依赖 chrome API。
+ *
+ * 维护要点：
+ * - 任何“外部数据刷新”都在调用方完成，本模块只负责计算新状态。
+ * - activeWorkspaceId/activeTabId 的选择规则集中在这里，便于测试。
+ */
+
 export type WorkspaceItem = {
     workspaceId: string;
     tabCount: number;
