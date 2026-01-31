@@ -1,6 +1,5 @@
 import type { ActionHandler } from '../execute';
 import type {
-    ClipboardReadCommand,
     ClipboardWriteCommand,
     ElementCopyCommand,
     ElementPasteCommand,

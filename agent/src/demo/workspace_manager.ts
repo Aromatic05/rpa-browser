@@ -95,7 +95,7 @@ export const hookWorkspaceRegistry = (deps: {
     recordingState: RecordingState;
     navDedupeWindowMs: number;
 }) => {
-    const { pageRegistry, recordingState, navDedupeWindowMs } = deps;
+    const { recordingState, navDedupeWindowMs } = deps;
     return {
         onPageBound: (page: Page, token: string) => {
             if (recordingState.recordingEnabled.has(token)) {

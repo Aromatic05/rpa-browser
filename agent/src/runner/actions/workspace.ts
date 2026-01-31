@@ -7,7 +7,6 @@ import type {
     TabListCommand,
     TabSetActiveCommand,
     WorkspaceCreateCommand,
-    WorkspaceListCommand,
     WorkspaceSetActiveCommand,
 } from '../commands';
 

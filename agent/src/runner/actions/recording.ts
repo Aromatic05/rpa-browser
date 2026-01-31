@@ -1,9 +1,6 @@
 import type { ActionHandler } from '../execute';
 import type {
-    RecordGetCommand,
     RecordReplayCommand,
-    RecordStartCommand,
-    RecordStopCommand,
 } from '../commands';
 import {
     startRecording,

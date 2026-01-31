@@ -1,8 +1,6 @@
 import type { ActionHandler } from '../execute';
 import type {
     EnsureSessionCommand,
-    PageBackCommand,
-    PageForwardCommand,
     PageGotoCommand,
     PageReloadCommand,
     WaitForLoadStateCommand,
