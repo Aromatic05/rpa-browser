@@ -156,12 +156,12 @@
   - Impact: 复杂场景下可用性与诊断能力不足
   - Evidence: Side panel 仅展示列表与基础日志，无 human-in-loop 交互
 
-- [P0] （已解决）新建标签页悬浮球不显示（NTP/内置页不可注入）
-  - Where: `extension/pages/start.html`, `extension/src/panel.ts`, `extension/src/content.ts`
-  - Problem: chrome://newtab 等页面无法注入 content script，导致浮层缺失
+- [P0] （已解决）新建标签页悬浮球不显示（NTP/扩展页不可注入）
+  - Where: `mock/pages/start.html`, `extension/src/panel.ts`, `extension/src/content.ts`
+  - Problem: chrome://newtab 与扩展页无法注入 content script，导致浮层缺失
   - Impact: 新建 tab 无法稳定自动化
-  - Evidence: 新建 tab 默认导航到可注入的 start page（`chrome-extension://.../pages/start.html`）
-  - Notes: Resolved by start page
+  - Evidence: 新建 tab 默认导航到本地 mock start page（`http://localhost:<PORT>/pages/start.html#beta`）
+  - Notes: Resolved by local mock start page
 
 - [P0] WS 错误处理粗糙
   - Where: `extension/src/sw.ts`

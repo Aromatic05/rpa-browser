@@ -72,7 +72,7 @@
 4) `agent/src/index.ts` 按 `scope(workspaceId/tabId)` 解析 Page（缺省为 active workspace/tab）。
 5) `runner/execute.ts` 解析命令、解析 target、映射错误、调用 `actions/*`。
 6) 动作返回 `Result`，经 WS 回传给 extension。
-7) Side panel 新建 tab 后会通过 `page.goto` 导航到扩展内置 start page（`chrome-extension://.../pages/start.html`）。
+7) Side panel 新建 tab 后会通过 `page.goto` 导航到本地 mock start page（`http://localhost:<PORT>/pages/start.html#beta`）。
 
 旁路（Demo）：
 - `agent/static/index.html` -> `agent/src/demo/server.ts` -> `agent/src/demo/agent_loop.ts`
@@ -89,7 +89,7 @@
 - `extension/src/sw.ts`：维持 tabId->tabToken 映射，WS 转发与超时处理。
 - `extension/src/name_store.ts`：workspace/tab displayName 与 tabGroup 颜色/元数据存储（`chrome.storage.local`）。
 - `extension/src/tab_grouping.ts`：tabGroups 分组的安全封装与降级处理。
-- `extension/pages/start.html`：工具测试样例页面（start page / sandbox）。
+- `mock/pages/start.html`：工具测试样例页面（start page / sandbox，供本地 mock server 使用）。
 - `agent/src/runtime/context_manager.ts`：启动带扩展的 Chromium persistent context。
 - `agent/src/runtime/page_registry.ts`：workspace -> tabs -> Page 绑定与重建（tabToken 作为内部绑定）。
 - `agent/src/runtime/target_resolver.ts`：Target -> Locator 解析。
@@ -115,6 +115,7 @@
 - **错误处理**：`runner/execute.ts` 将异常映射到 `Result`（含 `error.code`）。
 - **日志**：extension 与 agent 使用 `console.log` 输出；未统一结构化日志。
 - **工件**：回放与 A11y 证据写入 `.artifacts/...`。
-- **起始页机制**：新建可自动化 tab 默认导航至扩展内置 start page（用于稳定工具测试）。
+- **起始页机制**：新建可自动化 tab 默认导航至本地 mock start page（避免扩展页不可注入导致悬浮球失效）。
+- **本地依赖**：需先运行 `pnpm mock:dev` 启动 mock 静态站点（默认 `http://localhost:4173`）。
 - **显示名与分组**：workspace/tab 在 UI 中展示为 “Workspace N / Tab N”，并尝试用 tabGroups 颜色分组（失败则降级）。
 - **演进方向**：当前为 `workspace -> tabs -> Page`，后续补齐持久化与 TabGroup 视觉映射（以实现为准）。
