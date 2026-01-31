@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "build": "tsc -p tsconfig.json && node build.mjs",
-        "test": "pnpm build && node tests/workspace_state.test.mjs && node tests/name_store.test.mjs && node tests/mock_config.test.mjs"
+        "test": "pnpm build && node src/__tests__/workspace_state.test.mjs && node src/__tests__/name_store.test.mjs && node src/__tests__/mock_config.test.mjs"
     },
     "devDependencies": {
         "@types/chrome": "^0.0.279",

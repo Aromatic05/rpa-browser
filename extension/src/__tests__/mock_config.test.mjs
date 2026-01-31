@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getMockStartUrl } from '../dist/services/mock_config.js';
+import { getMockStartUrl } from '../../dist/services/mock_config.js';
 
 const log = (name, fn) => {
     try {

@@ -7,7 +7,7 @@ import {
     handleCloseTab,
     supportsTabGroups,
     selectWorkspace,
-} from '../dist/state/workspace_state.js';
+} from '../../dist/state/workspace_state.js';
 
 const log = (name, fn) => {
     try {

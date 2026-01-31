@@ -4,8 +4,8 @@ import {
     ensureTabMeta,
     ensureWorkspaceMeta,
     pickRandomGroupColor,
-} from '../dist/services/name_store.js';
-import { safeGroupActiveTab } from '../dist/services/tab_grouping.js';
+} from '../../dist/services/name_store.js';
+import { safeGroupActiveTab } from '../../dist/services/tab_grouping.js';
 
 const log = (name, fn) => {
     try {
