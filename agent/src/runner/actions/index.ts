@@ -12,6 +12,7 @@ import { fileUploadHandlers } from './file_upload';
 import { waitsAssertsHandlers } from './waits_asserts';
 import { recordingHandlers } from './recording';
 import { a11yHandlers } from './a11y';
+import { workspaceHandlers } from './workspace';
 
 export const actionHandlers: Record<string, ActionHandler> = {
     ...navigationHandlers,
@@ -27,4 +28,5 @@ export const actionHandlers: Record<string, ActionHandler> = {
     ...waitsAssertsHandlers,
     ...recordingHandlers,
     ...a11yHandlers,
+    ...workspaceHandlers,
 };

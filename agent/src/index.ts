@@ -43,17 +43,32 @@ const handleCommand = async (payload?: Command) => {
     if (!payload?.cmd) {
         return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing cmd');
     }
-    if (!payload.tabToken) {
-        return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken', payload.requestId);
-    }
+    const scope =
+        (payload as any).scope ||
+        ((payload as any).workspaceId || (payload as any).tabId
+            ? { workspaceId: (payload as any).workspaceId, tabId: (payload as any).tabId }
+            : undefined);
     const urlHint =
         typeof (payload as any).args?.url === 'string' ? ((payload as any).args.url as string) : undefined;
-    const page = await pageRegistry.getPage(payload.tabToken, urlHint);
-    const scope = pageRegistry.resolveScopeFromToken(payload.tabToken);
-    return runnerScope.run(scope.workspaceId, async () => {
+    let tabToken = payload.tabToken;
+    let page: typeof payload extends { tabToken: string } ? any : any;
+    if (scope) {
+        page = await pageRegistry.resolvePage(scope);
+        tabToken = pageRegistry.resolveTabToken(scope);
+    } else if (tabToken) {
+        page = await pageRegistry.getPage(tabToken, urlHint);
+    } else {
+        page = await pageRegistry.resolvePage();
+        tabToken = pageRegistry.resolveTabToken();
+    }
+    if (!tabToken) {
+        return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken', payload.requestId);
+    }
+    const resolvedScope = scope ? pageRegistry.resolveScope(scope) : pageRegistry.resolveScopeFromToken(tabToken);
+    return runnerScope.run(resolvedScope.workspaceId, async () => {
         const ctx: ActionContext = {
             page,
-            tabToken: payload.tabToken,
+            tabToken,
             pageRegistry,
             log,
             recordingState,
@@ -66,7 +81,7 @@ const handleCommand = async (payload?: Command) => {
             execute: undefined,
         };
         ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
-        log('cmd', { cmd: payload.cmd, tabToken: payload.tabToken, requestId: payload.requestId });
+        log('cmd', { cmd: payload.cmd, tabToken, requestId: payload.requestId });
         return executeCommand(ctx, payload);
     });
 };

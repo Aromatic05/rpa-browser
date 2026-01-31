@@ -1,0 +1,79 @@
+import type { ActionHandler } from '../execute';
+import { errorResult } from '../results';
+import { ERROR_CODES } from '../error_codes';
+import type {
+    TabCloseCommand,
+    TabCreateCommand,
+    TabListCommand,
+    TabSetActiveCommand,
+    WorkspaceCreateCommand,
+    WorkspaceListCommand,
+    WorkspaceSetActiveCommand,
+} from '../commands';
+
+const resolveWorkspaceId = (
+    ctx: { pageRegistry: any },
+    command: { scope?: { workspaceId?: string } },
+    argWorkspaceId?: string,
+) => {
+    if (argWorkspaceId) return argWorkspaceId;
+    if (command.scope?.workspaceId) return command.scope.workspaceId;
+    const active = ctx.pageRegistry.getActiveWorkspace?.();
+    return active?.id || null;
+};
+
+export const workspaceHandlers: Record<string, ActionHandler> = {
+    'workspace.list': async (ctx, _command) => {
+        const list = ctx.pageRegistry.listWorkspaces();
+        return { ok: true, tabToken: ctx.tabToken, data: { workspaces: list } };
+    },
+    'workspace.create': async (ctx, _command) => {
+        const created = await ctx.pageRegistry.createWorkspace();
+        return {
+            ok: true,
+            tabToken: ctx.tabToken,
+            data: { workspaceId: created.workspaceId, tabId: created.tabId },
+        };
+    },
+    'workspace.setActive': async (ctx, command) => {
+        const args = (command as WorkspaceSetActiveCommand).args;
+        ctx.pageRegistry.setActiveWorkspace(args.workspaceId);
+        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId: args.workspaceId } };
+    },
+    'tab.list': async (ctx, command) => {
+        const args = (command as TabListCommand).args;
+        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+        if (!workspaceId) {
+            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+        }
+        const tabs = await ctx.pageRegistry.listTabs(workspaceId);
+        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabs } };
+    },
+    'tab.create': async (ctx, command) => {
+        const args = (command as TabCreateCommand).args;
+        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+        if (!workspaceId) {
+            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+        }
+        const tabId = await ctx.pageRegistry.createTab(workspaceId);
+        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId } };
+    },
+    'tab.close': async (ctx, command) => {
+        const args = (command as TabCloseCommand).args;
+        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+        if (!workspaceId) {
+            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+        }
+        await ctx.pageRegistry.closeTab(workspaceId, args.tabId);
+        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId: args.tabId } };
+    },
+    'tab.setActive': async (ctx, command) => {
+        const args = (command as TabSetActiveCommand).args;
+        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+        if (!workspaceId) {
+            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+        }
+        ctx.pageRegistry.setActiveTab(workspaceId, args.tabId);
+        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId: args.tabId } };
+    },
+};

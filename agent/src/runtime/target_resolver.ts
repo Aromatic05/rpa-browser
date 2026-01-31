@@ -1,6 +1,6 @@
 import type { Frame, Locator, Page } from 'playwright';
 import type { Target } from '../runner/commands';
-import type { PageRegistry } from './page_registry';
+import type { PageRegistry, WorkspaceScope } from './page_registry';
 
 export type ResolvedTarget = {
     page: Page;
@@ -22,18 +22,21 @@ const findFrame = (page: Page, frameHint?: string) => {
 export const resolveTarget = async ({
     page,
     tabToken,
+    scope,
     target,
     pageRegistry,
 }: {
     page?: Page;
     tabToken?: string;
+    scope?: WorkspaceScope;
     target: Target;
     pageRegistry: PageRegistry;
 }): Promise<ResolvedTarget> => {
     if (!target?.selector) {
         throw new Error('missing target.selector');
     }
-    const resolvedPage = page || (tabToken ? await pageRegistry.getPage(tabToken) : undefined);
+    const resolvedPage =
+        page || (scope ? await pageRegistry.resolvePage(scope) : tabToken ? await pageRegistry.getPage(tabToken) : undefined);
     if (!resolvedPage) {
         throw new Error('missing page');
     }

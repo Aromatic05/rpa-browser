@@ -5,9 +5,15 @@ export type Target = {
     frame?: string;
 };
 
+export type CommandScope = {
+    workspaceId?: string;
+    tabId?: string;
+};
+
 export type BaseCommand = {
     cmd: string;
     tabToken: string;
+    scope?: CommandScope;
     args?: Record<string, unknown>;
     requestId?: string;
 };
@@ -15,6 +21,7 @@ export type BaseCommand = {
 type CommandWithArgs<C extends string, A> = {
     cmd: C;
     tabToken: string;
+    scope?: CommandScope;
     args: A;
     requestId?: string;
 };
@@ -26,6 +33,18 @@ export type RecordGetCommand = CommandWithArgs<'record.get', Record<string, neve
 export type RecordClearCommand = CommandWithArgs<'record.clear', Record<string, never>>;
 export type RecordReplayCommand = CommandWithArgs<'record.replay', { stopOnError?: boolean }>;
 export type RecordStopReplayCommand = CommandWithArgs<'record.stopReplay', Record<string, never>>;
+
+export type WorkspaceListCommand = CommandWithArgs<'workspace.list', Record<string, never>>;
+export type WorkspaceCreateCommand = CommandWithArgs<'workspace.create', Record<string, never>>;
+export type WorkspaceSetActiveCommand = CommandWithArgs<'workspace.setActive', { workspaceId: string }>;
+
+export type TabListCommand = CommandWithArgs<'tab.list', { workspaceId?: string }>;
+export type TabCreateCommand = CommandWithArgs<'tab.create', { workspaceId?: string }>;
+export type TabCloseCommand = CommandWithArgs<'tab.close', { workspaceId?: string; tabId: string }>;
+export type TabSetActiveCommand = CommandWithArgs<
+    'tab.setActive',
+    { workspaceId?: string; tabId: string }
+>;
 
 export type PageGotoCommand = CommandWithArgs<
     'page.goto',
@@ -179,6 +198,13 @@ export type AssertVisibleCommand = CommandWithArgs<
 export type PageA11yScanCommand = CommandWithArgs<'page.a11yScan', A11yScanOptions>;
 
 export type Command =
+    | WorkspaceListCommand
+    | WorkspaceCreateCommand
+    | WorkspaceSetActiveCommand
+    | TabListCommand
+    | TabCreateCommand
+    | TabCloseCommand
+    | TabSetActiveCommand
     | EnsureSessionCommand
     | RecordStartCommand
     | RecordStopCommand
