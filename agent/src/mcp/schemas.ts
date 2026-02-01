@@ -1,27 +1,5 @@
 import { z } from 'zod';
 
-export const locatorCandidateSchema = z
-    .object({
-        kind: z.string(),
-        selector: z.string().optional(),
-        testId: z.string().optional(),
-        role: z.string().optional(),
-        name: z.string().optional(),
-        text: z.string().optional(),
-        exact: z.boolean().optional(),
-        note: z.string().optional(),
-    })
-    .passthrough();
-
-export const targetSchema = z
-    .object({
-        selector: z.string(),
-        frame: z.string().optional(),
-        locatorCandidates: z.array(locatorCandidateSchema).optional(),
-        scopeHint: z.string().optional(),
-    })
-    .passthrough();
-
 export const browserGotoInputSchema = z.object({
     tabToken: z.string(),
     url: z.string(),
@@ -35,48 +13,20 @@ export const browserSnapshotInputSchema = z.object({
 
 export const browserClickInputSchema = z.object({
     tabToken: z.string(),
-    target: targetSchema,
+    a11yNodeId: z.string(),
+    timeout: z.number().int().positive().optional(),
 });
 
-export const browserTypeInputSchema = z.object({
+export const browserFillInputSchema = z.object({
     tabToken: z.string(),
-    target: targetSchema,
-    text: z.string(),
-    clearFirst: z.boolean().optional(),
+    a11yNodeId: z.string(),
+    value: z.string(),
 });
 
 export type BrowserGotoInput = z.infer<typeof browserGotoInputSchema>;
 export type BrowserSnapshotInput = z.infer<typeof browserSnapshotInputSchema>;
 export type BrowserClickInput = z.infer<typeof browserClickInputSchema>;
-export type BrowserTypeInput = z.infer<typeof browserTypeInputSchema>;
-
-const locatorCandidateJsonSchema = {
-    type: 'object',
-    required: ['kind'],
-    properties: {
-        kind: { type: 'string' },
-        selector: { type: 'string' },
-        testId: { type: 'string' },
-        role: { type: 'string' },
-        name: { type: 'string' },
-        text: { type: 'string' },
-        exact: { type: 'boolean' },
-        note: { type: 'string' },
-    },
-    additionalProperties: true,
-} as const;
-
-const targetJsonSchema = {
-    type: 'object',
-    required: ['selector'],
-    properties: {
-        selector: { type: 'string' },
-        frame: { type: 'string' },
-        locatorCandidates: { type: 'array', items: locatorCandidateJsonSchema },
-        scopeHint: { type: 'string' },
-    },
-    additionalProperties: true,
-} as const;
+export type BrowserFillInput = z.infer<typeof browserFillInputSchema>;
 
 export const toolInputJsonSchemas = {
     'browser.goto': {
@@ -100,21 +50,21 @@ export const toolInputJsonSchemas = {
     },
     'browser.click': {
         type: 'object',
-        required: ['tabToken', 'target'],
+        required: ['tabToken', 'a11yNodeId'],
         properties: {
             tabToken: { type: 'string' },
-            target: targetJsonSchema,
+            a11yNodeId: { type: 'string' },
+            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
-    'browser.type': {
+    'browser.fill': {
         type: 'object',
-        required: ['tabToken', 'target', 'text'],
+        required: ['tabToken', 'a11yNodeId', 'value'],
         properties: {
             tabToken: { type: 'string' },
-            target: targetJsonSchema,
-            text: { type: 'string' },
-            clearFirst: { type: 'boolean' },
+            a11yNodeId: { type: 'string' },
+            value: { type: 'string' },
         },
         additionalProperties: false,
     },

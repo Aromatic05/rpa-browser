@@ -37,13 +37,13 @@ export const createMcpServer = (deps: McpToolDeps) => {
             },
             {
                 name: 'browser.click',
-                description: 'Click an element using a resolver-compatible target.',
+                description: 'Click an element using an a11y node id.',
                 inputSchema: toolInputJsonSchemas['browser.click'],
             },
             {
-                name: 'browser.type',
-                description: 'Type text into an element using a resolver-compatible target.',
-                inputSchema: toolInputJsonSchemas['browser.type'],
+                name: 'browser.fill',
+                description: 'Fill an element using an a11y node id.',
+                inputSchema: toolInputJsonSchemas['browser.fill'],
             },
         ],
     }));

@@ -45,6 +45,20 @@ export class MemoryStepSink implements StepSink {
     }
 }
 
+export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
+    write: (event) => {
+        if (event.type === 'step.start') {
+            console.log(
+                `${prefix} start workspace=${event.workspaceId} step=${event.stepId} name=${event.name}`,
+            );
+        } else {
+            console.log(
+                `${prefix} end workspace=${event.workspaceId} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
+            );
+        }
+    },
+});
+
 export type RunStepsDeps = {
     runtime: RuntimeRegistry;
     stepSinks?: StepSink[];

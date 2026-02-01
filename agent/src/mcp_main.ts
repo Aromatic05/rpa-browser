@@ -1,8 +1,9 @@
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
+import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { startMcpServer } from './mcp/index';
-import { createRunnerScopeRegistry } from './runner/runner_scope';
+import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -24,6 +25,8 @@ const contextManager = createContextManager({
     },
 });
 
+let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
+
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
     getContext: contextManager.getContext,
@@ -31,10 +34,19 @@ const pageRegistry = createPageRegistry({
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
+        if (runtimeRegistry) {
+            runtimeRegistry.bindPage(page, token);
+        }
     },
     onTokenClosed: (token) => cleanupRecording(recordingState, token),
 });
-const runnerScope = createRunnerScopeRegistry(2);
+runtimeRegistry = createRuntimeRegistry({
+    pageRegistry,
+});
+setRunStepsDeps({
+    runtime: runtimeRegistry,
+    stepSinks: [createConsoleStepSink('[step]')],
+});
 
 (async () => {
     try {
@@ -50,7 +62,6 @@ const runnerScope = createRunnerScopeRegistry(2);
                 scroll: SCROLL_CONFIG,
             },
             navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-            runInWorkspace: runnerScope.run,
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
