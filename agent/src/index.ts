@@ -12,7 +12,7 @@ import { ERROR_CODES } from './runner/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps, runSteps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
-import { FileSink } from './runner/trace';
+import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -46,7 +46,9 @@ const actionLogStream = config.observability.actionFileEnabled
       })()
     : null;
 const actionLogger = (...args: unknown[]) => {
-    log(...args);
+    if (config.observability.actionConsoleEnabled) {
+        log(...args);
+    }
     if (!actionLogStream) return;
     const payload = {
         ts: Date.now(),
@@ -89,6 +91,9 @@ const runnerScope = createRunnerScopeRegistry(2);
 runtimeRegistry = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
+    traceHooks: config.observability.traceConsoleEnabled
+        ? createLoggingHooks()
+        : createNoopHooks(),
 });
 setRunStepsDeps({
     runtime: runtimeRegistry,

@@ -72,8 +72,10 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['humanPolicy', 'typeDelayMsRange', 'max'], envNumber('RUNNER_TYPE_DELAY_MAX_MS'));
     set(['observability', 'traceEnabled'], envBool('RUNNER_TRACE_ENABLED'));
     set(['observability', 'traceLogArgs'], envBool('RUNNER_TRACE_LOG_ARGS'));
+    set(['observability', 'traceConsoleEnabled'], envBool('RUNNER_TRACE_CONSOLE_ENABLED'));
     set(['observability', 'traceFileEnabled'], envBool('RUNNER_TRACE_FILE_ENABLED'));
     set(['observability', 'traceFilePath'], process.env.RUNNER_TRACE_FILE_PATH);
+    set(['observability', 'actionConsoleEnabled'], envBool('RUNNER_ACTION_CONSOLE_ENABLED'));
     set(['observability', 'actionFileEnabled'], envBool('RUNNER_ACTION_FILE_ENABLED'));
     set(['observability', 'actionFilePath'], process.env.RUNNER_ACTION_FILE_PATH);
 

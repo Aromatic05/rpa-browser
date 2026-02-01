@@ -15,6 +15,8 @@ test('load default config', () => {
     assert.equal(config.humanPolicy.enabled, true);
     assert.equal(config.observability.traceFileEnabled, true);
     assert.equal(config.observability.actionFileEnabled, true);
+    assert.equal(config.observability.traceConsoleEnabled, false);
+    assert.equal(config.observability.actionConsoleEnabled, false);
 });
 
 test('env overrides', () => {

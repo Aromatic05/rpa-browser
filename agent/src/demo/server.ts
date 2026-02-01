@@ -12,7 +12,7 @@ import { runAgentLoop } from './agent_loop';
 import { createChatCompletion } from './openai_compat_client';
 import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
 import { getRunnerConfig } from '../runner/config';
-import { FileSink } from '../runner/trace';
+import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,6 +97,9 @@ const traceSinks = config.observability.traceFileEnabled
 runtimeRegistry = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
+    traceHooks: config.observability.traceConsoleEnabled
+        ? createLoggingHooks()
+        : createNoopHooks(),
 });
 setRunStepsDeps({
     runtime: runtimeRegistry,

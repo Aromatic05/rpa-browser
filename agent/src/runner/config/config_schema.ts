@@ -51,10 +51,14 @@ export type Observability = {
     traceEnabled: boolean;
     /** 是否输出 trace 参数（默认 false，避免泄露） */
     traceLogArgs: boolean;
+    /** 是否在控制台输出 trace 日志 */
+    traceConsoleEnabled: boolean;
     /** 是否将 trace 日志写入文件 */
     traceFileEnabled: boolean;
     /** trace 日志输出路径 */
     traceFilePath: string;
+    /** 是否在控制台输出 action 日志 */
+    actionConsoleEnabled: boolean;
     /** 是否将 action/execute 日志写入文件 */
     actionFileEnabled: boolean;
     /** action/execute 日志输出路径 */

@@ -5,7 +5,7 @@ import { createRecordingState, cleanupRecording, ensureRecorder } from './record
 import { startMcpServer } from './mcp/index';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
-import { FileSink } from './runner/trace';
+import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -50,6 +50,9 @@ const pageRegistry = createPageRegistry({
 runtimeRegistry = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
+    traceHooks: config.observability.traceConsoleEnabled
+        ? createLoggingHooks()
+        : createNoopHooks(),
 });
 setRunStepsDeps({
     runtime: runtimeRegistry,
