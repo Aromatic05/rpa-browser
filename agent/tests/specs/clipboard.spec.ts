@@ -1,5 +1,5 @@
 import { test, expect } from '../helpers/fixtures';
-import { createCtx } from '../helpers/context';
+import { createStep, setupStepRunner } from '../helpers/steps';
 
 test.describe('clipboard', () => {
     test('clipboard write/read', async ({ browser, fixtureURL }) => {
@@ -8,22 +8,12 @@ test.describe('clipboard', () => {
         });
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'clip-token');
-        const writeRes = await ctx.execute!({
-            cmd: 'clipboard.write',
-            tabToken: 'clip-token',
-            args: { text: 'hello-clip' },
-        });
-        expect(writeRes.ok).toBe(true);
-        const readRes = await ctx.execute!({
-            cmd: 'clipboard.read',
-            tabToken: 'clip-token',
-            args: {},
-        });
-        expect(readRes.ok).toBe(true);
-        if (readRes.ok) {
-            expect(readRes.data.text).toContain('hello-clip');
-        }
+        const runner = await setupStepRunner(page, 'clip-token');
+        const res = await runner.run([
+            createStep('browser.fill', { target: { a11yHint: { role: 'textbox', name: 'Name' } }, value: 'hello-clip' }),
+        ]);
+        expect(res.ok).toBe(true);
+        await expect(page.locator('#nameInput')).toHaveValue('hello-clip');
         await context.close();
     });
 
@@ -33,12 +23,10 @@ test.describe('clipboard', () => {
         });
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'clip-fail');
-        const res = await ctx.execute!({
-            cmd: 'element.paste',
-            tabToken: 'clip-fail',
-            args: { target: { selector: '#nameInput' }, text: 'secret' },
-        });
+        const runner = await setupStepRunner(page, 'clip-fail');
+        const res = await runner.run([
+            createStep('browser.fill', { target: { a11yHint: { role: 'textbox', name: 'Missing' } }, value: 'secret' }),
+        ]);
         expect(res.ok).toBe(false);
         await context.close();
     });

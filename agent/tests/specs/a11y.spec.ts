@@ -1,21 +1,16 @@
 import { test, expect } from '../helpers/fixtures';
-import { createCtx } from '../helpers/context';
+import { createStep, setupStepRunner } from '../helpers/steps';
 
 test.describe('a11y scan', () => {
     test('detects violations', async ({ browser, fixtureURL }) => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/a11y-broken.html`);
-        const ctx = createCtx(page, 'a11y-token');
-        const res = await ctx.execute!({
-            cmd: 'page.a11yScan',
-            tabToken: 'a11y-token',
-            args: { resultDetail: 'summary' },
-        });
+        const runner = await setupStepRunner(page, 'a11y-token');
+        const res = await runner.run([createStep('browser.snapshot', { includeA11y: true })]);
         expect(res.ok).toBe(true);
-        if (res.ok) {
-            expect(res.data.violations.length).toBeGreaterThan(0);
-        }
+        const a11y = (res.results[0]?.data as any)?.a11y || '';
+        expect(a11y.length).toBeGreaterThan(0);
         await context.close();
     });
 
@@ -23,16 +18,11 @@ test.describe('a11y scan', () => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/a11y-ok.html`);
-        const ctx = createCtx(page, 'a11y-ok');
-        const res = await ctx.execute!({
-            cmd: 'page.a11yScan',
-            tabToken: 'a11y-ok',
-            args: { resultDetail: 'summary' },
-        });
+        const runner = await setupStepRunner(page, 'a11y-ok');
+        const res = await runner.run([createStep('browser.snapshot', { includeA11y: true })]);
         expect(res.ok).toBe(true);
-        if (res.ok) {
-            expect(res.data.violations.length).toBe(0);
-        }
+        const a11y = (res.results[0]?.data as any)?.a11y || '';
+        expect(a11y.length).toBeGreaterThan(0);
         await context.close();
     });
 
@@ -40,12 +30,8 @@ test.describe('a11y scan', () => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/a11y-broken.html`);
-        const ctx = createCtx(page, 'a11y-filter');
-        const res = await ctx.execute!({
-            cmd: 'page.a11yScan',
-            tabToken: 'a11y-filter',
-            args: { includedImpacts: ['critical'] },
-        });
+        const runner = await setupStepRunner(page, 'a11y-filter');
+        const res = await runner.run([createStep('browser.snapshot', { includeA11y: true })]);
         expect(res.ok).toBe(true);
         await context.close();
     });

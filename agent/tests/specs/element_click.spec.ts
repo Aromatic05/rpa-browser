@@ -1,17 +1,15 @@
 import { test, expect } from '../helpers/fixtures';
-import { createCtx } from '../helpers/context';
+import { createStep, setupStepRunner } from '../helpers/steps';
 
 test.describe('element_click', () => {
     test('click updates UI', async ({ browser, fixtureURL }) => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'click-token');
-        const res = await ctx.execute!({
-            cmd: 'element.click',
-            tabToken: 'click-token',
-            args: { target: { selector: '#clickMe' } },
-        });
+        const runner = await setupStepRunner(page, 'click-token');
+        const res = await runner.run([
+            createStep('browser.click', { target: { a11yHint: { role: 'button', name: 'Click Me' } } }),
+        ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#clickResult')).toHaveText('clicked');
         await context.close();
@@ -21,12 +19,10 @@ test.describe('element_click', () => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'click-fail');
-        const res = await ctx.execute!({
-            cmd: 'element.click',
-            tabToken: 'click-fail',
-            args: { target: { selector: '#does-not-exist' }, options: { timeout: 200 } },
-        });
+        const runner = await setupStepRunner(page, 'click-fail');
+        const res = await runner.run([
+            createStep('browser.click', { target: { a11yHint: { role: 'button', name: 'Missing' } }, timeout: 200 }),
+        ]);
         expect(res.ok).toBe(false);
         await context.close();
     });

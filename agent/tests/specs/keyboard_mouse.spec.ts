@@ -1,20 +1,17 @@
 import { test, expect } from '../helpers/fixtures';
-import { createCtx } from '../helpers/context';
+import { createStep, setupStepRunner } from '../helpers/steps';
 
 test.describe('keyboard_mouse', () => {
     test('keyboard press triggers handler', async ({ browser }) => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.setContent(
-            '<input id="field" /><div id="out"></div><script>document.getElementById("field").addEventListener("keydown", e=>{if(e.key==="Enter")document.getElementById("out").textContent="ok";});</script>',
+            '<input id="field" aria-label="Field" /><div id="out"></div><script>document.getElementById(\"field\").addEventListener(\"keydown\", e=>{if(e.key===\"Enter\")document.getElementById(\"out\").textContent=\"ok\";});</script>',
         );
-        await page.focus('#field');
-        const ctx = createCtx(page, 'key-token');
-        const res = await ctx.execute!({
-            cmd: 'keyboard.press',
-            tabToken: 'key-token',
-            args: { key: 'Enter' },
-        });
+        const runner = await setupStepRunner(page, 'key-token');
+        const res = await runner.run([
+            createStep('browser.press_key', { key: 'Enter', target: { a11yHint: { name: 'Field' } } }),
+        ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#out')).toHaveText('ok');
         await context.close();
@@ -24,12 +21,13 @@ test.describe('keyboard_mouse', () => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/drag.html`);
-        const ctx = createCtx(page, 'drag-fail');
-        const res = await ctx.execute!({
-            cmd: 'mouse.dragAndDrop',
-            tabToken: 'drag-fail',
-            args: { from: { selector: '#missing' }, to: { selector: '#target' } },
-        });
+        const runner = await setupStepRunner(page, 'drag-fail');
+        const res = await runner.run([
+            createStep('browser.drag_and_drop', {
+                source: { a11yHint: { role: 'button', name: 'Missing' } },
+                dest_target: { a11yHint: { role: 'button', name: 'Drop' } },
+            }),
+        ]);
         expect(res.ok).toBe(false);
         await context.close();
     });

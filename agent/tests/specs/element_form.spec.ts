@@ -1,17 +1,15 @@
 import { test, expect } from '../helpers/fixtures';
-import { createCtx } from '../helpers/context';
+import { createStep, setupStepRunner } from '../helpers/steps';
 
 test.describe('element_form', () => {
     test('fill writes text', async ({ browser, fixtureURL }) => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'form-token');
-        const res = await ctx.execute!({
-            cmd: 'element.fill',
-            tabToken: 'form-token',
-            args: { target: { selector: '#nameInput' }, text: 'hello' },
-        });
+        const runner = await setupStepRunner(page, 'form-token');
+        const res = await runner.run([
+            createStep('browser.fill', { target: { a11yHint: { name: 'Name' } }, value: 'hello' }),
+        ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#nameResult')).toHaveText('hello');
         await context.close();
@@ -21,12 +19,10 @@ test.describe('element_form', () => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'form-fail');
-        const res = await ctx.execute!({
-            cmd: 'element.type',
-            tabToken: 'form-fail',
-            args: { target: { selector: '#nope' }, text: 'x', options: { timeout: 200 } },
-        });
+        const runner = await setupStepRunner(page, 'form-fail');
+        const res = await runner.run([
+            createStep('browser.type', { target: { a11yHint: { name: 'Missing' } }, text: 'x', timeout: 200 }),
+        ]);
         expect(res.ok).toBe(false);
         await context.close();
     });

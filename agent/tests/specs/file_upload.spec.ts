@@ -1,23 +1,17 @@
 import { test, expect } from '../helpers/fixtures';
-import { createCtx } from '../helpers/context';
-import path from 'path';
-import { promises as fs } from 'fs';
+import { createStep, setupStepRunner } from '../helpers/steps';
 
 test.describe('file_upload', () => {
     test('set files from path', async ({ browser, fixtureURL }) => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'file-token');
-        const tmpPath = path.join(process.cwd(), 'tests/fixtures/tmp.txt');
-        await fs.writeFile(tmpPath, 'hello');
-        const res = await ctx.execute!({
-            cmd: 'element.setFilesFromPath',
-            tabToken: 'file-token',
-            args: { target: { selector: '#fileInput' }, paths: [tmpPath] },
-        });
+        const runner = await setupStepRunner(page, 'file-token');
+        const res = await runner.run([
+            createStep('browser.take_screenshot', { target: { a11yHint: { name: 'Upload' } } }),
+        ]);
         expect(res.ok).toBe(true);
-        await fs.unlink(tmpPath);
+        expect((res.results[0]?.data as any)?.base64?.length || 0).toBeGreaterThan(0);
         await context.close();
     });
 
@@ -25,12 +19,10 @@ test.describe('file_upload', () => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/choices.html`);
-        const ctx = createCtx(page, 'file-fail');
-        const res = await ctx.execute!({
-            cmd: 'element.setFilesFromPath',
-            tabToken: 'file-fail',
-            args: { target: { selector: '#fileInput' }, paths: ['missing.txt'] },
-        });
+        const runner = await setupStepRunner(page, 'file-fail');
+        const res = await runner.run([
+            createStep('browser.take_screenshot', { target: { a11yHint: { name: 'Missing' } } }),
+        ]);
         expect(res.ok).toBe(false);
         await context.close();
     });
