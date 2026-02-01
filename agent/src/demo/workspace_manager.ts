@@ -2,10 +2,10 @@ import crypto from 'crypto';
 import type { Page } from 'playwright';
 import type { PageRegistry } from '../runtime/page_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from '../record/recording';
-import { executeCommand, type ActionContext } from '../runner/execute';
-import type { Command, PageGotoCommand } from '../runner/commands';
+import { runSteps } from '../runner/run_steps';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
+import type { StepUnion } from '../runner/steps/types';
 
 export type WorkspacePublicInfo = {
     workspaceId: string;
@@ -16,6 +16,7 @@ export type WorkspacePublicInfo = {
 
 type WorkspaceState = {
     workspaceId: string;
+    tabId: string;
     tabToken: string;
     createdAt: number;
 };
@@ -28,26 +29,11 @@ export type WorkspaceManagerDeps = {
     navDedupeWindowMs: number;
 };
 
-const randomId = () => crypto.randomBytes(12).toString('hex');
-
-const buildActionContext = async (
-    deps: WorkspaceManagerDeps,
-    tabToken: string,
-): Promise<ActionContext> => {
-    const page = await deps.pageRegistry.getPage(tabToken);
-    const ctx: ActionContext = {
-        page,
-        tabToken,
-        pageRegistry: deps.pageRegistry,
-        log: deps.log,
-        recordingState: deps.recordingState,
-        replayOptions: deps.replayOptions,
-        navDedupeWindowMs: deps.navDedupeWindowMs,
-        execute: undefined,
-    };
-    ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
-    return ctx;
-};
+const buildStep = (name: StepUnion['name'], args: StepUnion['args']): StepUnion => ({
+    id: crypto.randomUUID(),
+    name,
+    args,
+});
 
 export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
     let active: WorkspaceState | null = null;
@@ -56,16 +42,26 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
         if (active) {
             return active;
         }
-        const workspaceId = randomId();
-        const tabToken = randomId();
-        await deps.pageRegistry.getPage(tabToken);
-        active = { workspaceId, tabToken, createdAt: Date.now() };
+        const created = await deps.pageRegistry.createWorkspace();
+        const tabToken = deps.pageRegistry.resolveTabToken({
+            workspaceId: created.workspaceId,
+            tabId: created.tabId,
+        });
+        active = {
+            workspaceId: created.workspaceId,
+            tabId: created.tabId,
+            tabToken,
+            createdAt: Date.now(),
+        };
         return active;
     };
 
     const getActiveWorkspacePublicInfo = async (): Promise<WorkspacePublicInfo | null> => {
         if (!active) return null;
-        const page = await deps.pageRegistry.getPage(active.tabToken);
+        const page = await deps.pageRegistry.resolvePage({
+            workspaceId: active.workspaceId,
+            tabId: active.tabId,
+        });
         return {
             workspaceId: active.workspaceId,
             url: page.url(),
@@ -76,13 +72,12 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
 
     const gotoInWorkspace = async (url: string) => {
         const workspace = await ensureActiveWorkspace();
-        const ctx = await buildActionContext(deps, workspace.tabToken);
-        const command: PageGotoCommand = {
-            cmd: 'page.goto',
-            tabToken: workspace.tabToken,
-            args: { url, waitUntil: 'domcontentloaded' },
-        };
-        return executeCommand(ctx, command);
+        const step = buildStep('browser.goto', { url });
+        return runSteps({
+            workspaceId: workspace.workspaceId,
+            steps: [step],
+            options: { stopOnError: true },
+        });
     };
 
     return { ensureActiveWorkspace, getActiveWorkspacePublicInfo, gotoInWorkspace };

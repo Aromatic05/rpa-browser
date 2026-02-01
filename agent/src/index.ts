@@ -8,7 +8,7 @@ import type { Command } from './runner/commands';
 import { errorResult } from './runner/results';
 import { ERROR_CODES } from './runner/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
-import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
+import { createConsoleStepSink, setRunStepsDeps, runSteps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
@@ -80,6 +80,31 @@ const handleCommand = async (payload?: Command) => {
             : undefined);
     const urlHint =
         typeof (payload as any).args?.url === 'string' ? ((payload as any).args.url as string) : undefined;
+
+    if (payload.cmd === 'steps.run') {
+        const requested = scope?.workspaceId;
+        let workspaceId = requested || pageRegistry.getActiveWorkspace()?.id;
+        if (!workspaceId) {
+            const created = await pageRegistry.createWorkspace();
+            workspaceId = created.workspaceId;
+        }
+        const steps = Array.isArray((payload as any).args?.steps) ? (payload as any).args.steps : [];
+        return runnerScope.run(workspaceId, async () => {
+            const result = await runSteps({
+                workspaceId,
+                steps,
+                options: { stopOnError: (payload as any).args?.stopOnError ?? true },
+            });
+            let tabToken = payload.tabToken || '';
+            try {
+                tabToken = pageRegistry.resolveTabToken({ workspaceId });
+            } catch {
+                // keep empty token if resolve fails
+            }
+            return { ok: result.ok, tabToken, requestId: payload.requestId, data: result };
+        });
+    }
+
     let tabToken = payload.tabToken;
     let page: typeof payload extends { tabToken: string } ? any : any;
     if (scope) {

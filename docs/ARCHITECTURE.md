@@ -26,7 +26,6 @@
 
 - `agent/src/runtime/context_manager.ts`：启动带扩展的 Chromium persistent context。
 - `agent/src/runtime/runtime_registry.ts`：维护 `workspace -> tabs -> Page` 绑定与 trace 绑定。
-- `agent/src/runtime/target_resolver.ts`：保留用于 legacy target 解析（现阶段以 trace/a11yNodeId 为主）。
 
 ## Runner（统一执行）
 
@@ -45,7 +44,6 @@
 ## 无障碍（A11y）
 
 - `trace.page.snapshotA11y`：基于 Playwright accessibility snapshot。
-- `agent/src/runner/actions/a11y.ts`：保留 axe 扫描（用于报告/检测）。
 
 ## 本地 Chat Demo
 
