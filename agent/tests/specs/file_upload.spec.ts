@@ -8,7 +8,9 @@ test.describe('file_upload', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'file-token');
         const res = await runner.run([
-            createStep('browser.take_screenshot', { target: { a11yHint: { name: 'Upload' } } }),
+            createStep('browser.take_screenshot', {
+                target: { a11yHint: { role: 'textbox', name: 'Upload' } },
+            }),
         ]);
         expect(res.ok).toBe(true);
         expect((res.results[0]?.data as any)?.base64?.length || 0).toBeGreaterThan(0);

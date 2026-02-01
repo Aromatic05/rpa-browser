@@ -8,7 +8,10 @@ test.describe('element_form', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'form-token');
         const res = await runner.run([
-            createStep('browser.fill', { target: { a11yHint: { name: 'Name' } }, value: 'hello' }),
+            createStep('browser.fill', {
+                target: { a11yHint: { role: 'textbox', name: 'Name' } },
+                value: 'hello',
+            }),
         ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#nameResult')).toHaveText('hello');

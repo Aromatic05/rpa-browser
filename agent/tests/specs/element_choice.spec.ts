@@ -9,7 +9,10 @@ test.describe('element_choice', () => {
         const runner = await setupStepRunner(page, 'choice-token');
         const res = await runner.run([
             createStep('browser.click', { target: { a11yHint: { role: 'checkbox', name: 'Agree' } } }),
-            createStep('browser.select_option', { target: { a11yHint: { name: 'Country' } }, values: ['jp'] }),
+            createStep('browser.select_option', {
+                target: { a11yHint: { role: 'combobox', name: 'Country' } },
+                values: ['jp'],
+            }),
         ]);
         expect(res.ok).toBe(true);
         await context.close();
@@ -21,7 +24,11 @@ test.describe('element_choice', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'choice-fail');
         const res = await runner.run([
-            createStep('browser.select_option', { target: { a11yHint: { name: 'Country' } }, values: ['missing'], timeout: 200 }),
+            createStep('browser.select_option', {
+                target: { a11yHint: { role: 'combobox', name: 'Country' } },
+                values: ['missing'],
+                timeout: 200,
+            }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();
