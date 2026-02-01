@@ -4,7 +4,7 @@
  *
  * 依赖关系：
  * - 上游：agent/index.ts 通过 createPageRegistry 管理页面生命周期
- * - 下游：runner/execute 通过 resolvePage/resolveScope 获取 Page
+ * - 下游：runner/actions/execute 通过 resolvePage/resolveScope 获取 Page
  *
  * 关键约束：
  * - tabToken 是内部绑定键，不应对外暴露给 AI 或 UI
