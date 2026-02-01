@@ -44,6 +44,13 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
         return `result=${safeJson(event.result ?? null, maxStringLength, maxJsonLength)}`;
     };
 
+    const formatTags = (event: TraceEvent) => {
+        if (!event.tags) return '';
+        const ws = event.tags.workspaceId ? ` ws=${event.tags.workspaceId}` : '';
+        const tab = event.tags.tabToken ? ` tab=${event.tags.tabToken}` : '';
+        return `${ws}${tab}`;
+    };
+
     return {
         beforeOp: async () => {},
         afterOp: async (event) => {
@@ -51,16 +58,17 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
             const args = formatArgs(event.args ?? null);
             const result = formatResult(event);
             const ms = event.durationMs;
+            const tags = formatTags(event);
             // 单行、稳定格式，便于 grep/分析
             console.log(
-                `[trace] op=${event.op} ok=${event.ok} ms=${ms} args=${args} ${result}`,
+                `[trace]${tags} op=${event.op} ok=${event.ok} ms=${ms} args=${args} ${result}`,
             );
         },
         onError: async (event, error) => {
             if (event.type !== 'op.end') return;
             // afterOp 已打印失败路径，这里只补充一次 error（可选）
             console.log(
-                `[trace] op=${event.op} ok=false ms=${event.durationMs} error=${safeJson(
+                `[trace]${formatTags(event)} op=${event.op} ok=false ms=${event.durationMs} error=${safeJson(
                     error,
                     maxStringLength,
                     maxJsonLength,

@@ -14,6 +14,7 @@ import type {
     TraceHooks,
     TraceSink,
     TraceOpName,
+    TraceTags,
 } from './types';
 import { traceCall } from './trace_call';
 import { adoptA11yNode, cacheA11ySnapshot } from './a11y_adopt';
@@ -39,11 +40,13 @@ export type BrowserAutomationTools = {
 export const createTraceContext = (opts: {
     sinks?: TraceSink[];
     hooks?: TraceHooks;
+    tags?: TraceTags;
 }): TraceContext => ({
     sinks: opts.sinks || [],
     // 默认启用日志 hooks，便于 demo/人工验收；调用方可显式覆盖为 noop
     hooks: opts.hooks || createLoggingHooks(),
     cache: {},
+    tags: opts.tags,
 });
 
 export const createTraceTools = (opts: {
@@ -51,8 +54,9 @@ export const createTraceTools = (opts: {
     context?: BrowserContext;
     sinks?: TraceSink[];
     hooks?: TraceHooks;
+    tags?: TraceTags;
 }): { tools: BrowserAutomationTools; ctx: TraceContext } => {
-    const ctx = createTraceContext({ sinks: opts.sinks, hooks: opts.hooks });
+    const ctx = createTraceContext({ sinks: opts.sinks, hooks: opts.hooks, tags: opts.tags });
     let currentPage = opts.page;
 
     const run = <T,>(op: TraceOpName, args: unknown, fn: () => Promise<T>) =>

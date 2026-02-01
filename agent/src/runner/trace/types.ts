@@ -46,6 +46,7 @@ export type TraceEvent =
           type: 'op.start';
           ts: number;
           op: TraceOpName;
+          tags?: TraceTags;
           args?: unknown;
       }
     | {
@@ -54,6 +55,7 @@ export type TraceEvent =
           op: TraceOpName;
           ok: boolean;
           durationMs: number;
+          tags?: TraceTags;
           args?: unknown;
           result?: unknown;
           error?: ToolError;
@@ -63,6 +65,7 @@ export type TraceContext = {
     sinks: TraceSink[];
     hooks: TraceHooks;
     cache: TraceCache;
+    tags?: TraceTags;
 };
 
 export type TraceCache = {
@@ -86,4 +89,9 @@ export type TraceHooks = {
     beforeOp?: (event: TraceEvent) => void | Promise<void>;
     afterOp?: (event: TraceEvent) => void | Promise<void>;
     onError?: (event: TraceEvent, error: ToolError) => void | Promise<void>;
+};
+
+export type TraceTags = {
+    workspaceId?: string;
+    tabToken?: string;
 };

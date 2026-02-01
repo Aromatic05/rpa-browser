@@ -24,6 +24,7 @@ export const traceCall = async <T>(
         type: 'op.start',
         ts: startTs,
         op: meta.op,
+        tags: ctx.tags,
         args: meta.args,
     };
     await ctx.hooks.beforeOp?.(startEvent);
@@ -37,6 +38,7 @@ export const traceCall = async <T>(
             op: meta.op,
             ok: true,
             durationMs: Date.now() - startTs,
+            tags: ctx.tags,
             args: meta.args,
             result: data,
         };
@@ -51,6 +53,7 @@ export const traceCall = async <T>(
             op: meta.op,
             ok: false,
             durationMs: Date.now() - startTs,
+            tags: ctx.tags,
             args: meta.args,
             error: mapped,
         };
