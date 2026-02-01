@@ -74,6 +74,11 @@ export const recordEvent = (
     const list = state.recordings.get(tabToken) || [];
     list.push(event);
     state.recordings.set(tabToken, list);
+    console.log('[record]', event.type, {
+        tabToken,
+        ts: event.ts,
+        url: (event as any).url,
+    });
 };
 
 const navListenerPages = new WeakSet<Page>();
@@ -136,6 +141,7 @@ export const startRecording = async (
     }
     state.lastNavigateTs.set(tabToken, 0);
     state.lastClickTs.set(tabToken, 0);
+    console.log('[record] start', { tabToken, url: page.url() });
     await ensureRecorder(state, page, tabToken, navDedupeWindowMs);
 };
 
@@ -146,6 +152,7 @@ export const stopRecording = (state: RecordingState, tabToken: string) => {
     state.recordingEnabled.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);
+    console.log('[record] stop', { tabToken });
 };
 
 /**

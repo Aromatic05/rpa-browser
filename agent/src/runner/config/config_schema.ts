@@ -51,6 +51,10 @@ export type Observability = {
     traceEnabled: boolean;
     /** 是否输出 trace 参数（默认 false，避免泄露） */
     traceLogArgs: boolean;
+    /** 是否将 trace 日志写入文件 */
+    traceFileEnabled: boolean;
+    /** trace 日志输出路径 */
+    traceFilePath: string;
     /** step 日志级别 */
     stepLogLevel: 'info' | 'debug';
     /** 出错时截图 */

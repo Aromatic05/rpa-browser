@@ -10,6 +10,7 @@ import { ERROR_CODES } from './runner/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps, runSteps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
+import { FileSink } from './runner/trace';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -31,6 +32,11 @@ const contextManager = createContextManager({
 });
 
 let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
+
+const config = getRunnerConfig();
+const traceSinks = config.observability.traceFileEnabled
+    ? [new FileSink(config.observability.traceFilePath)]
+    : [];
 
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
@@ -62,11 +68,12 @@ const pageRegistry = createPageRegistry({
 const runnerScope = createRunnerScopeRegistry(2);
 runtimeRegistry = createRuntimeRegistry({
     pageRegistry,
+    traceSinks,
 });
 setRunStepsDeps({
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
-    config: getRunnerConfig(),
+    config,
 });
 
 const handleCommand = async (payload?: Command) => {

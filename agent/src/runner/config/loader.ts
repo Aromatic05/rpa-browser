@@ -72,6 +72,8 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['humanPolicy', 'typeDelayMsRange', 'max'], envNumber('RUNNER_TYPE_DELAY_MAX_MS'));
     set(['observability', 'traceEnabled'], envBool('RUNNER_TRACE_ENABLED'));
     set(['observability', 'traceLogArgs'], envBool('RUNNER_TRACE_LOG_ARGS'));
+    set(['observability', 'traceFileEnabled'], envBool('RUNNER_TRACE_FILE_ENABLED'));
+    set(['observability', 'traceFilePath'], process.env.RUNNER_TRACE_FILE_PATH);
 
     return mergeDeep(config, patch);
 };

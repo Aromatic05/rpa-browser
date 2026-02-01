@@ -3,6 +3,8 @@
  * MemorySink 是必需实现；ConsoleSink 可选。
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import type { TraceEvent, TraceSink } from './types';
 
 /**
@@ -32,5 +34,26 @@ export class ConsoleSink implements TraceSink {
     write(event: TraceEvent) {
         // 控制台输出保持简洁，避免泄露敏感数据
         console.log('[trace]', event.type, event.op, event);
+    }
+}
+
+/**
+ * FileSink：将 trace 事件写入文件（JSONL）。
+ * - 每行一个事件，便于后续解析/回放/审计
+ * - 由上层控制是否启用与输出路径
+ */
+export class FileSink implements TraceSink {
+    private readonly stream: fs.WriteStream;
+
+    constructor(filePath: string) {
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        this.stream = fs.createWriteStream(filePath, { flags: 'a' });
+    }
+
+    write(event: TraceEvent) {
+        this.stream.write(`${JSON.stringify(event)}\n`);
     }
 }

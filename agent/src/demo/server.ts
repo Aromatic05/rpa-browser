@@ -12,6 +12,7 @@ import { runAgentLoop } from './agent_loop';
 import { createChatCompletion } from './openai_compat_client';
 import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
 import { getRunnerConfig } from '../runner/config';
+import { FileSink } from '../runner/trace';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,14 +88,20 @@ const workspaceManager = createWorkspaceManager({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
 });
 
+const config = getRunnerConfig();
+const traceSinks = config.observability.traceFileEnabled
+    ? [new FileSink(config.observability.traceFilePath)]
+    : [];
+
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 runtimeRegistry = createRuntimeRegistry({
     pageRegistry,
+    traceSinks,
 });
 setRunStepsDeps({
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
-    config: getRunnerConfig(),
+    config,
 });
 
 const buildToolDeps = () => ({
