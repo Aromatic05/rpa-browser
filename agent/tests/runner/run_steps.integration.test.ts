@@ -9,12 +9,12 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { createPageRegistry } from '../../runtime/page_registry';
-import { createRuntimeRegistry } from '../../runtime/runtime_registry';
-import { runSteps, MemoryStepSink } from '../run_steps';
-import { MemorySink } from '../trace/sink';
-import { createNoopHooks } from '../trace/hooks';
-import { getRunnerConfig } from '../config';
+import { createPageRegistry } from '../../src/runtime/page_registry';
+import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
+import { runSteps, MemoryStepSink } from '../../src/runner/run_steps';
+import { MemorySink } from '../../src/runner/trace/sink';
+import { createNoopHooks } from '../../src/runner/trace/hooks';
+import { getRunnerConfig } from '../../src/runner/config';
 
 const fixtureUrl = (name: string) =>
     pathToFileURL(path.resolve(process.cwd(), 'tests/fixtures', name)).toString();

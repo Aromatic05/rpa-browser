@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
-import type { ActionContext } from '../../src/runner/execute';
-import { executeCommand } from '../../src/runner/execute';
+import type { ActionContext } from '../../src/actions/execute';
+import { executeCommand } from '../../src/actions/execute';
 import { createRecordingState } from '../../src/record/recording';
 import type { PageRegistry } from '../../src/runtime/page_registry';
 

@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import { createPageRegistry } from '../../src/runtime/page_registry';
 import { createRecordingState } from '../../src/record/recording';
-import { executeCommand, type ActionContext } from '../../src/runner/execute';
+import { executeCommand, type ActionContext } from '../../src/actions/execute';
 import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';
 import type { Command } from '../../src/runner/commands';
 

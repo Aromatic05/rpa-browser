@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { MemorySink } from '../sink';
-import { createTraceTools } from '../tools';
+import { MemorySink } from '../../src/runner/trace/sink';
+import { createTraceTools } from '../../src/runner/trace/tools';
 
 const fixtureUrl = () => {
     const filePath = path.resolve(process.cwd(), 'tests/fixtures/trace_fixture.html');

@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadRunnerConfig } from '../loader';
+import { loadRunnerConfig } from '../../src/runner/config/loader';
 
 test('load default config', () => {
     const config = loadRunnerConfig({ configPath: '__non_exist__.json' });

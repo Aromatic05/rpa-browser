@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { traceCall } from '../trace_call';
-import { MemorySink } from '../sink';
-import type { TraceContext } from '../types';
-import { createNoopHooks } from '../hooks';
+import { traceCall } from '../../src/runner/trace/trace_call';
+import { MemorySink } from '../../src/runner/trace/sink';
+import type { TraceContext } from '../../src/runner/trace/types';
+import { createNoopHooks } from '../../src/runner/trace/hooks';
 
 test('traceCall success writes start/end and returns ok', async () => {
     const sink = new MemorySink();
