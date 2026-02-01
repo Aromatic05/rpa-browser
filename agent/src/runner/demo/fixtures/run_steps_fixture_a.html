@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>RunSteps Fixture A</title>
+    <style>
+      body { font-family: sans-serif; padding: 16px; }
+      #log { margin-top: 12px; padding: 8px; border: 1px solid #ccc; }
+    </style>
+  </head>
+  <body>
+    <h1>Fixture A</h1>
+    <label for="input-a">Name A</label>
+    <input id="input-a" aria-label="Name A" />
+    <button id="btn-a" aria-label="Action A">Do Action A</button>
+    <div id="log" role="status">idle</div>
+
+    <script>
+      document.getElementById('btn-a').addEventListener('click', () => {
+        document.getElementById('log').textContent = 'clicked-a';
+      });
+    </script>
+  </body>
+</html>
