@@ -33,6 +33,10 @@ export type Step<TName extends StepName = StepName> = {
     meta?: StepMeta;
 };
 
+export type StepUnion = {
+    [Name in StepName]: Step<Name>;
+}[StepName];
+
 export type StepResult = {
     stepId: string;
     ok: boolean;
@@ -42,7 +46,7 @@ export type StepResult = {
 
 export type RunStepsRequest = {
     workspaceId: string;
-    steps: Step[];
+    steps: StepUnion[];
     options?: { dryRun?: boolean; stopOnError?: boolean; maxConcurrency?: number };
 };
 
