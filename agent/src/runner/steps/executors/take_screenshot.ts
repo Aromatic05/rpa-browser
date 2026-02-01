@@ -1,5 +1,5 @@
-import type { Step, StepResult } from './types';
-import type { RunStepsDeps } from '../run_steps';
+import type { Step, StepResult } from '../types';
+import type { RunStepsDeps } from '../../run_steps';
 import { mapTraceError, normalizeTarget } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 
