@@ -41,28 +41,23 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     'record.replay': async (ctx, command) => {
         const args = (command as RecordReplayCommand).args;
         const events = getRecording(ctx.recordingState, ctx.tabToken);
-        if (!ctx.execute) {
-            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'execute missing');
-        }
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         beginReplay(ctx.recordingState, ctx.tabToken);
-        const response = await replayRecording(
-            ctx.page,
+        const response = await replayRecording({
+            workspaceId: scope.workspaceId,
             events,
-            ctx.replayOptions,
-            { stopOnError: args?.stopOnError ?? true },
-            ctx.execute,
-            () => ctx.recordingState.replayCancel.has(ctx.tabToken),
-        );
+            stopOnError: args?.stopOnError ?? true,
+        });
         endReplay(ctx.recordingState, ctx.tabToken);
         if (!response.ok) {
             return errorResult(
                 ctx.tabToken,
                 ERROR_CODES.ERR_ASSERTION_FAILED,
-                'replay failed',
+                response.error?.message || 'replay failed',
                 undefined,
-                response.data,
+                response.error?.details,
             );
         }
-        return { ok: true, tabToken: ctx.tabToken, data: response.data };
+        return { ok: true, tabToken: ctx.tabToken, data: response.results };
     },
 };

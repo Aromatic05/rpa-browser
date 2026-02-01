@@ -1,12 +1,14 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
+import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { executeCommand, type ActionContext } from './runner/execute';
 import type { Command } from './runner/commands';
 import { errorResult } from './runner/results';
 import { ERROR_CODES } from './runner/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
+import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -27,12 +29,17 @@ const contextManager = createContextManager({
     },
 });
 
+let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
+
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
     getContext: contextManager.getContext,
     onPageBound: (page, token) => {
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
+        }
+        if (runtimeRegistry) {
+            runtimeRegistry.bindPage(page, token);
         }
         try {
             const scope = pageRegistry.resolveScopeFromToken(token);
@@ -52,6 +59,13 @@ const pageRegistry = createPageRegistry({
     onTokenClosed: (token) => cleanupRecording(recordingState, token),
 });
 const runnerScope = createRunnerScopeRegistry(2);
+runtimeRegistry = createRuntimeRegistry({
+    pageRegistry,
+});
+setRunStepsDeps({
+    runtime: runtimeRegistry,
+    stepSinks: [createConsoleStepSink('[step]')],
+});
 
 const handleCommand = async (payload?: Command) => {
     if (!payload?.cmd) {

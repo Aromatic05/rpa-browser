@@ -34,6 +34,7 @@ export type RecordedEvent = {
     ts: number;
     type: RecordedEventType;
     url?: string;
+    a11yNodeId?: string;
     selector?: string;
     locatorCandidates?: LocatorCandidate[];
     scopeHint?: ScopeHint;
