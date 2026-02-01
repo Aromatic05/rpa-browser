@@ -2,9 +2,12 @@
 
 ## 常见日志
 
-- 扩展内容脚本：`[RPA] HELLO`, `[RPA] send command`, `[RPA] response`
-- Service worker：`[RPA:sw] ws open/send/message/close`, `onMessage`
-- Agent：`[RPA:agent] cmd`, `[RPA:agent] execute`
+- 扩展 content：`[rpa-ext][content] ...`
+- 扩展 SW：`[rpa-ext][sw] ws open/send/message/close`
+- 扩展 UI：`[rpa-ext][panel] ...`
+- Agent：`[RPA:agent] cmd/execute`
+- Trace：`[trace] op=... ok=...`（默认开启）
+- Step：`step.start / step.end`（runSteps 输出）
 
 ## 典型问题
 
@@ -21,30 +24,26 @@
 原因：扩展已重新加载但页面未刷新。
 修复：刷新页面。
 
-### 3) 回放超时
+### 3) 回放找不到元素（ERR_NOT_FOUND）
 
-原因：选择器脆弱、隐藏菜单或动态类。
+原因：可访问性信息缺失或 role/name 不稳定。
 修复：
 
-- 录制语义定位器（role/label/text）
-- 确保存在打开菜单的步骤
+- 优先使用语义稳定的 `role/name` 目标
+- 确保页面已渲染完成，再触发录制/回放
 
-### 4) 停止录制看起来无效
+### 4) mock 起始页无法打开
 
-原因：录制器仍在发出事件，但在禁用录制时这些事件被忽略。
-仅检查 `record { ... }` 日志，而非原始事件日志。
+原因：mock server 未启动或端口不一致。
+修复：
+
+- `pnpm mock:dev`
+- 检查 `DEFAULT_MOCK_ORIGIN` 是否与本地端口一致
 
 ## 工件
 
 - 回放证据：`.artifacts/replay/<tabToken>/<ts>.png`
-- 无障碍证据：`.artifacts/a11y/<ts>.png`
-
-## 本地 Chat Demo 调试
-
-- **LLM 连接检查**：Settings 区点击 `Debug LLM`，后端调用 `/api/llm/debug`，返回最小响应与延迟。
-- **工具调用是否触发**：在 Chat 区域查看 `Tool events` 折叠区。
-- **查看 LLM 原始回复**：`LLM replies` 折叠区展示所有 assistant 消息（含 tool calls）。
-- **apiBase 生效检查**：调用 `GET /api/config`，确认保存的 `apiBase` 值。
+- A11y 证据：`.artifacts/a11y/<ts>.png`（如启用）
 
 ## MCP 调试
 

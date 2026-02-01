@@ -8,21 +8,29 @@ pnpm install
 
 ## 运行
 
-- 构建扩展：
+### 1) 启动 mock 本地站点（起始页）
+
+```
+pnpm mock:dev
+```
+
+默认访问：`http://localhost:4173/pages/start.html#beta`
+
+### 2) 构建并加载扩展
 
 ```
 pnpm -C extension build
 ```
 
-- 启动 agent：
+在 Chrome 中从 `extension/dist` 加载扩展。
+
+### 3) 启动 agent
 
 ```
 pnpm -C agent dev
 ```
 
-- 在 Chrome 中从 `extension/dist` 加载扩展。
-
-- 启动本地 Chat Demo（HTTP + UI）：
+### 4) 本地 Chat Demo（可选）
 
 ```
 pnpm -C agent dev:demo
@@ -30,19 +38,13 @@ pnpm -C agent dev:demo
 
 访问 `http://127.0.0.1:17334`。
 
-- 启动 MCP stdio server：
+### 5) MCP stdio server（可选）
 
 ```
 pnpm -C agent mcp
 ```
 
-- MCP smoke client：
-
-```
-pnpm -C agent mcp:smoke
-```
-
-- 运行 runSteps 有头演示（人工验收）：
+### 6) 统一 runner 有头演示（人工验收）
 
 ```
 pnpm -C agent demo:headed-runner
@@ -52,19 +54,23 @@ pnpm -C agent demo:headed-runner
 
 ```
 pnpm -C agent test
+pnpm -C agent test:trace
 pnpm -C agent test:headed
 ```
 
-## 扩展构建
+扩展侧轻量测试：
 
-`extension/build.mjs` 在 TypeScript 编译后将 `manifest.json` 和 `panel.html` 复制到 `extension/dist`。
+```
+pnpm -C extension test
+```
 
 ## 常用路径
 
-- 扩展 UI：`extension/src/content.ts`
-- Service worker：`extension/src/sw.ts`
-- Runner 动作：`agent/src/runner/actions/*`
-- Tool registry：`agent/src/runner/tool_registry.ts`
-- 回放逻辑：`agent/src/play/replay.ts`
+- 扩展入口：`extension/src/entry/*`
+- SW 路由：`extension/src/background/*`
+- 录制：`extension/src/record/*`
+- Runner 统一入口：`agent/src/runner/run_steps.ts`
+- Trace 原子层：`agent/src/runner/trace/*`
+- 统一配置：`agent/src/runner/config/*`
 - Demo 服务：`agent/src/demo/server.ts`
-- Demo UI：`agent/static/index.html`
+- Mock 起始页：`mock/pages/start.html`

@@ -2,61 +2,58 @@
 
 ## 概述
 
-该示例包含两个主要部分：
+该项目包含两个主要部分：
 
-- `extension/`：MV3 Chrome 扩展，注入 UI、生成 `tabToken` 并转发命令。
-- `agent/`：基于 Node + Playwright 的代理，负责浏览器、录制、回放和执行动作。
-- `agent/src/demo/*`：本地 Chat Demo（HTTP 服务 + UI + LLM agent loop）。
-- `agent/src/mcp/*`：MCP stdio server 入口（可选模式）。
+- `extension/`：MV3 Chrome 扩展，负责 UI、录制、workspace/tab 管理与命令转发。
+- `agent/`：Node + Playwright 代理，负责浏览器运行时、统一 step 执行、trace 观测与回放。
+- `mock/`：本地静态站点，提供可注入的起始页与工具测试页面。
+- `agent/src/demo/*`：本地 Chat Demo（HTTP 服务 + UI + LLM loop）。
+- `agent/src/mcp/*`：MCP stdio server（可选模式）。
 
-扩展不会直接执行自动化操作。它只向 service worker 发送 `CMD` 消息。由 agent 在 Playwright 中执行所有动作。
+扩展不会直接执行自动化操作，仅转发 `CMD`；真正的自动化执行与日志/错误处理全部发生在 agent 侧的 `runSteps` 与 trace 层。
 
 ## 数据流
 
 1. `content.ts` 生成 `tabToken` 并向 SW 发送 `RPA_HELLO`。
-2. UI 按钮 -> `content.ts` -> `chrome.runtime.sendMessage({ type:'CMD', cmd, tabToken, args })`。
-3. `sw.ts` 在缺失时附加活动标签 token，并将 `{ cmd: { cmd, tabToken, args, requestId } }` 发送到 WS。
-4. `agent/src/index.ts` 解析 WS，按 `tabToken` 解析页面，并分派到 runner。
-5. Runner 执行动作并返回标准结果。
+2. Side panel 触发操作 -> `cmd_router` 生成 `{ cmd, args, workspaceId/tabId, requestId }`。
+3. `ws_client` 发送到 `agent/src/index.ts`。
+4. `runner/execute.ts` 路由命令：`steps.run` -> `runner/run_steps.ts`。
+5. `runSteps` 绑定 workspace/page/trace 并执行 step executor。
+6. `trace.*` 产生 op.start/op.end 观测日志与 ToolResult。
+7. 结果回传扩展并更新 UI。
 
-## 运行时
+## 运行时模型
 
-- `agent/src/runtime/context_manager.ts`：使用扩展启动 Chromium 持久化上下文。
-- `agent/src/runtime/page_registry.ts`：维护 `tabToken -> Page` 绑定。
-- `agent/src/runtime/target_resolver.ts`：将 `Target` 解析为页面或 frame 内的 `Locator`。
+- `agent/src/runtime/context_manager.ts`：启动带扩展的 Chromium persistent context。
+- `agent/src/runtime/runtime_registry.ts`：维护 `workspace -> tabs -> Page` 绑定与 trace 绑定。
+- `agent/src/runtime/target_resolver.ts`：保留用于 legacy target 解析（现阶段以 trace/a11yNodeId 为主）。
 
-## Runner
+## Runner（统一执行）
 
-- `agent/src/runner/execute.ts`：命令路由、错误映射、日志。
-- `agent/src/runner/actions/*`：动作实现。
-- `agent/src/runner/commands.ts`：命令联合类型。
-- `agent/src/runner/results.ts`：标准响应类型。
-- `agent/src/runner/tool_registry.ts`：工具定义与执行（被 MCP 与 Demo 复用）。
+- `agent/src/runner/run_steps.ts`：统一 step 执行入口。
+- `agent/src/runner/steps/*`：step executor（goto/snapshot/click/fill 等）。
+- `agent/src/runner/trace/*`：原子操作与观测层（A11y snapshot + locator 绑定）。
+- `agent/src/runner/config/*`：统一配置（timeout/重试/人类模拟/观测）。
+- `agent/src/runner/tool_registry.ts`：工具层入口（MCP/Demo 复用）。
 
-## 录制
+## 录制与回放
 
-- `agent/src/record/recorder_payload.ts`：注入页面的脚本，用于捕获事件。
-- `agent/src/record/recorder.ts`：注入 payload，桥接到 Node。
-- `agent/src/record/recording.ts`：录制状态与过滤。
-
-## 回放
-
-- `agent/src/play/replay.ts`：回放 RecordedEvent 列表并使用自愈定位器。
+- `extension/src/record/*`：录制捕获与归一化，输出 `RecordedStep`（包含 a11y hint）。
+- `record_store`：本地缓存录制步骤，可用 `record.replay` 触发回放。
+- `agent/src/play/replay.ts`：将 RecordedStep 转换为 runSteps 调用。
 
 ## 无障碍（A11y）
 
-- `agent/src/runner/actions/a11y.ts`：基于 `@axe-core/playwright` 的 `page.a11yScan`。
+- `trace.page.snapshotA11y`：基于 Playwright accessibility snapshot。
+- `agent/src/runner/actions/a11y.ts`：保留 axe 扫描（用于报告/检测）。
 
 ## 本地 Chat Demo
 
 - `agent/src/demo/server.ts`：本地 HTTP 服务（仅监听 `127.0.0.1`）。
 - `agent/src/demo/agent_loop.ts`：LLM tool-calling 循环。
-- `agent/src/demo/openai_compat_client.ts`：OpenAI-compatible API 调用封装。
-- `agent/src/demo/workspace_manager.ts`：workspace 管理（隐藏 `tabToken`）。
 - `agent/static/index.html`：纯 HTML UI（Settings / Environment / Chat）。
 
 ## MCP（stdio）
 
 - `agent/src/mcp/server.ts`：MCP server。
-- `agent/src/mcp/tool_handlers.ts`：调用 tool registry 执行真实动作。
-- `agent/src/mcp/schemas.ts`：zod 输入校验。
+- `agent/src/mcp/tool_handlers.ts`：调用 tool registry，最终进入 `runSteps`。

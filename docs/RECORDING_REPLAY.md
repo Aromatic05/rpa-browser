@@ -1,41 +1,52 @@
 # 录制与回放
 
-## 录制
+## 录制（extension 侧）
 
-录制由注入脚本处理，见 `agent/src/record/recorder_payload.ts`。
+录制已重写为“直接输出 Step”的结构化流程，入口与实现位于 `extension/src/record/*`：
 
-捕获的事件（子集）：
+- 捕获事件：`event_capture.ts`
+- 构建定位：`locator_builder.ts`（优先 role/name/text）
+- 事件归一化：`event_normalize.ts`（输出 `RecordedStep`）
+- 本地缓存：`record_store.ts`
 
-- click
-- input/change（不包含 select/checkbox/radio）
-- check（checkbox/radio）
-- select
-- date
-- paste/copy
-- keydown
-- scroll
-- navigate（来自页面导航）
+录制输出的核心数据是 `RecordedStep`：
 
-每个事件存储：
+```
+{
+  id: string,
+  name: "browser.goto" | "browser.snapshot" | "browser.click" | "browser.fill",
+  args: {
+    a11yNodeId?: string,
+    a11yHint?: { role?: string; name?: string; text?: string },
+    url?: string,
+    value?: string
+  },
+  meta: { ts, tabToken, workspaceId?, source: "record" }
+}
+```
 
-- `locatorCandidates`：按顺序的语义定位器列表 + CSS 回退
-- `scopeHint`：`aside` | `header` | `main`
+说明：
 
-## 回放
+- 录制时优先写入 `role/name` 作为 `a11yHint`，稳定性高于 CSS/坐标。
+- `a11yNodeId` 在录制侧通常不可直接获取，因此默认以 `a11yHint` 为主。
+- 录制数据先缓存于 `record_store`，可用于离线重试与回放。
 
-回放使用自愈（self-heal）定位器解析：
+## 回放（agent 侧）
 
-1. 按顺序尝试每个候选（testid > role > label > placeholder > text > css）
-2. 跳过计数为 0 或计数 > 1（不明确）的候选
-3. 成功时：等待可见 -> scrollIntoView -> 执行动作
-4. 失败时：将截图写入 `.artifacts/replay/<tabToken>/<ts>.png` 并包含证据
+回放不再走旧的 locatorCandidates 链路，而是统一进入 `runSteps`：
 
-## 导航去重
+1. `record.replay` -> 扩展发送 `steps.run`。
+2. `agent/src/runner/run_steps.ts` 统一执行 Step。
+3. 元素类操作通过 `trace.page.snapshotA11y` 获取树并解析 `a11yHint`。
+4. 失败时返回结构化错误（`ERR_NOT_FOUND/ERR_AMBIGUOUS/ERR_TIMEOUT` 等）。
 
-回放 `page.goto` 会比较当前 URL 与目标 URL 的 `origin + pathname`。如果一致则跳过跳转，避免覆盖当前页面状态。
+## 常见失败模式（更新）
 
-## 常见失败模式
+- 页面可访问性信息缺失：`a11yHint` 无法匹配，导致 `ERR_NOT_FOUND`。
+- 文本歧义：多个元素匹配 `role/name`，返回 `ERR_AMBIGUOUS`。
+- 动态菜单未展开：需要录制“打开菜单”的前置步骤。
 
-- 动态类（`.active`、nth-of-type）：避免在 CSS 中使用；使用语义定位器。
-- 隐藏菜单：录制时应包含打开菜单的操作步骤。
-- Select 元素：仅通过 `select` 事件处理（忽略 input 事件）。
+## 说明
+
+- 旧的 locatorCandidates/self-heal 逻辑已收敛，不再作为默认链路。
+- 录制与回放统一在 Step 模型上，便于 trace 观测与后续演进。
