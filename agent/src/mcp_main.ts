@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
@@ -30,8 +31,15 @@ const contextManager = createContextManager({
 let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const config = getRunnerConfig();
+const runId = new Date().toISOString().replace(/[:.]/g, '-');
+const resolveLogPath = (template: string) => {
+    if (template.includes('{ts}')) return template.replace('{ts}', runId);
+    const ext = path.extname(template);
+    const base = ext ? template.slice(0, -ext.length) : template;
+    return `${base}-${runId}${ext || '.log'}`;
+};
 const traceSinks = config.observability.traceFileEnabled
-    ? [new FileSink(config.observability.traceFilePath)]
+    ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
 
 const pageRegistry = createPageRegistry({

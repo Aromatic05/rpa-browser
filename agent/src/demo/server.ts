@@ -89,8 +89,15 @@ const workspaceManager = createWorkspaceManager({
 });
 
 const config = getRunnerConfig();
+const runId = new Date().toISOString().replace(/[:.]/g, '-');
+const resolveLogPath = (template: string) => {
+    if (template.includes('{ts}')) return template.replace('{ts}', runId);
+    const ext = path.extname(template);
+    const base = ext ? template.slice(0, -ext.length) : template;
+    return `${base}-${runId}${ext || '.log'}`;
+};
 const traceSinks = config.observability.traceFileEnabled
-    ? [new FileSink(config.observability.traceFilePath)]
+    ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
 
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行

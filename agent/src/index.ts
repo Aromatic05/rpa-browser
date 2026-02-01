@@ -36,13 +36,21 @@ const contextManager = createContextManager({
 let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const config = getRunnerConfig();
+const runId = new Date().toISOString().replace(/[:.]/g, '-');
+const resolveLogPath = (template: string) => {
+    if (template.includes('{ts}')) return template.replace('{ts}', runId);
+    const ext = path.extname(template);
+    const base = ext ? template.slice(0, -ext.length) : template;
+    return `${base}-${runId}${ext || '.log'}`;
+};
+const actionLogPath = resolveLogPath(config.observability.actionFilePath);
 const actionLogStream = config.observability.actionFileEnabled
     ? (() => {
-          const dir = path.dirname(config.observability.actionFilePath);
+          const dir = path.dirname(actionLogPath);
           if (!fs.existsSync(dir)) {
               fs.mkdirSync(dir, { recursive: true });
           }
-          return fs.createWriteStream(config.observability.actionFilePath, { flags: 'a' });
+          return fs.createWriteStream(actionLogPath, { flags: 'a' });
       })()
     : null;
 const actionLogger = (...args: unknown[]) => {
@@ -57,7 +65,7 @@ const actionLogger = (...args: unknown[]) => {
     actionLogStream.write(`${JSON.stringify(payload)}\n`);
 };
 const traceSinks = config.observability.traceFileEnabled
-    ? [new FileSink(config.observability.traceFilePath)]
+    ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
 
 const pageRegistry = createPageRegistry({
@@ -168,7 +176,7 @@ const handleCommand = async (payload?: Command) => {
             execute: undefined,
         };
         ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
-        log('cmd', { cmd: payload.cmd, tabToken, requestId: payload.requestId });
+        actionLogger('cmd', { cmd: payload.cmd, tabToken, requestId: payload.requestId });
         return executeCommand(ctx, payload);
     });
 };
