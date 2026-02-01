@@ -4,6 +4,8 @@
  * 注意：
  * - 运行在页面上下文，不能直接访问 tabs API。\n * - 仅处理 UI 与消息，不做持久化。\n */
 
+import { startRecording, stopRecording } from '../record/recorder.js';
+
 (() => {
     if (window.top !== window) return;
     if ((window as any).__rpaTokenInjected) return;
@@ -33,6 +35,25 @@
         ) => {
             if (message?.type === 'RPA_GET_TOKEN') {
                 sendResponse({ ok: true, tabToken, url: location.href });
+                return true;
+            }
+            if (message?.type === 'RECORD_START') {
+                startRecording({
+                    tabToken,
+                    onStep: (step) => {
+                        chrome.runtime.sendMessage({
+                            type: 'RECORD_STEP',
+                            tabToken,
+                            step,
+                        });
+                    },
+                });
+                sendResponse({ ok: true });
+                return true;
+            }
+            if (message?.type === 'RECORD_STOP') {
+                stopRecording();
+                sendResponse({ ok: true });
                 return true;
             }
         },

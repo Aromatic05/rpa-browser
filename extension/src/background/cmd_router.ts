@@ -15,9 +15,10 @@ import {
 } from '../services/name_store.js';
 import { safeGroupActiveTab, supportsTabGrouping } from '../services/tab_grouping.js';
 import { createLogger } from '../shared/logger.js';
-import type { CmdEnvelope, WsEventPayload } from '../shared/types.js';
+import type { CmdEnvelope, RecordedStep, WsEventPayload } from '../shared/types.js';
 import { resolveScope } from './scope_resolver.js';
 import type { WsClient } from './ws_client.js';
+import { createRecordStore } from '../record/record_store.js';
 
 export type CmdRouterOptions = {
     wsClient: WsClient;
@@ -34,6 +35,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     let activeScopeTabId: string | null = null;
     const supportsTabGroups = supportsTabGrouping(chrome);
     const tokenToWorkspace = new Map<string, string>();
+    const recordStore = createRecordStore(chrome.storage.session || chrome.storage.local);
 
     const upsertTab = (tabId: number, tabToken: string, url: string) => {
         tabState.set(tabId, {
@@ -194,6 +196,20 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleMessage = (message: CmdEnvelope | any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
+        if (message.type === 'RECORD_STEP') {
+            const step = message.step as RecordedStep;
+            const workspaceId =
+                tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
+            void recordStore.appendStep(workspaceId, {
+                ...step,
+                meta: {
+                    ...step.meta,
+                    workspaceId,
+                },
+            });
+            sendResponse({ ok: true });
+            return true;
+        }
         if (message.type === 'RPA_HELLO') {
             const tabId = sender.tab?.id;
             if (tabId == null) return;
@@ -209,6 +225,46 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (message.type === 'CMD') {
             (async () => {
+                if (message.cmd === 'record.start' || message.cmd === 'record.stop') {
+                    const active = await getActiveTabToken();
+                    if (!active) {
+                        sendResponse({ ok: false, error: 'tab token unavailable' });
+                        return;
+                    }
+                    const type = message.cmd === 'record.start' ? 'RECORD_START' : 'RECORD_STOP';
+                    chrome.tabs.sendMessage(active.tabId, { type }, (response: any) => {
+                        if (chrome.runtime.lastError) {
+                            sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+                            return;
+                        }
+                        sendResponse(response || { ok: true });
+                    });
+                    return;
+                }
+                if (message.cmd === 'record.get') {
+                    const workspaceId = activeWorkspaceId || 'default';
+                    const steps = await recordStore.getSteps(workspaceId);
+                    sendResponse({ ok: true, data: { steps } });
+                    return;
+                }
+                if (message.cmd === 'record.clear') {
+                    const workspaceId = activeWorkspaceId || 'default';
+                    await recordStore.clearSteps(workspaceId);
+                    sendResponse({ ok: true, data: { cleared: true } });
+                    return;
+                }
+                if (message.cmd === 'record.replay') {
+                    const workspaceId = activeWorkspaceId || 'default';
+                    const steps = await recordStore.getSteps(workspaceId);
+                    const response = await options.wsClient.sendCommand({
+                        cmd: 'steps.run',
+                        requestId: crypto.randomUUID(),
+                        args: { steps, stopOnError: true },
+                    });
+                    sendResponse(response);
+                    return;
+                }
+
                 const requestId = crypto.randomUUID();
                 let tabToken = message.tabToken as string | undefined;
                 const scope = resolveScope(
