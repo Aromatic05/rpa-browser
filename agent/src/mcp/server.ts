@@ -31,9 +31,44 @@ export const createMcpServer = (deps: McpToolDeps) => {
                 inputSchema: toolInputJsonSchemas['browser.goto'],
             },
             {
+                name: 'browser.go_back',
+                description: 'Go back in history for the current tab.',
+                inputSchema: toolInputJsonSchemas['browser.go_back'],
+            },
+            {
+                name: 'browser.reload',
+                description: 'Reload the current tab.',
+                inputSchema: toolInputJsonSchemas['browser.reload'],
+            },
+            {
+                name: 'browser.create_tab',
+                description: 'Create a new tab in the current workspace.',
+                inputSchema: toolInputJsonSchemas['browser.create_tab'],
+            },
+            {
+                name: 'browser.switch_tab',
+                description: 'Switch to a tab by id.',
+                inputSchema: toolInputJsonSchemas['browser.switch_tab'],
+            },
+            {
+                name: 'browser.close_tab',
+                description: 'Close a tab by id or the current tab.',
+                inputSchema: toolInputJsonSchemas['browser.close_tab'],
+            },
+            {
+                name: 'browser.get_page_info',
+                description: 'Return page metadata and tab list.',
+                inputSchema: toolInputJsonSchemas['browser.get_page_info'],
+            },
+            {
                 name: 'browser.snapshot',
                 description: 'Return page metadata or run an a11y scan.',
                 inputSchema: toolInputJsonSchemas['browser.snapshot'],
+            },
+            {
+                name: 'browser.take_screenshot',
+                description: 'Capture a screenshot for the page or target.',
+                inputSchema: toolInputJsonSchemas['browser.take_screenshot'],
             },
             {
                 name: 'browser.click',
@@ -44,6 +79,41 @@ export const createMcpServer = (deps: McpToolDeps) => {
                 name: 'browser.fill',
                 description: 'Fill an element using an a11y node id.',
                 inputSchema: toolInputJsonSchemas['browser.fill'],
+            },
+            {
+                name: 'browser.type',
+                description: 'Type text into a target element.',
+                inputSchema: toolInputJsonSchemas['browser.type'],
+            },
+            {
+                name: 'browser.select_option',
+                description: 'Select option values from a target element.',
+                inputSchema: toolInputJsonSchemas['browser.select_option'],
+            },
+            {
+                name: 'browser.hover',
+                description: 'Hover over a target element.',
+                inputSchema: toolInputJsonSchemas['browser.hover'],
+            },
+            {
+                name: 'browser.scroll',
+                description: 'Scroll the page or a target element into view.',
+                inputSchema: toolInputJsonSchemas['browser.scroll'],
+            },
+            {
+                name: 'browser.press_key',
+                description: 'Press a keyboard key with optional target focus.',
+                inputSchema: toolInputJsonSchemas['browser.press_key'],
+            },
+            {
+                name: 'browser.drag_and_drop',
+                description: 'Drag a source element to a destination.',
+                inputSchema: toolInputJsonSchemas['browser.drag_and_drop'],
+            },
+            {
+                name: 'browser.mouse',
+                description: 'Perform a low-level mouse action.',
+                inputSchema: toolInputJsonSchemas['browser.mouse'],
             },
         ],
     }));
