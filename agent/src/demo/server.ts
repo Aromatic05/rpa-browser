@@ -5,11 +5,13 @@ import { fileURLToPath } from 'url';
 import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_store';
 import { createContextManager, resolvePaths } from '../runtime/context_manager';
 import { createPageRegistry } from '../runtime/page_registry';
+import { createRuntimeRegistry } from '../runtime/runtime_registry';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
 import { runAgentLoop } from './agent_loop';
-import { createRunnerScopeRegistry } from '../runner/runner_scope';
 import { createChatCompletion } from './openai_compat_client';
+import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
+import { getRunnerConfig } from '../runner/config';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,12 +59,17 @@ const contextManager = createContextManager({
         void pageRegistry.bindPage(page);
     },
 });
+let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
+
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
     getContext: contextManager.getContext,
     onPageBound: (page, token) => {
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
+        }
+        if (runtimeRegistry) {
+            runtimeRegistry.bindPage(page, token);
         }
     },
     onTokenClosed: (token) => cleanupRecording(recordingState, token),
@@ -80,23 +87,22 @@ const workspaceManager = createWorkspaceManager({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
 });
 
-const runnerScope = createRunnerScopeRegistry(2);
+// 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
+runtimeRegistry = createRuntimeRegistry({
+    pageRegistry,
+});
+setRunStepsDeps({
+    runtime: runtimeRegistry,
+    stepSinks: [createConsoleStepSink('[step]')],
+    config: getRunnerConfig(),
+});
 
 const buildToolDeps = () => ({
     pageRegistry,
-    recordingState,
-    log: (...args: unknown[]) => console.log('[RPA:demo]', ...args),
-    replayOptions: {
-        clickDelayMs: CLICK_DELAY_MS,
-        stepDelayMs: REPLAY_STEP_DELAY_MS,
-        scroll: SCROLL_CONFIG,
-    },
-    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
     getActiveTabToken: async () => {
         const workspace = await workspaceManager.ensureActiveWorkspace();
         return workspace.tabToken;
     },
-    runInWorkspace: runnerScope.run,
 });
 
 const server = http.createServer((req, res) => {

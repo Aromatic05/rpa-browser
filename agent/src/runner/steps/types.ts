@@ -16,8 +16,14 @@ export type StepName =
 export type StepArgsMap = {
     'browser.goto': { url: string; timeout?: number };
     'browser.snapshot': { includeA11y?: boolean };
-    'browser.click': { a11yNodeId: string; timeout?: number };
-    'browser.fill': { a11yNodeId: string; value: string };
+    'browser.click': { a11yNodeId?: string; a11yHint?: A11yHint; timeout?: number };
+    'browser.fill': { a11yNodeId?: string; a11yHint?: A11yHint; value: string };
+};
+
+export type A11yHint = {
+    role?: string;
+    name?: string;
+    text?: string;
 };
 
 export type StepMeta = {

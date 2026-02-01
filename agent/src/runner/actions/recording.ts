@@ -1,3 +1,11 @@
+/**
+ * recording action（legacy）：保留 record.* 命令入口。
+ *
+ * 说明：
+ * - 录制逻辑正在向 Step + runSteps 收敛
+ * - 该入口用于旧 UI 或调试工具的过渡期支持
+ */
+
 import type { ActionHandler } from '../execute';
 import type {
     RecordReplayCommand,

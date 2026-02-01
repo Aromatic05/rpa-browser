@@ -1,20 +1,8 @@
+import crypto from 'crypto';
 import { z } from 'zod';
 import type { PageRegistry } from '../runtime/page_registry';
-import { executeCommand, type ActionContext } from './execute';
-import type {
-    Command,
-    ElementClickCommand,
-    ElementFillCommand,
-    ElementTypeCommand,
-    PageA11yScanCommand,
-    PageGotoCommand,
-    Target,
-} from './commands';
-import { ERROR_CODES } from './error_codes';
-import { errorResult, okResult, type Result } from './results';
-import type { RecordingState } from '../record/recording';
-import type { ReplayOptions } from '../play/replay';
-import type { A11yScanResult } from './a11y_types';
+import { runSteps } from './run_steps';
+import type { StepUnion } from './steps/types';
 
 export type ToolSpec = {
     name: string;
@@ -22,38 +10,17 @@ export type ToolSpec = {
     inputSchema: Record<string, unknown>;
 };
 
-const locatorCandidateSchema = z
-    .object({
-        kind: z.string(),
-        selector: z.string().optional(),
-        testId: z.string().optional(),
-        role: z.string().optional(),
-        name: z.string().optional(),
-        text: z.string().optional(),
-        exact: z.boolean().optional(),
-        note: z.string().optional(),
-    })
-    .passthrough();
-
-const targetSchema = z
-    .object({
-        selector: z.string(),
-        frame: z.string().optional(),
-        locatorCandidates: z.array(locatorCandidateSchema).optional(),
-        scopeHint: z.string().optional(),
-    })
-    .passthrough();
-
 const gotoInputSchema = z.object({ url: z.string() });
 const snapshotInputSchema = z.object({
     includeA11y: z.boolean().optional(),
-    maxNodes: z.number().int().min(0).optional(),
 });
-const clickInputSchema = z.object({ target: targetSchema });
-const typeInputSchema = z.object({
-    target: targetSchema,
-    text: z.string(),
-    clearFirst: z.boolean().optional(),
+const clickInputSchema = z.object({
+    a11yNodeId: z.string(),
+    timeout: z.number().int().positive().optional(),
+});
+const fillInputSchema = z.object({
+    a11yNodeId: z.string(),
+    value: z.string(),
 });
 
 const toolInputJsonSchemas = {
@@ -70,79 +37,24 @@ const toolInputJsonSchemas = {
         required: [],
         properties: {
             includeA11y: { type: 'boolean' },
-            maxNodes: { type: 'integer', minimum: 0 },
         },
         additionalProperties: false,
     },
     'browser.click': {
         type: 'object',
-        required: ['target'],
+        required: ['a11yNodeId'],
         properties: {
-            target: {
-                type: 'object',
-                required: ['selector'],
-                properties: {
-                    selector: { type: 'string' },
-                    frame: { type: 'string' },
-                    locatorCandidates: {
-                        type: 'array',
-                        items: {
-                            type: 'object',
-                            required: ['kind'],
-                            properties: {
-                                kind: { type: 'string' },
-                                selector: { type: 'string' },
-                                testId: { type: 'string' },
-                                role: { type: 'string' },
-                                name: { type: 'string' },
-                                text: { type: 'string' },
-                                exact: { type: 'boolean' },
-                                note: { type: 'string' },
-                            },
-                            additionalProperties: true,
-                        },
-                    },
-                    scopeHint: { type: 'string' },
-                },
-                additionalProperties: true,
-            },
+            a11yNodeId: { type: 'string' },
+            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
-    'browser.type': {
+    'browser.fill': {
         type: 'object',
-        required: ['target', 'text'],
+        required: ['a11yNodeId', 'value'],
         properties: {
-            target: {
-                type: 'object',
-                required: ['selector'],
-                properties: {
-                    selector: { type: 'string' },
-                    frame: { type: 'string' },
-                    locatorCandidates: {
-                        type: 'array',
-                        items: {
-                            type: 'object',
-                            required: ['kind'],
-                            properties: {
-                                kind: { type: 'string' },
-                                selector: { type: 'string' },
-                                testId: { type: 'string' },
-                                role: { type: 'string' },
-                                name: { type: 'string' },
-                                text: { type: 'string' },
-                                exact: { type: 'boolean' },
-                                note: { type: 'string' },
-                            },
-                            additionalProperties: true,
-                        },
-                    },
-                    scopeHint: { type: 'string' },
-                },
-                additionalProperties: true,
-            },
-            text: { type: 'string' },
-            clearFirst: { type: 'boolean' },
+            a11yNodeId: { type: 'string' },
+            value: { type: 'string' },
         },
         additionalProperties: false,
     },
@@ -150,58 +62,19 @@ const toolInputJsonSchemas = {
 
 export type ToolRegistryDeps = {
     pageRegistry: PageRegistry;
-    recordingState: RecordingState;
-    log: (...args: unknown[]) => void;
-    replayOptions: ReplayOptions;
-    navDedupeWindowMs: number;
     getActiveTabToken: () => Promise<string>;
-    runInWorkspace?: <T>(workspaceId: string, task: () => Promise<T>) => Promise<T>;
 };
 
 export type ExecuteToolOptions = {
     tabTokenOverride?: string;
 };
 
-const buildActionContext = async (
-    deps: ToolRegistryDeps,
-    tabToken: string,
-): Promise<ActionContext> => {
-    const page = await deps.pageRegistry.getPage(tabToken);
-    const ctx: ActionContext = {
-        page,
-        tabToken,
-        pageRegistry: deps.pageRegistry,
-        log: deps.log,
-        recordingState: deps.recordingState,
-        replayOptions: deps.replayOptions,
-        navDedupeWindowMs: deps.navDedupeWindowMs,
-        execute: undefined,
-    };
-    ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
-    return ctx;
-};
-
-const validationError = (tabToken: string, details: unknown) =>
-    errorResult(tabToken, ERROR_CODES.ERR_BAD_ARGS, 'invalid tool arguments', undefined, details);
-
-const parseInput = <T>(schema: z.ZodType<T>, input: unknown, tabToken: string): T | Result => {
+const parseInput = <T>(schema: z.ZodType<T>, input: unknown) => {
     const parsed = schema.safeParse(input);
     if (!parsed.success) {
-        return validationError(tabToken, parsed.error.issues);
+        return { ok: false as const, error: parsed.error.issues };
     }
-    return parsed.data;
-};
-
-const trimA11yNodes = (result: A11yScanResult, maxNodes?: number): A11yScanResult => {
-    if (maxNodes === undefined) return result;
-    const normalized = Math.max(0, maxNodes);
-    return {
-        ...result,
-        violations: result.violations.map((violation) => ({
-            ...violation,
-            nodes: violation.nodes.slice(0, normalized),
-        })),
-    };
+    return { ok: true as const, data: parsed.data };
 };
 
 const resolveTabToken = async (deps: ToolRegistryDeps, options?: ExecuteToolOptions) =>
@@ -215,18 +88,18 @@ export const getToolSpecs = (): ToolSpec[] => [
     },
     {
         name: 'browser.snapshot',
-        description: 'Return page metadata or run an a11y scan.',
+        description: 'Return page metadata or run an a11y snapshot.',
         inputSchema: toolInputJsonSchemas['browser.snapshot'],
     },
     {
         name: 'browser.click',
-        description: 'Click an element using a resolver-compatible target.',
+        description: 'Click an element using an a11y node id.',
         inputSchema: toolInputJsonSchemas['browser.click'],
     },
     {
-        name: 'browser.type',
-        description: 'Type text into an element using a resolver-compatible target.',
-        inputSchema: toolInputJsonSchemas['browser.type'],
+        name: 'browser.fill',
+        description: 'Fill an element using an a11y node id.',
+        inputSchema: toolInputJsonSchemas['browser.fill'],
     },
 ];
 
@@ -235,89 +108,47 @@ export const executeTool = async (
     name: string,
     args: unknown,
     options?: ExecuteToolOptions,
-): Promise<Result> => {
+): Promise<{ ok: boolean; data?: unknown; error?: unknown }> => {
     const tabToken = await resolveTabToken(deps, options);
     const scope = deps.pageRegistry.resolveScopeFromToken(tabToken);
-    const run = deps.runInWorkspace
-        ? (task: () => Promise<Result>) => deps.runInWorkspace!(scope.workspaceId, task)
-        : (task: () => Promise<Result>) => task();
 
-    if (name === 'browser.goto') {
-        return run(async () => {
-            const parsed = parseInput(gotoInputSchema, args, tabToken);
-            if ('ok' in (parsed as Result)) return parsed as Result;
-            const input = parsed as z.infer<typeof gotoInputSchema>;
-            const ctx = await buildActionContext(deps, tabToken);
-            const command: PageGotoCommand = {
-                cmd: 'page.goto',
-                tabToken,
-                args: { url: input.url, waitUntil: 'domcontentloaded' },
-            };
-            return executeCommand(ctx, command);
-        });
+    const parsedGoto = name === 'browser.goto' ? parseInput(gotoInputSchema, args) : null;
+    const parsedSnapshot = name === 'browser.snapshot' ? parseInput(snapshotInputSchema, args) : null;
+    const parsedClick = name === 'browser.click' ? parseInput(clickInputSchema, args) : null;
+    const parsedFill = name === 'browser.fill' ? parseInput(fillInputSchema, args) : null;
+
+    if (parsedGoto && !parsedGoto.ok) return { ok: false, error: parsedGoto.error };
+    if (parsedSnapshot && !parsedSnapshot.ok) return { ok: false, error: parsedSnapshot.error };
+    if (parsedClick && !parsedClick.ok) return { ok: false, error: parsedClick.error };
+    if (parsedFill && !parsedFill.ok) return { ok: false, error: parsedFill.error };
+
+    const step: StepUnion | null =
+        name === 'browser.goto'
+            ? { id: crypto.randomUUID(), name: 'browser.goto', args: parsedGoto!.data }
+            : name === 'browser.snapshot'
+                ? { id: crypto.randomUUID(), name: 'browser.snapshot', args: parsedSnapshot!.data }
+                : name === 'browser.click'
+                    ? { id: crypto.randomUUID(), name: 'browser.click', args: parsedClick!.data }
+                    : name === 'browser.fill'
+                        ? { id: crypto.randomUUID(), name: 'browser.fill', args: parsedFill!.data }
+                        : null;
+
+    if (!step) {
+        return { ok: false, error: { code: 'ERR_NOT_IMPLEMENTED', message: `unsupported tool: ${name}` } };
     }
 
-    if (name === 'browser.click') {
-        return run(async () => {
-            const parsed = parseInput(clickInputSchema, args, tabToken);
-            if ('ok' in (parsed as Result)) return parsed as Result;
-            const input = parsed as z.infer<typeof clickInputSchema>;
-            const ctx = await buildActionContext(deps, tabToken);
-            const command: ElementClickCommand = {
-                cmd: 'element.click',
-                tabToken,
-                args: { target: input.target as Target, options: { timeout: 5000, noWaitAfter: true } },
-            };
-            return executeCommand(ctx, command);
-        });
-    }
+    const result = await runSteps({
+        workspaceId: scope.workspaceId,
+        steps: [step],
+        options: { stopOnError: true },
+    });
 
-    if (name === 'browser.type') {
-        return run(async () => {
-            const parsed = parseInput(typeInputSchema, args, tabToken);
-            if ('ok' in (parsed as Result)) return parsed as Result;
-            const input = parsed as z.infer<typeof typeInputSchema>;
-            const ctx = await buildActionContext(deps, tabToken);
-            const target = input.target as Target;
-            if (input.clearFirst) {
-                const command: ElementFillCommand = {
-                    cmd: 'element.fill',
-                    tabToken,
-                    args: { target, text: input.text },
-                };
-                return executeCommand(ctx, command);
-            }
-            const command: ElementTypeCommand = {
-                cmd: 'element.type',
-                tabToken,
-                args: { target, text: input.text },
-            };
-            return executeCommand(ctx, command);
-        });
+    const first = result.results[0];
+    if (!first) {
+        return { ok: false, error: { code: 'ERR_UNKNOWN', message: 'empty result' } };
     }
-
-    if (name === 'browser.snapshot') {
-        return run(async () => {
-            const parsed = parseInput(snapshotInputSchema, args, tabToken);
-            if ('ok' in (parsed as Result)) return parsed as Result;
-            const input = parsed as z.infer<typeof snapshotInputSchema>;
-            if (input.includeA11y) {
-                const ctx = await buildActionContext(deps, tabToken);
-                const command: PageA11yScanCommand = {
-                    cmd: 'page.a11yScan',
-                    tabToken,
-                    args: {},
-                };
-                const result = await executeCommand(ctx, command);
-                if (!result.ok) return result;
-                const data = trimA11yNodes(result.data as A11yScanResult, input.maxNodes);
-                return okResult(tabToken, data, result.requestId);
-            }
-            const page = await deps.pageRegistry.getPage(tabToken);
-            const title = await page.title();
-            return okResult(tabToken, { url: page.url(), title });
-        });
+    if (!first.ok) {
+        return { ok: false, error: first.error };
     }
-
-    return errorResult(tabToken, ERROR_CODES.ERR_UNSUPPORTED, `unknown tool: ${name}`);
+    return { ok: true, data: first.data };
 };

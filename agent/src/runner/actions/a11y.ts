@@ -1,6 +1,14 @@
 import path from 'path';
 import { promises as fs } from 'fs';
 import { AxeBuilder } from '@axe-core/playwright';
+/**
+ * a11y action（legacy）：保留用于旧命令 page.a11yScan。
+ *
+ * 说明：
+ * - 新版 runSteps/trace 已提供 snapshotA11y
+ * - 该文件保留是为了兼容旧指令与调试需求
+ */
+
 import type { ActionHandler } from '../execute';
 import type { PageA11yScanCommand } from '../commands';
 import type { A11yScanOptions, A11yScanResult, A11yViolation } from '../a11y_types';
