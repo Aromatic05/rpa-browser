@@ -14,14 +14,29 @@ const gotoInputSchema = z.object({ url: z.string() });
 const snapshotInputSchema = z.object({
     includeA11y: z.boolean().optional(),
 });
-const clickInputSchema = z.object({
-    a11yNodeId: z.string(),
-    timeout: z.number().int().positive().optional(),
+const a11yHintSchema = z.object({
+    role: z.string().optional(),
+    name: z.string().optional(),
+    text: z.string().optional(),
 });
-const fillInputSchema = z.object({
-    a11yNodeId: z.string(),
-    value: z.string(),
-});
+const clickInputSchema = z
+    .object({
+        a11yNodeId: z.string().optional(),
+        a11yHint: a11yHintSchema.optional(),
+        timeout: z.number().int().positive().optional(),
+    })
+    .refine((value) => Boolean(value.a11yNodeId || value.a11yHint), {
+        message: 'a11yNodeId or a11yHint required',
+    });
+const fillInputSchema = z
+    .object({
+        a11yNodeId: z.string().optional(),
+        a11yHint: a11yHintSchema.optional(),
+        value: z.string(),
+    })
+    .refine((value) => Boolean(value.a11yNodeId || value.a11yHint), {
+        message: 'a11yNodeId or a11yHint required',
+    });
 
 const toolInputJsonSchemas = {
     'browser.goto': {
@@ -42,18 +57,36 @@ const toolInputJsonSchemas = {
     },
     'browser.click': {
         type: 'object',
-        required: ['a11yNodeId'],
+        required: [],
         properties: {
             a11yNodeId: { type: 'string' },
+            a11yHint: {
+                type: 'object',
+                properties: {
+                    role: { type: 'string' },
+                    name: { type: 'string' },
+                    text: { type: 'string' },
+                },
+                additionalProperties: false,
+            },
             timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
     'browser.fill': {
         type: 'object',
-        required: ['a11yNodeId', 'value'],
+        required: ['value'],
         properties: {
             a11yNodeId: { type: 'string' },
+            a11yHint: {
+                type: 'object',
+                properties: {
+                    role: { type: 'string' },
+                    name: { type: 'string' },
+                    text: { type: 'string' },
+                },
+                additionalProperties: false,
+            },
             value: { type: 'string' },
         },
         additionalProperties: false,
