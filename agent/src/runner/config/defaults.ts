@@ -29,8 +29,10 @@ export const defaultRunnerConfig: RunnerConfig = {
     observability: {
         traceEnabled: true,
         traceLogArgs: false,
-        traceFileEnabled: false,
+        traceFileEnabled: true,
         traceFilePath: '.artifacts/trace/trace.log',
+        actionFileEnabled: true,
+        actionFilePath: '.artifacts/logs/action.log',
         stepLogLevel: 'info',
         screenshotOnError: false,
     },

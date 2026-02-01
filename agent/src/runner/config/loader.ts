@@ -74,6 +74,8 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['observability', 'traceLogArgs'], envBool('RUNNER_TRACE_LOG_ARGS'));
     set(['observability', 'traceFileEnabled'], envBool('RUNNER_TRACE_FILE_ENABLED'));
     set(['observability', 'traceFilePath'], process.env.RUNNER_TRACE_FILE_PATH);
+    set(['observability', 'actionFileEnabled'], envBool('RUNNER_ACTION_FILE_ENABLED'));
+    set(['observability', 'actionFilePath'], process.env.RUNNER_ACTION_FILE_PATH);
 
     return mergeDeep(config, patch);
 };

@@ -13,6 +13,8 @@ test('load default config', () => {
     const config = loadRunnerConfig({ configPath: '__non_exist__.json' });
     assert.ok(config.waitPolicy.defaultTimeoutMs > 0);
     assert.equal(config.humanPolicy.enabled, true);
+    assert.equal(config.observability.traceFileEnabled, true);
+    assert.equal(config.observability.actionFileEnabled, true);
 });
 
 test('env overrides', () => {

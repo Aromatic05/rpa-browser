@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
@@ -34,6 +36,24 @@ const contextManager = createContextManager({
 let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const config = getRunnerConfig();
+const actionLogStream = config.observability.actionFileEnabled
+    ? (() => {
+          const dir = path.dirname(config.observability.actionFilePath);
+          if (!fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+          }
+          return fs.createWriteStream(config.observability.actionFilePath, { flags: 'a' });
+      })()
+    : null;
+const actionLogger = (...args: unknown[]) => {
+    log(...args);
+    if (!actionLogStream) return;
+    const payload = {
+        ts: Date.now(),
+        message: args.map((item) => (typeof item === 'string' ? item : item)),
+    };
+    actionLogStream.write(`${JSON.stringify(payload)}\n`);
+};
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(config.observability.traceFilePath)]
     : [];
@@ -132,7 +152,7 @@ const handleCommand = async (payload?: Command) => {
             page,
             tabToken,
             pageRegistry,
-            log,
+            log: actionLogger,
             recordingState,
             replayOptions: {
                 clickDelayMs: CLICK_DELAY_MS,
