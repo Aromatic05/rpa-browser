@@ -8,6 +8,7 @@
  */
 
 import type { BrowserContext, Page } from 'playwright';
+import crypto from 'crypto';
 import type {
     ToolResult,
     TraceContext,
@@ -17,24 +18,37 @@ import type {
     TraceTags,
 } from './types';
 import { traceCall } from './trace_call';
-import { adoptA11yNode, cacheA11ySnapshot } from './a11y_adopt';
+import { adoptA11yNode, cacheA11ySnapshot, type A11ySnapshotNode } from './a11y_adopt';
+import { findA11yCandidates, type A11yCandidate } from './a11y_find';
 import { createLoggingHooks } from './hooks';
+import type { A11yHint } from '../steps/types';
+import type { PageRegistry, WorkspaceId } from '../../runtime/page_registry';
 
 export type BrowserAutomationTools = {
-    'trace.context.newPage': () => Promise<ToolResult<void>>;
-    'trace.page.close': () => Promise<ToolResult<void>>;
+    'trace.tabs.create': (args: { workspaceId: WorkspaceId; url?: string; timeout?: number }) => Promise<ToolResult<{ tabId: string }>>;
+    'trace.tabs.switch': (args: { workspaceId: WorkspaceId; tabId: string }) => Promise<ToolResult<void>>;
+    'trace.tabs.close': (args: { workspaceId: WorkspaceId; tabId?: string }) => Promise<ToolResult<void>>;
     'trace.page.goto': (args: { url: string; timeout?: number }) => Promise<ToolResult<void>>;
-    'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string }>>;
-    'trace.page.snapshotA11y': () => Promise<ToolResult<string>>;
-    'trace.page.screenshot': (args: { fullPage?: boolean }) => Promise<ToolResult<string>>;
+    'trace.page.goBack': (args: { timeout?: number }) => Promise<ToolResult<void>>;
+    'trace.page.reload': (args: { timeout?: number }) => Promise<ToolResult<void>>;
+    'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string; tabId?: string; tabs?: Array<{ tabId: string; url?: string; title?: string }> }>>;
+    'trace.page.snapshotA11y': (args: { includeA11y: boolean; focusOnly: boolean }) => Promise<ToolResult<{ snapshotId: string; a11y?: string }>>;
+    'trace.page.screenshot': (args: { fullPage?: boolean; a11yNodeId?: string }) => Promise<ToolResult<string>>;
+    'trace.page.scrollBy': (args: { direction: 'up' | 'down'; amount: number }) => Promise<ToolResult<void>>;
+    'trace.a11y.findByA11yHint': (args: { hint: A11yHint }) => Promise<ToolResult<A11yCandidate[]>>;
+    'trace.a11y.resolveByNodeId': (args: { a11yNodeId: string }) => Promise<ToolResult<{ a11yNodeId: string }>>;
     'trace.locator.waitForVisible': (args: { a11yNodeId: string; timeout?: number }) => Promise<ToolResult<void>>;
     'trace.locator.scrollIntoView': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
-    'trace.locator.click': (args: { a11yNodeId: string; timeout?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.click': (args: { a11yNodeId: string; timeout?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
     'trace.locator.focus': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
     'trace.locator.fill': (args: { a11yNodeId: string; value: string }) => Promise<ToolResult<void>>;
-    'trace.mouse.click': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
+    'trace.locator.type': (args: { a11yNodeId: string; text: string; delayMs?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.selectOption': (args: { a11yNodeId: string; values: string[] }) => Promise<ToolResult<void>>;
+    'trace.locator.hover': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
+    'trace.locator.dragDrop': (args: { sourceNodeId: string; destNodeId?: string; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
     'trace.page.scrollTo': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
     'trace.keyboard.press': (args: { key: string }) => Promise<ToolResult<void>>;
+    'trace.mouse.action': (args: { action: 'move' | 'down' | 'up' | 'wheel'; x: number; y: number; deltaY?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
 };
 
 export const createTraceContext = (opts: {
@@ -52,6 +66,8 @@ export const createTraceContext = (opts: {
 export const createTraceTools = (opts: {
     page: Page;
     context?: BrowserContext;
+    pageRegistry?: PageRegistry;
+    workspaceId?: WorkspaceId;
     sinks?: TraceSink[];
     hooks?: TraceHooks;
     tags?: TraceTags;
@@ -63,49 +79,115 @@ export const createTraceTools = (opts: {
         traceCall(ctx, { op, args }, fn);
 
     const tools: BrowserAutomationTools = {
-        'trace.context.newPage': async () =>
-            run('trace.context.newPage', undefined, async () => {
-                if (!opts.context) {
-                    throw new Error('missing browser context');
+        'trace.tabs.create': async (args) =>
+            run('trace.tabs.create', args, async () => {
+                if (!opts.pageRegistry || !opts.workspaceId) {
+                    throw new Error('missing page registry');
                 }
-                const page = await opts.context.newPage();
+                const tabId = await opts.pageRegistry.createTab(opts.workspaceId);
+                const page = await opts.pageRegistry.resolvePage({ workspaceId: opts.workspaceId, tabId });
+                currentPage = page;
+                if (args.url) {
+                    await currentPage.goto(args.url, { timeout: args.timeout });
+                }
+                return { tabId };
+            }),
+        'trace.tabs.switch': async (args) =>
+            run('trace.tabs.switch', args, async () => {
+                if (!opts.pageRegistry) {
+                    throw new Error('missing page registry');
+                }
+                opts.pageRegistry.setActiveTab(args.workspaceId, args.tabId);
+                const page = await opts.pageRegistry.resolvePage({ workspaceId: args.workspaceId, tabId: args.tabId });
                 currentPage = page;
             }),
-        'trace.page.close': async () =>
-            run('trace.page.close', undefined, async () => {
-                await currentPage.close();
+        'trace.tabs.close': async (args) =>
+            run('trace.tabs.close', args, async () => {
+                if (!opts.pageRegistry || !opts.workspaceId) {
+                    throw new Error('missing page registry');
+                }
+                const scope = opts.pageRegistry.resolveScope({ workspaceId: opts.workspaceId, tabId: args.tabId });
+                await opts.pageRegistry.closeTab(scope.workspaceId, scope.tabId);
+                const page = await opts.pageRegistry.resolvePage({ workspaceId: scope.workspaceId });
+                currentPage = page;
             }),
         'trace.page.goto': async (args) =>
             run('trace.page.goto', args, async () => {
                 await currentPage.goto(args.url, { timeout: args.timeout });
             }),
+        'trace.page.goBack': async (args) =>
+            run('trace.page.goBack', args, async () => {
+                await currentPage.goBack({ timeout: args.timeout });
+            }),
+        'trace.page.reload': async (args) =>
+            run('trace.page.reload', args, async () => {
+                await currentPage.reload({ timeout: args.timeout });
+            }),
         'trace.page.getInfo': async () =>
-            run('trace.page.getInfo', undefined, async () => ({
-                url: currentPage.url(),
-                title: await currentPage.title(),
-            })),
-    'trace.page.snapshotA11y': async () =>
-        run('trace.page.snapshotA11y', undefined, async () => {
-            const snapshot = await (currentPage as any).accessibility?.snapshot?.({
-                interestingOnly: false,
-            });
-            if (snapshot) {
-                const raw = JSON.stringify(snapshot);
-                const tree = cacheA11ySnapshot(ctx.cache, raw);
-                return tree ? JSON.stringify(tree) : raw;
-            }
-            const cdp = await currentPage.context().newCDPSession(currentPage);
-            await cdp.send('Accessibility.enable');
-            const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-            const tree = buildA11yTreeFromCdp(nodes);
-            const raw = JSON.stringify(tree);
-            const cached = cacheA11ySnapshot(ctx.cache, raw);
-            return cached ? JSON.stringify(cached) : raw;
-        }),
+            run('trace.page.getInfo', undefined, async () => {
+                const info = { url: currentPage.url(), title: await currentPage.title() };
+                if (!opts.pageRegistry || !opts.workspaceId) return info;
+                const tabs = await opts.pageRegistry.listTabs(opts.workspaceId);
+                const active = opts.pageRegistry.resolveScope({ workspaceId: opts.workspaceId });
+                return {
+                    ...info,
+                    tabId: active.tabId,
+                    tabs: tabs.map((tab) => ({ tabId: tab.tabId, url: tab.url, title: tab.title })),
+                };
+            }),
+        'trace.page.snapshotA11y': async (args) =>
+            run('trace.page.snapshotA11y', args, async () => {
+                const snapshotId = crypto.randomUUID();
+                ctx.cache.lastSnapshotId = snapshotId;
+                if (!args.includeA11y) {
+                    return { snapshotId };
+                }
+                const tree = await getA11yTree(currentPage, ctx.cache);
+                return { snapshotId, a11y: tree ? JSON.stringify(tree) : undefined };
+            }),
         'trace.page.screenshot': async (args) =>
             run('trace.page.screenshot', args, async () => {
+                if (args.a11yNodeId) {
+                    const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                    if (!adopted.ok) throw adopted.error;
+                    const buffer = await adopted.data!.screenshot();
+                    return buffer.toString('base64');
+                }
                 const buffer = await currentPage.screenshot({ fullPage: args.fullPage });
                 return buffer.toString('base64');
+            }),
+        'trace.page.scrollTo': async (args) =>
+            run('trace.page.scrollTo', args, async () => {
+                await currentPage.evaluate(
+                    ({ x, y }) => {
+                        window.scrollTo(x, y);
+                    },
+                    { x: args.x, y: args.y },
+                );
+            }),
+        'trace.page.scrollBy': async (args) =>
+            run('trace.page.scrollBy', args, async () => {
+                const deltaY = args.direction === 'up' ? -Math.abs(args.amount) : Math.abs(args.amount);
+                await currentPage.evaluate(
+                    ({ deltaY }) => {
+                        window.scrollBy(0, deltaY);
+                    },
+                    { deltaY },
+                );
+            }),
+        'trace.a11y.findByA11yHint': async (args) =>
+            run('trace.a11y.findByA11yHint', args, async () => {
+                const tree = await getA11yTree(currentPage, ctx.cache);
+                if (!tree) return [];
+                return findA11yCandidates(tree, args.hint);
+            }),
+        'trace.a11y.resolveByNodeId': async (args) =>
+            run('trace.a11y.resolveByNodeId', args, async () => {
+                const tree = ctx.cache.a11yTree as A11ySnapshotNode | undefined;
+                if (!tree || !ctx.cache.a11yNodeMap?.has(args.a11yNodeId)) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'a11y node not found', phase: 'trace' };
+                }
+                return { a11yNodeId: args.a11yNodeId };
             }),
         'trace.locator.waitForVisible': async (args) =>
             run('trace.locator.waitForVisible', args, async () => {
@@ -123,7 +205,7 @@ export const createTraceTools = (opts: {
             run('trace.locator.click', args, async () => {
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
-                await adopted.data!.click({ timeout: args.timeout });
+                await adopted.data!.click({ timeout: args.timeout, button: args.button });
             }),
         'trace.locator.focus': async (args) =>
             run('trace.locator.focus', args, async () => {
@@ -137,22 +219,67 @@ export const createTraceTools = (opts: {
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.fill(args.value);
             }),
-        'trace.mouse.click': async (args) =>
-            run('trace.mouse.click', args, async () => {
-                await currentPage.mouse.click(args.x, args.y);
+        'trace.locator.type': async (args) =>
+            run('trace.locator.type', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.type(args.text, { delay: args.delayMs });
             }),
-        'trace.page.scrollTo': async (args) =>
-            run('trace.page.scrollTo', args, async () => {
-                await currentPage.evaluate(
-                    ({ x, y }) => {
-                        window.scrollTo(x, y);
-                    },
-                    { x: args.x, y: args.y },
-                );
+        'trace.locator.selectOption': async (args) =>
+            run('trace.locator.selectOption', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.selectOption(args.values);
+            }),
+        'trace.locator.hover': async (args) =>
+            run('trace.locator.hover', args, async () => {
+                const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
+                if (!adopted.ok) throw adopted.error;
+                await adopted.data!.hover();
+            }),
+        'trace.locator.dragDrop': async (args) =>
+            run('trace.locator.dragDrop', args, async () => {
+                const source = await adoptA11yNode(currentPage, args.sourceNodeId, ctx.cache);
+                if (!source.ok) throw source.error;
+                if (args.destNodeId) {
+                    const dest = await adoptA11yNode(currentPage, args.destNodeId, ctx.cache);
+                    if (!dest.ok) throw dest.error;
+                    await source.data!.dragTo(dest.data!);
+                    return;
+                }
+                if (!args.destCoord) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing drag destination', phase: 'trace' };
+                }
+                const box = await source.data!.boundingBox();
+                if (!box) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'source not visible', phase: 'trace' };
+                }
+                const startX = box.x + box.width / 2;
+                const startY = box.y + box.height / 2;
+                await currentPage.mouse.move(startX, startY);
+                await currentPage.mouse.down();
+                await currentPage.mouse.move(args.destCoord.x, args.destCoord.y);
+                await currentPage.mouse.up();
             }),
         'trace.keyboard.press': async (args) =>
             run('trace.keyboard.press', args, async () => {
                 await currentPage.keyboard.press(args.key);
+            }),
+        'trace.mouse.action': async (args) =>
+            run('trace.mouse.action', args, async () => {
+                await currentPage.mouse.move(args.x, args.y);
+                if (args.action === 'move') return;
+                if (args.action === 'down') {
+                    await currentPage.mouse.down({ button: args.button });
+                    return;
+                }
+                if (args.action === 'up') {
+                    await currentPage.mouse.up({ button: args.button });
+                    return;
+                }
+                if (args.action === 'wheel') {
+                    await currentPage.mouse.wheel(0, args.deltaY || 0);
+                }
             }),
     };
 
@@ -176,6 +303,23 @@ type RawA11yNode = {
     description?: string;
     value?: string;
     children?: RawA11yNode[];
+};
+
+const getA11yTree = async (page: Page, cache: TraceContext['cache']): Promise<A11ySnapshotNode | null> => {
+    if (cache.a11yTree) return cache.a11yTree as A11ySnapshotNode;
+    const snapshot = await (page as any).accessibility?.snapshot?.({
+        interestingOnly: false,
+    });
+    if (snapshot) {
+        const raw = JSON.stringify(snapshot);
+        return cacheA11ySnapshot(cache, raw);
+    }
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Accessibility.enable');
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+    const tree = buildA11yTreeFromCdp(nodes);
+    const raw = JSON.stringify(tree);
+    return cacheA11ySnapshot(cache, raw);
 };
 
 const buildA11yTreeFromCdp = (nodes: CdpAXNode[]): RawA11yNode => {

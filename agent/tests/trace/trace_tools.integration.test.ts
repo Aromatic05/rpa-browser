@@ -35,14 +35,14 @@ test(
         const gotoResult = await tools['trace.page.goto']({ url: fixtureUrl() });
         assert.equal(gotoResult.ok, true);
 
-        const snap = await tools['trace.page.snapshotA11y']();
+        const snap = await tools['trace.page.snapshotA11y']({ includeA11y: true, focusOnly: false });
         assert.equal(snap.ok, true);
         if (!snap.ok) {
             await browser.close();
             return;
         }
 
-        const tree = JSON.parse(snap.data || '{}');
+        const tree = JSON.parse(snap.data?.a11y || '{}');
         const buttonId = findNodeId(tree, 'button', 'Do Action');
         const inputId = findNodeId(tree, 'textbox', 'Name');
         assert.ok(buttonId);

@@ -34,14 +34,14 @@ const run = async () => {
     const { tools } = createTraceTools({ page, context, sinks: [sink] });
 
     await tools['trace.page.goto']({ url: fixtureUrl() });
-    const snapshot = await tools['trace.page.snapshotA11y']();
+    const snapshot = await tools['trace.page.snapshotA11y']({ includeA11y: true, focusOnly: false });
     if (!snapshot.ok) {
         console.error('snapshot failed', snapshot.error);
         await browser.close();
         return;
     }
 
-    const tree = JSON.parse(snapshot.data || '{}');
+    const tree = JSON.parse(snapshot.data?.a11y || '{}');
     const buttonId = findNodeId(tree, 'button', 'Do Action');
     const inputId = findNodeId(tree, 'textbox', 'Name');
     if (buttonId) {

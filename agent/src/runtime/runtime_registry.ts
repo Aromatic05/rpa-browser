@@ -50,6 +50,8 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         const { tools, ctx } = createTraceTools({
             page,
             context: page.context(),
+            pageRegistry: options.pageRegistry,
+            workspaceId: scope.workspaceId,
             sinks: options.traceSinks,
             hooks: options.traceHooks,
             tags: { workspaceId: scope.workspaceId, tabToken },

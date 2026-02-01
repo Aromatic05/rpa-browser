@@ -8,20 +8,30 @@
  */
 
 export type TraceOpName =
-    | 'trace.context.newPage'
-    | 'trace.page.close'
+    | 'trace.tabs.create'
+    | 'trace.tabs.switch'
+    | 'trace.tabs.close'
     | 'trace.page.goto'
+    | 'trace.page.goBack'
+    | 'trace.page.reload'
     | 'trace.page.getInfo'
     | 'trace.page.snapshotA11y'
     | 'trace.page.screenshot'
+    | 'trace.page.scrollTo'
+    | 'trace.page.scrollBy'
+    | 'trace.a11y.findByA11yHint'
+    | 'trace.a11y.resolveByNodeId'
     | 'trace.locator.waitForVisible'
     | 'trace.locator.scrollIntoView'
     | 'trace.locator.click'
     | 'trace.locator.focus'
     | 'trace.locator.fill'
-    | 'trace.mouse.click'
-    | 'trace.page.scrollTo'
-    | 'trace.keyboard.press';
+    | 'trace.locator.type'
+    | 'trace.locator.selectOption'
+    | 'trace.locator.hover'
+    | 'trace.locator.dragDrop'
+    | 'trace.keyboard.press'
+    | 'trace.mouse.action';
 
 export type ToolErrorCode =
     | 'ERR_TIMEOUT'
@@ -71,6 +81,8 @@ export type TraceContext = {
 export type TraceCache = {
     a11ySnapshotRaw?: string;
     a11yNodeMap?: Map<string, A11yNodeInfo>;
+    a11yTree?: unknown;
+    lastSnapshotId?: string;
 };
 
 export type A11yNodeInfo = {

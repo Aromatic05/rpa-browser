@@ -46,6 +46,7 @@ export const cacheA11ySnapshot = (cache: TraceCache, raw: string): A11ySnapshotN
     const tree = buildTree(parsed, 'n0', map);
     cache.a11ySnapshotRaw = raw;
     cache.a11yNodeMap = map;
+    cache.a11yTree = tree;
     return tree;
 };
 
