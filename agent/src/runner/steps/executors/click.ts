@@ -14,12 +14,18 @@ export const executeBrowserClick = async (
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     let a11yNodeId = step.args.a11yNodeId;
     if (!a11yNodeId && step.args.a11yHint) {
-        const snapshot = await binding.traceTools['trace.page.snapshotA11y']();
-        if (!snapshot.ok) {
-            return { stepId: step.id, ok: false, error: snapshot.error };
+        const deadline = Date.now() + (step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs);
+        while (!a11yNodeId && Date.now() <= deadline) {
+            const snapshot = await binding.traceTools['trace.page.snapshotA11y']();
+            if (!snapshot.ok) {
+                return { stepId: step.id, ok: false, error: snapshot.error };
+            }
+            const tree = JSON.parse(snapshot.data || '{}');
+            a11yNodeId = findA11yNodeId(tree, step.args.a11yHint) || undefined;
+            if (!a11yNodeId) {
+                await binding.page.waitForTimeout(120);
+            }
         }
-        const tree = JSON.parse(snapshot.data || '{}');
-        a11yNodeId = findA11yNodeId(tree, step.args.a11yHint) || undefined;
     }
     if (!a11yNodeId) {
         return {
