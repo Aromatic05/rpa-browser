@@ -17,6 +17,8 @@ test('load default config', () => {
     assert.equal(config.observability.actionFileEnabled, true);
     assert.equal(config.observability.traceConsoleEnabled, false);
     assert.equal(config.observability.actionConsoleEnabled, false);
+    assert.equal(config.observability.recordConsoleEnabled, true);
+    assert.equal(config.observability.recordFileEnabled, false);
 });
 
 test('env overrides', () => {

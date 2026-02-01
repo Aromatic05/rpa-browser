@@ -11,6 +11,7 @@
  */
 import type { Page } from 'playwright';
 import { installRecorder, type RecordedEvent } from './recorder';
+import { getLogger } from '../runner/logger';
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
@@ -44,6 +45,7 @@ export const recordEvent = (
     event: RecordedEvent,
     navDedupeWindowMs: number,
 ) => {
+    const recordLog = getLogger('record');
     const tabToken = event.tabToken;
     if (!tabToken || !state.recordingEnabled.has(tabToken)) return;
     if (state.replaying.has(tabToken)) return;
@@ -74,7 +76,8 @@ export const recordEvent = (
     const list = state.recordings.get(tabToken) || [];
     list.push(event);
     state.recordings.set(tabToken, list);
-    console.log('[record]', event.type, {
+    recordLog('event', {
+        type: event.type,
         tabToken,
         ts: event.ts,
         url: (event as any).url,
@@ -135,13 +138,14 @@ export const startRecording = async (
     tabToken: string,
     navDedupeWindowMs: number,
 ) => {
+    const recordLog = getLogger('record');
     state.recordingEnabled.add(tabToken);
     if (!state.recordings.has(tabToken)) {
         state.recordings.set(tabToken, []);
     }
     state.lastNavigateTs.set(tabToken, 0);
     state.lastClickTs.set(tabToken, 0);
-    console.log('[record] start', { tabToken, url: page.url() });
+    recordLog('start', { tabToken, url: page.url() });
     await ensureRecorder(state, page, tabToken, navDedupeWindowMs);
 };
 
@@ -149,10 +153,11 @@ export const startRecording = async (
  * 停止录制：仅关闭录制开关，保留已有记录。
  */
 export const stopRecording = (state: RecordingState, tabToken: string) => {
+    const recordLog = getLogger('record');
     state.recordingEnabled.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);
-    console.log('[record] stop', { tabToken });
+    recordLog('stop', { tabToken });
 };
 
 /**

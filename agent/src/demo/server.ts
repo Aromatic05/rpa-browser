@@ -13,6 +13,7 @@ import { createChatCompletion } from './openai_compat_client';
 import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
 import { getRunnerConfig } from '../runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
+import { initLogger, resolveLogPath } from '../runner/logger';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,13 +90,7 @@ const workspaceManager = createWorkspaceManager({
 });
 
 const config = getRunnerConfig();
-const runId = new Date().toISOString().replace(/[:.]/g, '-');
-const resolveLogPath = (template: string) => {
-    if (template.includes('{ts}')) return template.replace('{ts}', runId);
-    const ext = path.extname(template);
-    const base = ext ? template.slice(0, -ext.length) : template;
-    return `${base}-${runId}${ext || '.log'}`;
-};
+initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];

@@ -7,6 +7,7 @@ import { startMcpServer } from './mcp/index';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
+import { initLogger, resolveLogPath } from './runner/logger';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -31,13 +32,7 @@ const contextManager = createContextManager({
 let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const config = getRunnerConfig();
-const runId = new Date().toISOString().replace(/[:.]/g, '-');
-const resolveLogPath = (template: string) => {
-    if (template.includes('{ts}')) return template.replace('{ts}', runId);
-    const ext = path.extname(template);
-    const base = ext ? template.slice(0, -ext.length) : template;
-    return `${base}-${runId}${ext || '.log'}`;
-};
+initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];

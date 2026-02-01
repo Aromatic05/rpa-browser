@@ -78,6 +78,9 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['observability', 'actionConsoleEnabled'], envBool('RUNNER_ACTION_CONSOLE_ENABLED'));
     set(['observability', 'actionFileEnabled'], envBool('RUNNER_ACTION_FILE_ENABLED'));
     set(['observability', 'actionFilePath'], process.env.RUNNER_ACTION_FILE_PATH);
+    set(['observability', 'recordConsoleEnabled'], envBool('RUNNER_RECORD_CONSOLE_ENABLED'));
+    set(['observability', 'recordFileEnabled'], envBool('RUNNER_RECORD_FILE_ENABLED'));
+    set(['observability', 'recordFilePath'], process.env.RUNNER_RECORD_FILE_PATH);
 
     return mergeDeep(config, patch);
 };

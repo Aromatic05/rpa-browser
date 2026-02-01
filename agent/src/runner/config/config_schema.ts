@@ -63,6 +63,12 @@ export type Observability = {
     actionFileEnabled: boolean;
     /** action/execute 日志输出路径 */
     actionFilePath: string;
+    /** 是否在控制台输出 record 日志 */
+    recordConsoleEnabled: boolean;
+    /** 是否将 record 日志写入文件 */
+    recordFileEnabled: boolean;
+    /** record 日志输出路径 */
+    recordFilePath: string;
     /** step 日志级别 */
     stepLogLevel: 'info' | 'debug';
     /** 出错时截图 */

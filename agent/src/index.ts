@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
@@ -13,6 +11,7 @@ import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps, runSteps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
+import { initLogger, getLogger, resolveLogPath } from './runner/logger';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -36,34 +35,8 @@ const contextManager = createContextManager({
 let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const config = getRunnerConfig();
-const runId = new Date().toISOString().replace(/[:.]/g, '-');
-const resolveLogPath = (template: string) => {
-    if (template.includes('{ts}')) return template.replace('{ts}', runId);
-    const ext = path.extname(template);
-    const base = ext ? template.slice(0, -ext.length) : template;
-    return `${base}-${runId}${ext || '.log'}`;
-};
-const actionLogPath = resolveLogPath(config.observability.actionFilePath);
-const actionLogStream = config.observability.actionFileEnabled
-    ? (() => {
-          const dir = path.dirname(actionLogPath);
-          if (!fs.existsSync(dir)) {
-              fs.mkdirSync(dir, { recursive: true });
-          }
-          return fs.createWriteStream(actionLogPath, { flags: 'a' });
-      })()
-    : null;
-const actionLogger = (...args: unknown[]) => {
-    if (config.observability.actionConsoleEnabled) {
-        log(...args);
-    }
-    if (!actionLogStream) return;
-    const payload = {
-        ts: Date.now(),
-        message: args.map((item) => (typeof item === 'string' ? item : item)),
-    };
-    actionLogStream.write(`${JSON.stringify(payload)}\n`);
-};
+initLogger(config);
+const actionLogger = getLogger('action');
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
