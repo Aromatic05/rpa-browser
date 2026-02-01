@@ -1,4 +1,4 @@
-import type { ActionHandler } from '../execute';
+import type { ActionHandler } from './execute';
 import { recordingHandlers } from './recording';
 import { workspaceHandlers } from './workspace';
 

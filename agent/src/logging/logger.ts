@@ -9,7 +9,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { RunnerConfig } from './config';
+import type { RunnerConfig } from '../runner/config';
 
 export type LogType = 'action' | 'record' | 'trace' | 'step';
 

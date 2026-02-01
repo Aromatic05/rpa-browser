@@ -5,8 +5,8 @@ import {
     ListToolsRequestSchema,
     InitializeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { ERROR_CODES } from '../runner/actions/error_codes';
-import { errorResult } from '../runner/actions/results';
+import { ERROR_CODES } from '../actions/error_codes';
+import { errorResult } from '../actions/results';
 import { createToolHandlers, type McpToolDeps } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
 

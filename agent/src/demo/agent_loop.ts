@@ -2,8 +2,8 @@ import type { DemoConfig } from './config_store';
 import { createChatCompletion, type ChatMessage } from './openai_compat_client';
 import { executeTool, getToolSpecs } from '../mcp/tool_registry';
 import type { ToolRegistryDeps } from '../mcp/tool_registry';
-import { ERROR_CODES } from '../runner/actions/error_codes';
-import { errorResult } from '../runner/actions/results';
+import { ERROR_CODES } from '../actions/error_codes';
+import { errorResult } from '../actions/results';
 
 export type ToolEvent = {
     type: 'call' | 'result';

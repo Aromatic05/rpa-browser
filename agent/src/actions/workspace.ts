@@ -6,7 +6,7 @@
  * - 保留此文件用于 extension 的 workspace/tab UI 控制
  */
 
-import type { ActionHandler } from '../execute';
+import type { ActionHandler } from './execute';
 import { errorResult } from './results';
 import { ERROR_CODES } from './error_codes';
 import type {

@@ -6,7 +6,7 @@
  * - 该入口用于旧 UI 或调试工具的过渡期支持
  */
 
-import type { ActionHandler } from '../execute';
+import type { ActionHandler } from './execute';
 import type { RecordReplayCommand } from './commands';
 import {
     startRecording,
