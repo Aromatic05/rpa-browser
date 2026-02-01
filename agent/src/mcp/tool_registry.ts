@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import type { PageRegistry } from '../runtime/page_registry';
-import { runSteps } from './run_steps';
-import type { StepUnion } from './steps/types';
+import { runSteps } from '../runner/run_steps';
+import type { StepUnion } from '../runner/steps/types';
 
 export type ToolSpec = {
     name: string;
