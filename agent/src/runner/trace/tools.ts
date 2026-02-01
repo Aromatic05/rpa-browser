@@ -43,7 +43,7 @@ export type BrowserAutomationTools = {
     'trace.locator.focus': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
     'trace.locator.fill': (args: { a11yNodeId: string; value: string }) => Promise<ToolResult<void>>;
     'trace.locator.type': (args: { a11yNodeId: string; text: string; delayMs?: number }) => Promise<ToolResult<void>>;
-    'trace.locator.selectOption': (args: { a11yNodeId: string; values: string[] }) => Promise<ToolResult<void>>;
+    'trace.locator.selectOption': (args: { a11yNodeId: string; values: string[]; timeout?: number }) => Promise<ToolResult<void>>;
     'trace.locator.hover': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
     'trace.locator.dragDrop': (args: { sourceNodeId: string; destNodeId?: string; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
     'trace.page.scrollTo': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
@@ -229,7 +229,7 @@ export const createTraceTools = (opts: {
             run('trace.locator.selectOption', args, async () => {
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
-                await adopted.data!.selectOption(args.values);
+                await adopted.data!.selectOption(args.values, { timeout: args.timeout });
             }),
         'trace.locator.hover': async (args) =>
             run('trace.locator.hover', args, async () => {

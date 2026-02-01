@@ -31,6 +31,7 @@ export const executeBrowserSelectOption = async (
     const select = await binding.traceTools['trace.locator.selectOption']({
         a11yNodeId: resolved.nodeId,
         values: step.args.values,
+        timeout,
     });
     if (!select.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(select.error) };

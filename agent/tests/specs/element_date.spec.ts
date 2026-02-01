@@ -8,10 +8,7 @@ test.describe('element_date', () => {
         await page.goto(`${fixtureURL}/date.html`);
         const runner = await setupStepRunner(page, 'date-token');
         const res = await runner.run([
-            createStep('browser.fill', {
-                target: { a11yHint: { role: 'textbox', name: 'Date' } },
-                value: '2025-01-02',
-            }),
+            createStep('browser.fill', { target: { a11yHint: { name: 'Date' } }, value: '2025-01-02' }),
         ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#nativeDate')).toHaveValue('2025-01-02');
