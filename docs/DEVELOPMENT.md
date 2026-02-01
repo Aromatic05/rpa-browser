@@ -42,6 +42,12 @@ pnpm -C agent mcp
 pnpm -C agent mcp:smoke
 ```
 
+- 运行 runSteps 有头演示（人工验收）：
+
+```
+pnpm -C agent demo:headed-runner
+```
+
 ## 测试
 
 ```

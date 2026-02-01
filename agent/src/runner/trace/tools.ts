@@ -84,18 +84,24 @@ export const createTraceTools = (opts: {
                 url: currentPage.url(),
                 title: await currentPage.title(),
             })),
-        'trace.page.snapshotA11y': async () =>
-            run('trace.page.snapshotA11y', undefined, async () => {
-                const snapshot = await (currentPage as any).accessibility.snapshot({
-                    interestingOnly: false,
-                });
-                if (!snapshot) {
-                    throw new Error('snapshot empty');
-                }
+    'trace.page.snapshotA11y': async () =>
+        run('trace.page.snapshotA11y', undefined, async () => {
+            const snapshot = await (currentPage as any).accessibility?.snapshot?.({
+                interestingOnly: false,
+            });
+            if (snapshot) {
                 const raw = JSON.stringify(snapshot);
                 const tree = cacheA11ySnapshot(ctx.cache, raw);
                 return tree ? JSON.stringify(tree) : raw;
-            }),
+            }
+            const cdp = await currentPage.context().newCDPSession(currentPage);
+            await cdp.send('Accessibility.enable');
+            const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+            const tree = buildA11yTreeFromCdp(nodes);
+            const raw = JSON.stringify(tree);
+            const cached = cacheA11ySnapshot(ctx.cache, raw);
+            return cached ? JSON.stringify(cached) : raw;
+        }),
         'trace.page.screenshot': async (args) =>
             run('trace.page.screenshot', args, async () => {
                 const buffer = await currentPage.screenshot({ fullPage: args.fullPage });
@@ -151,4 +157,55 @@ export const createTraceTools = (opts: {
     };
 
     return { tools, ctx };
+};
+
+type CdpAXNode = {
+    nodeId: string;
+    ignored?: boolean;
+    role?: { value?: string };
+    name?: { value?: string };
+    description?: { value?: string };
+    value?: { value?: string };
+    parentId?: string;
+    childIds?: string[];
+};
+
+type RawA11yNode = {
+    role?: string;
+    name?: string;
+    description?: string;
+    value?: string;
+    children?: RawA11yNode[];
+};
+
+const buildA11yTreeFromCdp = (nodes: CdpAXNode[]): RawA11yNode => {
+    const map = new Map<string, CdpAXNode>();
+    for (const node of nodes) {
+        map.set(node.nodeId, node);
+    }
+
+    const root =
+        nodes.find((node) => !node.parentId && !node.ignored) ||
+        nodes.find((node) => !node.parentId) ||
+        nodes[0];
+
+    const visited = new Set<string>();
+    const walk = (id: string): RawA11yNode | null => {
+        if (visited.has(id)) return null;
+        const node = map.get(id);
+        if (!node) return null;
+        visited.add(id);
+        const children = (node.childIds || [])
+            .map((childId) => walk(childId))
+            .filter((child): child is RawA11yNode => Boolean(child));
+        return {
+            role: node.role?.value,
+            name: node.name?.value,
+            description: node.description?.value,
+            value: node.value?.value,
+            children: children.length ? children : undefined,
+        };
+    };
+
+    return root ? walk(root.nodeId) || { role: 'document' } : { role: 'document' };
 };
