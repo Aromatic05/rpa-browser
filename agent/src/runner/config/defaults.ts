@@ -19,7 +19,7 @@ export const defaultRunnerConfig: RunnerConfig = {
         retryableErrorCodes: ['ERR_TIMEOUT', 'ERR_NOT_INTERACTABLE'],
     },
     humanPolicy: {
-        enabled: false,
+        enabled: true,
         clickDelayMsRange: { min: 50, max: 180 },
         typeDelayMsRange: { min: 20, max: 80 },
         scrollStepPxRange: { min: 160, max: 360 },
