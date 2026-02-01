@@ -2,9 +2,30 @@
  * Content script 入口：注入悬浮 UI + tabToken，并与 SW 通信。
  *
  * 注意：
- * - 运行在页面上下文，不能直接访问 tabs API。\n * - 仅处理 UI 与消息，不做持久化。\n */
+ * - 内容脚本是“非 module”脚本，禁止静态 import。
+ * - 需要延迟加载录制模块（动态 import）以避免报错。
+ * - 运行在页面上下文，不能直接访问 tabs API。
+ * - 仅处理 UI 与消息，不做持久化。
+ */
 
-import { startRecording, stopRecording } from '../record/recorder.js';
+type RecorderModule = {
+    startRecording: (opts: {
+        tabToken: string;
+        onStep: (step: any) => void;
+    }) => void;
+    stopRecording: () => void;
+};
+
+const loadRecorder = (() => {
+    let cached: Promise<RecorderModule> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('record/recorder.js');
+            cached = import(url) as Promise<RecorderModule>;
+        }
+        return cached;
+    };
+})();
 
 (() => {
     if (window.top !== window) return;
@@ -38,22 +59,32 @@ import { startRecording, stopRecording } from '../record/recorder.js';
                 return true;
             }
             if (message?.type === 'RECORD_START') {
-                startRecording({
-                    tabToken,
-                    onStep: (step) => {
-                        chrome.runtime.sendMessage({
-                            type: 'RECORD_STEP',
-                            tabToken,
-                            step,
-                        });
-                    },
+                (async () => {
+                    const recorder = await loadRecorder();
+                    recorder.startRecording({
+                        tabToken,
+                        onStep: (step) => {
+                            chrome.runtime.sendMessage({
+                                type: 'RECORD_STEP',
+                                tabToken,
+                                step,
+                            });
+                        },
+                    });
+                    sendResponse({ ok: true });
+                })().catch((error) => {
+                    sendResponse({ ok: false, error: String(error) });
                 });
-                sendResponse({ ok: true });
                 return true;
             }
             if (message?.type === 'RECORD_STOP') {
-                stopRecording();
-                sendResponse({ ok: true });
+                (async () => {
+                    const recorder = await loadRecorder();
+                    recorder.stopRecording();
+                    sendResponse({ ok: true });
+                })().catch((error) => {
+                    sendResponse({ ok: false, error: String(error) });
+                });
                 return true;
             }
         },
