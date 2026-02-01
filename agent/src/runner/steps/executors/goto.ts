@@ -11,7 +11,12 @@ export const executeBrowserGoto = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const result = await binding.traceTools['trace.page.goto'](step.args);
+    const timeout =
+        step.args.timeout ?? deps.config.waitPolicy.navigationTimeoutMs;
+    const result = await binding.traceTools['trace.page.goto']({
+        url: step.args.url,
+        timeout,
+    });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: result.error };
     }

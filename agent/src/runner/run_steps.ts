@@ -13,6 +13,7 @@ import { executeBrowserClick } from './steps/executors/click';
 import { executeBrowserFill } from './steps/executors/fill';
 import { executeBrowserGoto } from './steps/executors/goto';
 import { executeBrowserSnapshot } from './steps/executors/snapshot';
+import type { RunnerConfig } from './config';
 
 export type StepEvent =
     | {
@@ -62,6 +63,7 @@ export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
 export type RunStepsDeps = {
     runtime: RuntimeRegistry;
     stepSinks?: StepSink[];
+    config: RunnerConfig;
 };
 
 const executeStep = async (

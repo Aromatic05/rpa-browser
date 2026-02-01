@@ -11,9 +11,15 @@ export const executeBrowserClick = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
+    if (deps.config.humanPolicy.enabled) {
+        const min = deps.config.humanPolicy.clickDelayMsRange.min;
+        const max = deps.config.humanPolicy.clickDelayMsRange.max;
+        const delay = Math.max(min, Math.floor(Math.random() * (max - min + 1)) + min);
+        await binding.page.waitForTimeout(delay);
+    }
     const wait = await binding.traceTools['trace.locator.waitForVisible']({
         a11yNodeId: step.args.a11yNodeId,
-        timeout: step.args.timeout,
+        timeout: step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs,
     });
     if (!wait.ok) {
         return { stepId: step.id, ok: false, error: wait.error };

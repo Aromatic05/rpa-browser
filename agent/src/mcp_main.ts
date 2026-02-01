@@ -4,6 +4,7 @@ import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { startMcpServer } from './mcp/index';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
+import { getRunnerConfig } from './runner/config';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -46,6 +47,7 @@ runtimeRegistry = createRuntimeRegistry({
 setRunStepsDeps({
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
+    config: getRunnerConfig(),
 });
 
 (async () => {

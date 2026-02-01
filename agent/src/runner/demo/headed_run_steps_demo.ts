@@ -15,6 +15,7 @@ import { createRuntimeRegistry } from '../../runtime/runtime_registry';
 import { createConsoleStepSink, runSteps } from '../run_steps';
 import { MemorySink } from '../trace/sink';
 import { createLoggingHooks } from '../trace/hooks';
+import { getRunnerConfig } from '../config';
 
 const fixtureUrl = () =>
     pathToFileURL(
@@ -67,7 +68,7 @@ const run = async () => {
                 },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')] },
+        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig() },
     );
 
     const snap = first.results.find((r) => r.stepId === 'demo-snap');
@@ -98,7 +99,7 @@ const run = async () => {
                 },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')] },
+        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig() },
     );
 
     console.log('Demo finished, please verify UI changes in the visible browser window.');

@@ -14,6 +14,7 @@ import { createRuntimeRegistry } from '../../runtime/runtime_registry';
 import { runSteps, MemoryStepSink } from '../run_steps';
 import { MemorySink } from '../trace/sink';
 import { createNoopHooks } from '../trace/hooks';
+import { getRunnerConfig } from '../config';
 
 const fixtureUrl = (name: string) =>
     pathToFileURL(
@@ -57,7 +58,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws1-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink] },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
     );
     assert.equal(steps1.ok, true);
     const snap1 = steps1.results.find((r) => r.stepId === 'ws1-snap');
@@ -76,7 +77,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws1-fill', name: 'browser.fill', args: { a11yNodeId: input1!, value: 'hello-a' }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink] },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
     );
     assert.equal(steps1b.ok, true);
 
@@ -88,7 +89,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws2-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink] },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
     );
     assert.equal(steps2.ok, true);
     const snap2 = steps2.results.find((r) => r.stepId === 'ws2-snap');
@@ -106,7 +107,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws2-fill', name: 'browser.fill', args: { a11yNodeId: input2!, value: 'hello-b' }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink] },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
     );
     assert.equal(steps2b.ok, true);
 

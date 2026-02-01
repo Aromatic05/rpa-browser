@@ -9,6 +9,7 @@ import { errorResult } from './runner/results';
 import { ERROR_CODES } from './runner/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
+import { getRunnerConfig } from './runner/config';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -65,6 +66,7 @@ runtimeRegistry = createRuntimeRegistry({
 setRunStepsDeps({
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
+    config: getRunnerConfig(),
 });
 
 const handleCommand = async (payload?: Command) => {

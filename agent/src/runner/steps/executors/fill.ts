@@ -11,6 +11,12 @@ export const executeBrowserFill = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
+    if (deps.config.humanPolicy.enabled) {
+        const min = deps.config.humanPolicy.typeDelayMsRange.min;
+        const max = deps.config.humanPolicy.typeDelayMsRange.max;
+        const delay = Math.max(min, Math.floor(Math.random() * (max - min + 1)) + min);
+        await binding.page.waitForTimeout(delay);
+    }
     const focus = await binding.traceTools['trace.locator.focus']({
         a11yNodeId: step.args.a11yNodeId,
     });
