@@ -15,9 +15,9 @@
         "trace:demo": "tsx scripts/trace_demo.ts",
         "trace:headed-demo": "node --import tsx src/runner/trace/demo/headed_demo.ts",
         "demo:headed-runner": "node --import tsx src/runner/demo/headed_run_steps_demo.ts",
-        "test:trace": "node --import tsx --test src/runner/trace/__tests__/*.test.ts",
+        "test:trace": "node --import tsx --test tests/trace/*.test.ts",
         "pw:install": "npx playwright install chromium",
-        "test": "playwright test",
+        "test": "playwright test && node --import tsx --test tests/runner/*.test.ts",
         "test:headed": "playwright test --headed",
         "dev:watch": "tsx watch src/index.ts"
     },

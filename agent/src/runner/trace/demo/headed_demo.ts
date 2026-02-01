@@ -7,7 +7,7 @@ import { createTraceTools } from '../tools';
 const fixtureUrl = () => {
     const filePath = path.resolve(
         process.cwd(),
-        'src/runner/trace/demo/fixtures/trace_fixture.html',
+        'tests/fixtures/trace_fixture.html',
     );
     return pathToFileURL(filePath).toString();
 };

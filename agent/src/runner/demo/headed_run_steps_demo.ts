@@ -19,7 +19,7 @@ import { getRunnerConfig } from '../config';
 
 const fixtureUrl = () =>
     pathToFileURL(
-        path.resolve(process.cwd(), 'src/runner/demo/fixtures/run_steps_fixture_a.html'),
+        path.resolve(process.cwd(), 'tests/fixtures/run_steps_fixture_a.html'),
     ).toString();
 
 const findNodeId = (tree: any, role: string, name: string): string | null => {

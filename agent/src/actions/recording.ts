@@ -17,8 +17,8 @@ import {
     beginReplay,
     endReplay,
     cancelReplay,
-} from '../../record/recording';
-import { replayRecording } from '../../play/replay';
+} from '../record/recording';
+import { replayRecording } from '../play/replay';
 import { errorResult } from './results';
 import { ERROR_CODES } from './error_codes';
 

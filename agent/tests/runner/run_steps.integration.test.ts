@@ -17,9 +17,7 @@ import { createNoopHooks } from '../trace/hooks';
 import { getRunnerConfig } from '../config';
 
 const fixtureUrl = (name: string) =>
-    pathToFileURL(
-        path.resolve(process.cwd(), 'src/runner/demo/fixtures', name),
-    ).toString();
+    pathToFileURL(path.resolve(process.cwd(), 'tests/fixtures', name)).toString();
 
 const findNodeId = (tree: any, role: string, name: string): string | null => {
     if (!tree) return null;
