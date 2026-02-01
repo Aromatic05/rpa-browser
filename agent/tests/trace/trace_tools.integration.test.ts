@@ -25,7 +25,11 @@ test(
     'trace tools integration: goto -> snapshot -> click/fill',
     { timeout: 30000 },
     async () => {
-        const browser = await chromium.launch({ headless: true });
+        const browser = await chromium.launch({
+            headless: true,
+            chromiumSandbox: false,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
         const context = await browser.newContext();
         const page = await context.newPage();
 

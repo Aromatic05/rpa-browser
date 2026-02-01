@@ -30,7 +30,11 @@ const findNodeId = (tree: any, role: string, name: string): string | null => {
 };
 
 test('runSteps isolates workspaces and emits step/trace events', async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+        headless: true,
+        chromiumSandbox: false,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
         tabTokenKey: '__rpa_tab_token',

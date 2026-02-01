@@ -10,7 +10,11 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
     browser: [
         async ({}, use) => {
-            const browser = await chromium.launch({ headless: true });
+            const browser = await chromium.launch({
+                headless: true,
+                chromiumSandbox: false,
+                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            });
             await use(browser);
             await browser.close();
         },
