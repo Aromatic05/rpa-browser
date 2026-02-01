@@ -13,6 +13,20 @@ import { executeBrowserClick } from './steps/executors/click';
 import { executeBrowserFill } from './steps/executors/fill';
 import { executeBrowserGoto } from './steps/executors/goto';
 import { executeBrowserSnapshot } from './steps/executors/snapshot';
+import { executeBrowserGoBack } from './steps/executors/go_back';
+import { executeBrowserReload } from './steps/executors/reload';
+import { executeBrowserCreateTab } from './steps/executors/create_tab';
+import { executeBrowserSwitchTab } from './steps/executors/switch_tab';
+import { executeBrowserCloseTab } from './steps/executors/close_tab';
+import { executeBrowserGetPageInfo } from './steps/executors/get_page_info';
+import { executeBrowserTakeScreenshot } from './steps/executors/take_screenshot';
+import { executeBrowserType } from './steps/executors/type';
+import { executeBrowserSelectOption } from './steps/executors/select_option';
+import { executeBrowserHover } from './steps/executors/hover';
+import { executeBrowserScroll } from './steps/executors/scroll';
+import { executeBrowserPressKey } from './steps/executors/press_key';
+import { executeBrowserDragAndDrop } from './steps/executors/drag_and_drop';
+import { executeBrowserMouse } from './steps/executors/mouse';
 import type { RunnerConfig } from './config';
 
 export type StepEvent =
@@ -74,12 +88,40 @@ const executeStep = async (
     switch (step.name) {
         case 'browser.goto':
             return executeBrowserGoto(step, deps, workspaceId);
+        case 'browser.go_back':
+            return executeBrowserGoBack(step, deps, workspaceId);
+        case 'browser.reload':
+            return executeBrowserReload(step, deps, workspaceId);
+        case 'browser.create_tab':
+            return executeBrowserCreateTab(step, deps, workspaceId);
+        case 'browser.switch_tab':
+            return executeBrowserSwitchTab(step, deps, workspaceId);
+        case 'browser.close_tab':
+            return executeBrowserCloseTab(step, deps, workspaceId);
+        case 'browser.get_page_info':
+            return executeBrowserGetPageInfo(step, deps, workspaceId);
         case 'browser.snapshot':
             return executeBrowserSnapshot(step, deps, workspaceId);
+        case 'browser.take_screenshot':
+            return executeBrowserTakeScreenshot(step, deps, workspaceId);
         case 'browser.click':
             return executeBrowserClick(step, deps, workspaceId);
         case 'browser.fill':
             return executeBrowserFill(step, deps, workspaceId);
+        case 'browser.type':
+            return executeBrowserType(step, deps, workspaceId);
+        case 'browser.select_option':
+            return executeBrowserSelectOption(step, deps, workspaceId);
+        case 'browser.hover':
+            return executeBrowserHover(step, deps, workspaceId);
+        case 'browser.scroll':
+            return executeBrowserScroll(step, deps, workspaceId);
+        case 'browser.press_key':
+            return executeBrowserPressKey(step, deps, workspaceId);
+        case 'browser.drag_and_drop':
+            return executeBrowserDragAndDrop(step, deps, workspaceId);
+        case 'browser.mouse':
+            return executeBrowserMouse(step, deps, workspaceId);
         default:
             return {
                 stepId: (step as StepUnion).id,

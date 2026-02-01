@@ -1,5 +1,5 @@
-import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
+import type { Step, StepResult } from './types';
+import type { RunStepsDeps } from '../run_steps';
 import { normalizeTarget, mapTraceError } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 
@@ -13,8 +13,8 @@ const ensureVisible = async (
     return binding.traceTools['trace.locator.waitForVisible']({ a11yNodeId: nodeId, timeout });
 };
 
-export const executeBrowserFill = async (
-    step: Step<'browser.fill'>,
+export const executeBrowserType = async (
+    step: Step<'browser.type'>,
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
@@ -32,12 +32,13 @@ export const executeBrowserFill = async (
     if (!focus.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
     }
-    const fill = await binding.traceTools['trace.locator.fill']({
+    const typed = await binding.traceTools['trace.locator.type']({
         a11yNodeId: resolved.nodeId,
-        value: step.args.value,
+        text: step.args.text,
+        delayMs: step.args.delay_ms,
     });
-    if (!fill.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(fill.error) };
+    if (!typed.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(typed.error) };
     }
     return { stepId: step.id, ok: true };
 };

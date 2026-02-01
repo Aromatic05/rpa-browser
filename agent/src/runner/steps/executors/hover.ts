@@ -1,5 +1,5 @@
-import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
+import type { Step, StepResult } from './types';
+import type { RunStepsDeps } from '../run_steps';
 import { normalizeTarget, mapTraceError } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 
@@ -13,8 +13,8 @@ const ensureVisible = async (
     return binding.traceTools['trace.locator.waitForVisible']({ a11yNodeId: nodeId, timeout });
 };
 
-export const executeBrowserFill = async (
-    step: Step<'browser.fill'>,
+export const executeBrowserHover = async (
+    step: Step<'browser.hover'>,
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
@@ -28,16 +28,9 @@ export const executeBrowserFill = async (
     if (!visible.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
     }
-    const focus = await binding.traceTools['trace.locator.focus']({ a11yNodeId: resolved.nodeId });
-    if (!focus.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
-    }
-    const fill = await binding.traceTools['trace.locator.fill']({
-        a11yNodeId: resolved.nodeId,
-        value: step.args.value,
-    });
-    if (!fill.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(fill.error) };
+    const hover = await binding.traceTools['trace.locator.hover']({ a11yNodeId: resolved.nodeId });
+    if (!hover.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(hover.error) };
     }
     return { stepId: step.id, ok: true };
 };
