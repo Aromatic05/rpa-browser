@@ -20,7 +20,7 @@ export const defaultRunnerConfig: RunnerConfig = {
     },
     humanPolicy: {
         enabled: true,
-        clickDelayMsRange: { min: 50, max: 180 },
+        clickDelayMsRange: { min: 200, max: 600 },
         typeDelayMsRange: { min: 20, max: 80 },
         scrollStepPxRange: { min: 160, max: 360 },
         scrollDelayMsRange: { min: 30, max: 90 },
