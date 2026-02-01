@@ -1,9 +1,9 @@
 import type { DemoConfig } from './config_store';
 import { createChatCompletion, type ChatMessage } from './openai_compat_client';
-import { executeTool, getToolSpecs } from '../runner/tool_registry';
-import type { ToolRegistryDeps } from '../runner/tool_registry';
-import { ERROR_CODES } from '../runner/error_codes';
-import { errorResult } from '../runner/results';
+import { executeTool, getToolSpecs } from '../mcp/tool_registry';
+import type { ToolRegistryDeps } from '../mcp/tool_registry';
+import { ERROR_CODES } from '../runner/actions/error_codes';
+import { errorResult } from '../runner/actions/results';
 
 export type ToolEvent = {
     type: 'call' | 'result';

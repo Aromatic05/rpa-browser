@@ -7,8 +7,8 @@
  */
 
 import type { ActionHandler } from '../execute';
-import { errorResult } from '../results';
-import { ERROR_CODES } from '../error_codes';
+import { errorResult } from './results';
+import { ERROR_CODES } from './error_codes';
 import type {
     TabCloseCommand,
     TabCreateCommand,
@@ -16,7 +16,7 @@ import type {
     TabSetActiveCommand,
     WorkspaceCreateCommand,
     WorkspaceSetActiveCommand,
-} from '../commands';
+} from './commands';
 
 const resolveWorkspaceId = (
     ctx: { pageRegistry: any },

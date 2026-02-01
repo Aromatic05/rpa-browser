@@ -11,7 +11,7 @@
  */
 import type { Page } from 'playwright';
 import { installRecorder, type RecordedEvent } from './recorder';
-import { getLogger } from '../runner/logger';
+import { getLogger } from '../logging/logger';
 
 export type RecordingState = {
     recordingEnabled: Set<string>;

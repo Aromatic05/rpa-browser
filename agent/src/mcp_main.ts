@@ -7,7 +7,7 @@ import { startMcpServer } from './mcp/index';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
-import { initLogger, resolveLogPath } from './runner/logger';
+import { initLogger, resolveLogPath } from './logging/logger';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;

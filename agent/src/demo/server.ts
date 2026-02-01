@@ -13,7 +13,7 @@ import { createChatCompletion } from './openai_compat_client';
 import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
 import { getRunnerConfig } from '../runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
-import { initLogger, resolveLogPath } from '../runner/logger';
+import { initLogger, resolveLogPath } from '../logging/logger';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

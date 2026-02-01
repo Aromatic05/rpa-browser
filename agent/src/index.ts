@@ -4,14 +4,14 @@ import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { executeCommand, type ActionContext } from './runner/execute';
-import type { Command } from './runner/commands';
-import { errorResult } from './runner/results';
-import { ERROR_CODES } from './runner/error_codes';
+import type { Command } from './runner/actions/commands';
+import { errorResult } from './runner/actions/results';
+import { ERROR_CODES } from './runner/actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps, runSteps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
-import { initLogger, getLogger, resolveLogPath } from './runner/logger';
+import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;

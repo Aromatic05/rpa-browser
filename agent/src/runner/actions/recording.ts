@@ -7,9 +7,7 @@
  */
 
 import type { ActionHandler } from '../execute';
-import type {
-    RecordReplayCommand,
-} from '../commands';
+import type { RecordReplayCommand } from './commands';
 import {
     startRecording,
     stopRecording,
@@ -21,8 +19,8 @@ import {
     cancelReplay,
 } from '../../record/recording';
 import { replayRecording } from '../../play/replay';
-import { errorResult } from '../results';
-import { ERROR_CODES } from '../error_codes';
+import { errorResult } from './results';
+import { ERROR_CODES } from './error_codes';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, _command) => {
