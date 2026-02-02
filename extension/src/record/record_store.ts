@@ -1,7 +1,3 @@
-/**
- * record_store：录制步骤的本地缓存与持久化。
- */
-
 import type { RecordedStep } from '../shared/types.js';
 
 export type RecordStore = {
@@ -10,21 +6,21 @@ export type RecordStore = {
     clearSteps: (workspaceId: string) => Promise<void>;
 };
 
-export const createRecordStore = (storage: chrome.storage.StorageArea): RecordStore => {
+/**
+ * record_store：录制步骤的本地缓存（仅内存）。
+ *
+ * 说明：
+ * - 正式录制流程已迁移到 agent 侧
+ * - extension 不再写入 chrome.storage
+ * - 这里保留内存实现，便于调试或短暂过渡
+ */
+export const createRecordStore = (_storage?: chrome.storage.StorageArea): RecordStore => {
     const memory = new Map<string, RecordedStep[]>();
 
-    const read = async (workspaceId: string) => {
-        const key = `record:${workspaceId}`;
-        const result = await storage.get(key);
-        const steps = (result[key] as RecordedStep[]) || [];
-        memory.set(workspaceId, steps);
-        return steps;
-    };
+    const read = async (workspaceId: string) => memory.get(workspaceId) || [];
 
     const write = async (workspaceId: string, steps: RecordedStep[]) => {
-        const key = `record:${workspaceId}`;
         memory.set(workspaceId, steps);
-        await storage.set({ [key]: steps });
     };
 
     return {
