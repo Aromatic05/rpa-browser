@@ -2,6 +2,9 @@ import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
+import { getLogger } from '../../../logging/logger';
+
+const log = getLogger('step');
 
 const ensureVisible = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
@@ -18,6 +21,7 @@ export const executeBrowserClick = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
+    log('[runner] click executor v1');
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const coord = step.args.coord;
     const options = step.args.options;
