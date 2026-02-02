@@ -18,6 +18,7 @@ import { createLogger } from '../shared/logger.js';
 import type { CmdEnvelope, WsEventPayload } from '../shared/types.js';
 import { resolveScope } from './scope_resolver.js';
 import type { WsClient } from './ws_client.js';
+import { createRecordStore } from '../record/record_store.js';
 import type { RawEvent } from '../record/event_capture.js';
 
 export type CmdRouterOptions = {
@@ -35,6 +36,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     let activeScopeTabId: string | null = null;
     const supportsTabGroups = supportsTabGrouping(chrome);
     const tokenToWorkspace = new Map<string, string>();
+    const recordStore = createRecordStore(chrome.storage.session || chrome.storage.local);
     const recordEventQueue: Array<{ workspaceId: string; tabToken: string; event: RawEvent }> = [];
     let flushingRecordEvents = false;
 
@@ -268,22 +270,25 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     });
                     return;
                 }
-                if (
-                    message.cmd === 'record.get' ||
-                    message.cmd === 'record.clear' ||
-                    message.cmd === 'record.replay' ||
-                    message.cmd === 'record.stopReplay'
-                ) {
-                    const active = await getActiveTabToken();
-                    if (!active) {
-                        sendResponse({ ok: false, error: 'tab token unavailable' });
-                        return;
-                    }
+                if (message.cmd === 'record.get') {
+                    const workspaceId = activeWorkspaceId || 'default';
+                    const steps = await recordStore.getSteps(workspaceId);
+                    sendResponse({ ok: true, data: { steps } });
+                    return;
+                }
+                if (message.cmd === 'record.clear') {
+                    const workspaceId = activeWorkspaceId || 'default';
+                    await recordStore.clearSteps(workspaceId);
+                    sendResponse({ ok: true, data: { cleared: true } });
+                    return;
+                }
+                if (message.cmd === 'record.replay') {
+                    const workspaceId = activeWorkspaceId || 'default';
+                    const steps = await recordStore.getSteps(workspaceId);
                     const response = await options.wsClient.sendCommand({
-                        cmd: message.cmd,
+                        cmd: 'steps.run',
                         requestId: crypto.randomUUID(),
-                        tabToken: active.tabToken,
-                        args: {},
+                        args: { steps, stopOnError: true },
                     });
                     sendResponse(response);
                     return;
