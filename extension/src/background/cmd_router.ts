@@ -216,6 +216,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             return true;
         }
         if (message.type === 'RECORD_EVENT') {
+            // 录制上报不阻塞响应，避免 SW 休眠导致消息端口关闭。
+            sendResponse({ ok: true });
             (async () => {
                 const workspaceId = tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || undefined;
                 const action: Action = {
@@ -226,8 +228,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     scope: { workspaceId, tabToken: message.tabToken },
                     payload: message.event,
                 };
-                const response = await sendAction(action);
-                sendResponse(response);
+                await sendAction(action);
             })();
             return true;
         }
