@@ -1,17 +1,26 @@
 import crypto from 'crypto';
 import type { Page } from '@playwright/test';
+import path from 'node:path';
 import { createPageRegistry } from '../../src/runtime/page_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runSteps } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/runner/config';
 import type { StepArgsMap, StepName, StepUnion } from '../../src/runner/steps/types';
+import { RunnerPluginHost } from '../../src/runner/hotreload/plugin_host';
 
 export const createStep = <TName extends StepName>(name: TName, args: StepArgsMap[TName]): StepUnion => ({
     id: crypto.randomUUID(),
     name,
     args,
 });
+
+export const createTestPluginHost = async () => {
+    const entryFile = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
+    const host = new RunnerPluginHost(entryFile);
+    await host.load();
+    return host;
+};
 
 export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.randomUUID()}`) => {
     const pageRegistry = createPageRegistry({
@@ -29,7 +38,8 @@ export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.rand
         traceHooks: createNoopHooks(),
     });
 
-    const deps = { runtime, config: getRunnerConfig() };
+    const pluginHost = await createTestPluginHost();
+    const deps = { runtime, config: getRunnerConfig(), pluginHost };
 
     const run = async (steps: StepUnion[]) =>
         runSteps({ workspaceId: scope.workspaceId, steps, options: { stopOnError: true } }, deps);

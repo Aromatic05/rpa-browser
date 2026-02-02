@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import type { Step } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { getRunnerConfig } from '../../config';
@@ -8,6 +9,7 @@ import { executeBrowserFill } from '../executors/fill';
 import { executeBrowserPressKey } from '../executors/press_key';
 import { executeBrowserSnapshot } from '../executors/snapshot';
 import { executeBrowserMouse } from '../executors/mouse';
+import { RunnerPluginHost } from '../../hotreload/plugin_host';
 
 const createDeps = (traceTools: any): RunStepsDeps => {
     const binding = {
@@ -23,6 +25,7 @@ const createDeps = (traceTools: any): RunStepsDeps => {
             ensureActivePage: async () => binding,
         } as any,
         config: getRunnerConfig(),
+        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
     };
 };
 

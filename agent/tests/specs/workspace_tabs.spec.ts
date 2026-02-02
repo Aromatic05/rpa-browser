@@ -5,7 +5,7 @@ import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runSteps } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/runner/config';
-import { createStep } from '../helpers/steps';
+import { createStep, createTestPluginHost } from '../helpers/steps';
 
 test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
@@ -17,7 +17,8 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
         pageRegistry,
         traceHooks: createNoopHooks(),
     });
-    const deps = { runtime: runtimeRegistry, config: getRunnerConfig() };
+    const pluginHost = await createTestPluginHost();
+    const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const runnerScope = createRunnerScopeRegistry(2);
 
     const wsA = await pageRegistry.createWorkspace();
@@ -63,7 +64,8 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
         pageRegistry,
         traceHooks: createNoopHooks(),
     });
-    const deps = { runtime: runtimeRegistry, config: getRunnerConfig() };
+    const pluginHost = await createTestPluginHost();
+    const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const runnerScope = createRunnerScopeRegistry(1);
 
     const ws = await pageRegistry.createWorkspace();
@@ -109,7 +111,8 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
         pageRegistry,
         traceHooks: createNoopHooks(),
     });
-    const deps = { runtime: runtimeRegistry, config: getRunnerConfig() };
+    const pluginHost = await createTestPluginHost();
+    const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const ws = await pageRegistry.createWorkspace();
     const tab2 = await pageRegistry.createTab(ws.workspaceId);
 

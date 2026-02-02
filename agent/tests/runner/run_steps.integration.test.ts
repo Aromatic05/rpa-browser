@@ -15,6 +15,7 @@ import { runSteps, MemoryStepSink } from '../../src/runner/run_steps';
 import { MemorySink } from '../../src/runner/trace/sink';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { getRunnerConfig } from '../../src/runner/config';
+import { createTestPluginHost } from '../helpers/steps';
 
 const fixtureUrl = (name: string) =>
     pathToFileURL(path.resolve(process.cwd(), 'tests/fixtures', name)).toString();
@@ -48,6 +49,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
         traceHooks: createNoopHooks(),
     });
     const stepSink = new MemoryStepSink();
+    const pluginHost = await createTestPluginHost();
 
     const ws1 = await pageRegistry.createWorkspace();
     const ws2 = await pageRegistry.createWorkspace();
@@ -60,7 +62,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws1-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
     );
     assert.equal(steps1.ok, true);
     const snap1 = steps1.results.find((r) => r.stepId === 'ws1-snap');
@@ -79,7 +81,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws1-fill', name: 'browser.fill', args: { a11yNodeId: input1!, value: 'hello-a' }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
     );
     assert.equal(steps1b.ok, true);
 
@@ -91,7 +93,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws2-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
     );
     assert.equal(steps2.ok, true);
     const snap2 = steps2.results.find((r) => r.stepId === 'ws2-snap');
@@ -109,7 +111,7 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
                 { id: 'ws2-fill', name: 'browser.fill', args: { a11yNodeId: input2!, value: 'hello-b' }, meta: { source: 'script' } },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig() },
+        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
     );
     assert.equal(steps2b.ok, true);
 
