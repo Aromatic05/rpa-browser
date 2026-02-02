@@ -12,7 +12,16 @@ export type A11yCandidate = {
     preview: string;
 };
 
-const normalize = (value?: string) => (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const normalizeBase = (value?: string) =>
+    (value || '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+
+const normalizeRole = (value?: string) => normalizeBase(value);
+const normalizeText = (value?: string) => normalizeBase(value);
 
 const buildPreview = (node: A11ySnapshotNode) => {
     const raw = node.name || node.description || node.value || node.role || '';
@@ -21,14 +30,14 @@ const buildPreview = (node: A11ySnapshotNode) => {
 };
 
 const matchesNode = (node: A11ySnapshotNode, hint: A11yHint) => {
-    if (hint.role && node.role !== hint.role) return false;
+    if (hint.role && normalizeRole(node.role) !== normalizeRole(hint.role)) return false;
     if (hint.name) {
-        const nodeName = normalize(node.name);
-        if (!nodeName.includes(normalize(hint.name))) return false;
+        const nodeName = normalizeText(node.name);
+        if (!nodeName.includes(normalizeText(hint.name))) return false;
     }
     if (hint.text) {
-        const text = normalize([node.name, node.description, node.value].filter(Boolean).join(' '));
-        if (!text.includes(normalize(hint.text))) return false;
+        const text = normalizeText([node.name, node.description, node.value].filter(Boolean).join(' '));
+        if (!text.includes(normalizeText(hint.text))) return false;
     }
     return Boolean(node.id);
 };

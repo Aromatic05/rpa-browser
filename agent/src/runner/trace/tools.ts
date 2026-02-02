@@ -21,6 +21,7 @@ import { traceCall } from './trace_call';
 import { adoptA11yNode, cacheA11ySnapshot, type A11ySnapshotNode } from './a11y_adopt';
 import { findA11yCandidates, type A11yCandidate } from './a11y_find';
 import { createLoggingHooks } from './hooks';
+import { invalidateA11yCache } from './a11y_cache';
 import type { A11yHint } from '../steps/types';
 import type { PageRegistry, WorkspaceId } from '../../runtime/page_registry';
 
@@ -78,6 +79,12 @@ export const createTraceTools = (opts: {
     const run = <T,>(op: TraceOpName, args: unknown, fn: () => Promise<T>) =>
         traceCall(ctx, { op, args }, fn);
 
+    const ensureA11yCache = async () => {
+        if (!ctx.cache.a11yTree) {
+            await getA11yTree(currentPage, ctx.cache);
+        }
+    };
+
     const tools: BrowserAutomationTools = {
         'trace.tabs.create': async (args) =>
             run('trace.tabs.create', args, async () => {
@@ -111,18 +118,27 @@ export const createTraceTools = (opts: {
                 const page = await opts.pageRegistry.resolvePage({ workspaceId: scope.workspaceId });
                 currentPage = page;
             }),
-        'trace.page.goto': async (args) =>
-            run('trace.page.goto', args, async () => {
+        'trace.page.goto': async (args) => {
+            const result = await run('trace.page.goto', args, async () => {
                 await currentPage.goto(args.url, { timeout: args.timeout });
-            }),
-        'trace.page.goBack': async (args) =>
-            run('trace.page.goBack', args, async () => {
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'navigate', ctx.tags);
+            return result;
+        },
+        'trace.page.goBack': async (args) => {
+            const result = await run('trace.page.goBack', args, async () => {
                 await currentPage.goBack({ timeout: args.timeout });
-            }),
-        'trace.page.reload': async (args) =>
-            run('trace.page.reload', args, async () => {
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'navigate', ctx.tags);
+            return result;
+        },
+        'trace.page.reload': async (args) => {
+            const result = await run('trace.page.reload', args, async () => {
                 await currentPage.reload({ timeout: args.timeout });
-            }),
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'navigate', ctx.tags);
+            return result;
+        },
         'trace.page.getInfo': async () =>
             run('trace.page.getInfo', undefined, async () => {
                 const info = { url: currentPage.url(), title: await currentPage.title() };
@@ -148,6 +164,7 @@ export const createTraceTools = (opts: {
         'trace.page.screenshot': async (args) =>
             run('trace.page.screenshot', args, async () => {
                 if (args.a11yNodeId) {
+                    await ensureA11yCache();
                     const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                     if (!adopted.ok) throw adopted.error;
                     const buffer = await adopted.data!.screenshot();
@@ -183,6 +200,7 @@ export const createTraceTools = (opts: {
             }),
         'trace.a11y.resolveByNodeId': async (args) =>
             run('trace.a11y.resolveByNodeId', args, async () => {
+                await ensureA11yCache();
                 const tree = ctx.cache.a11yTree as A11ySnapshotNode | undefined;
                 if (!tree || !ctx.cache.a11yNodeMap?.has(args.a11yNodeId)) {
                     throw { code: 'ERR_NOT_FOUND', message: 'a11y node not found', phase: 'trace' };
@@ -191,54 +209,78 @@ export const createTraceTools = (opts: {
             }),
         'trace.locator.waitForVisible': async (args) =>
             run('trace.locator.waitForVisible', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.waitFor({ state: 'visible', timeout: args.timeout });
             }),
-        'trace.locator.scrollIntoView': async (args) =>
-            run('trace.locator.scrollIntoView', args, async () => {
+        'trace.locator.scrollIntoView': async (args) => {
+            const result = await run('trace.locator.scrollIntoView', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.scrollIntoViewIfNeeded();
-            }),
-        'trace.locator.click': async (args) =>
-            run('trace.locator.click', args, async () => {
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'scroll', ctx.tags);
+            return result;
+        },
+        'trace.locator.click': async (args) => {
+            const result = await run('trace.locator.click', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.click({ timeout: args.timeout, button: args.button });
-            }),
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'click', ctx.tags);
+            return result;
+        },
         'trace.locator.focus': async (args) =>
             run('trace.locator.focus', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.focus();
             }),
-        'trace.locator.fill': async (args) =>
-            run('trace.locator.fill', args, async () => {
+        'trace.locator.fill': async (args) => {
+            const result = await run('trace.locator.fill', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.fill(args.value);
-            }),
-        'trace.locator.type': async (args) =>
-            run('trace.locator.type', args, async () => {
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'input', ctx.tags);
+            return result;
+        },
+        'trace.locator.type': async (args) => {
+            const result = await run('trace.locator.type', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.type(args.text, { delay: args.delayMs });
-            }),
-        'trace.locator.selectOption': async (args) =>
-            run('trace.locator.selectOption', args, async () => {
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'input', ctx.tags);
+            return result;
+        },
+        'trace.locator.selectOption': async (args) => {
+            const result = await run('trace.locator.selectOption', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.selectOption(args.values, { timeout: args.timeout });
-            }),
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'input', ctx.tags);
+            return result;
+        },
         'trace.locator.hover': async (args) =>
             run('trace.locator.hover', args, async () => {
+                await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
                 await adopted.data!.hover();
             }),
         'trace.locator.dragDrop': async (args) =>
             run('trace.locator.dragDrop', args, async () => {
+                await ensureA11yCache();
                 const source = await adoptA11yNode(currentPage, args.sourceNodeId, ctx.cache);
                 if (!source.ok) throw source.error;
                 if (args.destNodeId) {
@@ -261,12 +303,15 @@ export const createTraceTools = (opts: {
                 await currentPage.mouse.move(args.destCoord.x, args.destCoord.y);
                 await currentPage.mouse.up();
             }),
-        'trace.keyboard.press': async (args) =>
-            run('trace.keyboard.press', args, async () => {
+        'trace.keyboard.press': async (args) => {
+            const result = await run('trace.keyboard.press', args, async () => {
                 await currentPage.keyboard.press(args.key);
-            }),
-        'trace.mouse.action': async (args) =>
-            run('trace.mouse.action', args, async () => {
+            });
+            if (result.ok) invalidateA11yCache(ctx.cache, 'keyboard', ctx.tags);
+            return result;
+        },
+        'trace.mouse.action': async (args) => {
+            const result = await run('trace.mouse.action', args, async () => {
                 await currentPage.mouse.move(args.x, args.y);
                 if (args.action === 'move') return;
                 if (args.action === 'down') {
@@ -280,7 +325,12 @@ export const createTraceTools = (opts: {
                 if (args.action === 'wheel') {
                     await currentPage.mouse.wheel(0, args.deltaY || 0);
                 }
-            }),
+            });
+            if (result.ok && (args.action === 'down' || args.action === 'up')) {
+                invalidateA11yCache(ctx.cache, 'mouse', ctx.tags);
+            }
+            return result;
+        },
     };
 
     return { tools, ctx };

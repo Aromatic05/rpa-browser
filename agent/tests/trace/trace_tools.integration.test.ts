@@ -34,7 +34,7 @@ test(
         const page = await context.newPage();
 
         const sink = new MemorySink();
-        const { tools } = createTraceTools({ page, context, sinks: [sink] });
+        const { tools, ctx } = createTraceTools({ page, context, sinks: [sink] });
 
         const gotoResult = await tools['trace.page.goto']({ url: fixtureUrl() });
         assert.equal(gotoResult.ok, true);
@@ -45,6 +45,8 @@ test(
             await browser.close();
             return;
         }
+        assert.ok(ctx.cache.a11yTree);
+        const genBefore = ctx.cache.a11yCacheGen ?? 0;
 
         const tree = JSON.parse(snap.data?.a11y || '{}');
         const buttonId = findNodeId(tree, 'button', 'Do Action');
@@ -54,11 +56,14 @@ test(
 
         const clickResult = await tools['trace.locator.click']({ a11yNodeId: buttonId! });
         assert.equal(clickResult.ok, true);
+        assert.ok((ctx.cache.a11yCacheGen ?? 0) > genBefore);
+        assert.equal(ctx.cache.a11yTree, undefined);
         const fillResult = await tools['trace.locator.fill']({
             a11yNodeId: inputId!,
             value: 'hello',
         });
         assert.equal(fillResult.ok, true);
+        assert.equal(ctx.cache.a11yTree, undefined);
 
         const statusText = await page.locator('#status').textContent();
         const inputValue = await page.locator('#name-input').inputValue();

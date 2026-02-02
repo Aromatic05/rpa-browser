@@ -83,6 +83,7 @@ export type TraceCache = {
     a11yNodeMap?: Map<string, A11yNodeInfo>;
     a11yTree?: unknown;
     lastSnapshotId?: string;
+    a11yCacheGen?: number;
 };
 
 export type A11yNodeInfo = {
