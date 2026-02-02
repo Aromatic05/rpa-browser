@@ -3,6 +3,12 @@ import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 
+const pickDelayMs = (min: number, max: number) => {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
+    if (max <= min) return Math.max(0, min);
+    return Math.floor(min + Math.random() * (max - min + 1));
+};
+
 const ensureVisible = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
     nodeId: string,
@@ -32,10 +38,19 @@ export const executeBrowserType = async (
     if (!focus.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
     }
+    const delayMs =
+        typeof step.args.delay_ms === 'number'
+            ? step.args.delay_ms
+            : deps.config.humanPolicy.enabled
+              ? pickDelayMs(
+                    deps.config.humanPolicy.typeDelayMsRange.min,
+                    deps.config.humanPolicy.typeDelayMsRange.max,
+                )
+              : undefined;
     const typed = await binding.traceTools['trace.locator.type']({
         a11yNodeId: resolved.nodeId,
         text: step.args.text,
-        delayMs: step.args.delay_ms,
+        delayMs,
     });
     if (!typed.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(typed.error) };

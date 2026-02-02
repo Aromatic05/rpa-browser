@@ -2,9 +2,12 @@ import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
-import { getLogger } from '../../../logging/logger';
 
-const log = getLogger('step');
+const pickDelayMs = (min: number, max: number) => {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
+    if (max <= min) return Math.max(0, min);
+    return Math.floor(min + Math.random() * (max - min + 1));
+};
 
 const ensureVisible = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
@@ -21,7 +24,6 @@ export const executeBrowserClick = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    log('[runner] click executor v1');
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const coord = step.args.coord;
     const options = step.args.options;
@@ -47,6 +49,14 @@ export const executeBrowserClick = async (
                 button: options?.button,
             });
             if (!up.ok) return { stepId: step.id, ok: false, error: mapTraceError(up.error) };
+            if (deps.config.humanPolicy.enabled) {
+                const delayMs = pickDelayMs(
+                    deps.config.humanPolicy.clickDelayMsRange.min,
+                    deps.config.humanPolicy.clickDelayMsRange.max,
+                );
+                // console.log('Click delay ms:', delayMs);
+                if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+            }
         }
         return { stepId: step.id, ok: true };
     }
@@ -68,6 +78,16 @@ export const executeBrowserClick = async (
         });
         if (!click.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(click.error) };
+        }
+
+        // console.log("Human Policy Enabled" , deps.config.humanPolicy.enabled);
+        if (deps.config.humanPolicy.enabled) {
+            const delayMs = pickDelayMs(
+                deps.config.humanPolicy.clickDelayMsRange.min,
+                deps.config.humanPolicy.clickDelayMsRange.max,
+            );
+            // console.log('Click delay ms:', delayMs);
+            if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
         }
     }
     return { stepId: step.id, ok: true };

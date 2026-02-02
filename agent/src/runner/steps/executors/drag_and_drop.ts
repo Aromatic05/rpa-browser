@@ -3,6 +3,12 @@ import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 
+const pickDelayMs = (min: number, max: number) => {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
+    if (max <= min) return Math.max(0, min);
+    return Math.floor(min + Math.random() * (max - min + 1));
+};
+
 export const executeBrowserDragAndDrop = async (
     step: Step<'browser.drag_and_drop'>,
     deps: RunStepsDeps,
@@ -24,6 +30,13 @@ export const executeBrowserDragAndDrop = async (
         if (!result.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
         }
+        if (deps.config.humanPolicy.enabled) {
+            const delayMs = pickDelayMs(
+                deps.config.humanPolicy.clickDelayMsRange.min,
+                deps.config.humanPolicy.clickDelayMsRange.max,
+            );
+            if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+        }
         return { stepId: step.id, ok: true };
     }
 
@@ -36,6 +49,13 @@ export const executeBrowserDragAndDrop = async (
     });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
+    }
+    if (deps.config.humanPolicy.enabled) {
+        const delayMs = pickDelayMs(
+            deps.config.humanPolicy.clickDelayMsRange.min,
+            deps.config.humanPolicy.clickDelayMsRange.max,
+        );
+        if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
     }
     return { stepId: step.id, ok: true };
 };

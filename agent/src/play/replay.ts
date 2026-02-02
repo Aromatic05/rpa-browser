@@ -43,6 +43,7 @@ const buildStepsFromEvents = (events: RecordedEvent[]) => {
             continue;
         }
         if (event.type === 'click' && event.a11yNodeId) {
+            console.log('Adding click step for a11yNodeId:', event.a11yNodeId);
             steps.push({
                 id: crypto.randomUUID(),
                 name: 'browser.click',
