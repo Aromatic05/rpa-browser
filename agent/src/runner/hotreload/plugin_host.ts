@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import chokidar from 'chokidar';
 import { getLogger } from '../../logging/logger';
-import type { RunnerPlugin } from '../plugin_entry';
+import type { RunnerPlugin, CreateTraceToolsFn } from '../plugin_entry';
 import type { ExecutorFn } from '../steps/executors';
 
 const log = getLogger('step');
@@ -9,6 +9,7 @@ const log = getLogger('step');
 export class RunnerPluginHost {
     private entryFile: string;
     private plugin: RunnerPlugin | null = null;
+    private listeners = new Set<(plugin: RunnerPlugin) => void>();
 
     constructor(entryFile: string) {
         this.entryFile = entryFile;
@@ -32,6 +33,7 @@ export class RunnerPluginHost {
     async load(): Promise<RunnerPlugin> {
         const plugin = await this.importPlugin();
         this.plugin = plugin;
+        this.emitReload(plugin);
         return plugin;
     }
 
@@ -40,6 +42,7 @@ export class RunnerPluginHost {
             const plugin = await this.importPlugin();
             this.plugin = plugin;
             log('[runner] hot reload OK');
+            this.emitReload(plugin);
             return plugin;
         } catch (error) {
             log('[runner] hot reload FAILED (kept previous)', error instanceof Error ? error.message : error);
@@ -49,6 +52,26 @@ export class RunnerPluginHost {
 
     getExecutors(): Record<string, ExecutorFn> {
         return this.plugin?.executors ?? {};
+    }
+
+    getTraceToolsFactory(): CreateTraceToolsFn | null {
+        return this.plugin?.createTraceTools ?? null;
+    }
+
+    onReload(handler: (plugin: RunnerPlugin) => void): () => void {
+        this.listeners.add(handler);
+        if (this.plugin) {
+            handler(this.plugin);
+        }
+        return () => {
+            this.listeners.delete(handler);
+        };
+    }
+
+    private emitReload(plugin: RunnerPlugin) {
+        for (const handler of this.listeners) {
+            handler(plugin);
+        }
     }
 
     watchDev(watchTarget: string): () => Promise<void> {
