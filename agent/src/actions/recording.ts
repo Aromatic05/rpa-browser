@@ -66,19 +66,8 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         if (!event) {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
         }
-        recordEvent(
-            ctx.recordingState,
-            {
-                tabToken: ctx.tabToken,
-                ts: event.ts,
-                type: event.type,
-                url: event.url,
-                selector: event.target?.selector,
-                value: event.value,
-                key: event.key?.key,
-            },
-            ctx.navDedupeWindowMs,
-        );
-        return makeOk({ accepted: true });
+        // 为保持回放可用：此处仅确认收到，不写入录制队列。
+        void event;
+        return makeOk({ accepted: true, ignored: true });
     },
 };
