@@ -6,11 +6,11 @@
  * - 业务层通过 onEvent 接收 agent 广播事件。
  */
 
-import type { WsEventPayload, WsResultPayload } from '../shared/types.js';
+import type { Action, ActionErr, ActionOk, WsActionReply, WsEventPayload } from '../shared/types.js';
 import { createLogger } from '../shared/logger.js';
 
 export type WsClient = {
-    sendCommand: (command: Record<string, unknown>) => Promise<any>;
+    sendAction: (action: Action) => Promise<ActionOk<any> | ActionErr>;
 };
 
 export type WsClientOptions = {
@@ -22,7 +22,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
     const log = options.logger || createLogger('sw');
     let wsRef: WebSocket | null = null;
     let wsReady: Promise<void> | null = null;
-    const pending = new Map<string, (payload: any) => void>();
+    const pending = new Map<string, (payload: ActionOk<any> | ActionErr) => void>();
 
     const connect = () => {
         if (wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
@@ -45,12 +45,11 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                 options.onEvent(payload as WsEventPayload);
                 return;
             }
-            if (payload?.type === 'result' && payload.requestId) {
-                const resolver = pending.get(payload.requestId);
-                if (resolver) {
-                    pending.delete(payload.requestId);
-                    resolver((payload as WsResultPayload).payload);
-                }
+            if (payload?.replyTo) {
+                const resolver = pending.get(payload.replyTo as string);
+                if (!resolver) return;
+                pending.delete(payload.replyTo as string);
+                resolver((payload as WsActionReply).payload as ActionOk<any> | ActionErr);
             }
         });
         wsRef.addEventListener('close', () => {
@@ -65,12 +64,12 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         return wsReady;
     };
 
-    const sendCommand = (command: Record<string, unknown>) => {
-        const requestId = command.requestId as string;
-        return new Promise((resolve) => {
+    const sendAction = (action: Action) => {
+        const requestId = action.id;
+        return new Promise<ActionOk<any> | ActionErr>((resolve) => {
             const timeoutId = setTimeout(() => {
                 pending.delete(requestId);
-                resolve({ ok: false, error: 'ws timeout' });
+                resolve({ ok: false, error: { code: 'ERR_TIMEOUT', message: 'ws timeout' } });
             }, 20000);
             pending.set(requestId, (payload) => {
                 clearTimeout(timeoutId);
@@ -78,15 +77,15 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             });
             connect()
                 .then(() => {
-                    wsRef?.send(JSON.stringify({ type: 'cmd', cmd: command }));
+                    wsRef?.send(JSON.stringify(action));
                 })
                 .catch(() => {
                     clearTimeout(timeoutId);
                     pending.delete(requestId);
-                    resolve({ ok: false, error: 'ws connect failed' });
+                    resolve({ ok: false, error: { code: 'ERR_CONNECT', message: 'ws connect failed' } });
                 });
         });
     };
 
-    return { sendCommand };
+    return { sendAction };
 };

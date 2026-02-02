@@ -13,15 +13,26 @@ export type ResultOk<T = unknown> = { ok: true; data: T };
 export type ResultErr = { ok: false; error: string };
 export type Result<T = unknown> = ResultOk<T> | ResultErr;
 
-export type CmdEnvelope = {
-    type: 'CMD';
-    cmd: string;
-    args?: Record<string, unknown>;
-    requestId?: string;
+export type ActionScope = {
     workspaceId?: WorkspaceId;
     tabId?: TabId;
     tabToken?: string;
 };
+
+export type Action<T extends string = string, P = unknown> = {
+    v: 1;
+    id: string;
+    type: T;
+    tabToken?: string;
+    scope?: ActionScope;
+    payload?: P;
+    at?: number;
+    traceId?: string;
+    replyTo?: string;
+};
+
+export type ActionOk<T> = { ok: true; data: T };
+export type ActionErr = { ok: false; error: { code: string; message: string; details?: any } };
 
 export type WorkspaceItem = {
     workspaceId: WorkspaceId;
@@ -68,10 +79,10 @@ export type WsEventPayload = {
     data?: Record<string, unknown>;
 };
 
-export type WsResultPayload = {
-    type: 'result';
-    requestId?: string;
-    payload: Result;
+export type WsActionReply = {
+    type: string;
+    replyTo?: string;
+    payload?: ActionOk<unknown> | ActionErr;
 };
 
 export type StepName = 'browser.goto' | 'browser.snapshot' | 'browser.click' | 'browser.fill';

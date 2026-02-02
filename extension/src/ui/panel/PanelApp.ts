@@ -2,7 +2,7 @@
  * Panel UI 主逻辑：负责列表渲染与用户操作响应。
  *
  * 边界说明：
- * - 只处理 UI 与 CMD 发送，不直接操作 chrome API。
+ * - 只处理 UI 与 Action 发送，不直接操作 chrome API。
  * - 状态计算使用 state 模块，保证可测试性。
  */
 
@@ -81,7 +81,7 @@ export const initPanelApp = () => {
             btn.addEventListener('click', async () => {
                 setState(selectWorkspace(state, ws.workspaceId));
                 rememberWorkspace(ws.workspaceId);
-                await sendPanelCommand('workspace.setActive', { workspaceId: ws.workspaceId });
+                await sendPanelAction('workspace.setActive', { workspaceId: ws.workspaceId });
                 await refreshTabs();
             });
             row.appendChild(btn);
@@ -103,7 +103,7 @@ export const initPanelApp = () => {
             }
             btn.addEventListener('click', async () => {
                 setState(selectTab(state, tab.tabId));
-                await sendPanelCommand('tab.setActive', {
+                await sendPanelAction('tab.setActive', {
                     workspaceId: state.activeWorkspaceId || undefined,
                     tabId: tab.tabId,
                 });
@@ -112,15 +112,15 @@ export const initPanelApp = () => {
             const closeBtn = document.createElement('button');
             closeBtn.textContent = 'Close';
             closeBtn.addEventListener('click', async () => {
-                await sendPanelCommand('tab.close', {
+                await sendPanelAction('tab.close', {
                     workspaceId: state.activeWorkspaceId || undefined,
                     tabId: tab.tabId,
                 });
-                const workspacesResp = await sendPanelCommand('workspace.list');
+                const workspacesResp = await sendPanelAction('workspace.list');
                 const rawWorkspaces = (workspacesResp?.data?.workspaces || []) as WorkspaceItem[];
                 if (!rawWorkspaces.length) {
                     const startUrl = await prepareStartUrl();
-                    const created = await sendPanelCommand('workspace.create', { startUrl });
+                    const created = await sendPanelAction('workspace.create', { startUrl });
                     if (created?.ok === false) {
                         logMessage(`Mock start page unreachable: ${startUrl}`);
                     }
@@ -132,11 +132,11 @@ export const initPanelApp = () => {
                 const filtered = namedWorkspaces.filter((ws) => ws.tabCount > 0);
                 const fallbackId = pickFallbackWorkspace(filtered);
                 if (fallbackId) {
-                    await sendPanelCommand('workspace.setActive', { workspaceId: fallbackId });
+                    await sendPanelAction('workspace.setActive', { workspaceId: fallbackId });
                     setState(selectWorkspace(state, fallbackId));
                     rememberWorkspace(fallbackId);
                 }
-                const tabsResp = await sendPanelCommand('tab.list', {
+                const tabsResp = await sendPanelAction('tab.list', {
                     workspaceId: fallbackId || undefined,
                 });
                 const rawTabs = (tabsResp?.data?.tabs || []) as TabItem[];
@@ -150,13 +150,20 @@ export const initPanelApp = () => {
         });
     };
 
-    const sendPanelCommand = (
-        cmd: string,
-        args?: Record<string, unknown>,
+    const sendPanelAction = (
+        type: string,
+        payload?: Record<string, unknown>,
         scope?: { workspaceId?: string; tabId?: string },
     ): Promise<any> =>
         new Promise((resolve) => {
-            chrome.runtime.sendMessage({ type: 'CMD', cmd, args, ...(scope || {}) }, (response: any) => {
+            const action = {
+                v: 1,
+                id: crypto.randomUUID(),
+                type,
+                scope,
+                payload: payload || {},
+            };
+            chrome.runtime.sendMessage({ type: 'ACTION', action }, (response: any) => {
                 if (chrome.runtime.lastError) {
                     const errorPayload = { ok: false, error: chrome.runtime.lastError.message };
                     logPayload(errorPayload);
@@ -170,19 +177,19 @@ export const initPanelApp = () => {
 
     const prepareStartUrl = async () => getMockStartUrl();
 
-    startButton.addEventListener('click', () => sendPanelCommand('record.start'));
-    stopButton.addEventListener('click', () => sendPanelCommand('record.stop'));
-    showButton.addEventListener('click', () => sendPanelCommand('record.get'));
-    clearButton.addEventListener('click', () => sendPanelCommand('record.clear'));
-    replayButton.addEventListener('click', () => sendPanelCommand('record.replay'));
-    stopReplayButton.addEventListener('click', () => sendPanelCommand('record.stopReplay'));
+    startButton.addEventListener('click', () => sendPanelAction('record.start'));
+    stopButton.addEventListener('click', () => sendPanelAction('record.stop'));
+    showButton.addEventListener('click', () => sendPanelAction('record.get'));
+    clearButton.addEventListener('click', () => sendPanelAction('record.clear'));
+    replayButton.addEventListener('click', () => sendPanelAction('play.start'));
+    stopReplayButton.addEventListener('click', () => sendPanelAction('play.stop'));
 
     const refreshWorkspaces = async () => {
-        const response = await sendPanelCommand('workspace.list');
+        const response = await sendPanelAction('workspace.list');
         if (response?.data?.workspaces) {
             if (response.data.workspaces.length === 0) {
                 const startUrl = await prepareStartUrl();
-                const created = await sendPanelCommand('workspace.create', { startUrl });
+                const created = await sendPanelAction('workspace.create', { startUrl });
                 if (created?.ok === false) {
                     logMessage(`Mock start page unreachable: ${startUrl}`);
                 }
@@ -196,7 +203,7 @@ export const initPanelApp = () => {
     };
 
     const refreshTabs = async () => {
-        const response = await sendPanelCommand('tab.list', {
+        const response = await sendPanelAction('tab.list', {
             workspaceId: state.activeWorkspaceId || undefined,
         });
         if (response?.data?.tabs && state.activeWorkspaceId) {
@@ -210,7 +217,7 @@ export const initPanelApp = () => {
 
     newWorkspaceButton.addEventListener('click', async () => {
         const startUrl = await prepareStartUrl();
-        const response = await sendPanelCommand('workspace.create', { startUrl });
+        const response = await sendPanelAction('workspace.create', { startUrl });
         if (response?.ok === false) {
             logMessage(`Mock start page unreachable: ${startUrl}`);
         }
@@ -221,7 +228,7 @@ export const initPanelApp = () => {
     newTabButton.addEventListener('click', async () => {
         const scope = planNewTabScope(state);
         const startUrl = await prepareStartUrl();
-        const response = await sendPanelCommand('tab.create', { workspaceId: scope.workspaceId, startUrl });
+        const response = await sendPanelAction('tab.create', { workspaceId: scope.workspaceId, startUrl });
         if (response?.ok === false) {
             logMessage(`Mock start page unreachable: ${startUrl}`);
         }

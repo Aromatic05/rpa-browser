@@ -1,5 +1,5 @@
 /**
- * CMD 路由：处理 content/panel 的消息，补全 scope 与 tabToken，转发给 agent。
+ * Action 路由：处理 content/panel 的消息，补全 scope 与 tabToken，转发给 agent。
  *
  * 设计边界：
  * - 本模块可以使用 chrome API（属于 background 层）。
@@ -15,10 +15,9 @@ import {
 } from '../services/name_store.js';
 import { safeGroupActiveTab, supportsTabGrouping } from '../services/tab_grouping.js';
 import { createLogger } from '../shared/logger.js';
-import type { CmdEnvelope, RecordedStep, WsEventPayload } from '../shared/types.js';
+import type { Action, ActionErr, ActionOk, RecordedStep, WsEventPayload } from '../shared/types.js';
 import { resolveScope } from './scope_resolver.js';
 import type { WsClient } from './ws_client.js';
-import { createRecordStore } from '../record/record_store.js';
 
 export type CmdRouterOptions = {
     wsClient: WsClient;
@@ -35,7 +34,19 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     let activeScopeTabId: string | null = null;
     const supportsTabGroups = supportsTabGrouping(chrome);
     const tokenToWorkspace = new Map<string, string>();
-    const recordStore = createRecordStore(chrome.storage.session || chrome.storage.local);
+    const withActionBase = (action: Action) => ({
+        v: 1 as const,
+        id: action.id || crypto.randomUUID(),
+        type: action.type,
+        payload: action.payload,
+        scope: action.scope,
+        tabToken: action.tabToken,
+        at: action.at,
+        traceId: action.traceId,
+    });
+
+    const sendAction = async (action: Action): Promise<ActionOk<any> | ActionErr> =>
+        options.wsClient.sendAction(withActionBase(action));
 
     const upsertTab = (tabId: number, tabToken: string, url: string) => {
         tabState.set(tabId, {
@@ -194,19 +205,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         void resetMetaStore();
     };
 
-    const handleMessage = (message: CmdEnvelope | any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
+    const handleMessage = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
         if (message.type === 'RECORD_STEP') {
             const step = message.step as RecordedStep;
             const workspaceId =
                 tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
-            void recordStore.appendStep(workspaceId, {
-                ...step,
-                meta: {
-                    ...step.meta,
-                    workspaceId,
-                },
-            });
+            // 兼容旧录制通道：收到步骤仅做转发，不再本地持久化。
             sendResponse({ ok: true });
             return true;
         }
@@ -223,53 +228,45 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             return;
         }
 
-        if (message.type === 'CMD') {
+        if (message.type === 'ACTION') {
             (async () => {
-                if (message.cmd === 'record.start' || message.cmd === 'record.stop') {
+                const action = (message.action || {}) as Action;
+                if (action.type === 'record.start' || action.type === 'record.stop') {
                     const active = await getActiveTabToken();
                     if (!active) {
                         sendResponse({ ok: false, error: 'tab token unavailable' });
                         return;
                     }
-                    const type = message.cmd === 'record.start' ? 'RECORD_START' : 'RECORD_STOP';
-                    chrome.tabs.sendMessage(active.tabId, { type }, (response: any) => {
-                        if (chrome.runtime.lastError) {
-                            sendResponse({ ok: false, error: chrome.runtime.lastError.message });
-                            return;
-                        }
-                        sendResponse(response || { ok: true });
+                    const type = action.type === 'record.start' ? 'RECORD_START' : 'RECORD_STOP';
+                    const contentResp = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+                        chrome.tabs.sendMessage(active.tabId, { type }, (response: any) => {
+                            if (chrome.runtime.lastError) {
+                                resolve({ ok: false, error: chrome.runtime.lastError.message });
+                                return;
+                            }
+                            resolve(response || { ok: true });
+                        });
                     });
-                    return;
-                }
-                if (message.cmd === 'record.get') {
-                    const workspaceId = activeWorkspaceId || 'default';
-                    const steps = await recordStore.getSteps(workspaceId);
-                    sendResponse({ ok: true, data: { steps } });
-                    return;
-                }
-                if (message.cmd === 'record.clear') {
-                    const workspaceId = activeWorkspaceId || 'default';
-                    await recordStore.clearSteps(workspaceId);
-                    sendResponse({ ok: true, data: { cleared: true } });
-                    return;
-                }
-                if (message.cmd === 'record.replay') {
-                    const workspaceId = activeWorkspaceId || 'default';
-                    const steps = await recordStore.getSteps(workspaceId);
-                    const response = await options.wsClient.sendCommand({
-                        cmd: 'steps.run',
-                        requestId: crypto.randomUUID(),
-                        args: { steps, stopOnError: true },
-                    });
-                    sendResponse(response);
+                    if (!contentResp.ok) {
+                        sendResponse(contentResp);
+                        return;
+                    }
+                    const scoped: Action = {
+                        ...action,
+                        v: 1,
+                        id: action.id || crypto.randomUUID(),
+                        tabToken: active.tabToken,
+                        scope: { ...(action.scope || {}), tabToken: active.tabToken },
+                    };
+                    const payload = await sendAction(scoped);
+                    sendResponse(payload);
                     return;
                 }
 
-                const requestId = crypto.randomUUID();
-                let tabToken = message.tabToken as string | undefined;
+                let tabToken = action.tabToken as string | undefined;
                 const scope = resolveScope(
                     { activeWorkspaceId, activeTabId: activeScopeTabId },
-                    { workspaceId: message.workspaceId, tabId: message.tabId },
+                    { workspaceId: action.scope?.workspaceId, tabId: action.scope?.tabId },
                 );
                 if (!tabToken) {
                     const active = await getActiveTabToken();
@@ -279,17 +276,16 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     }
                     tabToken = active.tabToken;
                 }
-                if (!message.cmd) {
-                    sendResponse({ ok: false, error: 'missing cmd' });
+                if (!action.type) {
+                    sendResponse({ ok: false, error: 'missing action.type' });
                     return;
                 }
-                const command = {
-                    cmd: message.cmd,
+                const scoped: Action = {
+                    ...action,
+                    v: 1,
+                    id: action.id || crypto.randomUUID(),
                     tabToken,
-                    args: message.args || {},
-                    requestId,
-                    workspaceId: scope.workspaceId,
-                    tabId: scope.tabId,
+                    scope: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken },
                 };
                 if (scope.workspaceId) {
                     activeWorkspaceId = scope.workspaceId;
@@ -297,18 +293,19 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 if (scope.tabId) {
                     activeScopeTabId = scope.tabId;
                 }
-                const payload = await options.wsClient.sendCommand(command);
+                const payload = await sendAction(scoped);
                 sendResponse(payload);
-                const effectiveWorkspaceId =
-                    payload?.data?.workspaceId || scope.workspaceId || activeWorkspaceId;
+                const effectiveWorkspaceId = payload?.ok
+                    ? (payload.data as any)?.workspaceId || scope.workspaceId || activeWorkspaceId
+                    : null;
                 if (!payload?.ok || !effectiveWorkspaceId) return;
-                if (message.cmd === 'workspace.create' || message.cmd === 'tab.create') {
-                    if (payload?.data?.tabToken) {
-                        tokenToWorkspace.set(payload.data.tabToken, effectiveWorkspaceId);
+                if (action.type === 'workspace.create' || action.type === 'tab.create') {
+                    if ((payload.data as any)?.tabToken) {
+                        tokenToWorkspace.set((payload.data as any).tabToken, effectiveWorkspaceId);
                     }
                     void ensureGroupedActiveTab(effectiveWorkspaceId);
                     void ensureWorkspaceTabsGrouped(effectiveWorkspaceId);
-                } else if (message.cmd === 'workspace.setActive') {
+                } else if (action.type === 'workspace.setActive') {
                     void ensureGroupedActiveTab(effectiveWorkspaceId);
                 }
             })();

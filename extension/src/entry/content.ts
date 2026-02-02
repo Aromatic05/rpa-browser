@@ -247,15 +247,21 @@ const loadRecorder = (() => {
     let activeWorkspaceId: string | null = null;
     let activeTabId: string | null = null;
 
-    const sendPanelCommand = (
-        cmd: string,
-        args?: Record<string, unknown>,
+    const sendPanelAction = (
+        type: string,
+        payload?: Record<string, unknown>,
         scope?: { workspaceId?: string; tabId?: string },
         onResponse?: (payload: any) => void,
     ) => {
-        chrome.runtime.sendMessage(
-            { type: 'CMD', cmd, tabToken, args, ...(scope || {}) },
-            (response: any) => {
+        const action = {
+            v: 1,
+            id: crypto.randomUUID(),
+            type,
+            tabToken,
+            scope: { ...(scope || {}), tabToken },
+            payload: payload || {},
+        };
+        chrome.runtime.sendMessage({ type: 'ACTION', action }, (response: any) => {
             if (chrome.runtime.lastError) {
                 render({ ok: false, error: chrome.runtime.lastError.message });
                 return;
@@ -263,8 +269,7 @@ const loadRecorder = (() => {
             render(response);
             interceptResponse(response);
             onResponse?.(response);
-        },
-        );
+        });
     };
 
     const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
@@ -279,13 +284,13 @@ const loadRecorder = (() => {
     };
 
     const createWithStartUrl = (
-        cmd: 'workspace.create' | 'tab.create',
+        type: 'workspace.create' | 'tab.create',
         args: Record<string, unknown>,
         onDone?: (payload: any) => void,
     ) => {
         getMockStartUrl((startPageUrl) => {
-            sendPanelCommand(
-                cmd,
+            sendPanelAction(
+                type,
                 { ...args, startUrl: startPageUrl },
                 undefined,
                 (payload) => {
@@ -298,12 +303,12 @@ const loadRecorder = (() => {
         });
     };
 
-    startBtn.addEventListener('click', () => sendPanelCommand('record.start'));
-    stopBtn.addEventListener('click', () => sendPanelCommand('record.stop'));
-    showBtn.addEventListener('click', () => sendPanelCommand('record.get'));
-    clearBtn.addEventListener('click', () => sendPanelCommand('record.clear'));
-    replayBtn.addEventListener('click', () => sendPanelCommand('record.replay'));
-    stopReplayBtn.addEventListener('click', () => sendPanelCommand('record.stopReplay'));
+    startBtn.addEventListener('click', () => sendPanelAction('record.start'));
+    stopBtn.addEventListener('click', () => sendPanelAction('record.stop'));
+    showBtn.addEventListener('click', () => sendPanelAction('record.get'));
+    clearBtn.addEventListener('click', () => sendPanelAction('record.clear'));
+    replayBtn.addEventListener('click', () => sendPanelAction('play.start'));
+    stopReplayBtn.addEventListener('click', () => sendPanelAction('play.stop'));
 
     const renderWorkspaces = (
         workspaces: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>,
@@ -320,7 +325,7 @@ const loadRecorder = (() => {
             }
             btn.addEventListener('click', () => {
                 activeWorkspaceId = ws.workspaceId;
-                sendPanelCommand('workspace.setActive', { workspaceId: ws.workspaceId });
+                sendPanelAction('workspace.setActive', { workspaceId: ws.workspaceId });
                 refreshTabs();
             });
             wsList.appendChild(btn);
@@ -339,9 +344,9 @@ const loadRecorder = (() => {
             btn.addEventListener('click', () => {
                 activeTabId = tab.tabId;
                 if (activeWorkspaceId) {
-                    sendPanelCommand('tab.setActive', { workspaceId: activeWorkspaceId, tabId: tab.tabId });
+                    sendPanelAction('tab.setActive', { workspaceId: activeWorkspaceId, tabId: tab.tabId });
                 } else {
-                    sendPanelCommand('tab.setActive', { tabId: tab.tabId });
+                    sendPanelAction('tab.setActive', { tabId: tab.tabId });
                 }
                 refreshTabs();
             });
@@ -350,14 +355,14 @@ const loadRecorder = (() => {
     };
 
     const refreshWorkspaces = () => {
-        sendPanelCommand('workspace.list', {}, undefined);
+        sendPanelAction('workspace.list', {}, undefined);
     };
 
     const refreshTabs = () => {
         if (activeWorkspaceId) {
-            sendPanelCommand('tab.list', { workspaceId: activeWorkspaceId });
+            sendPanelAction('tab.list', { workspaceId: activeWorkspaceId });
         } else {
-            sendPanelCommand('tab.list', {});
+            sendPanelAction('tab.list', {});
         }
     };
 
@@ -389,12 +394,12 @@ const loadRecorder = (() => {
     closeTabBtn.addEventListener('click', () => {
         if (!activeTabId) return;
         if (activeWorkspaceId) {
-            sendPanelCommand(
+            sendPanelAction(
                 'tab.close',
                 { workspaceId: activeWorkspaceId, tabId: activeTabId },
                 undefined,
                 () => {
-                    sendPanelCommand('workspace.list', {}, undefined, (payload) => {
+                    sendPanelAction('workspace.list', {}, undefined, (payload) => {
                         const workspaces = payload?.data?.workspaces || [];
                         if (!workspaces.length) {
                             createWithStartUrl('workspace.create', {}, (created) => {
@@ -405,14 +410,14 @@ const loadRecorder = (() => {
                             return;
                         }
                         activeWorkspaceId = workspaces[0].workspaceId;
-                        sendPanelCommand('workspace.setActive', { workspaceId: activeWorkspaceId });
+                        sendPanelAction('workspace.setActive', { workspaceId: activeWorkspaceId });
                         refreshTabs();
                     });
                 },
             );
         } else {
-            sendPanelCommand('tab.close', { tabId: activeTabId }, undefined, () => {
-                sendPanelCommand('workspace.list', {}, undefined, (payload) => {
+            sendPanelAction('tab.close', { tabId: activeTabId }, undefined, () => {
+                sendPanelAction('workspace.list', {}, undefined, (payload) => {
                     const workspaces = payload?.data?.workspaces || [];
                     if (!workspaces.length) {
                         createWithStartUrl('workspace.create', {}, (created) => {
@@ -423,7 +428,7 @@ const loadRecorder = (() => {
                         return;
                     }
                     activeWorkspaceId = workspaces[0].workspaceId;
-                    sendPanelCommand('workspace.setActive', { workspaceId: activeWorkspaceId });
+                    sendPanelAction('workspace.setActive', { workspaceId: activeWorkspaceId });
                     refreshTabs();
                 });
             });
@@ -431,6 +436,7 @@ const loadRecorder = (() => {
     });
 
     const interceptResponse = (payload: any) => {
+        if (!payload?.ok) return;
         if (payload?.data?.workspaces) {
             if (payload.data.activeWorkspaceId) {
                 activeWorkspaceId = payload.data.activeWorkspaceId;
