@@ -10,6 +10,8 @@
 import type { Page } from 'playwright';
 import type { PageRegistry, WorkspaceId } from './page_registry';
 import { createTraceTools, type BrowserAutomationTools } from '../runner/trace';
+import type { RunnerPluginHost } from '../runner/hotreload/plugin_host';
+import type { CreateTraceToolsFn } from '../runner/plugin_entry';
 import type { TraceContext, TraceHooks, TraceSink } from '../runner/trace/types';
 
 export type PageBinding = {
@@ -32,6 +34,7 @@ type RuntimeRegistryOptions = {
     pageRegistry: PageRegistry;
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
+    pluginHost?: RunnerPluginHost;
 };
 
 /**
@@ -40,6 +43,26 @@ type RuntimeRegistryOptions = {
  */
 export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeRegistry => {
     const bindings = new Map<string, PageBinding>();
+    const resolveCreateTraceTools = (): CreateTraceToolsFn =>
+        options.pluginHost?.getTraceToolsFactory() || createTraceTools;
+
+    if (options.pluginHost) {
+        options.pluginHost.onReload((plugin) => {
+            for (const binding of bindings.values()) {
+                const { tools, ctx } = plugin.createTraceTools({
+                    page: binding.page,
+                    context: binding.page.context(),
+                    pageRegistry: options.pageRegistry,
+                    workspaceId: binding.workspaceId,
+                    sinks: options.traceSinks,
+                    hooks: options.traceHooks,
+                    tags: { workspaceId: binding.workspaceId, tabToken: binding.tabToken },
+                });
+                binding.traceTools = tools;
+                binding.traceCtx = ctx;
+            }
+        });
+    }
 
     const bindPage = (page: Page, tabToken: string): PageBinding => {
         const scope = options.pageRegistry.resolveScopeFromToken(tabToken);
@@ -47,7 +70,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         if (existing && existing.page === page) {
             return existing;
         }
-        const { tools, ctx } = createTraceTools({
+        const { tools, ctx } = resolveCreateTraceTools()({
             page,
             context: page.context(),
             pageRegistry: options.pageRegistry,
