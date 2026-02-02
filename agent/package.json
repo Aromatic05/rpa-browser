@@ -8,6 +8,7 @@
     },
     "scripts": {
         "dev": "tsx src/index.ts",
+        "dev:hot": "concurrently -k \"pnpm runner:bundle:watch\" \"pnpm dev\"",
         "dev:demo": "tsx src/demo/server.ts",
         "mcp": "tsx src/mcp_main.ts",
         "mcp:dev": "tsx watch src/mcp_main.ts",
@@ -15,6 +16,8 @@
         "trace:demo": "tsx scripts/trace_demo.ts",
         "trace:headed-demo": "node --import tsx src/runner/trace/demo/headed_demo.ts",
         "demo:headed-runner": "node --import tsx src/runner/demo/headed_run_steps_demo.ts",
+        "runner:bundle": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --outfile=.runner-dist/plugin.mjs --sourcemap",
+        "runner:bundle:watch": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --outfile=.runner-dist/plugin.mjs --sourcemap --watch",
         "test:trace": "node --import tsx --test tests/trace/*.test.ts",
         "pw:install": "npx playwright install chromium",
         "test": "playwright test && node --import tsx --test tests/runner/*.test.ts",
@@ -24,12 +27,15 @@
     "dependencies": {
         "@axe-core/playwright": "^4.10.2",
         "@modelcontextprotocol/sdk": "1.0.0",
+        "chokidar": "^3.6.0",
         "playwright": "^1.57.0",
         "ws": "^8.19.0",
         "zod": "3.23.8"
     },
     "devDependencies": {
         "@playwright/test": "^1.57.0",
+        "concurrently": "^9.2.1",
+        "esbuild": "^0.25.0",
         "tsx": "^4.20.5",
         "typescript": "^5.9.2",
         "@types/node": "^22.10.2",

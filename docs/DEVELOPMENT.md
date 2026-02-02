@@ -30,6 +30,25 @@ pnpm -C extension build
 pnpm -C agent dev
 ```
 
+### Runner 热重载（开发模式）
+
+启动 runner bundle watcher 并运行 agent（推荐）：
+
+```
+pnpm -C agent dev:hot
+```
+
+或用两个终端分别启动：
+
+```
+pnpm -C agent runner:bundle:watch
+pnpm -C agent dev
+```
+
+说明：
+- 热重载仅在开发模式下开启（`NODE_ENV !== 'production'`）。
+- reload 失败会保留旧版本 runner，并在日志里输出 `[runner] hot reload FAILED (kept previous)`。
+
 ### 4) 本地 Chat Demo（可选）
 
 ```
