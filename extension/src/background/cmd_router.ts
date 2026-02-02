@@ -216,20 +216,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             return true;
         }
         if (message.type === 'RECORD_EVENT') {
-            // 录制上报不阻塞响应，避免 SW 休眠导致消息端口关闭。
+            // record.event 暂不使用：直接确认即可。
             sendResponse({ ok: true });
-            (async () => {
-                const workspaceId = tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || undefined;
-                const action: Action = {
-                    v: 1,
-                    id: crypto.randomUUID(),
-                    type: 'record.event',
-                    tabToken: message.tabToken,
-                    scope: { workspaceId, tabToken: message.tabToken },
-                    payload: message.event,
-                };
-                await sendAction(action);
-            })();
             return true;
         }
         if (message.type === 'RPA_HELLO') {
