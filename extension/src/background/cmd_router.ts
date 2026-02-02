@@ -15,10 +15,11 @@ import {
 } from '../services/name_store.js';
 import { safeGroupActiveTab, supportsTabGrouping } from '../services/tab_grouping.js';
 import { createLogger } from '../shared/logger.js';
-import type { CmdEnvelope, RecordedStep, WsEventPayload } from '../shared/types.js';
+import type { CmdEnvelope, WsEventPayload } from '../shared/types.js';
 import { resolveScope } from './scope_resolver.js';
 import type { WsClient } from './ws_client.js';
 import { createRecordStore } from '../record/record_store.js';
+import type { RawEvent } from '../record/event_capture.js';
 
 export type CmdRouterOptions = {
     wsClient: WsClient;
@@ -36,6 +37,40 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const supportsTabGroups = supportsTabGrouping(chrome);
     const tokenToWorkspace = new Map<string, string>();
     const recordStore = createRecordStore(chrome.storage.session || chrome.storage.local);
+    const recordEventQueue: Array<{ workspaceId: string; tabToken: string; event: RawEvent }> = [];
+    let flushingRecordEvents = false;
+
+    const enqueueRecordEvent = (payload: { workspaceId: string; tabToken: string; event: RawEvent }) => {
+        recordEventQueue.push(payload);
+        if (recordEventQueue.length > 200) {
+            recordEventQueue.shift();
+        }
+    };
+
+    const flushRecordEvents = async () => {
+        if (flushingRecordEvents) return;
+        flushingRecordEvents = true;
+        while (recordEventQueue.length > 0) {
+            const payload = recordEventQueue[0];
+            const result = await options.wsClient.sendCommand({
+                cmd: 'record.event',
+                requestId: crypto.randomUUID(),
+                tabToken: payload.tabToken,
+                args: payload,
+            });
+            if (!result?.ok) {
+                break;
+            }
+            recordEventQueue.shift();
+        }
+        flushingRecordEvents = false;
+    };
+
+    const sendRecordEvent = (payload: { workspaceId: string; tabToken: string; event: RawEvent }) => {
+        // 轻量策略：失败则入队，后续事件触发重试；不做持久化。
+        enqueueRecordEvent(payload);
+        void flushRecordEvents();
+    };
 
     const upsertTab = (tabId: number, tabToken: string, url: string) => {
         tabState.set(tabId, {
@@ -196,17 +231,11 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleMessage = (message: CmdEnvelope | any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
-        if (message.type === 'RECORD_STEP') {
-            const step = message.step as RecordedStep;
+        if (message.type === 'RECORD_EVENT') {
+            const event = message.event as RawEvent;
             const workspaceId =
                 tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
-            void recordStore.appendStep(workspaceId, {
-                ...step,
-                meta: {
-                    ...step.meta,
-                    workspaceId,
-                },
-            });
+            sendRecordEvent({ workspaceId, tabToken: message.tabToken, event });
             sendResponse({ ok: true });
             return true;
         }

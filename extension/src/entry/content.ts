@@ -11,7 +11,7 @@
 type RecorderModule = {
     startRecording: (opts: {
         tabToken: string;
-        onStep: (step: any) => void;
+        onEvent: (event: any) => void;
     }) => void;
     stopRecording: () => void;
 };
@@ -63,11 +63,11 @@ const loadRecorder = (() => {
                     const recorder = await loadRecorder();
                     recorder.startRecording({
                         tabToken,
-                        onStep: (step) => {
+                        onEvent: (event) => {
                             chrome.runtime.sendMessage({
-                                type: 'RECORD_STEP',
+                                type: 'RECORD_EVENT',
                                 tabToken,
-                                step,
+                                event,
                             });
                         },
                     });
