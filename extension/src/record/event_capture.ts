@@ -4,12 +4,15 @@
  * 注意：
  * - 只捕获顶层文档
  * - 不做持久化，交由 recorder/record_store 处理
+ * - RawEvent 必须可序列化，禁止包含 Element 引用
  */
 
+import { describeTarget, type TargetDescriptor } from './target_descriptor.js';
+
 export type RawEvent =
-    | { type: 'click'; target: Element }
-    | { type: 'input'; target: Element; value: string }
-    | { type: 'navigate'; url: string };
+    | { type: 'click'; ts: number; url: string; target: TargetDescriptor }
+    | { type: 'input'; ts: number; url: string; target: TargetDescriptor; value: string }
+    | { type: 'navigate'; ts: number; url: string };
 
 export type CaptureOptions = {
     onEvent: (event: RawEvent) => void;
@@ -19,17 +22,28 @@ export const installCapture = (opts: CaptureOptions) => {
     const handleClick = (event: MouseEvent) => {
         const target = event.target;
         if (!(target instanceof Element)) return;
-        opts.onEvent({ type: 'click', target });
+        opts.onEvent({
+            type: 'click',
+            ts: Date.now(),
+            url: location.href,
+            target: describeTarget(target),
+        });
     };
 
     const handleInput = (event: Event) => {
         const target = event.target;
         if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
-        opts.onEvent({ type: 'input', target, value: target.value });
+        opts.onEvent({
+            type: 'input',
+            ts: Date.now(),
+            url: location.href,
+            target: describeTarget(target, { includeInputValue: true }),
+            value: target.value,
+        });
     };
 
     const handleNavigate = () => {
-        opts.onEvent({ type: 'navigate', url: location.href });
+        opts.onEvent({ type: 'navigate', ts: Date.now(), url: location.href });
     };
 
     document.addEventListener('click', handleClick, true);
