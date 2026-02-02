@@ -1,38 +1,15 @@
 /**
- * event_normalize：将 RawEvent 转为 RecordedStep（Step 模型）。
+ * event_normalize：历史遗留的事件转换器。
+ *
+ * 说明：
+ * - 录制逻辑已迁移为“轻量捕获 + 回传 agent”。
+ * - extension 不再负责把事件转为 Step。
+ * - 此处保留空实现，避免旧调用方编译报错。
  */
 
 import type { RecordedStep } from '../shared/types.js';
 import type { RawEvent } from './event_capture.js';
-import { buildA11yHint } from './locator_builder.js';
 
-export const normalizeEvent = (event: RawEvent, meta: { tabToken: string }): RecordedStep | null => {
-    const ts = Date.now();
-    if (event.type === 'navigate') {
-        return {
-            id: self.crypto.randomUUID(),
-            name: 'browser.goto',
-            args: { url: event.url },
-            meta: { ts, tabToken: meta.tabToken, source: 'record' },
-        };
-    }
-    if (event.type === 'click') {
-        const hint = buildA11yHint(event.target);
-        return {
-            id: self.crypto.randomUUID(),
-            name: 'browser.click',
-            args: { a11yHint: hint },
-            meta: { ts, tabToken: meta.tabToken, source: 'record' },
-        };
-    }
-    if (event.type === 'input') {
-        const hint = buildA11yHint(event.target);
-        return {
-            id: self.crypto.randomUUID(),
-            name: 'browser.fill',
-            args: { a11yHint: hint, value: event.value },
-            meta: { ts, tabToken: meta.tabToken, source: 'record' },
-        };
-    }
+export const normalizeEvent = (_event: RawEvent, _meta: { tabToken: string }): RecordedStep | null => {
     return null;
 };
