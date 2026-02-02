@@ -3,7 +3,7 @@
  *
  * 设计说明：
  * - 回放不再直接调用旧 execute/action，而是走统一 Step 模型
- * - v0 仅支持带 a11yNodeId 的事件，缺失则返回结构化错误
+ * - v0 仅支持带 a11yNodeId 的事件，缺失则跳过并继续回放
  */
 
 import crypto from 'crypto';
@@ -69,25 +69,23 @@ const buildStepsFromEvents = (events: RecordedEvent[]) => {
 
 /**
  * replayRecording：将 events 转为 Step 并执行。
- * 若事件缺少 a11yNodeId，则返回 ERR_NOT_IMPLEMENTED。
+ * 若事件缺少 a11yNodeId，则跳过并继续回放（保持可用）。
  */
 export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult> => {
     const { steps, unsupported } = buildStepsFromEvents(req.events);
-    if (unsupported.length > 0) {
-        return {
-            ok: false,
-            results: [],
-            error: {
-                code: 'ERR_NOT_IMPLEMENTED',
-                message: 'recorded events require a11yNodeId',
-                details: unsupported.map((event) => ({ type: event.type, ts: event.ts })),
-            },
-        };
-    }
+    const warning =
+        unsupported.length > 0
+            ? {
+                  code: 'WARN_UNSUPPORTED_EVENTS',
+                  message: 'unsupported recorded events skipped',
+                  details: unsupported.map((event) => ({ type: event.type, ts: event.ts })),
+              }
+            : undefined;
     const runReq: RunStepsRequest = {
         workspaceId: req.workspaceId,
         steps,
         options: { stopOnError: req.stopOnError },
     };
-    return runSteps(runReq, req.deps);
+    const result = await runSteps(runReq, req.deps);
+    return warning ? { ...result, error: warning } : result;
 };
