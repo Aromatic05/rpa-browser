@@ -55,7 +55,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         wsRef.addEventListener('close', () => {
             wsRef = null;
             wsReady = null;
-            pending.forEach((resolver) => resolver({ ok: false, error: 'ws closed' }));
+            pending.forEach((resolver) => resolver({ ok: false, error: { code: 'ERR_CLOSED', message: 'ws closed' } }));
             pending.clear();
         });
         wsRef.addEventListener('error', () => {

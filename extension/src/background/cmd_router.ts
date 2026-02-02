@@ -209,10 +209,26 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (!message?.type) return;
         if (message.type === 'RECORD_STEP') {
             const step = message.step as RecordedStep;
-            const workspaceId =
-                tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
+            const workspaceId = tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
             // 兼容旧录制通道：收到步骤仅做转发，不再本地持久化。
+            void workspaceId;
             sendResponse({ ok: true });
+            return true;
+        }
+        if (message.type === 'RECORD_EVENT') {
+            (async () => {
+                const workspaceId = tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || undefined;
+                const action: Action = {
+                    v: 1,
+                    id: crypto.randomUUID(),
+                    type: 'record.event',
+                    tabToken: message.tabToken,
+                    scope: { workspaceId, tabToken: message.tabToken },
+                    payload: message.event,
+                };
+                const response = await sendAction(action);
+                sendResponse(response);
+            })();
             return true;
         }
         if (message.type === 'RPA_HELLO') {

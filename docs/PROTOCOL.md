@@ -1,34 +1,44 @@
 # 协议
 
-## 消息封装（extension -> agent）
+## Action 协议（extension -> agent）
 
-Service worker 通过 WS 发送：
+Service worker 通过 WS 发送 Action：
 
 ```
-{ type: "cmd", cmd: { cmd, args, requestId, workspaceId?, tabId?, tabToken? } }
+{
+  v: 1,
+  id: string,
+  type: "workspace.list" | "tab.create" | "record.event" | "play.start" | ...,
+  scope?: { workspaceId?: string; tabId?: string; tabToken?: string },
+  tabToken?: string,
+  payload?: object,
+  at?: number,
+  traceId?: string
+}
 ```
 
 字段说明：
 
-- `cmd`：命令名（字符串），例如 `workspace.list` / `tab.create` / `steps.run`
-- `args`：命令参数
-- `requestId`：请求追踪（可选）
-- `workspaceId/tabId`：外部可见 scope（优先使用）
-- `tabToken`：内部绑定 token（内容脚本生成；不暴露给 AI）
+- `v`：协议版本（当前固定为 1）
+- `id`：请求唯一标识（必填）
+- `type`：动作类型（例如 `workspace.list` / `tab.create` / `record.event` / `play.start`）
+- `scope`：路由范围（workspace/tab），优先使用
+- `tabToken`：内容脚本生成的页面 token（可选）
+- `payload`：动作参数
+- `replyTo`：仅用于响应
 
-## 结果（agent -> extension）
+## 响应（agent -> extension）
 
-WS 返回：
-
-```
-{ type: "result", requestId, payload }
-```
-
-其中 `payload` 为 Runner 标准结果：
+成功响应：
 
 ```
-{ ok: true, tabToken, requestId?, data }
-{ ok: false, tabToken, requestId?, error: { code, message, details? } }
+{ type: "<action>.result", replyTo: "<id>", payload: { ok: true, data: ... } }
+```
+
+失败响应：
+
+```
+{ type: "error", replyTo: "<id>", payload: { ok: false, error: { code, message, details? } } }
 ```
 
 ## 广播事件（agent -> extension）
@@ -36,18 +46,22 @@ WS 返回：
 agent 在 workspace/tab 发生变更时主动广播：
 
 ```
-{ type: "event", event: "workspace.changed", data: { workspaceId, tabId, cmd } }
+{ type: "event", event: "workspace.changed", data: { workspaceId, tabId, type } }
 ```
 
 扩展收到后刷新 workspace/tab 列表。
 
-## 关键命令
+## 关键 Action 类型
 
-- `workspace.list` / `workspace.create` / `workspace.setActive`
-- `tab.list` / `tab.create` / `tab.setActive` / `tab.close`
-- `steps.run`：统一 step 执行入口（推荐）
-- `record.start` / `record.stop` / `record.get` / `record.clear` / `record.replay`
-  - 录制数据由扩展生成 `RecordedStep`，回放通过 `steps.run` 执行
+- Workspace：`workspace.list` / `workspace.create` / `workspace.setActive`
+- Tab：`tab.list` / `tab.create` / `tab.setActive` / `tab.close`
+- Record：`record.start` / `record.stop` / `record.get` / `record.clear` / `record.event`
+- Play：`play.start` / `play.stop`
+
+说明：
+- 不再支持旧 Command 协议（`cmd/requestId/args`）。
+- `record.replay` → `play.start`，`record.stopReplay` → `play.stop`。
+- `steps.run` 不再提供。
 
 ## Step 结构（简化）
 

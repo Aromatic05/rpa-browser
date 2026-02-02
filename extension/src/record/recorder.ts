@@ -2,13 +2,12 @@
  * recorder：管理录制状态与事件捕获。
  */
 
-import type { RecordedStep } from '../shared/types.js';
+import type { RawEvent } from './event_capture.js';
 import { installCapture } from './event_capture.js';
-import { normalizeEvent } from './event_normalize.js';
 
 export type RecorderOptions = {
     tabToken: string;
-    onStep: (step: RecordedStep) => void;
+    onEvent: (event: RawEvent) => void;
 };
 
 let recording = false;
@@ -19,8 +18,7 @@ export const startRecording = (opts: RecorderOptions) => {
     recording = true;
     disposeCapture = installCapture({
         onEvent: (event) => {
-            const step = normalizeEvent(event, { tabToken: opts.tabToken });
-            if (step) opts.onStep(step);
+            opts.onEvent(event);
         },
     });
 };

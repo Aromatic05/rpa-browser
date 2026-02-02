@@ -168,7 +168,7 @@ wss.on('connection', (socket) => {
                     socket.send(JSON.stringify({ type: 'error', replyTo: payload?.id, payload: errorPayload }));
                     return;
                 }
-                assertIsAction(payload);
+                assertIsAction(payload as unknown);
                 const action = payload as Action;
                 const response = await handleAction(action);
                 if (response.ok) {
