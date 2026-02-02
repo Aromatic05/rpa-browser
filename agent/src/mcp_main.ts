@@ -8,6 +8,7 @@ import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, resolveLogPath } from './logging/logger';
+import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -36,6 +37,11 @@ initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
+const runnerPluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
+await runnerPluginHost.load();
+if (process.env.NODE_ENV !== 'production') {
+    runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
+}
 
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
@@ -61,6 +67,7 @@ setRunStepsDeps({
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
+    pluginHost: runnerPluginHost,
 });
 
 (async () => {

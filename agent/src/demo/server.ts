@@ -14,6 +14,7 @@ import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
 import { getRunnerConfig } from '../runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 import { initLogger, resolveLogPath } from '../logging/logger';
+import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,6 +95,11 @@ initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
+const runnerPluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
+await runnerPluginHost.load();
+if (process.env.NODE_ENV !== 'production') {
+    runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
+}
 
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 runtimeRegistry = createRuntimeRegistry({
@@ -107,6 +113,7 @@ setRunStepsDeps({
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
+    pluginHost: runnerPluginHost,
 });
 
 const buildToolDeps = () => ({

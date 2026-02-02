@@ -16,6 +16,7 @@ import { createConsoleStepSink, runSteps } from '../run_steps';
 import { MemorySink } from '../trace/sink';
 import { createLoggingHooks } from '../trace/hooks';
 import { getRunnerConfig } from '../config';
+import { RunnerPluginHost } from '../hotreload/plugin_host';
 
 const fixtureUrl = () =>
     pathToFileURL(
@@ -48,6 +49,8 @@ const run = async () => {
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
     });
+    const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
+    await pluginHost.load();
     const workspace = await pageRegistry.createWorkspace();
 
     const first = await runSteps(
@@ -68,7 +71,7 @@ const run = async () => {
                 },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig() },
+        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
     );
 
     const snap = first.results.find((r) => r.stepId === 'demo-snap');
@@ -99,7 +102,7 @@ const run = async () => {
                 },
             ],
         },
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig() },
+        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
     );
 
     console.log('Demo finished, please verify UI changes in the visible browser window.');
