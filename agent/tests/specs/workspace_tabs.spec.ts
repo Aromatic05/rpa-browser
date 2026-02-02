@@ -13,11 +13,12 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
         tabTokenKey: '__rpa_tab_token',
         getContext: async () => context,
     });
+    const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createRuntimeRegistry({
         pageRegistry,
         traceHooks: createNoopHooks(),
+        pluginHost,
     });
-    const pluginHost = await createTestPluginHost();
     const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const runnerScope = createRunnerScopeRegistry(2);
 
@@ -60,11 +61,12 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
         tabTokenKey: '__rpa_tab_token',
         getContext: async () => context,
     });
+    const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createRuntimeRegistry({
         pageRegistry,
         traceHooks: createNoopHooks(),
+        pluginHost,
     });
-    const pluginHost = await createTestPluginHost();
     const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const runnerScope = createRunnerScopeRegistry(1);
 
@@ -107,11 +109,12 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
         tabTokenKey: '__rpa_tab_token',
         getContext: async () => context,
     });
+    const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createRuntimeRegistry({
         pageRegistry,
         traceHooks: createNoopHooks(),
+        pluginHost,
     });
-    const pluginHost = await createTestPluginHost();
     const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const ws = await pageRegistry.createWorkspace();
     const tab2 = await pageRegistry.createTab(ws.workspaceId);

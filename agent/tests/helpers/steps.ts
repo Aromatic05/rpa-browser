@@ -33,12 +33,13 @@ export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.rand
     pageRegistry.setActiveWorkspace(scope.workspaceId);
     pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
 
+    const pluginHost = await createTestPluginHost();
     const runtime = createRuntimeRegistry({
         pageRegistry,
         traceHooks: createNoopHooks(),
+        pluginHost,
     });
 
-    const pluginHost = await createTestPluginHost();
     const deps = { runtime, config: getRunnerConfig(), pluginHost };
 
     const run = async (steps: StepUnion[]) =>

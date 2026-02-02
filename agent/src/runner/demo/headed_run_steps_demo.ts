@@ -48,6 +48,7 @@ const run = async () => {
         pageRegistry,
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
+        pluginHost,
     });
     const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
     await pluginHost.load();

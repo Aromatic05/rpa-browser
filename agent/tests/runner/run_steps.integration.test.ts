@@ -42,14 +42,15 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
         getContext: async () => context,
     });
 
+    const pluginHost = await createTestPluginHost();
     const traceSink = new MemorySink();
     const runtimeRegistry = createRuntimeRegistry({
         pageRegistry,
         traceSinks: [traceSink],
         traceHooks: createNoopHooks(),
+        pluginHost,
     });
     const stepSink = new MemoryStepSink();
-    const pluginHost = await createTestPluginHost();
 
     const ws1 = await pageRegistry.createWorkspace();
     const ws2 = await pageRegistry.createWorkspace();

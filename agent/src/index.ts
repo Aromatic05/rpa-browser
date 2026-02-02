@@ -82,6 +82,7 @@ runtimeRegistry = createRuntimeRegistry({
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
         : createNoopHooks(),
+    pluginHost: runnerPluginHost,
 });
 setRunStepsDeps({
     runtime: runtimeRegistry,
