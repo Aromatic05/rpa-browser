@@ -15,10 +15,10 @@ import {
 } from '../services/name_store.js';
 import { safeGroupActiveTab, supportsTabGrouping } from '../services/tab_grouping.js';
 import { createLogger } from '../shared/logger.js';
-import type { CmdEnvelope, WsEventPayload } from '../shared/types.js';
+import type { CmdEnvelope, RecordedStep, WsEventPayload } from '../shared/types.js';
 import { resolveScope } from './scope_resolver.js';
 import type { WsClient } from './ws_client.js';
-import type { RawEvent } from '../record/event_capture.js';
+import { createRecordStore } from '../record/record_store.js';
 
 export type CmdRouterOptions = {
     wsClient: WsClient;
@@ -35,40 +35,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     let activeScopeTabId: string | null = null;
     const supportsTabGroups = supportsTabGrouping(chrome);
     const tokenToWorkspace = new Map<string, string>();
-    const recordEventQueue: Array<{ workspaceId: string; tabToken: string; event: RawEvent }> = [];
-    let flushingRecordEvents = false;
-
-    const enqueueRecordEvent = (payload: { workspaceId: string; tabToken: string; event: RawEvent }) => {
-        recordEventQueue.push(payload);
-        if (recordEventQueue.length > 200) {
-            recordEventQueue.shift();
-        }
-    };
-
-    const flushRecordEvents = async () => {
-        if (flushingRecordEvents) return;
-        flushingRecordEvents = true;
-        while (recordEventQueue.length > 0) {
-            const payload = recordEventQueue[0];
-            const result = await options.wsClient.sendCommand({
-                cmd: 'record.event',
-                requestId: crypto.randomUUID(),
-                tabToken: payload.tabToken,
-                args: payload,
-            });
-            if (!result?.ok) {
-                break;
-            }
-            recordEventQueue.shift();
-        }
-        flushingRecordEvents = false;
-    };
-
-    const sendRecordEvent = (payload: { workspaceId: string; tabToken: string; event: RawEvent }) => {
-        // 轻量策略：失败则入队，后续事件触发重试；不做持久化。
-        enqueueRecordEvent(payload);
-        void flushRecordEvents();
-    };
+    const recordStore = createRecordStore(chrome.storage.session || chrome.storage.local);
 
     const upsertTab = (tabId: number, tabToken: string, url: string) => {
         tabState.set(tabId, {
@@ -229,11 +196,17 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleMessage = (message: CmdEnvelope | any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
-        if (message.type === 'RECORD_EVENT') {
-            const event = message.event as RawEvent;
+        if (message.type === 'RECORD_STEP') {
+            const step = message.step as RecordedStep;
             const workspaceId =
                 tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
-            sendRecordEvent({ workspaceId, tabToken: message.tabToken, event });
+            void recordStore.appendStep(workspaceId, {
+                ...step,
+                meta: {
+                    ...step.meta,
+                    workspaceId,
+                },
+            });
             sendResponse({ ok: true });
             return true;
         }
@@ -269,61 +242,24 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     return;
                 }
                 if (message.cmd === 'record.get') {
-                    const active = await getActiveTabToken();
-                    if (!active) {
-                        sendResponse({ ok: false, error: 'tab token unavailable' });
-                        return;
-                    }
-                    const response = await options.wsClient.sendCommand({
-                        cmd: 'record.get',
-                        requestId: crypto.randomUUID(),
-                        tabToken: active.tabToken,
-                        args: {},
-                    });
-                    sendResponse(response);
+                    const workspaceId = activeWorkspaceId || 'default';
+                    const steps = await recordStore.getSteps(workspaceId);
+                    sendResponse({ ok: true, data: { steps } });
                     return;
                 }
                 if (message.cmd === 'record.clear') {
-                    const active = await getActiveTabToken();
-                    if (!active) {
-                        sendResponse({ ok: false, error: 'tab token unavailable' });
-                        return;
-                    }
-                    const response = await options.wsClient.sendCommand({
-                        cmd: 'record.clear',
-                        requestId: crypto.randomUUID(),
-                        tabToken: active.tabToken,
-                        args: {},
-                    });
-                    sendResponse(response);
+                    const workspaceId = activeWorkspaceId || 'default';
+                    await recordStore.clearSteps(workspaceId);
+                    sendResponse({ ok: true, data: { cleared: true } });
                     return;
                 }
                 if (message.cmd === 'record.replay') {
-                    const active = await getActiveTabToken();
-                    if (!active) {
-                        sendResponse({ ok: false, error: 'tab token unavailable' });
-                        return;
-                    }
+                    const workspaceId = activeWorkspaceId || 'default';
+                    const steps = await recordStore.getSteps(workspaceId);
                     const response = await options.wsClient.sendCommand({
-                        cmd: 'record.replay',
+                        cmd: 'steps.run',
                         requestId: crypto.randomUUID(),
-                        tabToken: active.tabToken,
-                        args: { stopOnError: true },
-                    });
-                    sendResponse(response);
-                    return;
-                }
-                if (message.cmd === 'record.stopReplay') {
-                    const active = await getActiveTabToken();
-                    if (!active) {
-                        sendResponse({ ok: false, error: 'tab token unavailable' });
-                        return;
-                    }
-                    const response = await options.wsClient.sendCommand({
-                        cmd: 'record.stopReplay',
-                        requestId: crypto.randomUUID(),
-                        tabToken: active.tabToken,
-                        args: {},
+                        args: { steps, stopOnError: true },
                     });
                     sendResponse(response);
                     return;

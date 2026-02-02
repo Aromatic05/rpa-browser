@@ -2,9 +2,9 @@
  * target_descriptor：生成可序列化的 TargetDescriptor。
  *
  * 设计说明：
- * - 不能携带 Element 引用（无法序列化）
- * - selector 保持轻量，避免复杂定位策略
- * - text 仅保留少量信息，防止拼接整页内容
+ * - 不能携带 Element 引用（不能序列化）
+ * - selector 必须轻量、保守，避免复杂推理
+ * - text 仅保留少量信息，防止把整页拼进去
  */
 
 export type TargetDescriptor = {
