@@ -40,17 +40,8 @@ const loadRecorder = (() => {
     }
     (window as any).__TAB_TOKEN__ = tabToken;
 
-    const safeSendMessage = (payload: Record<string, unknown>) => {
-        try {
-            if (!chrome?.runtime?.id) return;
-            chrome.runtime.sendMessage(payload);
-        } catch {
-            // 扩展被重载/卸载时会出现 context invalidated，直接忽略。
-        }
-    };
-
     const sendHello = () => {
-        safeSendMessage({
+        chrome.runtime.sendMessage({
             type: 'RPA_HELLO',
             tabToken,
             url: location.href,
@@ -73,7 +64,7 @@ const loadRecorder = (() => {
                     recorder.startRecording({
                         tabToken,
                         onEvent: (event) => {
-                            safeSendMessage({
+                            chrome.runtime.sendMessage({
                                 type: 'RECORD_EVENT',
                                 tabToken,
                                 event,
@@ -254,7 +245,7 @@ const loadRecorder = (() => {
     });
 
     const sendCmd = (cmd: string, args?: Record<string, unknown>) =>
-        safeSendMessage({ type: 'CMD', cmd, args });
+        chrome.runtime.sendMessage({ type: 'CMD', cmd, args });
 
     startBtn.addEventListener('click', () => sendCmd('record.start'));
     stopBtn.addEventListener('click', () => sendCmd('record.stop'));
