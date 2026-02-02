@@ -9,15 +9,21 @@
  * - 录制/回放不可同时进行（回放时忽略录制事件）
  * - 导航事件需去重，避免 click 导航 + framenavigated 双重记录
  */
+import crypto from 'crypto';
 import type { Page } from 'playwright';
 import { installRecorder, type RecordedEvent } from './recorder';
 import { getLogger } from '../logging/logger';
+import type { RawEvent, TargetDescriptor } from './raw_event';
+import type { StepUnion } from '../runner/steps/types';
+import type { A11yHint, Target } from '../runner/steps/types';
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
     recordings: Map<string, RecordedEvent[]>;
+    recordedSteps: Map<string, StepUnion[]>;
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
+    lastScrollPos: Map<string, { x: number; y: number }>;
     replaying: Set<string>;
     replayCancel: Set<string>;
 };
@@ -28,8 +34,10 @@ export type RecordingState = {
 export const createRecordingState = (): RecordingState => ({
     recordingEnabled: new Set(),
     recordings: new Map(),
+    recordedSteps: new Map(),
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
+    lastScrollPos: new Map(),
     replaying: new Set(),
     replayCancel: new Set(),
 });
@@ -82,6 +90,144 @@ export const recordEvent = (
         ts: event.ts,
         url: (event as any).url,
     });
+};
+
+const buildA11yHint = (target: TargetDescriptor, fallbackText?: string): A11yHint => {
+    const role = target.roleAttr || inferRoleFromTag(target.tag, target.typeAttr);
+    const name =
+        target.ariaLabel ||
+        target.nameAttr ||
+        target.text ||
+        fallbackText ||
+        target.id ||
+        target.tag;
+    const text = target.text || fallbackText || name || target.id || target.tag;
+    return { role, name, text };
+};
+
+const inferRoleFromTag = (tag: string, typeAttr?: string) => {
+    if (tag === 'button') return 'button';
+    if (tag === 'a') return 'link';
+    if (tag === 'textarea') return 'textbox';
+    if (tag === 'select') return 'combobox';
+    if (tag === 'input') {
+        if (typeAttr === 'checkbox') return 'checkbox';
+        if (typeAttr === 'radio') return 'radio';
+        return 'textbox';
+    }
+    return undefined;
+};
+
+const buildTarget = (target: TargetDescriptor, fallbackText?: string): Target => {
+    const hint = buildA11yHint(target, fallbackText);
+    return {
+        a11yHint: hint,
+        selector: target.selector,
+    };
+};
+
+const appendStep = (state: RecordingState, tabToken: string, step: StepUnion) => {
+    const list = state.recordedSteps.get(tabToken) || [];
+    list.push(step);
+    state.recordedSteps.set(tabToken, list);
+};
+
+export const recordRawEvent = (
+    state: RecordingState,
+    event: RawEvent,
+    tabToken: string,
+    navDedupeWindowMs: number,
+) => {
+    const recordLog = getLogger('record');
+    if (!tabToken || !state.recordingEnabled.has(tabToken)) return;
+    if (state.replaying.has(tabToken)) return;
+
+    if (event.type === 'navigate') {
+        const last = state.lastNavigateTs.get(tabToken) || 0;
+        if (event.ts - last < navDedupeWindowMs) return;
+        state.lastNavigateTs.set(tabToken, event.ts);
+        appendStep(state, tabToken, {
+            id: crypto.randomUUID(),
+            name: 'browser.goto',
+            args: { url: event.url },
+            meta: { source: 'record', ts: event.ts },
+        });
+        recordLog('event', { type: event.type, tabToken, ts: event.ts, url: event.url });
+        return;
+    }
+
+    if (event.type === 'click') {
+        state.lastClickTs.set(tabToken, event.ts);
+        appendStep(state, tabToken, {
+            id: crypto.randomUUID(),
+            name: 'browser.click',
+            args: { target: buildTarget(event.target) },
+            meta: { source: 'record', ts: event.ts },
+        });
+        recordLog('event', { type: event.type, tabToken, ts: event.ts, url: event.url });
+        return;
+    }
+
+    if (event.type === 'input') {
+        appendStep(state, tabToken, {
+            id: crypto.randomUUID(),
+            name: 'browser.fill',
+            args: { target: buildTarget(event.target), value: event.value },
+            meta: { source: 'record', ts: event.ts },
+        });
+        recordLog('event', { type: event.type, tabToken, ts: event.ts, url: event.url });
+        return;
+    }
+
+    if (event.type === 'change') {
+        if (event.target.tag === 'select') {
+            appendStep(state, tabToken, {
+                id: crypto.randomUUID(),
+                name: 'browser.select_option',
+                args: { target: buildTarget(event.target, event.selectedText), values: [event.value] },
+                meta: { source: 'record', ts: event.ts },
+            });
+        } else {
+            appendStep(state, tabToken, {
+                id: crypto.randomUUID(),
+                name: 'browser.click',
+                args: { target: buildTarget(event.target) },
+                meta: { source: 'record', ts: event.ts },
+            });
+        }
+        recordLog('event', { type: event.type, tabToken, ts: event.ts, url: event.url });
+        return;
+    }
+
+    if (event.type === 'keydown') {
+        appendStep(state, tabToken, {
+            id: crypto.randomUUID(),
+            name: 'browser.press_key',
+            args: { key: event.key.key, target: buildTarget(event.target) },
+            meta: { source: 'record', ts: event.ts },
+        });
+        recordLog('event', { type: event.type, tabToken, ts: event.ts, url: event.url });
+        return;
+    }
+
+    if (event.type === 'scroll') {
+        const last = state.lastScrollPos.get(tabToken) || { x: event.scroll.x, y: event.scroll.y };
+        const deltaY = event.scroll.y - last.y;
+        state.lastScrollPos.set(tabToken, { x: event.scroll.x, y: event.scroll.y });
+        if (deltaY === 0) return;
+        const target = event.target.tag === 'html' || event.target.tag === 'body' ? undefined : buildTarget(event.target);
+        appendStep(state, tabToken, {
+            id: crypto.randomUUID(),
+            name: 'browser.scroll',
+            args: {
+                direction: deltaY < 0 ? 'up' : 'down',
+                amount: Math.abs(deltaY),
+                target,
+            },
+            meta: { source: 'record', ts: event.ts },
+        });
+        recordLog('event', { type: event.type, tabToken, ts: event.ts, url: event.url });
+    }
 };
 
 const navListenerPages = new WeakSet<Page>();
@@ -157,6 +303,7 @@ export const stopRecording = (state: RecordingState, tabToken: string) => {
     state.recordingEnabled.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);
+    state.lastScrollPos.delete(tabToken);
     recordLog('stop', { tabToken });
 };
 
@@ -188,6 +335,8 @@ export const getRecording = (state: RecordingState, tabToken: string) =>
 
 export const clearRecording = (state: RecordingState, tabToken: string) => {
     state.recordings.set(tabToken, []);
+    state.recordedSteps.set(tabToken, []);
+    state.lastScrollPos.delete(tabToken);
 };
 
 /**
@@ -196,8 +345,10 @@ export const clearRecording = (state: RecordingState, tabToken: string) => {
 export const cleanupRecording = (state: RecordingState, tabToken: string) => {
     state.recordingEnabled.delete(tabToken);
     state.recordings.delete(tabToken);
+    state.recordedSteps.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);
+    state.lastScrollPos.delete(tabToken);
     state.replaying.delete(tabToken);
     state.replayCancel.delete(tabToken);
 };

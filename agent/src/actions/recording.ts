@@ -17,10 +17,12 @@ import {
     beginReplay,
     endReplay,
     cancelReplay,
+    recordRawEvent,
 } from '../record/recording';
 import { replayRecording } from '../play/replay';
 import { errorResult } from './results';
 import { ERROR_CODES } from './error_codes';
+import type { RecordEventCommand } from './commands';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, _command) => {
@@ -33,37 +35,60 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
     },
     'record.get': async (ctx, _command) => {
+        const steps = ctx.recordingState.recordedSteps.get(ctx.tabToken) || [];
+        if (steps.length > 0) {
+            return { ok: true, tabToken: ctx.tabToken, data: { steps } };
+        }
         const events = getRecording(ctx.recordingState, ctx.tabToken);
         return { ok: true, tabToken: ctx.tabToken, data: { events } };
     },
     'record.clear': async (ctx, _command) => {
         clearRecording(ctx.recordingState, ctx.tabToken);
+        ctx.recordingState.recordedSteps.set(ctx.tabToken, []);
         return { ok: true, tabToken: ctx.tabToken, data: { cleared: true } };
     },
     'record.stopReplay': async (ctx, _command) => {
         cancelReplay(ctx.recordingState, ctx.tabToken);
         return { ok: true, tabToken: ctx.tabToken, data: { stopped: true } };
     },
+    'record.event': async (ctx, command) => {
+        const args = (command as RecordEventCommand).args || {};
+        const event = args.event as any;
+        const tabToken = args.tabToken || ctx.tabToken;
+        if (!event || !tabToken) {
+            return { ok: false, tabToken: ctx.tabToken, error: 'invalid record event' } as any;
+        }
+        recordRawEvent(ctx.recordingState, event, tabToken, ctx.navDedupeWindowMs);
+        return { ok: true, tabToken: ctx.tabToken, data: { received: true } };
+    },
     'record.replay': async (ctx, command) => {
         const args = (command as RecordReplayCommand).args;
-        const events = getRecording(ctx.recordingState, ctx.tabToken);
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         beginReplay(ctx.recordingState, ctx.tabToken);
-        const response = await replayRecording({
-            workspaceId: scope.workspaceId,
-            events,
-            stopOnError: args?.stopOnError ?? true,
-        });
+        const steps = ctx.recordingState.recordedSteps.get(ctx.tabToken) || [];
+        const response =
+            steps.length > 0
+                ? await ctx.execute?.({
+                      cmd: 'steps.run',
+                      tabToken: ctx.tabToken,
+                      args: { steps, stopOnError: args?.stopOnError ?? true },
+                  })
+                : await replayRecording({
+                      workspaceId: scope.workspaceId,
+                      events: getRecording(ctx.recordingState, ctx.tabToken),
+                      stopOnError: args?.stopOnError ?? true,
+                  });
         endReplay(ctx.recordingState, ctx.tabToken);
-        if (!response.ok) {
+        if (!response || !(response as any).ok) {
             return errorResult(
                 ctx.tabToken,
                 ERROR_CODES.ERR_ASSERTION_FAILED,
-                response.error?.message || 'replay failed',
+                (response as any)?.error?.message || 'replay failed',
                 undefined,
-                response.error?.details,
+                (response as any)?.error?.details,
             );
         }
-        return { ok: true, tabToken: ctx.tabToken, data: response.results };
+        const data = (response as any).data || (response as any).results;
+        return { ok: true, tabToken: ctx.tabToken, data };
     },
 };

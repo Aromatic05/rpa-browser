@@ -53,6 +53,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const result = await options.wsClient.sendCommand({
                 cmd: 'record.event',
                 requestId: crypto.randomUUID(),
+                tabToken: payload.tabToken,
                 args: payload,
             });
             if (!result?.ok) {

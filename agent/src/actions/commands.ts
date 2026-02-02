@@ -36,6 +36,10 @@ export type RecordGetCommand = CommandWithArgs<'record.get', Record<string, neve
 export type RecordClearCommand = CommandWithArgs<'record.clear', Record<string, never>>;
 export type RecordReplayCommand = CommandWithArgs<'record.replay', { stopOnError?: boolean }>;
 export type RecordStopReplayCommand = CommandWithArgs<'record.stopReplay', Record<string, never>>;
+export type RecordEventCommand = CommandWithArgs<
+    'record.event',
+    { workspaceId?: string; tabToken?: string; event?: unknown }
+>;
 
 export type StepsRunCommand = CommandWithArgs<'steps.run', { steps: unknown[]; stopOnError?: boolean }>;
 
@@ -68,4 +72,5 @@ export type Command =
     | RecordClearCommand
     | RecordReplayCommand
     | RecordStopReplayCommand
+    | RecordEventCommand
     | StepsRunCommand;
