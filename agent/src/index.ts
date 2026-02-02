@@ -4,12 +4,11 @@ import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
-import { executeCommand, type ActionContext } from './actions/execute';
-import type { Command } from './actions/commands';
-import { errorResult } from './actions/results';
+import { executeAction, type ActionContext } from './actions/execute';
+import { assertIsAction, makeErr, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
-import { createConsoleStepSink, setRunStepsDeps, runSteps } from './runner/run_steps';
+import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
@@ -91,47 +90,15 @@ setRunStepsDeps({
     pluginHost: runnerPluginHost,
 });
 
-const handleCommand = async (payload?: Command) => {
-    if (!payload?.cmd) {
-        return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing cmd');
-    }
-    const scope =
-        (payload as any).scope ||
-        ((payload as any).workspaceId || (payload as any).tabId
-            ? { workspaceId: (payload as any).workspaceId, tabId: (payload as any).tabId }
-            : undefined);
-    const urlHint =
-        typeof (payload as any).args?.url === 'string' ? ((payload as any).args.url as string) : undefined;
+const handleAction = async (action: Action) => {
+    const scope = action.scope;
+    const urlHint = typeof (action.payload as any)?.url === 'string' ? ((action.payload as any).url as string) : undefined;
 
-    if (payload.cmd === 'steps.run') {
-        const requested = scope?.workspaceId;
-        let workspaceId = requested || pageRegistry.getActiveWorkspace()?.id;
-        if (!workspaceId) {
-            const created = await pageRegistry.createWorkspace();
-            workspaceId = created.workspaceId;
-        }
-        const steps = Array.isArray((payload as any).args?.steps) ? (payload as any).args.steps : [];
-        return runnerScope.run(workspaceId, async () => {
-            const result = await runSteps({
-                workspaceId,
-                steps,
-                options: { stopOnError: (payload as any).args?.stopOnError ?? true },
-            });
-            let tabToken = payload.tabToken || '';
-            try {
-                tabToken = pageRegistry.resolveTabToken({ workspaceId });
-            } catch {
-                // keep empty token if resolve fails
-            }
-            return { ok: result.ok, tabToken, requestId: payload.requestId, data: result };
-        });
-    }
-
-    let tabToken = payload.tabToken;
-    let page: typeof payload extends { tabToken: string } ? any : any;
-    if (scope) {
-        page = await pageRegistry.resolvePage(scope);
-        tabToken = pageRegistry.resolveTabToken(scope);
+    let tabToken = action.scope?.tabToken || action.tabToken;
+    let page: any;
+    if (scope?.workspaceId || scope?.tabId) {
+        page = await pageRegistry.resolvePage({ workspaceId: scope?.workspaceId, tabId: scope?.tabId });
+        tabToken = pageRegistry.resolveTabToken({ workspaceId: scope?.workspaceId, tabId: scope?.tabId });
     } else if (tabToken) {
         page = await pageRegistry.getPage(tabToken, urlHint);
     } else {
@@ -139,7 +106,7 @@ const handleCommand = async (payload?: Command) => {
         tabToken = pageRegistry.resolveTabToken();
     }
     if (!tabToken) {
-        return errorResult('', ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken', payload.requestId);
+        return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken');
     }
     const resolvedScope = scope ? pageRegistry.resolveScope(scope) : pageRegistry.resolveScopeFromToken(tabToken);
     return runnerScope.run(resolvedScope.workspaceId, async () => {
@@ -157,9 +124,9 @@ const handleCommand = async (payload?: Command) => {
             navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
             execute: undefined,
         };
-        ctx.execute = (cmd: Command) => executeCommand(ctx, cmd);
-        actionLogger('cmd', { cmd: payload.cmd, tabToken, requestId: payload.requestId });
-        return executeCommand(ctx, payload);
+        ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);
+        actionLogger('action', { type: action.type, tabToken, id: action.id });
+        return executeAction(ctx, action);
     });
 };
 
@@ -186,55 +153,63 @@ wss.on('listening', () => {
 wss.on('connection', (socket) => {
     wsClients.add(socket);
     socket.on('message', (data) => {
-        let payload: { cmd?: Command } | undefined;
+        let payload: any;
         try {
             payload = JSON.parse(data.toString());
         } catch {
-            socket.send(JSON.stringify({ ok: false, error: 'invalid json' }));
+            socket.send(JSON.stringify({ type: 'error', payload: makeErr('ERR_BAD_JSON', 'invalid json') }));
             return;
         }
 
         (async () => {
             try {
-                const command = (payload as any)?.type === 'cmd' ? (payload as any).cmd : payload?.cmd;
-                const response = await handleCommand(command);
-                if ((payload as any)?.type === 'cmd') {
+                if (payload?.cmd || payload?.type === 'cmd') {
+                    const errorPayload = makeErr(ERROR_CODES.ERR_UNSUPPORTED, 'legacy cmd not supported');
+                    socket.send(JSON.stringify({ type: 'error', replyTo: payload?.id, payload: errorPayload }));
+                    return;
+                }
+                assertIsAction(payload);
+                const action = payload as Action;
+                const response = await handleAction(action);
+                if (response.ok) {
                     socket.send(
                         JSON.stringify({
-                            type: 'result',
-                            requestId: command?.requestId,
+                            type: `${action.type}.result`,
+                            replyTo: action.id,
                             payload: response,
                         }),
                     );
                 } else {
-                    socket.send(JSON.stringify(response));
+                    socket.send(
+                        JSON.stringify({
+                            type: 'error',
+                            replyTo: action.id,
+                            payload: response,
+                        }),
+                    );
                 }
-                if (command?.cmd && response?.ok) {
+                if (response.ok) {
                     const data = response.data as any;
                     const mutating =
-                        command.cmd === 'workspace.create' ||
-                        command.cmd === 'workspace.setActive' ||
-                        command.cmd === 'tab.create' ||
-                        command.cmd === 'tab.setActive' ||
-                        command.cmd === 'tab.close';
+                        action.type === 'workspace.create' ||
+                        action.type === 'workspace.setActive' ||
+                        action.type === 'tab.create' ||
+                        action.type === 'tab.setActive' ||
+                        action.type === 'tab.close';
                     if (mutating) {
                         broadcast({
                             event: 'workspace.changed',
                             data: {
                                 workspaceId: data?.workspaceId,
                                 tabId: data?.tabId,
-                                cmd: command.cmd,
+                                type: action.type,
                             },
                         });
                     }
                 }
             } catch (error) {
-                socket.send(
-                    JSON.stringify({
-                        ok: false,
-                        error: error instanceof Error ? error.message : String(error),
-                    }),
-                );
+                const message = error instanceof Error ? error.message : String(error);
+                socket.send(JSON.stringify({ type: 'error', payload: makeErr(ERROR_CODES.ERR_BAD_ARGS, message) }));
             }
         })();
     });

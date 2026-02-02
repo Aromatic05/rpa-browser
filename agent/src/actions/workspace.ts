@@ -1,30 +1,26 @@
 /**
- * workspace action（legacy）：提供 workspace/tab 的管理命令。
- *
- * 说明：
- * - runSteps 只关心 workspaceId 的路由，但 workspace 命令仍由旧协议触发
- * - 保留此文件用于 extension 的 workspace/tab UI 控制
+ * workspace action：提供 workspace/tab 的管理命令。
  */
 
+import type { Action, ActionScope } from './action_protocol';
+import { makeErr, makeOk } from './action_protocol';
 import type { ActionHandler } from './execute';
-import { errorResult } from './results';
 import { ERROR_CODES } from './error_codes';
-import type {
-    TabCloseCommand,
-    TabCreateCommand,
-    TabListCommand,
-    TabSetActiveCommand,
-    WorkspaceCreateCommand,
-    WorkspaceSetActiveCommand,
-} from './commands';
+
+type WorkspaceCreatePayload = { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
+type WorkspaceSetActivePayload = { workspaceId: string };
+type TabListPayload = { workspaceId?: string };
+type TabCreatePayload = { workspaceId?: string; startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
+type TabClosePayload = { workspaceId?: string; tabId: string };
+type TabSetActivePayload = { workspaceId?: string; tabId: string };
 
 const resolveWorkspaceId = (
     ctx: { pageRegistry: any },
-    command: { scope?: { workspaceId?: string } },
+    action: { scope?: ActionScope },
     argWorkspaceId?: string,
 ) => {
     if (argWorkspaceId) return argWorkspaceId;
-    if (command.scope?.workspaceId) return command.scope.workspaceId;
+    if (action.scope?.workspaceId) return action.scope.workspaceId;
     const active = ctx.pageRegistry.getActiveWorkspace?.();
     return active?.id || null;
 };
@@ -42,23 +38,19 @@ const bringWorkspaceTabToFront = async (
 };
 
 export const workspaceHandlers: Record<string, ActionHandler> = {
-    'workspace.list': async (ctx, _command) => {
+    'workspace.list': async (ctx, _action) => {
         const list = ctx.pageRegistry.listWorkspaces();
         const active = ctx.pageRegistry.getActiveWorkspace?.();
-        return {
-            ok: true,
-            tabToken: ctx.tabToken,
-            data: { workspaces: list, activeWorkspaceId: active?.id || null },
-        };
+        return makeOk({ workspaces: list, activeWorkspaceId: active?.id || null });
     },
-    'workspace.create': async (ctx, _command) => {
-        const command = _command as WorkspaceCreateCommand;
+    'workspace.create': async (ctx, action) => {
+        const payload = (action.payload || {}) as WorkspaceCreatePayload;
         const created = await ctx.pageRegistry.createWorkspace();
         const createdTabToken = ctx.pageRegistry.resolveTabToken({
             workspaceId: created.workspaceId,
             tabId: created.tabId,
         });
-        const startUrl = command.args?.startUrl;
+        const startUrl = payload.startUrl;
         if (startUrl) {
             try {
                 const page = await ctx.pageRegistry.resolvePage({
@@ -66,70 +58,66 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                     tabId: created.tabId,
                 });
                 await page.goto(startUrl, {
-                    waitUntil: command.args?.waitUntil || 'domcontentloaded',
+                    waitUntil: payload.waitUntil || 'domcontentloaded',
                 });
                 await page.bringToFront();
             } catch {
                 // ignore navigation failures
             }
         }
-        return {
-            ok: true,
-            tabToken: ctx.tabToken,
-            data: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: createdTabToken },
-        };
+        return makeOk({ workspaceId: created.workspaceId, tabId: created.tabId, tabToken: createdTabToken });
     },
-    'workspace.setActive': async (ctx, command) => {
-        const args = (command as WorkspaceSetActiveCommand).args;
-        ctx.pageRegistry.setActiveWorkspace(args.workspaceId);
-        await bringWorkspaceTabToFront(ctx, { workspaceId: args.workspaceId });
-        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId: args.workspaceId } };
+    'workspace.setActive': async (ctx, action) => {
+        const payload = (action.payload || {}) as WorkspaceSetActivePayload;
+        ctx.pageRegistry.setActiveWorkspace(payload.workspaceId);
+        await bringWorkspaceTabToFront(ctx, { workspaceId: payload.workspaceId });
+        return makeOk({ workspaceId: payload.workspaceId });
     },
-    'tab.list': async (ctx, command) => {
-        const args = (command as TabListCommand).args;
-        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+    'tab.list': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabListPayload;
+        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         const tabs = await ctx.pageRegistry.listTabs(workspaceId);
-        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabs } };
+        return makeOk({ workspaceId, tabs });
     },
-    'tab.create': async (ctx, command) => {
-        const args = (command as TabCreateCommand).args;
-        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+    'tab.create': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabCreatePayload;
+        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         const tabId = await ctx.pageRegistry.createTab(workspaceId);
         const createdTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId, tabId });
-        if (args.startUrl) {
+        if (payload.startUrl) {
             try {
                 const page = await ctx.pageRegistry.resolvePage({ workspaceId, tabId });
-                await page.goto(args.startUrl, { waitUntil: args.waitUntil || 'domcontentloaded' });
+                await page.goto(payload.startUrl, { waitUntil: payload.waitUntil || 'domcontentloaded' });
                 await page.bringToFront();
             } catch {
                 // ignore navigation failures
             }
         }
-        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId, tabToken: createdTabToken } };
+        return makeOk({ workspaceId, tabId, tabToken: createdTabToken });
     },
-    'tab.close': async (ctx, command) => {
-        const args = (command as TabCloseCommand).args;
-        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+    'tab.close': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabClosePayload;
+        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
-        await ctx.pageRegistry.closeTab(workspaceId, args.tabId);
-        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId: args.tabId } };
+        await ctx.pageRegistry.closeTab(workspaceId, payload.tabId);
+        return makeOk({ workspaceId, tabId: payload.tabId });
     },
-    'tab.setActive': async (ctx, command) => {
-        const args = (command as TabSetActiveCommand).args;
-        const workspaceId = resolveWorkspaceId(ctx, command as any, args.workspaceId);
+    'tab.setActive': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabSetActivePayload;
+        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return errorResult(ctx.tabToken, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
-        ctx.pageRegistry.setActiveTab(workspaceId, args.tabId);
-        await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: args.tabId });
-        return { ok: true, tabToken: ctx.tabToken, data: { workspaceId, tabId: args.tabId } };
+        ctx.pageRegistry.setActiveTab(workspaceId, payload.tabId);
+        await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: payload.tabId });
+        return makeOk({ workspaceId, tabId: payload.tabId });
     },
 };

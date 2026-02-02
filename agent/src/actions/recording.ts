@@ -1,13 +1,10 @@
 /**
- * recording action（legacy）：保留 record.* 命令入口。
- *
- * 说明：
- * - 录制逻辑正在向 Step + runSteps 收敛
- * - 该入口用于旧 UI 或调试工具的过渡期支持
+ * recording action：record / play 相关动作。
  */
 
+import type { Action, RecordEvent } from './action_protocol';
+import { makeErr, makeOk } from './action_protocol';
 import type { ActionHandler } from './execute';
-import type { RecordReplayCommand } from './commands';
 import {
     startRecording,
     stopRecording,
@@ -17,53 +14,71 @@ import {
     beginReplay,
     endReplay,
     cancelReplay,
+    recordEvent,
 } from '../record/recording';
 import { replayRecording } from '../play/replay';
-import { errorResult } from './results';
 import { ERROR_CODES } from './error_codes';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
-    'record.start': async (ctx, _command) => {
+    'record.start': async (ctx, _action) => {
         await startRecording(ctx.recordingState, ctx.page, ctx.tabToken, ctx.navDedupeWindowMs);
         await ensureRecorder(ctx.recordingState, ctx.page, ctx.tabToken, ctx.navDedupeWindowMs);
-        return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
+        return makeOk({ pageUrl: ctx.page.url() });
     },
-    'record.stop': async (ctx, _command) => {
+    'record.stop': async (ctx, _action) => {
         stopRecording(ctx.recordingState, ctx.tabToken);
-        return { ok: true, tabToken: ctx.tabToken, data: { pageUrl: ctx.page.url() } };
+        return makeOk({ pageUrl: ctx.page.url() });
     },
-    'record.get': async (ctx, _command) => {
+    'record.get': async (ctx, _action) => {
         const events = getRecording(ctx.recordingState, ctx.tabToken);
-        return { ok: true, tabToken: ctx.tabToken, data: { events } };
+        return makeOk({ events });
     },
-    'record.clear': async (ctx, _command) => {
+    'record.clear': async (ctx, _action) => {
         clearRecording(ctx.recordingState, ctx.tabToken);
-        return { ok: true, tabToken: ctx.tabToken, data: { cleared: true } };
+        return makeOk({ cleared: true });
     },
-    'record.stopReplay': async (ctx, _command) => {
+    'play.stop': async (ctx, _action) => {
         cancelReplay(ctx.recordingState, ctx.tabToken);
-        return { ok: true, tabToken: ctx.tabToken, data: { stopped: true } };
+        return makeOk({ stopped: true });
     },
-    'record.replay': async (ctx, command) => {
-        const args = (command as RecordReplayCommand).args;
+    'play.start': async (ctx, action) => {
+        const payload = (action.payload || {}) as { stopOnError?: boolean };
         const events = getRecording(ctx.recordingState, ctx.tabToken);
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         beginReplay(ctx.recordingState, ctx.tabToken);
         const response = await replayRecording({
             workspaceId: scope.workspaceId,
             events,
-            stopOnError: args?.stopOnError ?? true,
+            stopOnError: payload.stopOnError ?? true,
         });
         endReplay(ctx.recordingState, ctx.tabToken);
         if (!response.ok) {
-            return errorResult(
-                ctx.tabToken,
+            return makeErr(
                 ERROR_CODES.ERR_ASSERTION_FAILED,
                 response.error?.message || 'replay failed',
-                undefined,
                 response.error?.details,
             );
         }
-        return { ok: true, tabToken: ctx.tabToken, data: response.results };
+        return makeOk(response.results);
+    },
+    'record.event': async (ctx, action) => {
+        const event = action.payload as RecordEvent | undefined;
+        if (!event) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
+        }
+        recordEvent(
+            ctx.recordingState,
+            {
+                tabToken: ctx.tabToken,
+                ts: event.ts,
+                type: event.type,
+                url: event.url,
+                selector: event.target?.selector,
+                value: event.value,
+                key: event.key?.key,
+            },
+            ctx.navDedupeWindowMs,
+        );
+        return makeOk({ accepted: true });
     },
 };
