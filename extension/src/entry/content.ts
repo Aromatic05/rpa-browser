@@ -40,17 +40,20 @@ const loadRecorder = (() => {
     }
     (window as any).__TAB_TOKEN__ = tabToken;
 
-    const safeSendMessage = async (payload: Record<string, unknown>) => {
+    const safeSendMessage = (
+        payload: Record<string, unknown>,
+        cb?: (response?: any) => void,
+    ) => {
         try {
             if (!chrome?.runtime?.id) return;
-            return await chrome.runtime.sendMessage(payload);
+            chrome.runtime.sendMessage(payload, cb);
         } catch {
             // 扩展被重载/卸载时会出现 context invalidated，直接忽略。
         }
     };
 
     const sendHello = () => {
-        void safeSendMessage({
+        safeSendMessage({
             type: 'RPA_HELLO',
             tabToken,
             url: location.href,
@@ -73,7 +76,7 @@ const loadRecorder = (() => {
                     recorder.startRecording({
                         tabToken,
                         onEvent: (event) => {
-                            void safeSendMessage({
+                            safeSendMessage({
                                 type: 'RECORD_EVENT',
                                 tabToken,
                                 event,
@@ -256,20 +259,21 @@ const loadRecorder = (() => {
     let activeWorkspaceId: string | null = null;
     let activeTabId: string | null = null;
 
-    const sendPanelCommand = async (
+    const sendPanelCommand = (
         cmd: string,
         args?: Record<string, unknown>,
         scope?: { workspaceId?: string; tabId?: string },
         onResponse?: (payload: any) => void,
     ) => {
-        const response = await safeSendMessage({ type: 'CMD', cmd, tabToken, args, ...(scope || {}) });
-        if (!response) {
-            render({ ok: false, error: 'no response' });
-            return;
-        }
+        safeSendMessage({ type: 'CMD', cmd, tabToken, args, ...(scope || {}) }, (response: any) => {
+            if (chrome.runtime.lastError) {
+                render({ ok: false, error: chrome.runtime.lastError.message });
+                return;
+            }
             render(response);
             interceptResponse(response);
             onResponse?.(response);
+        });
     };
 
     const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
