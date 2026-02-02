@@ -3,7 +3,7 @@
     "private": true,
     "packageManager": "pnpm@10.28.0",
     "scripts": {
-        "dev:agent": "pnpm --filter ./agent dev",
+        "dev:agent": "pnpm --filter ./agent dev:hot",
         "build:extension": "pnpm --filter ./extension build",
         "dev": "pnpm build:extension && pnpm dev:agent",
         "mock:dev": "node mock/server.js",

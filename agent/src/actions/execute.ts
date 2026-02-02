@@ -11,9 +11,9 @@ import { ERROR_CODES, type ErrorCode } from './error_codes';
 import type { Command } from './commands';
 import { errorResult, okResult, type Result } from './results';
 import { actionHandlers } from './index';
-import type { PageRegistry } from '../../runtime/page_registry';
-import type { RecordingState } from '../../record/recording';
-import type { ReplayOptions } from '../../play/replay';
+import type { PageRegistry } from '../runtime/page_registry';
+import type { RecordingState } from '../record/recording';
+import type { ReplayOptions } from '../play/replay';
 
 export type ActionContext = {
     page: Page;
