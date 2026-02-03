@@ -31,6 +31,17 @@ const loadSend = (() => {
     };
 })();
 
+const loadTokenBridge = (() => {
+    let cached: Promise<typeof import('../content/token_bridge.js')> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('content/token_bridge.js');
+            cached = import(url) as Promise<typeof import('../content/token_bridge.js')>;
+        }
+        return cached;
+    };
+})();
+
 // 录制桥接（动态 import）
 const loadRecorderBridge = (() => {
     let cached: Promise<typeof import('../content/recorder_bridge.js')> | null = null;
@@ -60,21 +71,18 @@ const loadFloatingUI = (() => {
     if ((window as any).__rpaTokenInjected) return;
     (window as any).__rpaTokenInjected = true;
 
-    // tabToken：页面级缓存
-    const TAB_TOKEN_KEY = '__rpa_tab_token';
-    let tabToken = sessionStorage.getItem(TAB_TOKEN_KEY);
-    if (!tabToken) {
-        tabToken = crypto.randomUUID();
-        sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-    }
-    (window as any).__TAB_TOKEN__ = tabToken;
-
-    // hello：用于 SW 侧建立 tabToken/workspace 绑定
-    const sendHello = () => {
-        void (async () => {
-            const { send } = await loadSend();
-            await send.hello({ tabToken, url: location.href });
-        })();
+    // tabToken + hello 绑定（异步初始化，所有使用点需 await）
+    let tokenReady: Promise<string> | null = null;
+    const ensureToken = () => {
+        if (!tokenReady) {
+            tokenReady = (async () => {
+                const mod = await loadTokenBridge();
+                const token = mod.ensureTabToken();
+                mod.bindHello(token);
+                return token;
+            })();
+        }
+        return tokenReady;
     };
 
     chrome.runtime.onMessage.addListener(
@@ -87,10 +95,12 @@ const loadFloatingUI = (() => {
             void (async () => {
                 const { MSG } = await loadProtocol();
                 if (message?.type === MSG.GET_TOKEN) {
+                    const tabToken = await ensureToken();
                     sendResponse({ ok: true, tabToken, url: location.href });
                     return;
                 }
                 if (message?.type === MSG.RECORD_START || message?.type === MSG.RECORD_STOP) {
+                    const tabToken = await ensureToken();
                     const { createRecorderBridge } = await loadRecorderBridge();
                     const bridge = createRecorderBridge(tabToken);
                     const handled = await bridge.handle(message, sendResponse);
@@ -103,27 +113,13 @@ const loadFloatingUI = (() => {
         },
     );
 
-    // 页面导航监听：pushState/replaceState + popstate/hashchange
-    const patchHistory = () => {
-        const wrap = (method: typeof history.pushState) =>
-            function (...args: Parameters<typeof history.pushState>) {
-                const result = method.apply(history, args as unknown as [any, any, any]);
-                sendHello();
-                return result;
-            };
-        history.pushState = wrap(history.pushState);
-        history.replaceState = wrap(history.replaceState);
-    };
-
-    patchHistory();
-    window.addEventListener('popstate', sendHello);
-    window.addEventListener('hashchange', sendHello);
-    sendHello();
+    // hello 由 token_bridge 负责
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
+        const tabToken = await ensureToken();
         uiHandle = mountFloatingUI({
             tabToken,
             onAction: async (type, payload, scope) => {
