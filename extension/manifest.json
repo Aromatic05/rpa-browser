@@ -24,7 +24,7 @@
     ],
     "web_accessible_resources": [
         {
-            "resources": ["record/*.js"],
+            "resources": ["record/*.js", "shared/*.js"],
             "matches": ["<all_urls>"]
         }
     ]
