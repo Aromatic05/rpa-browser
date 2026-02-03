@@ -6,6 +6,8 @@
  */
 
 import { createLogger } from '../shared/logger.js';
+import { MSG } from '../shared/protocol.js';
+import { send } from '../shared/send.js';
 import { createWsClient } from '../background/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 
@@ -19,15 +21,11 @@ const wsClient = createWsClient({
 const router = createCmdRouter({
     wsClient,
     onRefresh: () => {
-        chrome.runtime.sendMessage({ type: 'RPA_REFRESH' });
+        void send.refresh();
         chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
             const active = tabs[0];
             if (!active?.id) return;
-            chrome.tabs.sendMessage(active.id, { type: 'RPA_REFRESH' }, () => {
-                if (chrome.runtime.lastError) {
-                    // ignore if tab has no content script
-                }
-            });
+            void send.toTab(active.id, MSG.REFRESH);
         });
     },
     onEvent: (payload) => router.handleEvent(payload),

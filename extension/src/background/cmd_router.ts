@@ -16,6 +16,8 @@ import {
 import { safeGroupActiveTab, supportsTabGrouping } from '../services/tab_grouping.js';
 import { createLogger } from '../shared/logger.js';
 import type { Action, ActionErr, ActionOk, RecordedStep, WsEventPayload } from '../shared/types.js';
+import { MSG } from '../shared/protocol.js';
+import { send } from '../shared/send.js';
 import { resolveScope } from './scope_resolver.js';
 import type { WsClient } from './ws_client.js';
 
@@ -65,16 +67,11 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         return activeTabId;
     };
 
-    const requestTokenFromTab = (tabId: number) =>
-        new Promise<{ ok: boolean; tabToken?: string; url?: string; error?: string }>((resolve) => {
-            chrome.tabs.sendMessage(tabId, { type: 'RPA_GET_TOKEN' }, (response: any) => {
-                if (chrome.runtime.lastError) {
-                    resolve({ ok: false, error: chrome.runtime.lastError.message });
-                    return;
-                }
-                resolve(response || { ok: false, error: 'no response' });
-            });
-        });
+    const requestTokenFromTab = async (tabId: number) => {
+        const result = await send.toTab<{ ok: boolean; tabToken?: string; url?: string }>(tabId, MSG.GET_TOKEN);
+        if (!result.ok) return { ok: false, error: result.error.message };
+        return result.data || { ok: false, error: 'no response' };
+    };
 
     const ensureTabToken = async (tabId: number) => {
         const existing = tabState.get(tabId);
@@ -207,7 +204,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleMessage = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
-        if (message.type === 'RECORD_STEP') {
+        if (message.type === MSG.RECORD_STEP) {
             const step = message.step as RecordedStep;
             const workspaceId = tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
             // 兼容旧录制通道：收到步骤仅做转发，不再本地持久化。
@@ -215,12 +212,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             sendResponse({ ok: true });
             return true;
         }
-        if (message.type === 'RECORD_EVENT') {
+        if (message.type === MSG.RECORD_EVENT) {
             // record.event 暂不使用：直接确认即可。
             sendResponse({ ok: true });
             return true;
         }
-        if (message.type === 'RPA_HELLO') {
+        if (message.type === MSG.HELLO) {
             const tabId = sender.tab?.id;
             if (tabId == null) return;
             upsertTab(tabId, message.tabToken, message.url || sender.tab?.url || '');
@@ -230,10 +227,11 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 void ensureGroupedActiveTab(workspaceId);
                 void ensureWorkspaceTabsGrouped(workspaceId);
             }
+            sendResponse({ ok: true });
             return;
         }
 
-        if (message.type === 'ACTION') {
+        if (message.type === MSG.ACTION) {
             (async () => {
                 const action = (message.action || {}) as Action;
                 if (action.type === 'record.start' || action.type === 'record.stop') {
@@ -242,18 +240,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({ ok: false, error: 'tab token unavailable' });
                         return;
                     }
-                    const type = action.type === 'record.start' ? 'RECORD_START' : 'RECORD_STOP';
-                    const contentResp = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
-                        chrome.tabs.sendMessage(active.tabId, { type }, (response: any) => {
-                            if (chrome.runtime.lastError) {
-                                resolve({ ok: false, error: chrome.runtime.lastError.message });
-                                return;
-                            }
-                            resolve(response || { ok: true });
-                        });
-                    });
+                    const type = action.type === 'record.start' ? MSG.RECORD_START : MSG.RECORD_STOP;
+                    const contentResp = await send.toTab<{ ok: boolean; error?: string }>(active.tabId, type);
                     if (!contentResp.ok) {
-                        sendResponse(contentResp);
+                        sendResponse({ ok: false, error: contentResp.error.message });
+                        return;
+                    }
+                    if (!contentResp.data?.ok) {
+                        sendResponse(contentResp.data);
                         return;
                     }
                     const scoped: Action = {
