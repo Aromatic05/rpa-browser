@@ -8,14 +8,6 @@
  * - 仅处理 UI 与消息，不做持久化。
  */
 
-type RecorderModule = {
-    startRecording: (opts: {
-        tabToken: string;
-        onStep: (step: any) => void;
-    }) => void;
-    stopRecording: () => void;
-};
-
 // 协议与发送模块（动态 import，避免内容脚本模块化限制）
 const loadProtocol = (() => {
     let cached: Promise<typeof import('../shared/protocol.js')> | null = null;
@@ -39,13 +31,13 @@ const loadSend = (() => {
     };
 })();
 
-// 录制模块（动态 import）
-const loadRecorder = (() => {
-    let cached: Promise<RecorderModule> | null = null;
+// 录制桥接（动态 import）
+const loadRecorderBridge = (() => {
+    let cached: Promise<typeof import('../content/recorder_bridge.js')> | null = null;
     return () => {
         if (!cached) {
-            const url = chrome.runtime.getURL('record/recorder.js');
-            cached = import(url) as Promise<RecorderModule>;
+            const url = chrome.runtime.getURL('content/recorder_bridge.js');
+            cached = import(url) as Promise<typeof import('../content/recorder_bridge.js')>;
         }
         return cached;
     };
@@ -98,24 +90,11 @@ const loadFloatingUI = (() => {
                     sendResponse({ ok: true, tabToken, url: location.href });
                     return;
                 }
-                if (message?.type === MSG.RECORD_START) {
-                    const recorder = await loadRecorder();
-                    recorder.startRecording({
-                        tabToken,
-                        // 录制步骤通过 send 收口上报
-                        onStep: async (step: any) => {
-                            const { send } = await loadSend();
-                            await send.recordStep(tabToken, step);
-                        },
-                    });
-                    sendResponse({ ok: true });
-                    return;
-                }
-                if (message?.type === MSG.RECORD_STOP) {
-                    const recorder = await loadRecorder();
-                    recorder.stopRecording();
-                    sendResponse({ ok: true });
-                    return;
+                if (message?.type === MSG.RECORD_START || message?.type === MSG.RECORD_STOP) {
+                    const { createRecorderBridge } = await loadRecorderBridge();
+                    const bridge = createRecorderBridge(tabToken);
+                    const handled = await bridge.handle(message, sendResponse);
+                    if (handled) return;
                 }
             })().catch((error) => {
                 sendResponse({ ok: false, error: String(error) });
