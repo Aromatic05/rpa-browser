@@ -69,16 +69,17 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const requestTokenFromTab = async (tabId: number) => {
         const result = await send.toTab<{ ok: boolean; tabToken?: string; url?: string }>(tabId, MSG.GET_TOKEN);
-        if (!result.ok) return { ok: false, error: result.error.message };
-        return result.data || { ok: false, error: 'no response' };
+        if (!result.ok) return { ok: false, error: result.error.message } as const;
+        const data = result.data || { ok: false, error: 'no response' };
+        return data;
     };
 
     const ensureTabToken = async (tabId: number) => {
         const existing = tabState.get(tabId);
         if (existing?.tabToken) return existing;
         const response = await requestTokenFromTab(tabId);
-        if (response?.ok && response.tabToken) {
-            upsertTab(tabId, response.tabToken, response.url || '');
+        if (response?.ok && 'tabToken' in response && response.tabToken) {
+            upsertTab(tabId, response.tabToken, ('url' in response && response.url) || '');
             return tabState.get(tabId);
         }
         return null;
