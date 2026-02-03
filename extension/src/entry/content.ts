@@ -16,6 +16,7 @@ type RecorderModule = {
     stopRecording: () => void;
 };
 
+// 协议与发送模块（动态 import，避免内容脚本模块化限制）
 const loadProtocol = (() => {
     let cached: Promise<typeof import('../shared/protocol.js')> | null = null;
     return () => {
@@ -38,6 +39,7 @@ const loadSend = (() => {
     };
 })();
 
+// 录制模块（动态 import）
 const loadRecorder = (() => {
     let cached: Promise<RecorderModule> | null = null;
     return () => {
@@ -50,10 +52,12 @@ const loadRecorder = (() => {
 })();
 
 (() => {
+    // 幂等保护：避免重复注入 UI 与监听器
     if (window.top !== window) return;
     if ((window as any).__rpaTokenInjected) return;
     (window as any).__rpaTokenInjected = true;
 
+    // tabToken：页面级缓存
     const TAB_TOKEN_KEY = '__rpa_tab_token';
     let tabToken = sessionStorage.getItem(TAB_TOKEN_KEY);
     if (!tabToken) {
@@ -62,6 +66,7 @@ const loadRecorder = (() => {
     }
     (window as any).__TAB_TOKEN__ = tabToken;
 
+    // hello：用于 SW 侧建立 tabToken/workspace 绑定
     const sendHello = () => {
         void (async () => {
             const { send } = await loadSend();
@@ -75,6 +80,7 @@ const loadRecorder = (() => {
             _sender: chrome.runtime.MessageSender,
             sendResponse: (response?: any) => void,
         ) => {
+            // 消息接收入口：token 查询 + 录制 start/stop
             void (async () => {
                 const { MSG } = await loadProtocol();
                 if (message?.type === MSG.GET_TOKEN) {
@@ -85,6 +91,7 @@ const loadRecorder = (() => {
                     const recorder = await loadRecorder();
                     recorder.startRecording({
                         tabToken,
+                        // 录制步骤通过 send 收口上报
                         onStep: async (step: any) => {
                             const { send } = await loadSend();
                             await send.recordStep(tabToken, step);
@@ -106,6 +113,7 @@ const loadRecorder = (() => {
         },
     );
 
+    // 页面导航监听：pushState/replaceState + popstate/hashchange
     const patchHistory = () => {
         const wrap = (method: typeof history.pushState) =>
             function (...args: Parameters<typeof history.pushState>) {
@@ -122,6 +130,7 @@ const loadRecorder = (() => {
     window.addEventListener('hashchange', sendHello);
     sendHello();
 
+    // UI 注入（Shadow DOM）
     const ROOT_ID = 'rpa-floating-panel';
     if (document.getElementById(ROOT_ID)) return;
 
@@ -263,6 +272,7 @@ const loadRecorder = (() => {
     let activeWorkspaceId: string | null = null;
     let activeTabId: string | null = null;
 
+    // UI 行为 -> Action
     const sendPanelAction = (
         type: string,
         payload?: Record<string, unknown>,
@@ -329,6 +339,7 @@ const loadRecorder = (() => {
     replayBtn.addEventListener('click', () => sendPanelAction('play.start'));
     stopReplayBtn.addEventListener('click', () => sendPanelAction('play.stop'));
 
+    // 列表渲染：workspace/tabs
     const renderWorkspaces = (
         workspaces: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>,
     ) => {
@@ -481,6 +492,7 @@ const loadRecorder = (() => {
         });
     };
 
+    // 刷新消息：从 SW 触发 UI 刷新
     chrome.runtime.onMessage.addListener((message: any) => {
         void (async () => {
             const { MSG } = await loadProtocol();
