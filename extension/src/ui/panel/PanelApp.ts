@@ -21,6 +21,8 @@ import {
 import { withTabDisplayNames, withWorkspaceDisplayNames } from '../../services/name_store.js';
 import { getMockStartUrl } from '../../services/mock_config.js';
 import { createUiLogger } from '../log/ui_log.js';
+import { send } from '../../shared/send.js';
+import { MSG } from '../../shared/protocol.js';
 
 export const initPanelApp = () => {
     const startButton = document.getElementById('startRec') as HTMLButtonElement;
@@ -155,7 +157,7 @@ export const initPanelApp = () => {
         payload?: Record<string, unknown>,
         scope?: { workspaceId?: string; tabId?: string },
     ): Promise<any> =>
-        new Promise((resolve) => {
+        (async () => {
             const action = {
                 v: 1,
                 id: crypto.randomUUID(),
@@ -163,17 +165,14 @@ export const initPanelApp = () => {
                 scope,
                 payload: payload || {},
             };
-            chrome.runtime.sendMessage({ type: 'ACTION', action }, (response: any) => {
-                if (chrome.runtime.lastError) {
-                    const errorPayload = { ok: false, error: chrome.runtime.lastError.message };
-                    logPayload(errorPayload);
-                    resolve(errorPayload);
-                    return;
-                }
-                logPayload(response);
-                resolve(response);
-            });
-        });
+            const result = await send.action(action);
+            if (!result.ok) {
+                logPayload(result);
+                return result;
+            }
+            logPayload(result.data);
+            return result.data;
+        })();
 
     const prepareStartUrl = async () => getMockStartUrl();
 
@@ -255,7 +254,7 @@ export const initPanelApp = () => {
     void init();
 
     chrome.runtime.onMessage.addListener((message: any) => {
-        if (message?.type !== 'RPA_REFRESH') return;
+        if (message?.type !== MSG.REFRESH) return;
         scheduleRefresh();
     });
 

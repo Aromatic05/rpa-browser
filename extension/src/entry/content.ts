@@ -16,6 +16,28 @@ type RecorderModule = {
     stopRecording: () => void;
 };
 
+const loadProtocol = (() => {
+    let cached: Promise<typeof import('../shared/protocol.js')> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('shared/protocol.js');
+            cached = import(url) as Promise<typeof import('../shared/protocol.js')>;
+        }
+        return cached;
+    };
+})();
+
+const loadSend = (() => {
+    let cached: Promise<typeof import('../shared/send.js')> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('shared/send.js');
+            cached = import(url) as Promise<typeof import('../shared/send.js')>;
+        }
+        return cached;
+    };
+})();
+
 const loadRecorder = (() => {
     let cached: Promise<RecorderModule> | null = null;
     return () => {
@@ -41,11 +63,10 @@ const loadRecorder = (() => {
     (window as any).__TAB_TOKEN__ = tabToken;
 
     const sendHello = () => {
-        chrome.runtime.sendMessage({
-            type: 'RPA_HELLO',
-            tabToken,
-            url: location.href,
-        });
+        void (async () => {
+            const { send } = await loadSend();
+            await send.hello({ tabToken, url: location.href });
+        })();
     };
 
     chrome.runtime.onMessage.addListener(
@@ -54,39 +75,34 @@ const loadRecorder = (() => {
             _sender: chrome.runtime.MessageSender,
             sendResponse: (response?: any) => void,
         ) => {
-            if (message?.type === 'RPA_GET_TOKEN') {
-                sendResponse({ ok: true, tabToken, url: location.href });
-                return true;
-            }
-            if (message?.type === 'RECORD_START') {
-                (async () => {
+            void (async () => {
+                const { MSG } = await loadProtocol();
+                if (message?.type === MSG.GET_TOKEN) {
+                    sendResponse({ ok: true, tabToken, url: location.href });
+                    return;
+                }
+                if (message?.type === MSG.RECORD_START) {
                     const recorder = await loadRecorder();
                     recorder.startRecording({
                         tabToken,
-                        onStep: (step: any) => {
-                            chrome.runtime.sendMessage({
-                                type: 'RECORD_STEP',
-                                tabToken,
-                                step,
-                            });
+                        onStep: async (step: any) => {
+                            const { send } = await loadSend();
+                            await send.recordStep(tabToken, step);
                         },
                     });
                     sendResponse({ ok: true });
-                })().catch((error) => {
-                    sendResponse({ ok: false, error: String(error) });
-                });
-                return true;
-            }
-            if (message?.type === 'RECORD_STOP') {
-                (async () => {
+                    return;
+                }
+                if (message?.type === MSG.RECORD_STOP) {
                     const recorder = await loadRecorder();
                     recorder.stopRecording();
                     sendResponse({ ok: true });
-                })().catch((error) => {
-                    sendResponse({ ok: false, error: String(error) });
-                });
-                return true;
-            }
+                    return;
+                }
+            })().catch((error) => {
+                sendResponse({ ok: false, error: String(error) });
+            });
+            return true;
         },
     );
 
@@ -261,15 +277,18 @@ const loadRecorder = (() => {
             scope: { ...(scope || {}), tabToken },
             payload: payload || {},
         };
-        chrome.runtime.sendMessage({ type: 'ACTION', action }, (response: any) => {
-            if (chrome.runtime.lastError) {
-                render({ ok: false, error: chrome.runtime.lastError.message });
+        void (async () => {
+            const { send } = await loadSend();
+            const result = await send.action(action);
+            if (!result.ok) {
+                render(result);
                 return;
             }
+            const response = result.data;
             render(response);
             interceptResponse(response);
             onResponse?.(response);
-        });
+        })();
     };
 
     const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
@@ -463,7 +482,10 @@ const loadRecorder = (() => {
     };
 
     chrome.runtime.onMessage.addListener((message: any) => {
-        if (message?.type !== 'RPA_REFRESH') return;
-        scheduleRefresh();
+        void (async () => {
+            const { MSG } = await loadProtocol();
+            if (message?.type !== MSG.REFRESH) return;
+            scheduleRefresh();
+        })();
     });
 })();

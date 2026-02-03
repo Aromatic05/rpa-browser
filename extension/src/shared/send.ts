@@ -87,6 +87,12 @@ export const send = {
     action: <T = any>(action: any) => runtimeRequest<T>({ type: MSG.ACTION, action }),
 
     /**
+     * 上报录制步骤（content -> SW）。
+     */
+    recordStep: <T = any>(tabToken: string, step: any) =>
+        runtimeRequest<T>({ type: MSG.RECORD_STEP, tabToken, step }),
+
+    /**
      * 刷新事件（SW -> content/panel 用 broadcast 发送）。
      */
     refresh: () => runtimeRequest<Record<string, never>>({ type: MSG.REFRESH }),
