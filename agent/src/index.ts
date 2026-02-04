@@ -153,9 +153,9 @@ wss.on('listening', () => {
 wss.on('connection', (socket) => {
     wsClients.add(socket);
     socket.on('message', (data) => {
-        let payload: any;
+        let raw: any;
         try {
-            payload = JSON.parse(data.toString());
+            raw = JSON.parse(data.toString());
         } catch {
             socket.send(JSON.stringify({ type: 'error', payload: makeErr('ERR_BAD_JSON', 'invalid json') }));
             return;
@@ -163,13 +163,21 @@ wss.on('connection', (socket) => {
 
         (async () => {
             try {
-                if (payload?.cmd || payload?.type === 'cmd') {
+                if (raw?.cmd || raw?.type === 'cmd') {
                     const errorPayload = makeErr(ERROR_CODES.ERR_UNSUPPORTED, 'legacy cmd not supported');
-                    socket.send(JSON.stringify({ type: 'error', replyTo: payload?.id, payload: errorPayload }));
+                    socket.send(JSON.stringify({ type: 'error', replyTo: raw?.id, payload: errorPayload }));
                     return;
                 }
-                assertIsAction(payload as unknown);
-                const action = payload as Action;
+                // Validate action shape (inline instead of calling assertIsAction()
+                const candidate = raw;
+                if (!candidate || typeof candidate !== 'object') {
+                    throw new Error('invalid action: not an object');
+                }
+                const actionRec = candidate as Record<string, unknown>;
+                if (actionRec.v !== 1 || typeof actionRec.id !== 'string' || typeof actionRec.type !== 'string' || !actionRec.id) {
+                    throw new Error('invalid action: missing or invalid fields');
+                }
+                const action = actionRec as Action;
                 const response = await handleAction(action);
                 if (response.ok) {
                     socket.send(
