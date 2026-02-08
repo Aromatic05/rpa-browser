@@ -48,6 +48,9 @@ export const RECORDER_SOURCE = String.raw`(function () {
 
   var selectorFor = function (el) {
     if (!el || !el.tagName) return null;
+    try {
+      if (!document.contains(el)) return null;
+    } catch {}
     var dataAttrs = ['data-testid', 'data-test', 'data-qa'];
     for (var i = 0; i < dataAttrs.length; i += 1) {
       var attr = dataAttrs[i];
@@ -216,20 +219,83 @@ export const RECORDER_SOURCE = String.raw`(function () {
     return type === 'checkbox' || type === 'radio';
   };
 
-  document.addEventListener('click', function (event) {
+  var lastPointer = { ts: 0, target: null };
+  var markPointer = function (target) {
+    lastPointer.ts = Date.now();
+    lastPointer.target = target || null;
+  };
+  var shouldSkipClick = function (target) {
+    if (!target) return false;
+    if (lastPointer.target !== target) return false;
+    return Date.now() - lastPointer.ts < 350;
+  };
+
+  document.addEventListener('pointerdown', function (event) {
+    if (event.button !== 0) return;
     var target = (event.composedPath && event.composedPath()[0]) || event.target;
+    if (target && target.nodeType === 3) target = target.parentElement;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
+    if (isCheckboxOrRadio(target) || target.closest('label input[type="checkbox"], label input[type="radio"]')) return;
+    var selector = selectorFor(target);
+    if (selector) {
+      markPointer(target);
+      emit({
+        type: 'click',
+        selector: selector,
+        targetHint: target.tagName.toLowerCase(),
+        a11yHint: buildA11yHint(target),
+        locatorCandidates: buildCandidates(target),
+        scopeHint: getScopeHint(target)
+      });
+      return;
+    }
+    var fallback = target.closest && target.closest('button, a, input, select, textarea, [role]');
+    if (fallback) {
+      var fallbackSelector = selectorFor(fallback);
+      if (!fallbackSelector) return;
+      markPointer(fallback);
+      emit({
+        type: 'click',
+        selector: fallbackSelector,
+        targetHint: fallback.tagName.toLowerCase(),
+        a11yHint: buildA11yHint(fallback),
+        locatorCandidates: buildCandidates(fallback),
+        scopeHint: getScopeHint(fallback)
+      });
+    }
+  }, true);
+
+  document.addEventListener('click', function (event) {
+    var target = (event.composedPath && event.composedPath()[0]) || event.target;
+    if (target && target.nodeType === 3) target = target.parentElement;
+    if (!(target instanceof Element)) return;
+    if (target.closest && target.closest('#rpa-floating-panel')) return;
+    if (shouldSkipClick(target)) return;
     if (isCheckboxOrRadio(target) || target.closest('label input[type=\"checkbox\"], label input[type=\"radio\"]')) return;
     var selector = selectorFor(target);
-    if (!selector) return;
+    if (selector) {
+      emit({
+        type: 'click',
+        selector: selector,
+        targetHint: target.tagName.toLowerCase(),
+        a11yHint: buildA11yHint(target),
+        locatorCandidates: buildCandidates(target),
+        scopeHint: getScopeHint(target)
+      });
+      return;
+    }
+    var fallback = target.closest && target.closest('button, a, input, select, textarea, [role]');
+    if (!fallback) return;
+    var fallbackSelector = selectorFor(fallback);
+    if (!fallbackSelector) return;
     emit({
       type: 'click',
-      selector: selector,
-      targetHint: target.tagName.toLowerCase(),
-      a11yHint: buildA11yHint(target),
-      locatorCandidates: buildCandidates(target),
-      scopeHint: getScopeHint(target)
+      selector: fallbackSelector,
+      targetHint: fallback.tagName.toLowerCase(),
+      a11yHint: buildA11yHint(fallback),
+      locatorCandidates: buildCandidates(fallback),
+      scopeHint: getScopeHint(fallback)
     });
   }, true);
 
