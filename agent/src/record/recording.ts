@@ -13,13 +13,14 @@ import type { Page } from 'playwright';
 import crypto from 'crypto';
 import { installRecorder, type RecorderEvent } from './recorder';
 import { getLogger } from '../logging/logger';
-import type { StepUnion } from '../runner/steps/types';
+import type { Step, StepArgsMap, StepName, StepUnion } from '../runner/steps/types';
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
     recordings: Map<string, StepUnion[]>;
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
+    lastScrollY: Map<string, number>;
     replaying: Set<string>;
     replayCancel: Set<string>;
 };
@@ -32,36 +33,96 @@ export const createRecordingState = (): RecordingState => ({
     recordings: new Map(),
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
+    lastScrollY: new Map(),
     replaying: new Set(),
     replayCancel: new Set(),
 });
 
-const createStep = (input: Omit<StepUnion, 'id' | 'meta'> & { ts: number }): StepUnion => ({
+const createStep = <TName extends StepName>(
+    name: TName,
+    args: StepArgsMap[TName],
+    ts: number,
+): Step<TName> => ({
     id: crypto.randomUUID(),
-    name: input.name,
-    args: input.args,
-    meta: { source: 'record', ts: input.ts },
+    name,
+    args,
+    meta: { source: 'record', ts },
 });
 
 const toStep = (event: RecorderEvent): StepUnion | null => {
     if (event.type === 'navigate' && event.url) {
-        return createStep({ ts: event.ts, name: 'browser.goto', args: { url: event.url } });
+        return createStep('browser.goto', { url: event.url }, event.ts);
     }
     if (event.type === 'click' && event.selector) {
-        return createStep({
-            ts: event.ts,
-            name: 'browser.click',
-            args: { target: { selector: event.selector, a11yHint: event.a11yHint } },
-        });
+        return createStep(
+            'browser.click',
+            { target: { selector: event.selector, a11yHint: event.a11yHint } },
+            event.ts,
+        );
     }
     if (event.type === 'input' && event.selector && typeof event.value === 'string') {
-        return createStep({
-            ts: event.ts,
-            name: 'browser.fill',
-            args: { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
-        });
+        return createStep(
+            'browser.fill',
+            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            event.ts,
+        );
     }
-    // TODO: map change/select/date/check/keydown/paste/copy/scroll to steps.
+    if (event.type === 'change' && event.selector && typeof event.value === 'string') {
+        return createStep(
+            'browser.fill',
+            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            event.ts,
+        );
+    }
+    if (event.type === 'date' && event.selector && typeof event.value === 'string') {
+        return createStep(
+            'browser.fill',
+            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            event.ts,
+        );
+    }
+    if (event.type === 'select' && event.selector && typeof event.value === 'string') {
+        return createStep(
+            'browser.select_option',
+            { target: { selector: event.selector, a11yHint: event.a11yHint }, values: [event.value] },
+            event.ts,
+        );
+    }
+    if (event.type === 'check' && event.selector) {
+        // TODO: ensure checked state matches (recorded checked flag is not enforced).
+        return createStep(
+            'browser.click',
+            { target: { selector: event.selector, a11yHint: event.a11yHint } },
+            event.ts,
+        );
+    }
+    if (event.type === 'keydown' && event.key) {
+        return createStep(
+            'browser.press_key',
+            {
+                key: event.key,
+                target: event.selector ? { selector: event.selector, a11yHint: event.a11yHint } : undefined,
+            },
+            event.ts,
+        );
+    }
+    if (event.type === 'paste' && event.selector && typeof event.value === 'string') {
+        return createStep(
+            'browser.fill',
+            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            event.ts,
+        );
+    }
+    if (event.type === 'scroll' && typeof event.scrollY === 'number') {
+        const delta = event.scrollY;
+        if (delta === 0) return null;
+        return createStep(
+            'browser.scroll',
+            { direction: delta > 0 ? 'down' : 'up', amount: Math.abs(delta) },
+            event.ts,
+        );
+    }
+    // TODO: map copy to steps if needed.
     return null;
 };
 
@@ -91,6 +152,13 @@ export const recordEvent = (
             return;
         }
         state.lastNavigateTs.set(tabToken, event.ts);
+    }
+
+    if (event.type === 'scroll' && typeof event.scrollY === 'number') {
+        const last = state.lastScrollY.get(tabToken) ?? 0;
+        const delta = event.scrollY - last;
+        state.lastScrollY.set(tabToken, event.scrollY);
+        event.scrollY = delta;
     }
 
     if (event.value && event.value !== '***') {
@@ -213,6 +281,7 @@ export const startRecording = async (
     }
     state.lastNavigateTs.set(tabToken, 0);
     state.lastClickTs.set(tabToken, 0);
+    state.lastScrollY.set(tabToken, 0);
     recordLog('start', { tabToken, url: page.url() });
     await ensureRecorder(state, page, tabToken, navDedupeWindowMs);
 };
@@ -225,6 +294,7 @@ export const stopRecording = (state: RecordingState, tabToken: string) => {
     state.recordingEnabled.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);
+    state.lastScrollY.delete(tabToken);
     recordLog('stop', { tabToken });
 };
 
@@ -266,6 +336,7 @@ export const cleanupRecording = (state: RecordingState, tabToken: string) => {
     state.recordings.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);
+    state.lastScrollY.delete(tabToken);
     state.replaying.delete(tabToken);
     state.replayCancel.delete(tabToken);
 };
