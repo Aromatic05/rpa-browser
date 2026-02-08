@@ -135,6 +135,12 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             await page.evaluate(
                 (args: { token: string; key: string }) => {
                     sessionStorage.setItem(args.key, args.token);
+                    try {
+                        (window as any).__rpa_tab_token = args.token;
+                        (window as any).__TAB_TOKEN__ = args.token;
+                    } catch {
+                        // ignore
+                    }
                 },
                 { token: tabToken, key: options.tabTokenKey },
             );

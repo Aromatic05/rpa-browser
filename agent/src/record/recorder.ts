@@ -71,9 +71,11 @@ export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent
     }
 
     await page.addInitScript({ content: RECORDER_SOURCE });
-    try {
-        await page.evaluate(RECORDER_SOURCE);
-    } catch {
-        // ignore if page is not ready yet
+    for (const frame of page.frames()) {
+        try {
+            await frame.evaluate(RECORDER_SOURCE);
+        } catch {
+            // ignore if frame is not ready or cross-origin
+        }
     }
 };

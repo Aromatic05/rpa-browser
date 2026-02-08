@@ -13,7 +13,33 @@ export const RECORDER_SOURCE = String.raw`(function () {
   var tokenKey = '__rpa_tab_token';
   var specialKeys = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
-  var getToken = function () { return sessionStorage.getItem(tokenKey); };
+  var getToken = function () {
+    try {
+      var fromSession = sessionStorage.getItem(tokenKey);
+      if (fromSession) return fromSession;
+    } catch {}
+    try {
+      var fromWindow = window.__rpa_tab_token || window.__TAB_TOKEN__;
+      if (fromWindow) return fromWindow;
+    } catch {}
+    try {
+      if (window.top && window.top !== window) {
+        var fromTop = window.top.sessionStorage && window.top.sessionStorage.getItem(tokenKey);
+        if (fromTop) return fromTop;
+        var fromTopWin = window.top.__rpa_tab_token || window.top.__TAB_TOKEN__;
+        if (fromTopWin) return fromTopWin;
+      }
+    } catch {}
+    try {
+      if (window.parent && window.parent !== window) {
+        var fromParent = window.parent.sessionStorage && window.parent.sessionStorage.getItem(tokenKey);
+        if (fromParent) return fromParent;
+        var fromParentWin = window.parent.__rpa_tab_token || window.parent.__TAB_TOKEN__;
+        if (fromParentWin) return fromParentWin;
+      }
+    } catch {}
+    return null;
+  };
 
   var safeEscape = function (value) {
     if (window.CSS && CSS.escape) return CSS.escape(value);
@@ -191,7 +217,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   };
 
   document.addEventListener('click', function (event) {
-    var target = event.target;
+    var target = (event.composedPath && event.composedPath()[0]) || event.target;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     if (isCheckboxOrRadio(target) || target.closest('label input[type=\"checkbox\"], label input[type=\"radio\"]')) return;
@@ -208,7 +234,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   }, true);
 
   document.addEventListener('input', function (event) {
-    var target = event.target;
+    var target = (event.composedPath && event.composedPath()[0]) || event.target;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     if (isCheckboxOrRadio(target)) return;
@@ -226,7 +252,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   }, true);
 
   document.addEventListener('change', function (event) {
-    var target = event.target;
+    var target = (event.composedPath && event.composedPath()[0]) || event.target;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
@@ -282,7 +308,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
 
   document.addEventListener('keydown', function (event) {
     if (!specialKeys.has(event.key)) return;
-    var target = event.target;
+    var target = (event.composedPath && event.composedPath()[0]) || event.target;
     if (target && target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = target instanceof Element ? selectorFor(target) : null;
     emit({
@@ -296,7 +322,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   }, true);
 
   document.addEventListener('paste', function (event) {
-    var target = event.target;
+    var target = (event.composedPath && event.composedPath()[0]) || event.target;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
@@ -313,7 +339,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
   }, true);
 
   document.addEventListener('copy', function (event) {
-    var target = event.target;
+    var target = (event.composedPath && event.composedPath()[0]) || event.target;
     if (!(target instanceof Element)) return;
     if (target.closest && target.closest('#rpa-floating-panel')) return;
     var selector = selectorFor(target);
