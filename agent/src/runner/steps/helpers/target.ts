@@ -45,11 +45,11 @@ export const matchesA11yHint = (candidate: A11yLike, hint?: A11yHint) => {
     if (!hint) return true;
     if (hint.role && normalizeText(candidate.role) !== normalizeText(hint.role)) return false;
     if (hint.name) {
-        const nodeName = normalizeText(candidate.name);
+        const nodeName = normalizeText(candidate.name || candidate.text);
         if (!nodeName.includes(normalizeText(hint.name))) return false;
     }
     if (hint.text) {
-        const text = normalizeText(candidate.text);
+        const text = normalizeText(candidate.text || candidate.name);
         if (!text.includes(normalizeText(hint.text))) return false;
     }
     return true;
