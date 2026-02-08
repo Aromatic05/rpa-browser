@@ -7,7 +7,7 @@
  * - A11y snapshot 结果会进入 cache，供 adoptA11yNode 使用
  */
 
-import type { BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Page, Locator } from 'playwright';
 import crypto from 'crypto';
 import type {
     ToolResult,
@@ -38,14 +38,14 @@ export type BrowserAutomationTools = {
     'trace.page.scrollBy': (args: { direction: 'up' | 'down'; amount: number }) => Promise<ToolResult<void>>;
     'trace.a11y.findByA11yHint': (args: { hint: A11yHint }) => Promise<ToolResult<A11yCandidate[]>>;
     'trace.a11y.resolveByNodeId': (args: { a11yNodeId: string }) => Promise<ToolResult<{ a11yNodeId: string }>>;
-    'trace.locator.waitForVisible': (args: { a11yNodeId: string; timeout?: number }) => Promise<ToolResult<void>>;
-    'trace.locator.scrollIntoView': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
-    'trace.locator.click': (args: { a11yNodeId: string; timeout?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
-    'trace.locator.focus': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
-    'trace.locator.fill': (args: { a11yNodeId: string; value: string }) => Promise<ToolResult<void>>;
-    'trace.locator.type': (args: { a11yNodeId: string; text: string; delayMs?: number }) => Promise<ToolResult<void>>;
-    'trace.locator.selectOption': (args: { a11yNodeId: string; values: string[]; timeout?: number }) => Promise<ToolResult<void>>;
-    'trace.locator.hover': (args: { a11yNodeId: string }) => Promise<ToolResult<void>>;
+    'trace.locator.waitForVisible': (args: { a11yNodeId?: string; selector?: string; timeout?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.scrollIntoView': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
+    'trace.locator.click': (args: { a11yNodeId?: string; selector?: string; timeout?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
+    'trace.locator.focus': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
+    'trace.locator.fill': (args: { a11yNodeId?: string; selector?: string; value: string }) => Promise<ToolResult<void>>;
+    'trace.locator.type': (args: { a11yNodeId?: string; selector?: string; text: string; delayMs?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.selectOption': (args: { a11yNodeId?: string; selector?: string; values: string[]; timeout?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.hover': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
     'trace.locator.dragDrop': (args: { sourceNodeId: string; destNodeId?: string; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
     'trace.page.scrollTo': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
     'trace.keyboard.press': (args: { key: string }) => Promise<ToolResult<void>>;
@@ -83,6 +83,19 @@ export const createTraceTools = (opts: {
         if (!ctx.cache.a11yTree) {
             await getA11yTree(currentPage, ctx.cache);
         }
+    };
+
+    const resolveSelectorLocator = async (selector: string): Promise<Locator> => {
+        const locator = currentPage.locator(selector);
+        const count = await locator.count();
+        if (count === 0) {
+            throw { code: 'ERR_NOT_FOUND', message: 'selector not found', phase: 'trace', details: { selector } };
+        }
+        if (count > 1) {
+            // TODO: add fuzzy disambiguation.
+            throw { code: 'ERR_AMBIGUOUS', message: 'selector matches multiple elements', phase: 'trace', details: { selector, count } };
+        }
+        return locator;
     };
 
     const tools: BrowserAutomationTools = {
@@ -209,6 +222,14 @@ export const createTraceTools = (opts: {
             }),
         'trace.locator.waitForVisible': async (args) =>
             run('trace.locator.waitForVisible', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.waitFor({ state: 'visible', timeout: args.timeout });
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
@@ -216,6 +237,14 @@ export const createTraceTools = (opts: {
             }),
         'trace.locator.scrollIntoView': async (args) => {
             const result = await run('trace.locator.scrollIntoView', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.scrollIntoViewIfNeeded();
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
@@ -226,6 +255,14 @@ export const createTraceTools = (opts: {
         },
         'trace.locator.click': async (args) => {
             const result = await run('trace.locator.click', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.click({ timeout: args.timeout, button: args.button });
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
@@ -236,6 +273,14 @@ export const createTraceTools = (opts: {
         },
         'trace.locator.focus': async (args) =>
             run('trace.locator.focus', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.focus();
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
@@ -243,6 +288,14 @@ export const createTraceTools = (opts: {
             }),
         'trace.locator.fill': async (args) => {
             const result = await run('trace.locator.fill', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.fill(args.value);
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
@@ -253,6 +306,14 @@ export const createTraceTools = (opts: {
         },
         'trace.locator.type': async (args) => {
             const result = await run('trace.locator.type', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.type(args.text, { delay: args.delayMs });
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
@@ -263,6 +324,14 @@ export const createTraceTools = (opts: {
         },
         'trace.locator.selectOption': async (args) => {
             const result = await run('trace.locator.selectOption', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.selectOption(args.values, { timeout: args.timeout });
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
@@ -273,6 +342,14 @@ export const createTraceTools = (opts: {
         },
         'trace.locator.hover': async (args) =>
             run('trace.locator.hover', args, async () => {
+                if (args.selector) {
+                    const locator = await resolveSelectorLocator(args.selector);
+                    await locator.hover();
+                    return;
+                }
+                if (!args.a11yNodeId) {
+                    throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
+                }
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;

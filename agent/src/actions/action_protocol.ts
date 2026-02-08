@@ -1,3 +1,5 @@
+import type { StepUnion } from '../runner/steps/types';
+
 /**
  * Action 协议：WS 唯一协议单元。
  *
@@ -35,26 +37,9 @@ export const makeErr = (code: string, message: string, details?: any): ActionErr
 });
 
 /**
- * RecordEvent：扩展侧上报的轻量录制事件（必须可序列化）。
+ * RecordStep：外部上报的录制 Step（必须可序列化）。
  */
-export type RecordEvent = {
-    type: 'click' | 'input' | 'change' | 'keydown' | 'navigate' | 'scroll';
-    ts: number;
-    url?: string;
-    target?: {
-        tag?: string;
-        id?: string;
-        name?: string;
-        type?: string;
-        role?: string;
-        ariaLabel?: string;
-        text?: string;
-        selector?: string;
-    };
-    value?: string;
-    key?: { key: string; code: string; alt: boolean; ctrl: boolean; meta: boolean; shift: boolean };
-    scroll?: { x: number; y: number };
-};
+export type RecordStep = StepUnion;
 
 export const assertIsAction = (input: unknown): asserts input is Action => {
     if (!input || typeof input !== 'object') {

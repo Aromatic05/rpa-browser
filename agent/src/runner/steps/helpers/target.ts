@@ -30,3 +30,27 @@ export const mapTraceError = (error: ToolError | undefined): StepResult['error']
     }
     return { code: 'ERR_INTERNAL', message: error.message || 'internal error', details: error.details };
 };
+
+type A11yLike = { role?: string; name?: string; text?: string };
+
+const normalizeText = (value?: string) =>
+    (value || '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+
+export const matchesA11yHint = (candidate: A11yLike, hint?: A11yHint) => {
+    if (!hint) return true;
+    if (hint.role && normalizeText(candidate.role) !== normalizeText(hint.role)) return false;
+    if (hint.name) {
+        const nodeName = normalizeText(candidate.name);
+        if (!nodeName.includes(normalizeText(hint.name))) return false;
+    }
+    if (hint.text) {
+        const text = normalizeText(candidate.text);
+        if (!text.includes(normalizeText(hint.text))) return false;
+    }
+    return true;
+};

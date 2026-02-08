@@ -2,7 +2,7 @@
  * recording action：record / play 相关动作。
  */
 
-import type { Action, RecordEvent } from './action_protocol';
+import type { Action } from './action_protocol';
 import { makeErr, makeOk } from './action_protocol';
 import type { ActionHandler } from './execute';
 import {
@@ -15,9 +15,11 @@ import {
     endReplay,
     cancelReplay,
     recordEvent,
+    recordStep,
 } from '../record/recording';
-import { replayRecording } from '../play/replay';
+import { runSteps } from '../runner/run_steps';
 import { ERROR_CODES } from './error_codes';
+import type { StepUnion } from '../runner/steps/types';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, _action) => {
@@ -43,13 +45,13 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     },
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
-        const events = getRecording(ctx.recordingState, ctx.tabToken);
+        const steps = getRecording(ctx.recordingState, ctx.tabToken);
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         beginReplay(ctx.recordingState, ctx.tabToken);
-        const response = await replayRecording({
+        const response = await runSteps({
             workspaceId: scope.workspaceId,
-            events,
-            stopOnError: payload.stopOnError ?? true,
+            steps,
+            options: { stopOnError: payload.stopOnError ?? true },
         });
         endReplay(ctx.recordingState, ctx.tabToken);
         if (!response.ok) {
@@ -62,12 +64,11 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return makeOk(response.results);
     },
     'record.event': async (ctx, action) => {
-        const event = action.payload as RecordEvent | undefined;
-        if (!event) {
+        const step = action.payload as StepUnion | undefined;
+        if (!step) {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
         }
-        // 为保持回放可用：此处仅确认收到，不写入录制队列。
-        void event;
-        return makeOk({ accepted: true, ignored: true });
+        recordStep(ctx.recordingState, ctx.tabToken, step, ctx.navDedupeWindowMs);
+        return makeOk({ accepted: true });
     },
 };

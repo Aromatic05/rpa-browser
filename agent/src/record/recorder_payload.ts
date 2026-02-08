@@ -151,6 +151,17 @@ export const RECORDER_SOURCE = String.raw`(function () {
     return candidates;
   };
 
+  var buildA11yHint = function (el) {
+    var role = getRole(el);
+    var name = getLabelText(el) || normalizeText(el.innerText || el.textContent || '') || el.getAttribute('title') || el.getAttribute('alt') || el.getAttribute('value');
+    var text = name ? normalizeText(String(name)) : getTextCandidate(el);
+    var hint = {};
+    if (role) hint.role = role;
+    if (name) hint.name = normalizeText(String(name));
+    if (text) hint.text = normalizeText(String(text));
+    return hint;
+  };
+
   var emit = function (payload) {
     var tabToken = getToken();
     if (!tabToken) return;
@@ -190,6 +201,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
       type: 'click',
       selector: selector,
       targetHint: target.tagName.toLowerCase(),
+      a11yHint: buildA11yHint(target),
       locatorCandidates: buildCandidates(target),
       scopeHint: getScopeHint(target)
     });
@@ -207,6 +219,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
       type: 'input',
       selector: selector,
       value: getValue(target),
+      a11yHint: buildA11yHint(target),
       locatorCandidates: buildCandidates(target),
       scopeHint: getScopeHint(target)
     });
@@ -226,6 +239,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
           selector: selector,
           checked: target.checked,
           inputType: inputType,
+          a11yHint: buildA11yHint(target),
           locatorCandidates: buildCandidates(target),
           scopeHint: getScopeHint(target)
         });
@@ -236,6 +250,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
           type: 'date',
           selector: selector,
           value: target.value,
+          a11yHint: buildA11yHint(target),
           locatorCandidates: buildCandidates(target),
           scopeHint: getScopeHint(target)
         });
@@ -249,6 +264,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
         selector: selector,
         value: target.value,
         label: option ? option.label : '',
+        a11yHint: buildA11yHint(target),
         locatorCandidates: buildCandidates(target),
         scopeHint: getScopeHint(target)
       });
@@ -258,6 +274,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
       type: 'change',
       selector: selector,
       value: getValue(target),
+      a11yHint: buildA11yHint(target),
       locatorCandidates: buildCandidates(target),
       scopeHint: getScopeHint(target)
     });
@@ -272,6 +289,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
       type: 'keydown',
       selector: selector,
       key: event.key,
+      a11yHint: target instanceof Element ? buildA11yHint(target) : undefined,
       locatorCandidates: target instanceof Element ? buildCandidates(target) : undefined,
       scopeHint: target instanceof Element ? getScopeHint(target) : undefined
     });
@@ -288,6 +306,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
       type: 'paste',
       selector: selector,
       value: getValue(target),
+      a11yHint: buildA11yHint(target),
       locatorCandidates: buildCandidates(target),
       scopeHint: getScopeHint(target)
     });
@@ -302,6 +321,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
     emit({
       type: 'copy',
       selector: selector,
+      a11yHint: buildA11yHint(target),
       locatorCandidates: buildCandidates(target),
       scopeHint: getScopeHint(target)
     });

@@ -94,7 +94,7 @@ export type StepArgsMap = {
 
 export type StepMeta = {
     requestId?: string;
-    source: 'mcp' | 'play' | 'script';
+    source: 'mcp' | 'play' | 'script' | 'record';
     ts?: number;
 };
 

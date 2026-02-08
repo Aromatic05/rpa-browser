@@ -11,6 +11,7 @@
  */
 import type { Page } from 'playwright';
 import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
+import type { A11yHint } from '../runner/steps/types';
 import { RECORDER_SOURCE } from './recorder_payload';
 
 const installedPages = new WeakSet<Page>();
@@ -29,12 +30,13 @@ export type RecordedEventType =
     | 'paste'
     | 'copy';
 
-export type RecordedEvent = {
+export type RecorderEvent = {
     tabToken: string;
     ts: number;
     type: RecordedEventType;
     url?: string;
     a11yNodeId?: string;
+    a11yHint?: A11yHint;
     selector?: string;
     locatorCandidates?: LocatorCandidate[];
     scopeHint?: ScopeHint;
@@ -53,12 +55,12 @@ export type RecordedEvent = {
 /**
  * 在 Page 上安装录制脚本，并通过 binding 把事件转发回 Node 侧。
  */
-export const installRecorder = async (page: Page, onEvent: (event: RecordedEvent) => void) => {
+export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent) => void) => {
     if (installedPages.has(page)) return;
     installedPages.add(page);
 
     try {
-        await page.exposeBinding(bindingName, (source, event: RecordedEvent) => {
+        await page.exposeBinding(bindingName, (source, event: RecorderEvent) => {
             onEvent({
                 ...event,
                 pageUrl: source.page?.url?.() || null,

@@ -10,12 +10,14 @@
  * - 导航事件需去重，避免 click 导航 + framenavigated 双重记录
  */
 import type { Page } from 'playwright';
-import { installRecorder, type RecordedEvent } from './recorder';
+import crypto from 'crypto';
+import { installRecorder, type RecorderEvent } from './recorder';
 import { getLogger } from '../logging/logger';
+import type { StepUnion } from '../runner/steps/types';
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
-    recordings: Map<string, RecordedEvent[]>;
+    recordings: Map<string, StepUnion[]>;
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
     replaying: Set<string>;
@@ -34,6 +36,35 @@ export const createRecordingState = (): RecordingState => ({
     replayCancel: new Set(),
 });
 
+const createStep = (input: Omit<StepUnion, 'id' | 'meta'> & { ts: number }): StepUnion => ({
+    id: crypto.randomUUID(),
+    name: input.name,
+    args: input.args,
+    meta: { source: 'record', ts: input.ts },
+});
+
+const toStep = (event: RecorderEvent): StepUnion | null => {
+    if (event.type === 'navigate' && event.url) {
+        return createStep({ ts: event.ts, name: 'browser.goto', args: { url: event.url } });
+    }
+    if (event.type === 'click' && event.selector) {
+        return createStep({
+            ts: event.ts,
+            name: 'browser.click',
+            args: { target: { selector: event.selector, a11yHint: event.a11yHint } },
+        });
+    }
+    if (event.type === 'input' && event.selector && typeof event.value === 'string') {
+        return createStep({
+            ts: event.ts,
+            name: 'browser.fill',
+            args: { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+        });
+    }
+    // TODO: map change/select/date/check/keydown/paste/copy/scroll to steps.
+    return null;
+};
+
 /**
  * 处理单条录制事件：
  * - 去重导航
@@ -42,7 +73,7 @@ export const createRecordingState = (): RecordingState => ({
  */
 export const recordEvent = (
     state: RecordingState,
-    event: RecordedEvent,
+    event: RecorderEvent,
     navDedupeWindowMs: number,
 ) => {
     const recordLog = getLogger('record');
@@ -73,14 +104,51 @@ export const recordEvent = (
         }
     }
 
+    const step = toStep(event);
+    if (!step) return;
+
     const list = state.recordings.get(tabToken) || [];
-    list.push(event);
+    list.push(step);
     state.recordings.set(tabToken, list);
     recordLog('event', {
-        type: event.type,
+        type: step.name,
         tabToken,
         ts: event.ts,
-        url: (event as any).url,
+    });
+};
+
+export const recordStep = (
+    state: RecordingState,
+    tabToken: string,
+    step: StepUnion,
+    navDedupeWindowMs: number,
+) => {
+    const recordLog = getLogger('record');
+    if (!tabToken || !state.recordingEnabled.has(tabToken)) return;
+    if (state.replaying.has(tabToken)) return;
+
+    const ts = step.meta?.ts ?? Date.now();
+    const normalized: StepUnion = {
+        ...step,
+        meta: { ...step.meta, source: step.meta?.source ?? 'record', ts },
+    } as StepUnion;
+
+    if (normalized.name === 'browser.click') {
+        state.lastClickTs.set(tabToken, ts);
+    }
+    if (normalized.name === 'browser.goto') {
+        const last = state.lastNavigateTs.get(tabToken) || 0;
+        if (ts - last < navDedupeWindowMs) return;
+        state.lastNavigateTs.set(tabToken, ts);
+    }
+
+    const list = state.recordings.get(tabToken) || [];
+    list.push(normalized);
+    state.recordings.set(tabToken, list);
+    recordLog('event', {
+        type: normalized.name,
+        tabToken,
+        ts,
     });
 };
 

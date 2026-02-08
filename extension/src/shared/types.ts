@@ -84,23 +84,3 @@ export type WsActionReply = {
     replyTo?: string;
     payload?: ActionOk<unknown> | ActionErr;
 };
-
-export type StepName = 'browser.goto' | 'browser.snapshot' | 'browser.click' | 'browser.fill';
-
-export type A11yHint = {
-    role?: string;
-    name?: string;
-    text?: string;
-};
-
-export type RecordedStep = {
-    id: string;
-    name: StepName;
-    args: Record<string, unknown>;
-    meta: {
-        ts: number;
-        tabToken: string;
-        workspaceId?: string;
-        source: 'record';
-    };
-};

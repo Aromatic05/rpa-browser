@@ -15,7 +15,7 @@ import {
 } from '../services/name_store.js';
 import { safeGroupActiveTab, supportsTabGrouping } from '../services/tab_grouping.js';
 import { createLogger } from '../shared/logger.js';
-import type { Action, ActionErr, ActionOk, RecordedStep, WsEventPayload } from '../shared/types.js';
+import type { Action, ActionErr, ActionOk, WsEventPayload } from '../shared/types.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
 import { resolveScope } from './scope_resolver.js';
@@ -205,19 +205,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleMessage = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
-        if (message.type === MSG.RECORD_STEP) {
-            const step = message.step as RecordedStep;
-            const workspaceId = tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || 'default';
-            // 兼容旧录制通道：收到步骤仅做转发，不再本地持久化。
-            void workspaceId;
-            sendResponse({ ok: true });
-            return true;
-        }
-        if (message.type === MSG.RECORD_EVENT) {
-            // record.event 暂不使用：直接确认即可。
-            sendResponse({ ok: true });
-            return true;
-        }
         if (message.type === MSG.HELLO) {
             const tabId = sender.tab?.id;
             if (tabId == null) return;
@@ -235,34 +222,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (message.type === MSG.ACTION) {
             (async () => {
                 const action = (message.action || {}) as Action;
-                if (action.type === 'record.start' || action.type === 'record.stop') {
-                    const active = await getActiveTabToken();
-                    if (!active) {
-                        sendResponse({ ok: false, error: 'tab token unavailable' });
-                        return;
-                    }
-                    const type = action.type === 'record.start' ? MSG.RECORD_START : MSG.RECORD_STOP;
-                    const contentResp = await send.toTab<{ ok: boolean; error?: string }>(active.tabId, type);
-                    if (!contentResp.ok) {
-                        sendResponse({ ok: false, error: contentResp.error.message });
-                        return;
-                    }
-                    if (!contentResp.data?.ok) {
-                        sendResponse(contentResp.data);
-                        return;
-                    }
-                    const scoped: Action = {
-                        ...action,
-                        v: 1,
-                        id: action.id || crypto.randomUUID(),
-                        tabToken: active.tabToken,
-                        scope: { ...(action.scope || {}), tabToken: active.tabToken },
-                    };
-                    const payload = await sendAction(scoped);
-                    sendResponse(payload);
-                    return;
-                }
-
                 let tabToken = action.tabToken as string | undefined;
                 const scope = resolveScope(
                     { activeWorkspaceId, activeTabId: activeScopeTabId },

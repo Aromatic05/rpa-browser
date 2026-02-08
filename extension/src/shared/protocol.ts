@@ -11,10 +11,6 @@ export const MSG = {
     GET_TOKEN: 'RPA_GET_TOKEN',
     REFRESH: 'RPA_REFRESH',
     ACTION: 'ACTION',
-    RECORD_START: 'RECORD_START',
-    RECORD_STOP: 'RECORD_STOP',
-    RECORD_STEP: 'RECORD_STEP',
-    RECORD_EVENT: 'RECORD_EVENT',
 } as const;
 
 export type ErrorCode =

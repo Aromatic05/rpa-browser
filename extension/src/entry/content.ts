@@ -42,17 +42,6 @@ const loadTokenBridge = (() => {
     };
 })();
 
-// 录制桥接（动态 import）
-const loadRecorderBridge = (() => {
-    let cached: Promise<typeof import('../content/recorder_bridge.js')> | null = null;
-    return () => {
-        if (!cached) {
-            const url = chrome.runtime.getURL('content/recorder_bridge.js');
-            cached = import(url) as Promise<typeof import('../content/recorder_bridge.js')>;
-        }
-        return cached;
-    };
-})();
 
 const loadFloatingUI = (() => {
     let cached: Promise<typeof import('../content/floating_ui.js')> | null = null;
@@ -98,13 +87,6 @@ const loadFloatingUI = (() => {
                     const tabToken = await ensureToken();
                     sendResponse({ ok: true, tabToken, url: location.href });
                     return;
-                }
-                if (message?.type === MSG.RECORD_START || message?.type === MSG.RECORD_STOP) {
-                    const tabToken = await ensureToken();
-                    const { createRecorderBridge } = await loadRecorderBridge();
-                    const bridge = createRecorderBridge(tabToken);
-                    const handled = await bridge.handle(message, sendResponse);
-                    if (handled) return;
                 }
             })().catch((error) => {
                 sendResponse({ ok: false, error: String(error) });

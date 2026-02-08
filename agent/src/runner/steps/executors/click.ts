@@ -1,7 +1,8 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { normalizeTarget, mapTraceError } from '../helpers/target';
+import { normalizeTarget, mapTraceError, matchesA11yHint } from '../helpers/target';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
+import { describeSelector } from '../helpers/selector';
 
 const pickDelayMs = (min: number, max: number) => {
     if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
@@ -62,6 +63,56 @@ export const executeBrowserClick = async (
     }
 
     const target = normalizeTarget(step.args);
+    if (target?.selector) {
+        const described = await describeSelector(binding.page, target.selector);
+        if (!described.ok) {
+            return { stepId: step.id, ok: false, error: described.error };
+        }
+        if (!matchesA11yHint(described.data, target.a11yHint)) {
+            // TODO: fallback to fuzzy a11y search when selector exists but hint mismatches.
+            return {
+                stepId: step.id,
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'selector matched element but a11y hint mismatch',
+                    details: { selector: target.selector, hint: target.a11yHint, candidate: described.data },
+                },
+            };
+        }
+        const visible = await binding.traceTools['trace.locator.waitForVisible']({
+            selector: target.selector,
+            timeout,
+        });
+        if (!visible.ok) {
+            return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
+        }
+        const scrolled = await binding.traceTools['trace.locator.scrollIntoView']({
+            selector: target.selector,
+        });
+        if (!scrolled.ok) {
+            return { stepId: step.id, ok: false, error: mapTraceError(scrolled.error) };
+        }
+        const count = options?.double ? 2 : 1;
+        for (let i = 0; i < count; i += 1) {
+            const click = await binding.traceTools['trace.locator.click']({
+                selector: target.selector,
+                timeout,
+                button: options?.button,
+            });
+            if (!click.ok) {
+                return { stepId: step.id, ok: false, error: mapTraceError(click.error) };
+            }
+            if (deps.config.humanPolicy.enabled) {
+                const delayMs = pickDelayMs(
+                    deps.config.humanPolicy.clickDelayMsRange.min,
+                    deps.config.humanPolicy.clickDelayMsRange.max,
+                );
+                if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+            }
+        }
+        return { stepId: step.id, ok: true };
+    }
     const resolved = await resolveTargetNodeId(binding, target);
     if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
 

@@ -1,13 +1,11 @@
 /**
- * replay：将录制事件转换为 Step 序列，并通过 runSteps 执行。
+ * replay：执行录制产出的 Step 序列。
  *
  * 设计说明：
  * - 回放不再直接调用旧 execute/action，而是走统一 Step 模型
- * - v0 仅支持带 a11yNodeId 的事件，缺失则跳过并继续回放
+ * - 当前录制已统一为 Step 序列
  */
 
-import crypto from 'crypto';
-import type { RecordedEvent } from '../record/recorder';
 import type { RunStepsResult } from '../runner/steps/types';
 import type { RunStepsRequest, StepUnion } from '../runner/steps/types';
 import type { RunStepsDeps } from '../runner/run_steps';
@@ -21,71 +19,22 @@ export type ReplayOptions = {
 
 type ReplayRequest = {
     workspaceId: string;
-    events: RecordedEvent[];
+    steps: StepUnion[];
     stopOnError: boolean;
     deps?: RunStepsDeps;
 };
 
 type ReplayResult = RunStepsResult & { error?: { code: string; message: string; details?: unknown } };
 
-const buildStepsFromEvents = (events: RecordedEvent[]) => {
-    const steps: StepUnion[] = [];
-    const unsupported: RecordedEvent[] = [];
-
-    for (const event of events) {
-        if (event.type === 'navigate' && event.url) {
-            steps.push({
-                id: crypto.randomUUID(),
-                name: 'browser.goto',
-                args: { url: event.url },
-                meta: { source: 'play', ts: event.ts },
-            });
-            continue;
-        }
-        if (event.type === 'click' && event.a11yNodeId) {
-            console.log('Adding click step for a11yNodeId:', event.a11yNodeId);
-            steps.push({
-                id: crypto.randomUUID(),
-                name: 'browser.click',
-                args: { a11yNodeId: event.a11yNodeId },
-                meta: { source: 'play', ts: event.ts },
-            });
-            continue;
-        }
-        if (event.type === 'input' && event.a11yNodeId && typeof event.value === 'string') {
-            steps.push({
-                id: crypto.randomUUID(),
-                name: 'browser.fill',
-                args: { a11yNodeId: event.a11yNodeId, value: event.value },
-                meta: { source: 'play', ts: event.ts },
-            });
-            continue;
-        }
-        unsupported.push(event);
-    }
-
-    return { steps, unsupported };
-};
-
 /**
- * replayRecording：将 events 转为 Step 并执行。
- * 若事件缺少 a11yNodeId，则跳过并继续回放（保持可用）。
+ * replayRecording：执行已录制的 Step 列表。
  */
 export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult> => {
-    const { steps, unsupported } = buildStepsFromEvents(req.events);
-    const warning =
-        unsupported.length > 0
-            ? {
-                  code: 'WARN_UNSUPPORTED_EVENTS',
-                  message: 'unsupported recorded events skipped',
-                  details: unsupported.map((event) => ({ type: event.type, ts: event.ts })),
-              }
-            : undefined;
     const runReq: RunStepsRequest = {
         workspaceId: req.workspaceId,
-        steps,
+        steps: req.steps,
         options: { stopOnError: req.stopOnError },
     };
     const result = await runSteps(runReq, req.deps);
-    return warning ? { ...result, error: warning } : result;
+    return result;
 };
