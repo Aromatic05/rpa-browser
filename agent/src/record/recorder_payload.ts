@@ -193,13 +193,32 @@ export const RECORDER_SOURCE = String.raw`(function () {
 
   var emit = function (payload) {
     var tabToken = getToken();
-    if (!tabToken) return;
+    if (!tabToken) {
+      try { console.warn('[recorder] missing tabToken', { url: location.href, payload: payload && payload.type }); } catch {}
+      return;
+    }
     window.__rpa_record({
       tabToken: tabToken,
       ts: Date.now(),
       url: location.href,
       ...payload
     });
+  };
+
+  var debugTarget = function (label, target, reason) {
+    try {
+      var info = {
+        label: label,
+        reason: reason,
+        url: location.href,
+        tag: target && target.tagName ? target.tagName.toLowerCase() : undefined,
+        id: target && target.getAttribute ? target.getAttribute('id') : undefined,
+        className: target && target.className ? String(target.className) : undefined,
+        role: target && target.getAttribute ? target.getAttribute('role') : undefined,
+        name: target ? (getLabelText(target) || normalizeText(target.innerText || target.textContent || '')) : undefined
+      };
+      console.warn('[recorder] click capture skipped', info);
+    } catch {}
   };
 
   var isPassword = function (el) {
@@ -253,7 +272,10 @@ export const RECORDER_SOURCE = String.raw`(function () {
     var fallback = target.closest && target.closest('button, a, input, select, textarea, [role]');
     if (fallback) {
       var fallbackSelector = selectorFor(fallback);
-      if (!fallbackSelector) return;
+      if (!fallbackSelector) {
+        debugTarget('pointerdown', fallback, 'fallback selector missing');
+        return;
+      }
       markPointer(fallback);
       emit({
         type: 'click',
@@ -286,9 +308,15 @@ export const RECORDER_SOURCE = String.raw`(function () {
       return;
     }
     var fallback = target.closest && target.closest('button, a, input, select, textarea, [role]');
-    if (!fallback) return;
+    if (!fallback) {
+      debugTarget('click', target, 'no selector and no fallback');
+      return;
+    }
     var fallbackSelector = selectorFor(fallback);
-    if (!fallbackSelector) return;
+    if (!fallbackSelector) {
+      debugTarget('click', fallback, 'fallback selector missing');
+      return;
+    }
     emit({
       type: 'click',
       selector: fallbackSelector,
