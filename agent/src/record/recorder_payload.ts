@@ -256,7 +256,7 @@ export const RECORDER_SOURCE = String.raw`(function () {
     return false;
   };
 
-  document.addEventListener('pointerdown', function (event) {
+  var handlePointerdown = function (event) {
     if (event.button !== 0) return;
     var path = event.composedPath ? event.composedPath() : null;
     var target = (path && path[0]) || event.target;
@@ -306,9 +306,11 @@ export const RECORDER_SOURCE = String.raw`(function () {
         debugTarget('pointerdown', fallback, 'fallback selector missing');
       }
     }
-  }, true);
+  };
+  document.addEventListener('pointerdown', handlePointerdown, true);
+  window.addEventListener('pointerdown', handlePointerdown, true);
 
-  document.addEventListener('click', function (event) {
+  var handleClick = function (event) {
     var path = event.composedPath ? event.composedPath() : null;
     var target = (path && path[0]) || event.target;
     if (target && target.nodeType === 3) target = target.parentElement;
@@ -357,7 +359,9 @@ export const RECORDER_SOURCE = String.raw`(function () {
       return;
     }
     debugTarget('click', fallback, 'fallback selector missing');
-  }, true);
+  };
+  document.addEventListener('click', handleClick, true);
+  window.addEventListener('click', handleClick, true);
 
   document.addEventListener('input', function (event) {
     var target = (event.composedPath && event.composedPath()[0]) || event.target;
