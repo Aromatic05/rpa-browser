@@ -43,7 +43,10 @@ const normalizeText = (value?: string) =>
 
 export const matchesA11yHint = (candidate: A11yLike, hint?: A11yHint) => {
     if (!hint) return true;
-    if (hint.role && normalizeText(candidate.role) !== normalizeText(hint.role)) return false;
+    const candidateRole = normalizeText(candidate.role);
+    const hintRole = normalizeText(hint.role);
+    if (hintRole && hintRole === 'combobox' && candidateRole === 'combobox') return true;
+    if (hint.role && candidateRole !== hintRole) return false;
     if (hint.name) {
         const nodeName = normalizeText(candidate.name || candidate.text);
         if (!nodeName.includes(normalizeText(hint.name))) return false;
