@@ -32,8 +32,8 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return makeOk({ pageUrl: ctx.page.url() });
     },
     'record.get': async (ctx, _action) => {
-        const events = getRecording(ctx.recordingState, ctx.tabToken);
-        return makeOk({ events });
+        const steps = getRecording(ctx.recordingState, ctx.tabToken);
+        return makeOk({ steps });
     },
     'record.clear': async (ctx, _action) => {
         clearRecording(ctx.recordingState, ctx.tabToken);
@@ -58,10 +58,10 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             return makeErr(
                 ERROR_CODES.ERR_ASSERTION_FAILED,
                 response.error?.message || 'replay failed',
-                response.error?.details,
+                { results: response.results, error: response.error },
             );
         }
-        return makeOk(response.results);
+        return makeOk({ results: response.results });
     },
     'record.event': async (ctx, action) => {
         const step = action.payload as StepUnion | undefined;
