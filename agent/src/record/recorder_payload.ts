@@ -236,15 +236,30 @@ export const RECORDER_SOURCE = String.raw`(function () {
     return type === 'checkbox' || type === 'radio';
   };
 
-  var lastPointer = { ts: 0, target: null };
-  var markPointer = function (target) {
-    lastPointer.ts = Date.now();
-    lastPointer.target = target || null;
+  var findCheckboxInput = function (target) {
+    if (!target || !(target instanceof Element)) return null;
+    if (target instanceof HTMLInputElement) {
+      var type = (target.type || '').toLowerCase();
+      if (type === 'checkbox' || type === 'radio') return target;
+    }
+    var label = target.closest && target.closest('label');
+    if (label) {
+      var input = label.querySelector('input[type="checkbox"], input[type="radio"]');
+      if (input) return input;
+    }
+    var roleHost = target.closest && target.closest('[role="checkbox"], [role="radio"]');
+    if (roleHost) {
+      var roleInput = roleHost.querySelector('input[type="checkbox"], input[type="radio"]');
+      if (roleInput) return roleInput;
+    }
+    return null;
   };
-  var shouldSkipClick = function (target) {
-    if (!target) return false;
-    if (lastPointer.target !== target) return false;
-    return Date.now() - lastPointer.ts < 350;
+
+  var isEventHandled = function (event) {
+    if (!event) return false;
+    if (event.__rpaRecorderHandled) return true;
+    event.__rpaRecorderHandled = true;
+    return false;
   };
 
   var inPanel = function (path) {
@@ -258,66 +273,27 @@ export const RECORDER_SOURCE = String.raw`(function () {
 
   var handlePointerdown = function (event) {
     if (event.button !== 0) return;
+    if (isEventHandled(event)) return;
     var path = event.composedPath ? event.composedPath() : null;
     var target = (path && path[0]) || event.target;
     if (target && target.nodeType === 3) target = target.parentElement;
     if (!(target instanceof Element)) return;
     if (inPanel(path) || (target.closest && target.closest('#rpa-floating-panel'))) return;
     if (isCheckboxOrRadio(target) || target.closest('label input[type="checkbox"], label input[type="radio"]')) return;
-    var selector = selectorFor(target);
-    if (selector) {
-      markPointer(target);
-      emit({
-        type: 'click',
-        selector: selector,
-        targetHint: target.tagName.toLowerCase(),
-        a11yHint: buildA11yHint(target),
-        locatorCandidates: buildCandidates(target),
-        scopeHint: getScopeHint(target)
-      });
-      return;
-    }
-    var fallback = target.closest && target.closest('button, a, input, select, textarea, [role]');
-    if (fallback) {
-      var fallbackSelector = selectorFor(fallback);
-      if (fallbackSelector) {
-        markPointer(fallback);
-        emit({
-          type: 'click',
-          selector: fallbackSelector,
-          targetHint: fallback.tagName.toLowerCase(),
-          a11yHint: buildA11yHint(fallback),
-          locatorCandidates: buildCandidates(fallback),
-          scopeHint: getScopeHint(fallback)
-        });
-        return;
-      }
-      var hintOnly = buildA11yHint(fallback);
-      if (hintOnly && (hintOnly.role || hintOnly.name || hintOnly.text)) {
-        markPointer(fallback);
-        emit({
-          type: 'click',
-          targetHint: fallback.tagName.toLowerCase(),
-          a11yHint: hintOnly,
-          locatorCandidates: buildCandidates(fallback),
-          scopeHint: getScopeHint(fallback)
-        });
-      } else {
-        debugTarget('pointerdown', fallback, 'fallback selector missing');
-      }
-    }
+    // pointerdown is only used for internal bookkeeping now
   };
   document.addEventListener('pointerdown', handlePointerdown, true);
   window.addEventListener('pointerdown', handlePointerdown, true);
 
   var handleClick = function (event) {
+    if (isEventHandled(event)) return;
     var path = event.composedPath ? event.composedPath() : null;
     var target = (path && path[0]) || event.target;
     if (target && target.nodeType === 3) target = target.parentElement;
     if (!(target instanceof Element)) return;
     if (inPanel(path) || (target.closest && target.closest('#rpa-floating-panel'))) return;
-    if (shouldSkipClick(target)) return;
-    if (isCheckboxOrRadio(target) || target.closest('label input[type=\"checkbox\"], label input[type=\"radio\"]')) return;
+    var checkboxInput = findCheckboxInput(target);
+    if (checkboxInput) return;
     var selector = selectorFor(target);
     if (selector) {
       emit({
