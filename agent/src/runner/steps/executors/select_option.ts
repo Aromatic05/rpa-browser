@@ -1,6 +1,8 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { normalizeTarget, mapTraceError } from '../helpers/target';
+import { normalizeTarget, mapTraceError, matchesA11yHint } from '../helpers/target';
+import { scoreA11yConfidence } from '../helpers/confidence';
+import { describeSelector } from '../helpers/selector';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 
 const pickDelayMs = (min: number, max: number) => {
@@ -26,6 +28,53 @@ export const executeBrowserSelectOption = async (
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const target = normalizeTarget(step.args);
+    if (target?.selector) {
+        const described = await describeSelector(binding.page, target.selector);
+        if (!described.ok) {
+            return { stepId: step.id, ok: false, error: mapTraceError(described.error) };
+        }
+        if (!matchesA11yHint(described.data, target.a11yHint)) {
+            const confidence = scoreA11yConfidence(
+                described.data,
+                target.a11yHint,
+                deps.config.confidencePolicy,
+                true,
+            );
+            if (!confidence.ok) {
+                return {
+                    stepId: step.id,
+                    ok: false,
+                    error: {
+                        code: 'ERR_NOT_FOUND',
+                        message: 'selector matched element but a11y hint mismatch',
+                        details: {
+                            selector: target.selector,
+                            hint: target.a11yHint,
+                            candidate: described.data,
+                            confidence: confidence.details,
+                        },
+                    },
+                };
+            }
+        }
+        const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+        const select = await binding.traceTools['trace.locator.selectOption']({
+            selector: target.selector,
+            values: step.args.values,
+            timeout,
+        });
+        if (!select.ok) {
+            return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
+        }
+        if (deps.config.humanPolicy.enabled) {
+            const delayMs = pickDelayMs(
+                deps.config.humanPolicy.typeDelayMsRange.min,
+                deps.config.humanPolicy.typeDelayMsRange.max,
+            );
+            if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+        }
+        return { stepId: step.id, ok: true };
+    }
     const resolved = await resolveTargetNodeId(binding, target);
     if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
 

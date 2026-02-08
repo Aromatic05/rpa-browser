@@ -1,6 +1,7 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError, matchesA11yHint } from '../helpers/target';
+import { scoreA11yConfidence } from '../helpers/confidence';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 import { describeSelector } from '../helpers/selector';
 
@@ -33,16 +34,29 @@ export const executeBrowserFill = async (
             return { stepId: step.id, ok: false, error: described.error };
         }
         if (!matchesA11yHint(described.data, target.a11yHint)) {
-            // TODO: fallback to fuzzy a11y search when selector exists but hint mismatches.
-            return {
-                stepId: step.id,
-                ok: false,
-                error: {
-                    code: 'ERR_NOT_FOUND',
-                    message: 'selector matched element but a11y hint mismatch',
-                    details: { selector: target.selector, hint: target.a11yHint, candidate: described.data },
-                },
-            };
+            const confidence = scoreA11yConfidence(
+                described.data,
+                target.a11yHint,
+                deps.config.confidencePolicy,
+                true,
+            );
+            if (!confidence.ok) {
+                // TODO: fallback to fuzzy a11y search when selector exists but hint mismatches.
+                return {
+                    stepId: step.id,
+                    ok: false,
+                    error: {
+                        code: 'ERR_NOT_FOUND',
+                        message: 'selector matched element but a11y hint mismatch',
+                        details: {
+                            selector: target.selector,
+                            hint: target.a11yHint,
+                            candidate: described.data,
+                            confidence: confidence.details,
+                        },
+                    },
+                };
+            }
         }
         const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
         const visible = await binding.traceTools['trace.locator.waitForVisible']({
