@@ -13,10 +13,10 @@ import type { Page } from 'playwright';
 import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
 import type { A11yHint } from '../runner/steps/types';
 import { RECORDER_SOURCE } from './recorder_payload';
-import { getLogger } from '../logging/logger';
 
 const installedPages = new WeakSet<Page>();
-const bindingName = '__rpa_record';
+const bindingName = `__rpa_record__${Math.random().toString(36).slice(2, 8)}`;
+const recorderSource = RECORDER_SOURCE.replace(/__rpa_record\b/g, bindingName);
 
 export type RecordedEventType =
     | 'click'
@@ -59,20 +59,9 @@ export type RecorderEvent = {
 export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent) => void) => {
     if (installedPages.has(page)) return;
     installedPages.add(page);
-    const recordLog = getLogger('record');
-    let eventCount = 0;
 
     try {
         await page.exposeBinding(bindingName, (source, event: RecorderEvent) => {
-            eventCount += 1;
-            if (eventCount <= 1) {
-                recordLog('recorder.event', {
-                    tabToken: event.tabToken,
-                    type: event.type,
-                    url: event.url || event.pageUrl,
-                    frameUrl: source.frame?.url?.() || null,
-                });
-            }
             onEvent({
                 ...event,
                 pageUrl: source.page?.url?.() || null,
@@ -82,28 +71,12 @@ export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent
         // ignore if binding already exists
     }
 
-    await page.addInitScript({ content: RECORDER_SOURCE });
-    const frames = page.frames();
-    for (const frame of frames) {
+    await page.addInitScript({ content: recorderSource });
+    for (const frame of page.frames()) {
         try {
-            await frame.evaluate(RECORDER_SOURCE);
+            await frame.evaluate(recorderSource);
         } catch {
             // ignore if frame is not ready or cross-origin
         }
-    }
-    try {
-        const status = await Promise.all(
-            frames.map(async (frame) => {
-                try {
-                    const installed = await frame.evaluate(() => Boolean((window as any).__rpa_recorder_installed));
-                    return { url: frame.url(), installed };
-                } catch {
-                    return { url: frame.url(), installed: null };
-                }
-            }),
-        );
-        recordLog('recorder.install', { frames: status });
-    } catch {
-        // ignore diagnostics failures
     }
 };
