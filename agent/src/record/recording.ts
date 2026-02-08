@@ -139,25 +139,32 @@ export const recordEvent = (
 ) => {
     const recordLog = getLogger('record');
     const tabToken = event.tabToken;
-    if (!tabToken || !state.recordingEnabled.has(tabToken)) return;
+    let effectiveToken = tabToken;
+    if (!effectiveToken || !state.recordingEnabled.has(effectiveToken)) {
+        if (state.recordingEnabled.size === 1) {
+            effectiveToken = Array.from(state.recordingEnabled)[0];
+        } else {
+            return;
+        }
+    }
     if (state.replaying.has(tabToken)) return;
 
     if (event.type === 'click') {
-        state.lastClickTs.set(tabToken, event.ts);
+        state.lastClickTs.set(effectiveToken, event.ts);
     }
 
     if (event.type === 'navigate') {
-        const last = state.lastNavigateTs.get(tabToken) || 0;
+        const last = state.lastNavigateTs.get(effectiveToken) || 0;
         if (event.ts - last < navDedupeWindowMs) {
             return;
         }
-        state.lastNavigateTs.set(tabToken, event.ts);
+        state.lastNavigateTs.set(effectiveToken, event.ts);
     }
 
     if (event.type === 'scroll' && typeof event.scrollY === 'number') {
-        const last = state.lastScrollY.get(tabToken) ?? 0;
+        const last = state.lastScrollY.get(effectiveToken) ?? 0;
         const delta = event.scrollY - last;
-        state.lastScrollY.set(tabToken, event.scrollY);
+        state.lastScrollY.set(effectiveToken, event.scrollY);
         event.scrollY = delta;
     }
 
@@ -175,12 +182,12 @@ export const recordEvent = (
     const step = toStep(event);
     if (!step) return;
 
-    const list = state.recordings.get(tabToken) || [];
+    const list = state.recordings.get(effectiveToken) || [];
     list.push(step);
-    state.recordings.set(tabToken, list);
+    state.recordings.set(effectiveToken, list);
     recordLog('event', {
         type: step.name,
-        tabToken,
+        tabToken: effectiveToken,
         ts: event.ts,
     });
 };
