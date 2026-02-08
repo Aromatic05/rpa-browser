@@ -53,42 +53,42 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
     if (event.type === 'navigate' && event.url) {
         return createStep('browser.goto', { url: event.url }, event.ts);
     }
-    if (event.type === 'click' && event.selector) {
+    if (event.type === 'click' && (event.selector || event.a11yHint)) {
         return createStep(
             'browser.click',
             { target: { selector: event.selector, a11yHint: event.a11yHint } },
             event.ts,
         );
     }
-    if (event.type === 'input' && event.selector && typeof event.value === 'string') {
+    if (event.type === 'input' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.fill',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
             event.ts,
         );
     }
-    if (event.type === 'change' && event.selector && typeof event.value === 'string') {
+    if (event.type === 'change' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.fill',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
             event.ts,
         );
     }
-    if (event.type === 'date' && event.selector && typeof event.value === 'string') {
+    if (event.type === 'date' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.fill',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
             event.ts,
         );
     }
-    if (event.type === 'select' && event.selector && typeof event.value === 'string') {
+    if (event.type === 'select' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.select_option',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, values: [event.value] },
             event.ts,
         );
     }
-    if (event.type === 'check' && event.selector) {
+    if (event.type === 'check' && (event.selector || event.a11yHint)) {
         // TODO: ensure checked state matches (recorded checked flag is not enforced).
         return createStep(
             'browser.click',

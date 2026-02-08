@@ -49,9 +49,6 @@ export const RECORDER_SOURCE = String.raw`(function () {
 
   var selectorFor = function (el) {
     if (!el || !el.tagName) return null;
-    try {
-      if (!document.contains(el)) return null;
-    } catch {}
     var dataAttrs = ['data-testid', 'data-test', 'data-qa'];
     for (var i = 0; i < dataAttrs.length; i += 1) {
       var attr = dataAttrs[i];
@@ -250,12 +247,22 @@ export const RECORDER_SOURCE = String.raw`(function () {
     return Date.now() - lastPointer.ts < 350;
   };
 
+  var inPanel = function (path) {
+    if (!path) return false;
+    for (var i = 0; i < path.length; i += 1) {
+      var node = path[i];
+      if (node && node.id === 'rpa-floating-panel') return true;
+    }
+    return false;
+  };
+
   document.addEventListener('pointerdown', function (event) {
     if (event.button !== 0) return;
-    var target = (event.composedPath && event.composedPath()[0]) || event.target;
+    var path = event.composedPath ? event.composedPath() : null;
+    var target = (path && path[0]) || event.target;
     if (target && target.nodeType === 3) target = target.parentElement;
     if (!(target instanceof Element)) return;
-    if (target.closest && target.closest('#rpa-floating-panel')) return;
+    if (inPanel(path) || (target.closest && target.closest('#rpa-floating-panel'))) return;
     if (isCheckboxOrRadio(target) || target.closest('label input[type="checkbox"], label input[type="radio"]')) return;
     var selector = selectorFor(target);
     if (selector) {
@@ -273,27 +280,40 @@ export const RECORDER_SOURCE = String.raw`(function () {
     var fallback = target.closest && target.closest('button, a, input, select, textarea, [role]');
     if (fallback) {
       var fallbackSelector = selectorFor(fallback);
-      if (!fallbackSelector) {
-        debugTarget('pointerdown', fallback, 'fallback selector missing');
+      if (fallbackSelector) {
+        markPointer(fallback);
+        emit({
+          type: 'click',
+          selector: fallbackSelector,
+          targetHint: fallback.tagName.toLowerCase(),
+          a11yHint: buildA11yHint(fallback),
+          locatorCandidates: buildCandidates(fallback),
+          scopeHint: getScopeHint(fallback)
+        });
         return;
       }
-      markPointer(fallback);
-      emit({
-        type: 'click',
-        selector: fallbackSelector,
-        targetHint: fallback.tagName.toLowerCase(),
-        a11yHint: buildA11yHint(fallback),
-        locatorCandidates: buildCandidates(fallback),
-        scopeHint: getScopeHint(fallback)
-      });
+      var hintOnly = buildA11yHint(fallback);
+      if (hintOnly && (hintOnly.role || hintOnly.name || hintOnly.text)) {
+        markPointer(fallback);
+        emit({
+          type: 'click',
+          targetHint: fallback.tagName.toLowerCase(),
+          a11yHint: hintOnly,
+          locatorCandidates: buildCandidates(fallback),
+          scopeHint: getScopeHint(fallback)
+        });
+      } else {
+        debugTarget('pointerdown', fallback, 'fallback selector missing');
+      }
     }
   }, true);
 
   document.addEventListener('click', function (event) {
-    var target = (event.composedPath && event.composedPath()[0]) || event.target;
+    var path = event.composedPath ? event.composedPath() : null;
+    var target = (path && path[0]) || event.target;
     if (target && target.nodeType === 3) target = target.parentElement;
     if (!(target instanceof Element)) return;
-    if (target.closest && target.closest('#rpa-floating-panel')) return;
+    if (inPanel(path) || (target.closest && target.closest('#rpa-floating-panel'))) return;
     if (shouldSkipClick(target)) return;
     if (isCheckboxOrRadio(target) || target.closest('label input[type=\"checkbox\"], label input[type=\"radio\"]')) return;
     var selector = selectorFor(target);
@@ -314,18 +334,29 @@ export const RECORDER_SOURCE = String.raw`(function () {
       return;
     }
     var fallbackSelector = selectorFor(fallback);
-    if (!fallbackSelector) {
-      debugTarget('click', fallback, 'fallback selector missing');
+    if (fallbackSelector) {
+      emit({
+        type: 'click',
+        selector: fallbackSelector,
+        targetHint: fallback.tagName.toLowerCase(),
+        a11yHint: buildA11yHint(fallback),
+        locatorCandidates: buildCandidates(fallback),
+        scopeHint: getScopeHint(fallback)
+      });
       return;
     }
-    emit({
-      type: 'click',
-      selector: fallbackSelector,
-      targetHint: fallback.tagName.toLowerCase(),
-      a11yHint: buildA11yHint(fallback),
-      locatorCandidates: buildCandidates(fallback),
-      scopeHint: getScopeHint(fallback)
-    });
+    var hintOnly = buildA11yHint(fallback);
+    if (hintOnly && (hintOnly.role || hintOnly.name || hintOnly.text)) {
+      emit({
+        type: 'click',
+        targetHint: fallback.tagName.toLowerCase(),
+        a11yHint: hintOnly,
+        locatorCandidates: buildCandidates(fallback),
+        scopeHint: getScopeHint(fallback)
+      });
+      return;
+    }
+    debugTarget('click', fallback, 'fallback selector missing');
   }, true);
 
   document.addEventListener('input', function (event) {
