@@ -9,6 +9,7 @@
 export const RECORDER_SOURCE = String.raw`(function () {
   if (window.__rpa_recorder_installed) return;
   window.__rpa_recorder_installed = true;
+  try { console.warn('[recorder] installed', location.href); } catch {}
 
   var tokenKey = '__rpa_tab_token';
   var specialKeys = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
