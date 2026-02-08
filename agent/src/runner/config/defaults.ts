@@ -41,4 +41,12 @@ export const defaultRunnerConfig: RunnerConfig = {
         stepLogLevel: 'info',
         screenshotOnError: false,
     },
+    confidencePolicy: {
+        enabled: true,
+        minScore: 0.6,
+        roleWeight: 0.5,
+        nameWeight: 0.25,
+        textWeight: 0.15,
+        selectorBonus: 0.15,
+    },
 };

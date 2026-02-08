@@ -75,9 +75,25 @@ export type Observability = {
     screenshotOnError: boolean;
 };
 
+export type ConfidencePolicy = {
+    /** 是否启用置信度判定 */
+    enabled: boolean;
+    /** 置信度阈值（0-1） */
+    minScore: number;
+    /** role 匹配权重 */
+    roleWeight: number;
+    /** name 匹配权重 */
+    nameWeight: number;
+    /** text 匹配权重 */
+    textWeight: number;
+    /** selector 命中加分 */
+    selectorBonus: number;
+};
+
 export type RunnerConfig = {
     waitPolicy: WaitPolicy;
     retryPolicy: RetryPolicy;
     humanPolicy: HumanPolicy;
     observability: Observability;
+    confidencePolicy: ConfidencePolicy;
 };

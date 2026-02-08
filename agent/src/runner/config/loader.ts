@@ -81,6 +81,12 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['observability', 'recordConsoleEnabled'], envBool('RUNNER_RECORD_CONSOLE_ENABLED'));
     set(['observability', 'recordFileEnabled'], envBool('RUNNER_RECORD_FILE_ENABLED'));
     set(['observability', 'recordFilePath'], process.env.RUNNER_RECORD_FILE_PATH);
+    set(['confidencePolicy', 'enabled'], envBool('RUNNER_CONFIDENCE_ENABLED'));
+    set(['confidencePolicy', 'minScore'], envNumber('RUNNER_CONFIDENCE_MIN_SCORE'));
+    set(['confidencePolicy', 'roleWeight'], envNumber('RUNNER_CONFIDENCE_ROLE_WEIGHT'));
+    set(['confidencePolicy', 'nameWeight'], envNumber('RUNNER_CONFIDENCE_NAME_WEIGHT'));
+    set(['confidencePolicy', 'textWeight'], envNumber('RUNNER_CONFIDENCE_TEXT_WEIGHT'));
+    set(['confidencePolicy', 'selectorBonus'], envNumber('RUNNER_CONFIDENCE_SELECTOR_BONUS'));
 
     return mergeDeep(config, patch);
 };
