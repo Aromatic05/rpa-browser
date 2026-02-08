@@ -268,9 +268,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
         const context = await options.getContext();
         page = await context.newPage();
-        const initContent = `sessionStorage.setItem(${JSON.stringify(
-            options.tabTokenKey,
-        )}, ${JSON.stringify(tabToken)});`;
+        const initContent = `
+            try { sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)}); } catch {}
+            try { window.__rpa_tab_token = ${JSON.stringify(tabToken)}; window.__TAB_TOKEN__ = ${JSON.stringify(tabToken)}; } catch {}
+        `;
         await page.addInitScript({ content: initContent });
 
         if (urlHint) {
@@ -319,7 +320,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         const page = await context.newPage();
         const tabToken = randomId();
         await page.addInitScript({
-            content: `sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)});`,
+            content: `
+                try { sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)}); } catch {}
+                try { window.__rpa_tab_token = ${JSON.stringify(tabToken)}; window.__TAB_TOKEN__ = ${JSON.stringify(tabToken)}; } catch {}
+            `,
         });
         await ensureTokenOnPage(page, tabToken);
         const result = createWorkspaceInternal(tabToken, page);
@@ -360,7 +364,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         const page = await context.newPage();
         const tabToken = randomId();
         await page.addInitScript({
-            content: `sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)});`,
+            content: `
+                try { sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)}); } catch {}
+                try { window.__rpa_tab_token = ${JSON.stringify(tabToken)}; window.__TAB_TOKEN__ = ${JSON.stringify(tabToken)}; } catch {}
+            `,
         });
         await ensureTokenOnPage(page, tabToken);
         const tabId = randomId();
