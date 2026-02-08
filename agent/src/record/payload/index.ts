@@ -8,6 +8,7 @@ if (!global.__rpa_recorder_installed) {
         console.warn('[recorder] installed', location.href);
     } catch {}
     const bindingName = global.__rpa_recorder_binding || '__rpa_record';
-    const { emit, debugTarget } = createEmitter(bindingName);
+    const recorderVersion = 'payload-v2';
+    const { emit, debugTarget } = createEmitter(bindingName, recorderVersion);
     installHandlers(emit, debugTarget);
 }

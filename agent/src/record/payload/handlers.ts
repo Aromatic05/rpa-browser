@@ -12,9 +12,11 @@ import {
 
 const specialKeys = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
-const isEventHandled = (event: Event & { __rpaRecorderHandled?: boolean }) => {
-    if (event.__rpaRecorderHandled) return true;
-    event.__rpaRecorderHandled = true;
+const handledEvents = new WeakSet<Event>();
+
+const markEventHandled = (event: Event) => {
+    if (handledEvents.has(event)) return true;
+    handledEvents.add(event);
     return false;
 };
 
@@ -27,8 +29,8 @@ const inPanel = (path: EventTarget[] | null) => {
 };
 
 export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
-    const handleClick = (event: MouseEvent & { __rpaRecorderHandled?: boolean }) => {
-        if (isEventHandled(event)) return;
+    const handleClick = (event: MouseEvent) => {
+        if (markEventHandled(event)) return;
         const path = event.composedPath ? event.composedPath() : null;
         let target = (path && path[0]) || event.target;
         if (target && (target as Node).nodeType === 3) target = (target as Node).parentElement;
@@ -38,21 +40,22 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
         if (isCheckboxOrRadio(element) || element.closest('label input[type="checkbox"], label input[type="radio"]')) return;
         const checkboxInput = findCheckboxInput(element);
         if (checkboxInput) return;
-        const selector = selectorFor(element);
+        const interactive = element.closest('button, a, input, select, textarea, [role]') || element;
+        const selector = selectorFor(interactive);
         if (selector) {
             emit({
                 type: 'click',
                 selector,
-                targetHint: element.tagName.toLowerCase(),
-                a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
-                scopeHint: getScopeHint(element),
+                targetHint: interactive.tagName.toLowerCase(),
+                a11yHint: buildA11yHint(interactive),
+                locatorCandidates: buildCandidates(interactive),
+                scopeHint: getScopeHint(interactive),
             });
             return;
         }
-        const fallback = element.closest && element.closest('button, a, input, select, textarea, [role]');
+        const fallback = interactive.closest && interactive.closest('button, a, input, select, textarea, [role]');
         if (!fallback) {
-            debugTarget('click', element, 'no selector and no fallback');
+            debugTarget('click', interactive, 'no selector and no fallback');
             return;
         }
         const fallbackSelector = selectorFor(fallback);
@@ -82,7 +85,6 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
     };
 
     document.addEventListener('click', handleClick, true);
-    window.addEventListener('click', handleClick, true);
 
     document.addEventListener(
         'input',
@@ -230,12 +232,21 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
     );
 
     let scrollTimer: number | null = null;
+    let scrolling = false;
+    const emitScroll = () => {
+        emit({ type: 'scroll', scrollX: window.scrollX, scrollY: window.scrollY });
+    };
     const onScroll = () => {
+        if (!scrolling) {
+            scrolling = true;
+            emitScroll();
+        }
         if (scrollTimer) clearTimeout(scrollTimer);
         scrollTimer = window.setTimeout(() => {
             scrollTimer = null;
-            emit({ type: 'scroll', scrollX: window.scrollX, scrollY: window.scrollY });
-        }, 200);
+            scrolling = false;
+            emitScroll();
+        }, 300);
     };
     window.addEventListener('scroll', onScroll, { capture: true, passive: true });
 };

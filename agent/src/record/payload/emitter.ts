@@ -20,26 +20,10 @@ const getToken = () => {
         const fromWindow = (window as any).__rpa_tab_token || (window as any).__TAB_TOKEN__;
         if (fromWindow) return fromWindow;
     } catch {}
-    try {
-        if (window.top && window.top !== window) {
-            const fromTop = window.top.sessionStorage && window.top.sessionStorage.getItem(tokenKey);
-            if (fromTop) return fromTop;
-            const fromTopWin = (window.top as any).__rpa_tab_token || (window.top as any).__TAB_TOKEN__;
-            if (fromTopWin) return fromTopWin;
-        }
-    } catch {}
-    try {
-        if (window.parent && window.parent !== window) {
-            const fromParent = window.parent.sessionStorage && window.parent.sessionStorage.getItem(tokenKey);
-            if (fromParent) return fromParent;
-            const fromParentWin = (window.parent as any).__rpa_tab_token || (window.parent as any).__TAB_TOKEN__;
-            if (fromParentWin) return fromParentWin;
-        }
-    } catch {}
     return null;
 };
 
-export const createEmitter = (bindingName: string) => {
+export const createEmitter = (bindingName: string, version: string) => {
     const emit: EmitFn = (payload) => {
         const tabToken = getToken();
         if (!tabToken) {
@@ -51,6 +35,7 @@ export const createEmitter = (bindingName: string) => {
         const bridge = (window as any)[bindingName];
         if (!bridge) return;
         bridge({
+            recorderVersion: version,
             tabToken,
             ts: Date.now(),
             url: location.href,

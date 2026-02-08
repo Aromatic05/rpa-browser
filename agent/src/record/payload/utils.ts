@@ -14,6 +14,15 @@ export const safeEscape = (value: string) => {
     return value.replace(/[^a-zA-Z0-9_-]/g, '');
 };
 
+const isStableClass = (value: string) => {
+    const clean = value.trim();
+    if (!clean) return false;
+    if (clean.length > 24) return false;
+    if (/\d{4,}/.test(clean)) return false;
+    if (/[A-Za-z]/.test(clean) && /\d/.test(clean) && clean.length >= 12) return false;
+    return true;
+};
+
 export const selectorFor = (el: Element | null) => {
     if (!el || !('tagName' in el)) return null;
     const dataAttrs = ['data-testid', 'data-test', 'data-qa'];
@@ -28,7 +37,10 @@ export const selectorFor = (el: Element | null) => {
     while (node && node.nodeType === 1 && depth < 7) {
         const tag = node.tagName.toLowerCase();
         let part = tag;
-        const classList = Array.from((node as HTMLElement).classList || []).slice(0, 2).map(safeEscape);
+        const classList = Array.from((node as HTMLElement).classList || [])
+            .filter(isStableClass)
+            .slice(0, 2)
+            .map(safeEscape);
         if (classList.length) {
             part += `.${classList.join('.')}`;
         }
