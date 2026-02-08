@@ -16,3 +16,5 @@ agent/playwright-report
 agent/.rpa
 agent/.artifacts
 agent/.runner-dist
+agent/src/record/payload.bundle.js
+agent/src/record/payload.bundle.js.map
