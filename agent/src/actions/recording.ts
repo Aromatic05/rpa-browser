@@ -14,7 +14,6 @@ import {
     beginReplay,
     endReplay,
     cancelReplay,
-    recordEvent,
     recordStep,
 } from '../record/recording';
 import { runSteps } from '../runner/run_steps';

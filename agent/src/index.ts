@@ -5,7 +5,7 @@ import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { executeAction, type ActionContext } from './actions/execute';
-import { assertIsAction, makeErr, type Action } from './actions/action_protocol';
+import { makeErr, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';

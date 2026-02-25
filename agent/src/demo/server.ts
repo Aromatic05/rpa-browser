@@ -80,14 +80,6 @@ const pageRegistry = createPageRegistry({
 
 const workspaceManager = createWorkspaceManager({
     pageRegistry,
-    recordingState,
-    log: (...args: unknown[]) => console.log('[RPA:demo]', ...args),
-    replayOptions: {
-        clickDelayMs: CLICK_DELAY_MS,
-        stepDelayMs: REPLAY_STEP_DELAY_MS,
-        scroll: SCROLL_CONFIG,
-    },
-    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
 });
 
 const config = getRunnerConfig();

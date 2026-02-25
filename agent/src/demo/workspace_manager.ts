@@ -1,10 +1,6 @@
 import crypto from 'crypto';
-import type { Page } from 'playwright';
 import type { PageRegistry } from '../runtime/page_registry';
-import { createRecordingState, cleanupRecording, ensureRecorder } from '../record/recording';
 import { runSteps } from '../runner/run_steps';
-import type { RecordingState } from '../record/recording';
-import type { ReplayOptions } from '../play/replay';
 import type { StepUnion } from '../runner/steps/types';
 
 export type WorkspacePublicInfo = {
@@ -23,10 +19,6 @@ type WorkspaceState = {
 
 export type WorkspaceManagerDeps = {
     pageRegistry: PageRegistry;
-    log: (...args: unknown[]) => void;
-    recordingState: RecordingState;
-    replayOptions: ReplayOptions;
-    navDedupeWindowMs: number;
 };
 
 export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
@@ -80,22 +72,4 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
     };
 
     return { ensureActiveWorkspace, getActiveWorkspacePublicInfo, gotoInWorkspace };
-};
-
-export const createWorkspaceRecordingState = () => createRecordingState();
-
-export const hookWorkspaceRegistry = (deps: {
-    pageRegistry: PageRegistry;
-    recordingState: RecordingState;
-    navDedupeWindowMs: number;
-}) => {
-    const { recordingState, navDedupeWindowMs } = deps;
-    return {
-        onPageBound: (page: Page, token: string) => {
-            if (recordingState.recordingEnabled.has(token)) {
-                void ensureRecorder(recordingState, page, token, navDedupeWindowMs);
-            }
-        },
-        onTokenClosed: (token: string) => cleanupRecording(recordingState, token),
-    };
 };

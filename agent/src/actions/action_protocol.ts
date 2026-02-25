@@ -40,19 +40,3 @@ export const makeErr = (code: string, message: string, details?: any): ActionErr
  * RecordStep：外部上报的录制 Step（必须可序列化）。
  */
 export type RecordStep = StepUnion;
-
-export const assertIsAction = (input: unknown): asserts input is Action => {
-    if (!input || typeof input !== 'object') {
-        throw new Error('invalid action: not an object');
-    }
-    const action = input as Record<string, unknown>;
-    if (action.v !== 1) {
-        throw new Error('invalid action: v must be 1');
-    }
-    if (typeof action.id !== 'string' || !action.id) {
-        throw new Error('invalid action: id required');
-    }
-    if (typeof action.type !== 'string' || !action.type) {
-        throw new Error('invalid action: type required');
-    }
-};

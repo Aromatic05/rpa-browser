@@ -7,7 +7,7 @@
  *
  * 关键约束：
  * - 同一 Page 只安装一次，避免重复监听
- * - 事件携带 locatorCandidates，用于回放时的自愈定位
+ * - 事件会尽量携带 a11yHint/selector，locatorCandidates 仅作辅助信息
  */
 import type { Page } from 'playwright';
 import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';

@@ -11,10 +11,7 @@ import { initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
-const CLICK_DELAY_MS = 300;
-const REPLAY_STEP_DELAY_MS = 900;
 const NAV_DEDUPE_WINDOW_MS = 1200;
-const SCROLL_CONFIG = { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 };
 
 const log = (...args: unknown[]) => console.error('[RPA:mcp]', ...args);
 console.log = (...args: unknown[]) => console.error(...args);
@@ -77,14 +74,7 @@ setRunStepsDeps({
         log('Playwright Chromium launched with extension.');
         await startMcpServer({
             pageRegistry,
-            recordingState,
             log,
-            replayOptions: {
-                clickDelayMs: CLICK_DELAY_MS,
-                stepDelayMs: REPLAY_STEP_DELAY_MS,
-                scroll: SCROLL_CONFIG,
-            },
-            navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
