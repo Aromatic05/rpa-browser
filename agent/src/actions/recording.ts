@@ -46,23 +46,34 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
         const steps = getRecording(ctx.recordingState, ctx.tabToken);
+        const stopOnError = payload.stopOnError ?? true;
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         beginReplay(ctx.recordingState, ctx.tabToken);
-        const response = await runSteps({
-            workspaceId: scope.workspaceId,
-            steps,
-            options: { stopOnError: payload.stopOnError ?? true },
-        });
-        endReplay(ctx.recordingState, ctx.tabToken);
-        if (!response.ok) {
-            const firstFailed = response.results.find((item) => !item.ok);
-            return makeErr(
-                ERROR_CODES.ERR_ASSERTION_FAILED,
-                firstFailed?.error?.message || 'replay failed',
-                { results: response.results, failed: firstFailed?.error },
-            );
+        const stepResults: Array<{ stepId: string; ok: boolean; data?: unknown; error?: { code: string; message: string; details?: unknown } }> = [];
+        try {
+            for (const step of steps) {
+                if (ctx.recordingState.replayCancel.has(ctx.tabToken)) {
+                    return makeOk({ stopped: true, canceled: true, results: stepResults });
+                }
+                const response = await runSteps({
+                    workspaceId: scope.workspaceId,
+                    steps: [step],
+                    options: { stopOnError: true },
+                });
+                stepResults.push(...response.results);
+                if (!response.ok && stopOnError) {
+                    const firstFailed = response.results.find((item) => !item.ok);
+                    return makeErr(
+                        ERROR_CODES.ERR_ASSERTION_FAILED,
+                        firstFailed?.error?.message || 'replay failed',
+                        { results: stepResults, failed: firstFailed?.error },
+                    );
+                }
+            }
+        } finally {
+            endReplay(ctx.recordingState, ctx.tabToken);
         }
-        return makeOk({ results: response.results });
+        return makeOk({ results: stepResults });
     },
     'record.event': async (ctx, action) => {
         const step = action.payload as StepUnion | undefined;
