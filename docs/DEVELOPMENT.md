@@ -2,94 +2,68 @@
 
 ## 安装
 
-```
+```bash
 pnpm install
+pnpm pw:install
 ```
 
-## 运行
+## 本地运行
 
-### 1) 启动 mock 本地站点（起始页）
+### 1) 启动 mock 站点（可选）
 
-```
+```bash
 pnpm mock:dev
 ```
 
-默认访问：`http://localhost:4173/pages/start.html#beta`
+默认地址：`http://127.0.0.1:4173/pages/start.html#beta`
 
-### 2) 构建并加载扩展
+### 2) 扩展主链路（Extension -> Agent）
 
+```bash
+pnpm dev
 ```
-pnpm -C extension build
+
+这条命令会：
+
+- 构建 extension
+- 启动 `agent dev:hot`（含 runner bundle watch）
+
+### 3) MCP 入口
+
+```bash
+# MCP 面板（本地 HTTP UI）
+pnpm mcp
+
+# MCP stdio（供外部程序调用）
+pnpm mcp:stdio
+
+# MCP stdio + runner 热重载
+pnpm mcp:hot
 ```
 
-在 Chrome 中从 `extension/dist` 加载扩展。
+### 4) 仅启动 agent（在 agent 目录）
 
-### 3) 启动 agent
-
-```
+```bash
 pnpm -C agent dev
-```
-
-### Runner 热重载（开发模式）
-
-启动 runner bundle watcher 并运行 agent（推荐）：
-
-```
 pnpm -C agent dev:hot
-```
-
-或用两个终端分别启动：
-
-```
-pnpm -C agent runner:bundle:watch
-pnpm -C agent dev
-```
-
-说明：
-- 热重载仅在开发模式下开启（`NODE_ENV !== 'production'`）。
-- reload 失败会保留旧版本 runner，并在日志里输出 `[runner] hot reload FAILED (kept previous)`。
-
-### 4) 本地 Chat Demo（可选）
-
-```
-pnpm -C agent dev:demo
-```
-
-访问 `http://127.0.0.1:17334`。
-
-### 5) MCP stdio server（可选）
-
-```
 pnpm -C agent mcp
-```
-
-### 6) 统一 runner 有头演示（人工验收）
-
-```
-pnpm -C agent demo:headed-runner
+pnpm -C agent mcp:hot
 ```
 
 ## 测试
 
-```
-pnpm -C agent test
+```bash
+# agent 聚合
+pnpm test:agent
+
+# agent 子集
+pnpm -C agent test:e2e
+pnpm -C agent test:runner
 pnpm -C agent test:trace
+pnpm -C agent test:unit
+pnpm -C agent test:smoke:mcp
 pnpm -C agent test:headed
+
+# extension
+pnpm test:extension
 ```
-
-扩展侧轻量测试：
-
-```
-pnpm -C extension test
-```
-
-## 常用路径
-
-- 扩展入口：`extension/src/entry/*`
-- SW 路由：`extension/src/background/*`
-- 录制：`extension/src/record/*`
-- Runner 统一入口：`agent/src/runner/run_steps.ts`
-- Trace 原子层：`agent/src/runner/trace/*`
-- 统一配置：`agent/src/runner/config/*`
-- Demo 服务：`agent/src/demo/server.ts`
-- Mock 起始页：`mock/pages/start.html`

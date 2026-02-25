@@ -2,50 +2,46 @@
 
 ## 常见日志
 
-- 扩展 content：`[rpa-ext][content] ...`
-- 扩展 SW：`[rpa-ext][sw] ws open/send/message/close`
-- 扩展 UI：`[rpa-ext][panel] ...`
-- Agent：`[RPA:agent] cmd/execute`
-- Trace：`[trace] op=... ok=...`（默认开启）
-- Step：`step.start / step.end`（runSteps 输出）
+- 扩展 content: `[rpa-ext][content] ...`
+- 扩展 SW: `[rpa-ext][sw] ws open/send/message/close`
+- 扩展 UI: `[rpa-ext][panel] ...`
+- Agent: `[RPA:agent] ...`
+- MCP: `[RPA:mcp] ...`（输出到 stderr）
+- Step: `[step] start/end ...`
 
-## 典型问题
+## 常见问题
 
-### 1) `missing cmd`
+### 1) 扩展命令无响应
 
-原因：消息包不匹配或扩展构建已过时。
-修复：
+检查：
 
-- `pnpm -C extension build`
-- 重新加载扩展并刷新页面
+- `pnpm dev` 是否在运行
+- extension 是否已重新加载
+- 页面是否刷新（避免 `Extension context invalidated`）
 
-### 2) `Extension context invalidated`
+### 2) 元素找不到（`ERR_NOT_FOUND` / `ERR_AMBIGUOUS`）
 
-原因：扩展已重新加载但页面未刷新。
-修复：刷新页面。
+排查：
 
-### 3) 回放找不到元素（ERR_NOT_FOUND）
+- 先执行 `browser.snapshot` 查看 a11y 树
+- 优先用稳定的 `a11yNodeId`
+- 无法稳定定位时补充 `a11yHint`（role/name/text）
 
-原因：可访问性信息缺失或 role/name 不稳定。
-修复：
+### 3) mock 页面无法访问
 
-- 优先使用语义稳定的 `role/name` 目标
-- 确保页面已渲染完成，再触发录制/回放
+```bash
+pnpm mock:dev
+```
 
-### 4) mock 起始页无法打开
-
-原因：mock server 未启动或端口不一致。
-修复：
-
-- `pnpm mock:dev`
-- 检查 `DEFAULT_MOCK_ORIGIN` 是否与本地端口一致
+并确认端口与 URL 一致。
 
 ## 工件
 
-- 回放证据：`.artifacts/replay/<tabToken>/<ts>.png`
-- A11y 证据：`.artifacts/a11y/<ts>.png`（如启用）
+- 回放证据：`agent/.artifacts/replay/...`
+- A11y/trace 相关输出：`agent/.artifacts/...`
 
-## MCP 调试
+## MCP 快速闭环
 
-- MCP server 日志输出在 stderr。
-- 使用 `pnpm -C agent mcp:smoke` 进行最小闭环验证。
+```bash
+pnpm test:agent:smoke:mcp
+```

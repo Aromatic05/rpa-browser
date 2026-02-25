@@ -1,141 +1,70 @@
-# RPA Extension Demo
+# RPA Browser Monorepo
 
-一个最小可运行的“浏览器录制/回放”Demo：
+这个仓库包含三个对外交互层：
 
-- Chrome Extension (MV3) 负责 UI、tabToken 绑定、发指令
-- Agent (Node + Playwright) 负责打开 Chromium、注入 recorder、执行录制与回放
-- 扩展与 Agent 通过 WebSocket `ws://127.0.0.1:17333` 通信
+- `dev`（Extension -> Agent WS）：浏览器扩展控制后端，支持录制/回放。
+- `mcp`（Panel）：本地控制面板（HTTP UI）。
+- `mcp:stdio`（MCP）：给外部程序通过 MCP stdio 调用后端工具。
 
-## 项目结构
+后端统一由 `runner + step + trace` 执行链路提供能力。
 
-```
-agent/                       # Node + Playwright + WS server
-  src/
-    index.ts                 # 入口：WS 命令路由、会话管理
-    runtime/                 # Chromium context、page registry、tabToken 绑定
-    record/                  # 录制：注入 recorder、事件归档
-      recorder.ts            # 注入器（installRecorder）
-      recorder_payload.ts    # 注入脚本字符串（页面内监听事件）
-      recording.ts           # 录制状态与存储
-    play/                    # 回放：按记录执行步骤
-    runner/                  # 执行动作（click/type/scroll/navigate...）
-extension/                   # Chrome Extension (MV3)
-  src/
-    content.ts               # 注入悬浮球 UI、tabToken 上报
-    sw.ts                    # Service Worker：与 agent 通过 WS 通信
-    panel.ts                 # side panel（保留）
-  dist/                      # 构建产物（加载到 Chrome 的扩展目录）
-```
+## 目录
 
-## 环境要求
+- `extension/`: Chrome MV3 扩展（UI、状态、命令转发）
+- `agent/`: Node + Playwright 后端（WS/MCP/Demo、runSteps、trace）
+- `mock/`: 本地静态站点（默认 `http://127.0.0.1:4173`）
+- `docs/`: 项目文档
 
-- Node.js LTS
+## 环境
+
+- Node.js >= 20
 - pnpm
 
-## 安装依赖
+## 安装
 
-```
+```bash
 pnpm install
+pnpm pw:install
 ```
 
-## 构建扩展并启动 Agent
+## 常用启动命令（根目录）
 
-方式一（推荐：一键）：
+```bash
+# 1) 扩展主链路（推荐）
+pnpm dev
 
-```
-pnpm -C extension demo
-```
+# 2) 启动 mock 站点（可选）
+pnpm mock:dev
 
-方式二（分步）：
+# 3) MCP 面板（HTTP UI）
+pnpm mcp
 
-```
-pnpm -C extension build
-pnpm -C agent dev
-```
+# 4) MCP stdio（给外部程序）
+pnpm mcp:stdio
 
-Agent 启动后会自动用 Playwright 打开 Chromium，并加载 `extension/dist`。
-
-## 在浏览器里加载扩展
-
-1. 打开 Chrome/Chromium 的扩展管理页
-2. 开启 **开发者模式**
-3. 点击 **Load unpacked**
-4. 选择本项目的 `extension/dist` 目录
-
-## 使用步骤（MVP）
-
-1. 在任意非受限页面打开浏览器（如 https://catos.info）
-2. 右上角出现 **RPA 悬浮球**，点击展开面板
-3. 点击 **Start Recording**，开始录制
-4. 手动点击/输入/滚动页面
-5. 点击 **Stop Recording**
-6. 点击 **Show Recording** 查看录制事件
-7. 点击 **Replay Recording** 在当前 tab 回放
-
-## Command 协议（简版）
-
-扩展通过 SW 转发命令给 agent，统一结构：
-
-```
-{ cmd: string; tabToken: string; args?: object; requestId?: string }
+# 5) MCP stdio + runner bundle 热重载
+pnpm mcp:hot
 ```
 
-所有具体动作由 `agent/src/runner/actions/` 实现，`agent/src/runner/execute.ts` 负责路由与错误封装。
+## 测试（根目录）
 
-## 回放自愈定位（要点）
+```bash
+# agent 全量测试
+pnpm test:agent
 
-- 录制时生成 `locatorCandidates`（优先 role/label/placeholder/text，最后兜底 css）
-- 回放时按候选顺序逐个尝试：
-    - count=0 继续
-    - count>1 视为歧义，跳过
-    - count=1 则 wait visible + scrollIntoView + click
-- 失败会在 `.artifacts/replay/<tabToken>/` 输出 screenshot 与候选证据
+# agent headed E2E
+pnpm test:agent:headed
 
-简化示例：
+# MCP 冒烟
+pnpm test:agent:smoke:mcp
 
-```
-{
-  "type": "click",
-  "scopeHint": "aside",
-  "locatorCandidates": [
-    { "kind": "role", "role": "link", "name": "Orders", "exact": true },
-    { "kind": "text", "text": "Orders", "exact": true },
-    { "kind": "css", "selector": "aside nav.menu > a:nth-of-type(5)" }
-  ]
-}
+# extension 测试
+pnpm test:extension
 ```
 
-## A11y 扫描
+Agent 侧测试脚本采用统一前缀 `test:*`，详见 [agent/package.json](./agent/package.json)。
 
-支持 `page.a11yScan` 命令（基于 `@axe-core/playwright`），默认返回精简 summary。
+## 说明
 
-## 测试
-
-```
-pnpm -C agent test
-pnpm -C agent test:headed
-```
-
-测试文件位于 `agent/tests/specs`，夹具在 `agent/tests/fixtures`，覆盖导航、点击、表单、选择、日期、滚动、对话框、弹窗、剪贴板、键鼠、文件上传、断言等动作模块。
-
-## Debug 提示
-
-- 扩展前端日志（页面 console）：
-    - `[RPA] HELLO` / `[RPA] send command` / `[RPA] response`
-- Service Worker 日志：
-    - `ws open/send/message/close` / `onMessage`
-- Agent 日志：
-    - `[RPA:agent] record event` / `recording start/stop`
-
-## 常见问题
-
-- **点击/滚动未录制**
-    - 确认扩展已加载 `extension/dist` 最新构建
-    - 确认页面 console 没有 `__name is not defined` 报错
-- **没有看到悬浮球**
-    - 确认扩展已加载、页面非受限（如 chrome://）
-
-## 备注
-
-- 扩展只负责 UI 和指令发起，不直接执行自动化
-- Agent 负责真实自动化与录制回放逻辑
+- `mcp_main.ts` 是 MCP stdio 服务入口，定位是供外部程序调用，不是面向用户的页面入口。
+- 开发态热重载依赖 `agent/.runner-dist/plugin.mjs`，`dev:hot`/`mcp:hot` 会自动启动 bundle watcher。
