@@ -151,7 +151,7 @@ export const createMcpServer = (deps: McpToolDeps) => {
 export const startMcpServer = async (deps: McpToolDeps) => {
     const server = createMcpServer(deps);
     server.onerror = (error: unknown) => {
-        deps.log('mcp error', error);
+        deps.log?.('mcp error', error);
     };
     const transport = new StdioServerTransport();
     await server.connect(transport);

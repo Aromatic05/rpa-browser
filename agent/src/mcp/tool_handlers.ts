@@ -46,10 +46,10 @@ import {
 
 export type McpToolDeps = {
     pageRegistry: PageRegistry;
-    recordingState: RecordingState;
-    log: (...args: unknown[]) => void;
-    replayOptions: ReplayOptions;
-    navDedupeWindowMs: number;
+    recordingState?: RecordingState;
+    log?: (...args: unknown[]) => void;
+    replayOptions?: ReplayOptions;
+    navDedupeWindowMs?: number;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
