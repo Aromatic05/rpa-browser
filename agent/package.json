@@ -25,6 +25,7 @@
         "test:trace": "node --import tsx --test tests/trace/*.test.ts",
         "test:smoke:mcp": "tsx scripts/mcp_smoke_client.ts",
         "test:all": "pnpm test:e2e && pnpm test:runner && pnpm test:trace && pnpm test:unit",
+        "typecheck": "tsc --noEmit",
         "pw:install": "pnpm exec playwright install chromium",
         "test": "pnpm test:all",
         "test:headed": "playwright test tests/specs --headed"

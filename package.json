@@ -17,6 +17,9 @@
         "test:agent:headed": "pnpm --filter ./agent test:headed",
         "test:agent:smoke:mcp": "pnpm --filter ./agent test:smoke:mcp",
         "test:extension": "pnpm --filter ./extension test",
+        "typecheck:agent": "pnpm --filter ./agent typecheck",
+        "typecheck:extension": "pnpm --filter ./extension exec tsc --noEmit",
+        "typecheck": "pnpm typecheck:agent && pnpm typecheck:extension",
         "lint": "npx eslint \"**/*.{ts,tsx,js,jsx}\" --ext .ts,.tsx,.js --max-warnings=0",
         "format": "npx prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\""
     },
