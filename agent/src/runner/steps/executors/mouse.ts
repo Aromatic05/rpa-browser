@@ -1,12 +1,7 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { mapTraceError } from '../helpers/target';
-
-const pickDelayMs = (min: number, max: number) => {
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
-    if (max <= min) return Math.max(0, min);
-    return Math.floor(min + Math.random() * (max - min + 1));
-};
+import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 
 export const executeBrowserMouse = async (
     step: Step<'browser.mouse'>,
@@ -33,7 +28,7 @@ export const executeBrowserMouse = async (
                 ? deps.config.humanPolicy.scrollDelayMsRange
                 : deps.config.humanPolicy.clickDelayMsRange;
         const delayMs = pickDelayMs(range.min, range.max);
-        if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
     }
     return { stepId: step.id, ok: true };
 };

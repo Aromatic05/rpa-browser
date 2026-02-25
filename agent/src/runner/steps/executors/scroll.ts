@@ -1,13 +1,8 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError } from '../helpers/target';
+import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
-
-const pickDelayMs = (min: number, max: number) => {
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
-    if (max <= min) return Math.max(0, min);
-    return Math.floor(min + Math.random() * (max - min + 1));
-};
 
 export const executeBrowserScroll = async (
     step: Step<'browser.scroll'>,
@@ -30,7 +25,7 @@ export const executeBrowserScroll = async (
                 deps.config.humanPolicy.scrollDelayMsRange.min,
                 deps.config.humanPolicy.scrollDelayMsRange.max,
             );
-            if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+            if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
         }
         return { stepId: step.id, ok: true };
     }
@@ -54,7 +49,7 @@ export const executeBrowserScroll = async (
                   deps.config.humanPolicy.scrollDelayMsRange.max,
               )
             : 16;
-        if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
     }
     return { stepId: step.id, ok: true };
 };

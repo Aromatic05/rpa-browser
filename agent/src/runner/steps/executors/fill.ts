@@ -1,15 +1,10 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError, matchesA11yHint } from '../helpers/target';
+import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { scoreA11yConfidence } from '../helpers/confidence';
 import { resolveTargetNodeId } from '../helpers/resolve_target';
 import { describeSelector } from '../helpers/selector';
-
-const pickDelayMs = (min: number, max: number) => {
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
-    if (max <= min) return Math.max(0, min);
-    return Math.floor(min + Math.random() * (max - min + 1));
-};
 
 const ensureVisible = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
@@ -90,7 +85,7 @@ export const executeBrowserFill = async (
                 deps.config.humanPolicy.typeDelayMsRange.min,
                 deps.config.humanPolicy.typeDelayMsRange.max,
             );
-            if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+            if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
         }
         return { stepId: step.id, ok: true };
     }
@@ -118,7 +113,7 @@ export const executeBrowserFill = async (
             deps.config.humanPolicy.typeDelayMsRange.min,
             deps.config.humanPolicy.typeDelayMsRange.max,
         );
-        if (delayMs > 0) await binding.page.waitForTimeout(delayMs);
+        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
     }
     return { stepId: step.id, ok: true };
 };
