@@ -1,61 +1,114 @@
-# Roadmap Order
+# Roadmap Task List（学生项目裁剪版）
 
-## Principles
+## 使用说明
 
-- 先稳定工具内核与错误结构，再推进并行/持久化与 UX。
-- 统一入口（runSteps/trace）是后续所有能力的基础。
-- 所有阶段以“可审计日志 + 可回放”作为前置条件。
+- 仅保留任务清单与拆解，不包含排期。
+- 难度分级：
+  - `S`：小任务，单模块可完成
+  - `M`：中任务，跨 2-3 个模块
+  - `L`：大任务，跨协议/执行链路
+  - `XL`：架构级任务，需多子任务协同
 
-## Phase 0A: Tool Core Pipeline & Structured Errors
+## A. 必做任务（建议优先）
 
-- 目标：完善 runSteps/trace 的稳定性与错误结构化。
-- 依赖：现有 runSteps/trace 已落地。
+### A1. 会话/工作区恢复能力（`L`）
 
-优先事项：
-- “统一配置未覆盖全部执行路径”
-  - Why first: 统一等待/超时/人类模拟，减少 flake
-  - Depends on: runSteps 已接入 config
-- “a11yHint 解析策略偏弱”
-  - Why first: 直接影响 click/fill 成功率
-  - Depends on: trace.page.snapshotA11y 可用
-- “runSteps 覆盖范围有限”
-  - Why first: v0 只覆盖 4 个 step，功能缺口明显
-  - Depends on: step executor 结构已建立
+- `A1-1` 定义 session/workspace 持久化数据模型（`M`）
+- `A1-2` 启动恢复流程与失效数据清理（`M`）
+- `A1-3` 任务 checkpoint 与断点续跑（`M`）
+- `A1-4` 恢复失败时的错误码与可观测日志（`S`）
 
-## Phase 0B: Session/Workspace Skeleton (Parallel/Recovery/TabGroup abstractions)
+完成定义：
+- 重启后可恢复有效 workspace/session。
+- 中断任务可从 checkpoint 继续，避免重复执行已完成 step。
 
-- 目标：在 registry 与 DSL 中明确 session/workspace/tab/group 字段。
-- 依赖：0A 内核稳定。
+### A2. 任务审计视图（`L`）
 
-优先事项：
-- “Session/Workspace 持久化与恢复缺失”
-  - Why first: 确立边界与字段，便于后续持久化
-  - Depends on: registry 与 runSteps 已稳定
-- “TabGroup 多页编排能力缺失”
-  - Why first: 支持跨页面读写与并行任务
-  - Depends on: workspace scope 与 active tab 模型
+- `A2-1` 统一 TaskRun 模型（taskId/workspaceId/step timeline）（`M`）
+- `A2-2` step/trace/action 日志归档与索引（`M`）
+- `A2-3` 查询接口（按 taskId/状态/workspace 过滤）（`M`）
+- `A2-4` 从历史任务生成 replay 输入（`S`）
 
-## Phase 0C: Unified Wait/Timeout + BehaviorPolicy Entrypoint
+完成定义：
+- 可按 taskId 查看完整执行链路和失败点。
+- 可快速筛选失败任务并触发回放。
 
-- 目标：将行为参数与等待策略集中到配置入口。
-- 依赖：0A 配置覆盖问题已解决。
+### A3. A11y 树剪枝与预处理（`L`）
 
-优先事项：
-- “统一配置未覆盖全部执行路径”
-  - Why first: 统一策略是可复现的前提
-  - Depends on: runSteps/trace 可注入 config
+- `A3-1` 节点剪枝规则（隐藏/重复/低价值属性）（`M`）
+- `A3-2` 紧凑摘要格式（role/name/text/path）（`M`）
+- `A3-3` 开关配置与观测指标（token 体积、命中率）（`S`）
+- `A3-4` 剪枝前后成功率回归测试（`S`）
 
-## Phase 1: Auditable Task DSL + Run Logs
+完成定义：
+- 常见页面 token 消耗明显下降。
+- click/fill/select 成功率不低于当前基线。
 
-- 目标：step/trace 日志形成可持久化审计链路。
-- 依赖：0B 已明确 session/tab/group 字段。
+### A4. 选择器多重定位与置信度融合（`L`）
 
-## Phase 2: Demo/Extension UX + Human-in-loop
+- `A4-1` 多候选生成（css/role/text/anchor）（`M`）
+- `A4-2` 置信度融合与模糊匹配（`M`）
+- `A4-3` 歧义处理与候选解释信息（`S`）
+- `A4-4` `ERR_NOT_FOUND`/`ERR_AMBIGUOUS` 边界收敛（`S`）
 
-- 目标：在 UI 中引入人机协同、候选确认与调试面板。
-- 依赖：0A 的结构化错误与候选输出。
+完成定义：
+- 动态页面定位成功率提升，且失败时可解释。
 
-## Phase 3 (Optional): Full Parallel Sessions + Recovery + TabGroup UI polish
+### A5. 面板与扩展可用化（`XL`）
 
-- 目标：并行会话、恢复与 TabGroup UI 完整体验。
-- 依赖：0B 的抽象边界与 P1 的审计日志。
+- `A5-1` 面板信息架构重构（任务/工作区/回放/调试）（`M`）
+- `A5-2` 协议稳定化（版本字段、错误码映射）（`M`）
+- `A5-3` 录制/回放可视化（timeline + step 结果）（`L`）
+- `A5-4` 人机协同交互（候选确认、单步重试）（`M`）
+- `A5-5` 端到端回归用例（核心流程）（`M`）
+
+完成定义：
+- 非开发者可在 UI 完成“执行-排错-重试”的完整闭环。
+
+### A6. DSL 最小可用版（`L`）
+
+- `A6-1` DSL 最小语法：变量、顺序、条件（`M`）
+- `A6-2` 解析与编译到 `StepUnion[]`（`M`）
+- `A6-3` 错误定位（行列号 + step 映射）（`S`）
+- `A6-4` 样例脚本与回归测试（`S`）
+
+完成定义：
+- 支持数据驱动的基础自动化流程，不只手工 step 列表。
+
+### A7. Excel/CSV 数据驱动执行（`M`）
+
+- `A7-1` Excel/CSV 读取能力（`S`）
+- `A7-2` 表格列到 `StepUnion` 参数映射（`M`）
+- `A7-3` 数据校验与错误提示（缺列、类型不匹配、空值策略）（`S`）
+- `A7-4` 最小端到端用例（读取表格 -> 执行 -> 结果汇总）（`S`）
+
+完成定义：
+- 可直接从本地 Excel/CSV 读取数据并驱动任务执行。
+- 对常见数据错误给出可定位、可理解的提示。
+
+## B. 可选增强任务（资源允许再做）
+
+### B1. 文件操作与执行沙盒完善（`XL`）
+
+- `B1-1` 文件白名单与路径隔离（`M`）
+- `B1-2` 受限执行器（资源/超时/网络策略）（`L`）
+- `B1-3` 安全审计日志（读写/执行/拒绝原因）（`M`）
+
+### B2. 数据源生态扩展（`L`）
+
+- `B2-1` 统一 `DataSourceAdapter` 接口（`M`）
+- `B2-2` 在线数据源（Google Sheets/API/DB）（`L`）
+- `B2-3` 凭据管理与脱敏（`M`）
+
+### B3. DSL 工程化高级能力（`XL`）
+
+- `B3-1` 循环/函数/模块化（`L`）
+- `B3-2` AST/IR 静态检查（`L`）
+- `B3-3` 调试器（断点、变量观察）（`M`）
+
+## C. 持续治理任务（长期保留）
+
+- `C1` 协议文档同步：`PROTOCOL.md` 与代码一致（`S`）
+- `C2` 开发文档同步：`DEVELOPMENT.md` 与脚本一致（`S`）
+- `C3` 架构文档同步：`ARCHITECTURE.md` 与入口链路一致（`S`）
+- `C4` 测试覆盖治理：新增能力必须补单测/集成/e2e（`M`）

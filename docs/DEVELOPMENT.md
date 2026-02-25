@@ -214,7 +214,7 @@ pnpm test:extension
 - Step/Trace/API 合同变更 -> `docs/PROTOCOL.md`
 - 架构/入口/运行链路变更 -> `docs/ARCHITECTURE.md`
 - 命令/开发流程/测试入口变更 -> `docs/DEVELOPMENT.md`
-- 录制与回放行为变更 -> `docs/RECORDING_REPLAY.md`
+- 已实现功能状态变更 -> `docs/IMPLEMENTED_FEATURES.md`
 
 PR 检查项：
 
