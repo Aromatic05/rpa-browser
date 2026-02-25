@@ -2,12 +2,15 @@ import type { Page } from 'playwright';
 
 type DescribeResult =
     | { ok: true; data: { role?: string; name?: string; text?: string } }
-    | { ok: false; error: { code: 'ERR_NOT_FOUND' | 'ERR_AMBIGUOUS'; message: string; details?: unknown } };
+    | {
+          ok: false;
+          error: { code: 'ERR_NOT_FOUND' | 'ERR_AMBIGUOUS'; message: string; details?: unknown; phase: 'trace' };
+      };
 
 export const describeSelector = async (page: Page, selector: string): Promise<DescribeResult> => {
     const result = await page.evaluate((sel) => {
-        const normalizeText = (value) => (value || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-        const getLabelText = (el) => {
+        const normalizeText = (value?: string | null) => (value || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        const getLabelText = (el: Element) => {
             if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
                 return '';
             }
@@ -22,7 +25,7 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
             if (labelledBy) {
                 const ids = labelledBy.split(/\s+/);
                 const parts = ids
-                    .map((id) => {
+                    .map((id: string) => {
                         const node = document.getElementById(id);
                         return node ? normalizeText(node.textContent || '') : '';
                     })
@@ -33,7 +36,7 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
             if (wrapLabel) return normalizeText(wrapLabel.textContent || '');
             return '';
         };
-        const getRole = (el) => {
+        const getRole = (el: Element) => {
             const explicit = el.getAttribute('role');
             if (explicit) return explicit;
             const tag = el.tagName.toLowerCase();
@@ -50,7 +53,7 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
             }
             return null;
         };
-        const getName = (el) => {
+        const getName = (el: Element) => {
             const aria = el.getAttribute('aria-label');
             if (aria) return normalizeText(aria);
             const labelText = getLabelText(el);
@@ -59,8 +62,14 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
             if (title) return normalizeText(title);
             const alt = el.getAttribute('alt');
             if (alt) return normalizeText(alt);
-            if ('value' in el && el.value) return normalizeText(el.value);
-            const text = normalizeText(el.innerText || el.textContent || '');
+            if (
+                (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) &&
+                el.value
+            ) {
+                return normalizeText(el.value);
+            }
+            const textContent = el instanceof HTMLElement ? el.innerText : el.textContent;
+            const text = normalizeText(textContent || '');
             if (text) return text;
             return '';
         };
@@ -74,7 +83,7 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
                 status: 'ok',
                 role: getRole(el) || undefined,
                 name: getName(el) || undefined,
-                text: normalizeText(el.innerText || el.textContent || '') || undefined,
+                text: normalizeText((el instanceof HTMLElement ? el.innerText : el.textContent) || '') || undefined,
             };
         } catch (error) {
             return { status: 'invalid', message: String(error) };
@@ -82,14 +91,25 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
     }, selector);
 
     if (result.status === 'invalid') {
-        return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'invalid selector', details: { selector, error: result.message } } };
+        return {
+            ok: false,
+            error: { code: 'ERR_NOT_FOUND', message: 'invalid selector', details: { selector, error: result.message }, phase: 'trace' },
+        };
     }
     if (result.status === 'not_found') {
-        return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'selector not found', details: { selector } } };
+        return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'selector not found', details: { selector }, phase: 'trace' } };
     }
     if (result.status === 'ambiguous') {
         // TODO: add fuzzy disambiguation.
-        return { ok: false, error: { code: 'ERR_AMBIGUOUS', message: 'selector matches multiple elements', details: { selector, count: result.count } } };
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_AMBIGUOUS',
+                message: 'selector matches multiple elements',
+                details: { selector, count: result.count },
+                phase: 'trace',
+            },
+        };
     }
     return { ok: true, data: { role: result.role, name: result.name, text: result.text } };
 };

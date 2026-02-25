@@ -43,6 +43,8 @@ const run = async () => {
         tabTokenKey: '__rpa_tab_token',
         getContext: async () => context,
     });
+    const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
+    await pluginHost.load();
     const traceSink = new MemorySink();
     const runtimeRegistry = createRuntimeRegistry({
         pageRegistry,
@@ -50,8 +52,6 @@ const run = async () => {
         traceHooks: createLoggingHooks(),
         pluginHost,
     });
-    const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
-    await pluginHost.load();
     const workspace = await pageRegistry.createWorkspace();
 
     const first = await runSteps(

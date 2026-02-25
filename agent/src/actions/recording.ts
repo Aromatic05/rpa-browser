@@ -55,10 +55,11 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         });
         endReplay(ctx.recordingState, ctx.tabToken);
         if (!response.ok) {
+            const firstFailed = response.results.find((item) => !item.ok);
             return makeErr(
                 ERROR_CODES.ERR_ASSERTION_FAILED,
-                response.error?.message || 'replay failed',
-                { results: response.results, error: response.error },
+                firstFailed?.error?.message || 'replay failed',
+                { results: response.results, failed: firstFailed?.error },
             );
         }
         return makeOk({ results: response.results });

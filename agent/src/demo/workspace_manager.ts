@@ -29,12 +29,6 @@ export type WorkspaceManagerDeps = {
     navDedupeWindowMs: number;
 };
 
-const buildStep = (name: StepUnion['name'], args: StepUnion['args']): StepUnion => ({
-    id: crypto.randomUUID(),
-    name,
-    args,
-});
-
 export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
     let active: WorkspaceState | null = null;
 
@@ -72,7 +66,12 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
 
     const gotoInWorkspace = async (url: string) => {
         const workspace = await ensureActiveWorkspace();
-        const step = buildStep('browser.goto', { url });
+        const step: StepUnion = {
+            id: crypto.randomUUID(),
+            name: 'browser.goto',
+            args: { url },
+            meta: { source: 'script', ts: Date.now() },
+        };
         return runSteps({
             workspaceId: workspace.workspaceId,
             steps: [step],
