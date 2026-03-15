@@ -12,13 +12,14 @@
  */
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import path from 'path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export type ContextManagerOptions = {
-    extensionPath: string;
+    extensionPaths: string[];
     userDataDir: string;
     onPage?: (page: Page) => void;
 };
@@ -31,6 +32,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
     let contextRef: BrowserContext | undefined;
     const startUrl =
         process.env.RPA_START_URL || 'http://localhost:4173/pages/start.html#beta';
+    const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
 
     /**
      * 启动后强制导航到 startUrl，并关闭多余的初始页签。
@@ -64,15 +66,30 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const getContext = async () => {
         if (contextRef) return contextRef;
         if (contextPromise) return contextPromise;
-        console.log('[RPA:agent]', 'Launching Chromium with extension from', options.extensionPath);
+        console.log('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
+        const policyDir = path.resolve(options.userDataDir, 'enterprise-policies', 'managed');
+        const policyFile = path.join(policyDir, 'rpa_browser_policy.json');
+        try {
+            fs.mkdirSync(policyDir, { recursive: true });
+            fs.writeFileSync(
+                policyFile,
+                `${JSON.stringify({ NewTabPageLocation: newTabUrl }, null, 2)}\n`,
+                'utf8',
+            );
+        } catch (error) {
+            console.warn('[RPA:agent]', 'Failed to write NewTabPageLocation policy', String(error));
+        }
+        const extensionArg = options.extensionPaths.join(',');
+        const launchArgs = [
+            `--disable-extensions-except=${extensionArg}`,
+            `--load-extension=${extensionArg}`,
+            `--enterprise-policy-path=${policyDir}`,
+        ];
         contextPromise = chromium
             .launchPersistentContext(options.userDataDir, {
                 headless: false,
                 viewport: null,
-                args: [
-                    `--disable-extensions-except=${options.extensionPath}`,
-                    `--load-extension=${options.extensionPath}`,
-                ],
+                args: launchArgs,
             })
             .then(async (context) => {
                 contextRef = context;
@@ -102,7 +119,10 @@ export const createContextManager = (options: ContextManagerOptions) => {
  * 使用相对路径，便于 monorepo 下的运行与打包。
  */
 export const resolvePaths = () => {
-    const extensionPath = path.resolve(__dirname, '../../../extension/dist');
+    const extensionPaths = [
+        path.resolve(__dirname, '../../../extension/dist'),
+        path.resolve(__dirname, '../../../start_extension/dist'),
+    ];
     const userDataDir = path.resolve(__dirname, '../../.user-data');
-    return { extensionPath, userDataDir };
+    return { extensionPaths, userDataDir };
 };

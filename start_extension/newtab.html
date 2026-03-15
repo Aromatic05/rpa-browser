@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RPA Start</title>
+  <style>
+    :root {
+      --bg: radial-gradient(1200px 700px at 20% 10%, #e6f3ff 0%, #f8fbff 45%, #ffffff 100%);
+      --text: #0f172a;
+      --muted: #475569;
+      --card: #ffffffcc;
+      --line: #cbd5e1;
+      --accent: #0f766e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(840px, 96vw);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
+      backdrop-filter: blur(4px);
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p { margin: 0 0 16px; color: var(--muted); }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: var(--muted);
+      background: #fff;
+    }
+    .ok { color: var(--accent); }
+    ul { margin: 0; padding-left: 20px; line-height: 1.7; }
+    code {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>RPA Browser Start Page</h1>
+    <p>这个标签页由 <code>start_extension</code> 接管，负责帮助信息展示与新标签页上报。</p>
+    <div class="row">
+      <span class="tag">Agent WS: <strong id="wsStatus">connecting...</strong></span>
+      <span class="tag">tabToken: <strong id="token">-</strong></span>
+      <span class="tag">url: <strong id="url">-</strong></span>
+    </div>
+    <ul>
+      <li>新标签页创建时会自动向 runner 上报 <code>tab.opened</code>。</li>
+      <li>录制、回放、workspace 管理由原扩展继续负责。</li>
+      <li>如果 WS 不可用，不会影响你继续浏览。</li>
+    </ul>
+  </main>
+  <script type="module" src="./entry/newtab.js"></script>
+</body>
+</html>

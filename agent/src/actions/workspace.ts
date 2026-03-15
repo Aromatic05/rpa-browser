@@ -13,6 +13,7 @@ type TabListPayload = { workspaceId?: string };
 type TabCreatePayload = { workspaceId?: string; startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
 type TabClosePayload = { workspaceId?: string; tabId: string };
 type TabSetActivePayload = { workspaceId?: string; tabId: string };
+type TabOpenedPayload = { source?: string; url?: string; title?: string; at?: number };
 
 const resolveWorkspaceId = (
     ctx: { pageRegistry: any },
@@ -119,5 +120,31 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveTab(workspaceId, payload.tabId);
         await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: payload.tabId });
         return makeOk({ workspaceId, tabId: payload.tabId });
+    },
+    'tab.opened': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabOpenedPayload;
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+        ctx.pageRegistry.setActiveWorkspace(scope.workspaceId);
+        ctx.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
+        ctx.log('tab.opened', {
+            workspaceId: scope.workspaceId,
+            tabId: scope.tabId,
+            tabToken: ctx.tabToken,
+            pageUrl: ctx.page.url(),
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedTitle: payload.title,
+            reportedAt: payload.at,
+        });
+        return makeOk({
+            workspaceId: scope.workspaceId,
+            tabId: scope.tabId,
+            tabToken: ctx.tabToken,
+            pageUrl: ctx.page.url(),
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedTitle: payload.title,
+            reportedAt: payload.at,
+        });
     },
 };

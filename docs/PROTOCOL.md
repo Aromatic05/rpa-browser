@@ -74,11 +74,48 @@
 当前 action handler 来自：
 
 - workspace：`workspace.list`、`workspace.create`、`workspace.setActive`
-- tab：`tab.list`、`tab.create`、`tab.close`、`tab.setActive`
+- tab：`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`
 - record：`record.start`、`record.stop`、`record.get`、`record.clear`、`record.event`
 - play：`play.start`、`play.stop`
 
 代码来源：`agent/src/actions/workspace.ts`、`agent/src/actions/recording.ts`。
+
+### 2.6 `tab.opened` 合同
+
+用途：`start_extension` 新标签页打开时上报，通知后端将当前 `tabToken` 对齐到 workspace 活跃上下文并记录 action 日志。
+
+请求示例：
+
+```json
+{
+  "v": 1,
+  "id": "evt-1",
+  "type": "tab.opened",
+  "tabToken": "token-xxx",
+  "scope": { "tabToken": "token-xxx" },
+  "payload": {
+    "source": "start_extension",
+    "url": "chrome://newtab/",
+    "title": "New Tab",
+    "at": 1710000000000
+  }
+}
+```
+
+成功响应 `data` 字段：
+
+```json
+{
+  "workspaceId": "ws-xxx",
+  "tabId": "tab-xxx",
+  "tabToken": "token-xxx",
+  "pageUrl": "chrome-extension://.../newtab.html",
+  "source": "start_extension",
+  "reportedUrl": "chrome://newtab/",
+  "reportedTitle": "New Tab",
+  "reportedAt": 1710000000000
+}
+```
 
 ### 2.5 Action 错误码
 

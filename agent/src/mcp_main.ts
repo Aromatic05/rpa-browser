@@ -20,7 +20,7 @@ const paths = resolvePaths();
 const recordingState = createRecordingState();
 
 const contextManager = createContextManager({
-    extensionPath: paths.extensionPath,
+    extensionPaths: paths.extensionPaths,
     userDataDir: paths.userDataDir,
     onPage: (page) => {
         void pageRegistry.bindPage(page);

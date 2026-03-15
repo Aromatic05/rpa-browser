@@ -56,7 +56,7 @@ const serveFile = async (res: http.ServerResponse, filePath: string, contentType
 const paths = resolvePaths();
 const recordingState = createRecordingState();
 const contextManager = createContextManager({
-    extensionPath: paths.extensionPath,
+    extensionPaths: paths.extensionPaths,
     userDataDir: paths.userDataDir,
     onPage: (page) => {
         void pageRegistry.bindPage(page);
