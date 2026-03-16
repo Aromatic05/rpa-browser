@@ -228,6 +228,11 @@ pnpm test:extension
 - `RPA_INTEGRATION_HEADED=true|false`：控制集成测试是否有头
 - `RPA_HEADLESS=true|false`：agent 启动浏览器模式（由测试脚本自动设置）
 
+脚本复用说明：
+
+- `pnpm -C agent test:integration:run`：统一执行入口
+- `test:integration` 与 `test:integration:headed` 仅通过 `RPA_INTEGRATION_HEADED` 切换模式
+
 ## 9. 文档维护规则
 
 代码改动请在同一 PR 同步文档：
