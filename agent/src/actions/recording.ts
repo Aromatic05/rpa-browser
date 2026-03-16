@@ -15,6 +15,7 @@ import {
     endReplay,
     cancelReplay,
     recordStep,
+    listWorkspaceRecordings,
 } from '../record/recording';
 import { ERROR_CODES } from './error_codes';
 import type { StepUnion } from '../runner/steps/types';
@@ -45,6 +46,10 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         clearRecording(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
         return makeOk({ cleared: true });
     },
+    'record.list': async (ctx, _action) => {
+        const recordings = listWorkspaceRecordings(ctx.recordingState);
+        return makeOk({ recordings });
+    },
     'play.stop': async (ctx, _action) => {
         cancelReplay(ctx.recordingState, ctx.tabToken);
         return makeOk({ stopped: true });
@@ -61,9 +66,17 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'recording workspace not found');
         }
         const replayWorkspaceId = recordedWorkspaceId || scope.workspaceId;
-        // Replay uses a dedicated fresh tab in the target workspace to avoid hijacking
-        // existing user/panel tabs.
-        const initialTabId = await ctx.pageRegistry.createTab(replayWorkspaceId);
+        // Prefer the currently targeted tab when scope is valid in the same workspace.
+        // Only create a new tab if we must switch workspace and no tab is available there.
+        let initialTabId = scope.workspaceId === replayWorkspaceId ? scope.tabId : '';
+        if (!initialTabId) {
+            const targetWs = ctx.pageRegistry.listWorkspaces().find((ws) => ws.workspaceId === replayWorkspaceId);
+            initialTabId = targetWs?.activeTabId || '';
+        }
+        if (!initialTabId) {
+            initialTabId = await ctx.pageRegistry.createTab(replayWorkspaceId);
+        }
+        // Never reuse recorded tab token; bind replay to the current runtime tab token.
         if (bundle.manifest?.entryUrl) {
             try {
                 const page = await ctx.pageRegistry.resolvePage({ workspaceId: replayWorkspaceId, tabId: initialTabId });

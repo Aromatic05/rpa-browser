@@ -4,6 +4,7 @@ import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
+import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { executeAction, type ActionContext } from './actions/execute';
 import { makeErr, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
@@ -26,6 +27,12 @@ const log = (...args: unknown[]) => console.log('[RPA:agent]', ...args);
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
+const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.json');
+await loadRecordingStateFromFile(recordingState, recordingStatePath);
+const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
+    intervalMs: 1500,
+    onError: (error) => console.warn('[RPA:agent]', 'recording persistence error', String(error)),
+});
 
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
@@ -274,6 +281,7 @@ wss.on('connection', (socket) => {
                     const data = response.data as any;
                     const mutating =
                         action.type === 'workspace.create' ||
+                        action.type === 'workspace.restore' ||
                         action.type === 'workspace.setActive' ||
                         action.type === 'tab.create' ||
                         action.type === 'tab.setActive' ||
@@ -293,6 +301,8 @@ wss.on('connection', (socket) => {
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 socket.send(JSON.stringify({ type: 'error', payload: makeErr(ERROR_CODES.ERR_BAD_ARGS, message) }));
+            } finally {
+                void recordingPersistence.flush();
             }
         })();
     });

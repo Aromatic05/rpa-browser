@@ -7,11 +7,19 @@ import type { Action, ActionScope } from './action_protocol';
 import { makeErr, makeOk } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
-import { ensureRecorder, recordStep } from '../record/recording';
+import {
+    ensureRecorder,
+    getRecordingBundle,
+    getWorkspaceSnapshot,
+    recordStep,
+    saveWorkspaceSnapshot,
+} from '../record/recording';
 import type { StepUnion } from '../runner/steps/types';
 
 type WorkspaceCreatePayload = { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
 type WorkspaceSetActivePayload = { workspaceId: string };
+type WorkspaceSavePayload = { workspaceId?: string };
+type WorkspaceRestorePayload = { workspaceId: string };
 type TabListPayload = { workspaceId?: string };
 type TabCreatePayload = { workspaceId?: string; startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
 type TabClosePayload = { workspaceId?: string; tabId: string };
@@ -119,6 +127,181 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveWorkspace(payload.workspaceId);
         await bringWorkspaceTabToFront(ctx, { workspaceId: payload.workspaceId });
         return makeOk({ workspaceId: payload.workspaceId });
+    },
+    'workspace.save': async (ctx, action) => {
+        const payload = (action.payload || {}) as WorkspaceSavePayload;
+        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
+        if (!workspaceId) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+        }
+        const tabs = await ctx.pageRegistry.listTabs(workspaceId);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId });
+        const recordingToken = bundle.recordingToken || null;
+        const snapshot = saveWorkspaceSnapshot(ctx.recordingState, {
+            workspaceId,
+            tabs: tabs.map((tab) => ({
+                tabId: tab.tabId,
+                url: tab.url,
+                title: tab.title,
+                active: tab.active,
+            })),
+            recordingToken,
+            steps: bundle.steps,
+            manifest: bundle.manifest,
+        });
+        return makeOk({
+            saved: true,
+            workspaceId,
+            recordingToken,
+            savedAt: snapshot.savedAt,
+            tabCount: snapshot.tabs.length,
+            stepCount: snapshot.recording.steps.length,
+        });
+    },
+    'workspace.restore': async (ctx, action) => {
+        const payload = (action.payload || {}) as WorkspaceRestorePayload;
+        const sourceWorkspaceId = payload.workspaceId || action.scope?.workspaceId;
+        if (!sourceWorkspaceId) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
+        }
+
+        const snapshot = getWorkspaceSnapshot(ctx.recordingState, sourceWorkspaceId);
+        const fallbackRecordingToken = ctx.recordingState.workspaceLatestRecording.get(sourceWorkspaceId) || null;
+        const fallbackManifest = fallbackRecordingToken
+            ? ctx.recordingState.recordingManifests.get(fallbackRecordingToken)
+            : undefined;
+        const fallbackSteps = fallbackRecordingToken
+            ? ctx.recordingState.recordings.get(fallbackRecordingToken) || []
+            : [];
+
+        const sourceTabs =
+            snapshot?.tabs?.length
+                ? snapshot.tabs
+                : (fallbackManifest?.tabs || []).map((tab) => ({
+                      tabId: tab.tabId || tab.tabRef,
+                      url: tab.lastSeenUrl || tab.firstSeenUrl || '',
+                      title: '',
+                      active: tab.tabRef === fallbackManifest?.entryTabRef,
+                  }));
+
+        if (!sourceTabs.length && !fallbackManifest?.entryUrl) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'no saved workspace snapshot to restore');
+        }
+
+        const created = await ctx.pageRegistry.createWorkspace();
+        const targetWorkspaceId = created.workspaceId;
+        const restoredTabs: Array<{ tabId: string; url: string; title: string; active: boolean; tabToken: string }> = [];
+
+        const first = sourceTabs[0] || {
+            tabId: created.tabId,
+            url: fallbackManifest?.entryUrl || '',
+            title: '',
+            active: true,
+        };
+        try {
+            const firstPage = await ctx.pageRegistry.resolvePage({
+                workspaceId: targetWorkspaceId,
+                tabId: created.tabId,
+            });
+            if (first.url) {
+                await firstPage.goto(first.url, { waitUntil: 'domcontentloaded' });
+            }
+        } catch {
+            // keep default page when restore navigation fails
+        }
+        restoredTabs.push({
+            tabId: created.tabId,
+            url: first.url || '',
+            title: first.title || '',
+            active: first.active !== false,
+            tabToken: ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: created.tabId }),
+        });
+
+        for (let i = 1; i < sourceTabs.length; i += 1) {
+            const tab = sourceTabs[i];
+            const tabId = await ctx.pageRegistry.createTab(targetWorkspaceId);
+            try {
+                const page = await ctx.pageRegistry.resolvePage({ workspaceId: targetWorkspaceId, tabId });
+                if (tab.url) {
+                    await page.goto(tab.url, { waitUntil: 'domcontentloaded' });
+                }
+            } catch {
+                // ignore per-tab navigation failures
+            }
+            restoredTabs.push({
+                tabId,
+                url: tab.url || '',
+                title: tab.title || '',
+                active: !!tab.active,
+                tabToken: ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId }),
+            });
+        }
+
+        const activeTab = restoredTabs.find((tab) => tab.active) || restoredTabs[0];
+        ctx.pageRegistry.setActiveWorkspace(targetWorkspaceId);
+        if (activeTab) {
+            ctx.pageRegistry.setActiveTab(targetWorkspaceId, activeTab.tabId);
+            await bringWorkspaceTabToFront(ctx, { workspaceId: targetWorkspaceId, tabId: activeTab.tabId });
+        }
+
+        let recordingToken = snapshot?.recording.recordingToken || fallbackRecordingToken;
+        const sourceSteps = snapshot?.recording.steps || fallbackSteps;
+        if ((!recordingToken || !ctx.recordingState.recordings.has(recordingToken)) && sourceSteps.length > 0) {
+            recordingToken = crypto.randomUUID();
+            ctx.recordingState.recordings.set(recordingToken, sourceSteps as StepUnion[]);
+        }
+
+        if (recordingToken) {
+            ctx.recordingState.workspaceLatestRecording.set(targetWorkspaceId, recordingToken);
+            const existingManifest = ctx.recordingState.recordingManifests.get(recordingToken);
+            if (existingManifest) {
+                existingManifest.workspaceId = targetWorkspaceId;
+            } else {
+                const entry = activeTab || restoredTabs[0];
+                ctx.recordingState.recordingManifests.set(recordingToken, {
+                    recordingToken,
+                    workspaceId: targetWorkspaceId,
+                    entryTabRef: entry?.tabId,
+                    entryUrl: entry?.url || fallbackManifest?.entryUrl,
+                    startedAt: snapshot?.recording.manifest?.startedAt || fallbackManifest?.startedAt || Date.now(),
+                    tabs: restoredTabs.map((tab) => ({
+                        tabToken: tab.tabToken,
+                        tabRef: tab.tabId,
+                        tabId: tab.tabId,
+                        firstSeenUrl: tab.url,
+                        lastSeenUrl: tab.url,
+                        firstSeenAt: Date.now(),
+                        lastSeenAt: Date.now(),
+                    })),
+                });
+            }
+        }
+
+        const savedSnapshot = saveWorkspaceSnapshot(ctx.recordingState, {
+            workspaceId: targetWorkspaceId,
+            tabs: restoredTabs.map((tab) => ({
+                tabId: tab.tabId,
+                url: tab.url,
+                title: tab.title,
+                active: tab.active,
+            })),
+            recordingToken: recordingToken || null,
+            steps: sourceSteps as StepUnion[],
+            manifest: recordingToken ? ctx.recordingState.recordingManifests.get(recordingToken) : undefined,
+        });
+
+        return makeOk({
+            restored: true,
+            sourceWorkspaceId,
+            workspaceId: targetWorkspaceId,
+            tabId: activeTab?.tabId || created.tabId,
+            tabToken: activeTab
+                ? ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: activeTab.tabId })
+                : ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: created.tabId }),
+            recordingToken: recordingToken || null,
+            tabCount: savedSnapshot.tabs.length,
+            stepCount: savedSnapshot.recording.steps.length,
+        });
     },
     'tab.list': async (ctx, action) => {
         const payload = (action.payload || {}) as TabListPayload;

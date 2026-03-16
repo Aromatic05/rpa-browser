@@ -34,11 +34,35 @@ export type RecordingManifest = {
     tabs: RecordingTabManifest[];
 };
 
+export type SavedRecordingTabManifest = Omit<RecordingTabManifest, 'tabToken'>;
+export type SavedRecordingManifest = Omit<RecordingManifest, 'tabs'> & {
+    tabs: SavedRecordingTabManifest[];
+};
+
+export type WorkspaceSavedTab = {
+    tabId: string;
+    url: string;
+    title: string;
+    active: boolean;
+};
+
+export type WorkspaceSavedSnapshot = {
+    workspaceId: string;
+    savedAt: number;
+    tabs: WorkspaceSavedTab[];
+    recording: {
+        recordingToken: string | null;
+        manifest?: SavedRecordingManifest;
+        steps: StepUnion[];
+    };
+};
+
 export type RecordingState = {
     recordingEnabled: Set<string>;
     recordings: Map<string, StepUnion[]>;
     recordingManifests: Map<string, RecordingManifest>;
     workspaceLatestRecording: Map<string, string>;
+    workspaceSnapshots: Map<string, WorkspaceSavedSnapshot>;
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
     lastScrollY: Map<string, number>;
@@ -54,6 +78,7 @@ export const createRecordingState = (): RecordingState => ({
     recordings: new Map(),
     recordingManifests: new Map(),
     workspaceLatestRecording: new Map(),
+    workspaceSnapshots: new Map(),
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
     lastScrollY: new Map(),
@@ -557,6 +582,103 @@ export const clearRecording = (state: RecordingState, tabToken: string, opts?: {
     if (manifest?.workspaceId && state.workspaceLatestRecording.get(manifest.workspaceId) === effectiveToken) {
         state.workspaceLatestRecording.delete(manifest.workspaceId);
     }
+};
+
+export type WorkspaceRecordingSummary = {
+    workspaceId: string;
+    recordingToken: string;
+    stepCount: number;
+    entryUrl?: string;
+    startedAt: number;
+    updatedAt: number;
+};
+
+const sanitizeSavedManifest = (manifest?: RecordingManifest): SavedRecordingManifest | undefined => {
+    if (!manifest) return undefined;
+    return {
+        ...manifest,
+        tabs: manifest.tabs.map((tab) => ({
+            tabRef: tab.tabRef,
+            tabId: tab.tabId,
+            firstSeenUrl: tab.firstSeenUrl,
+            lastSeenUrl: tab.lastSeenUrl,
+            firstSeenAt: tab.firstSeenAt,
+            lastSeenAt: tab.lastSeenAt,
+        })),
+    };
+};
+
+const sanitizeSavedStep = (step: StepUnion): StepUnion => {
+    if (!step.meta) return { ...step };
+    const { tabToken: _dropTabToken, ...metaNoToken } = step.meta;
+    return {
+        ...step,
+        meta: metaNoToken,
+    } as StepUnion;
+};
+
+export const saveWorkspaceSnapshot = (
+    state: RecordingState,
+    payload: {
+        workspaceId: string;
+        tabs: WorkspaceSavedTab[];
+        recordingToken: string | null;
+        steps: StepUnion[];
+        manifest?: RecordingManifest;
+    },
+): WorkspaceSavedSnapshot => {
+    const snapshot: WorkspaceSavedSnapshot = {
+        workspaceId: payload.workspaceId,
+        savedAt: Date.now(),
+        tabs: payload.tabs.map((tab) => ({
+            tabId: tab.tabId,
+            url: tab.url,
+            title: tab.title,
+            active: tab.active,
+        })),
+        recording: {
+            recordingToken: payload.recordingToken,
+            manifest: sanitizeSavedManifest(payload.manifest),
+            steps: payload.steps.map(sanitizeSavedStep),
+        },
+    };
+    state.workspaceSnapshots.set(payload.workspaceId, snapshot);
+    return snapshot;
+};
+
+export const getWorkspaceSnapshot = (state: RecordingState, workspaceId: string) => {
+    return state.workspaceSnapshots.get(workspaceId);
+};
+
+export const listWorkspaceRecordings = (state: RecordingState): WorkspaceRecordingSummary[] => {
+    const summaries: WorkspaceRecordingSummary[] = [];
+    for (const snapshot of state.workspaceSnapshots.values()) {
+        summaries.push({
+            workspaceId: snapshot.workspaceId,
+            recordingToken: snapshot.recording.recordingToken || snapshot.workspaceId,
+            stepCount: snapshot.recording.steps.length,
+            entryUrl: snapshot.recording.manifest?.entryUrl,
+            startedAt: snapshot.recording.manifest?.startedAt || snapshot.savedAt,
+            updatedAt: snapshot.savedAt,
+        });
+    }
+    const seen = new Set(summaries.map((item) => item.workspaceId));
+    for (const [workspaceId, recordingToken] of state.workspaceLatestRecording.entries()) {
+        if (seen.has(workspaceId)) continue;
+        const manifest = state.recordingManifests.get(recordingToken);
+        if (!manifest) continue;
+        const latestTabTs = manifest.tabs.reduce((maxTs, tab) => Math.max(maxTs, tab.lastSeenAt || 0), 0);
+        summaries.push({
+            workspaceId,
+            recordingToken,
+            stepCount: (state.recordings.get(recordingToken) || []).length,
+            entryUrl: manifest.entryUrl,
+            startedAt: manifest.startedAt,
+            updatedAt: latestTabTs || manifest.startedAt,
+        });
+    }
+    summaries.sort((a, b) => b.updatedAt - a.updatedAt);
+    return summaries;
 };
 
 /**
