@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     clearRecording,
+    cleanupRecording,
     createRecordingState,
     getRecording,
     getRecordingBundle,
@@ -107,4 +108,54 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
     const tabB = bundle.manifest?.tabs.find((tab) => tab.tabToken === 'token-b');
     assert.equal(tabB?.tabRef, 'tab-b');
     assert.equal(tabB?.lastSeenUrl, 'https://example.com/b');
+});
+
+test('cleanupRecording keeps persisted recording data for closed tab token', () => {
+    const state = createRecordingState();
+    state.recordingEnabled.add('token-a');
+    state.recordings.set('token-a', [
+        {
+            id: 'step-a',
+            name: 'browser.goto',
+            args: { url: 'https://example.com' },
+            meta: { source: 'record', ts: 1, tabToken: 'token-a', workspaceId: 'ws-1' },
+        } as StepUnion,
+    ]);
+    state.recordingManifests.set('token-a', {
+        recordingToken: 'token-a',
+        workspaceId: 'ws-1',
+        startedAt: 1,
+        tabs: [],
+    });
+    state.workspaceLatestRecording.set('ws-1', 'token-a');
+
+    cleanupRecording(state, 'token-a');
+    const bundle = getRecordingBundle(state, 'other-token', { workspaceId: 'ws-1' });
+    assert.equal(bundle.steps.length, 1);
+    assert.equal(bundle.steps[0].id, 'step-a');
+    assert.equal(bundle.manifest?.workspaceId, 'ws-1');
+});
+
+test('getRecordingBundle falls back by workspace when tab token changes', () => {
+    const state = createRecordingState();
+    state.recordings.set('token-a', [
+        {
+            id: 'step-workspace',
+            name: 'browser.click',
+            args: { target: { selector: '#a' } },
+            meta: { source: 'record', ts: 2, tabToken: 'token-a', workspaceId: 'ws-2' },
+        } as StepUnion,
+    ]);
+    state.recordingManifests.set('token-a', {
+        recordingToken: 'token-a',
+        workspaceId: 'ws-2',
+        startedAt: 2,
+        tabs: [],
+    });
+    state.workspaceLatestRecording.set('ws-2', 'token-a');
+
+    const bundle = getRecordingBundle(state, 'token-new', { workspaceId: 'ws-2' });
+    assert.equal(bundle.steps.length, 1);
+    assert.equal(bundle.steps[0].id, 'step-workspace');
+    assert.equal(bundle.recordingToken, 'token-a');
 });

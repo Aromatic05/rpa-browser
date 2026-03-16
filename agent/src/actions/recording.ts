@@ -36,11 +36,13 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return makeOk({ pageUrl: ctx.page.url() });
     },
     'record.get': async (ctx, _action) => {
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken);
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
         return makeOk({ steps: bundle.steps, manifest: bundle.manifest });
     },
     'record.clear': async (ctx, _action) => {
-        clearRecording(ctx.recordingState, ctx.tabToken);
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+        clearRecording(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
         return makeOk({ cleared: true });
     },
     'play.stop': async (ctx, _action) => {
@@ -49,10 +51,10 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     },
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken);
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
         const steps = bundle.steps;
         const stopOnError = payload.stopOnError ?? true;
-        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         const recordedWorkspaceId = bundle.manifest?.workspaceId;
         const existingWorkspaceIds = new Set(ctx.pageRegistry.listWorkspaces().map((ws) => ws.workspaceId));
         const hotWorkspace =

@@ -38,6 +38,7 @@ export type RecordingState = {
     recordingEnabled: Set<string>;
     recordings: Map<string, StepUnion[]>;
     recordingManifests: Map<string, RecordingManifest>;
+    workspaceLatestRecording: Map<string, string>;
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
     lastScrollY: Map<string, number>;
@@ -52,6 +53,7 @@ export const createRecordingState = (): RecordingState => ({
     recordingEnabled: new Set(),
     recordings: new Map(),
     recordingManifests: new Map(),
+    workspaceLatestRecording: new Map(),
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
     lastScrollY: new Map(),
@@ -62,14 +64,27 @@ export const createRecordingState = (): RecordingState => ({
 const resolveSingleRecordingToken = (
     state: RecordingState,
     tabToken: string,
-    opts?: { mustBeEnabled?: boolean },
+    opts?: { mustBeEnabled?: boolean; workspaceId?: string },
 ) => {
     const mustBeEnabled = opts?.mustBeEnabled !== false;
+    const workspaceId = opts?.workspaceId;
     if (tabToken && mustBeEnabled && state.recordingEnabled.has(tabToken)) {
         return tabToken;
     }
     if (tabToken && !mustBeEnabled && state.recordings.has(tabToken)) {
         return tabToken;
+    }
+    if (workspaceId) {
+        const workspaceToken = state.workspaceLatestRecording.get(workspaceId);
+        if (workspaceToken) {
+            if (mustBeEnabled && state.recordingEnabled.has(workspaceToken)) return workspaceToken;
+            if (!mustBeEnabled && state.recordings.has(workspaceToken)) return workspaceToken;
+        }
+        for (const [token, manifest] of state.recordingManifests.entries()) {
+            if (manifest.workspaceId !== workspaceId) continue;
+            if (mustBeEnabled && state.recordingEnabled.has(token)) return token;
+            if (!mustBeEnabled && state.recordings.has(token)) return token;
+        }
     }
     if (state.recordingEnabled.size === 1) {
         return Array.from(state.recordingEnabled)[0];
@@ -78,6 +93,11 @@ const resolveSingleRecordingToken = (
         return Array.from(state.recordings.keys())[0];
     }
     return tabToken;
+};
+
+const indexWorkspaceRecording = (state: RecordingState, recordingToken: string, workspaceId?: string) => {
+    if (!workspaceId) return;
+    state.workspaceLatestRecording.set(workspaceId, recordingToken);
 };
 
 const createStep = <TName extends StepName>(
@@ -200,6 +220,9 @@ const ensureManifest = (
         return manifest;
     }
     if (!manifest.workspaceId && seed?.workspaceId) manifest.workspaceId = seed.workspaceId;
+    if (manifest.workspaceId) {
+        indexWorkspaceRecording(state, recordingToken, manifest.workspaceId);
+    }
     if (!manifest.entryTabRef && seed?.entryTabRef) manifest.entryTabRef = seed.entryTabRef;
     if (!manifest.entryUrl && seed?.entryUrl) manifest.entryUrl = seed.entryUrl;
     return manifest;
@@ -243,6 +266,12 @@ const enrichRecordedStep = (
 ): StepUnion => {
     const ts = step.meta?.ts ?? Date.now();
     const manifest = ensureManifest(state, recordingToken);
+    if (step.meta?.workspaceId && !manifest.workspaceId) {
+        manifest.workspaceId = step.meta.workspaceId;
+    }
+    if (manifest.workspaceId) {
+        indexWorkspaceRecording(state, recordingToken, manifest.workspaceId);
+    }
     const stepTabToken = step.meta?.tabToken || sourceTabToken;
     const stepUrl =
         step.meta?.urlAtRecord ||
@@ -454,6 +483,7 @@ export const startRecording = async (
         entryTabRef: seed?.tabId || tabToken,
         entryUrl: seed?.entryUrl || page.url(),
     });
+    indexWorkspaceRecording(state, tabToken, manifest.workspaceId);
     ensureTabInManifest(manifest, tabToken, {
         tabId: seed?.tabId,
         tabRef: seed?.tabId || tabToken,
@@ -504,8 +534,11 @@ export const getRecording = (state: RecordingState, tabToken: string) => {
     return state.recordings.get(effectiveToken) || [];
 };
 
-export const getRecordingBundle = (state: RecordingState, tabToken: string) => {
-    const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: false });
+export const getRecordingBundle = (state: RecordingState, tabToken: string, opts?: { workspaceId?: string }) => {
+    const effectiveToken = resolveSingleRecordingToken(state, tabToken, {
+        mustBeEnabled: false,
+        workspaceId: opts?.workspaceId,
+    });
     return {
         recordingToken: effectiveToken,
         steps: state.recordings.get(effectiveToken) || [],
@@ -513,10 +546,17 @@ export const getRecordingBundle = (state: RecordingState, tabToken: string) => {
     };
 };
 
-export const clearRecording = (state: RecordingState, tabToken: string) => {
-    const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: false });
+export const clearRecording = (state: RecordingState, tabToken: string, opts?: { workspaceId?: string }) => {
+    const effectiveToken = resolveSingleRecordingToken(state, tabToken, {
+        mustBeEnabled: false,
+        workspaceId: opts?.workspaceId,
+    });
+    const manifest = state.recordingManifests.get(effectiveToken);
     state.recordings.set(effectiveToken, []);
     state.recordingManifests.delete(effectiveToken);
+    if (manifest?.workspaceId && state.workspaceLatestRecording.get(manifest.workspaceId) === effectiveToken) {
+        state.workspaceLatestRecording.delete(manifest.workspaceId);
+    }
 };
 
 /**
@@ -524,8 +564,6 @@ export const clearRecording = (state: RecordingState, tabToken: string) => {
  */
 export const cleanupRecording = (state: RecordingState, tabToken: string) => {
     state.recordingEnabled.delete(tabToken);
-    state.recordings.delete(tabToken);
-    state.recordingManifests.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);
     state.lastScrollY.delete(tabToken);
