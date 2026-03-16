@@ -210,7 +210,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         }
         const tabId = randomId();
         attachTabToWorkspace(activeWorkspace, tabId, tabToken, page);
-        activeWorkspace.activeTabId = tabId;
         touchWorkspace(activeWorkspace);
     };
 

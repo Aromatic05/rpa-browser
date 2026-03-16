@@ -1,11 +1,6 @@
 import assert from 'node:assert/strict';
 import type { IntegrationScenario } from '../harness/types';
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-const readPauseMs = (envName: string, fallbackMs = 0) => {
-    const raw = Number(process.env[envName] || fallbackMs);
-    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
-};
 const nowIso = () => new Date().toISOString();
 const timeline = (label: string, extra?: Record<string, unknown>) => {
     const payload = extra ? ` ${JSON.stringify(extra)}` : '';
@@ -22,9 +17,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
     name: 'multi-tab-recording-consistency',
     run: async ({ client, fixtureBaseUrl }) => {
         const headed = ['1', 'true', 'yes'].includes((process.env.RPA_INTEGRATION_HEADED || '').toLowerCase());
-        const pauseBeforeSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_SWITCH_MS');
-        const pauseAfterSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS');
-        const pauseBeforeExitMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS', headed ? 3000 : 0);
 
         timeline('scenario.start', { fixtureBaseUrl, headed });
         const created = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
@@ -70,7 +62,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'tab.setActive(first)',
         );
-        await sleep(300);
 
         expectOk(
             await client.sendAction({
@@ -80,7 +71,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.start',
         );
-        await sleep(200);
 
         expectOk(
             await client.sendAction({
@@ -100,7 +90,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(fill-a)',
         );
-        await sleep(180);
 
         expectOk(
             await client.sendAction({
@@ -116,7 +105,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(click-a)',
         );
-        await sleep(180);
 
         expectOk(
             await client.sendAction({
@@ -132,7 +120,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(scroll-a)',
         );
-        await sleep(220);
 
         expectOk(
             await client.sendAction({
@@ -148,7 +135,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(page-info-a)',
         );
-        await sleep(Math.max(120, pauseBeforeSwitchMs));
 
         expectOk(
             await client.sendAction({
@@ -199,9 +185,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             `active tab mismatch after switch: ${activeAfterSwitch?.tabId} vs ${secondTab.tabId}`,
         );
 
-        const visibleSwitchPauseMs = headed ? 2000 : 280;
-        await sleep(Math.max(visibleSwitchPauseMs, pauseAfterSwitchMs));
-
         expectOk(
             await client.sendAction({
                 type: 'record.event',
@@ -216,7 +199,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(page-info-b)',
         );
-        await sleep(120);
 
         expectOk(
             await client.sendAction({
@@ -236,7 +218,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(fill-b)',
         );
-        await sleep(180);
 
         expectOk(
             await client.sendAction({
@@ -256,7 +237,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(select-b)',
         );
-        await sleep(180);
 
         expectOk(
             await client.sendAction({
@@ -272,7 +252,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(fill-b-final)',
         );
-        await sleep(220);
 
         expectOk(
             await client.sendAction({
@@ -316,7 +295,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'tab.setActive(before-play)',
         );
-        await sleep(300);
 
         const playStartTs = Date.now();
         timeline('play.start.request', { at: playStartTs });
@@ -372,10 +350,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             pageInfoBTabId: info?.tab_id,
             expectedBTabId: secondTab.tabId,
         });
-        if (pauseBeforeExitMs > 0) {
-            timeline('pause.before.exit', { pauseBeforeExitMs });
-            await sleep(pauseBeforeExitMs);
-        }
         timeline('scenario.done');
     },
 };
