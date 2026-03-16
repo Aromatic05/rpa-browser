@@ -36,6 +36,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     let activeScopeTabId: string | null = null;
     const supportsTabGroups = supportsTabGrouping(chrome);
     const tokenToWorkspace = new Map<string, string>();
+    const tokenToScope = new Map<string, { workspaceId: string; tabId: string }>();
     const withActionBase = (action: Action) => ({
         v: 1 as const,
         id: action.id || crypto.randomUUID(),
@@ -88,10 +89,23 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const requestTokenFromTab = async (tabId: number) => {
-        const result = await send.toTab<{ ok: boolean; tabToken?: string; url?: string }>(tabId, MSG.GET_TOKEN);
-        if (!result.ok) return { ok: false, error: result.error.message } as const;
-        const data = result.data || { ok: false, error: 'no response' };
-        return data;
+        // Navigation + content-script startup is eventually consistent.
+        // Use short retries to avoid turning token discovery into a 20s hard timeout.
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            const result = await send.toTab<{ ok: boolean; tabToken?: string; url?: string }>(tabId, MSG.GET_TOKEN, undefined, {
+                timeoutMs: 1500,
+            });
+            if (result.ok) {
+                const data = result.data || { ok: false, error: 'no response' };
+                if (data?.ok && data.tabToken) return data;
+            } else if (result.error.code === 'NO_RECEIVER') {
+                return { ok: false, error: result.error.message } as const;
+            }
+            if (attempt < 2) {
+                await wait(150);
+            }
+        }
+        return { ok: false, error: 'tab token request timeout' } as const;
     };
 
     const ensureTabToken = async (tabId: number) => {
@@ -197,6 +211,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const data = payload.data || {};
             if (data.tabToken && data.workspaceId) {
                 tokenToWorkspace.set(String(data.tabToken), String(data.workspaceId));
+            }
+            if (data.tabToken && data.workspaceId && data.tabId) {
+                tokenToScope.set(String(data.tabToken), {
+                    workspaceId: String(data.workspaceId),
+                    tabId: String(data.tabId),
+                });
             }
             if (!activeWorkspaceId && data.workspaceId) {
                 activeWorkspaceId = String(data.workspaceId);
@@ -318,11 +338,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (message.type === MSG.ACTION) {
             (async () => {
                 const action = (message.action || {}) as Action;
-                let tabToken = action.tabToken as string | undefined;
-                const scope = resolveScope(
-                    { activeWorkspaceId, activeTabId: activeScopeTabId },
-                    { workspaceId: action.scope?.workspaceId, tabId: action.scope?.tabId },
-                );
+                let tabToken = (action.tabToken || action.scope?.tabToken) as string | undefined;
                 if (!tabToken) {
                     const active = await getActiveTabToken();
                     if (!active) {
@@ -331,6 +347,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     }
                     tabToken = active.tabToken;
                 }
+                const tokenScope = tokenToScope.get(tabToken);
+                const scope = resolveScope(
+                    {
+                        activeWorkspaceId: tokenScope?.workspaceId || activeWorkspaceId,
+                        activeTabId: tokenScope?.tabId || activeScopeTabId,
+                    },
+                    { workspaceId: action.scope?.workspaceId, tabId: action.scope?.tabId },
+                );
                 if (!action.type) {
                     sendResponse({ ok: false, error: 'missing action.type' });
                     return;
@@ -354,6 +378,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     ? (payload.data as any)?.workspaceId || scope.workspaceId || activeWorkspaceId
                     : null;
                 if (!payload?.ok || !effectiveWorkspaceId) return;
+                const responseTabToken = ((payload.data as any)?.tabToken || tabToken) as string;
+                const responseTabId = (payload.data as any)?.tabId || scope.tabId;
+                if (responseTabToken && effectiveWorkspaceId && responseTabId) {
+                    tokenToScope.set(responseTabToken, {
+                        workspaceId: String(effectiveWorkspaceId),
+                        tabId: String(responseTabId),
+                    });
+                }
                 if (action.type === 'workspace.create' || action.type === 'tab.create') {
                     if ((payload.data as any)?.tabToken) {
                         tokenToWorkspace.set((payload.data as any).tabToken, effectiveWorkspaceId);
@@ -363,7 +395,20 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 } else if (action.type === 'workspace.setActive') {
                     void ensureGroupedActiveTab(effectiveWorkspaceId);
                 }
-            })();
+            })().catch((error) => {
+                const message = error instanceof Error ? error.message : String(error);
+                try {
+                    sendResponse({
+                        ok: false,
+                        error: {
+                            code: 'RUNTIME_ERROR',
+                            message: `ACTION dispatch failed: ${message}`,
+                        },
+                    });
+                } catch {
+                    // ignore response failures
+                }
+            });
             return true;
         }
     };
@@ -378,3 +423,4 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         onInstalled,
     };
 };
+    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

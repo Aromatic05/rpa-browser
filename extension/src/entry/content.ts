@@ -131,12 +131,13 @@ const loadFloatingUI = (() => {
             tabToken,
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
+                const scopedTabToken = (scope as any)?.tabToken || tabToken;
                 const action = {
                     v: 1,
                     id: crypto.randomUUID(),
                     type,
-                    tabToken,
-                    scope: { ...(scope || {}), tabToken },
+                    tabToken: scopedTabToken,
+                    scope: { ...(scope || {}), tabToken: scopedTabToken },
                     payload: payload || {},
                 };
                 const result = await send.action(action);

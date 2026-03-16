@@ -9,13 +9,34 @@
 import { send } from '../shared/send.js';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
+const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
+
+const readTokenFromWindowName = () => {
+    try {
+        const raw = window.name || '';
+        if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) return null;
+        const token = raw.slice(TAB_TOKEN_WIN_NAME_PREFIX.length).trim();
+        return token || null;
+    } catch {
+        return null;
+    }
+};
+
+const writeTokenToWindowName = (tabToken: string) => {
+    try {
+        window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabToken}`;
+    } catch {
+        // ignore window.name write failures
+    }
+};
 
 export const ensureTabToken = () => {
-    let tabToken = sessionStorage.getItem(TAB_TOKEN_KEY);
+    let tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) || readTokenFromWindowName();
     if (!tabToken) {
         tabToken = crypto.randomUUID();
-        sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
     }
+    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
+    writeTokenToWindowName(tabToken);
     (window as any).__TAB_TOKEN__ = tabToken;
     return tabToken;
 };
