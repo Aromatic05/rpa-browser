@@ -58,6 +58,13 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 replayOptions: ctx.replayOptions,
                 pageRegistry: {
                     listTabs: (workspaceId: string) => ctx.pageRegistry.listTabs(workspaceId),
+                    resolveTabIdFromToken: (tabToken: string) => {
+                        try {
+                            return ctx.pageRegistry.resolveScopeFromToken(tabToken).tabId;
+                        } catch {
+                            return undefined;
+                        }
+                    },
                 },
                 isCanceled: () => ctx.recordingState.replayCancel.has(ctx.tabToken),
             });

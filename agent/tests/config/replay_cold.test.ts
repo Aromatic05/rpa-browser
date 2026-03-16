@@ -110,3 +110,65 @@ test('replayRecording fails when tabToken changes without browser.switch_tab', a
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, 'ERR_ASSERTION_FAILED');
 });
+
+test('replayRecording reuses existing tab by token mapping in hot replay', async () => {
+    const executed: StepUnion[] = [];
+    const steps: StepUnion[] = [
+        {
+            id: 'h1',
+            name: 'browser.click',
+            args: { target: { selector: '#from-a' } },
+            meta: { source: 'record', tabToken: 'token-a', workspaceId: 'ws-now' },
+        },
+        {
+            id: 'h-switch',
+            name: 'browser.switch_tab',
+            args: { tab_id: 'legacy-tab-b' },
+            meta: { source: 'record', tabToken: 'token-b', workspaceId: 'ws-now', tabId: 'tab-b' },
+        },
+        {
+            id: 'h2',
+            name: 'browser.click',
+            args: { target: { selector: '#from-b' } },
+            meta: { source: 'record', tabToken: 'token-b', workspaceId: 'ws-now' },
+        },
+    ];
+
+    const result = await replayRecording({
+        workspaceId: 'ws-now',
+        initialTabId: 'tab-a',
+        initialTabToken: 'token-a',
+        steps,
+        stopOnError: true,
+        pageRegistry: {
+            listTabs: async () => [{ tabId: 'tab-a' }, { tabId: 'tab-b' }],
+            resolveTabIdFromToken: (token: string) => (token === 'token-b' ? 'tab-b' : undefined),
+        },
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () =>
+                    ({
+                        'browser.click': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true };
+                        },
+                        'browser.create_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true, data: { tab_id: 'unexpected' } };
+                        },
+                        'browser.switch_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true };
+                        },
+                    }) as any,
+            } as any,
+        } as RunStepsDeps,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), false);
+    const switched = executed.find((step) => step.name === 'browser.switch_tab');
+    assert.equal((switched?.args as any)?.tab_id, 'tab-b');
+});

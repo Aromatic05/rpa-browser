@@ -25,6 +25,7 @@ type ReplayRequest = {
     stopOnError: boolean;
     pageRegistry: {
         listTabs: (workspaceId: string) => Promise<Array<{ tabId: string; active?: boolean }>>;
+        resolveTabIdFromToken?: (tabToken: string) => string | undefined;
     };
     isCanceled?: () => boolean;
     deps?: RunStepsDeps;
@@ -68,12 +69,15 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (desiredToken) {
             targetTabId = tokenToTab.get(desiredToken);
             if (!targetTabId) {
+                targetTabId = req.pageRegistry.resolveTabIdFromToken?.(desiredToken);
                 const tabs = await req.pageRegistry.listTabs(req.workspaceId);
                 const recordedTabId = originalStep.meta?.tabId;
-                targetTabId =
-                    recordedTabId && tabs.some((tab) => tab.tabId === recordedTabId)
-                        ? recordedTabId
-                        : undefined;
+                if (!targetTabId || !tabs.some((tab) => tab.tabId === targetTabId)) {
+                    targetTabId =
+                        recordedTabId && tabs.some((tab) => tab.tabId === recordedTabId)
+                            ? recordedTabId
+                            : undefined;
+                }
                 if (!targetTabId) {
                     const created = await runOne({
                         id: `replay-create-${Date.now()}`,

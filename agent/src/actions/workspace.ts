@@ -7,7 +7,7 @@ import type { Action, ActionScope } from './action_protocol';
 import { makeErr, makeOk } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
-import { recordStep } from '../record/recording';
+import { ensureRecorder, recordStep } from '../record/recording';
 import type { StepUnion } from '../runner/steps/types';
 
 type WorkspaceCreatePayload = { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
@@ -46,6 +46,32 @@ const bringWorkspaceTabToFront = async (
         await page.bringToFront();
     } catch {
         // ignore tab focus failures
+    }
+};
+
+const ensureRecorderForTabIfRecording = async (
+    ctx: {
+        pageRegistry: any;
+        recordingState?: any;
+        navDedupeWindowMs: number;
+    },
+    params: {
+        workspaceId: string;
+        tabId: string;
+        tabToken: string | null;
+    },
+) => {
+    if (!ctx.recordingState || !params.tabToken) return;
+    const recordingTokens = Array.from(ctx.recordingState.recordingEnabled || []);
+    if (recordingTokens.length === 0) return;
+    const shouldInstall =
+        ctx.recordingState.recordingEnabled.has(params.tabToken) || recordingTokens.length === 1;
+    if (!shouldInstall) return;
+    try {
+        const page = await ctx.pageRegistry.resolvePage({ workspaceId: params.workspaceId, tabId: params.tabId });
+        await ensureRecorder(ctx.recordingState, page, params.tabToken, ctx.navDedupeWindowMs);
+    } catch {
+        // ignore recorder install failures for background lifecycle events
     }
 };
 
@@ -193,6 +219,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 }
             }
         }
+        await ensureRecorderForTabIfRecording(ctx, { workspaceId, tabId: payload.tabId, tabToken: targetTabToken });
         logPageEvent('tab.setActive', { workspaceId, tabId: payload.tabId });
         return makeOk({ workspaceId, tabId: payload.tabId });
     },
@@ -266,6 +293,11 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 const isCrossTab =
                     recordingScope.workspaceId === scope.workspaceId && recordingScope.tabId !== scope.tabId;
                 if (isCrossTab) {
+                    await ensureRecorderForTabIfRecording(ctx, {
+                        workspaceId: scope.workspaceId,
+                        tabId: scope.tabId,
+                        tabToken: ctx.tabToken,
+                    });
                     const list = ctx.recordingState?.recordings.get(recordingToken) || [];
                     const last = list[list.length - 1] as StepUnion | undefined;
                     const duplicateSwitch =

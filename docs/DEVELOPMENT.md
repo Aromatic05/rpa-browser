@@ -226,6 +226,9 @@ pnpm test:extension
 - 时序诊断优先依赖 `step.start/step.end` 时间戳和步骤顺序断言
 - 多 tab 录制依赖 `tab.activated` 生命周期事件自动落库为 `browser.switch_tab`（同 workspace 下跨 tab）
 - `record.stop/get/clear` 在仅有一个录制会话时允许“错误 tabToken”兜底到该会话，避免 UI 焦点切换导致停错录制
+- 面板 `tab.setActive` 也会直接写入 `browser.switch_tab`，不依赖生命周期回调先到达
+- 切换到目标 tab 时会补装 recorder，确保新 tab 后续动作可继续录制
+- 热回放会优先使用当前运行时的 `tabToken -> tabId` 映射；仅在无法解析时才走 `browser.create_tab`（cold replay）
 
 关键环境变量：
 
