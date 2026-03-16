@@ -177,10 +177,14 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         }
         const sourceScope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         let targetTabToken: string | null = null;
+        let targetTabUrl: string | undefined;
         try {
             targetTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId, tabId: payload.tabId });
+            const targetPage = await ctx.pageRegistry.resolvePage({ workspaceId, tabId: payload.tabId });
+            targetTabUrl = targetPage.url();
         } catch {
             targetTabToken = null;
+            targetTabUrl = undefined;
         }
         ctx.pageRegistry.setActiveTab(workspaceId, payload.tabId);
         await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: payload.tabId });
@@ -205,13 +209,15 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                         {
                             id: crypto.randomUUID(),
                             name: 'browser.switch_tab',
-                            args: { tab_id: payload.tabId },
+                            args: { tab_id: payload.tabId, tab_url: targetTabUrl, tab_ref: payload.tabId },
                             meta: {
                                 source: 'record',
                                 ts: Date.now(),
                                 workspaceId,
                                 tabId: payload.tabId,
+                                tabRef: payload.tabId,
                                 tabToken: targetTabToken || undefined,
+                                urlAtRecord: targetTabUrl,
                             },
                         } satisfies StepUnion,
                         ctx.navDedupeWindowMs,
@@ -309,13 +315,15 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                             {
                                 id: crypto.randomUUID(),
                                 name: 'browser.switch_tab',
-                                args: { tab_id: scope.tabId },
+                                args: { tab_id: scope.tabId, tab_url: payload.url, tab_ref: scope.tabId },
                                 meta: {
                                     source: 'record',
                                     ts: payload.at || Date.now(),
                                     workspaceId: scope.workspaceId,
                                     tabId: scope.tabId,
+                                    tabRef: scope.tabId,
                                     tabToken: ctx.tabToken,
+                                    urlAtRecord: payload.url,
                                 },
                             } satisfies StepUnion,
                             ctx.navDedupeWindowMs,
