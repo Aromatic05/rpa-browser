@@ -13,7 +13,7 @@ import type { Page } from 'playwright';
 import crypto from 'crypto';
 import { installRecorder, type RecorderEvent } from './recorder';
 import { getLogger } from '../logging/logger';
-import type { Step, StepArgsMap, StepName, StepUnion } from '../runner/steps/types';
+import type { Step, StepArgsMap, StepMeta, StepName, StepUnion } from '../runner/steps/types';
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
@@ -42,22 +42,24 @@ const createStep = <TName extends StepName>(
     name: TName,
     args: StepArgsMap[TName],
     ts: number,
+    metaExtra?: Partial<Pick<StepMeta, 'workspaceId' | 'tabId' | 'tabToken'>>,
 ): Step<TName> => ({
     id: crypto.randomUUID(),
     name,
     args,
-    meta: { source: 'record', ts },
+    meta: { source: 'record', ts, ...metaExtra },
 });
 
 const toStep = (event: RecorderEvent): StepUnion | null => {
     if (event.type === 'navigate' && event.url) {
-        return createStep('browser.goto', { url: event.url }, event.ts);
+        return createStep('browser.goto', { url: event.url }, event.ts, { tabToken: event.tabToken });
     }
     if (event.type === 'click' && (event.selector || event.a11yHint)) {
         return createStep(
             'browser.click',
             { target: { selector: event.selector, a11yHint: event.a11yHint } },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'input' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
@@ -65,6 +67,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.fill',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'change' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
@@ -72,6 +75,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.fill',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'date' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
@@ -79,6 +83,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.fill',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'select' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
@@ -86,6 +91,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.select_option',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, values: [event.value] },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'check' && (event.selector || event.a11yHint)) {
@@ -94,6 +100,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.click',
             { target: { selector: event.selector, a11yHint: event.a11yHint } },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'keydown' && event.key) {
@@ -104,6 +111,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
                 target: event.selector ? { selector: event.selector, a11yHint: event.a11yHint } : undefined,
             },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'paste' && event.selector && typeof event.value === 'string') {
@@ -111,6 +119,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.fill',
             { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     if (event.type === 'scroll' && typeof event.scrollY === 'number') {
@@ -120,6 +129,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.scroll',
             { direction: delta > 0 ? 'down' : 'up', amount: Math.abs(delta) },
             event.ts,
+            { tabToken: event.tabToken },
         );
     }
     // TODO: map copy to steps if needed.
@@ -205,7 +215,7 @@ export const recordStep = (
     const ts = step.meta?.ts ?? Date.now();
     const normalized: StepUnion = {
         ...step,
-        meta: { ...step.meta, source: step.meta?.source ?? 'record', ts },
+        meta: { ...step.meta, source: step.meta?.source ?? 'record', ts, tabToken: step.meta?.tabToken || tabToken },
     } as StepUnion;
 
     if (normalized.name === 'browser.click') {

@@ -152,7 +152,10 @@ ERR_BAD_ARGS
   meta?: {
     requestId?: string,
     source: 'mcp' | 'play' | 'script' | 'record',
-    ts?: number
+    ts?: number,
+    workspaceId?: string,
+    tabId?: string,
+    tabToken?: string
   }
 }
 ```

@@ -96,6 +96,9 @@ export type StepMeta = {
     requestId?: string;
     source: 'mcp' | 'play' | 'script' | 'record';
     ts?: number;
+    workspaceId?: string;
+    tabId?: string;
+    tabToken?: string;
 };
 
 export type Step<TName extends StepName = StepName> = {

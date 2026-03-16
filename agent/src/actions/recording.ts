@@ -16,9 +16,9 @@ import {
     cancelReplay,
     recordStep,
 } from '../record/recording';
-import { runSteps } from '../runner/run_steps';
 import { ERROR_CODES } from './error_codes';
 import type { StepUnion } from '../runner/steps/types';
+import { replayRecording } from '../play/replay';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, _action) => {
@@ -48,38 +48,53 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const stopOnError = payload.stopOnError ?? true;
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         beginReplay(ctx.recordingState, ctx.tabToken);
-        const stepResults: Array<{ stepId: string; ok: boolean; data?: unknown; error?: { code: string; message: string; details?: unknown } }> = [];
         try {
-            for (const step of steps) {
-                if (ctx.recordingState.replayCancel.has(ctx.tabToken)) {
-                    return makeOk({ stopped: true, canceled: true, results: stepResults });
-                }
-                const response = await runSteps({
-                    workspaceId: scope.workspaceId,
-                    steps: [step],
-                    options: { stopOnError: true },
-                });
-                stepResults.push(...response.results);
-                if (!response.ok && stopOnError) {
-                    const firstFailed = response.results.find((item) => !item.ok);
-                    return makeErr(
-                        ERROR_CODES.ERR_ASSERTION_FAILED,
-                        firstFailed?.error?.message || 'replay failed',
-                        { results: stepResults, failed: firstFailed?.error },
-                    );
-                }
+            const replayed = await replayRecording({
+                workspaceId: scope.workspaceId,
+                initialTabId: scope.tabId,
+                initialTabToken: ctx.tabToken,
+                steps,
+                stopOnError,
+                pageRegistry: {
+                    listTabs: (workspaceId: string) => ctx.pageRegistry.listTabs(workspaceId),
+                },
+                isCanceled: () => ctx.recordingState.replayCancel.has(ctx.tabToken),
+            });
+            if (replayed.error?.code === 'ERR_CANCELED') {
+                return makeOk({ stopped: true, canceled: true, results: replayed.results });
             }
+            if (!replayed.ok && stopOnError) {
+                const firstFailed = replayed.results.find((item) => !item.ok);
+                return makeErr(
+                    ERROR_CODES.ERR_ASSERTION_FAILED,
+                    firstFailed?.error?.message || replayed.error?.message || 'replay failed',
+                    { results: replayed.results, failed: firstFailed?.error || replayed.error },
+                );
+            }
+            return makeOk({ results: replayed.results });
         } finally {
             endReplay(ctx.recordingState, ctx.tabToken);
         }
-        return makeOk({ results: stepResults });
     },
     'record.event': async (ctx, action) => {
         const step = action.payload as StepUnion | undefined;
         if (!step) {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
         }
-        recordStep(ctx.recordingState, ctx.tabToken, step, ctx.navDedupeWindowMs);
+        const token = action.scope?.tabToken || action.tabToken || ctx.tabToken;
+        const scope = ctx.pageRegistry.resolveScopeFromToken(token);
+        const normalizedStep: StepUnion = {
+            ...step,
+            meta: {
+                ...step.meta,
+                source: step.meta?.source ?? 'record',
+                ts: step.meta?.ts ?? Date.now(),
+                workspaceId: scope.workspaceId,
+                tabId: scope.tabId,
+                tabToken: token,
+            },
+        };
+        recordStep(ctx.recordingState, token, normalizedStep, ctx.navDedupeWindowMs);
         return makeOk({ accepted: true });
     },
 };
