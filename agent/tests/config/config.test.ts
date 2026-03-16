@@ -19,16 +19,21 @@ test('load default config', () => {
     assert.equal(config.observability.actionConsoleEnabled, false);
     assert.equal(config.observability.recordConsoleEnabled, true);
     assert.equal(config.observability.recordFileEnabled, false);
+    assert.equal(config.checkpointPolicy.enabled, true);
+    assert.ok(config.checkpointPolicy.filePath.length > 0);
 });
 
 test('env overrides', () => {
     process.env.RUNNER_DEFAULT_TIMEOUT_MS = '1234';
     process.env.RUNNER_RETRY_ENABLED = 'true';
+    process.env.RUNNER_CHECKPOINT_ENABLED = 'false';
     const config = loadRunnerConfig({ configPath: '__non_exist__.json' });
     assert.equal(config.waitPolicy.defaultTimeoutMs, 1234);
     assert.equal(config.retryPolicy.enabled, true);
+    assert.equal(config.checkpointPolicy.enabled, false);
     delete process.env.RUNNER_DEFAULT_TIMEOUT_MS;
     delete process.env.RUNNER_RETRY_ENABLED;
+    delete process.env.RUNNER_CHECKPOINT_ENABLED;
 });
 
 test('merge file config', () => {

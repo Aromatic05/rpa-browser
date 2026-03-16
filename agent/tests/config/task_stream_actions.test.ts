@@ -101,4 +101,18 @@ test('task.run lifecycle actions', async () => {
     });
     assert.equal(aborted.ok, true);
     assert.equal((aborted as any).data.checkpoint.status, 'halted');
+
+    const resumed = await executeAction(ctx, {
+        v: 1,
+        id: 'a6',
+        type: 'task.run.resume',
+        payload: {
+            runId,
+            steps: [{ id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } }],
+            close: true,
+        },
+    });
+    assert.equal(resumed.ok, true);
+    assert.equal((resumed as any).data.resumed, true);
+    assert.equal((resumed as any).data.workspaceId, 'ws-1');
 });
