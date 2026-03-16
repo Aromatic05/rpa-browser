@@ -49,13 +49,20 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
     }
 
     for (const [workspaceId, recordingToken] of Object.entries(persisted.workspaceLatestRecording || {})) {
-        if (typeof workspaceId === 'string' && typeof recordingToken === 'string' && recordingToken.length > 0) {
+        if (
+            typeof workspaceId === 'string' &&
+            typeof recordingToken === 'string' &&
+            recordingToken.length > 0 &&
+            state.recordings.has(recordingToken)
+        ) {
             state.workspaceLatestRecording.set(workspaceId, recordingToken);
         }
     }
 
     for (const [workspaceId, snapshot] of Object.entries(persisted.workspaceSnapshots || {})) {
         if (!workspaceId || !snapshot || typeof snapshot !== 'object') continue;
+        if (!Array.isArray(snapshot.tabs)) continue;
+        if (!snapshot.recording || !Array.isArray(snapshot.recording.steps)) continue;
         state.workspaceSnapshots.set(workspaceId, snapshot);
     }
 };
