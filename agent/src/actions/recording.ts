@@ -53,13 +53,51 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const steps = bundle.steps;
         const stopOnError = payload.stopOnError ?? true;
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+        const recordedWorkspaceId = bundle.manifest?.workspaceId;
+        const existingWorkspaceIds = new Set(ctx.pageRegistry.listWorkspaces().map((ws) => ws.workspaceId));
+        const hotWorkspace =
+            !!recordedWorkspaceId && existingWorkspaceIds.has(recordedWorkspaceId) ? recordedWorkspaceId : null;
+        let replayWorkspaceId = hotWorkspace || scope.workspaceId;
+        let initialTabId = scope.tabId;
+        if (!hotWorkspace && recordedWorkspaceId && recordedWorkspaceId !== scope.workspaceId) {
+            const created = await ctx.pageRegistry.createWorkspace();
+            replayWorkspaceId = created.workspaceId;
+            initialTabId = created.tabId;
+            ctx.pageRegistry.setActiveWorkspace(replayWorkspaceId);
+        } else if (hotWorkspace) {
+            replayWorkspaceId = hotWorkspace;
+            const tabs = await ctx.pageRegistry.listTabs(replayWorkspaceId);
+            const preferredTabId = bundle.manifest?.entryTabRef || bundle.manifest?.tabs[0]?.tabId;
+            const found = preferredTabId ? tabs.find((tab) => tab.tabId === preferredTabId) : undefined;
+            if (found) {
+                initialTabId = found.tabId;
+            } else if (tabs.length > 0) {
+                initialTabId = tabs[0].tabId;
+            } else {
+                initialTabId = await ctx.pageRegistry.createTab(replayWorkspaceId);
+            }
+            if (bundle.manifest?.entryUrl) {
+                try {
+                    const page = await ctx.pageRegistry.resolvePage({ workspaceId: replayWorkspaceId, tabId: initialTabId });
+                    if (page.url() !== bundle.manifest.entryUrl) {
+                        await page.goto(bundle.manifest.entryUrl, { waitUntil: 'domcontentloaded' });
+                    }
+                } catch {
+                    // ignore preflight navigation failures, replay steps will surface deterministic errors later.
+                }
+            }
+        }
+        ctx.pageRegistry.setActiveWorkspace(replayWorkspaceId);
+        ctx.pageRegistry.setActiveTab(replayWorkspaceId, initialTabId);
+        const initialTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId: replayWorkspaceId, tabId: initialTabId });
         beginReplay(ctx.recordingState, ctx.tabToken);
         try {
             const replayed = await replayRecording({
-                workspaceId: scope.workspaceId,
-                initialTabId: scope.tabId,
-                initialTabToken: ctx.tabToken,
+                workspaceId: replayWorkspaceId,
+                initialTabId,
+                initialTabToken,
                 steps,
+                recordingManifest: bundle.manifest,
                 stopOnError,
                 replayOptions: ctx.replayOptions,
                 pageRegistry: {
@@ -70,6 +108,9 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                         } catch {
                             return undefined;
                         }
+                    },
+                    resolveTabIdFromRef: (tabRef: string) => {
+                        return tabRef || undefined;
                     },
                 },
                 isCanceled: () => ctx.recordingState.replayCancel.has(ctx.tabToken),

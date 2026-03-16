@@ -10,6 +10,7 @@ import type { RunStepsResult } from '../runner/steps/types';
 import type { StepUnion } from '../runner/steps/types';
 import type { RunStepsDeps } from '../runner/run_steps';
 import { runSteps } from '../runner/run_steps';
+import type { RecordingManifest } from '../record/recording';
 
 export type ReplayOptions = {
     clickDelayMs: number;
@@ -22,10 +23,12 @@ type ReplayRequest = {
     initialTabId: string;
     initialTabToken: string;
     steps: StepUnion[];
+    recordingManifest?: RecordingManifest;
     stopOnError: boolean;
     pageRegistry: {
         listTabs: (workspaceId: string) => Promise<Array<{ tabId: string; active?: boolean }>>;
         resolveTabIdFromToken?: (tabToken: string) => string | undefined;
+        resolveTabIdFromRef?: (tabRef: string) => string | undefined;
     };
     isCanceled?: () => boolean;
     deps?: RunStepsDeps;
@@ -54,6 +57,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         );
 
     const tokenToTab = new Map<string, string>([[req.initialTabToken, req.initialTabId]]);
+    const refToTab = new Map<string, string>();
+    if (req.recordingManifest?.entryTabRef) {
+        refToTab.set(req.recordingManifest.entryTabRef, req.initialTabId);
+    }
     let currentTabId = req.initialTabId;
     let currentToken = req.initialTabToken;
     const stepResults: RunStepsResult['results'] = [];
@@ -64,13 +71,17 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
 
         const desiredToken = originalStep.meta?.tabToken;
+        const desiredTabRef = originalStep.meta?.tabRef || originalStep.meta?.tabId;
         let targetTabId: string | undefined;
         let remappedStep = originalStep;
         if (desiredToken) {
             targetTabId = tokenToTab.get(desiredToken);
             if (!targetTabId) {
-                targetTabId = req.pageRegistry.resolveTabIdFromToken?.(desiredToken);
                 const tabs = await req.pageRegistry.listTabs(req.workspaceId);
+                targetTabId = req.pageRegistry.resolveTabIdFromToken?.(desiredToken);
+                if (!targetTabId && desiredTabRef) {
+                    targetTabId = refToTab.get(desiredTabRef) || req.pageRegistry.resolveTabIdFromRef?.(desiredTabRef);
+                }
                 const recordedTabId = originalStep.meta?.tabId;
                 if (!targetTabId || !tabs.some((tab) => tab.tabId === targetTabId)) {
                     targetTabId =
@@ -79,10 +90,21 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                             : undefined;
                 }
                 if (!targetTabId) {
+                    const fallbackUrl =
+                        originalStep.meta?.urlAtRecord ||
+                        (originalStep.name === 'browser.goto' ? String((originalStep.args as any)?.url || '') : undefined) ||
+                        (originalStep.name === 'browser.switch_tab'
+                            ? String((originalStep.args as any)?.tab_url || '')
+                            : undefined) ||
+                        req.recordingManifest?.tabs.find((tab) => {
+                            if (!desiredTabRef) return false;
+                            return tab.tabRef === desiredTabRef;
+                        })?.lastSeenUrl ||
+                        undefined;
                     const created = await runOne({
                         id: `replay-create-${Date.now()}`,
                         name: 'browser.create_tab',
-                        args: {},
+                        args: { url: fallbackUrl || undefined },
                         meta: { source: 'play', ts: Date.now() },
                     });
                     stepResults.push(...created.results);
@@ -100,7 +122,12 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                     targetTabId = String(createdTabId);
                 }
                 tokenToTab.set(desiredToken, targetTabId);
+                if (desiredTabRef) {
+                    refToTab.set(desiredTabRef, targetTabId);
+                }
             }
+        } else if (desiredTabRef) {
+            targetTabId = refToTab.get(desiredTabRef) || req.pageRegistry.resolveTabIdFromRef?.(desiredTabRef);
         }
         if (originalStep.name === 'browser.switch_tab') {
             if (desiredToken && targetTabId) {
@@ -140,6 +167,9 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             }
             if (desiredToken) {
                 currentToken = desiredToken;
+            }
+            if (desiredTabRef && switchedTo) {
+                refToTab.set(desiredTabRef, switchedTo);
             }
         } else if (desiredToken) {
             currentToken = desiredToken;
