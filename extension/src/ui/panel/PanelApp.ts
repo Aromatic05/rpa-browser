@@ -28,6 +28,7 @@ export const initPanelApp = () => {
     const startButton = document.getElementById('startRec') as HTMLButtonElement;
     const stopButton = document.getElementById('stopRec') as HTMLButtonElement;
     const showButton = document.getElementById('showRec') as HTMLButtonElement;
+    const saveButton = document.getElementById('saveRec') as HTMLButtonElement;
     const clearButton = document.getElementById('clearRec') as HTMLButtonElement;
     const replayButton = document.getElementById('replayRec') as HTMLButtonElement;
     const stopReplayButton = document.getElementById('stopReplay') as HTMLButtonElement;
@@ -179,6 +180,9 @@ export const initPanelApp = () => {
     startButton.addEventListener('click', () => sendPanelAction('record.start'));
     stopButton.addEventListener('click', () => sendPanelAction('record.stop'));
     showButton.addEventListener('click', () => sendPanelAction('record.get'));
+    saveButton.addEventListener('click', () =>
+        sendPanelAction('workspace.save', state.activeWorkspaceId ? { workspaceId: state.activeWorkspaceId } : {}),
+    );
     clearButton.addEventListener('click', () => sendPanelAction('record.clear'));
     replayButton.addEventListener('click', () => sendPanelAction('play.start'));
     stopReplayButton.addEventListener('click', () => sendPanelAction('play.stop'));

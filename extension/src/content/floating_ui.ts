@@ -96,12 +96,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     row2.className = 'row';
     const showBtn = document.createElement('button');
     showBtn.textContent = 'Show Rec';
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save WS';
     const clearBtn = document.createElement('button');
     clearBtn.textContent = 'Clear Rec';
     const replayBtn = document.createElement('button');
     replayBtn.className = 'primary';
     replayBtn.textContent = 'Replay';
-    row2.append(showBtn, clearBtn);
+    row2.append(showBtn, saveBtn, clearBtn);
 
     const row3 = document.createElement('div');
     row3.className = 'row';
@@ -223,6 +225,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     startBtn.addEventListener('click', () => void sendPanelAction('record.start'));
     stopBtn.addEventListener('click', () => void sendPanelAction('record.stop'));
     showBtn.addEventListener('click', () => void sendPanelAction('record.get'));
+    saveBtn.addEventListener('click', () =>
+        void sendPanelAction('workspace.save', activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
+    );
     clearBtn.addEventListener('click', () => void sendPanelAction('record.clear'));
     replayBtn.addEventListener('click', () => void sendPanelAction('play.start'));
     stopReplayBtn.addEventListener('click', () => void sendPanelAction('play.stop'));
