@@ -228,6 +228,7 @@ pnpm test:extension
 
 - `RPA_INTEGRATION_HEADED=true|false`：控制集成测试是否有头
 - `RPA_HEADLESS=true|false`：agent 启动浏览器模式（由测试脚本自动设置）
+- `RPA_INTEGRATION_PAUSE_BEFORE_SWITCH_MS`：场景在 `browser.switch_tab` 前额外停顿（用于观察切换前页面）
 - `RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS`：场景在 `browser.switch_tab` 后额外停顿（用于有头可视化确认）
 - `RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS`：场景结束前额外停顿（用于有头手工观察结果）
 

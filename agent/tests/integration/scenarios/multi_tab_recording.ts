@@ -15,6 +15,7 @@ const expectOk = <T = any>(result: any, hint: string) => {
 export const multiTabRecordingScenario: IntegrationScenario = {
     name: 'multi-tab-recording-consistency',
     run: async ({ client, fixtureBaseUrl }) => {
+        const pauseBeforeSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_SWITCH_MS');
         const pauseAfterSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS');
         const pauseBeforeExitMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS');
 
@@ -112,13 +113,29 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
+                tabToken: created.tabToken,
+                scope: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: created.tabToken },
+                payload: {
+                    id: 'rec-page-info-a',
+                    name: 'browser.get_page_info',
+                    args: {},
+                    meta: { source: 'record', ts: Date.now() + 2 },
+                },
+            }),
+            'record.event(page-info-a)',
+        );
+        await sleep(Math.max(120, pauseBeforeSwitchMs));
+
+        expectOk(
+            await client.sendAction({
+                type: 'record.event',
                 tabToken: secondTab.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: secondTab.tabId, tabToken: secondTab.tabToken },
                 payload: {
                     id: 'rec-switch-b',
                     name: 'browser.switch_tab',
                     args: { tab_id: secondTab.tabId },
-                    meta: { source: 'record', ts: Date.now() + 2 },
+                    meta: { source: 'record', ts: Date.now() + 3 },
                 },
             }),
             'record.event(switch-tab)',
@@ -134,7 +151,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-page-info-b',
                     name: 'browser.get_page_info',
                     args: {},
-                    meta: { source: 'record', ts: Date.now() + 3 },
+                    meta: { source: 'record', ts: Date.now() + 4 },
                 },
             }),
             'record.event(page-info-b)',
@@ -154,7 +171,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                         value: 'bravo-b',
                         timeout: 7000,
                     },
-                    meta: { source: 'record', ts: Date.now() + 4 },
+                    meta: { source: 'record', ts: Date.now() + 5 },
                 },
             }),
             'record.event(fill-b)',
@@ -174,7 +191,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                         values: ['opt-b-2'],
                         timeout: 7000,
                     },
-                    meta: { source: 'record', ts: Date.now() + 5 },
+                    meta: { source: 'record', ts: Date.now() + 6 },
                 },
             }),
             'record.event(select-b)',
@@ -190,7 +207,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-fill-b-final',
                     name: 'browser.fill',
                     args: { target: { selector: '#input-b' }, value: 'bravo-b-final', timeout: 7000 },
-                    meta: { source: 'record', ts: Date.now() + 6 },
+                    meta: { source: 'record', ts: Date.now() + 7 },
                 },
             }),
             'record.event(fill-b-final)',
@@ -214,13 +231,14 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.get',
         );
-        assert.equal(recording.steps.length, 8);
+        assert.equal(recording.steps.length, 9);
         assert.deepEqual(
             recording.steps.map((s) => s.name),
             [
                 'browser.fill',
                 'browser.click',
                 'browser.scroll',
+                'browser.get_page_info',
                 'browser.switch_tab',
                 'browser.get_page_info',
                 'browser.fill',
@@ -255,6 +273,10 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             `replay results should include at least recorded steps: replay=${replay.results.length}, recorded=${recording.steps.length}`,
         );
         assert.ok(replay.results.every((item) => item.ok));
+        const beforeSwitchInfo = replay.results.find((item) => item.stepId === 'rec-page-info-a');
+        assert.ok(beforeSwitchInfo?.ok, 'missing successful page info step before switch');
+        const beforeInfo = beforeSwitchInfo?.data as { tab_id?: string } | undefined;
+        assert.equal(beforeInfo?.tab_id, created.tabId);
         const switchedInfo = replay.results.find((item) => item.stepId === 'rec-page-info-b');
         assert.ok(switchedInfo?.ok, 'missing successful page info step after switch');
         const info = switchedInfo?.data as { tab_id?: string } | undefined;

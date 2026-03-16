@@ -133,9 +133,21 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             if (result.ok) {
                 groupId = result.groupId;
                 await updateWorkspaceMeta(workspaceId, { groupId });
+                log('tab group updated', { workspaceId, groupId, mode: 'active-tab' });
+            } else {
+                log('tab group skipped', {
+                    workspaceId,
+                    mode: 'active-tab',
+                    reason: result.reason,
+                    hasGroupId: groupId != null,
+                });
             }
-        } catch {
-            log('tab group failed', { workspaceId });
+        } catch (error) {
+            log('tab group failed', {
+                workspaceId,
+                mode: 'active-tab',
+                message: error instanceof Error ? error.message : String(error),
+            });
         }
     };
 
@@ -164,8 +176,19 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     color: meta.color || 'blue',
                 });
             }
-        } catch {
-            log('tab group failed', { workspaceId });
+            log('tab group updated', {
+                workspaceId,
+                groupId,
+                mode: 'workspace-tabs',
+                tabCount: meta.tabIds.length,
+            });
+        } catch (error) {
+            log('tab group failed', {
+                workspaceId,
+                mode: 'workspace-tabs',
+                tabCount: meta.tabIds.length,
+                message: error instanceof Error ? error.message : String(error),
+            });
         }
     };
 
