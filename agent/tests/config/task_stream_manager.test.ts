@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRunStepsQueueManager } from '../../src/runner/run_steps';
-import { setRunStepsDeps } from '../../src/runner/run_steps';
+import {
+    closeStepsQueue,
+    createResultPipe,
+    createSignalChannel,
+    createStepsQueue,
+    enqueueSteps,
+    readResultPipe,
+    runSteps,
+    sendSignal,
+    setRunStepsDeps,
+} from '../../src/runner/run_steps';
 import { loadRunnerConfig } from '../../src/runner/config/loader';
 import type { StepUnion } from '../../src/runner/steps/types';
 
@@ -19,41 +28,64 @@ const withFakeExecutors = () => {
     });
 };
 
-test('task run manager push/poll/checkpoint', async () => {
+test('shared queue + result pipe', async () => {
     withFakeExecutors();
-    const manager = createRunStepsQueueManager();
-    const run = manager.createRun({ taskId: 't1', workspaceId: 'ws-1' });
+    const runId = 'run-1';
+    const queue = createStepsQueue();
+    const pipe = createResultPipe();
+    const signals = createSignalChannel();
 
-    const pushed = await manager.pushSteps({
-        runId: run.runId,
-        steps: [
-            { step: { id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } } as StepUnion },
-            { step: { id: 's2', name: 'browser.click', args: { target: { selector: '#b' } } } as StepUnion },
-        ],
-    });
+    const loop = runSteps({ runId, workspaceId: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
 
-    assert.equal(pushed.ok, true);
-    assert.equal(pushed.accepted, 2);
-    const polled = manager.pollResults({ runId: run.runId });
+    enqueueSteps(queue, [
+        { id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } } as StepUnion,
+        { id: 's2', name: 'browser.click', args: { target: { selector: '#b' } } } as StepUnion,
+    ]);
+    closeStepsQueue(queue);
+
+    const cp = await loop;
+    const polled = readResultPipe(pipe);
+
+    assert.equal(cp.status, 'completed');
+    assert.equal(cp.cursor, 2);
     assert.equal(polled.items.length, 2);
-    assert.equal(polled.items[0].outputs?.clicked, true);
-    const cp = manager.checkpoint(run.runId);
-    assert.equal(cp.nextSeq, 2);
-    assert.equal(cp.status, 'running');
+    assert.equal((polled.items[0].data as any)?.clicked, true);
 });
 
-test('task run manager marks failed on step failure', async () => {
+test('abort signal stops run loop', async () => {
     withFakeExecutors();
-    const manager = createRunStepsQueueManager();
-    const run = manager.createRun({ taskId: 't2', workspaceId: 'ws-1' });
+    const runId = 'run-2';
+    const queue = createStepsQueue();
+    const pipe = createResultPipe();
+    const signals = createSignalChannel();
 
-    const pushed = await manager.pushSteps({
-        runId: run.runId,
-        steps: [{ step: { id: 's3', name: 'browser.goto', args: { url: 'https://x' } } as StepUnion }],
-    });
+    const loop = runSteps({ runId, workspaceId: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
+    sendSignal(signals, 'halt');
 
-    assert.equal(pushed.ok, false);
-    const cp = manager.checkpoint(run.runId);
-    assert.equal(cp.status, 'failed');
-    assert.equal(cp.lastError?.code, 'ERR_NOT_FOUND');
+    const cp = await loop;
+    assert.equal(cp.status, 'halted');
+    assert.equal(readResultPipe(pipe).items.length, 0);
+});
+
+test('flush signal clears not-yet-executed steps', async () => {
+    withFakeExecutors();
+    const runId = 'run-3';
+    const queue = createStepsQueue([
+        { id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } } as StepUnion,
+        { id: 's2', name: 'browser.click', args: { target: { selector: '#b' } } } as StepUnion,
+        { id: 's3', name: 'browser.click', args: { target: { selector: '#c' } } } as StepUnion,
+    ]);
+    const pipe = createResultPipe();
+    const signals = createSignalChannel();
+    sendSignal(signals, 'suspend');
+
+    const loop = runSteps({ runId, workspaceId: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
+    sendSignal(signals, 'flush');
+    sendSignal(signals, 'continue');
+    closeStepsQueue(queue);
+
+    const cp = await loop;
+    const polled = readResultPipe(pipe);
+    assert.equal(cp.status, 'completed');
+    assert.equal(polled.items.length, 0);
 });

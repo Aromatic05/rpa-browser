@@ -1,45 +1,35 @@
-/**
- * runSteps：统一 MCP / play / script 的执行入口。
- *
- * 设计说明：
- * - 只接收 Step 列表，避免入口各自拼装 action/command
- * - 执行过程中统一输出 step.start/step.end 事件（Task DSL 雏形）
- * - 通过 RuntimeRegistry 绑定 workspace/tab/page/trace
- */
-
 import crypto from 'node:crypto';
-import type { RunStepsRequest, RunStepsResult, StepUnion, StepResult, StepName } from './steps/types';
-import type { RuntimeRegistry } from '../runtime/runtime_registry';
-import type { RunnerPluginHost } from './hotreload/plugin_host';
-import type { RunnerConfig } from './config';
+import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { getLogger } from '../logging/logger';
-import type { StepEnvelope, StepResultEnvelope, TaskCheckpoint, TaskRun, TaskRunStatus } from '../task_stream/types';
+import type {
+    Checkpoint,
+    ResultPipe,
+    RunSignal,
+    RunStatus,
+    RunStepsDeps,
+    RunStepsRequest,
+    SignalChannel,
+    StepEvent,
+    StepResult,
+    StepSink,
+    StepsQueue,
+} from './run_steps_types';
+
+export type {
+    Checkpoint,
+    ResultPipe,
+    RunSignal,
+    RunStatus,
+    RunStepsDeps,
+    RunStepsRequest,
+    SignalChannel,
+    StepEvent,
+    StepResult,
+    StepSink,
+    StepsQueue,
+} from './run_steps_types';
 
 const stepLogger = getLogger('step');
-
-export type StepEvent =
-    | {
-          type: 'step.start';
-          ts: number;
-          workspaceId: string;
-          stepId: string;
-          name: StepName;
-          argsSummary?: unknown;
-      }
-    | {
-          type: 'step.end';
-          ts: number;
-          workspaceId: string;
-          stepId: string;
-          name: StepName;
-          ok: boolean;
-          durationMs: number;
-          error?: StepResult['error'];
-      };
-
-export type StepSink = {
-    write: (event: StepEvent) => void | Promise<void>;
-};
 
 export class MemoryStepSink implements StepSink {
     events: StepEvent[] = [];
@@ -50,46 +40,35 @@ export class MemoryStepSink implements StepSink {
 
 export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
     write: (event) => {
+        const iso = new Date(event.ts).toISOString();
         if (event.type === 'step.start') {
-            const iso = new Date(event.ts).toISOString();
             console.log(
                 `${prefix} start ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name}`,
             );
-        } else {
-            const iso = new Date(event.ts).toISOString();
-            console.log(
-                `${prefix} end ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
-            );
+            return;
         }
+        console.log(
+            `${prefix} end ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
+        );
     },
 });
 
-export type RunStepsDeps = {
-    runtime: RuntimeRegistry;
-    stepSinks?: StepSink[];
-    config: RunnerConfig;
-    pluginHost: RunnerPluginHost;
+let defaultDeps: RunStepsDeps | null = null;
+
+const queueWaiters = new WeakMap<StepsQueue, Set<() => void>>();
+const signalWaiters = new WeakMap<SignalChannel, Set<() => void>>();
+
+const getWaiters = <T extends object>(map: WeakMap<T, Set<() => void>>, key: T) => {
+    const existing = map.get(key);
+    if (existing) return existing;
+    const created = new Set<() => void>();
+    map.set(key, created);
+    return created;
 };
 
-const executeStep = async (
-    step: StepUnion,
-    deps: RunStepsDeps,
-    workspaceId: string,
-): Promise<StepResult> => {
-    const executors = deps.pluginHost.getExecutors();
-    const fn = executors[step.name];
-    if (!fn) {
-        stepLogger('[runner] missing executor', step.name);
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_NOT_FOUND',
-                message: `executor not found for step: ${step.name}`,
-            },
-        };
-    }
-    return fn(step, deps, workspaceId);
+const notifyAll = (waiters: Set<() => void>) => {
+    for (const wake of waiters) wake();
+    waiters.clear();
 };
 
 const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) => {
@@ -97,205 +76,201 @@ const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) =
     await Promise.all(sinks.map((sink) => sink.write(event)));
 };
 
-let defaultDeps: RunStepsDeps | null = null;
+const executeOne = async (
+    step: StepUnion,
+    workspaceId: string,
+    deps: RunStepsDeps,
+): Promise<ExecStepResult> => {
+    const fn = deps.pluginHost.getExecutors()[step.name];
+    if (!fn) {
+        stepLogger('[runner] missing executor', step.name);
+        return {
+            stepId: step.id,
+            ok: false,
+            error: { code: 'ERR_NOT_FOUND', message: `executor not found for step: ${step.name}` },
+        };
+    }
+    return fn(step, deps, workspaceId);
+};
 
-/**
- * setRunStepsDeps：设置默认依赖（用于 MCP/play/script 共用的全局执行入口）。
- */
+const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel) =>
+    new Promise<void>((resolve) => {
+        getWaiters(queueWaiters, queue).add(resolve);
+        getWaiters(signalWaiters, signalChannel).add(resolve);
+    });
+
+const checkpointOf = (runId: string, status: RunStatus, cursor: number): Checkpoint => ({
+    runId,
+    status,
+    cursor,
+    updatedAt: Date.now(),
+});
+
+export const createStepsQueue = (steps: StepUnion[] = [], opts?: { closed?: boolean }): StepsQueue => ({
+    items: [...steps],
+    cursor: 0,
+    closed: opts?.closed === true,
+});
+
+export const enqueueSteps = (queue: StepsQueue, steps: StepUnion[]) => {
+    if (queue.closed) throw new Error('steps queue is closed');
+    if (steps.length === 0) return;
+    queue.items.push(...steps);
+    notifyAll(getWaiters(queueWaiters, queue));
+};
+
+export const closeStepsQueue = (queue: StepsQueue) => {
+    queue.closed = true;
+    notifyAll(getWaiters(queueWaiters, queue));
+};
+
+export const createResultPipe = (): ResultPipe => ({ items: [] });
+
+export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100) => {
+    const start = cursor >= 0 ? cursor : 0;
+    const max = limit > 0 ? limit : 100;
+    const items = pipe.items.slice(start, start + max);
+    return { items, nextCursor: start + items.length };
+};
+
+export const createSignalChannel = (): SignalChannel => ({ items: [], cursor: 0 });
+
+const signalPriority = (signal: RunSignal): number => {
+    if (signal === 'halt') return 100;
+    if (signal === 'flush') return 80;
+    if (signal === 'suspend') return 60;
+    if (signal === 'continue') return 40;
+    return 10;
+};
+
+export const sendSignal = (signalChannel: SignalChannel, signal: RunSignal) => {
+    const event = { signal, ts: Date.now(), priority: signalPriority(signal) };
+    const unreadStart = signalChannel.cursor;
+    let insertAt = signalChannel.items.length;
+    for (let i = unreadStart; i < signalChannel.items.length; i += 1) {
+        const current = signalChannel.items[i];
+        if (event.priority > current.priority || (event.priority === current.priority && event.ts < current.ts)) {
+            insertAt = i;
+            break;
+        }
+    }
+    signalChannel.items.splice(insertAt, 0, event);
+    notifyAll(getWaiters(signalWaiters, signalChannel));
+};
+
 export const setRunStepsDeps = (deps: RunStepsDeps) => {
     defaultDeps = deps;
 };
 
-/**
- * runSteps：统一入口函数。若未显式传 deps，则使用默认依赖。
- */
-export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<RunStepsResult> => {
+export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
     const resolvedDeps = deps || defaultDeps;
     if (!resolvedDeps) {
-        return {
-            ok: false,
-            results: req.steps.map((step) => ({
-                stepId: step.id,
-                ok: false,
-                error: { code: 'ERR_NOT_READY', message: 'runSteps deps not initialized' },
-            })),
-        };
+        throw new Error('runSteps deps not initialized');
     }
 
-    const results: StepResult[] = [];
-    for (const step of req.steps) {
-        const startTs = Date.now();
-        await writeStepEvent(resolvedDeps.stepSinks, {
-            type: 'step.start',
-            ts: startTs,
-            workspaceId: req.workspaceId,
-            stepId: step.id,
-            name: step.name,
-            argsSummary: step.args,
-        });
+    const stopOnError = req.stopOnError ?? true;
+    let status: RunStatus = 'running';
 
-        const result = await executeStep(step, resolvedDeps, req.workspaceId);
-
-        results.push(result);
-        await writeStepEvent(resolvedDeps.stepSinks, {
-            type: 'step.end',
-            ts: Date.now(),
-            workspaceId: req.workspaceId,
-            stepId: step.id,
-            name: step.name,
-            ok: result.ok,
-            durationMs: Date.now() - startTs,
-            error: result.ok ? undefined : result.error,
-        });
-
-        if (!result.ok && req.options?.stopOnError) {
-            return { ok: false, results };
+    while (true) {
+        while (req.signalChannel.cursor < req.signalChannel.items.length) {
+            const event = req.signalChannel.items[req.signalChannel.cursor++];
+            if (event.signal === 'halt') {
+                status = 'halted';
+                return checkpointOf(req.runId, status, req.stepsQueue.cursor);
+            }
+            if (event.signal === 'flush') {
+                req.stepsQueue.items.length = req.stepsQueue.cursor;
+                continue;
+            }
+            if (event.signal === 'suspend') {
+                status = 'suspended';
+                continue;
+            }
+            if (event.signal === 'continue' && status === 'suspended') {
+                status = 'running';
+                continue;
+            }
         }
-    }
 
-    return { ok: results.every((r) => r.ok), results };
-};
+        if (status === 'suspended') {
+            await waitForInput(req.stepsQueue, req.signalChannel);
+            continue;
+        }
 
-const toOutputs = (value: unknown): Record<string, unknown> | undefined => {
-    if (value == null) return undefined;
-    if (typeof value === 'object' && !Array.isArray(value)) {
-        return value as Record<string, unknown>;
-    }
-    return { value };
-};
+        if (req.stepsQueue.cursor < req.stepsQueue.items.length) {
+            const stepIndex = req.stepsQueue.cursor;
+            const step = req.stepsQueue.items[stepIndex];
+            req.stepsQueue.cursor += 1;
 
-export type RunStepsQueueManager = {
-    createRun: (args: { taskId: string; workspaceId: string; runId?: string }) => TaskRun;
-    getRun: (runId: string) => TaskRun | null;
-    pushSteps: (args: {
-        runId: string;
-        steps: StepEnvelope[];
-        stopOnError?: boolean;
-    }) => Promise<{ ok: boolean; accepted: number; emitted: number; checkpoint: TaskCheckpoint }>;
-    pollResults: (args: {
-        runId: string;
-        cursor?: number;
-        limit?: number;
-    }) => { items: StepResultEnvelope[]; nextCursor: number; status: TaskRunStatus; done: boolean };
-    checkpoint: (runId: string) => TaskCheckpoint;
-    abortRun: (runId: string) => TaskCheckpoint;
-};
-
-export const createRunStepsQueueManager = (): RunStepsQueueManager => {
-    const runs = new Map<string, TaskRun>();
-
-    const getRunOrThrow = (runId: string) => {
-        const run = runs.get(runId);
-        if (!run) throw new Error('task run not found');
-        return run;
-    };
-
-    const toCheckpoint = (run: TaskRun): TaskCheckpoint => ({
-        runId: run.runId,
-        taskId: run.taskId,
-        workspaceId: run.workspaceId,
-        status: run.status,
-        nextSeq: run.nextSeq,
-        emittedCount: run.emitted.length,
-        lastError: run.lastError,
-        updatedAt: run.updatedAt,
-    });
-
-    return {
-        createRun: ({ taskId, workspaceId, runId }) => {
-            const id = runId || crypto.randomUUID();
-            const now = Date.now();
-            const run: TaskRun = {
-                runId: id,
-                taskId,
-                workspaceId,
-                status: 'running',
-                nextSeq: 0,
-                emitted: [],
-                createdAt: now,
-                updatedAt: now,
-            };
-            runs.set(id, run);
-            return run;
-        },
-        getRun: (runId: string) => runs.get(runId) || null,
-        pushSteps: async ({ runId, steps, stopOnError }) => {
-            const run = getRunOrThrow(runId);
-            if (run.status !== 'running') {
-                throw new Error(`task run is not running: ${run.status}`);
-            }
-            if (!Array.isArray(steps) || steps.length === 0) {
-                return { ok: true, accepted: 0, emitted: 0, checkpoint: toCheckpoint(run) };
-            }
-
-            const normalized = steps.map((item, index) => {
-                const seq = typeof item.seq === 'number' ? item.seq : run.nextSeq + index;
-                return { seq, step: item.step };
-            });
-            const outOfOrder = normalized.some((item, index) => item.seq !== run.nextSeq + index);
-            if (outOfOrder) {
-                throw new Error('step sequence must be contiguous');
-            }
-
-            const reqSteps = normalized.map((item) => item.step as StepUnion);
-            const result = await runSteps({
-                workspaceId: run.workspaceId,
-                steps: reqSteps,
-                options: { stopOnError: stopOnError ?? true },
+            const startedAt = Date.now();
+            await writeStepEvent(resolvedDeps.stepSinks, {
+                type: 'step.start',
+                ts: startedAt,
+                workspaceId: req.workspaceId,
+                stepId: step.id,
+                name: step.name,
+                argsSummary: step.args,
             });
 
-            const now = Date.now();
-            const emittedBatch: StepResultEnvelope[] = result.results.map((entry, index) => {
-                const seq = normalized[index]?.seq ?? run.nextSeq + index;
-                return {
-                    runId: run.runId,
-                    taskId: run.taskId,
-                    workspaceId: run.workspaceId,
-                    seq,
-                    stepId: entry.stepId,
-                    ok: entry.ok,
-                    status: entry.ok ? 'ok' : 'error',
-                    outputs: toOutputs(entry.data),
-                    raw: entry.data,
-                    error: entry.error,
-                    ts: now,
-                };
-            });
-            run.emitted.push(...emittedBatch);
-            run.nextSeq += normalized.length;
-            run.updatedAt = now;
+            const result = await executeOne(step, req.workspaceId, resolvedDeps);
 
-            if (!result.ok) {
-                run.status = 'failed';
-                const firstFailed = result.results.find((item) => !item.ok);
-                run.lastError = firstFailed?.error || { code: 'ERR_ASSERTION_FAILED', message: 'task run failed' };
-            }
-
-            return {
+            await writeStepEvent(resolvedDeps.stepSinks, {
+                type: 'step.end',
+                ts: Date.now(),
+                workspaceId: req.workspaceId,
+                stepId: step.id,
+                name: step.name,
                 ok: result.ok,
-                accepted: normalized.length,
-                emitted: emittedBatch.length,
-                checkpoint: toCheckpoint(run),
+                durationMs: Date.now() - startedAt,
+                error: result.ok ? undefined : result.error,
+            });
+
+            const output: StepResult = {
+                runId: req.runId,
+                cursor: stepIndex,
+                stepId: result.stepId,
+                ok: result.ok,
+                data: result.data,
+                error: result.error,
+                ts: Date.now(),
             };
+            req.resultPipe.items.push(output);
+
+            if (!result.ok && stopOnError) {
+                status = 'failed';
+                return checkpointOf(req.runId, status, req.stepsQueue.cursor);
+            }
+            continue;
+        }
+
+        if (req.stepsQueue.closed) {
+            status = 'completed';
+            return checkpointOf(req.runId, status, req.stepsQueue.cursor);
+        }
+
+        await waitForInput(req.stepsQueue, req.signalChannel);
+    }
+};
+
+export const runStepList = async (
+    workspaceId: string,
+    steps: StepUnion[],
+    deps?: RunStepsDeps,
+    opts?: { stopOnError?: boolean; runId?: string },
+) => {
+    const queue = createStepsQueue(steps, { closed: true });
+    const pipe = createResultPipe();
+    const signals = createSignalChannel();
+    const checkpoint = await runSteps(
+        {
+            runId: opts?.runId || crypto.randomUUID(),
+            workspaceId,
+            stepsQueue: queue,
+            resultPipe: pipe,
+            signalChannel: signals,
+            stopOnError: opts?.stopOnError,
         },
-        pollResults: ({ runId, cursor, limit }) => {
-            const run = getRunOrThrow(runId);
-            const start = typeof cursor === 'number' && cursor >= 0 ? cursor : 0;
-            const max = typeof limit === 'number' && limit > 0 ? limit : 100;
-            const items = run.emitted.slice(start, start + max);
-            const nextCursor = start + items.length;
-            const done = run.status !== 'running' && nextCursor >= run.emitted.length;
-            return { items, nextCursor, status: run.status, done };
-        },
-        checkpoint: (runId: string) => {
-            const run = getRunOrThrow(runId);
-            return toCheckpoint(run);
-        },
-        abortRun: (runId: string) => {
-            const run = getRunOrThrow(runId);
-            run.status = 'aborted';
-            run.updatedAt = Date.now();
-            return toCheckpoint(run);
-        },
-    };
+        deps,
+    );
+    return { checkpoint, pipe };
 };

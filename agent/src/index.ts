@@ -8,7 +8,7 @@ import { executeAction, type ActionContext } from './actions/execute';
 import { makeErr, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
-import { createConsoleStepSink, createRunStepsQueueManager, setRunStepsDeps } from './runner/run_steps';
+import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
@@ -26,7 +26,6 @@ const log = (...args: unknown[]) => console.log('[RPA:agent]', ...args);
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
-const taskRunManager = createRunStepsQueueManager();
 
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
@@ -114,7 +113,6 @@ const handleAction = async (action: Action) => {
                     pageRegistry,
                     log: actionLogger,
                     recordingState,
-                    taskRunManager,
                     replayOptions: {
                         clickDelayMs: CLICK_DELAY_MS,
                         stepDelayMs: REPLAY_STEP_DELAY_MS,
@@ -156,7 +154,6 @@ const handleAction = async (action: Action) => {
                         pageRegistry,
                         log: actionLogger,
                         recordingState,
-                        taskRunManager,
                         replayOptions: {
                             clickDelayMs: CLICK_DELAY_MS,
                             stepDelayMs: REPLAY_STEP_DELAY_MS,
@@ -193,7 +190,6 @@ const handleAction = async (action: Action) => {
             pageRegistry,
             log: actionLogger,
             recordingState,
-            taskRunManager,
             replayOptions: {
                 clickDelayMs: CLICK_DELAY_MS,
                 stepDelayMs: REPLAY_STEP_DELAY_MS,

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import type { PageRegistry } from '../runtime/page_registry';
-import { runSteps } from '../runner/run_steps';
+import { runStepList } from '../runner/run_steps';
 import type { StepUnion } from '../runner/steps/types';
 
 export type WorkspacePublicInfo = {
@@ -64,11 +64,10 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
             args: { url },
             meta: { source: 'script', ts: Date.now() },
         };
-        return runSteps({
-            workspaceId: workspace.workspaceId,
-            steps: [step],
-            options: { stopOnError: true },
-        });
+        const { pipe, checkpoint } = await runStepList(workspace.workspaceId, [step], undefined, { stopOnError: true });
+        const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown }>;
+        const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data }));
+        return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
     };
 
     return { ensureActiveWorkspace, getActiveWorkspacePublicInfo, gotoInWorkspace };

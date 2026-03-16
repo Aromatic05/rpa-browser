@@ -9,7 +9,7 @@
 import type { RunStepsResult } from '../runner/steps/types';
 import type { StepUnion } from '../runner/steps/types';
 import type { RunStepsDeps } from '../runner/run_steps';
-import { runSteps } from '../runner/run_steps';
+import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from '../record/recording';
 
 export type ReplayOptions = {
@@ -46,15 +46,12 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         typeof req.replayOptions?.stepDelayMs === 'number' && req.replayOptions.stepDelayMs > 0
             ? Math.floor(req.replayOptions.stepDelayMs)
             : 0;
-    const runOne = async (step: StepUnion) =>
-        runSteps(
-            {
-                workspaceId: req.workspaceId,
-                steps: [step],
-                options: { stopOnError: true },
-            },
-            req.deps,
-        );
+    const runOne = async (step: StepUnion): Promise<RunStepsResult> => {
+        const { pipe, checkpoint } = await runStepList(req.workspaceId, [step], req.deps, { stopOnError: true });
+        const items = pipe.items;
+        const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
+        return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
+    };
     const forceActivateTab = async (tabId: string, desiredToken?: string, desiredTabRef?: string): Promise<boolean> => {
         const switched = await runOne({
             id: `replay-switch-${Date.now()}`,

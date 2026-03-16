@@ -13,7 +13,7 @@
 import crypto from 'crypto';
 import type { StepUnion } from '../runner/steps/types';
 import type { RunStepsResult } from '../runner/steps/types';
-import { runSteps } from '../runner/run_steps';
+import { runStepList } from '../runner/run_steps';
 
 type ScriptInput = string | StepUnion[];
 
@@ -23,11 +23,12 @@ export const runScript = async (
     opts?: { stopOnError?: boolean },
 ): Promise<RunStepsResult> => {
     const steps = Array.isArray(input) ? input : parseScript(input);
-    return runSteps({
-        workspaceId,
-        steps,
-        options: { stopOnError: opts?.stopOnError ?? true },
+    const { pipe, checkpoint } = await runStepList(workspaceId, steps, undefined, {
+        stopOnError: opts?.stopOnError ?? true,
     });
+    const items = pipe.items;
+    const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
+    return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
 };
 
 const parseScript = (script: string): StepUnion[] => {

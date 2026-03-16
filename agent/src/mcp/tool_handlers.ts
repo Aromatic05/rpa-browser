@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import crypto from 'crypto';
 import type { PageRegistry } from '../runtime/page_registry';
-import { runSteps } from '../runner/run_steps';
+import { runStepList } from '../runner/run_steps';
 import type { StepUnion } from '../runner/steps/types';
 import {
     browserClickInputSchema,
@@ -70,11 +70,17 @@ const runSingleStep = async (deps: McpToolDeps, tabToken: string, step: StepUnio
     const scope = deps.pageRegistry.resolveScopeFromToken(tabToken);
     deps.pageRegistry.setActiveWorkspace(scope.workspaceId);
     deps.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
-    return runSteps({
-        workspaceId: scope.workspaceId,
-        steps: [step],
-        options: { stopOnError: true },
-    });
+    const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], undefined, { stopOnError: true });
+    const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown; error?: unknown }>;
+    const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
+    if (checkpoint.status === 'failed') {
+        return {
+            ok: false,
+            results,
+            error: results.find((item) => !item.ok)?.error,
+        };
+    }
+    return { ok: results.every((item) => item.ok), results };
 };
 
 const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {

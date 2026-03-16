@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../runtime/page_registry';
 import { createRuntimeRegistry } from '../../runtime/runtime_registry';
-import { createConsoleStepSink, runSteps } from '../run_steps';
+import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
 import { createLoggingHooks } from '../trace/hooks';
 import { getRunnerConfig } from '../config';
@@ -54,26 +54,29 @@ const run = async () => {
     });
     const workspace = await pageRegistry.createWorkspace();
 
-    const first = await runSteps(
-        {
-            workspaceId: workspace.workspaceId,
-            steps: [
-                {
-                    id: 'demo-goto',
-                    name: 'browser.goto',
-                    args: { url: fixtureUrl() },
-                    meta: { source: 'script' },
-                },
-                {
-                    id: 'demo-snap',
-                    name: 'browser.snapshot',
-                    args: { includeA11y: true },
-                    meta: { source: 'script' },
-                },
-            ],
-        },
+    const firstResp = await runStepList(
+        workspace.workspaceId,
+        [
+            {
+                id: 'demo-goto',
+                name: 'browser.goto',
+                args: { url: fixtureUrl() },
+                meta: { source: 'script' },
+            },
+            {
+                id: 'demo-snap',
+                name: 'browser.snapshot',
+                args: { includeA11y: true },
+                meta: { source: 'script' },
+            },
+        ],
         { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
+        { stopOnError: true },
     );
+    if (firstResp.checkpoint.status === 'failed') {
+        throw new Error('demo initial run failed');
+    }
+    const first = { ok: true, results: firstResp.pipe.items as any[] };
 
     const snap = first.results.find((r) => r.stepId === 'demo-snap');
     const tree = JSON.parse((snap?.data as any)?.a11y || '{}');
@@ -85,26 +88,28 @@ const run = async () => {
         return;
     }
 
-    await runSteps(
-        {
-            workspaceId: workspace.workspaceId,
-            steps: [
-                {
-                    id: 'demo-click',
-                    name: 'browser.click',
-                    args: { a11yNodeId: buttonId },
-                    meta: { source: 'script' },
-                },
-                {
-                    id: 'demo-fill',
-                    name: 'browser.fill',
-                    args: { a11yNodeId: inputId, value: 'headed demo' },
-                    meta: { source: 'script' },
-                },
-            ],
-        },
+    const secondResp = await runStepList(
+        workspace.workspaceId,
+        [
+            {
+                id: 'demo-click',
+                name: 'browser.click',
+                args: { a11yNodeId: buttonId },
+                meta: { source: 'script' },
+            },
+            {
+                id: 'demo-fill',
+                name: 'browser.fill',
+                args: { a11yNodeId: inputId, value: 'headed demo' },
+                meta: { source: 'script' },
+            },
+        ],
         { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
+        { stopOnError: true },
     );
+    if (secondResp.checkpoint.status === 'failed') {
+        throw new Error('demo action run failed');
+    }
 
     console.log('Demo finished, please verify UI changes in the visible browser window.');
     await browser.close();
