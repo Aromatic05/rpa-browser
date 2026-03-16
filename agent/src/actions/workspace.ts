@@ -14,6 +14,8 @@ type TabCreatePayload = { workspaceId?: string; startUrl?: string; waitUntil?: '
 type TabClosePayload = { workspaceId?: string; tabId: string };
 type TabSetActivePayload = { workspaceId?: string; tabId: string };
 type TabOpenedPayload = { source?: string; url?: string; title?: string; at?: number };
+type TabActivatedPayload = { source?: string; url?: string; at?: number };
+type TabClosedPayload = { source?: string; at?: number };
 
 const resolveWorkspaceId = (
     ctx: { pageRegistry: any },
@@ -146,5 +148,62 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             reportedTitle: payload.title,
             reportedAt: payload.at,
         });
+    },
+    'tab.activated': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabActivatedPayload;
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+        ctx.pageRegistry.setActiveWorkspace(scope.workspaceId);
+        ctx.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
+        ctx.log('tab.activated', {
+            workspaceId: scope.workspaceId,
+            tabId: scope.tabId,
+            tabToken: ctx.tabToken,
+            pageUrl: ctx.page.url(),
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedAt: payload.at,
+        });
+        return makeOk({
+            workspaceId: scope.workspaceId,
+            tabId: scope.tabId,
+            tabToken: ctx.tabToken,
+            pageUrl: ctx.page.url(),
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedAt: payload.at,
+        });
+    },
+    'tab.closed': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabClosedPayload;
+        try {
+            const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+            ctx.log('tab.closed', {
+                workspaceId: scope.workspaceId,
+                tabId: scope.tabId,
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+            });
+            return makeOk({
+                workspaceId: scope.workspaceId,
+                tabId: scope.tabId,
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+            });
+        } catch {
+            ctx.log('tab.closed', {
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+                stale: true,
+            });
+            return makeOk({
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+                stale: true,
+            });
+        }
     },
 };

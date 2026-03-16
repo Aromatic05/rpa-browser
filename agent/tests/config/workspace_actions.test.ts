@@ -55,3 +55,60 @@ test('tab.opened activates resolved workspace/tab and logs payload', async () =>
         reportedAt: 123,
     });
 });
+
+test('tab.activated activates resolved workspace/tab and logs payload', async () => {
+    const logs: unknown[][] = [];
+    const activated: Array<{ ws?: string; tab?: string }> = [];
+    const ctx: any = {
+        tabToken: 'token-2',
+        page: {
+            url: () => 'https://example.com/current',
+        },
+        log: (...args: unknown[]) => logs.push(args),
+        pageRegistry: {
+            resolveScopeFromToken: () => ({ workspaceId: 'ws-2', tabId: 'tab-9' }),
+            setActiveWorkspace: (workspaceId: string) => activated.push({ ws: workspaceId }),
+            setActiveTab: (workspaceId: string, tabId: string) => activated.push({ ws: workspaceId, tab: tabId }),
+        },
+    };
+    const action: any = {
+        v: 1,
+        id: 'a2',
+        type: 'tab.activated',
+        payload: { source: 'extension.sw', url: 'https://example.com', at: 456 },
+    };
+
+    const result = await workspaceHandlers['tab.activated'](ctx, action);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(activated, [{ ws: 'ws-2' }, { ws: 'ws-2', tab: 'tab-9' }]);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0][0], 'tab.activated');
+});
+
+test('tab.closed returns stale response when token scope is missing', async () => {
+    const logs: unknown[][] = [];
+    const ctx: any = {
+        tabToken: 'missing-token',
+        page: { url: () => 'about:blank' },
+        log: (...args: unknown[]) => logs.push(args),
+        pageRegistry: {
+            resolveScopeFromToken: () => {
+                throw new Error('not found');
+            },
+        },
+    };
+    const action: any = {
+        v: 1,
+        id: 'a3',
+        type: 'tab.closed',
+        payload: { source: 'extension.sw', at: 789 },
+    };
+
+    const result = await workspaceHandlers['tab.closed'](ctx, action);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.data.stale, true);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0][0], 'tab.closed');
+});

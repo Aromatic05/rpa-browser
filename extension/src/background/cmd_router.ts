@@ -50,6 +50,26 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const sendAction = async (action: Action): Promise<ActionOk<any> | ActionErr> =>
         options.wsClient.sendAction(withActionBase(action));
 
+    const emitLifecycleAction = async (
+        type: 'tab.activated' | 'tab.closed',
+        tabToken: string,
+        payload: Record<string, unknown>,
+    ) => {
+        if (!tabToken) return;
+        try {
+            await sendAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type,
+                tabToken,
+                scope: { tabToken },
+                payload,
+            });
+        } catch {
+            // ignore lifecycle emit failures
+        }
+    };
+
     const upsertTab = (tabId: number, tabToken: string, url: string) => {
         tabState.set(tabId, {
             tabToken,
@@ -175,13 +195,29 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const onActivated = (info: chrome.tabs.TabActiveInfo) => {
         activeTabId = info.tabId;
+        void (async () => {
+            const tabInfo = await ensureTabToken(info.tabId);
+            if (!tabInfo?.tabToken) return;
+            await emitLifecycleAction('tab.activated', tabInfo.tabToken, {
+                source: 'extension.sw',
+                url: tabInfo.lastUrl || '',
+                at: Date.now(),
+            });
+        })();
         options.onRefresh();
     };
 
     const onRemoved = (tabId: number) => {
+        const removed = tabState.get(tabId);
         tabState.delete(tabId);
         if (activeTabId === tabId) {
             activeTabId = null;
+        }
+        if (removed?.tabToken) {
+            void emitLifecycleAction('tab.closed', removed.tabToken, {
+                source: 'extension.sw',
+                at: Date.now(),
+            });
         }
         void removeWorkspaceTabId(tabId);
     };

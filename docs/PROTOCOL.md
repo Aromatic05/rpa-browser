@@ -75,7 +75,7 @@
 当前 action handler 来自：
 
 - workspace：`workspace.list`、`workspace.create`、`workspace.setActive`
-- tab：`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`
+- tab：`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`、`tab.activated`、`tab.closed`
 - record：`record.start`、`record.stop`、`record.get`、`record.clear`、`record.event`
 - play：`play.start`、`play.stop`
 
@@ -117,6 +117,11 @@
   "reportedAt": 1710000000000
 }
 ```
+
+### 2.7 `tab.activated` / `tab.closed` 合同
+
+- `tab.activated`：扩展侧检测到激活 tab 变化后上报，用于 runner 同步 active workspace/tab。
+- `tab.closed`：扩展侧检测到 tab 关闭后上报，用于记录生命周期日志；若 token 已失效会返回 `stale: true`。
 
 ### 2.5 Action 错误码
 
