@@ -36,6 +36,7 @@
     h1 { margin: 0 0 8px; font-size: 28px; }
     p { margin: 0 0 16px; color: var(--muted); }
     .row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+    .row.actions { margin-top: 12px; }
     .tag {
       display: inline-flex;
       align-items: center;
@@ -49,6 +50,46 @@
     }
     .ok { color: var(--accent); }
     ul { margin: 0; padding-left: 20px; line-height: 1.7; }
+    .restore {
+      margin-top: 18px;
+      border-top: 1px dashed var(--line);
+      padding-top: 14px;
+    }
+    .restore h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .restore-list {
+      display: grid;
+      gap: 8px;
+    }
+    .restore-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+    .restore-meta {
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    button.primary {
+      border-color: #0f766e;
+      color: #0f766e;
+    }
     code {
       background: #f1f5f9;
       border: 1px solid #e2e8f0;
@@ -72,6 +113,14 @@
       <li>录制、回放、workspace 管理由原扩展继续负责。</li>
       <li>如果 WS 不可用，不会影响你继续浏览。</li>
     </ul>
+    <section class="restore">
+      <h2>恢复 Workspace</h2>
+      <div class="row actions">
+        <button id="refreshRestore">刷新恢复列表</button>
+        <span class="tag">status: <strong id="restoreStatus">idle</strong></span>
+      </div>
+      <div id="restoreList" class="restore-list"></div>
+    </section>
   </main>
   <script type="module" src="./entry/newtab.js"></script>
 </body>
