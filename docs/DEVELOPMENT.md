@@ -222,6 +222,7 @@ pnpm test:extension
 - 启动完整进程栈（mock + agent + 浏览器扩展）
 - 场景只描述行为与断言，框架负责启动、连接、清理
 - `headless` 用于 CI/CD，`headed` 用于本地可视化调试
+- 场景建议覆盖组合动作（fill/click/scroll/switch/select）并在关键动作后短暂等待以降低 UI 时序抖动
 
 关键环境变量：
 
