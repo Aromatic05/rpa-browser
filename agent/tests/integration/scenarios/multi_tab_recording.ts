@@ -2,9 +2,15 @@ import assert from 'node:assert/strict';
 import type { IntegrationScenario } from '../harness/types';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-const readPauseMs = (envName: string) => {
-    const raw = Number(process.env[envName] || 0);
+const readPauseMs = (envName: string, fallbackMs = 0) => {
+    const raw = Number(process.env[envName] || fallbackMs);
     return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+};
+const nowIso = () => new Date().toISOString();
+const timeline = (label: string, extra?: Record<string, unknown>) => {
+    const payload = extra ? ` ${JSON.stringify(extra)}` : '';
+    // Keep this log always visible in integration output for manual race debugging.
+    console.log(`[integration:timeline] ${nowIso()} ${label}${payload}`);
 };
 
 const expectOk = <T = any>(result: any, hint: string) => {
@@ -15,11 +21,12 @@ const expectOk = <T = any>(result: any, hint: string) => {
 export const multiTabRecordingScenario: IntegrationScenario = {
     name: 'multi-tab-recording-consistency',
     run: async ({ client, fixtureBaseUrl }) => {
+        const headed = ['1', 'true', 'yes'].includes((process.env.RPA_INTEGRATION_HEADED || '').toLowerCase());
         const pauseBeforeSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_SWITCH_MS');
         const pauseAfterSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS');
-        const pauseBeforeExitMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS');
-        const headed = ['1', 'true', 'yes'].includes((process.env.RPA_INTEGRATION_HEADED || '').toLowerCase());
+        const pauseBeforeExitMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS', headed ? 3000 : 0);
 
+        timeline('scenario.start', { fixtureBaseUrl, headed });
         const created = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
             await client.sendAction({
                 type: 'workspace.create',
@@ -27,6 +34,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'workspace.create',
         );
+        timeline('workspace.created', created);
 
         const secondTab = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
             await client.sendAction({
@@ -37,6 +45,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'tab.create',
         );
+        timeline('tab.created.b', secondTab);
 
         const tabList = expectOk<{ workspaceId: string; tabs: Array<{ tabId: string; url: string; active: boolean }> }>(
             await client.sendAction({
@@ -170,6 +179,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'tab.setActive(second,record-b)',
         );
+        timeline('tab.setActive.b(record-phase)', { tabId: secondTab.tabId });
         const tabListAfterSwitch = expectOk<{
             workspaceId: string;
             tabs: Array<{ tabId: string; active: boolean; url: string }>;
@@ -308,6 +318,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         );
         await sleep(300);
 
+        const playStartTs = Date.now();
+        timeline('play.start.request', { at: playStartTs });
         const replay = expectOk<{ results: Array<{ ok: boolean }> }>(
             await client.sendAction({
                 type: 'play.start',
@@ -317,12 +329,32 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'play.start',
         );
+        timeline('play.start.done', { at: Date.now(), elapsedMs: Date.now() - playStartTs });
 
         assert.ok(
             replay.results.length >= recording.steps.length,
             `replay results should include at least recorded steps: replay=${replay.results.length}, recorded=${recording.steps.length}`,
         );
         assert.ok(replay.results.every((item) => item.ok));
+        const replayById = new Map(replay.results.map((item: any, index) => [item.stepId, { ...item, index }]));
+        const mustPassB = ['rec-switch-b', 'rec-page-info-b', 'rec-fill-b', 'rec-select-b', 'rec-fill-b-final'];
+        for (const id of mustPassB) {
+            const item = replayById.get(id);
+            assert.ok(item, `missing replay step for B phase: ${id}`);
+            assert.equal(item?.ok, true, `B phase step failed: ${id}`);
+        }
+        const idxSwitch = replayById.get('rec-switch-b')!.index;
+        const idxInfoB = replayById.get('rec-page-info-b')!.index;
+        const idxFillB = replayById.get('rec-fill-b')!.index;
+        const idxSelectB = replayById.get('rec-select-b')!.index;
+        const idxFillBFinal = replayById.get('rec-fill-b-final')!.index;
+        assert.ok(idxSwitch < idxInfoB, `order violated: switch->page_info_b (${idxSwitch} !< ${idxInfoB})`);
+        assert.ok(idxInfoB < idxFillB, `order violated: page_info_b->fill_b (${idxInfoB} !< ${idxFillB})`);
+        assert.ok(idxFillB < idxSelectB, `order violated: fill_b->select_b (${idxFillB} !< ${idxSelectB})`);
+        assert.ok(
+            idxSelectB < idxFillBFinal,
+            `order violated: select_b->fill_b_final (${idxSelectB} !< ${idxFillBFinal})`,
+        );
         const beforeSwitchInfo = replay.results.find((item) => item.stepId === 'rec-page-info-a');
         assert.ok(beforeSwitchInfo?.ok, 'missing successful page info step before switch');
         const beforeInfo = beforeSwitchInfo?.data as { tab_id?: string } | undefined;
@@ -331,8 +363,19 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         assert.ok(switchedInfo?.ok, 'missing successful page info step after switch');
         const info = switchedInfo?.data as { tab_id?: string } | undefined;
         assert.equal(info?.tab_id, secondTab.tabId);
+        timeline('assert.b.phase.done', {
+            recSwitchB: idxSwitch,
+            recPageInfoB: idxInfoB,
+            recFillB: idxFillB,
+            recSelectB: idxSelectB,
+            recFillBFinal: idxFillBFinal,
+            pageInfoBTabId: info?.tab_id,
+            expectedBTabId: secondTab.tabId,
+        });
         if (pauseBeforeExitMs > 0) {
+            timeline('pause.before.exit', { pauseBeforeExitMs });
             await sleep(pauseBeforeExitMs);
         }
+        timeline('scenario.done');
     },
 };

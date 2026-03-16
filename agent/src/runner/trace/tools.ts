@@ -122,8 +122,14 @@ export const createTraceTools = (opts: {
                 opts.pageRegistry.setActiveTab(args.workspaceId, args.tabId);
                 const page = await opts.pageRegistry.resolvePage({ workspaceId: args.workspaceId, tabId: args.tabId });
                 currentPage = page;
-                // Without foreground switch, headed runs may timeout on actionability checks.
-                await currentPage.bringToFront().catch(() => undefined);
+                // A tab switch step is only complete when target tab is actually foregrounded.
+                await currentPage.bringToFront();
+                await currentPage.waitForTimeout(120);
+                await currentPage.waitForFunction(
+                    () => document.visibilityState === 'visible' && document.hasFocus(),
+                    undefined,
+                    { timeout: 2500 },
+                );
             }),
         'trace.tabs.close': async (args) =>
             run('trace.tabs.close', args, async () => {

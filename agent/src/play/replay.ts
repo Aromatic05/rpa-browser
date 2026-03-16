@@ -28,6 +28,7 @@ type ReplayRequest = {
     };
     isCanceled?: () => boolean;
     deps?: RunStepsDeps;
+    replayOptions?: ReplayOptions;
 };
 
 type ReplayResult = RunStepsResult & { error?: { code: string; message: string; details?: unknown } };
@@ -37,6 +38,10 @@ type ReplayResult = RunStepsResult & { error?: { code: string; message: string; 
  */
 export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult> => {
     const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const stepDelayMs =
+        typeof req.replayOptions?.stepDelayMs === 'number' && req.replayOptions.stepDelayMs > 0
+            ? Math.floor(req.replayOptions.stepDelayMs)
+            : 0;
     const runOne = async (step: StepUnion) =>
         runSteps(
             {
@@ -49,32 +54,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
 
     const tokenToTab = new Map<string, string>([[req.initialTabToken, req.initialTabId]]);
     let currentTabId = req.initialTabId;
+    let currentToken = req.initialTabToken;
     const stepResults: RunStepsResult['results'] = [];
-
-    const ensureTargetTabActive = async (targetTabId: string) => {
-        const maxAttempts = 3;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-            const tabs = await req.pageRegistry.listTabs(req.workspaceId);
-            const activeFromRegistry = tabs.find((tab) => tab.active)?.tabId;
-            const observedActive = activeFromRegistry || currentTabId;
-            if (observedActive === targetTabId) {
-                return true;
-            }
-            const switched = await runOne({
-                id: `replay-focus-${Date.now()}-${attempt}`,
-                name: 'browser.switch_tab',
-                args: { tab_id: targetTabId },
-                meta: { source: 'play', ts: Date.now() },
-            });
-            stepResults.push(...switched.results);
-            if (!switched.ok) {
-                return false;
-            }
-            currentTabId = targetTabId;
-            await wait(140);
-        }
-        return currentTabId === targetTabId;
-    };
 
     for (const originalStep of req.steps) {
         if (req.isCanceled?.()) {
@@ -82,9 +63,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
 
         const desiredToken = originalStep.meta?.tabToken;
+        let targetTabId: string | undefined;
         let remappedStep = originalStep;
         if (desiredToken) {
-            let targetTabId = tokenToTab.get(desiredToken);
+            targetTabId = tokenToTab.get(desiredToken);
             if (!targetTabId) {
                 const tabs = await req.pageRegistry.listTabs(req.workspaceId);
                 const recordedTabId = originalStep.meta?.tabId;
@@ -115,28 +97,51 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 }
                 tokenToTab.set(desiredToken, targetTabId);
             }
-
-            const ready = await ensureTargetTabActive(targetTabId);
-            if (!ready) {
-                return {
-                    ok: false,
-                    results: stepResults,
-                    error: { code: 'ERR_ASSERTION_FAILED', message: 'failed to activate target tab before replay step' },
-                };
-            }
-
-            if (originalStep.name === 'browser.switch_tab') {
+        }
+        if (originalStep.name === 'browser.switch_tab') {
+            if (desiredToken && targetTabId) {
                 remappedStep = {
                     ...originalStep,
                     args: { ...(originalStep.args as any), tab_id: targetTabId },
                 } as StepUnion;
             }
+        } else if (desiredToken && targetTabId && targetTabId !== currentTabId) {
+            return {
+                ok: false,
+                results: stepResults,
+                error: {
+                    code: 'ERR_ASSERTION_FAILED',
+                    message: `missing browser.switch_tab before step ${originalStep.id}`,
+                    details: {
+                        currentTabId,
+                        targetTabId,
+                        currentToken,
+                        desiredToken,
+                        stepId: originalStep.id,
+                        stepName: originalStep.name,
+                    },
+                },
+            };
         }
 
         const response = await runOne(remappedStep);
         stepResults.push(...response.results);
         if (!response.ok && req.stopOnError) {
             return { ok: false, results: stepResults };
+        }
+        if (remappedStep.name === 'browser.switch_tab') {
+            const switchedTo = String((remappedStep.args as any)?.tab_id || '');
+            if (switchedTo) {
+                currentTabId = switchedTo;
+            }
+            if (desiredToken) {
+                currentToken = desiredToken;
+            }
+        } else if (desiredToken) {
+            currentToken = desiredToken;
+        }
+        if (stepDelayMs > 0) {
+            await wait(stepDelayMs);
         }
     }
 

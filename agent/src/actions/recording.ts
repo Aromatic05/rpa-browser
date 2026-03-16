@@ -55,6 +55,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 initialTabToken: ctx.tabToken,
                 steps,
                 stopOnError,
+                replayOptions: ctx.replayOptions,
                 pageRegistry: {
                     listTabs: (workspaceId: string) => ctx.pageRegistry.listTabs(workspaceId),
                 },

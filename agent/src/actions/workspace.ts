@@ -189,6 +189,25 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.activated': async (ctx, action) => {
         const payload = (action.payload || {}) as TabActivatedPayload;
+        const isReplayRunning = (ctx.recordingState?.replaying?.size || 0) > 0;
+        const isExtensionLifecycle = typeof payload.source === 'string' && payload.source.startsWith('extension.');
+        if (isReplayRunning && isExtensionLifecycle) {
+            logPageEvent('tab.activated.ignored', {
+                tabToken: ctx.tabToken,
+                source: payload.source,
+                reportedUrl: payload.url,
+                reportedAt: payload.at,
+                reason: 'replay_in_progress',
+            });
+            return makeOk({
+                tabToken: ctx.tabToken,
+                source: payload.source,
+                reportedUrl: payload.url,
+                reportedAt: payload.at,
+                ignored: true,
+                reason: 'replay_in_progress',
+            });
+        }
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         ctx.pageRegistry.setActiveWorkspace(scope.workspaceId);
         ctx.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);

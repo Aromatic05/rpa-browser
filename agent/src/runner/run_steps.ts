@@ -49,12 +49,14 @@ export class MemoryStepSink implements StepSink {
 export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
     write: (event) => {
         if (event.type === 'step.start') {
+            const iso = new Date(event.ts).toISOString();
             console.log(
-                `${prefix} start workspace=${event.workspaceId} step=${event.stepId} name=${event.name}`,
+                `${prefix} start ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name}`,
             );
         } else {
+            const iso = new Date(event.ts).toISOString();
             console.log(
-                `${prefix} end workspace=${event.workspaceId} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
+                `${prefix} end ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
             );
         }
     },
