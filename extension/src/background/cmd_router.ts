@@ -292,15 +292,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             }
             void removeWorkspaceTabId(tabId);
         }
-
-        const active = await getActiveTabToken();
-        if (active?.tabToken) {
-            await emitLifecycleAction('tab.activated', active.tabToken, {
-                source: 'extension.reconcile',
-                url: active.urlHint || '',
-                at: Date.now(),
-            });
-        }
     };
     setInterval(() => {
         void reconcileTabs().catch(() => {
