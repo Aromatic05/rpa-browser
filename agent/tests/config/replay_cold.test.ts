@@ -61,14 +61,19 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
     });
 
     assert.equal(result.ok, true);
-    assert.equal(executed[0].name, 'browser.click');
-    assert.equal(executed[1].name, 'browser.create_tab');
-    assert.equal(executed[2].name, 'browser.switch_tab');
-    assert.equal((executed[2].args as any).tab_id, 'tab-new-1');
-    assert.equal(executed[3].name, 'browser.click');
+    assert.equal(executed[0].name, 'browser.switch_tab');
+    assert.equal((executed[0].args as any).tab_id, 'tab-now');
+    assert.equal(executed[1].name, 'browser.click');
+    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
+    assert.equal(
+        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tab_id === 'tab-new-1'),
+        true,
+    );
+    assert.equal(executed[executed.length - 1].name, 'browser.click');
 });
 
-test('replayRecording fails when tabToken changes without browser.switch_tab', async () => {
+test('replayRecording force switches when tabToken changes without browser.switch_tab', async () => {
+    const executed: StepUnion[] = [];
     const steps: StepUnion[] = [
         {
             id: 's1',
@@ -99,16 +104,29 @@ test('replayRecording fails when tabToken changes without browser.switch_tab', a
             pluginHost: {
                 getExecutors: () =>
                     ({
-                        'browser.click': async (step: StepUnion) => ({ stepId: step.id, ok: true }),
-                        'browser.create_tab': async () => ({ stepId: 'create', ok: true, data: { tab_id: 'tab-new-1' } }),
-                        'browser.switch_tab': async () => ({ stepId: 'switch', ok: true }),
+                        'browser.click': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true };
+                        },
+                        'browser.create_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: 'create', ok: true, data: { tab_id: 'tab-new-1' } };
+                        },
+                        'browser.switch_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: 'switch', ok: true };
+                        },
                     }) as any,
             } as any,
         } as RunStepsDeps,
     });
 
-    assert.equal(result.ok, false);
-    assert.equal(result.error?.code, 'ERR_ASSERTION_FAILED');
+    assert.equal(result.ok, true);
+    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
+    assert.equal(
+        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tab_id === 'tab-new-1'),
+        true,
+    );
 });
 
 test('replayRecording reuses existing tab by token mapping in hot replay', async () => {
@@ -169,7 +187,7 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
 
     assert.equal(result.ok, true);
     assert.equal(executed.some((step) => step.name === 'browser.create_tab'), false);
-    const switched = executed.find((step) => step.name === 'browser.switch_tab');
+    const switched = executed.find((step) => step.id === 'h-switch');
     assert.equal((switched?.args as any)?.tab_id, 'tab-b');
 });
 

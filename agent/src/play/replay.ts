@@ -55,6 +55,27 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             },
             req.deps,
         );
+    const forceActivateTab = async (tabId: string, desiredToken?: string, desiredTabRef?: string): Promise<boolean> => {
+        const switched = await runOne({
+            id: `replay-switch-${Date.now()}`,
+            name: 'browser.switch_tab',
+            args: { tab_id: tabId },
+            meta: { source: 'play', ts: Date.now() },
+        });
+        stepResults.push(...switched.results);
+        if (!switched.ok) {
+            return false;
+        }
+        currentTabId = tabId;
+        if (desiredToken) {
+            currentToken = desiredToken;
+            tokenToTab.set(desiredToken, tabId);
+        }
+        if (desiredTabRef) {
+            refToTab.set(desiredTabRef, tabId);
+        }
+        return true;
+    };
 
     const tokenToTab = new Map<string, string>([[req.initialTabToken, req.initialTabId]]);
     const refToTab = new Map<string, string>();
@@ -130,29 +151,17 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             targetTabId = refToTab.get(desiredTabRef) || req.pageRegistry.resolveTabIdFromRef?.(desiredTabRef);
         }
         if (originalStep.name === 'browser.switch_tab') {
-            if (desiredToken && targetTabId) {
+            if (targetTabId) {
                 remappedStep = {
                     ...originalStep,
                     args: { ...(originalStep.args as any), tab_id: targetTabId },
                 } as StepUnion;
             }
-        } else if (desiredToken && targetTabId && targetTabId !== currentTabId) {
-            return {
-                ok: false,
-                results: stepResults,
-                error: {
-                    code: 'ERR_ASSERTION_FAILED',
-                    message: `missing browser.switch_tab before step ${originalStep.id}`,
-                    details: {
-                        currentTabId,
-                        targetTabId,
-                        currentToken,
-                        desiredToken,
-                        stepId: originalStep.id,
-                        stepName: originalStep.name,
-                    },
-                },
-            };
+        } else if (targetTabId) {
+            const activated = await forceActivateTab(targetTabId, desiredToken, desiredTabRef);
+            if (!activated) {
+                return { ok: false, results: stepResults };
+            }
         }
 
         const response = await runOne(remappedStep);
