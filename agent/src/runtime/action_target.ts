@@ -29,14 +29,21 @@ export const resolveActionTarget = (
     const token = scope?.tabToken || action.tabToken;
 
     if (token) {
-        const tokenScope = pageRegistry.resolveScopeFromToken(token);
-        if (scope?.workspaceId && scope.workspaceId !== tokenScope.workspaceId) {
-            throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'scope.workspaceId does not match tabToken');
+        try {
+            const tokenScope = pageRegistry.resolveScopeFromToken(token);
+            if (scope?.workspaceId && scope.workspaceId !== tokenScope.workspaceId) {
+                throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'scope.workspaceId does not match tabToken');
+            }
+            if (scope?.tabId && scope.tabId !== tokenScope.tabId) {
+                throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'scope.tabId does not match tabToken');
+            }
+            return { tabToken: token, scope: tokenScope };
+        } catch (error) {
+            if (error instanceof ActionTargetError) {
+                throw error;
+            }
+            // stale tabToken: fall through to scope/default resolution
         }
-        if (scope?.tabId && scope.tabId !== tokenScope.tabId) {
-            throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'scope.tabId does not match tabToken');
-        }
-        return { tabToken: token, scope: tokenScope };
     }
 
     if (scope?.workspaceId || scope?.tabId) {

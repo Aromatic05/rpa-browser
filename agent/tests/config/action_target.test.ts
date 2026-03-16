@@ -59,3 +59,17 @@ test('resolveActionTarget returns null when tabToken and scope are both missing'
     const target = resolveActionTarget(action, createRegistry());
     assert.equal(target, null);
 });
+
+test('resolveActionTarget falls back to scope when tabToken is stale', () => {
+    const action: Action = {
+        v: 1,
+        id: '4',
+        type: 'play.start',
+        tabToken: 'token-missing',
+        scope: { workspaceId: 'ws-1', tabId: 'tab-2' },
+    };
+    const target = resolveActionTarget(action, createRegistry());
+    assert.equal(target.tabToken, 'token-b');
+    assert.equal(target.scope.workspaceId, 'ws-1');
+    assert.equal(target.scope.tabId, 'tab-2');
+});
