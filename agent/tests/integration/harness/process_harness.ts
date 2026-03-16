@@ -98,6 +98,7 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
     pipeProcLogs(agentProc, '[integration:agent]', verbose);
     try {
         await waitForLine(agentProc, /WS listening on ws:\/\/127\.0\.0\.1:/, 45000);
+        await waitForLine(agentProc, /Playwright Chromium launched with extension\./, 45000);
     } catch (error) {
         if (!agentProc.killed && agentProc.exitCode == null) {
             agentProc.kill('SIGTERM');

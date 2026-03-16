@@ -18,8 +18,6 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         const pauseBeforeSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_SWITCH_MS');
         const pauseAfterSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS');
         const pauseBeforeExitMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS');
-        const visualSwitchCheck =
-            String(process.env.RPA_INTEGRATION_VISUAL_SWITCH_CHECK || 'false').toLowerCase() === 'true';
 
         const created = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
             await client.sendAction({
@@ -156,23 +154,21 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(switch-tab)',
         );
-        // record.event only appends steps and does not execute real switch.
-        // Optional visual check can be enabled for headed manual debugging.
-        if (visualSwitchCheck) {
-            expectOk(
-                await client.sendAction({
-                    type: 'tab.setActive',
+        // Human-like recording invariant:
+        // while recording B steps, focus must be on B.
+        expectOk(
+            await client.sendAction({
+                type: 'tab.setActive',
+                tabToken: secondTab.tabToken,
+                scope: {
+                    workspaceId: created.workspaceId,
+                    tabId: secondTab.tabId,
                     tabToken: secondTab.tabToken,
-                    scope: {
-                        workspaceId: created.workspaceId,
-                        tabId: secondTab.tabId,
-                        tabToken: secondTab.tabToken,
-                    },
-                    payload: { workspaceId: created.workspaceId, tabId: secondTab.tabId },
-                }),
-                'tab.setActive(second,visual-check)',
-            );
-        }
+                },
+                payload: { workspaceId: created.workspaceId, tabId: secondTab.tabId },
+            }),
+            'tab.setActive(second,record-b)',
+        );
         await sleep(Math.max(280, pauseAfterSwitchMs));
 
         expectOk(
