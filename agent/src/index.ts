@@ -128,6 +128,50 @@ const handleAction = async (action: Action) => {
         }
     } catch (error) {
         if (error instanceof ActionTargetError) {
+            if (action.type === 'play.start' && error.message === 'workspace scope not found for tabToken') {
+                const workspaces = pageRegistry.listWorkspaces();
+                const requestedWorkspaceId = action.scope?.workspaceId;
+                const requested = requestedWorkspaceId
+                    ? workspaces.find((ws) => ws.workspaceId === requestedWorkspaceId)
+                    : undefined;
+                const active = pageRegistry.getActiveWorkspace?.();
+                const fallbackWorkspace = requested || active || workspaces[0];
+                if (!fallbackWorkspace) {
+                    return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found for replay');
+                }
+
+                const workspaceId =
+                    'workspaceId' in fallbackWorkspace ? fallbackWorkspace.workspaceId : fallbackWorkspace.id;
+                const selectedTabId = await pageRegistry.createTab(workspaceId);
+                const selectedScope = { workspaceId, tabId: selectedTabId };
+                const fallbackToken = pageRegistry.resolveTabToken(selectedScope);
+                const fallbackPage = await pageRegistry.getPage(fallbackToken, urlHint);
+
+                return runnerScope.run(selectedScope.workspaceId, async () => {
+                    const ctx: ActionContext = {
+                        page: fallbackPage,
+                        tabToken: fallbackToken,
+                        pageRegistry,
+                        log: actionLogger,
+                        recordingState,
+                        replayOptions: {
+                            clickDelayMs: CLICK_DELAY_MS,
+                            stepDelayMs: REPLAY_STEP_DELAY_MS,
+                            scroll: SCROLL_CONFIG,
+                        },
+                        navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+                        execute: undefined,
+                    };
+                    ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);
+                    actionLogger('action', {
+                        type: action.type,
+                        tabToken: fallbackToken,
+                        id: action.id,
+                        fallback: 'replay-stale-token',
+                    });
+                    return executeAction(ctx, action);
+                });
+            }
             return makeErr(error.code, error.message);
         }
         throw error;
