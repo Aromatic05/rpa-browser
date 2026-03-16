@@ -24,7 +24,7 @@ type ReplayRequest = {
     steps: StepUnion[];
     stopOnError: boolean;
     pageRegistry: {
-        listTabs: (workspaceId: string) => Promise<Array<{ tabId: string }>>;
+        listTabs: (workspaceId: string) => Promise<Array<{ tabId: string; active?: boolean }>>;
     };
     isCanceled?: () => boolean;
     deps?: RunStepsDeps;
@@ -36,6 +36,7 @@ type ReplayResult = RunStepsResult & { error?: { code: string; message: string; 
  * replayRecording：执行已录制的 Step 列表。
  */
 export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult> => {
+    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const runOne = async (step: StepUnion) =>
         runSteps(
             {
@@ -49,6 +50,31 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     const tokenToTab = new Map<string, string>([[req.initialTabToken, req.initialTabId]]);
     let currentTabId = req.initialTabId;
     const stepResults: RunStepsResult['results'] = [];
+
+    const ensureTargetTabActive = async (targetTabId: string) => {
+        const maxAttempts = 3;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            const tabs = await req.pageRegistry.listTabs(req.workspaceId);
+            const activeFromRegistry = tabs.find((tab) => tab.active)?.tabId;
+            const observedActive = activeFromRegistry || currentTabId;
+            if (observedActive === targetTabId) {
+                return true;
+            }
+            const switched = await runOne({
+                id: `replay-focus-${Date.now()}-${attempt}`,
+                name: 'browser.switch_tab',
+                args: { tab_id: targetTabId },
+                meta: { source: 'play', ts: Date.now() },
+            });
+            stepResults.push(...switched.results);
+            if (!switched.ok) {
+                return false;
+            }
+            currentTabId = targetTabId;
+            await wait(140);
+        }
+        return currentTabId === targetTabId;
+    };
 
     for (const originalStep of req.steps) {
         if (req.isCanceled?.()) {
@@ -90,18 +116,13 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 tokenToTab.set(desiredToken, targetTabId);
             }
 
-            if (currentTabId !== targetTabId) {
-                const switched = await runOne({
-                    id: `replay-switch-${Date.now()}`,
-                    name: 'browser.switch_tab',
-                    args: { tab_id: targetTabId },
-                    meta: { source: 'play', ts: Date.now() },
-                });
-                stepResults.push(...switched.results);
-                if (!switched.ok) {
-                    return { ok: false, results: stepResults };
-                }
-                currentTabId = targetTabId;
+            const ready = await ensureTargetTabActive(targetTabId);
+            if (!ready) {
+                return {
+                    ok: false,
+                    results: stepResults,
+                    error: { code: 'ERR_ASSERTION_FAILED', message: 'failed to activate target tab before replay step' },
+                };
             }
 
             if (originalStep.name === 'browser.switch_tab') {
