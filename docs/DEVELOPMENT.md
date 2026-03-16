@@ -258,6 +258,25 @@ pnpm test:extension
 - 多 tab 录制依赖 `tab.activated` 生命周期事件自动落库为 `browser.switch_tab`（同 workspace 下跨 tab）
 - `record.stop/get/clear` 在仅有一个录制会话时允许“错误 tabToken”兜底到该会话，避免 UI 焦点切换导致停错录制
 - 面板 `tab.setActive` 也会直接写入 `browser.switch_tab`，不依赖生命周期回调先到达
+
+## 9. A1 持久化契约（workspace restore）
+
+- 持久化文件：`agent` userData 目录下 `recordings.state.json`。
+- 版本：当前 `version: 1`（后续结构变更必须升级版本并提供迁移）。
+- 存储范围：
+  - 录制 bundle（`recordings` + `recordingManifests`）。
+  - `workspaceLatestRecording` 索引。
+  - `workspaceSnapshots`（`workspace.save` 产物）。
+
+`workspaceSnapshots` 约束：
+- 保存 `tabs`（`tabId/url/title/active`），不保存运行时 `tabToken`。
+- 保存录制 `steps`，并移除 step `meta.tabToken`。
+- 保存录制 `manifest` 的 tab 列表时，移除 `tabs[].tabToken`。
+
+恢复语义约束：
+- `workspace.restore` 只负责恢复 workspace/tab 与录制上下文，不自动触发 `play.start`。
+- 若无可恢复快照，返回 `ERR_WORKSPACE_SNAPSHOT_NOT_FOUND`。
+- 失败路径统一返回 `ERR_WORKSPACE_RESTORE_FAILED`（含原始 message）。
 - 切换到目标 tab 时会补装 recorder，确保新 tab 后续动作可继续录制
 - 热回放会优先使用当前运行时的 `tabToken -> tabId` 映射；仅在无法解析时才走 `browser.create_tab`（cold replay）
 - 录制结果包含 `manifest`（`workspaceId`、`entryTabRef`、`entryUrl`、tabs 快照）以及步骤级 `meta.tabRef/meta.urlAtRecord`

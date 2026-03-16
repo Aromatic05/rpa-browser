@@ -74,7 +74,7 @@
 
 当前 action handler 来自：
 
-- workspace：`workspace.list`、`workspace.create`、`workspace.setActive`
+- workspace：`workspace.list`、`workspace.create`、`workspace.setActive`、`workspace.save`、`workspace.restore`
 - tab：`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`、`tab.activated`、`tab.closed`、`tab.ping`
 - record：`record.start`、`record.stop`、`record.get`、`record.clear`、`record.event`
 - play：`play.start`、`play.stop`
@@ -128,6 +128,15 @@
 - `tab.ping`：content/newtab 周期上报存活信息，用于 token 同步和断连恢复（`lastSeen` 语义）。
 - 若 token 可解析，返回对应 `workspaceId/tabId`；否则返回 `stale: true`。
 
+### 2.9 `workspace.save` / `workspace.restore` 合同
+
+- `workspace.save`：将当前（或指定）workspace 保存为可恢复快照。
+- 快照内容：
+  - `tabs`: `tabId/url/title/active`
+  - `recording.steps`
+  - `recording.manifest`（去除 `tabs[].tabToken`）
+- `workspace.restore`：仅恢复 workspace/tab 与录制上下文；不自动触发 `play.start`。
+
 ### 2.5 Action 错误码
 
 ```text
@@ -139,6 +148,8 @@ ERR_ASSERTION_FAILED
 ERR_DIALOG_BLOCKED
 ERR_POPUP_BLOCKED
 ERR_BAD_ARGS
+ERR_WORKSPACE_SNAPSHOT_NOT_FOUND
+ERR_WORKSPACE_RESTORE_FAILED
 ```
 
 代码来源：`agent/src/actions/error_codes.ts`。

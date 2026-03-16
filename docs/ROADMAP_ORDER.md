@@ -22,6 +22,11 @@
 - 重启后可恢复有效 workspace/session。
 - 中断任务可从 checkpoint 继续，避免重复执行已完成 step。
 
+当前落地状态（2026-03）：
+- 已完成：workspace 录制快照持久化与恢复（`workspace.save` / `workspace.restore`），包含 tab URL（不含 tabToken）与录制 steps。
+- 已完成：恢复专用日志事件（`workspace.restore.start/end`）和错误码（快照缺失/恢复失败）。
+- 未完成：任务级 checkpoint 与断点续跑（`A1-3`）。
+
 实施建议（当前仓库最小落地顺序）：
 - `A1-S0` 先接入流式执行壳（`task.run.*`），把“任务游标”从动作执行中抽离（已具备最小实现）
 - `A1-1` 在 `TaskCheckpoint` 基础上持久化 `runId/taskId/workspaceId/nextSeq/status`
