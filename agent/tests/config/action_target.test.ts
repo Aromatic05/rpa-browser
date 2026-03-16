@@ -49,3 +49,13 @@ test('resolveActionTarget throws when scope and tabToken mismatch', () => {
     };
     assert.throws(() => resolveActionTarget(action, createRegistry()), /scope\.tabId does not match tabToken/);
 });
+
+test('resolveActionTarget returns null when tabToken and scope are both missing', () => {
+    const action: Action = {
+        v: 1,
+        id: '3',
+        type: 'workspace.create',
+    };
+    const target = resolveActionTarget(action, createRegistry());
+    assert.equal(target, null);
+});

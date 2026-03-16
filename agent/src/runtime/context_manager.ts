@@ -33,6 +33,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const startUrl =
         process.env.RPA_START_URL || 'http://localhost:4173/pages/start.html#beta';
     const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
+    const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
 
     /**
      * 启动后强制导航到 startUrl，并关闭多余的初始页签。
@@ -87,7 +88,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
         ];
         contextPromise = chromium
             .launchPersistentContext(options.userDataDir, {
-                headless: false,
+                headless,
                 viewport: null,
                 args: launchArgs,
             })

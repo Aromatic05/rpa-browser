@@ -191,6 +191,8 @@ Extension 测试：
 
 ```bash
 pnpm -C agent test:unit
+pnpm -C agent test:integration
+pnpm -C agent test:integration:headed
 pnpm -C agent test:trace
 pnpm -C agent test:runner
 pnpm -C agent test:e2e
@@ -206,6 +208,25 @@ pnpm test:extension
 - 优先使用可重复的 fixture
 - 协议变更至少补一个协议级断言
 - 新 trace op 在必要时断言 op 序列
+
+## 8.1 集成测试框架（多 tab 录制）
+
+目录：
+
+- `agent/tests/integration/harness/*`：进程编排与 WS action 客户端
+- `agent/tests/integration/scenarios/*`：可插拔场景
+- `agent/tests/integration/*.test.ts`：统一入口（可按环境切换 headed/headless）
+
+设计原则：
+
+- 启动完整进程栈（mock + agent + 浏览器扩展）
+- 场景只描述行为与断言，框架负责启动、连接、清理
+- `headless` 用于 CI/CD，`headed` 用于本地可视化调试
+
+关键环境变量：
+
+- `RPA_INTEGRATION_HEADED=true|false`：控制集成测试是否有头
+- `RPA_HEADLESS=true|false`：agent 启动浏览器模式（由测试脚本自动设置）
 
 ## 9. 文档维护规则
 

@@ -20,6 +20,7 @@ const CLICK_DELAY_MS = 300;
 const REPLAY_STEP_DELAY_MS = 900;
 const NAV_DEDUPE_WINDOW_MS = 1200;
 const SCROLL_CONFIG = { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 };
+const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
 
 const log = (...args: unknown[]) => console.log('[RPA:agent]', ...args);
 
@@ -98,8 +99,33 @@ const handleAction = async (action: Action) => {
     let resolvedScope: { workspaceId: string; tabId: string };
     try {
         const resolved = resolveActionTarget(action, pageRegistry);
-        tabToken = resolved.tabToken;
-        resolvedScope = resolved.scope;
+        if (resolved) {
+            tabToken = resolved.tabToken;
+            resolvedScope = resolved.scope;
+        } else {
+            const page = await pageRegistry.resolvePage();
+            const token = pageRegistry.resolveTabToken();
+            const scope = pageRegistry.resolveScopeFromToken(token);
+            return runnerScope.run(scope.workspaceId, async () => {
+                const ctx: ActionContext = {
+                    page,
+                    tabToken: token,
+                    pageRegistry,
+                    log: actionLogger,
+                    recordingState,
+                    replayOptions: {
+                        clickDelayMs: CLICK_DELAY_MS,
+                        stepDelayMs: REPLAY_STEP_DELAY_MS,
+                        scroll: SCROLL_CONFIG,
+                    },
+                    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+                    execute: undefined,
+                };
+                ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);
+                actionLogger('action', { type: action.type, tabToken: token, id: action.id });
+                return executeAction(ctx, action);
+            });
+        }
     } catch (error) {
         if (error instanceof ActionTargetError) {
             return makeErr(error.code, error.message);
@@ -134,7 +160,7 @@ const handleAction = async (action: Action) => {
     });
 };
 
-const wss = new WebSocketServer({ host: '127.0.0.1', port: 17333 });
+const wss = new WebSocketServer({ host: '127.0.0.1', port: WS_PORT });
 const wsClients = new Set<WebSocket>();
 
 const broadcast = (event: { event: string; data?: Record<string, unknown> }) => {
@@ -151,7 +177,7 @@ const broadcast = (event: { event: string; data?: Record<string, unknown> }) => 
 };
 
 wss.on('listening', () => {
-    log('WS listening on ws://127.0.0.1:17333');
+    log(`WS listening on ws://127.0.0.1:${WS_PORT}`);
 });
 
 wss.on('connection', (socket) => {

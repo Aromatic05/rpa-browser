@@ -24,7 +24,7 @@ type ResolvedActionTarget = {
 export const resolveActionTarget = (
     action: Action,
     pageRegistry: PageRegistry,
-): ResolvedActionTarget => {
+): ResolvedActionTarget | null => {
     const scope = action.scope;
     const token = scope?.tabToken || action.tabToken;
 
@@ -48,7 +48,5 @@ export const resolveActionTarget = (
         return { tabToken: resolvedToken, scope: resolvedScope };
     }
 
-    const resolvedScope = pageRegistry.resolveScope();
-    const resolvedToken = pageRegistry.resolveTabToken(resolvedScope);
-    return { tabToken: resolvedToken, scope: resolvedScope };
+    return null;
 };
