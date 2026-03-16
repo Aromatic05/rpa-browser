@@ -270,8 +270,11 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 source: 'extension.sw',
                 at: Date.now(),
             });
+            tokenToWorkspace.delete(removed.tabToken);
+            tokenToScope.delete(removed.tabToken);
         }
         void removeWorkspaceTabId(tabId);
+        options.onRefresh();
     };
 
     const onUpdated = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
@@ -309,9 +312,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     source: 'extension.reconcile',
                     at: Date.now(),
                 });
+                tokenToWorkspace.delete(state.tabToken);
+                tokenToScope.delete(state.tabToken);
             }
             void removeWorkspaceTabId(tabId);
         }
+        options.onRefresh();
     };
     setInterval(() => {
         void reconcileTabs().catch(() => {

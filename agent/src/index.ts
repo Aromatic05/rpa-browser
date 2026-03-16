@@ -233,7 +233,8 @@ wss.on('connection', (socket) => {
                         action.type === 'workspace.setActive' ||
                         action.type === 'tab.create' ||
                         action.type === 'tab.setActive' ||
-                        action.type === 'tab.close';
+                        action.type === 'tab.close' ||
+                        action.type === 'tab.closed';
                     if (mutating) {
                         broadcast({
                             event: 'workspace.changed',
