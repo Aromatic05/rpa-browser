@@ -197,6 +197,23 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     };
 
     /**
+     * 新 token 的默认归属策略：
+     * - 若存在 active workspace，则作为该 workspace 的新 tab 挂载
+     * - 否则创建新的 workspace
+     */
+    const attachNewToken = (tabToken: string, page: Page) => {
+        const activeWorkspace = activeWorkspaceId ? workspaces.get(activeWorkspaceId) || null : null;
+        if (!activeWorkspace) {
+            createWorkspaceInternal(tabToken, page);
+            return;
+        }
+        const tabId = randomId();
+        attachTabToWorkspace(activeWorkspace, tabId, tabToken, page);
+        activeWorkspace.activeTabId = tabId;
+        touchWorkspace(activeWorkspace);
+    };
+
+    /**
      * 绑定 Page 与 tabToken，必要时创建新的 workspace。
      * 用于 context 的 page 事件，以及新页面的显式绑定。
      */
@@ -207,7 +224,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             if (!token) return null;
             tokenToPage.set(token, page);
             if (!tokenToTab.has(token)) {
-                createWorkspaceInternal(token, page);
+                attachNewToken(token, page);
             } else {
                 const ref = tokenToTab.get(token);
                 if (ref) {
@@ -246,7 +263,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             if (token) {
                 tokenToPage.set(token, page);
                 if (!tokenToTab.has(token)) {
-                    createWorkspaceInternal(token, page);
+                    attachNewToken(token, page);
                 }
             }
         }
