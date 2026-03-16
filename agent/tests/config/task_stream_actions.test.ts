@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { executeAction } from '../../src/actions/execute';
-import { createRunStepsQueueManager } from '../../src/runner/run_steps';
 import { setRunStepsDeps } from '../../src/runner/run_steps';
 import { loadRunnerConfig } from '../../src/runner/config/loader';
 import type { StepUnion } from '../../src/runner/steps/types';
@@ -33,7 +32,6 @@ const buildCtx = () => {
             replaying: new Set(),
             replayCancel: new Set(),
         },
-        taskRunManager: createRunStepsQueueManager(),
         replayOptions: {
             clickDelayMs: 0,
             stepDelayMs: 0,
@@ -50,7 +48,7 @@ test('task.run lifecycle actions', async () => {
         v: 1,
         id: 'a1',
         type: 'task.run.start',
-        payload: { taskId: 'task-1', workspaceId: 'ws-1' },
+        payload: { workspaceId: 'ws-1' },
     });
     assert.equal(started.ok, true);
     const runId = (started as any).data.runId as string;
@@ -61,7 +59,7 @@ test('task.run lifecycle actions', async () => {
         type: 'task.run.push',
         payload: {
             runId,
-            steps: [{ step: { id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } } }],
+            steps: [{ id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } }],
         },
     });
     assert.equal(pushed.ok, true);
@@ -73,7 +71,19 @@ test('task.run lifecycle actions', async () => {
         payload: { runId },
     });
     assert.equal(polled.ok, true);
-    assert.equal((polled as any).data.items.length, 1);
+    if ((polled as any).data.items.length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const polled2 = await executeAction(ctx, {
+            v: 1,
+            id: 'a3b',
+            type: 'task.run.poll',
+            payload: { runId },
+        });
+        assert.equal(polled2.ok, true);
+        assert.equal((polled2 as any).data.items.length, 1);
+    } else {
+        assert.equal((polled as any).data.items.length, 1);
+    }
 
     const checkpoint = await executeAction(ctx, {
         v: 1,
@@ -86,9 +96,9 @@ test('task.run lifecycle actions', async () => {
     const aborted = await executeAction(ctx, {
         v: 1,
         id: 'a5',
-        type: 'task.run.abort',
+        type: 'task.run.halt',
         payload: { runId },
     });
     assert.equal(aborted.ok, true);
-    assert.equal((aborted as any).data.checkpoint.status, 'aborted');
+    assert.equal((aborted as any).data.checkpoint.status, 'halted');
 });
