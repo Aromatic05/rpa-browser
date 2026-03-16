@@ -10,6 +10,7 @@ import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
+import { createTaskRunManager } from './task_stream/manager';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
@@ -26,6 +27,7 @@ const log = (...args: unknown[]) => console.log('[RPA:agent]', ...args);
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
+const taskRunManager = createTaskRunManager();
 
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
@@ -113,6 +115,7 @@ const handleAction = async (action: Action) => {
                     pageRegistry,
                     log: actionLogger,
                     recordingState,
+                    taskRunManager,
                     replayOptions: {
                         clickDelayMs: CLICK_DELAY_MS,
                         stepDelayMs: REPLAY_STEP_DELAY_MS,
@@ -154,6 +157,7 @@ const handleAction = async (action: Action) => {
                         pageRegistry,
                         log: actionLogger,
                         recordingState,
+                        taskRunManager,
                         replayOptions: {
                             clickDelayMs: CLICK_DELAY_MS,
                             stepDelayMs: REPLAY_STEP_DELAY_MS,
@@ -190,6 +194,7 @@ const handleAction = async (action: Action) => {
             pageRegistry,
             log: actionLogger,
             recordingState,
+            taskRunManager,
             replayOptions: {
                 clickDelayMs: CLICK_DELAY_MS,
                 stepDelayMs: REPLAY_STEP_DELAY_MS,
