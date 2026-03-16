@@ -39,6 +39,7 @@
 - `v` 必须为 `1`
 - `id` 必须为非空字符串
 - `type` 必须为非空字符串
+- 当 `tabToken` 存在时，`scope.workspaceId/tabId` 必须与该 token 解析结果一致；冲突会返回 `ERR_BAD_ARGS`
 
 代码来源：`agent/src/actions/action_protocol.ts`、`agent/src/index.ts`。
 

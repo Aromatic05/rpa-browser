@@ -13,6 +13,7 @@ import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
+import { resolveActionTarget, ActionTargetError } from './runtime/action_target';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const CLICK_DELAY_MS = 300;
@@ -91,24 +92,27 @@ setRunStepsDeps({
 });
 
 const handleAction = async (action: Action) => {
-    const scope = action.scope;
     const urlHint = typeof (action.payload as any)?.url === 'string' ? ((action.payload as any).url as string) : undefined;
 
-    let tabToken = action.scope?.tabToken || action.tabToken;
-    let page: any;
-    if (scope?.workspaceId || scope?.tabId) {
-        page = await pageRegistry.resolvePage({ workspaceId: scope?.workspaceId, tabId: scope?.tabId });
-        tabToken = pageRegistry.resolveTabToken({ workspaceId: scope?.workspaceId, tabId: scope?.tabId });
-    } else if (tabToken) {
-        page = await pageRegistry.getPage(tabToken, urlHint);
-    } else {
-        page = await pageRegistry.resolvePage();
-        tabToken = pageRegistry.resolveTabToken();
+    let tabToken = '';
+    let resolvedScope: { workspaceId: string; tabId: string };
+    try {
+        const resolved = resolveActionTarget(action, pageRegistry);
+        tabToken = resolved.tabToken;
+        resolvedScope = resolved.scope;
+    } catch (error) {
+        if (error instanceof ActionTargetError) {
+            return makeErr(error.code, error.message);
+        }
+        throw error;
     }
+
+    let page: any;
+    page = await pageRegistry.getPage(tabToken, urlHint);
+
     if (!tabToken) {
         return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing tabToken');
     }
-    const resolvedScope = scope ? pageRegistry.resolveScope(scope) : pageRegistry.resolveScopeFromToken(tabToken);
     return runnerScope.run(resolvedScope.workspaceId, async () => {
         const ctx: ActionContext = {
             page,
