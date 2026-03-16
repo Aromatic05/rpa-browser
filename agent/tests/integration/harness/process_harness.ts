@@ -48,16 +48,37 @@ const reservePort = async () =>
         server.on('error', reject);
     });
 
+const pipeProcLogs = (proc: ChildProcess, prefix: string, enabled: boolean) => {
+    if (!enabled) return;
+    const write = (stream: NodeJS.WriteStream, chunk: Buffer | string) => {
+        const text = String(chunk);
+        const lines = text.split('\n');
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            stream.write(`${prefix} ${line}\n`);
+        }
+    };
+    proc.stdout?.on('data', (chunk) => write(process.stdout, chunk));
+    proc.stderr?.on('data', (chunk) => write(process.stderr, chunk));
+};
+
 export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?: string }) => {
     const repoRoot = path.resolve(process.cwd(), '..');
-    const wsPort = await reservePort();
+    const extensionAwareDefault = opts?.headed ? 'true' : 'false';
+    const extensionAware =
+        String(process.env.RPA_INTEGRATION_EXTENSION_AWARE || extensionAwareDefault).toLowerCase() === 'true';
+    const preferredWsPort = Number(process.env.RPA_INTEGRATION_WS_PORT || 17333);
+    const wsPort = extensionAware ? preferredWsPort : await reservePort();
     const mockPort = await reservePort();
+    const verbose =
+        String(process.env.RPA_INTEGRATION_VERBOSE || (opts?.headed ? 'true' : 'false')).toLowerCase() === 'true';
 
     const mockProc = spawn('node', ['mock/server.js'], {
         cwd: repoRoot,
         env: { ...process.env, MOCK_PORT: String(mockPort) },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
+    pipeProcLogs(mockProc, '[integration:mock]', verbose);
     await waitForLine(mockProc, /\[mock\] server listening/i, 20000);
 
     const env = {
@@ -74,6 +95,7 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
     });
+    pipeProcLogs(agentProc, '[integration:agent]', verbose);
     try {
         await waitForLine(agentProc, /WS listening on ws:\/\/127\.0\.0\.1:/, 45000);
     } catch (error) {

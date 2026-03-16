@@ -154,6 +154,21 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(switch-tab)',
         );
+        // record.event only appends steps; it does not execute a real tab switch.
+        // We switch for real here so headed mode can visually confirm tab B.
+        expectOk(
+            await client.sendAction({
+                type: 'tab.setActive',
+                tabToken: secondTab.tabToken,
+                scope: {
+                    workspaceId: created.workspaceId,
+                    tabId: secondTab.tabId,
+                    tabToken: secondTab.tabToken,
+                },
+                payload: { workspaceId: created.workspaceId, tabId: secondTab.tabId },
+            }),
+            'tab.setActive(second,visual-check)',
+        );
         await sleep(Math.max(280, pauseAfterSwitchMs));
 
         expectOk(

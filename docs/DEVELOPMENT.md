@@ -231,6 +231,9 @@ pnpm test:extension
 - `RPA_INTEGRATION_PAUSE_BEFORE_SWITCH_MS`：场景在 `browser.switch_tab` 前额外停顿（用于观察切换前页面）
 - `RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS`：场景在 `browser.switch_tab` 后额外停顿（用于有头可视化确认）
 - `RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS`：场景结束前额外停顿（用于有头手工观察结果）
+- `RPA_INTEGRATION_VERBOSE=true|false`：输出集成测试中 `mock/agent` 子进程日志（headed 默认开启）
+- `RPA_INTEGRATION_EXTENSION_AWARE=true|false`：是否固定使用扩展默认 WS 端口（`17333`）；headed 默认开启
+- `RPA_INTEGRATION_WS_PORT`：当 `RPA_INTEGRATION_EXTENSION_AWARE=true` 时使用的 agent WS 端口（默认 `17333`）
 
 脚本复用说明：
 
