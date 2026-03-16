@@ -187,14 +187,25 @@ pnpm -C agent mcp:hot
 - `task.run.push`
 - `task.run.poll`
 - `task.run.checkpoint`
-- `task.run.abort`
+- `task.run.halt`
+- `task.run.resume`
 
 核心实现位置：
 
 - `agent/src/runner/run_steps.ts`（Step Pipeline 主循环）
 - `agent/src/runner/run_steps_types.ts`（Step Pipeline 对外类型）
 - `agent/src/actions/task_stream.ts`
+- `agent/src/runner/checkpoint_store.ts`（task.run checkpoint 持久化）
 - `docs/DSL_EXECUTOR_PIPELINE.md`（DSL 对接规范）
+
+Checkpoint 配置：
+
+- 配置项：`runner.config.checkpointPolicy`
+- 默认文件：`.artifacts/checkpoints/task_runs.json`
+- 环境变量：
+  - `RUNNER_CHECKPOINT_ENABLED`
+  - `RUNNER_CHECKPOINT_FILE_PATH`
+  - `RUNNER_CHECKPOINT_FLUSH_INTERVAL_MS`
 
 设计原则：
 
