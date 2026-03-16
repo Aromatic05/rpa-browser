@@ -229,6 +229,8 @@ pnpm test:extension
 - 面板 `tab.setActive` 也会直接写入 `browser.switch_tab`，不依赖生命周期回调先到达
 - 切换到目标 tab 时会补装 recorder，确保新 tab 后续动作可继续录制
 - 热回放会优先使用当前运行时的 `tabToken -> tabId` 映射；仅在无法解析时才走 `browser.create_tab`（cold replay）
+- 录制结果包含 `manifest`（`workspaceId`、`entryTabRef`、`entryUrl`、tabs 快照）以及步骤级 `meta.tabRef/meta.urlAtRecord`
+- 回放采用 `workspace` 先决策略：命中录制 workspace 走热启动；未命中走冷启动（创建 workspace/tab 并用记录 URL 预热）
 
 关键环境变量：
 

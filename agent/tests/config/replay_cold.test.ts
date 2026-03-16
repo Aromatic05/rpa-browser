@@ -172,3 +172,51 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
     const switched = executed.find((step) => step.name === 'browser.switch_tab');
     assert.equal((switched?.args as any)?.tab_id, 'tab-b');
 });
+
+test('replayRecording creates tab with recorded switch url when target tab is missing', async () => {
+    const executed: StepUnion[] = [];
+    const steps: StepUnion[] = [
+        {
+            id: 's-switch-missing',
+            name: 'browser.switch_tab',
+            args: { tab_id: 'legacy-tab-b', tab_url: 'https://example.com/target' },
+            meta: { source: 'record', tabToken: 'token-b', tabRef: 'tab-b', workspaceId: 'old-ws' },
+        },
+    ];
+
+    const result = await replayRecording({
+        workspaceId: 'ws-now',
+        initialTabId: 'tab-now',
+        initialTabToken: 'token-a',
+        steps,
+        stopOnError: true,
+        pageRegistry: {
+            listTabs: async () => [{ tabId: 'tab-now' }],
+            resolveTabIdFromToken: () => undefined,
+            resolveTabIdFromRef: () => undefined,
+        },
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () =>
+                    ({
+                        'browser.create_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true, data: { tab_id: 'tab-created' } };
+                        },
+                        'browser.switch_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true };
+                        },
+                    }) as any,
+            } as any,
+        } as RunStepsDeps,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(executed[0].name, 'browser.create_tab');
+    assert.equal((executed[0].args as any).url, 'https://example.com/target');
+    assert.equal(executed[1].name, 'browser.switch_tab');
+    assert.equal((executed[1].args as any).tab_id, 'tab-created');
+});

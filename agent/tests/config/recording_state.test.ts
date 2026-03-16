@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clearRecording, createRecordingState, getRecording, recordStep, stopRecording } from '../../src/record/recording';
+import {
+    clearRecording,
+    createRecordingState,
+    getRecording,
+    getRecordingBundle,
+    recordStep,
+    stopRecording,
+} from '../../src/record/recording';
 import type { StepUnion } from '../../src/runner/steps/types';
 
 test('recordStep appends cross-tab step into sole active recording session', () => {
@@ -53,4 +60,51 @@ test('getRecording/clearRecording fall back to sole recording key', () => {
     clearRecording(state, 'token-b');
     const cleared = getRecording(state, 'token-a');
     assert.equal(cleared.length, 0);
+});
+
+test('recording bundle tracks entry and tab context for switch steps', () => {
+    const state = createRecordingState();
+    state.recordingEnabled.add('token-a');
+    state.recordings.set('token-a', []);
+    state.recordingManifests.set('token-a', {
+        recordingToken: 'token-a',
+        workspaceId: 'ws-1',
+        entryTabRef: 'tab-a',
+        entryUrl: 'https://example.com/a',
+        startedAt: 1,
+        tabs: [
+            {
+                tabToken: 'token-a',
+                tabRef: 'tab-a',
+                tabId: 'tab-a',
+                firstSeenUrl: 'https://example.com/a',
+                lastSeenUrl: 'https://example.com/a',
+                firstSeenAt: 1,
+                lastSeenAt: 1,
+            },
+        ],
+    });
+    const switchStep: StepUnion = {
+        id: 'switch-1',
+        name: 'browser.switch_tab',
+        args: { tab_id: 'tab-b', tab_url: 'https://example.com/b', tab_ref: 'tab-b' },
+        meta: {
+            source: 'record',
+            ts: 200,
+            workspaceId: 'ws-1',
+            tabId: 'tab-b',
+            tabToken: 'token-b',
+        },
+    };
+    recordStep(state, 'token-a', switchStep, 1200);
+    const bundle = getRecordingBundle(state, 'token-a');
+    assert.equal(bundle.steps.length, 1);
+    assert.equal(bundle.steps[0].meta?.tabRef, 'tab-b');
+    assert.equal(bundle.steps[0].meta?.urlAtRecord, 'https://example.com/b');
+    assert.equal(bundle.manifest?.workspaceId, 'ws-1');
+    assert.equal(bundle.manifest?.entryTabRef, 'tab-a');
+    assert.equal(bundle.manifest?.entryUrl, 'https://example.com/a');
+    const tabB = bundle.manifest?.tabs.find((tab) => tab.tabToken === 'token-b');
+    assert.equal(tabB?.tabRef, 'tab-b');
+    assert.equal(tabB?.lastSeenUrl, 'https://example.com/b');
 });
