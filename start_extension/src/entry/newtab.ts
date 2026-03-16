@@ -36,7 +36,7 @@ const ensureTabToken = () => {
     return token;
 };
 
-const reportTabOpened = (tabToken: string) => {
+const sendLifecycle = (tabToken: string, type: 'tab.opened' | 'tab.ping') => {
     try {
         const ws = new WebSocket(WS_URL);
         ws.addEventListener('open', () => {
@@ -45,7 +45,7 @@ const reportTabOpened = (tabToken: string) => {
                 JSON.stringify({
                     v: 1,
                     id: crypto.randomUUID(),
-                    type: 'tab.opened',
+                    type,
                     tabToken,
                     scope: { tabToken },
                     payload: {
@@ -76,4 +76,7 @@ const token = ensureTabToken();
 if (tokenEl) tokenEl.textContent = `${token.slice(0, 8)}...`;
 if (urlEl) urlEl.textContent = location.href;
 setStatus('connecting...');
-reportTabOpened(token);
+sendLifecycle(token, 'tab.opened');
+setInterval(() => {
+    sendLifecycle(token, 'tab.ping');
+}, 15000);

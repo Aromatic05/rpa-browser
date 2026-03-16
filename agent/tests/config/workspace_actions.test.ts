@@ -112,3 +112,33 @@ test('tab.closed returns stale response when token scope is missing', async () =
     assert.equal(logs.length, 1);
     assert.equal(logs[0][0], 'tab.closed');
 });
+
+test('tab.ping updates alive timestamp and logs payload', async () => {
+    const logs: unknown[][] = [];
+    const touched: Array<{ token: string; at?: number }> = [];
+    const ctx: any = {
+        tabToken: 'token-ping',
+        page: { url: () => 'https://example.com' },
+        log: (...args: unknown[]) => logs.push(args),
+        pageRegistry: {
+            touchTabToken: (token: string, at?: number) => {
+                touched.push({ token, at });
+                return { workspaceId: 'ws-p', tabId: 'tab-p' };
+            },
+        },
+    };
+    const action: any = {
+        v: 1,
+        id: 'a4',
+        type: 'tab.ping',
+        payload: { source: 'extension.content', url: 'https://example.com', title: 'Example', at: 1001 },
+    };
+
+    const result = await workspaceHandlers['tab.ping'](ctx, action);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(touched, [{ token: 'token-ping', at: 1001 }]);
+    assert.equal(result.data.workspaceId, 'ws-p');
+    assert.equal(result.data.tabId, 'tab-p');
+    assert.equal(logs[0][0], 'tab.ping');
+});

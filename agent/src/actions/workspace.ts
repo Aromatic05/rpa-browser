@@ -16,6 +16,12 @@ type TabSetActivePayload = { workspaceId?: string; tabId: string };
 type TabOpenedPayload = { source?: string; url?: string; title?: string; at?: number };
 type TabActivatedPayload = { source?: string; url?: string; at?: number };
 type TabClosedPayload = { source?: string; at?: number };
+type TabPingPayload = { source?: string; url?: string; title?: string; at?: number };
+
+const logPageEvent = (event: string, payload: Record<string, unknown>) => {
+    // Lifecycle logs must always be visible in terminal for debugging/state tracking.
+    console.log('[page]', event, payload);
+};
 
 const resolveWorkspaceId = (
     ctx: { pageRegistry: any },
@@ -102,6 +108,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 // ignore navigation failures
             }
         }
+        logPageEvent('tab.create', { workspaceId, tabId, tabToken: createdTabToken, startUrl: payload.startUrl });
         return makeOk({ workspaceId, tabId, tabToken: createdTabToken });
     },
     'tab.close': async (ctx, action) => {
@@ -111,6 +118,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         await ctx.pageRegistry.closeTab(workspaceId, payload.tabId);
+        logPageEvent('tab.close', { workspaceId, tabId: payload.tabId });
         return makeOk({ workspaceId, tabId: payload.tabId });
     },
     'tab.setActive': async (ctx, action) => {
@@ -121,6 +129,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         }
         ctx.pageRegistry.setActiveTab(workspaceId, payload.tabId);
         await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: payload.tabId });
+        logPageEvent('tab.setActive', { workspaceId, tabId: payload.tabId });
         return makeOk({ workspaceId, tabId: payload.tabId });
     },
     'tab.opened': async (ctx, action) => {
@@ -129,6 +138,16 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveWorkspace(scope.workspaceId);
         ctx.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
         ctx.log('tab.opened', {
+            workspaceId: scope.workspaceId,
+            tabId: scope.tabId,
+            tabToken: ctx.tabToken,
+            pageUrl: ctx.page.url(),
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedTitle: payload.title,
+            reportedAt: payload.at,
+        });
+        logPageEvent('tab.opened', {
             workspaceId: scope.workspaceId,
             tabId: scope.tabId,
             tabToken: ctx.tabToken,
@@ -163,6 +182,15 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             reportedUrl: payload.url,
             reportedAt: payload.at,
         });
+        logPageEvent('tab.activated', {
+            workspaceId: scope.workspaceId,
+            tabId: scope.tabId,
+            tabToken: ctx.tabToken,
+            pageUrl: ctx.page.url(),
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedAt: payload.at,
+        });
         return makeOk({
             workspaceId: scope.workspaceId,
             tabId: scope.tabId,
@@ -184,6 +212,13 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 source: payload.source || 'unknown',
                 reportedAt: payload.at,
             });
+            logPageEvent('tab.closed', {
+                workspaceId: scope.workspaceId,
+                tabId: scope.tabId,
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+            });
             return makeOk({
                 workspaceId: scope.workspaceId,
                 tabId: scope.tabId,
@@ -198,6 +233,12 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 reportedAt: payload.at,
                 stale: true,
             });
+            logPageEvent('tab.closed', {
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+                stale: true,
+            });
             return makeOk({
                 tabToken: ctx.tabToken,
                 source: payload.source || 'unknown',
@@ -205,5 +246,35 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 stale: true,
             });
         }
+    },
+    'tab.ping': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabPingPayload;
+        const touched = ctx.pageRegistry.touchTabToken?.(ctx.tabToken, payload.at);
+        if (!touched) {
+            logPageEvent('tab.ping', {
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+                stale: true,
+            });
+            return makeOk({
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedAt: payload.at,
+                stale: true,
+            });
+        }
+        const output = {
+            workspaceId: touched.workspaceId,
+            tabId: touched.tabId,
+            tabToken: ctx.tabToken,
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedTitle: payload.title,
+            reportedAt: payload.at,
+        };
+        ctx.log('tab.ping', output);
+        logPageEvent('tab.ping', output);
+        return makeOk(output);
     },
 };

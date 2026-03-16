@@ -29,8 +29,33 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             return wsReady || Promise.resolve();
         }
         wsRef = new WebSocket('ws://127.0.0.1:17333');
-        wsReady = new Promise((resolve) => {
-            wsRef?.addEventListener('open', () => resolve());
+        wsReady = new Promise((resolve, reject) => {
+            let settled = false;
+            const settleResolve = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+            };
+            const settleReject = (message: string) => {
+                if (settled) return;
+                settled = true;
+                reject(new Error(message));
+            };
+            const timeoutId = setTimeout(() => {
+                settleReject('ws connect timeout');
+            }, 4000);
+            wsRef?.addEventListener('open', () => {
+                clearTimeout(timeoutId);
+                settleResolve();
+            });
+            wsRef?.addEventListener('error', () => {
+                clearTimeout(timeoutId);
+                settleReject('ws connect error');
+            });
+            wsRef?.addEventListener('close', () => {
+                clearTimeout(timeoutId);
+                settleReject('ws closed before open');
+            });
         });
         wsRef.addEventListener('message', (event) => {
             let payload: any = event.data;

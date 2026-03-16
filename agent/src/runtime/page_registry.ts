@@ -81,6 +81,7 @@ export type PageRegistry = {
     resolveScope: (scope?: WorkspaceScope) => { workspaceId: WorkspaceId; tabId: TabId };
     resolveScopeFromToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId };
     resolveTabToken: (scope?: WorkspaceScope) => string;
+    touchTabToken: (tabToken: string, at?: number) => { workspaceId: WorkspaceId; tabId: TabId } | null;
 };
 
 const randomId = () => crypto.randomUUID();
@@ -514,6 +515,16 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             const tab = workspace.tabs.get(resolved.tabId);
             if (!tab) throw new Error('tab not found');
             return tab.tabToken;
+        },
+        touchTabToken: (tabToken: string, at?: number) => {
+            const ref = tokenToTab.get(tabToken);
+            if (!ref) return null;
+            const workspace = workspaces.get(ref.workspaceId);
+            const tab = workspace?.tabs.get(ref.tabId);
+            if (!workspace || !tab) return null;
+            tab.updatedAt = typeof at === 'number' ? at : Date.now();
+            touchWorkspace(workspace);
+            return { workspaceId: ref.workspaceId, tabId: ref.tabId };
         },
     };
 };

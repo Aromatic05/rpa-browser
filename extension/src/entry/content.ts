@@ -96,12 +96,37 @@ const loadFloatingUI = (() => {
     );
 
     // hello 由 token_bridge 负责
+    const PING_INTERVAL_MS = 15000;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
+    const startHeartbeat = () => {
+        if (pingTimer) return;
+        pingTimer = setInterval(() => {
+            void (async () => {
+                const tabToken = await ensureToken();
+                const { send } = await loadSend();
+                await send.action({
+                    v: 1,
+                    id: crypto.randomUUID(),
+                    type: 'tab.ping',
+                    tabToken,
+                    scope: { tabToken },
+                    payload: {
+                        source: 'extension.content',
+                        url: location.href,
+                        title: document.title,
+                        at: Date.now(),
+                    },
+                });
+            })();
+        }, PING_INTERVAL_MS);
+    };
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const tabToken = await ensureToken();
+        startHeartbeat();
         uiHandle = mountFloatingUI({
             tabToken,
             onAction: async (type, payload, scope) => {

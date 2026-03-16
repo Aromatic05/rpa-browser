@@ -239,6 +239,43 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         void resetMetaStore();
     };
 
+    const reconcileTabs = async () => {
+        const tabs = await chrome.tabs.query({});
+        const aliveIds = new Set<number>();
+        for (const tab of tabs) {
+            if (typeof tab.id === 'number') {
+                aliveIds.add(tab.id);
+            }
+        }
+
+        for (const [tabId, state] of tabState.entries()) {
+            if (aliveIds.has(tabId)) continue;
+            tabState.delete(tabId);
+            if (activeTabId === tabId) activeTabId = null;
+            if (state.tabToken) {
+                await emitLifecycleAction('tab.closed', state.tabToken, {
+                    source: 'extension.reconcile',
+                    at: Date.now(),
+                });
+            }
+            void removeWorkspaceTabId(tabId);
+        }
+
+        const active = await getActiveTabToken();
+        if (active?.tabToken) {
+            await emitLifecycleAction('tab.activated', active.tabToken, {
+                source: 'extension.reconcile',
+                url: active.urlHint || '',
+                at: Date.now(),
+            });
+        }
+    };
+    setInterval(() => {
+        void reconcileTabs().catch(() => {
+            // ignore reconcile failures
+        });
+    }, 15000);
+
     const handleMessage = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
         if (message.type === MSG.HELLO) {
