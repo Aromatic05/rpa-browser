@@ -192,7 +192,7 @@ pnpm -C agent mcp:hot
 核心实现位置：
 
 - `agent/src/task_stream/types.ts`
-- `agent/src/task_stream/manager.ts`
+- `agent/src/runner/run_steps.ts`（内置流式队列管理）
 - `agent/src/actions/task_stream.ts`
 
 设计原则：

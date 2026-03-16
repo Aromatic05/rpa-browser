@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTaskRunManager } from '../../src/task_stream/manager';
+import { createRunStepsQueueManager } from '../../src/runner/run_steps';
 import { setRunStepsDeps } from '../../src/runner/run_steps';
 import { loadRunnerConfig } from '../../src/runner/config/loader';
 import type { StepUnion } from '../../src/runner/steps/types';
@@ -21,7 +21,7 @@ const withFakeExecutors = () => {
 
 test('task run manager push/poll/checkpoint', async () => {
     withFakeExecutors();
-    const manager = createTaskRunManager();
+    const manager = createRunStepsQueueManager();
     const run = manager.createRun({ taskId: 't1', workspaceId: 'ws-1' });
 
     const pushed = await manager.pushSteps({
@@ -44,7 +44,7 @@ test('task run manager push/poll/checkpoint', async () => {
 
 test('task run manager marks failed on step failure', async () => {
     withFakeExecutors();
-    const manager = createTaskRunManager();
+    const manager = createRunStepsQueueManager();
     const run = manager.createRun({ taskId: 't2', workspaceId: 'ws-1' });
 
     const pushed = await manager.pushSteps({

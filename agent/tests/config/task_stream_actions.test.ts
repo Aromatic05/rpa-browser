@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { executeAction } from '../../src/actions/execute';
-import { createTaskRunManager } from '../../src/task_stream/manager';
+import { createRunStepsQueueManager } from '../../src/runner/run_steps';
 import { setRunStepsDeps } from '../../src/runner/run_steps';
 import { loadRunnerConfig } from '../../src/runner/config/loader';
 import type { StepUnion } from '../../src/runner/steps/types';
@@ -33,7 +33,7 @@ const buildCtx = () => {
             replaying: new Set(),
             replayCancel: new Set(),
         },
-        taskRunManager: createTaskRunManager(),
+        taskRunManager: createRunStepsQueueManager(),
         replayOptions: {
             clickDelayMs: 0,
             stepDelayMs: 0,

@@ -14,7 +14,7 @@ import { actionHandlers } from './index';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
-import type { TaskRunManager } from '../task_stream/manager';
+import type { RunStepsQueueManager } from '../runner/run_steps';
 
 export type ActionContext = {
     page: Page;
@@ -22,7 +22,7 @@ export type ActionContext = {
     pageRegistry: PageRegistry;
     log: (...args: unknown[]) => void;
     recordingState: RecordingState;
-    taskRunManager?: TaskRunManager;
+    taskRunManager?: RunStepsQueueManager;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
     execute?: (action: Action) => Promise<ActionHandlerResult>;
