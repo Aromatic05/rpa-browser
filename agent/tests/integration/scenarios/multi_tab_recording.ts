@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import type { IntegrationScenario } from '../harness/types';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const readPauseMs = (envName: string) => {
+    const raw = Number(process.env[envName] || 0);
+    return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+};
 
 const expectOk = <T = any>(result: any, hint: string) => {
     assert.equal(result?.ok, true, `${hint}: ${JSON.stringify(result)}`);
@@ -11,6 +15,9 @@ const expectOk = <T = any>(result: any, hint: string) => {
 export const multiTabRecordingScenario: IntegrationScenario = {
     name: 'multi-tab-recording-consistency',
     run: async ({ client, fixtureBaseUrl }) => {
+        const pauseAfterSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS');
+        const pauseBeforeExitMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS');
+
         const created = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
             await client.sendAction({
                 type: 'workspace.create',
@@ -116,7 +123,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.event(switch-tab)',
         );
-        await sleep(280);
+        await sleep(Math.max(280, pauseAfterSwitchMs));
 
         expectOk(
             await client.sendAction({
@@ -252,5 +259,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         assert.ok(switchedInfo?.ok, 'missing successful page info step after switch');
         const info = switchedInfo?.data as { tab_id?: string } | undefined;
         assert.equal(info?.tab_id, secondTab.tabId);
+        if (pauseBeforeExitMs > 0) {
+            await sleep(pauseBeforeExitMs);
+        }
     },
 };
