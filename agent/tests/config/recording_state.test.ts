@@ -4,9 +4,12 @@ import {
     clearRecording,
     cleanupRecording,
     createRecordingState,
+    getWorkspaceSnapshot,
     getRecording,
     getRecordingBundle,
+    listWorkspaceRecordings,
     recordStep,
+    saveWorkspaceSnapshot,
     stopRecording,
 } from '../../src/record/recording';
 import type { StepUnion } from '../../src/runner/steps/types';
@@ -158,4 +161,44 @@ test('getRecordingBundle falls back by workspace when tab token changes', () => 
     assert.equal(bundle.steps.length, 1);
     assert.equal(bundle.steps[0].id, 'step-workspace');
     assert.equal(bundle.recordingToken, 'token-a');
+});
+
+test('saveWorkspaceSnapshot strips tabToken from persisted steps', () => {
+    const state = createRecordingState();
+    const sourceStep: StepUnion = {
+        id: 'step-save-1',
+        name: 'browser.click',
+        args: { target: { selector: '#save' } },
+        meta: { source: 'record', ts: 10, tabToken: 'token-sensitive', workspaceId: 'ws-save' },
+    };
+    const snapshot = saveWorkspaceSnapshot(state, {
+        workspaceId: 'ws-save',
+        tabs: [{ tabId: 'tab-1', url: 'https://example.com', title: 'Example', active: true }],
+        recordingToken: 'rec-1',
+        steps: [sourceStep],
+        manifest: {
+            recordingToken: 'rec-1',
+            workspaceId: 'ws-save',
+            startedAt: 10,
+            tabs: [
+                {
+                    tabToken: 'token-sensitive',
+                    tabRef: 'tab-1',
+                    tabId: 'tab-1',
+                    firstSeenUrl: 'https://example.com',
+                    lastSeenUrl: 'https://example.com',
+                    firstSeenAt: 10,
+                    lastSeenAt: 10,
+                },
+            ],
+        },
+    });
+    assert.equal(snapshot.recording.steps.length, 1);
+    assert.equal(snapshot.recording.steps[0].meta?.tabToken, undefined);
+    assert.equal(snapshot.recording.manifest?.tabs[0].tabToken, undefined);
+    assert.equal(getWorkspaceSnapshot(state, 'ws-save')?.recording.steps[0].meta?.tabToken, undefined);
+    const summaries = listWorkspaceRecordings(state);
+    assert.equal(summaries.length, 1);
+    assert.equal(summaries[0].workspaceId, 'ws-save');
+    assert.equal(summaries[0].stepCount, 1);
 });

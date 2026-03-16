@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { workspaceHandlers } from '../../src/actions/workspace';
 import { createRecordingState, getRecording } from '../../src/record/recording';
+import { ERROR_CODES } from '../../src/actions/error_codes';
 
 test('tab.opened activates resolved workspace/tab and logs payload', async () => {
     const logs: unknown[][] = [];
@@ -183,4 +184,67 @@ test('tab.setActive records browser.switch_tab during active recording', async (
     assert.equal(recorded.length, 1);
     assert.equal(recorded[0].name, 'browser.switch_tab');
     assert.equal((recorded[0].args as any).tab_id, 'tab-b');
+});
+
+test('workspace.save writes workspace snapshot and logs lifecycle', async () => {
+    const logs: unknown[][] = [];
+    const recordingState = createRecordingState();
+    recordingState.recordings.set('rec-1', [
+        {
+            id: 'step-1',
+            name: 'browser.goto',
+            args: { url: 'https://example.com/a' },
+            meta: { source: 'record', ts: 11, tabToken: 'secret-token', workspaceId: 'ws-1' },
+        } as any,
+    ]);
+    recordingState.recordingManifests.set('rec-1', {
+        recordingToken: 'rec-1',
+        workspaceId: 'ws-1',
+        startedAt: 11,
+        tabs: [],
+    });
+    recordingState.workspaceLatestRecording.set('ws-1', 'rec-1');
+    const ctx: any = {
+        tabToken: 'token-a',
+        recordingState,
+        log: (...args: unknown[]) => logs.push(args),
+        pageRegistry: {
+            getActiveWorkspace: () => ({ id: 'ws-1' }),
+            listTabs: async () => [{ tabId: 'tab-1', url: 'https://example.com/a', title: 'A', active: true }],
+        },
+    };
+    const action: any = { v: 1, id: 'save-1', type: 'workspace.save', payload: {} };
+    const result = await workspaceHandlers['workspace.save'](ctx, action);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.data.saved, true);
+    assert.equal(result.data.workspaceId, 'ws-1');
+    assert.equal(logs.some((entry) => entry[0] === 'workspace.save.start'), true);
+    assert.equal(logs.some((entry) => entry[0] === 'workspace.save.end'), true);
+    const snapshot = recordingState.workspaceSnapshots.get('ws-1');
+    assert.equal(snapshot?.tabs.length, 1);
+    assert.equal(snapshot?.recording.steps.length, 1);
+    assert.equal(snapshot?.recording.steps[0].meta?.tabToken, undefined);
+});
+
+test('workspace.restore returns ERR_WORKSPACE_SNAPSHOT_NOT_FOUND when no snapshot', async () => {
+    const recordingState = createRecordingState();
+    const ctx: any = {
+        tabToken: 'token-r',
+        recordingState,
+        log: () => undefined,
+        pageRegistry: {
+            createWorkspace: async () => ({ workspaceId: 'ws-new', tabId: 'tab-new' }),
+        },
+    };
+    const action: any = {
+        v: 1,
+        id: 'restore-1',
+        type: 'workspace.restore',
+        payload: { workspaceId: 'ws-missing' },
+    };
+    const result = await workspaceHandlers['workspace.restore'](ctx, action);
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.equal(result.error.code, ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND);
 });
