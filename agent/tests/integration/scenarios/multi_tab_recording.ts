@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
 import type { IntegrationScenario } from '../harness/types';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -57,7 +56,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: created.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: created.tabToken },
                 payload: {
-                    id: crypto.randomUUID(),
+                    id: 'rec-fill-a',
                     name: 'browser.fill',
                     args: {
                         target: { selector: '#input-a' },
@@ -77,7 +76,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: created.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: created.tabToken },
                 payload: {
-                    id: crypto.randomUUID(),
+                    id: 'rec-click-a',
                     name: 'browser.click',
                     args: { target: { selector: '#btn-a' }, timeout: 7000 },
                     meta: { source: 'record', ts: Date.now() },
@@ -93,7 +92,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: created.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: created.tabToken },
                 payload: {
-                    id: crypto.randomUUID(),
+                    id: 'rec-scroll-a',
                     name: 'browser.scroll',
                     args: { direction: 'down', amount: 260 },
                     meta: { source: 'record', ts: Date.now() + 1 },
@@ -109,7 +108,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: secondTab.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: secondTab.tabId, tabToken: secondTab.tabToken },
                 payload: {
-                    id: crypto.randomUUID(),
+                    id: 'rec-switch-b',
                     name: 'browser.switch_tab',
                     args: { tab_id: secondTab.tabId },
                     meta: { source: 'record', ts: Date.now() + 2 },
@@ -125,14 +124,30 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: secondTab.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: secondTab.tabId, tabToken: secondTab.tabToken },
                 payload: {
-                    id: crypto.randomUUID(),
+                    id: 'rec-page-info-b',
+                    name: 'browser.get_page_info',
+                    args: {},
+                    meta: { source: 'record', ts: Date.now() + 3 },
+                },
+            }),
+            'record.event(page-info-b)',
+        );
+        await sleep(120);
+
+        expectOk(
+            await client.sendAction({
+                type: 'record.event',
+                tabToken: secondTab.tabToken,
+                scope: { workspaceId: created.workspaceId, tabId: secondTab.tabId, tabToken: secondTab.tabToken },
+                payload: {
+                    id: 'rec-fill-b',
                     name: 'browser.fill',
                     args: {
                         target: { selector: '#input-b' },
                         value: 'bravo-b',
                         timeout: 7000,
                     },
-                    meta: { source: 'record', ts: Date.now() + 3 },
+                    meta: { source: 'record', ts: Date.now() + 4 },
                 },
             }),
             'record.event(fill-b)',
@@ -145,14 +160,14 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: secondTab.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: secondTab.tabId, tabToken: secondTab.tabToken },
                 payload: {
-                    id: crypto.randomUUID(),
+                    id: 'rec-select-b',
                     name: 'browser.select_option',
                     args: {
                         target: { selector: '#select-b' },
                         values: ['opt-b-2'],
                         timeout: 7000,
                     },
-                    meta: { source: 'record', ts: Date.now() + 4 },
+                    meta: { source: 'record', ts: Date.now() + 5 },
                 },
             }),
             'record.event(select-b)',
@@ -165,13 +180,13 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: secondTab.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: secondTab.tabId, tabToken: secondTab.tabToken },
                 payload: {
-                    id: crypto.randomUUID(),
-                    name: 'browser.click',
-                    args: { target: { selector: '#btn-b' }, timeout: 7000 },
-                    meta: { source: 'record', ts: Date.now() + 5 },
+                    id: 'rec-fill-b-final',
+                    name: 'browser.fill',
+                    args: { target: { selector: '#input-b' }, value: 'bravo-b-final', timeout: 7000 },
+                    meta: { source: 'record', ts: Date.now() + 6 },
                 },
             }),
-            'record.event(click-b)',
+            'record.event(fill-b-final)',
         );
         await sleep(220);
 
@@ -192,7 +207,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.get',
         );
-        assert.equal(recording.steps.length, 7);
+        assert.equal(recording.steps.length, 8);
         assert.deepEqual(
             recording.steps.map((s) => s.name),
             [
@@ -200,9 +215,10 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 'browser.click',
                 'browser.scroll',
                 'browser.switch_tab',
+                'browser.get_page_info',
                 'browser.fill',
                 'browser.select_option',
-                'browser.click',
+                'browser.fill',
             ],
         );
 
@@ -232,5 +248,9 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             `replay results should include at least recorded steps: replay=${replay.results.length}, recorded=${recording.steps.length}`,
         );
         assert.ok(replay.results.every((item) => item.ok));
+        const switchedInfo = replay.results.find((item) => item.stepId === 'rec-page-info-b');
+        assert.ok(switchedInfo?.ok, 'missing successful page info step after switch');
+        const info = switchedInfo?.data as { tab_id?: string } | undefined;
+        assert.equal(info?.tab_id, secondTab.tabId);
     },
 };

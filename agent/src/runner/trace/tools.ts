@@ -110,6 +110,8 @@ export const createTraceTools = (opts: {
                 if (args.url) {
                     await currentPage.goto(args.url, { timeout: args.timeout });
                 }
+                // Keep headed replay deterministic: operate on the visible tab.
+                await currentPage.bringToFront().catch(() => undefined);
                 return { tabId };
             }),
         'trace.tabs.switch': async (args) =>
@@ -120,6 +122,8 @@ export const createTraceTools = (opts: {
                 opts.pageRegistry.setActiveTab(args.workspaceId, args.tabId);
                 const page = await opts.pageRegistry.resolvePage({ workspaceId: args.workspaceId, tabId: args.tabId });
                 currentPage = page;
+                // Without foreground switch, headed runs may timeout on actionability checks.
+                await currentPage.bringToFront().catch(() => undefined);
             }),
         'trace.tabs.close': async (args) =>
             run('trace.tabs.close', args, async () => {
