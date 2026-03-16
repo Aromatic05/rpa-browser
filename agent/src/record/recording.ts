@@ -209,8 +209,15 @@ export const recordStep = (
     navDedupeWindowMs: number,
 ) => {
     const recordLog = getLogger('record');
-    if (!tabToken || !state.recordingEnabled.has(tabToken)) return;
-    if (state.replaying.has(tabToken)) return;
+    let effectiveToken = tabToken;
+    if (!effectiveToken || !state.recordingEnabled.has(effectiveToken)) {
+        if (state.recordingEnabled.size === 1) {
+            effectiveToken = Array.from(state.recordingEnabled)[0];
+        } else {
+            return;
+        }
+    }
+    if (state.replaying.has(tabToken) || state.replaying.has(effectiveToken)) return;
 
     const ts = step.meta?.ts ?? Date.now();
     const normalized: StepUnion = {
@@ -219,20 +226,21 @@ export const recordStep = (
     } as StepUnion;
 
     if (normalized.name === 'browser.click') {
-        state.lastClickTs.set(tabToken, ts);
+        state.lastClickTs.set(effectiveToken, ts);
     }
     if (normalized.name === 'browser.goto') {
-        const last = state.lastNavigateTs.get(tabToken) || 0;
+        const last = state.lastNavigateTs.get(effectiveToken) || 0;
         if (ts - last < navDedupeWindowMs) return;
-        state.lastNavigateTs.set(tabToken, ts);
+        state.lastNavigateTs.set(effectiveToken, ts);
     }
 
-    const list = state.recordings.get(tabToken) || [];
+    const list = state.recordings.get(effectiveToken) || [];
     list.push(normalized);
-    state.recordings.set(tabToken, list);
+    state.recordings.set(effectiveToken, list);
     recordLog('event', {
         type: normalized.name,
-        tabToken,
+        tabToken: effectiveToken,
+        sourceTabToken: tabToken,
         ts,
     });
 };
