@@ -1,5 +1,4 @@
-const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
-const DEFAULT_MOCK_PATH = '/pages/start.html#beta';
+const DEFAULT_START_URL = 'chrome://newtab/';
 
 type StorageLike = {
     get: (key: string) => Promise<Record<string, any>>;
@@ -7,21 +6,18 @@ type StorageLike = {
 
 const getStorage = (storage?: StorageLike) => storage || chrome.storage.local;
 
-const DEFAULT_URL = `${DEFAULT_MOCK_ORIGIN}${DEFAULT_MOCK_PATH}`;
-
 const normalizeMockBaseUrl = (raw?: string) => {
     const value = (raw || '').trim();
-    if (!value) return DEFAULT_URL;
+    if (!value) return DEFAULT_START_URL;
     // If user already provided a full target page URL, keep it as-is.
-    if (/^https?:\/\/.+/i.test(value) && (value.includes('.html') || value.includes('#'))) {
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
         return value;
     }
     try {
         const parsed = new URL(value);
-        const origin = parsed.origin.replace(/\/$/, '');
-        return `${origin}${DEFAULT_MOCK_PATH}`;
+        return parsed.toString();
     } catch {
-        return DEFAULT_URL;
+        return DEFAULT_START_URL;
     }
 };
 

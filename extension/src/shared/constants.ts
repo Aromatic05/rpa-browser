@@ -7,8 +7,8 @@
  */
 
 export const LOG_PREFIX = '[rpa-ext]';
-export const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
-export const DEFAULT_MOCK_PATH = '/pages/start.html#beta';
+export const DEFAULT_MOCK_ORIGIN = 'chrome://newtab';
+export const DEFAULT_MOCK_PATH = '/';
 
 export const TAB_GROUP_COLORS = [
     'grey',

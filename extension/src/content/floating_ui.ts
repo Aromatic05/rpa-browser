@@ -182,20 +182,17 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         onResponse?.(response);
     };
 
-    const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
-    const DEFAULT_MOCK_PATH = '/pages/start.html#beta';
-    const DEFAULT_URL = `${DEFAULT_MOCK_ORIGIN}${DEFAULT_MOCK_PATH}`;
+    const DEFAULT_URL = 'chrome://newtab/';
 
     const normalizeMockBaseUrl = (raw?: string) => {
         const value = (raw || '').trim();
         if (!value) return DEFAULT_URL;
-        if (/^https?:\/\/.+/i.test(value) && (value.includes('.html') || value.includes('#'))) {
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
             return value;
         }
         try {
             const parsed = new URL(value);
-            const origin = parsed.origin.replace(/\/$/, '');
-            return `${origin}${DEFAULT_MOCK_PATH}`;
+            return parsed.toString();
         } catch {
             return DEFAULT_URL;
         }
@@ -215,7 +212,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         getMockStartUrl((startPageUrl) => {
             void sendPanelAction(type, { ...args, startUrl: startPageUrl }, undefined, (payload) => {
                 if (payload?.ok === false) {
-                    render({ ok: false, error: `Mock start page unreachable: ${startPageUrl}` });
+                    render({ ok: false, error: `Start page unreachable: ${startPageUrl}` });
                 }
                 onDone?.(payload);
             });

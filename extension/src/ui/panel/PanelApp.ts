@@ -125,7 +125,7 @@ export const initPanelApp = () => {
                     const startUrl = await prepareStartUrl();
                     const created = await sendPanelAction('workspace.create', { startUrl });
                     if (created?.ok === false) {
-                        logMessage(`Mock start page unreachable: ${startUrl}`);
+                        logMessage(`Start page unreachable: ${startUrl}`);
                     }
                     await refreshWorkspaces();
                     await refreshTabs();
@@ -194,7 +194,7 @@ export const initPanelApp = () => {
                 const startUrl = await prepareStartUrl();
                 const created = await sendPanelAction('workspace.create', { startUrl });
                 if (created?.ok === false) {
-                    logMessage(`Mock start page unreachable: ${startUrl}`);
+                    logMessage(`Start page unreachable: ${startUrl}`);
                 }
                 return refreshWorkspaces();
             }
@@ -222,7 +222,7 @@ export const initPanelApp = () => {
         const startUrl = await prepareStartUrl();
         const response = await sendPanelAction('workspace.create', { startUrl });
         if (response?.ok === false) {
-            logMessage(`Mock start page unreachable: ${startUrl}`);
+            logMessage(`Start page unreachable: ${startUrl}`);
         }
         rememberWorkspace(response?.data?.workspaceId || null);
         await refreshWorkspaces();
@@ -233,7 +233,7 @@ export const initPanelApp = () => {
         const startUrl = await prepareStartUrl();
         const response = await sendPanelAction('tab.create', { workspaceId: scope.workspaceId, startUrl });
         if (response?.ok === false) {
-            logMessage(`Mock start page unreachable: ${startUrl}`);
+            logMessage(`Start page unreachable: ${startUrl}`);
         }
         await refreshTabs();
     });

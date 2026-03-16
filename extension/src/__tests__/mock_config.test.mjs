@@ -24,9 +24,9 @@ const createStorage = (mockBaseUrl) => ({
     get: async () => ({ mockBaseUrl }),
 });
 
-await log('new tab default URL points to mock start page (#beta)', async () => {
+await log('new tab default URL points to start extension page', async () => {
     const url = await getMockStartUrl(createStorage('http://localhost:4173'));
-    assert.equal(url, 'http://localhost:4173/pages/start.html#beta');
+    assert.equal(url, 'http://localhost:4173');
 });
 
 await log('full page url in mockBaseUrl should be kept as-is', async () => {
@@ -36,5 +36,5 @@ await log('full page url in mockBaseUrl should be kept as-is', async () => {
 
 await log('invalid mockBaseUrl falls back to default start url', async () => {
     const url = await getMockStartUrl(createStorage('not-a-url'));
-    assert.equal(url, 'http://localhost:4173/pages/start.html#beta');
+    assert.equal(url, 'chrome://newtab/');
 });

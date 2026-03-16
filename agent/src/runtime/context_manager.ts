@@ -30,8 +30,7 @@ export type ContextManagerOptions = {
 export const createContextManager = (options: ContextManagerOptions) => {
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
-    const startUrl =
-        process.env.RPA_START_URL || 'http://localhost:4173/pages/start.html#beta';
+    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
     const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
 
