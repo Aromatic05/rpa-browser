@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { replayRecording } from '../../src/play/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
+import { loadRunnerConfig } from '../../src/runner/config/loader';
+import type { RunStepsDeps } from '../../src/runner/run_steps';
 
 test('replayRecording creates and switches tab when recorded tabToken is missing (cold replay)', async () => {
     const executed: StepUnion[] = [];
@@ -29,14 +31,27 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
         pageRegistry: {
             listTabs: async () => [{ tabId: 'tab-now' }],
         },
-        runStepsFn: async (req) => {
-            const step = req.steps[0] as StepUnion;
-            executed.push(step);
-            if (step.name === 'browser.create_tab') {
-                return { ok: true, results: [{ stepId: step.id, ok: true, data: { tab_id: 'tab-new-1' } }] };
-            }
-            return { ok: true, results: [{ stepId: step.id, ok: true }] };
-        },
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () =>
+                    ({
+                        'browser.click': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true };
+                        },
+                        'browser.create_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true, data: { tab_id: 'tab-new-1' } };
+                        },
+                        'browser.switch_tab': async (step: StepUnion) => {
+                            executed.push(step);
+                            return { stepId: step.id, ok: true };
+                        },
+                    }) as any,
+            } as any,
+        } as RunStepsDeps,
     });
 
     assert.equal(result.ok, true);

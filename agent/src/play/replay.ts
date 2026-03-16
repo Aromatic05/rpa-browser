@@ -27,7 +27,6 @@ type ReplayRequest = {
         listTabs: (workspaceId: string) => Promise<Array<{ tabId: string }>>;
     };
     isCanceled?: () => boolean;
-    runStepsFn?: typeof runSteps;
     deps?: RunStepsDeps;
 };
 
@@ -37,9 +36,8 @@ type ReplayResult = RunStepsResult & { error?: { code: string; message: string; 
  * replayRecording：执行已录制的 Step 列表。
  */
 export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult> => {
-    const runStepsFn = req.runStepsFn || runSteps;
     const runOne = async (step: StepUnion) =>
-        runStepsFn(
+        runSteps(
             {
                 workspaceId: req.workspaceId,
                 steps: [step],
