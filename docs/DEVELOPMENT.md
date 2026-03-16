@@ -224,6 +224,8 @@ pnpm test:extension
 - `headless` 用于 CI/CD，`headed` 用于本地可视化调试
 - 场景建议覆盖组合动作（fill/click/scroll/switch/select），避免使用固定 `sleep`
 - 时序诊断优先依赖 `step.start/step.end` 时间戳和步骤顺序断言
+- 多 tab 录制依赖 `tab.activated` 生命周期事件自动落库为 `browser.switch_tab`（同 workspace 下跨 tab）
+- `record.stop/get/clear` 在仅有一个录制会话时允许“错误 tabToken”兜底到该会话，避免 UI 焦点切换导致停错录制
 
 关键环境变量：
 

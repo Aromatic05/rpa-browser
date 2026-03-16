@@ -2,10 +2,13 @@
  * workspace action：提供 workspace/tab 的管理命令。
  */
 
+import crypto from 'node:crypto';
 import type { Action, ActionScope } from './action_protocol';
 import { makeErr, makeOk } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
+import { recordStep } from '../record/recording';
+import type { StepUnion } from '../runner/steps/types';
 
 type WorkspaceCreatePayload = { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
 type WorkspaceSetActivePayload = { workspaceId: string };
@@ -211,6 +214,44 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         ctx.pageRegistry.setActiveWorkspace(scope.workspaceId);
         ctx.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
+        // If exactly one recording session is active, treat cross-tab activation
+        // as an implicit switch step in that session.
+        const recordingTokens = Array.from(ctx.recordingState?.recordingEnabled || []);
+        if (recordingTokens.length === 1) {
+            const recordingToken = recordingTokens[0];
+            try {
+                const recordingScope = ctx.pageRegistry.resolveScopeFromToken(recordingToken);
+                const isCrossTab =
+                    recordingScope.workspaceId === scope.workspaceId && recordingScope.tabId !== scope.tabId;
+                if (isCrossTab) {
+                    const list = ctx.recordingState?.recordings.get(recordingToken) || [];
+                    const last = list[list.length - 1] as StepUnion | undefined;
+                    const duplicateSwitch =
+                        last?.name === 'browser.switch_tab' && String((last.args as any)?.tab_id || '') === scope.tabId;
+                    if (!duplicateSwitch && ctx.recordingState) {
+                        recordStep(
+                            ctx.recordingState,
+                            ctx.tabToken,
+                            {
+                                id: crypto.randomUUID(),
+                                name: 'browser.switch_tab',
+                                args: { tab_id: scope.tabId },
+                                meta: {
+                                    source: 'record',
+                                    ts: payload.at || Date.now(),
+                                    workspaceId: scope.workspaceId,
+                                    tabId: scope.tabId,
+                                    tabToken: ctx.tabToken,
+                                },
+                            } satisfies StepUnion,
+                            ctx.navDedupeWindowMs,
+                        );
+                    }
+                }
+            } catch {
+                // ignore unresolved recording scope
+            }
+        }
         ctx.log('tab.activated', {
             workspaceId: scope.workspaceId,
             tabId: scope.tabId,

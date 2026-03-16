@@ -38,6 +38,27 @@ export const createRecordingState = (): RecordingState => ({
     replayCancel: new Set(),
 });
 
+const resolveSingleRecordingToken = (
+    state: RecordingState,
+    tabToken: string,
+    opts?: { mustBeEnabled?: boolean },
+) => {
+    const mustBeEnabled = opts?.mustBeEnabled !== false;
+    if (tabToken && mustBeEnabled && state.recordingEnabled.has(tabToken)) {
+        return tabToken;
+    }
+    if (tabToken && !mustBeEnabled && state.recordings.has(tabToken)) {
+        return tabToken;
+    }
+    if (state.recordingEnabled.size === 1) {
+        return Array.from(state.recordingEnabled)[0];
+    }
+    if (!mustBeEnabled && state.recordings.size === 1) {
+        return Array.from(state.recordings.keys())[0];
+    }
+    return tabToken;
+};
+
 const createStep = <TName extends StepName>(
     name: TName,
     args: StepArgsMap[TName],
@@ -316,11 +337,12 @@ export const startRecording = async (
  */
 export const stopRecording = (state: RecordingState, tabToken: string) => {
     const recordLog = getLogger('record');
-    state.recordingEnabled.delete(tabToken);
-    state.lastNavigateTs.delete(tabToken);
-    state.lastClickTs.delete(tabToken);
-    state.lastScrollY.delete(tabToken);
-    recordLog('stop', { tabToken });
+    const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: true });
+    state.recordingEnabled.delete(effectiveToken);
+    state.lastNavigateTs.delete(effectiveToken);
+    state.lastClickTs.delete(effectiveToken);
+    state.lastScrollY.delete(effectiveToken);
+    recordLog('stop', { tabToken: effectiveToken, sourceTabToken: tabToken });
 };
 
 /**
@@ -346,11 +368,14 @@ export const cancelReplay = (state: RecordingState, tabToken: string) => {
     state.replayCancel.add(tabToken);
 };
 
-export const getRecording = (state: RecordingState, tabToken: string) =>
-    state.recordings.get(tabToken) || [];
+export const getRecording = (state: RecordingState, tabToken: string) => {
+    const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: false });
+    return state.recordings.get(effectiveToken) || [];
+};
 
 export const clearRecording = (state: RecordingState, tabToken: string) => {
-    state.recordings.set(tabToken, []);
+    const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: false });
+    state.recordings.set(effectiveToken, []);
 };
 
 /**
