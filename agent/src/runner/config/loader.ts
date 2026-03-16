@@ -87,6 +87,9 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['confidencePolicy', 'nameWeight'], envNumber('RUNNER_CONFIDENCE_NAME_WEIGHT'));
     set(['confidencePolicy', 'textWeight'], envNumber('RUNNER_CONFIDENCE_TEXT_WEIGHT'));
     set(['confidencePolicy', 'selectorBonus'], envNumber('RUNNER_CONFIDENCE_SELECTOR_BONUS'));
+    set(['checkpointPolicy', 'enabled'], envBool('RUNNER_CHECKPOINT_ENABLED'));
+    set(['checkpointPolicy', 'filePath'], process.env.RUNNER_CHECKPOINT_FILE_PATH);
+    set(['checkpointPolicy', 'flushIntervalMs'], envNumber('RUNNER_CHECKPOINT_FLUSH_INTERVAL_MS'));
 
     return mergeDeep(config, patch);
 };

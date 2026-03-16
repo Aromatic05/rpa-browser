@@ -49,4 +49,9 @@ export const defaultRunnerConfig: RunnerConfig = {
         textWeight: 0.15,
         selectorBonus: 0.15,
     },
+    checkpointPolicy: {
+        enabled: true,
+        filePath: '.artifacts/checkpoints/task_runs.json',
+        flushIntervalMs: 1200,
+    },
 };

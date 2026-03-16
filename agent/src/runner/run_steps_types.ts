@@ -57,6 +57,7 @@ export type SignalChannel = {
 
 export type Checkpoint = {
     runId: string;
+    workspaceId: string;
     status: RunStatus;
     cursor: number;
     updatedAt: number;
@@ -76,4 +77,5 @@ export type RunStepsRequest = {
     resultPipe: ResultPipe;
     signalChannel: SignalChannel;
     stopOnError?: boolean;
+    onCheckpoint?: (checkpoint: Checkpoint) => void | Promise<void>;
 };

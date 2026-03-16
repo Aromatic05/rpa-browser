@@ -99,8 +99,9 @@ const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel) =>
         getWaiters(signalWaiters, signalChannel).add(resolve);
     });
 
-const checkpointOf = (runId: string, status: RunStatus, cursor: number): Checkpoint => ({
+const checkpointOf = (runId: string, workspaceId: string, status: RunStatus, cursor: number): Checkpoint => ({
     runId,
+    workspaceId,
     status,
     cursor,
     updatedAt: Date.now(),
@@ -176,7 +177,9 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             const event = req.signalChannel.items[req.signalChannel.cursor++];
             if (event.signal === 'halt') {
                 status = 'halted';
-                return checkpointOf(req.runId, status, req.stepsQueue.cursor);
+                const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+                await req.onCheckpoint?.(checkpoint);
+                return checkpoint;
             }
             if (event.signal === 'flush') {
                 req.stepsQueue.items.length = req.stepsQueue.cursor;
@@ -235,17 +238,22 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 ts: Date.now(),
             };
             req.resultPipe.items.push(output);
+            await req.onCheckpoint?.(checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor));
 
             if (!result.ok && stopOnError) {
                 status = 'failed';
-                return checkpointOf(req.runId, status, req.stepsQueue.cursor);
+                const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+                await req.onCheckpoint?.(checkpoint);
+                return checkpoint;
             }
             continue;
         }
 
         if (req.stepsQueue.closed) {
             status = 'completed';
-            return checkpointOf(req.runId, status, req.stepsQueue.cursor);
+            const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+            await req.onCheckpoint?.(checkpoint);
+            return checkpoint;
         }
 
         await waitForInput(req.stepsQueue, req.signalChannel);
