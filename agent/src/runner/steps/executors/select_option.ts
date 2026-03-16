@@ -21,6 +21,25 @@ export const executeBrowserSelectOption = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
+    const ensureSelected = (selected: string[] | undefined, expected: string[], details: Record<string, unknown>) => {
+        const actual = Array.isArray(selected) ? selected : [];
+        const missing = expected.filter((value) => !actual.includes(value));
+        if (missing.length === 0) return null;
+        return {
+            stepId: step.id,
+            ok: false as const,
+            error: {
+                code: 'ERR_ASSERTION_FAILED',
+                message: 'select_option did not select expected value(s)',
+                details: {
+                    ...details,
+                    expected,
+                    selected: actual,
+                    missing,
+                },
+            },
+        };
+    };
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const target = normalizeTarget(step.args);
     if (target?.selector) {
@@ -61,6 +80,11 @@ export const executeBrowserSelectOption = async (
         if (!select.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
         }
+        const mismatch = ensureSelected(select.data?.selected, step.args.values, {
+            selector: target.selector,
+            a11yHint: target.a11yHint,
+        });
+        if (mismatch) return mismatch;
         if (deps.config.humanPolicy.enabled) {
             const delayMs = pickDelayMs(
                 deps.config.humanPolicy.typeDelayMsRange.min,
@@ -86,6 +110,11 @@ export const executeBrowserSelectOption = async (
     if (!select.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
     }
+    const mismatch = ensureSelected(select.data?.selected, step.args.values, {
+        nodeId: resolved.nodeId,
+        a11yHint: target?.a11yHint,
+    });
+    if (mismatch) return mismatch;
     if (deps.config.humanPolicy.enabled) {
         const delayMs = pickDelayMs(
             deps.config.humanPolicy.typeDelayMsRange.min,

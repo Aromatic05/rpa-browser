@@ -97,6 +97,25 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 tabToken: created.tabToken,
                 scope: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: created.tabToken },
                 payload: {
+                    id: 'rec-select-a',
+                    name: 'browser.select_option',
+                    args: {
+                        target: { selector: '#select-a' },
+                        values: ['opt-a-2'],
+                        timeout: 7000,
+                    },
+                    meta: { source: 'record', ts: Date.now() + 1 },
+                },
+            }),
+            'record.event(select-a)',
+        );
+
+        expectOk(
+            await client.sendAction({
+                type: 'record.event',
+                tabToken: created.tabToken,
+                scope: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: created.tabToken },
+                payload: {
                     id: 'rec-click-a',
                     name: 'browser.click',
                     args: { target: { selector: '#btn-a' }, timeout: 7000 },
@@ -115,7 +134,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-scroll-a',
                     name: 'browser.scroll',
                     args: { direction: 'down', amount: 260 },
-                    meta: { source: 'record', ts: Date.now() + 1 },
+                    meta: { source: 'record', ts: Date.now() + 2 },
                 },
             }),
             'record.event(scroll-a)',
@@ -130,7 +149,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-page-info-a',
                     name: 'browser.get_page_info',
                     args: {},
-                    meta: { source: 'record', ts: Date.now() + 2 },
+                    meta: { source: 'record', ts: Date.now() + 3 },
                 },
             }),
             'record.event(page-info-a)',
@@ -145,7 +164,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-switch-b',
                     name: 'browser.switch_tab',
                     args: { tab_id: secondTab.tabId },
-                    meta: { source: 'record', ts: Date.now() + 3 },
+                    meta: { source: 'record', ts: Date.now() + 4 },
                 },
             }),
             'record.event(switch-tab)',
@@ -194,7 +213,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-page-info-b',
                     name: 'browser.get_page_info',
                     args: {},
-                    meta: { source: 'record', ts: Date.now() + 4 },
+                    meta: { source: 'record', ts: Date.now() + 5 },
                 },
             }),
             'record.event(page-info-b)',
@@ -213,7 +232,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                         value: 'bravo-b',
                         timeout: 7000,
                     },
-                    meta: { source: 'record', ts: Date.now() + 5 },
+                    meta: { source: 'record', ts: Date.now() + 6 },
                 },
             }),
             'record.event(fill-b)',
@@ -232,7 +251,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                         values: ['opt-b-2'],
                         timeout: 7000,
                     },
-                    meta: { source: 'record', ts: Date.now() + 6 },
+                    meta: { source: 'record', ts: Date.now() + 7 },
                 },
             }),
             'record.event(select-b)',
@@ -247,7 +266,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-fill-b-final',
                     name: 'browser.fill',
                     args: { target: { selector: '#input-b' }, value: 'bravo-b-final', timeout: 7000 },
-                    meta: { source: 'record', ts: Date.now() + 7 },
+                    meta: { source: 'record', ts: Date.now() + 8 },
                 },
             }),
             'record.event(fill-b-final)',
@@ -270,11 +289,12 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'record.get',
         );
-        assert.equal(recording.steps.length, 9);
+        assert.equal(recording.steps.length, 10);
         assert.deepEqual(
             recording.steps.map((s) => s.name),
             [
                 'browser.fill',
+                'browser.select_option',
                 'browser.click',
                 'browser.scroll',
                 'browser.get_page_info',
