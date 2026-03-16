@@ -18,6 +18,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         const pauseBeforeSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_SWITCH_MS');
         const pauseAfterSwitchMs = readPauseMs('RPA_INTEGRATION_PAUSE_AFTER_SWITCH_MS');
         const pauseBeforeExitMs = readPauseMs('RPA_INTEGRATION_PAUSE_BEFORE_EXIT_MS');
+        const headed = ['1', 'true', 'yes'].includes((process.env.RPA_INTEGRATION_HEADED || '').toLowerCase());
 
         const created = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
             await client.sendAction({
@@ -169,7 +170,27 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             }),
             'tab.setActive(second,record-b)',
         );
-        await sleep(Math.max(280, pauseAfterSwitchMs));
+        const tabListAfterSwitch = expectOk<{
+            workspaceId: string;
+            tabs: Array<{ tabId: string; active: boolean; url: string }>;
+        }>(
+            await client.sendAction({
+                type: 'tab.list',
+                tabToken: secondTab.tabToken,
+                scope: { workspaceId: created.workspaceId, tabId: secondTab.tabId, tabToken: secondTab.tabToken },
+                payload: { workspaceId: created.workspaceId },
+            }),
+            'tab.list(after-switch-to-b)',
+        );
+        const activeAfterSwitch = tabListAfterSwitch.tabs.find((tab) => tab.active);
+        assert.equal(
+            activeAfterSwitch?.tabId,
+            secondTab.tabId,
+            `active tab mismatch after switch: ${activeAfterSwitch?.tabId} vs ${secondTab.tabId}`,
+        );
+
+        const visibleSwitchPauseMs = headed ? 2000 : 280;
+        await sleep(Math.max(visibleSwitchPauseMs, pauseAfterSwitchMs));
 
         expectOk(
             await client.sendAction({
