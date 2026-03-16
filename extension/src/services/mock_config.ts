@@ -7,11 +7,27 @@ type StorageLike = {
 
 const getStorage = (storage?: StorageLike) => storage || chrome.storage.local;
 
+const DEFAULT_URL = `${DEFAULT_MOCK_ORIGIN}${DEFAULT_MOCK_PATH}`;
+
+const normalizeMockBaseUrl = (raw?: string) => {
+    const value = (raw || '').trim();
+    if (!value) return DEFAULT_URL;
+    // If user already provided a full target page URL, keep it as-is.
+    if (/^https?:\/\/.+/i.test(value) && (value.includes('.html') || value.includes('#'))) {
+        return value;
+    }
+    try {
+        const parsed = new URL(value);
+        const origin = parsed.origin.replace(/\/$/, '');
+        return `${origin}${DEFAULT_MOCK_PATH}`;
+    } catch {
+        return DEFAULT_URL;
+    }
+};
+
 export const getMockStartUrl = async (storage?: StorageLike): Promise<string> => {
     const data = await getStorage(storage).get('mockBaseUrl');
-    const base = (data?.mockBaseUrl as string | undefined) || DEFAULT_MOCK_ORIGIN;
-    const normalized = base.endsWith('/') ? base.slice(0, -1) : base;
-    return `${normalized}${DEFAULT_MOCK_PATH}`;
+    return normalizeMockBaseUrl(data?.mockBaseUrl as string | undefined);
 };
 /**
  * Mock 配置服务：构建本地 start page URL。

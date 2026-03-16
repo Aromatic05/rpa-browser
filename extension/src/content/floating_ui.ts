@@ -182,12 +182,26 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
     const DEFAULT_MOCK_PATH = '/pages/start.html#beta';
+    const DEFAULT_URL = `${DEFAULT_MOCK_ORIGIN}${DEFAULT_MOCK_PATH}`;
+
+    const normalizeMockBaseUrl = (raw?: string) => {
+        const value = (raw || '').trim();
+        if (!value) return DEFAULT_URL;
+        if (/^https?:\/\/.+/i.test(value) && (value.includes('.html') || value.includes('#'))) {
+            return value;
+        }
+        try {
+            const parsed = new URL(value);
+            const origin = parsed.origin.replace(/\/$/, '');
+            return `${origin}${DEFAULT_MOCK_PATH}`;
+        } catch {
+            return DEFAULT_URL;
+        }
+    };
 
     const getMockStartUrl = (onUrl: (url: string) => void) => {
         chrome.storage.local.get('mockBaseUrl', (data: any) => {
-            const base = (data?.mockBaseUrl as string | undefined) || DEFAULT_MOCK_ORIGIN;
-            const normalized = base.endsWith('/') ? base.slice(0, -1) : base;
-            onUrl(`${normalized}${DEFAULT_MOCK_PATH}`);
+            onUrl(normalizeMockBaseUrl(data?.mockBaseUrl as string | undefined));
         });
     };
 

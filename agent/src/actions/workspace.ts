@@ -70,8 +70,17 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                     waitUntil: payload.waitUntil || 'domcontentloaded',
                 });
                 await page.bringToFront();
-            } catch {
-                // ignore navigation failures
+            } catch (error) {
+                return makeErr(
+                    ERROR_CODES.ERR_ASSERTION_FAILED,
+                    'workspace.create startUrl navigation failed',
+                    {
+                        workspaceId: created.workspaceId,
+                        tabId: created.tabId,
+                        startUrl,
+                        message: error instanceof Error ? error.message : String(error),
+                    },
+                );
             }
         }
         return makeOk({ workspaceId: created.workspaceId, tabId: created.tabId, tabToken: createdTabToken });
@@ -104,8 +113,18 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 const page = await ctx.pageRegistry.resolvePage({ workspaceId, tabId });
                 await page.goto(payload.startUrl, { waitUntil: payload.waitUntil || 'domcontentloaded' });
                 await page.bringToFront();
-            } catch {
-                // ignore navigation failures
+            } catch (error) {
+                return makeErr(
+                    ERROR_CODES.ERR_ASSERTION_FAILED,
+                    'tab.create startUrl navigation failed',
+                    {
+                        workspaceId,
+                        tabId,
+                        tabToken: createdTabToken,
+                        startUrl: payload.startUrl,
+                        message: error instanceof Error ? error.message : String(error),
+                    },
+                );
             }
         }
         logPageEvent('tab.create', { workspaceId, tabId, tabToken: createdTabToken, startUrl: payload.startUrl });

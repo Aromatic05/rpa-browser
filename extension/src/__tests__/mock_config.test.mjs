@@ -28,3 +28,13 @@ await log('new tab default URL points to mock start page (#beta)', async () => {
     const url = await getMockStartUrl(createStorage('http://localhost:4173'));
     assert.equal(url, 'http://localhost:4173/pages/start.html#beta');
 });
+
+await log('full page url in mockBaseUrl should be kept as-is', async () => {
+    const url = await getMockStartUrl(createStorage('http://127.0.0.1:34263/run_steps_fixture_a.html'));
+    assert.equal(url, 'http://127.0.0.1:34263/run_steps_fixture_a.html');
+});
+
+await log('invalid mockBaseUrl falls back to default start url', async () => {
+    const url = await getMockStartUrl(createStorage('not-a-url'));
+    assert.equal(url, 'http://localhost:4173/pages/start.html#beta');
+});

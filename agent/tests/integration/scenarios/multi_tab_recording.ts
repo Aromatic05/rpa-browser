@@ -37,6 +37,20 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             'tab.create',
         );
 
+        const tabList = expectOk<{ workspaceId: string; tabs: Array<{ tabId: string; url: string; active: boolean }> }>(
+            await client.sendAction({
+                type: 'tab.list',
+                tabToken: created.tabToken,
+                scope: { workspaceId: created.workspaceId, tabId: created.tabId, tabToken: created.tabToken },
+                payload: { workspaceId: created.workspaceId },
+            }),
+            'tab.list(after-create)',
+        );
+        const tabA = tabList.tabs.find((tab) => tab.tabId === created.tabId);
+        const tabB = tabList.tabs.find((tab) => tab.tabId === secondTab.tabId);
+        assert.ok(tabA?.url.includes('/run_steps_fixture_a.html'), `tab A url mismatch: ${tabA?.url}`);
+        assert.ok(tabB?.url.includes('/run_steps_fixture_b.html'), `tab B url mismatch: ${tabB?.url}`);
+
         expectOk(
             await client.sendAction({
                 type: 'tab.setActive',

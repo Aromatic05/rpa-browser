@@ -210,7 +210,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         }
         if (payload?.event === 'workspace.changed') {
             if (payload?.data?.workspaceId) {
-                activeWorkspaceId = String(payload.data.workspaceId);
+                const workspaceId = String(payload.data.workspaceId);
+                activeWorkspaceId = workspaceId;
+                void ensureGroupedActiveTab(workspaceId);
+                void ensureWorkspaceTabsGrouped(workspaceId);
             }
             options.onRefresh();
         }
@@ -221,6 +224,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         void (async () => {
             const tabInfo = await ensureTabToken(info.tabId);
             if (!tabInfo?.tabToken) return;
+            const workspaceId = tokenToWorkspace.get(tabInfo.tabToken) || activeWorkspaceId || undefined;
+            if (workspaceId) {
+                await addWorkspaceTabId(workspaceId, info.tabId);
+                await ensureGroupedActiveTab(workspaceId);
+                await ensureWorkspaceTabsGrouped(workspaceId);
+            }
             await emitLifecycleAction('tab.activated', tabInfo.tabToken, {
                 source: 'extension.sw',
                 url: tabInfo.lastUrl || '',
