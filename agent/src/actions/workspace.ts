@@ -149,8 +149,50 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         if (!workspaceId) {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
+        const sourceScope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
+        let targetTabToken: string | null = null;
+        try {
+            targetTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId, tabId: payload.tabId });
+        } catch {
+            targetTabToken = null;
+        }
         ctx.pageRegistry.setActiveTab(workspaceId, payload.tabId);
         await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: payload.tabId });
+        const isCrossTab = sourceScope.workspaceId === workspaceId && sourceScope.tabId !== payload.tabId;
+        const recordingTokens = Array.from(ctx.recordingState?.recordingEnabled || []);
+        if (isCrossTab && recordingTokens.length > 0 && ctx.recordingState) {
+            const sourceRecording = ctx.recordingState.recordingEnabled.has(ctx.tabToken);
+            const targetRecording = !!targetTabToken && ctx.recordingState.recordingEnabled.has(targetTabToken);
+            const effectiveRecordingToken =
+                (sourceRecording && ctx.tabToken) ||
+                (targetRecording && targetTabToken) ||
+                (recordingTokens.length === 1 ? recordingTokens[0] : null);
+            if (effectiveRecordingToken) {
+                const list = ctx.recordingState.recordings.get(effectiveRecordingToken) || [];
+                const last = list[list.length - 1] as StepUnion | undefined;
+                const duplicateSwitch =
+                    last?.name === 'browser.switch_tab' && String((last.args as any)?.tab_id || '') === payload.tabId;
+                if (!duplicateSwitch) {
+                    recordStep(
+                        ctx.recordingState,
+                        ctx.tabToken,
+                        {
+                            id: crypto.randomUUID(),
+                            name: 'browser.switch_tab',
+                            args: { tab_id: payload.tabId },
+                            meta: {
+                                source: 'record',
+                                ts: Date.now(),
+                                workspaceId,
+                                tabId: payload.tabId,
+                                tabToken: targetTabToken || undefined,
+                            },
+                        } satisfies StepUnion,
+                        ctx.navDedupeWindowMs,
+                    );
+                }
+            }
+        }
         logPageEvent('tab.setActive', { workspaceId, tabId: payload.tabId });
         return makeOk({ workspaceId, tabId: payload.tabId });
     },

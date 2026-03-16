@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { workspaceHandlers } from '../../src/actions/workspace';
+import { createRecordingState, getRecording } from '../../src/record/recording';
 
 test('tab.opened activates resolved workspace/tab and logs payload', async () => {
     const logs: unknown[][] = [];
@@ -141,4 +142,45 @@ test('tab.ping updates alive timestamp and logs payload', async () => {
     assert.equal(result.data.workspaceId, 'ws-p');
     assert.equal(result.data.tabId, 'tab-p');
     assert.equal(logs[0][0], 'tab.ping');
+});
+
+test('tab.setActive records browser.switch_tab during active recording', async () => {
+    const recordingState = createRecordingState();
+    recordingState.recordingEnabled.add('token-a');
+    recordingState.recordings.set('token-a', []);
+
+    const activated: Array<{ ws?: string; tab?: string }> = [];
+    const ctx: any = {
+        tabToken: 'token-a',
+        navDedupeWindowMs: 1200,
+        recordingState,
+        pageRegistry: {
+            resolveScopeFromToken: (token: string) => {
+                if (token === 'token-a') return { workspaceId: 'ws-1', tabId: 'tab-a' };
+                throw new Error('unknown token');
+            },
+            resolveTabToken: ({ workspaceId, tabId }: { workspaceId: string; tabId: string }) => {
+                assert.equal(workspaceId, 'ws-1');
+                assert.equal(tabId, 'tab-b');
+                return 'token-b';
+            },
+            setActiveTab: (workspaceId: string, tabId: string) => activated.push({ ws: workspaceId, tab: tabId }),
+            resolvePage: async () => ({ bringToFront: async () => {} }),
+        },
+    };
+    const action: any = {
+        v: 1,
+        id: 'a5',
+        type: 'tab.setActive',
+        payload: { workspaceId: 'ws-1', tabId: 'tab-b' },
+    };
+
+    const result = await workspaceHandlers['tab.setActive'](ctx, action);
+    assert.equal(result.ok, true);
+    assert.deepEqual(activated, [{ ws: 'ws-1', tab: 'tab-b' }]);
+
+    const recorded = getRecording(recordingState, 'token-a');
+    assert.equal(recorded.length, 1);
+    assert.equal(recorded[0].name, 'browser.switch_tab');
+    assert.equal((recorded[0].args as any).tab_id, 'tab-b');
 });
