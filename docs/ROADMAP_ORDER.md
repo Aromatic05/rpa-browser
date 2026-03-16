@@ -22,6 +22,13 @@
 - 重启后可恢复有效 workspace/session。
 - 中断任务可从 checkpoint 继续，避免重复执行已完成 step。
 
+实施建议（当前仓库最小落地顺序）：
+- `A1-S0` 先接入流式执行壳（`task.run.*`），把“任务游标”从动作执行中抽离（已具备最小实现）
+- `A1-1` 在 `TaskCheckpoint` 基础上持久化 `runId/taskId/workspaceId/nextSeq/status`
+- `A1-2` 启动阶段恢复 checkpoint，校验 workspace 存在性并清理脏 run
+- `A1-3` 增加 resume 接口（按 checkpoint 的 `nextSeq` 继续）
+- `A1-4` 增加恢复专用错误码与日志事件（restore.start/end、checkpoint.read/write）
+
 ### A2. 任务审计视图（`L`）
 
 - `A2-1` 统一 TaskRun 模型（taskId/workspaceId/step timeline）（`M`）

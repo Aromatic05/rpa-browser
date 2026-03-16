@@ -171,6 +171,36 @@ pnpm -C agent mcp:hot
 - 不要在新层复制执行逻辑
 - 新层应是“协议翻译器”，不是“第二套执行引擎”
 
+### 7.1 DSL 预留：流式 Step 协议（最小版）
+
+为避免在 agent 侧提前引入完整 DSL VM（循环/分支/变量），当前采用“流式 step 执行”边界：
+
+- agent 只负责执行 `StepEnvelope`，输出 `StepResultEnvelope`
+- DSL 组件负责：
+  - 解析 DSL
+  - 依据反馈生成后续 step（分支/循环/条件）
+  - 维护变量上下文
+
+最小 action 协议（agent）：
+
+- `task.run.start`
+- `task.run.push`
+- `task.run.poll`
+- `task.run.checkpoint`
+- `task.run.abort`
+
+核心实现位置：
+
+- `agent/src/task_stream/types.ts`
+- `agent/src/task_stream/manager.ts`
+- `agent/src/actions/task_stream.ts`
+
+设计原则：
+
+- 执行器不感知 DSL 语法结构
+- 每个 step 使用稳定 `step.id`，并配合 `seq` 支持 checkpoint/续跑
+- 结果输出保持结构化字段（`outputs` + `raw`），供 DSL 变量绑定
+
 ## 8. 测试布局与规范
 
 Agent 测试分层：
