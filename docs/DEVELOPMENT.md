@@ -191,9 +191,10 @@ pnpm -C agent mcp:hot
 
 核心实现位置：
 
-- `agent/src/task_stream/types.ts`
-- `agent/src/runner/run_steps.ts`（内置流式队列管理）
+- `agent/src/runner/run_steps.ts`（Step Pipeline 主循环）
+- `agent/src/runner/run_steps_types.ts`（Step Pipeline 对外类型）
 - `agent/src/actions/task_stream.ts`
+- `docs/DSL_EXECUTOR_PIPELINE.md`（DSL 对接规范）
 
 设计原则：
 
