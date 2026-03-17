@@ -173,6 +173,16 @@ const createActionContext = (page: any, tabToken: string): ActionContext => {
 };
 
 const isRealWebUrl = (url?: string) => !!url && (url.startsWith('http://') || url.startsWith('https://'));
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const retryClaim = async <T>(fn: () => T | null, attempts = 10, intervalMs = 60): Promise<T | null> => {
+    for (let i = 0; i < attempts; i += 1) {
+        const result = fn();
+        if (result) return result;
+        if (i < attempts - 1) await sleep(intervalMs);
+    }
+    return null;
+};
 
 const runAction = async (
     action: Action,
@@ -241,7 +251,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
         }
         if (!workspaceId) {
-            const created = pageRegistry.claimWorkspaceForOrphanToken(token);
+            const created = await retryClaim(() => pageRegistry.claimWorkspaceForOrphanToken(token));
             if (!created) {
                 log('orphan.tab_opened.init_failed', {
                     id: action.id,
@@ -254,7 +264,15 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
                 initialWorkspace: true,
             });
         }
-        const scoped = pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId);
+        const source = String(payload.source || '');
+        const scoped = await retryClaim(() => {
+            const claimed = pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId);
+            if (claimed) return claimed;
+            if (source === 'start_extension') {
+                return pageRegistry.claimOrphanTokenToWorkspaceOrCreate(token, workspaceId);
+            }
+            return null;
+        });
         if (!scoped) {
             log('orphan.tab_opened.bind_failed', {
                 id: action.id,

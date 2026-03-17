@@ -58,6 +58,10 @@ export type PageRegistry = {
         tabToken: string,
         workspaceId: WorkspaceId,
     ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    claimOrphanTokenToWorkspaceOrCreate: (
+        tabToken: string,
+        workspaceId: WorkspaceId,
+    ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     claimWorkspaceForOrphanToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     moveTokenToWorkspace: (tabToken: string, workspaceId: WorkspaceId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     getTokenPageUrl: (tabToken: string) => string | null;
@@ -212,8 +216,11 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return { workspaceId, tabId: nextTabId };
     };
 
-    const createWorkspaceInternal = (tabToken: string, page: Page) => {
-        const workspaceId = randomId();
+    const createWorkspaceInternal = (tabToken: string, page: Page, forcedWorkspaceId?: WorkspaceId) => {
+        const workspaceId = forcedWorkspaceId || randomId();
+        if (workspaces.has(workspaceId)) {
+            throw new Error(`workspace already exists: ${workspaceId}`);
+        }
         const tabId = randomId();
         const now = Date.now();
         const workspace: Workspace = {
@@ -461,6 +468,18 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return attached;
     };
 
+    const claimOrphanTokenToWorkspaceOrCreate = (tabToken: string, workspaceId: WorkspaceId) => {
+        const attached = claimOrphanTokenToWorkspace(tabToken, workspaceId);
+        if (attached) return attached;
+        const existing = tokenToTab.get(tabToken);
+        if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
+        const page = tokenToPage.get(tabToken);
+        if (!page || page.isClosed()) return null;
+        const created = createWorkspaceInternal(tabToken, page, workspaceId);
+        activeWorkspaceId = workspaceId;
+        return created;
+    };
+
     const claimWorkspaceForOrphanToken = (tabToken: string) => {
         const existing = tokenToTab.get(tabToken);
         if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
@@ -520,6 +539,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         touchTabToken,
         hasScopeForToken,
         claimOrphanTokenToWorkspace,
+        claimOrphanTokenToWorkspaceOrCreate,
         claimWorkspaceForOrphanToken,
         moveTokenToWorkspace,
         getTokenPageUrl,

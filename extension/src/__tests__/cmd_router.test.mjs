@@ -19,12 +19,16 @@ const createChromeMock = () => ({
         create: async ({ url, focused }) => ({
             id: 31,
             focused,
-            tabs: [{ id: 21, windowId: 31, url: url || 'https://example.com/new' }],
+            tabs: [{ id: 21, windowId: 31, url: url || 'chrome-extension://start/newtab.html' }],
         }),
     },
     tabs: {
         query: async ({ windowId }) => [{ id: 11, windowId, url: 'https://example.com' }],
-        get: async (tabId) => ({ id: tabId, windowId: 7, url: 'https://example.com' }),
+        get: async (tabId) =>
+            tabId === 21
+                ? { id: tabId, windowId: 31, url: 'chrome-extension://start/newtab.html' }
+                : { id: tabId, windowId: 7, url: 'https://example.com' },
+        update: async (_tabId, _update) => ({ ok: true }),
         sendMessage: (_tabId, message, cb) => {
             if (message?.type === MSG.GET_TOKEN) {
                 cb({ ok: true, tabToken: 'token-new', url: 'https://example.com/new' });
@@ -126,16 +130,13 @@ await log('window remove keeps router stable', async () => {
     assert.equal(Array.isArray(sent), true);
 });
 
-await log('workspace.create opens a new window and returns claimed workspace', async () => {
+await log('workspace.create opens a new window and returns pending workspace binding', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
         wsClient: {
             sendAction: async (action) => {
                 sent.push(action);
-                if (action.type === ACTION_TYPES.TAB_PING) {
-                    return { ok: true, data: { workspaceId: 'ws-new', tabId: 'tab-new', tabToken: 'token-new' } };
-                }
                 return { ok: true, data: {} };
             },
         },
@@ -162,9 +163,10 @@ await log('workspace.create opens a new window and returns claimed workspace', a
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     assert.equal(reply?.ok, true);
-    assert.equal(reply?.data?.workspaceId, 'ws-new');
+    assert.equal(typeof reply?.data?.workspaceId, 'string');
     assert.equal(reply?.data?.windowId, 31);
-    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), true);
+    assert.equal(reply?.data?.pending, true);
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), false);
 });
 
 await log('tabs.onCreated binds tab to window workspace via tab.opened', async () => {

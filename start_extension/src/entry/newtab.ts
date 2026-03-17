@@ -9,6 +9,7 @@ const restoreStatusEl = document.getElementById('restoreStatus');
 const restoreListEl = document.getElementById('restoreList');
 const refreshRestoreBtn = document.getElementById('refreshRestore');
 const log = (...args: unknown[]) => console.log('[RPA:start]', ...args);
+const isHttpUrl = (value?: string) => !!value && (value.startsWith('http://') || value.startsWith('https://'));
 
 const setStatus = (text: string, ok = false) => {
     if (wsStatusEl) {
@@ -181,12 +182,18 @@ const refreshRestoreList = async () => {
 };
 
 const bootstrapWorkspaceBinding = async (tabToken: string) => {
-    const listed = await sendAction('workspace.list', {
-        source: 'start_extension',
-        at: Date.now(),
-    });
-    const listedWorkspaceId = listed?.ok ? String(listed?.data?.activeWorkspaceId || '') : '';
-    const workspaceId = listedWorkspaceId || undefined;
+    const search = new URL(location.href).searchParams;
+    const requestedWorkspaceId = String(search.get('workspaceId') || '').trim();
+    const requestedStartUrl = String(search.get('startUrl') || '').trim();
+    let workspaceId = requestedWorkspaceId || undefined;
+    if (!workspaceId) {
+        const listed = await sendAction('workspace.list', {
+            source: 'start_extension',
+            at: Date.now(),
+        });
+        const listedWorkspaceId = listed?.ok ? String(listed?.data?.activeWorkspaceId || '') : '';
+        workspaceId = listedWorkspaceId || undefined;
+    }
     const opened = await sendAction(
         'tab.opened',
         {
@@ -200,6 +207,9 @@ const bootstrapWorkspaceBinding = async (tabToken: string) => {
     );
     if (!opened?.ok) {
         throw new Error(opened?.error?.message || 'tab.opened bootstrap failed');
+    }
+    if (isHttpUrl(requestedStartUrl)) {
+        location.replace(requestedStartUrl);
     }
 };
 

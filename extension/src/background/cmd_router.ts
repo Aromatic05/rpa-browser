@@ -12,6 +12,7 @@ export type CmdRouterOptions = {
 };
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const isHttpUrl = (value?: string) => !!value && (value.startsWith('http://') || value.startsWith('https://'));
 
 export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger || createLogger('sw');
@@ -146,6 +147,31 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const tabInfo = await ensureTabToken(tabId, windowId);
         if (!tabInfo?.tabToken) return null;
         return { tabId, tabToken: tabInfo.tabToken, urlHint: tabInfo.lastUrl, windowId };
+    };
+
+    const resolveNewtabUrl = async (tabId: number, hintedUrl?: string) => {
+        const readUrl = async () => {
+            try {
+                const tab = await chrome.tabs.get(tabId);
+                return String(tab.url || '');
+            } catch {
+                return '';
+            }
+        };
+        const candidates = [String(hintedUrl || ''), await readUrl()];
+        for (const candidate of candidates) {
+            if (candidate.startsWith('chrome-extension://') && candidate.includes('/newtab.html')) {
+                return candidate;
+            }
+        }
+        for (let i = 0; i < 20; i += 1) {
+            await wait(50);
+            const next = await readUrl();
+            if (next.startsWith('chrome-extension://') && next.includes('/newtab.html')) {
+                return next;
+            }
+        }
+        return '';
     };
 
     const handleInboundAction = (action: Action) => {
@@ -403,8 +429,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
                     const payload = (action.payload || {}) as { startUrl?: string };
                     const startUrl = String(payload.startUrl || '').trim();
+                    const workspaceId = crypto.randomUUID();
                     const createdWindow = await chrome.windows.create({
-                        url: startUrl || undefined,
                         focused: true,
                     });
                     const createdTabId = createdWindow.tabs?.[0]?.id;
@@ -414,41 +440,26 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         return;
                     }
                     activeWindowId = createdWindowId;
-                    const tabInfo = await ensureTabToken(createdTabId, createdWindowId);
-                    if (!tabInfo?.tabToken) {
-                        sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: 'new window tab token unavailable' } });
-                        return;
-                    }
-                    const claimed = await sendAction({
-                        v: 1,
-                        id: crypto.randomUUID(),
-                        type: ACTION_TYPES.TAB_PING,
-                        tabToken: tabInfo.tabToken,
-                        scope: { tabToken: tabInfo.tabToken },
-                        payload: {
-                            source: 'extension.workspace.create',
-                            url: tabInfo.lastUrl || startUrl || '',
-                            at: Date.now(),
-                            windowId: createdWindowId,
-                        },
-                    });
-                    if (!claimed.ok) {
-                        sendResponse(claimed);
-                        return;
-                    }
-                    const workspaceId = String((claimed.data as any)?.workspaceId || '');
-                    const tabId = String((claimed.data as any)?.tabId || '');
-                    if (workspaceId) {
-                        activeWorkspaceId = workspaceId;
-                        windowToWorkspace.set(createdWindowId, workspaceId);
+                    activeWorkspaceId = workspaceId;
+                    windowToWorkspace.set(createdWindowId, workspaceId);
+
+                    const newtabUrl = await resolveNewtabUrl(createdTabId, createdWindow.tabs?.[0]?.url);
+                    if (newtabUrl) {
+                        const nextUrl = new URL(newtabUrl);
+                        nextUrl.searchParams.set('workspaceId', workspaceId);
+                        if (isHttpUrl(startUrl)) {
+                            nextUrl.searchParams.set('startUrl', startUrl);
+                        }
+                        await chrome.tabs.update(createdTabId, { url: nextUrl.toString() });
                     }
                     sendResponse({
                         ok: true,
                         data: {
-                            workspaceId: workspaceId || null,
-                            tabId: tabId || null,
-                            tabToken: tabInfo.tabToken,
+                            workspaceId,
+                            tabId: null,
+                            tabToken: null,
                             windowId: createdWindowId,
+                            pending: true,
                         },
                     });
                     options.onRefresh();
