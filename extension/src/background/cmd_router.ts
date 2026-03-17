@@ -245,14 +245,22 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const handleEvent = (payload: WsEventPayload) => {
+        if (payload?.event === 'group.dirty') {
+            const data = payload.data || {};
+            const workspaceId = data.workspaceId ? String(data.workspaceId) : '';
+            const reason = data.reason ? String(data.reason) : 'backend';
+            if (workspaceId) {
+                markWorkspaceDirty(workspaceId, reason);
+            }
+            return;
+        }
         if (payload?.event === 'page.bound') {
             const data = payload.data || {};
             if (data.tabToken && data.workspaceId) {
                 tokenToWorkspace.set(String(data.tabToken), String(data.workspaceId));
             }
             if (data.tabToken && data.workspaceId && data.tabId) {
-                const ok = upsertTokenScope(String(data.tabToken), String(data.workspaceId), String(data.tabId));
-                if (ok) markWorkspaceDirty(String(data.workspaceId), 'page.bound');
+                upsertTokenScope(String(data.tabToken), String(data.workspaceId), String(data.tabId));
             }
             if (!activeWorkspaceId && data.workspaceId) {
                 activeWorkspaceId = String(data.workspaceId);
@@ -262,12 +270,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         }
         if (payload?.event === 'workspace.changed') {
             const workspaceId = payload?.data?.workspaceId ? String(payload.data.workspaceId) : null;
-            const actionType = String(payload?.data?.type || '');
             if (workspaceId) {
                 activeWorkspaceId = workspaceId;
-                if (GROUP_TRIGGER_ACTIONS.has(actionType)) {
-                    markWorkspaceDirty(workspaceId, `workspace.changed:${actionType}`);
-                }
             }
             options.onRefresh();
         }
@@ -339,10 +343,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const existing = tabState.get(tabId);
         if (existing?.tabToken) {
             upsertTab(tabId, existing.tabToken, changeInfo.url);
-            const scope = tokenToScope.get(existing.tabToken);
-            if (scope && isRealWebUrl(changeInfo.url)) {
-                markWorkspaceDirty(scope.workspaceId, 'tabs.onUpdated:url');
-            }
         }
     };
 

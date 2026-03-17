@@ -71,6 +71,16 @@ const broadcast = (event: { event: string; data?: Record<string, unknown> }) => 
     });
 };
 
+const broadcastGroupDirty = (workspaceId: string, reason: string) => {
+    if (!workspaceId) return;
+    broadcast({
+        event: 'group.dirty',
+        data: { workspaceId, reason },
+    });
+};
+
+const REPORT_GROUP_DIRTY_ACTIONS = new Set<string>(['tab.opened', 'tab.closed', 'tab.activated']);
+
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
     getContext: contextManager.getContext,
@@ -85,6 +95,7 @@ const pageRegistry = createPageRegistry({
                 event: 'page.bound',
                 data: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken: token, url: page.url() },
             });
+            broadcastGroupDirty(scope.workspaceId, 'page.bound');
         } catch {
             // ignore
         }
@@ -361,6 +372,17 @@ wss.on('connection', (socket) => {
                         event: 'workspace.changed',
                         data: { workspaceId: data?.workspaceId, tabId: data?.tabId, type: action.type },
                     });
+                    if (data?.workspaceId) {
+                        broadcastGroupDirty(String(data.workspaceId), `action:${action.type}`);
+                    }
+                }
+
+                if (response.ok && REPORT_GROUP_DIRTY_ACTIONS.has(action.type)) {
+                    const data = response.data as any;
+                    const workspaceId = String(data?.workspaceId || action.scope?.workspaceId || '');
+                    if (workspaceId) {
+                        broadcastGroupDirty(workspaceId, `report:${action.type}`);
+                    }
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
