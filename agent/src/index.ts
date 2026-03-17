@@ -213,6 +213,13 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
 
     if (action.type === ACTION_TYPES.TAB_OPENED) {
         const source = String(payload.source || '');
+        if (source === 'extension.workspace.create') {
+            pageRegistry.markOrphanKind(token, 'initial_start');
+            return {
+                ok: true as const,
+                data: { tabToken: token, orphan: true, pending: true, source },
+            };
+        }
         const activeWorkspace = pageRegistry.getActiveWorkspace?.();
         const hasAnyWorkspace = pageRegistry.listWorkspaces().length > 0;
         const shouldTreatAsInitialStart = source === 'start_extension' && !activeWorkspace && !hasAnyWorkspace;

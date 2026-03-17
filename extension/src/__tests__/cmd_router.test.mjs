@@ -16,10 +16,22 @@ const log = async (name, fn) => {
 const createChromeMock = () => ({
     windows: {
         WINDOW_ID_NONE: -1,
+        create: async ({ url, focused }) => ({
+            id: 31,
+            focused,
+            tabs: [{ id: 21, windowId: 31, url: url || 'https://example.com/new' }],
+        }),
     },
     tabs: {
         query: async ({ windowId }) => [{ id: 11, windowId, url: 'https://example.com' }],
         get: async (tabId) => ({ id: tabId, windowId: 7, url: 'https://example.com' }),
+        sendMessage: (_tabId, message, cb) => {
+            if (message?.type === MSG.GET_TOKEN) {
+                cb({ ok: true, tabToken: 'token-new', url: 'https://example.com/new' });
+                return;
+            }
+            cb({ ok: true });
+        },
     },
     runtime: {},
 });
@@ -112,4 +124,46 @@ await log('window remove keeps router stable', async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     assert.equal(Array.isArray(sent), true);
+});
+
+await log('workspace.create opens a new window and returns claimed workspace', async () => {
+    globalThis.chrome = createChromeMock();
+    const sent = [];
+    const router = createCmdRouter({
+        wsClient: {
+            sendAction: async (action) => {
+                sent.push(action);
+                if (action.type === ACTION_TYPES.TAB_PING) {
+                    return { ok: true, data: { workspaceId: 'ws-new', tabId: 'tab-new', tabToken: 'token-new' } };
+                }
+                return { ok: true, data: {} };
+            },
+        },
+        onRefresh: () => undefined,
+    });
+
+    let reply;
+    router.handleMessage(
+        {
+            type: MSG.ACTION,
+            action: {
+                v: 1,
+                id: 'create-1',
+                type: ACTION_TYPES.WORKSPACE_CREATE,
+                payload: { startUrl: 'https://example.com/new' },
+                scope: {},
+            },
+        },
+        { tab: { id: 11, windowId: 7, url: 'https://example.com' } },
+        (payload) => {
+            reply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(reply?.ok, true);
+    assert.equal(reply?.data?.workspaceId, 'ws-new');
+    assert.equal(reply?.data?.windowId, 31);
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), true);
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), true);
 });
