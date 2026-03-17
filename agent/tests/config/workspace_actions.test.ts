@@ -209,7 +209,7 @@ test('workspace.save writes workspace snapshot and logs lifecycle', async () => 
         recordingState,
         log: (...args: unknown[]) => logs.push(args),
         pageRegistry: {
-            getActiveWorkspace: () => ({ id: 'ws-1' }),
+            getActiveWorkspace: () => ({ workspaceId: 'ws-1' }),
             listTabs: async () => [{ tabId: 'tab-1', url: 'https://example.com/a', title: 'A', active: true }],
         },
     };
