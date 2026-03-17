@@ -262,6 +262,64 @@ test('tab.init returns generated token', async () => {
     assert.equal(result.data.tabToken.length > 10, true);
 });
 
+test('workspace.create opens workspace with tab when workspaceId is not provided', async () => {
+    const calls: string[] = [];
+    const ctx: any = {
+        pageRegistry: {
+            createWorkspace: async () => {
+                calls.push('createWorkspace');
+                return { workspaceId: 'ws-new', tabId: 'tab-new' };
+            },
+            resolveTabToken: ({ workspaceId, tabId }: { workspaceId: string; tabId: string }) => {
+                calls.push('resolveTabToken');
+                assert.equal(workspaceId, 'ws-new');
+                assert.equal(tabId, 'tab-new');
+                return 'token-new';
+            },
+            createWorkspaceShell: () => {
+                throw new Error('should not call createWorkspaceShell');
+            },
+        },
+    };
+    const result = await workspaceHandlers['workspace.create'](ctx, {
+        v: 1,
+        id: 'create-1',
+        type: 'workspace.create',
+        payload: {},
+    } as any);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.data.workspaceId, 'ws-new');
+    assert.equal(result.data.tabId, 'tab-new');
+    assert.equal(result.data.tabToken, 'token-new');
+    assert.deepEqual(calls, ['createWorkspace', 'resolveTabToken']);
+});
+
+test('workspace.create uses shell path when workspaceId is provided', async () => {
+    const ctx: any = {
+        pageRegistry: {
+            createWorkspaceShell: (workspaceId: string) => ({ workspaceId }),
+            createWorkspace: async () => {
+                throw new Error('should not call createWorkspace');
+            },
+            resolveTabToken: () => {
+                throw new Error('should not call resolveTabToken');
+            },
+        },
+    };
+    const result = await workspaceHandlers['workspace.create'](ctx, {
+        v: 1,
+        id: 'create-2',
+        type: 'workspace.create',
+        payload: { workspaceId: 'ws-shell' },
+    } as any);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.data.workspaceId, 'ws-shell');
+    assert.equal(result.data.tabId, null);
+    assert.equal(result.data.tabToken, null);
+});
+
 test('tab.reassign moves token to target workspace', async () => {
     const logs: unknown[][] = [];
     const ctx: any = {

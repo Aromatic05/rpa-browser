@@ -18,7 +18,7 @@ import {
 import type { StepUnion } from '../runner/steps/types';
 import { getLogger } from '../logging/logger';
 
-type WorkspaceCreatePayload = { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
+type WorkspaceCreatePayload = { workspaceId?: string };
 type WorkspaceSetActivePayload = { workspaceId: string };
 type WorkspaceSavePayload = { workspaceId?: string };
 type WorkspaceRestorePayload = { workspaceId: string };
@@ -99,36 +99,13 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'workspace.create': async (ctx, action) => {
         const payload = (action.payload || {}) as WorkspaceCreatePayload;
-        const created = await ctx.pageRegistry.createWorkspace();
-        const createdTabToken = ctx.pageRegistry.resolveTabToken({
-            workspaceId: created.workspaceId,
-            tabId: created.tabId,
-        });
-        const startUrl = payload.startUrl;
-        if (startUrl) {
-            try {
-                const page = await ctx.pageRegistry.resolvePage({
-                    workspaceId: created.workspaceId,
-                    tabId: created.tabId,
-                });
-                await page.goto(startUrl, {
-                    waitUntil: payload.waitUntil || 'domcontentloaded',
-                });
-                await page.bringToFront();
-            } catch (error) {
-                return makeErr(
-                    ERROR_CODES.ERR_ASSERTION_FAILED,
-                    'workspace.create startUrl navigation failed',
-                    {
-                        workspaceId: created.workspaceId,
-                        tabId: created.tabId,
-                        startUrl,
-                        message: error instanceof Error ? error.message : String(error),
-                    },
-                );
-            }
+        if (payload.workspaceId) {
+            const created = ctx.pageRegistry.createWorkspaceShell(payload.workspaceId);
+            return makeOk({ workspaceId: created.workspaceId, tabId: null, tabToken: null });
         }
-        return makeOk({ workspaceId: created.workspaceId, tabId: created.tabId, tabToken: createdTabToken });
+        const created = await ctx.pageRegistry.createWorkspace();
+        const tabToken = ctx.pageRegistry.resolveTabToken({ workspaceId: created.workspaceId, tabId: created.tabId });
+        return makeOk({ workspaceId: created.workspaceId, tabId: created.tabId, tabToken });
     },
     'workspace.setActive': async (ctx, action) => {
         const payload = (action.payload || {}) as WorkspaceSetActivePayload;
@@ -188,8 +165,8 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
         }
         const sourceToken = String(ctx.tabToken || action.scope?.tabToken || action.tabToken || '');
-        const sourceWasOrphan = sourceToken ? !ctx.pageRegistry.hasScopeForToken?.(sourceToken) : false;
-        ctx.log('workspace.restore.start', { sourceWorkspaceId, tabToken: sourceToken || null, sourceWasOrphan });
+        const sourceUnbound = sourceToken ? !ctx.pageRegistry.hasScopeForToken?.(sourceToken) : false;
+        ctx.log('workspace.restore.start', { sourceWorkspaceId, tabToken: sourceToken || null, sourceUnbound });
 
         const snapshot = getWorkspaceSnapshot(ctx.recordingState, sourceWorkspaceId);
         const fallbackRecordingToken = ctx.recordingState.workspaceLatestRecording.get(sourceWorkspaceId) || null;
@@ -329,7 +306,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 restoredAt: Date.now(),
             });
 
-            if (sourceWasOrphan && sourceToken) {
+            if (sourceUnbound && sourceToken) {
                 await ctx.pageRegistry.closeTokenPage?.(sourceToken);
             }
             return makeOk({

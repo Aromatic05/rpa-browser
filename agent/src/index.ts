@@ -1,4 +1,5 @@
 import path from 'node:path';
+import assert from 'node:assert/strict';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
@@ -21,6 +22,7 @@ const TAB_TOKEN_KEY = '__rpa_tab_token';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
 const PAGELESS_ACTIONS = new Set<string>([
     ACTION_TYPES.WORKSPACE_LIST,
+    ACTION_TYPES.WORKSPACE_CREATE,
     ACTION_TYPES.RECORD_LIST,
     ACTION_TYPES.TAB_INIT,
 ]);
@@ -172,7 +174,6 @@ const createActionContext = (page: any, tabToken: string): ActionContext => {
     return ctx;
 };
 
-const isRealWebUrl = (url?: string) => !!url && (url.startsWith('http://') || url.startsWith('https://'));
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const retryClaim = async <T>(fn: () => T | null, attempts = 10, intervalMs = 60): Promise<T | null> => {
@@ -217,116 +218,19 @@ const runPagelessAction = async (action: Action, tabToken = '') => {
     return executeAction(createActionContext(pageStub, tabToken), action);
 };
 
-let orphanClaimChain = Promise.resolve();
-const withOrphanClaimLock = async <T>(fn: () => Promise<T>): Promise<T> => {
-    const prev = orphanClaimChain;
-    let release: (() => void) | undefined;
-    orphanClaimChain = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    await prev;
-    try {
-        return await fn();
-    } finally {
-        if (release) release();
-    }
-};
-
-const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
+const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
     const token = String(action.scope?.tabToken || action.tabToken || '');
-    if (!token) return null;
+    if (!token) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');
     const payload = (action.payload || {}) as Record<string, unknown>;
-
-    if (action.type === ACTION_TYPES.TAB_OPENED) {
-        const workspaceId =
-            (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
-            (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
-        if (!workspaceId && pageRegistry.listWorkspaces().length > 0) {
-            log('orphan.tab_opened.missing_workspace', {
-                id: action.id,
-                tabToken: token,
-                scope: action.scope || null,
-                payload: action.payload || null,
-            });
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
-        }
-        if (!workspaceId) {
-            const created = await retryClaim(() => pageRegistry.claimWorkspaceForOrphanToken(token));
-            if (!created) {
-                log('orphan.tab_opened.init_failed', {
-                    id: action.id,
-                    tabToken: token,
-                });
-                return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to create initial workspace from tab.opened');
-            }
-            return runAction(action, { tabToken: token, scope: created }, urlHint, {
-                orphanClaim: true,
-                initialWorkspace: true,
-            });
-        }
-        const source = String(payload.source || '');
-        const scoped = await retryClaim(() => {
-            const claimed = pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId);
-            if (claimed) return claimed;
-            if (source === 'start_extension') {
-                return pageRegistry.claimOrphanTokenToWorkspaceOrCreate(token, workspaceId);
-            }
-            return null;
-        });
-        if (!scoped) {
-            log('orphan.tab_opened.bind_failed', {
-                id: action.id,
-                tabToken: token,
-                workspaceId,
-            });
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to bind tab.opened to workspace');
-        }
-        return runAction(action, { tabToken: token, scope: scoped }, urlHint, { orphanClaim: true, byWindow: true });
+    const workspaceId =
+        (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
+        (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
+    if (!workspaceId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
+    const scoped = await retryClaim(() => pageRegistry.bindTokenToWorkspace(token, workspaceId), 80, 50);
+    if (!scoped) {
+        return makeErr(ERROR_CODES.ERR_BAD_ARGS, `failed to bind tab.opened to workspace (${workspaceId}, ${token})`);
     }
-
-    if (action.type === ACTION_TYPES.WORKSPACE_RESTORE) {
-        return runPagelessAction(action, token);
-    }
-
-    if (action.type !== ACTION_TYPES.TAB_PING) {
-        return makeErr(ERROR_CODES.ERR_BAD_ARGS, `orphan action forbidden: ${action.type}`);
-    }
-
-    if (action.type === ACTION_TYPES.TAB_PING) {
-        const source = String(payload.source || '');
-        if (source !== 'extension.workspace.create') {
-            log('orphan.tab_ping.forbidden', {
-                id: action.id,
-                tabToken: token,
-                source,
-                payload: action.payload || null,
-            });
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.ping orphan claim is forbidden without window mapping');
-        }
-    }
-
-    const maybeUrl =
-        (typeof payload.url === 'string' ? payload.url : '') || pageRegistry.getTokenPageUrl(token) || '';
-    if (!isRealWebUrl(maybeUrl)) {
-        return {
-            ok: true as const,
-            data: { tabToken: token, orphan: true, pending: true, reportedUrl: maybeUrl || null },
-        };
-    }
-
-    return withOrphanClaimLock(async () => {
-        const scope = pageRegistry.claimWorkspaceForOrphanToken(token);
-        if (!scope) {
-            log('orphan.claim_failed', {
-                id: action.id,
-                tabToken: token,
-                type: action.type,
-                payload: action.payload || null,
-            });
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to claim orphan tab');
-        }
-        return runAction(action, { tabToken: token, scope }, urlHint, { orphanClaim: true });
-    });
+    return runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
 };
 
 const handleAction = async (action: Action) => {
@@ -372,9 +276,8 @@ const handleAction = async (action: Action) => {
             return runPagelessAction(action);
         }
 
-        if (error.message === 'workspace scope not found for tabToken') {
-            const orphanResult = await handleOrphanTokenAction(action, urlHint);
-            if (orphanResult) return orphanResult as any;
+        if (error.message === 'workspace scope not found for tabToken' && action.type === ACTION_TYPES.TAB_OPENED) {
+            return bindTabOpenedAction(action, urlHint);
         }
 
         return makeErr(error.code, error.message);
@@ -537,11 +440,16 @@ setInterval(() => {
 }, TAB_PING_WATCHDOG_INTERVAL_MS);
 
 (async () => {
-    try {
-        await contextManager.getContext();
-        log('Playwright Chromium launched with extension.');
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        log('Failed to launch Playwright Chromium:', message);
+    await contextManager.getContext();
+    if (pageRegistry.listWorkspaces().length === 0) {
+        const created = pageRegistry.createWorkspaceShell();
+        assert.ok(created.workspaceId, 'bootstrap workspaceId missing');
+        log('workspace.bootstrap.created', { workspaceId: created.workspaceId });
     }
-})();
+    broadcastWorkspaceList('bootstrap');
+    log('Playwright Chromium launched with extension.');
+})().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    log('Fatal startup error:', message);
+    throw error;
+});
