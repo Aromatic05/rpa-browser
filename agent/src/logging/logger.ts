@@ -44,7 +44,7 @@ const ensureStream = (type: LogType, filePath: string) => {
 const getTarget = (type: LogType): LogTarget => {
     const obs = loggerConfig?.observability;
     if (!obs) {
-        return { consoleEnabled: true, fileEnabled: false, filePath: '' };
+        return { consoleEnabled: false, fileEnabled: false, filePath: '' };
     }
     if (type === 'action') {
         return {
@@ -67,7 +67,7 @@ const getTarget = (type: LogType): LogTarget => {
             filePath: resolveLogPath(obs.traceFilePath),
         };
     }
-    return { consoleEnabled: true, fileEnabled: false, filePath: '' };
+    return { consoleEnabled: false, fileEnabled: false, filePath: '' };
 };
 
 export const initLogger = (config: RunnerConfig) => {

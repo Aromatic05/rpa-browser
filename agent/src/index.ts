@@ -26,7 +26,8 @@ const REPLAY_OPTIONS = {
 };
 const NAV_DEDUPE_WINDOW_MS = 1200;
 
-const log = (...args: unknown[]) => console.log('[RPA:agent]', ...args);
+const actionLog = getLogger('action');
+const log = (...args: unknown[]) => actionLog('[RPA:agent]', ...args);
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -34,7 +35,7 @@ const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.jso
 await loadRecordingStateFromFile(recordingState, recordingStatePath);
 const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
     intervalMs: 1500,
-    onError: (error) => console.warn('[RPA:agent]', 'recording persistence error', String(error)),
+    onError: (error) => actionLog('[RPA:agent]', 'recording persistence error', String(error)),
 });
 
 const contextManager = createContextManager({

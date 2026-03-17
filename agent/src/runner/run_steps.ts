@@ -42,12 +42,12 @@ export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
     write: (event) => {
         const iso = new Date(event.ts).toISOString();
         if (event.type === 'step.start') {
-            console.log(
+            stepLogger(
                 `${prefix} start ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name}`,
             );
             return;
         }
-        console.log(
+        stepLogger(
             `${prefix} end ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
         );
     },

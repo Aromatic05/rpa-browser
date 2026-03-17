@@ -15,6 +15,7 @@ import {
     saveWorkspaceSnapshot,
 } from '../record/recording';
 import type { StepUnion } from '../runner/steps/types';
+import { getLogger } from '../logging/logger';
 
 type WorkspaceCreatePayload = { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
 type WorkspaceSetActivePayload = { workspaceId: string };
@@ -29,9 +30,10 @@ type TabActivatedPayload = { source?: string; url?: string; at?: number };
 type TabClosedPayload = { source?: string; at?: number };
 type TabPingPayload = { source?: string; url?: string; title?: string; at?: number };
 
+const actionLog = getLogger('action');
+
 const logPageEvent = (event: string, payload: Record<string, unknown>) => {
-    // Lifecycle logs must always be visible in terminal for debugging/state tracking.
-    console.log('[page]', event, payload);
+    actionLog('[page]', event, payload);
 };
 
 const resolveWorkspaceId = (
@@ -42,7 +44,7 @@ const resolveWorkspaceId = (
     if (argWorkspaceId) return argWorkspaceId;
     if (action.scope?.workspaceId) return action.scope.workspaceId;
     const active = ctx.pageRegistry.getActiveWorkspace?.();
-    return active?.id || null;
+    return active?.workspaceId || null;
 };
 
 const bringWorkspaceTabToFront = async (

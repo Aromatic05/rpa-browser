@@ -7,14 +7,14 @@ import { startMcpServer } from './mcp/index';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './runner/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
-import { initLogger, resolveLogPath } from './logging/logger';
+import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const NAV_DEDUPE_WINDOW_MS = 1200;
 
-const log = (...args: unknown[]) => console.error('[RPA:mcp]', ...args);
-console.log = (...args: unknown[]) => console.error(...args);
+const actionLog = getLogger('action');
+const log = (...args: unknown[]) => actionLog('[RPA:mcp]', ...args);
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();

@@ -35,7 +35,7 @@ export const defaultRunnerConfig: RunnerConfig = {
         actionConsoleEnabled: false,
         actionFileEnabled: true,
         actionFilePath: '.artifacts/logs/action-{ts}.log',
-        recordConsoleEnabled: true,
+        recordConsoleEnabled: false,
         recordFileEnabled: false,
         recordFilePath: '.artifacts/logs/record-{ts}.log',
         stepLogLevel: 'info',

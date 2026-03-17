@@ -14,6 +14,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright';
 import path from 'path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'url';
+import { getLogger } from '../logging/logger';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +29,7 @@ export type ContextManagerOptions = {
  * 创建 context 管理器。内部缓存 BrowserContext，并处理启动与关闭回收。
  */
 export const createContextManager = (options: ContextManagerOptions) => {
+    const actionLog = getLogger('action');
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
@@ -41,10 +43,12 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const ensureStartPage = async (context: BrowserContext) => {
         try {
             const pages = context.pages();
-            const primary = await context.newPage();
-            await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
+            const primary = pages[0] || (await context.newPage());
+            if (primary.url() !== startUrl) {
+                await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
+            }
             await primary.bringToFront();
-            const toClose = pages.filter((page) => page !== primary);
+            const toClose = context.pages().filter((page) => page !== primary);
             for (const page of toClose) {
                 try {
                     if (!page.isClosed()) {
@@ -66,7 +70,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const getContext = async () => {
         if (contextRef) return contextRef;
         if (contextPromise) return contextPromise;
-        console.log('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
+        actionLog('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
         const policyDir = path.resolve(options.userDataDir, 'enterprise-policies', 'managed');
         const policyFile = path.join(policyDir, 'rpa_browser_policy.json');
         try {
@@ -77,7 +81,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
                 'utf8',
             );
         } catch (error) {
-            console.warn('[RPA:agent]', 'Failed to write NewTabPageLocation policy', String(error));
+            actionLog('[RPA:agent]', 'Failed to write NewTabPageLocation policy', String(error));
         }
         const extensionArg = options.extensionPaths.join(',');
         const launchArgs = [
@@ -99,6 +103,9 @@ export const createContextManager = (options: ContextManagerOptions) => {
                 });
                 if (options.onPage) {
                     context.on('page', options.onPage);
+                    for (const page of context.pages()) {
+                        options.onPage(page);
+                    }
                 }
                 await ensureStartPage(context);
                 return context;

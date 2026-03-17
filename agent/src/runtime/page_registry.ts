@@ -1,5 +1,6 @@
 import type { BrowserContext, Page } from 'playwright';
 import crypto from 'crypto';
+import { getLogger } from '../logging/logger';
 
 export type WorkspaceId = string;
 export type TabId = string;
@@ -60,7 +61,8 @@ export type PageRegistry = {
 const randomId = () => crypto.randomUUID();
 
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
-    const log = (...args: unknown[]) => console.log('[RPA:page_registry]', ...args);
+    const actionLog = getLogger('action');
+    const log = (...args: unknown[]) => actionLog('[RPA:page_registry]', ...args);
     const tokenToPage = new Map<string, Page>();
     const tokenToTab = new Map<string, { workspaceId: WorkspaceId; tabId: TabId }>();
     const workspaces = new Map<WorkspaceId, Workspace>();
