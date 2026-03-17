@@ -12,7 +12,6 @@ export type CmdRouterOptions = {
 };
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-const isHttpUrl = (value?: string) => !!value && (value.startsWith('http://') || value.startsWith('https://'));
 
 export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger || createLogger('sw');
@@ -427,8 +426,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             (async () => {
                 const action = (message.action || {}) as Action;
                 if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
-                    const payload = (action.payload || {}) as { startUrl?: string };
-                    const startUrl = String(payload.startUrl || '').trim();
                     const workspaceId = crypto.randomUUID();
                     const createdWindow = await chrome.windows.create({
                         focused: true,
@@ -447,9 +444,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     if (newtabUrl) {
                         const nextUrl = new URL(newtabUrl);
                         nextUrl.searchParams.set('workspaceId', workspaceId);
-                        if (isHttpUrl(startUrl)) {
-                            nextUrl.searchParams.set('startUrl', startUrl);
-                        }
                         await chrome.tabs.update(createdTabId, { url: nextUrl.toString() });
                     }
                     sendResponse({

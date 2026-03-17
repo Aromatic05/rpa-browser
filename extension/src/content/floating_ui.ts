@@ -180,43 +180,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         onResponse?.(response);
     };
 
-    const DEFAULT_URL = 'chrome://newtab/';
-
-    const normalizeMockBaseUrl = (raw?: string) => {
-        const value = (raw || '').trim();
-        if (!value) return DEFAULT_URL;
-        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
-            return value;
-        }
-        try {
-            const parsed = new URL(value);
-            return parsed.toString();
-        } catch {
-            return DEFAULT_URL;
-        }
-    };
-
-    const getMockStartUrl = (onUrl: (url: string) => void) => {
-        chrome.storage.local.get('mockBaseUrl', (data: any) => {
-            onUrl(normalizeMockBaseUrl(data?.mockBaseUrl as string | undefined));
-        });
-    };
-
-    const createWithStartUrl = (
-        type: 'workspace.create',
-        args: Record<string, unknown>,
-        onDone?: (payload: any) => void,
-    ) => {
-        getMockStartUrl((startPageUrl) => {
-            void sendPanelAction(type, { ...args, startUrl: startPageUrl }, undefined, (payload) => {
-                if (payload?.ok === false) {
-                    render({ ok: false, error: `Start page unreachable: ${startPageUrl}` });
-                }
-                onDone?.(payload);
-            });
-        });
-    };
-
     startBtn.addEventListener('click', () => void sendPanelAction('record.start'));
     stopBtn.addEventListener('click', () => void sendPanelAction('record.stop'));
     showBtn.addEventListener('click', () => void sendPanelAction('record.get'));
@@ -284,7 +247,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     newWorkspaceBtn.addEventListener('click', () => {
-        createWithStartUrl('workspace.create', {}, (payload) => {
+        void sendPanelAction('workspace.create', {}, undefined, (payload) => {
             if (payload?.data?.workspaceId) {
                 activeWorkspaceId = payload.data.workspaceId;
             }
@@ -300,7 +263,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 void sendPanelAction('workspace.list', {}, undefined, (payload) => {
                     const workspaces = payload?.data?.workspaces || [];
                     if (!workspaces.length) {
-                        createWithStartUrl('workspace.create', {}, (created) => {
+                        void sendPanelAction('workspace.create', {}, undefined, (created) => {
                             activeWorkspaceId = created?.data?.workspaceId || null;
                             refreshWorkspaces();
                             refreshTabs();
@@ -317,7 +280,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 void sendPanelAction('workspace.list', {}, undefined, (payload) => {
                     const workspaces = payload?.data?.workspaces || [];
                     if (!workspaces.length) {
-                        createWithStartUrl('workspace.create', {}, (created) => {
+                        void sendPanelAction('workspace.create', {}, undefined, (created) => {
                             activeWorkspaceId = created?.data?.workspaceId || null;
                             refreshWorkspaces();
                             refreshTabs();
