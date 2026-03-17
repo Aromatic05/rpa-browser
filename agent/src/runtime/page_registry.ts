@@ -37,8 +37,6 @@ export type PageRegistryOptions = {
 export type PageRegistry = {
     bindPage: (page: Page, hintedToken?: string) => Promise<string | null>;
     getPage: (tabToken: string, urlHint?: string) => Promise<Page>;
-    listPages: () => Array<{ tabToken: string; page: Page }>;
-    cleanup: (tabToken?: string) => void;
     createWorkspace: () => Promise<{ workspaceId: WorkspaceId; tabId: TabId }>;
     listWorkspaces: () => Array<
         Pick<Workspace, 'workspaceId' | 'activeTabId' | 'groupId' | 'createdAt' | 'updatedAt'> & { tabCount: number }
@@ -64,6 +62,10 @@ export type PageRegistry = {
         mode: 'create_workspace' | 'active_or_create',
     ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     getTokenPageUrl: (tabToken: string) => string | null;
+    listTimedOutTokens: (
+        timeoutMs: number,
+        now?: number,
+    ) => Array<{ tabToken: string; workspaceId: WorkspaceId; tabId: TabId; lastSeenAt: number }>;
     closeTokenPage: (tabToken: string) => Promise<void>;
 };
 
@@ -287,17 +289,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     };
 
     const resolvePage = async (scope?: WorkspaceScope) => {
-        let workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
-        if (!workspace) {
-            const created = await createWorkspace();
-            workspace = workspaces.get(created.workspaceId) || null;
-        }
+        const workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
         if (!workspace) throw new Error('workspace not found');
         const tabId = scope?.tabId || workspace.activeTabId;
-        if (!tabId) {
-            const createdTabId = await createTab(workspace.workspaceId);
-            return workspace.tabs.get(createdTabId)!.page;
-        }
+        if (!tabId) throw new Error('tab not found');
         const tab = workspace.tabs.get(tabId);
         if (!tab) throw new Error('tab not found');
         return tab.page;
@@ -382,15 +377,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             updatedAt: workspace.updatedAt,
         }));
 
-    const cleanup = (tabToken?: string) => {
-        if (!tabToken) {
-            tokenToPage.clear();
-            tokenToTab.clear();
-            orphanKinds.clear();
-            workspaces.clear();
-            activeWorkspaceId = null;
-            return;
-        }
+    const cleanupToken = (tabToken: string) => {
         tokenToPage.delete(tabToken);
         orphanKinds.delete(tabToken);
         const ref = tokenToTab.get(tabToken);
@@ -457,6 +444,11 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                 activeWorkspaceId = active.workspaceId;
                 return attachTokenToWorkspace(active, tabToken, page);
             }
+            const fallbackWorkspace = Array.from(workspaces.values()).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+            if (fallbackWorkspace) {
+                activeWorkspaceId = fallbackWorkspace.workspaceId;
+                return attachTokenToWorkspace(fallbackWorkspace, tabToken, page);
+            }
         }
         const created = createWorkspaceInternal(tabToken, page);
         activeWorkspaceId = created.workspaceId;
@@ -469,22 +461,34 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return page.url();
     };
 
+    const listTimedOutTokens = (timeoutMs: number, now = Date.now()) => {
+        const timedOut: Array<{ tabToken: string; workspaceId: WorkspaceId; tabId: TabId; lastSeenAt: number }> = [];
+        for (const workspace of workspaces.values()) {
+            for (const tab of workspace.tabs.values()) {
+                if (now - tab.updatedAt <= timeoutMs) continue;
+                timedOut.push({
+                    tabToken: tab.tabToken,
+                    workspaceId: workspace.workspaceId,
+                    tabId: tab.tabId,
+                    lastSeenAt: tab.updatedAt,
+                });
+            }
+        }
+        return timedOut;
+    };
+
     const closeTokenPage = async (tabToken: string) => {
         const page = tokenToPage.get(tabToken);
         if (!page || page.isClosed()) {
-            cleanup(tabToken);
+            cleanupToken(tabToken);
             return;
         }
         await page.close({ runBeforeUnload: true });
     };
 
-    const listPages = () => Array.from(tokenToPage.entries()).map(([tabToken, page]) => ({ tabToken, page }));
-
     return {
         bindPage,
         getPage,
-        listPages,
-        cleanup,
         createWorkspace,
         listWorkspaces,
         setActiveWorkspace,
@@ -503,6 +507,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         getOrphanKind,
         claimOrphanToken,
         getTokenPageUrl,
+        listTimedOutTokens,
         closeTokenPage,
     };
 };

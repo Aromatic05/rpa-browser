@@ -13,19 +13,8 @@ import type { WsClient } from './ws_client.js';
 export type CmdRouterOptions = {
     wsClient: WsClient;
     onRefresh: () => void;
-    onEvent: (payload: WsEventPayload) => void;
     logger?: (...args: unknown[]) => void;
 };
-
-const GROUP_TRIGGER_ACTIONS = new Set<string>([
-    'workspace.create',
-    'workspace.restore',
-    'workspace.setActive',
-    'tab.create',
-    'tab.close',
-    'tab.opened',
-    'tab.closed',
-]);
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const isRealWebUrl = (url: string | null | undefined) => {
@@ -38,11 +27,9 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const supportsTabGroups = supportsTabGrouping(chrome);
 
     const tabState = new Map<number, { tabToken: string; lastUrl: string; updatedAt: number }>();
-    const tokenToWorkspace = new Map<string, string>();
     const tokenToScope = new Map<string, { workspaceId: string; tabId: string }>();
     let activeTabId: number | null = null;
     let activeWorkspaceId: string | null = null;
-    let activeScopeTabId: string | null = null;
 
     const dirtyWorkspaces = new Set<string>();
     let groupFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -140,7 +127,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             });
             return false;
         }
-        tokenToWorkspace.set(tabToken, workspaceId);
         tokenToScope.set(tabToken, { workspaceId, tabId });
         return true;
     };
@@ -236,7 +222,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const markWorkspaceDirty = (workspaceId: string, reason: string) => {
         if (!workspaceId) return;
         dirtyWorkspaces.add(workspaceId);
-        log('group.dirty', { workspaceId, reason, size: dirtyWorkspaces.size });
+        log('group.dirty.enqueue', { ts: Date.now(), workspaceId, reason, size: dirtyWorkspaces.size });
         if (groupFlushTimer) return;
         groupFlushTimer = setTimeout(() => {
             groupFlushTimer = null;
@@ -249,16 +235,18 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const data = payload.data || {};
             const workspaceId = data.workspaceId ? String(data.workspaceId) : '';
             const reason = data.reason ? String(data.reason) : 'backend';
+            log('group.dirty.received', { ts: Date.now(), workspaceId: workspaceId || null, reason });
             if (workspaceId) {
                 markWorkspaceDirty(workspaceId, reason);
             }
             return;
         }
+        if (payload?.event === 'state.sync') {
+            options.onRefresh();
+            return;
+        }
         if (payload?.event === 'page.bound') {
             const data = payload.data || {};
-            if (data.tabToken && data.workspaceId) {
-                tokenToWorkspace.set(String(data.tabToken), String(data.workspaceId));
-            }
             if (data.tabToken && data.workspaceId && data.tabId) {
                 upsertTokenScope(String(data.tabToken), String(data.workspaceId), String(data.tabId));
             }
@@ -291,12 +279,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 return;
             }
             const data = payload.data || {};
-            const list = Array.isArray((data as any).workspaces) ? ((data as any).workspaces as Array<{ workspaceId: string }>) : [];
             const activeId = (data as any).activeWorkspaceId ? String((data as any).activeWorkspaceId) : null;
             if (activeId) activeWorkspaceId = activeId;
-            for (const ws of list) {
-                if (ws?.workspaceId) markWorkspaceDirty(ws.workspaceId, 'bootstrap');
-            }
         } catch (error) {
             log('bootstrap.grouping.failed', error instanceof Error ? error.message : String(error));
         }
@@ -310,7 +294,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const scope = tokenToScope.get(tabInfo.tabToken);
             if (scope) {
                 activeWorkspaceId = scope.workspaceId;
-                activeScopeTabId = scope.tabId;
             }
             await emitLifecycleAction('tab.activated', tabInfo.tabToken, {
                 source: 'extension.sw',
@@ -325,16 +308,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const removed = tabState.get(tabId);
         tabState.delete(tabId);
         if (activeTabId === tabId) activeTabId = null;
-            if (removed?.tabToken) {
-                const workspaceId = tokenToWorkspace.get(removed.tabToken) || null;
-                void emitLifecycleAction('tab.closed', removed.tabToken, {
-                    source: 'extension.sw',
-                    at: Date.now(),
+        if (removed?.tabToken) {
+            void emitLifecycleAction('tab.closed', removed.tabToken, {
+                source: 'extension.sw',
+                at: Date.now(),
             });
-            tokenToWorkspace.delete(removed.tabToken);
-                tokenToScope.delete(removed.tabToken);
-                if (workspaceId) markWorkspaceDirty(workspaceId, 'tabs.onRemoved');
-            }
+            tokenToScope.delete(removed.tabToken);
+        }
         options.onRefresh();
     };
 
@@ -362,13 +342,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             if (tabId == null) return;
             const tabToken = String(message.tabToken || '');
             upsertTab(tabId, tabToken, message.url || sender.tab?.url || '');
-            const scope = tokenToScope.get(tabToken);
-            if (scope) {
-                if (activeTabId === tabId) {
-                    activeWorkspaceId = scope.workspaceId;
-                    activeScopeTabId = scope.tabId;
+                const scope = tokenToScope.get(tabToken);
+                if (scope) {
+                    if (activeTabId === tabId) {
+                        activeWorkspaceId = scope.workspaceId;
+                    }
                 }
-            }
             sendResponse({ ok: true });
             return;
         }
@@ -417,7 +396,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 };
 
                 if (scope?.workspaceId) activeWorkspaceId = scope.workspaceId;
-                if (scope?.tabId) activeScopeTabId = scope.tabId;
 
                 const payload = await sendAction(scoped);
                 sendResponse(payload);
@@ -444,14 +422,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     upsertTab(senderTabId, tabToken, senderUrl);
                 }
 
-                const responseToken = responseTabToken || tabToken;
-                if (responseToken) {
-                    tokenToWorkspace.set(responseToken, String(effectiveWorkspaceId));
-                }
-
-                if (GROUP_TRIGGER_ACTIONS.has(action.type)) {
-                    markWorkspaceDirty(String(effectiveWorkspaceId), `action:${action.type}`);
-                }
             })().catch((error) => {
                 const message = error instanceof Error ? error.message : String(error);
                 try {

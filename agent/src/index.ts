@@ -19,6 +19,8 @@ import { resolveActionTarget, ActionTargetError } from './runtime/action_target'
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
 const PAGELESS_ACTIONS = new Set<string>(['workspace.list', 'record.list', 'tab.token.init']);
+const TAB_PING_TIMEOUT_MS = 45000;
+const TAB_PING_WATCHDOG_INTERVAL_MS = 5000;
 const REPLAY_OPTIONS = {
     clickDelayMs: 300,
     stepDelayMs: 900,
@@ -28,6 +30,8 @@ const NAV_DEDUPE_WINDOW_MS = 1200;
 
 const actionLog = getLogger('action');
 const log = (...args: unknown[]) => actionLog('[RPA:agent]', ...args);
+const logTabReportDebug = (stage: string, data: Record<string, unknown>) =>
+    actionLog('[RPA:tab.report]', { ts: Date.now(), stage, ...data });
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -79,7 +83,23 @@ const broadcastGroupDirty = (workspaceId: string, reason: string) => {
     });
 };
 
-const REPORT_GROUP_DIRTY_ACTIONS = new Set<string>(['tab.opened', 'tab.closed', 'tab.activated']);
+const REPORT_GROUP_DIRTY_ACTIONS = new Set<string>(['tab.opened', 'tab.report', 'tab.activated']);
+const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
+    'workspace.create',
+    'workspace.restore',
+    'tab.create',
+    'tab.opened',
+    'tab.report',
+    'tab.closed',
+]);
+const staleNotifiedTokens = new Set<string>();
+
+const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
+    broadcast({
+        event: 'state.sync',
+        data: { reason, ...(data || {}) },
+    });
+};
 
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
@@ -189,7 +209,10 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
 
     if (action.type === 'tab.opened') {
         const source = String(payload.source || '');
-        if (source === 'start_extension') {
+        const activeWorkspace = pageRegistry.getActiveWorkspace?.();
+        const hasAnyWorkspace = pageRegistry.listWorkspaces().length > 0;
+        const shouldTreatAsInitialStart = source === 'start_extension' && !activeWorkspace && !hasAnyWorkspace;
+        if (shouldTreatAsInitialStart) {
             pageRegistry.markOrphanKind(token, 'initial_start');
             return {
                 ok: true as const,
@@ -241,6 +264,14 @@ const handleAction = async (action: Action) => {
         scope: action.scope || null,
         urlHint: urlHint || null,
     });
+    if (action.type === 'tab.report') {
+        logTabReportDebug('agent.inbound', {
+            id: action.id,
+            tabToken: action.tabToken || action.scope?.tabToken || null,
+            scope: action.scope || null,
+            urlHint: urlHint || null,
+        });
+    }
 
     try {
         const target = resolveActionTarget(action, pageRegistry);
@@ -250,13 +281,7 @@ const handleAction = async (action: Action) => {
         if (PAGELESS_ACTIONS.has(action.type)) {
             return runPagelessAction(action);
         }
-        const page = await pageRegistry.resolvePage();
-        const token = pageRegistry.resolveTabToken();
-        const scope = pageRegistry.resolveScopeFromToken(token);
-        return runnerScope.run(scope.workspaceId, async () => {
-            actionLogger('action', { type: action.type, tabToken: token, id: action.id });
-            return executeAction(createActionContext(page, token), action);
-        });
+        return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing action target');
     } catch (error) {
         if (!(error instanceof ActionTargetError)) throw error;
 
@@ -276,29 +301,6 @@ const handleAction = async (action: Action) => {
         if (error.message === 'workspace scope not found for tabToken') {
             const orphanResult = await handleOrphanTokenAction(action, urlHint);
             if (orphanResult) return orphanResult as any;
-        }
-
-        if (action.type === 'play.start' && error.message === 'workspace scope not found for tabToken') {
-            const workspaces = pageRegistry.listWorkspaces();
-            const requestedWorkspaceId = action.scope?.workspaceId;
-            const requested = requestedWorkspaceId
-                ? workspaces.find((ws) => ws.workspaceId === requestedWorkspaceId)
-                : undefined;
-            const active = pageRegistry.getActiveWorkspace?.();
-            const fallbackWorkspace = requested || active || workspaces[0];
-            if (!fallbackWorkspace) {
-                return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found for replay');
-            }
-            const workspaceId = fallbackWorkspace.workspaceId;
-            const selectedTabId = await pageRegistry.createTab(workspaceId);
-            const selectedScope = { workspaceId, tabId: selectedTabId };
-            const fallbackToken = pageRegistry.resolveTabToken(selectedScope);
-            return runAction(
-                action,
-                { tabToken: fallbackToken, scope: selectedScope },
-                urlHint,
-                { fallback: 'replay-stale-token' },
-            );
         }
 
         return makeErr(error.code, error.message);
@@ -357,6 +359,15 @@ wss.on('connection', (socket) => {
 
                 const action = parseInboundAction(raw);
                 const response = await handleAction(action);
+                if (action.type === 'tab.report') {
+                    logTabReportDebug('agent.reply', {
+                        id: action.id,
+                        ok: response.ok,
+                        workspaceId: (response as any)?.data?.workspaceId || null,
+                        tabId: (response as any)?.data?.tabId || null,
+                        tabToken: (response as any)?.data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                    });
+                }
 
                 socket.send(
                     JSON.stringify({
@@ -381,8 +392,31 @@ wss.on('connection', (socket) => {
                     const data = response.data as any;
                     const workspaceId = String(data?.workspaceId || action.scope?.workspaceId || '');
                     if (workspaceId) {
+                        if (action.type === 'tab.report') {
+                            logTabReportDebug('agent.emit.group_dirty', {
+                                id: action.id,
+                                workspaceId,
+                                reason: `report:${action.type}`,
+                                tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                            });
+                        }
                         broadcastGroupDirty(workspaceId, `report:${action.type}`);
                     }
+                }
+                if (response.ok && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
+                    const data = response.data as any;
+                    if (action.type === 'tab.report') {
+                        logTabReportDebug('agent.emit.state_sync', {
+                            id: action.id,
+                            reason: `report:${action.type}`,
+                            workspaceId: data?.workspaceId || action.scope?.workspaceId || null,
+                            tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                        });
+                    }
+                    broadcastStateSync(`report:${action.type}`, {
+                        workspaceId: data?.workspaceId || action.scope?.workspaceId || null,
+                        tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                    });
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
@@ -394,6 +428,22 @@ wss.on('connection', (socket) => {
     });
     socket.on('close', () => wsClients.delete(socket));
 });
+
+setInterval(() => {
+    const staleTabs = pageRegistry.listTimedOutTokens(TAB_PING_TIMEOUT_MS, Date.now());
+    for (const stale of staleTabs) {
+        if (staleNotifiedTokens.has(stale.tabToken)) continue;
+        staleNotifiedTokens.add(stale.tabToken);
+        broadcastGroupDirty(stale.workspaceId, 'ping-timeout');
+        broadcastStateSync('ping-timeout', {
+            workspaceId: stale.workspaceId,
+            tabId: stale.tabId,
+            tabToken: stale.tabToken,
+            lastSeenAt: stale.lastSeenAt,
+        });
+        void pageRegistry.closeTokenPage(stale.tabToken);
+    }
+}, TAB_PING_WATCHDOG_INTERVAL_MS);
 
 (async () => {
     try {

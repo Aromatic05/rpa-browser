@@ -70,9 +70,10 @@ export const ensureTabTokenAsync = async () => {
     return tabToken;
 };
 
-export const bindHello = (tabToken: string) => {
+export const bindHello = (tabToken: string, onHello?: () => void) => {
     const sendHello = () => {
         void send.hello({ tabToken, url: location.href });
+        onHello?.();
     };
 
     // 监听历史与哈希变化，保证页面切换后也能通知 SW

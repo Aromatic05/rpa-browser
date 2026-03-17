@@ -26,6 +26,7 @@ type TabCreatePayload = { workspaceId?: string; startUrl?: string; waitUntil?: '
 type TabClosePayload = { workspaceId?: string; tabId: string };
 type TabSetActivePayload = { workspaceId?: string; tabId: string };
 type TabOpenedPayload = { source?: string; url?: string; title?: string; at?: number };
+type TabReportPayload = { source?: string; url?: string; title?: string; at?: number };
 type TabActivatedPayload = { source?: string; url?: string; at?: number };
 type TabClosedPayload = { source?: string; at?: number };
 type TabPingPayload = { source?: string; url?: string; title?: string; at?: number };
@@ -492,6 +493,40 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             reportedTitle: payload.title,
             reportedAt: payload.at,
         });
+    },
+    'tab.report': async (ctx, action) => {
+        const payload = (action.payload || {}) as TabReportPayload;
+        const touched = ctx.pageRegistry.touchTabToken?.(ctx.tabToken, payload.at);
+        if (!touched) {
+            logPageEvent('tab.report', {
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedUrl: payload.url,
+                reportedTitle: payload.title,
+                reportedAt: payload.at,
+                stale: true,
+            });
+            return makeOk({
+                tabToken: ctx.tabToken,
+                source: payload.source || 'unknown',
+                reportedUrl: payload.url,
+                reportedTitle: payload.title,
+                reportedAt: payload.at,
+                stale: true,
+            });
+        }
+        const output = {
+            workspaceId: touched.workspaceId,
+            tabId: touched.tabId,
+            tabToken: ctx.tabToken,
+            source: payload.source || 'unknown',
+            reportedUrl: payload.url,
+            reportedTitle: payload.title,
+            reportedAt: payload.at,
+        };
+        ctx.log('tab.report', output);
+        logPageEvent('tab.report', output);
+        return makeOk(output);
     },
     'tab.activated': async (ctx, action) => {
         const payload = (action.payload || {}) as TabActivatedPayload;

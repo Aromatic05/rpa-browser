@@ -62,12 +62,31 @@ const loadFloatingUI = (() => {
 
     // tabToken + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<string> | null = null;
+    const sendReport = async (tabToken?: string) => {
+        const token = tabToken || (await ensureToken());
+        const { send } = await loadSend();
+        await send.action({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: 'tab.report',
+            tabToken: token,
+            scope: { tabToken: token },
+            payload: {
+                source: 'extension.content',
+                url: location.href,
+                title: document.title,
+                at: Date.now(),
+            },
+        });
+    };
     const ensureToken = () => {
         if (!tokenReady) {
             tokenReady = (async () => {
                 const mod = await loadTokenBridge();
                 const token = await mod.ensureTabTokenAsync();
-                mod.bindHello(token);
+                mod.bindHello(token, () => {
+                    void sendReport(token);
+                });
                 return token;
             })();
         }
@@ -128,6 +147,7 @@ const loadFloatingUI = (() => {
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const tabToken = await ensureToken();
+        void sendReport(tabToken);
         startHeartbeat();
         uiHandle = mountFloatingUI({
             tabToken,

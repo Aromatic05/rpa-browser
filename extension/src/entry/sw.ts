@@ -28,7 +28,6 @@ const router = createCmdRouter({
             void send.toTab(active.id, MSG.REFRESH);
         });
     },
-    onEvent: (payload) => router.handleEvent(payload),
     logger: log,
 });
 
