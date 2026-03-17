@@ -232,10 +232,21 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
             (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
             (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
         if (!workspaceId) {
+            log('orphan.tab_opened.missing_workspace', {
+                id: action.id,
+                tabToken: token,
+                scope: action.scope || null,
+                payload: action.payload || null,
+            });
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
         }
         const scoped = pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId);
         if (!scoped) {
+            log('orphan.tab_opened.bind_failed', {
+                id: action.id,
+                tabToken: token,
+                workspaceId,
+            });
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to bind tab.opened to workspace');
         }
         return runAction(action, { tabToken: token, scope: scoped }, urlHint, { orphanClaim: true, byWindow: true });
@@ -248,6 +259,12 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     if (action.type === ACTION_TYPES.TAB_PING) {
         const source = String(payload.source || '');
         if (source !== 'extension.workspace.create') {
+            log('orphan.tab_ping.forbidden', {
+                id: action.id,
+                tabToken: token,
+                source,
+                payload: action.payload || null,
+            });
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.ping orphan claim is forbidden without window mapping');
         }
     }
@@ -264,6 +281,12 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     return withOrphanClaimLock(async () => {
         const scope = pageRegistry.claimOrphanToken(token);
         if (!scope) {
+            log('orphan.claim_failed', {
+                id: action.id,
+                tabToken: token,
+                type: action.type,
+                payload: action.payload || null,
+            });
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to claim orphan tab');
         }
         return runAction(action, { tabToken: token, scope }, urlHint, { orphanClaim: true });
