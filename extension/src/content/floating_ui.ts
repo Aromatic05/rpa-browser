@@ -134,11 +134,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     tabList.className = 'list';
     const tabActions = document.createElement('div');
     tabActions.className = 'row';
-    const newTabBtn = document.createElement('button');
-    newTabBtn.textContent = 'New Tab';
     const closeTabBtn = document.createElement('button');
     closeTabBtn.textContent = 'Close Tab';
-    tabActions.append(newTabBtn, closeTabBtn);
+    tabActions.append(closeTabBtn);
     tabSection.append(tabTitle, tabList, tabActions);
 
     const out = document.createElement('pre');
@@ -205,7 +203,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     const createWithStartUrl = (
-        type: 'workspace.create' | 'tab.create',
+        type: 'workspace.create',
         args: Record<string, unknown>,
         onDone?: (payload: any) => void,
     ) => {
@@ -293,21 +291,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             refreshWorkspaces();
             refreshTabs();
         });
-    });
-
-    newTabBtn.addEventListener('click', () => {
-        if (activeWorkspaceId) {
-            createWithStartUrl('tab.create', { workspaceId: activeWorkspaceId }, (payload) => {
-                activeTabId = payload?.data?.tabId || activeTabId;
-                refreshTabs();
-            });
-        } else {
-            createWithStartUrl('tab.create', {}, (payload) => {
-                activeWorkspaceId = payload?.data?.workspaceId || activeWorkspaceId;
-                activeTabId = payload?.data?.tabId || activeTabId;
-                refreshTabs();
-            });
-        }
     });
 
     closeTabBtn.addEventListener('click', () => {
