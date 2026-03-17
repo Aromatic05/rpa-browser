@@ -18,7 +18,7 @@ import { resolveActionTarget, ActionTargetError } from './runtime/action_target'
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
-const PAGELESS_ACTIONS = new Set<string>(['workspace.list', 'record.list']);
+const PAGELESS_ACTIONS = new Set<string>(['workspace.list', 'record.list', 'tab.token.init']);
 const REPLAY_OPTIONS = {
     clickDelayMs: 300,
     stepDelayMs: 900,
@@ -196,12 +196,12 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
         return runPagelessAction(action, token);
     }
 
-    if (action.type !== 'tab.ping') return null;
-    const pingUrl = typeof payload.url === 'string' ? payload.url : '';
-    if (!isRealWebUrl(pingUrl)) {
+    const maybeUrl =
+        (typeof payload.url === 'string' ? payload.url : '') || pageRegistry.getTokenPageUrl(token) || '';
+    if (!isRealWebUrl(maybeUrl)) {
         return {
             ok: true as const,
-            data: { tabToken: token, orphan: true, pending: true, reportedUrl: pingUrl || null },
+            data: { tabToken: token, orphan: true, pending: true, reportedUrl: maybeUrl || null },
         };
     }
 

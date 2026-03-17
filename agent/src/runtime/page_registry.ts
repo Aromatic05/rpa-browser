@@ -63,6 +63,7 @@ export type PageRegistry = {
         tabToken: string,
         mode: 'create_workspace' | 'active_or_create',
     ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    getTokenPageUrl: (tabToken: string) => string | null;
     closeTokenPage: (tabToken: string) => Promise<void>;
 };
 
@@ -462,6 +463,12 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return created;
     };
 
+    const getTokenPageUrl = (tabToken: string) => {
+        const page = tokenToPage.get(tabToken);
+        if (!page || page.isClosed()) return null;
+        return page.url();
+    };
+
     const closeTokenPage = async (tabToken: string) => {
         const page = tokenToPage.get(tabToken);
         if (!page || page.isClosed()) {
@@ -495,6 +502,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         markOrphanKind,
         getOrphanKind,
         claimOrphanToken,
+        getTokenPageUrl,
         closeTokenPage,
     };
 };

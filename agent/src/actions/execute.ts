@@ -64,7 +64,13 @@ export const executeAction = async (ctx: ActionContext, action: Action): Promise
     if (!handler) {
         return makeErr(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
     }
-    ctx.log('execute', { type: action.type, tabToken: ctx.tabToken, id: action.id, pageUrl: ctx.page.url() });
+    let pageUrl: string | null = null;
+    try {
+        pageUrl = typeof (ctx.page as any)?.url === 'function' ? String((ctx.page as any).url()) : null;
+    } catch {
+        pageUrl = null;
+    }
+    ctx.log('execute', { type: action.type, tabToken: ctx.tabToken, id: action.id, pageUrl });
     try {
         const result = await handler(ctx, action);
         if (result.ok) return makeOk(result.data);

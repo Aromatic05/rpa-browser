@@ -263,6 +263,12 @@ pnpm test:extension
 
 Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 重绑”。
 
+### 9.0 token 单一真源
+
+- `tabToken` 只允许由 agent 生成（`tab.token.init`）。
+- start/content 侧禁止本地 UUID 生成，只可读取已有 token 或向 agent 请求初始化。
+- token 丢失视为异常状态，必须重新向 agent 初始化，不做 token 改写重绑。
+
 ### 9.1 无主标签页定义
 
 - token 已存在于运行时，但 `token -> (workspaceId, tabId)` 尚未建立。

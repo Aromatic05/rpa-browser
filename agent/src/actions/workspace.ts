@@ -86,6 +86,9 @@ const ensureRecorderForTabIfRecording = async (
 };
 
 export const workspaceHandlers: Record<string, ActionHandler> = {
+    'tab.token.init': async (_ctx, _action) => {
+        return makeOk({ tabToken: crypto.randomUUID() });
+    },
     'workspace.list': async (ctx, _action) => {
         const list = ctx.pageRegistry.listWorkspaces();
         const active = ctx.pageRegistry.getActiveWorkspace?.();
