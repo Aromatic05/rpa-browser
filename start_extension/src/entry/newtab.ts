@@ -180,9 +180,33 @@ const refreshRestoreList = async () => {
     if (restoreStatusEl) restoreStatusEl.textContent = `ready (${items.length})`;
 };
 
+const bootstrapWorkspaceBinding = async (tabToken: string) => {
+    const listed = await sendAction('workspace.list', {
+        source: 'start_extension',
+        at: Date.now(),
+    });
+    const listedWorkspaceId = listed?.ok ? String(listed?.data?.activeWorkspaceId || '') : '';
+    const workspaceId = listedWorkspaceId || undefined;
+    const opened = await sendAction(
+        'tab.opened',
+        {
+            source: 'start_extension',
+            url: location.href,
+            title: document.title,
+            at: Date.now(),
+            ...(workspaceId ? { workspaceId } : {}),
+        },
+        workspaceId ? { tabToken, workspaceId } : { tabToken },
+    );
+    if (!opened?.ok) {
+        throw new Error(opened?.error?.message || 'tab.opened bootstrap failed');
+    }
+};
+
 void (async () => {
     try {
         const token = await ensureTabTokenFromAgent();
+        await bootstrapWorkspaceBinding(token);
         if (tokenEl) tokenEl.textContent = `${token.slice(0, 8)}...`;
         if (urlEl) urlEl.textContent = location.href;
         setStatus('connected', true);

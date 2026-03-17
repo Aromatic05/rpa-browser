@@ -58,7 +58,7 @@ export type PageRegistry = {
         tabToken: string,
         workspaceId: WorkspaceId,
     ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
-    claimOrphanToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    claimWorkspaceForOrphanToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     moveTokenToWorkspace: (tabToken: string, workspaceId: WorkspaceId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     getTokenPageUrl: (tabToken: string) => string | null;
     listTimedOutTokens: (
@@ -461,7 +461,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return attached;
     };
 
-    const claimOrphanToken = (tabToken: string) => {
+    const claimWorkspaceForOrphanToken = (tabToken: string) => {
         const existing = tokenToTab.get(tabToken);
         if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
         const page = tokenToPage.get(tabToken);
@@ -520,7 +520,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         touchTabToken,
         hasScopeForToken,
         claimOrphanTokenToWorkspace,
-        claimOrphanToken,
+        claimWorkspaceForOrphanToken,
         moveTokenToWorkspace,
         getTokenPageUrl,
         listTimedOutTokens,

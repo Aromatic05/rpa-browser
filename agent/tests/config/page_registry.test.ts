@@ -26,8 +26,8 @@ test('bindPage keeps token orphan until explicit claim', async () => {
     await pageRegistry.bindPage(createMockPage('https://example.com/b'), 'token-b');
     assert.equal(pageRegistry.listWorkspaces().length, 0);
 
-    const claimedA = pageRegistry.claimOrphanToken('token-a');
-    const claimedB = pageRegistry.claimOrphanToken('token-b');
+    const claimedA = pageRegistry.claimWorkspaceForOrphanToken('token-a');
+    const claimedB = pageRegistry.claimWorkspaceForOrphanToken('token-b');
     assert.ok(claimedA);
     assert.ok(claimedB);
     assert.notEqual(claimedA?.workspaceId, claimedB?.workspaceId);
@@ -44,7 +44,7 @@ test('touchTabToken updates tab timestamp for existing token', async () => {
     });
 
     await pageRegistry.bindPage(createMockPage('https://example.com/a'), 'token-touch');
-    const claimed = pageRegistry.claimOrphanToken('token-touch');
+    const claimed = pageRegistry.claimWorkspaceForOrphanToken('token-touch');
     assert.ok(claimed);
     const scope = pageRegistry.resolveScopeFromToken('token-touch');
     const before = await pageRegistry.listTabs(scope.workspaceId);

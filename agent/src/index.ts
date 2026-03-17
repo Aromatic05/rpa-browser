@@ -231,7 +231,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
         const workspaceId =
             (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
             (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
-        if (!workspaceId) {
+        if (!workspaceId && pageRegistry.listWorkspaces().length > 0) {
             log('orphan.tab_opened.missing_workspace', {
                 id: action.id,
                 tabToken: token,
@@ -239,6 +239,20 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
                 payload: action.payload || null,
             });
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
+        }
+        if (!workspaceId) {
+            const created = pageRegistry.claimWorkspaceForOrphanToken(token);
+            if (!created) {
+                log('orphan.tab_opened.init_failed', {
+                    id: action.id,
+                    tabToken: token,
+                });
+                return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to create initial workspace from tab.opened');
+            }
+            return runAction(action, { tabToken: token, scope: created }, urlHint, {
+                orphanClaim: true,
+                initialWorkspace: true,
+            });
         }
         const scoped = pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId);
         if (!scoped) {
@@ -283,7 +297,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     }
 
     return withOrphanClaimLock(async () => {
-        const scope = pageRegistry.claimOrphanToken(token);
+        const scope = pageRegistry.claimWorkspaceForOrphanToken(token);
         if (!scope) {
             log('orphan.claim_failed', {
                 id: action.id,
@@ -435,6 +449,32 @@ wss.on('connection', (socket) => {
                             : {},
                         at: Date.now(),
                     });
+                    if (action.type === ACTION_TYPES.TAB_OPENED) {
+                        const tabToken =
+                            (data?.tabToken as string | undefined) ||
+                            action.tabToken ||
+                            action.scope?.tabToken ||
+                            null;
+                        if (tabToken && data?.workspaceId && data?.tabId) {
+                            broadcast({
+                                v: 1,
+                                id: crypto.randomUUID(),
+                                type: ACTION_TYPES.TAB_BOUND,
+                                payload: {
+                                    workspaceId: String(data.workspaceId),
+                                    tabId: String(data.tabId),
+                                    tabToken: String(tabToken),
+                                    sourceType: action.type,
+                                },
+                                scope: {
+                                    workspaceId: String(data.workspaceId),
+                                    tabId: String(data.tabId),
+                                    tabToken: String(tabToken),
+                                },
+                                at: Date.now(),
+                            });
+                        }
+                    }
                 }
                 if (response.ok && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
                     const data = response.data as any;
