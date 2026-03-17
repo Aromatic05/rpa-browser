@@ -292,6 +292,7 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 
 - extension 使用 `windowId -> workspaceId` 运行时映射管理工作区归属。
 - `chrome.windows.onFocusChanged` 触发 `workspace.setActive` 同步。
+- `chrome.tabs.onCreated` 必须携带 `windowId` 并执行 `tab.opened` 归属（按窗口映射绑定，不允许自动新建 workspace）。
 - `chrome.tabs.onAttached` 负责跨窗口拖拽时的 `tab.reassign` 重分配。
 - `workspace.create` 在 extension 侧通过 `chrome.windows.create` 强制创建新窗口，再用首 tab 的 `tab.ping` 完成 workspace 绑定。
 

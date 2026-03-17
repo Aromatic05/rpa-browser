@@ -110,6 +110,10 @@
 
 用途：`start_extension` 新标签页打开时上报，通知后端将当前 `tabToken` 对齐到 workspace 活跃上下文并记录 action 日志。
 
+约束补充：
+- 当 `tabToken` 尚未绑定 workspace 时，`tab.opened` 必须携带 `workspaceId`（来自窗口映射）；缺失会返回 `ERR_BAD_ARGS`。
+- `tab.opened` 不负责自动创建 workspace。
+
 请求示例：
 
 ```json
@@ -157,6 +161,7 @@
 
 - `tab.ping`：content/newtab 周期上报存活信息，用于 token 同步和断连恢复（`lastSeen` 语义）。
 - 若 token 可解析，返回对应 `workspaceId/tabId`；否则返回 `stale: true`。
+- orphan `tab.ping` 默认禁止 claim 新 workspace；仅 `source=extension.workspace.create` 允许用于新建 workspace 首 tab 绑定。
 
 ### 2.10 `workspace.save` / `workspace.restore` 合同
 
