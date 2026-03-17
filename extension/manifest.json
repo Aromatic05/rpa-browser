@@ -5,9 +5,6 @@
     "description": "MV3 tabToken demo with agent recording.",
     "permissions": ["storage", "activeTab", "scripting", "tabs", "windows"],
     "host_permissions": ["<all_urls>"],
-    "side_panel": {
-        "default_path": "panel.html"
-    },
     "action": {
         "default_title": "RPA Demo"
     },

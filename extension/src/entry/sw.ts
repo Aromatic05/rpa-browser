@@ -21,7 +21,6 @@ const wsClient = createWsClient({
 const router = createCmdRouter({
     wsClient,
     onRefresh: () => {
-        void send.refresh();
         chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
             const active = tabs[0];
             if (!active?.id) return;

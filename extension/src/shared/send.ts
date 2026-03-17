@@ -77,19 +77,9 @@ export const send = {
         ),
 
     /**
-     * 向 SW 请求 tabToken（content -> SW）。
-     */
-    getTabToken: () => runtimeRequest<{ ok: boolean; tabToken?: string; url?: string }>({ type: MSG.GET_TOKEN }),
-
-    /**
      * 发送 Action（content/panel -> SW）。
      */
     action: <T = any>(action: any) => runtimeRequest<T>({ type: MSG.ACTION, action }),
-
-    /**
-     * 刷新事件（SW -> content/panel 用 broadcast 发送）。
-     */
-    refresh: () => runtimeRequest<Record<string, never>>({ type: MSG.REFRESH }),
 
     /**
      * 向指定 tab 发送消息（SW -> content）。
@@ -97,29 +87,4 @@ export const send = {
     toTab: <T = any>(tabId: number, type: string, payload?: any, opts?: { timeoutMs?: number }) =>
         tabRequest<T>(tabId, { type, ...payload }, opts?.timeoutMs),
 
-    /**
-     * 广播到所有 tab（SW -> content）。
-     * - 对没有 content script 的 tab 忽略错误，并计入 failed。
-     */
-    broadcast: async <T = any>(
-        type: string,
-        payload?: any,
-        opts?: { timeoutMs?: number },
-    ): Promise<RpcResult<{ sent: number; failed: number }>> => {
-        const tabs = await chrome.tabs.query({});
-        let sent = 0;
-        let failed = 0;
-        for (const tab of tabs) {
-            if (!tab.id) continue;
-            const result = await tabRequest<T>(tab.id, { type, ...payload }, opts?.timeoutMs);
-            if (result.ok) {
-                sent += 1;
-            } else if (result.error.code === 'NO_RECEIVER') {
-                failed += 1;
-            } else {
-                failed += 1;
-            }
-        }
-        return { ok: true, data: { sent, failed } };
-    },
 };
