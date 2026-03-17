@@ -15,10 +15,16 @@ import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { resolveActionTarget, ActionTargetError } from './runtime/action_target';
+import { ACTION_TYPES, isActionType } from './actions/action_types';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
-const PAGELESS_ACTIONS = new Set<string>(['workspace.list', 'record.list', 'tab.token.init']);
+const PAGELESS_ACTIONS = new Set<string>([
+    ACTION_TYPES.WORKSPACE_LIST,
+    ACTION_TYPES.RECORD_LIST,
+    ACTION_TYPES.TAB_INIT,
+    ACTION_TYPES.WINDOW_CLOSED,
+]);
 const TAB_PING_TIMEOUT_MS = 45000;
 const TAB_PING_WATCHDOG_INTERVAL_MS = 5000;
 const REPLAY_OPTIONS = {
@@ -64,8 +70,8 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const wsClients = new Set<WebSocket>();
-const broadcast = (event: { event: string; data?: Record<string, unknown> }) => {
-    const payload = JSON.stringify({ type: 'event', ...event });
+const broadcast = (action: Action) => {
+    const payload = JSON.stringify(action);
     wsClients.forEach((client) => {
         try {
             if (client.readyState === client.OPEN) client.send(payload);
@@ -75,29 +81,25 @@ const broadcast = (event: { event: string; data?: Record<string, unknown> }) => 
     });
 };
 
-const broadcastGroupDirty = (workspaceId: string, reason: string) => {
-    if (!workspaceId) return;
-    broadcast({
-        event: 'group.dirty',
-        data: { workspaceId, reason },
-    });
-};
-
-const REPORT_GROUP_DIRTY_ACTIONS = new Set<string>(['tab.opened', 'tab.report', 'tab.activated']);
 const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
-    'workspace.create',
-    'workspace.restore',
-    'tab.create',
-    'tab.opened',
-    'tab.report',
-    'tab.closed',
+    ACTION_TYPES.WORKSPACE_CREATE,
+    ACTION_TYPES.WORKSPACE_RESTORE,
+    ACTION_TYPES.TAB_CREATE,
+    ACTION_TYPES.TAB_OPENED,
+    ACTION_TYPES.TAB_REPORTED,
+    ACTION_TYPES.TAB_CLOSED,
+    ACTION_TYPES.TAB_REASSIGN,
 ]);
 const staleNotifiedTokens = new Set<string>();
 
 const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
     broadcast({
-        event: 'state.sync',
-        data: { reason, ...(data || {}) },
+        v: 1,
+        id: crypto.randomUUID(),
+        type: ACTION_TYPES.WORKSPACE_SYNC,
+        payload: { reason, ...(data || {}) },
+        scope: {},
+        at: Date.now(),
     });
 };
 
@@ -112,10 +114,13 @@ const pageRegistry = createPageRegistry({
         try {
             const scope = pageRegistry.resolveScopeFromToken(token);
             broadcast({
-                event: 'page.bound',
-                data: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken: token, url: page.url() },
+                v: 1,
+                id: crypto.randomUUID(),
+                type: ACTION_TYPES.TAB_BOUND,
+                payload: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken: token, url: page.url() },
+                scope: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken: token },
+                at: Date.now(),
             });
-            broadcastGroupDirty(scope.workspaceId, 'page.bound');
         } catch {
             // ignore
         }
@@ -207,7 +212,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     if (!token) return null;
     const payload = (action.payload || {}) as Record<string, unknown>;
 
-    if (action.type === 'tab.opened') {
+    if (action.type === ACTION_TYPES.TAB_OPENED) {
         const source = String(payload.source || '');
         const activeWorkspace = pageRegistry.getActiveWorkspace?.();
         const hasAnyWorkspace = pageRegistry.listWorkspaces().length > 0;
@@ -226,7 +231,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
         };
     }
 
-    if (action.type === 'workspace.restore') {
+    if (action.type === ACTION_TYPES.WORKSPACE_RESTORE) {
         return runPagelessAction(action, token);
     }
 
@@ -264,7 +269,7 @@ const handleAction = async (action: Action) => {
         scope: action.scope || null,
         urlHint: urlHint || null,
     });
-    if (action.type === 'tab.report') {
+    if (action.type === ACTION_TYPES.TAB_REPORTED) {
         logTabReportDebug('agent.inbound', {
             id: action.id,
             tabToken: action.tabToken || action.scope?.tabToken || null,
@@ -308,13 +313,14 @@ const handleAction = async (action: Action) => {
 };
 
 const isMutatingAction = (type: string) =>
-    type === 'workspace.create' ||
-    type === 'workspace.restore' ||
-    type === 'workspace.setActive' ||
-    type === 'tab.create' ||
-    type === 'tab.setActive' ||
-    type === 'tab.close' ||
-    type === 'tab.closed';
+    type === ACTION_TYPES.WORKSPACE_CREATE ||
+    type === ACTION_TYPES.WORKSPACE_RESTORE ||
+    type === ACTION_TYPES.WORKSPACE_SET_ACTIVE ||
+    type === ACTION_TYPES.TAB_CREATE ||
+    type === ACTION_TYPES.TAB_SET_ACTIVE ||
+    type === ACTION_TYPES.TAB_CLOSE ||
+    type === ACTION_TYPES.TAB_CLOSED ||
+    type === ACTION_TYPES.TAB_REASSIGN;
 
 const parseInboundAction = (raw: unknown): Action => {
     if (!raw || typeof raw !== 'object') {
@@ -323,6 +329,9 @@ const parseInboundAction = (raw: unknown): Action => {
     const rec = raw as Record<string, unknown>;
     if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
         throw new Error('invalid action: missing or invalid fields');
+    }
+    if (!isActionType(rec.type)) {
+        throw new Error(`invalid action: unsupported type '${String(rec.type)}'`);
     }
     return rec as Action;
 };
@@ -359,7 +368,7 @@ wss.on('connection', (socket) => {
 
                 const action = parseInboundAction(raw);
                 const response = await handleAction(action);
-                if (action.type === 'tab.report') {
+                if (action.type === ACTION_TYPES.TAB_REPORTED) {
                     logTabReportDebug('agent.reply', {
                         id: action.id,
                         ok: response.ok,
@@ -380,32 +389,19 @@ wss.on('connection', (socket) => {
                 if (response.ok && isMutatingAction(action.type)) {
                     const data = response.data as any;
                     broadcast({
-                        event: 'workspace.changed',
-                        data: { workspaceId: data?.workspaceId, tabId: data?.tabId, type: action.type },
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: ACTION_TYPES.WORKSPACE_CHANGED,
+                        payload: { workspaceId: data?.workspaceId, tabId: data?.tabId, sourceType: action.type },
+                        scope: data?.workspaceId
+                            ? { workspaceId: String(data.workspaceId), ...(data?.tabId ? { tabId: String(data.tabId) } : {}) }
+                            : {},
+                        at: Date.now(),
                     });
-                    if (data?.workspaceId) {
-                        broadcastGroupDirty(String(data.workspaceId), `action:${action.type}`);
-                    }
-                }
-
-                if (response.ok && REPORT_GROUP_DIRTY_ACTIONS.has(action.type)) {
-                    const data = response.data as any;
-                    const workspaceId = String(data?.workspaceId || action.scope?.workspaceId || '');
-                    if (workspaceId) {
-                        if (action.type === 'tab.report') {
-                            logTabReportDebug('agent.emit.group_dirty', {
-                                id: action.id,
-                                workspaceId,
-                                reason: `report:${action.type}`,
-                                tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
-                            });
-                        }
-                        broadcastGroupDirty(workspaceId, `report:${action.type}`);
-                    }
                 }
                 if (response.ok && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
                     const data = response.data as any;
-                    if (action.type === 'tab.report') {
+                    if (action.type === ACTION_TYPES.TAB_REPORTED) {
                         logTabReportDebug('agent.emit.state_sync', {
                             id: action.id,
                             reason: `report:${action.type}`,
@@ -434,7 +430,6 @@ setInterval(() => {
     for (const stale of staleTabs) {
         if (staleNotifiedTokens.has(stale.tabToken)) continue;
         staleNotifiedTokens.add(stale.tabToken);
-        broadcastGroupDirty(stale.workspaceId, 'ping-timeout');
         broadcastStateSync('ping-timeout', {
             workspaceId: stale.workspaceId,
             tabId: stale.tabId,

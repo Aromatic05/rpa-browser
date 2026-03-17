@@ -6,6 +6,8 @@
  * - 与 agent 侧协议兼容，字段名保持一致（如 workspaceId/tabId/tabToken）。
  */
 
+import type { ActionType } from './action_types.js';
+
 export type WorkspaceId = string;
 export type TabId = string;
 
@@ -19,7 +21,7 @@ export type ActionScope = {
     tabToken?: string;
 };
 
-export type Action<T extends string = string, P = unknown> = {
+export type Action<T extends string = ActionType, P = unknown> = {
     v: 1;
     id: string;
     type: T;
@@ -60,9 +62,6 @@ export type PanelState = {
 
 export type WorkspaceMeta = {
     displayName: string;
-    groupId?: number;
-    color?: string;
-    tabIds?: number[];
     createdAt: number;
     updatedAt: number;
 };
@@ -71,12 +70,6 @@ export type TabMeta = {
     displayName: string;
     createdAt: number;
     updatedAt: number;
-};
-
-export type WsEventPayload = {
-    type: 'event';
-    event: string;
-    data?: Record<string, unknown>;
 };
 
 export type WsActionReply = {

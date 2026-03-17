@@ -49,7 +49,7 @@ export const ensureTabTokenAsync = async () => {
         }>({
             v: 1,
             id: crypto.randomUUID(),
-            type: 'tab.token.init',
+            type: 'tab.init',
             payload: {
                 source: 'extension.content',
                 url: location.href,

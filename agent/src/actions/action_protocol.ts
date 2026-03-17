@@ -1,4 +1,5 @@
 import type { StepUnion } from '../runner/steps/types';
+import type { ActionType } from './action_types';
 
 /**
  * Action 协议：WS 唯一协议单元。
@@ -14,7 +15,7 @@ export type ActionScope = {
     tabToken?: string;
 };
 
-export type Action<T extends string = string, P = unknown> = {
+export type Action<T extends string = ActionType, P = unknown> = {
     v: 1;
     id: string;
     type: T;

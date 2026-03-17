@@ -39,7 +39,8 @@
 - `v` 必须为 `1`
 - `id` 必须为非空字符串
 - `type` 必须为非空字符串
-- 当 `tabToken` 存在时，`scope.workspaceId/tabId` 必须与该 token 解析结果一致；冲突会返回 `ERR_BAD_ARGS`
+- `type` 必须在 ActionType 映射表中
+- 当 `tabToken` 存在时，`scope.workspaceId/tabId` 必须与该 token 解析结果一致；冲突返回 `ERR_BAD_ARGS`
 
 代码来源：`agent/src/actions/action_protocol.ts`、`agent/src/index.ts`。
 
@@ -57,29 +58,55 @@
 { "type": "error", "replyTo": "<id>", "payload": { "ok": false, "error": { "code": "ERR_*", "message": "...", "details": {} } } }
 ```
 
-### 2.3 广播事件
+### 2.3 广播结构（统一 Action）
 
-当前 `agent/src/index.ts` 会广播：
-
-- `workspace.changed`
-- `page.bound`
-
-示例：
+当前广播不再使用 `{"type":"event"}`，统一为标准 Action：
 
 ```json
-{ "type": "event", "event": "workspace.changed", "data": { "workspaceId": "...", "tabId": "...", "type": "tab.create" } }
+{
+  "v": 1,
+  "id": "evt-xxx",
+  "type": "workspace.changed",
+  "payload": { "workspaceId": "ws-1", "tabId": "tab-1", "sourceType": "tab.create" },
+  "scope": { "workspaceId": "ws-1", "tabId": "tab-1" },
+  "at": 1710000000000
+}
 ```
+
+已实现广播类型：
+
+- `workspace.changed`
+- `workspace.sync`
+- `tab.bound`
 
 ### 2.4 支持的 action types
 
 当前 action handler 来自：
 
-- workspace：`workspace.list`、`workspace.create`、`workspace.setActive`、`workspace.save`、`workspace.restore`
-- tab：`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`、`tab.activated`、`tab.closed`、`tab.ping`
+- workspace：`workspace.list`、`workspace.create`、`workspace.setActive`、`workspace.save`、`workspace.restore`、`workspace.changed`、`workspace.sync`
+- window：`window.focused`、`window.closed`
+- tab：`tab.init`、`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`、`tab.report`、`tab.activated`、`tab.closed`、`tab.ping`、`tab.bound`、`tab.reassign`
 - record：`record.start`、`record.stop`、`record.get`、`record.clear`、`record.event`
 - play：`play.start`、`play.stop`
+- task：`task.run.start`、`task.run.push`、`task.run.poll`、`task.run.checkpoint`、`task.run.halt`、`task.run.suspend`、`task.run.continue`、`task.run.flush`、`task.run.resume`
 
 代码来源：`agent/src/actions/workspace.ts`、`agent/src/actions/recording.ts`。
+
+### 2.5 ActionType 对照表（核心域）
+
+| Domain | Type | Payload |
+| --- | --- | --- |
+| `workspace.*` | `workspace.list` | `{}` |
+| `workspace.*` | `workspace.create` | `{ startUrl?: string, waitUntil?: 'domcontentloaded' \\| 'load' \\| 'networkidle' }` |
+| `workspace.*` | `workspace.setActive` | `{ workspaceId: string }` |
+| `workspace.*` | `workspace.save` | `{ workspaceId?: string }` |
+| `workspace.*` | `workspace.restore` | `{ workspaceId: string }` |
+| `workspace.*` | `workspace.changed` | `{ workspaceId?: string, tabId?: string, sourceType?: string }` |
+| `workspace.*` | `workspace.sync` | `{ reason: string, workspaceId?: string, tabId?: string, tabToken?: string }` |
+| `window.*` | `window.focused` | `{ source: string, windowId: number, workspaceId?: string, at: number }` |
+| `window.*` | `window.closed` | `{ source: string, windowId: number, workspaceId?: string, at: number }` |
+| `tab.*` | `tab.init` | `{ source?: string, url?: string, at?: number }` |
+| `tab.*` | `tab.reassign` | `{ workspaceId: string, source?: string, windowId?: number, at?: number }` |
 
 ### 2.6 `tab.opened` 合同
 
@@ -118,17 +145,22 @@
 }
 ```
 
-### 2.7 `tab.activated` / `tab.closed` 合同
+### 2.7 `tab.init` 合同
+
+- `tab.init`：统一 token 初始化握手（替代 `tab.token.init`）。
+- 返回：`{ tabToken: string }`。
+
+### 2.8 `tab.activated` / `tab.closed` 合同
 
 - `tab.activated`：扩展侧检测到激活 tab 变化后上报，用于 runner 同步 active workspace/tab。
 - `tab.closed`：扩展侧检测到 tab 关闭后上报，用于记录生命周期日志；若 token 已失效会返回 `stale: true`。
 
-### 2.8 `tab.ping` 合同
+### 2.9 `tab.ping` 合同
 
 - `tab.ping`：content/newtab 周期上报存活信息，用于 token 同步和断连恢复（`lastSeen` 语义）。
 - 若 token 可解析，返回对应 `workspaceId/tabId`；否则返回 `stale: true`。
 
-### 2.9 `workspace.save` / `workspace.restore` 合同
+### 2.10 `workspace.save` / `workspace.restore` 合同
 
 - `workspace.save`：将当前（或指定）workspace 保存为可恢复快照。
 - 快照内容：
@@ -137,7 +169,7 @@
   - `recording.manifest`（去除 `tabs[].tabToken`）
 - `workspace.restore`：仅恢复 workspace/tab 与录制上下文；不自动触发 `play.start`。
 
-### 2.5 Action 错误码
+### 2.11 Action 错误码
 
 ```text
 ERR_TIMEOUT

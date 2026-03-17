@@ -131,7 +131,7 @@ const sendAction = async (type: string, payload: Record<string, unknown> = {}, s
 const ensureTabTokenFromAgent = async () => {
     let token = ensureTabToken();
     if (!token) {
-        const initialized = await sendAction('tab.token.init', {
+        const initialized = await sendAction('tab.init', {
             source: 'start_extension',
             url: location.href,
             at: Date.now(),
