@@ -173,6 +173,16 @@ const createActionContext = (page: any, tabToken: string): ActionContext => {
 };
 
 const isRealWebUrl = (url?: string) => !!url && (url.startsWith('http://') || url.startsWith('https://'));
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const retryClaim = async <T>(fn: () => T | null, attempts = 12, intervalMs = 80): Promise<T | null> => {
+    for (let i = 0; i < attempts; i += 1) {
+        const claimed = fn();
+        if (claimed) return claimed;
+        if (i < attempts - 1) await sleep(intervalMs);
+    }
+    return null;
+};
 
 const runAction = async (
     action: Action,
@@ -241,7 +251,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
         }
         if (!workspaceId) {
-            const created = pageRegistry.claimWorkspaceForOrphanToken(token);
+            const created = await retryClaim(() => pageRegistry.claimWorkspaceForOrphanToken(token));
             if (!created) {
                 log('orphan.tab_opened.init_failed', {
                     id: action.id,
@@ -254,7 +264,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
                 initialWorkspace: true,
             });
         }
-        const scoped = pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId);
+        const scoped = await retryClaim(() => pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId));
         if (!scoped) {
             log('orphan.tab_opened.bind_failed', {
                 id: action.id,
@@ -297,7 +307,7 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     }
 
     return withOrphanClaimLock(async () => {
-        const scope = pageRegistry.claimWorkspaceForOrphanToken(token);
+        const scope = await retryClaim(() => pageRegistry.claimWorkspaceForOrphanToken(token));
         if (!scope) {
             log('orphan.claim_failed', {
                 id: action.id,
