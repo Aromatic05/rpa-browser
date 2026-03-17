@@ -180,19 +180,18 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         onResponse?.(response);
     };
 
-    const DEFAULT_URL = 'chrome://newtab/';
-
     const normalizeMockBaseUrl = (raw?: string) => {
         const value = (raw || '').trim();
-        if (!value) return DEFAULT_URL;
+        if (!value) return '';
         if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
-            return value;
+            if (value.startsWith('http://') || value.startsWith('https://')) return value;
+            return '';
         }
         try {
             const parsed = new URL(value);
-            return parsed.toString();
+            return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : '';
         } catch {
-            return DEFAULT_URL;
+            return '';
         }
     };
 
@@ -208,9 +207,10 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         onDone?: (payload: any) => void,
     ) => {
         getMockStartUrl((startPageUrl) => {
-            void sendPanelAction(type, { ...args, startUrl: startPageUrl }, undefined, (payload) => {
+            const payloadArgs = startPageUrl ? { ...args, startUrl: startPageUrl } : { ...args };
+            void sendPanelAction(type, payloadArgs, undefined, (payload) => {
                 if (payload?.ok === false) {
-                    render({ ok: false, error: `Start page unreachable: ${startPageUrl}` });
+                    render({ ok: false, error: payload?.error || 'workspace.create failed' });
                 }
                 onDone?.(payload);
             });
