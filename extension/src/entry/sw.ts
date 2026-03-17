@@ -14,7 +14,7 @@ import { createCmdRouter } from '../background/cmd_router.js';
 const log = createLogger('sw');
 
 const wsClient = createWsClient({
-    onEvent: (payload) => router.handleEvent(payload),
+    onAction: (action) => router.handleInboundAction(action),
     logger: log,
 });
 
@@ -31,8 +31,7 @@ const router = createCmdRouter({
     logger: log,
 });
 
-// Eager bootstrap: avoid missing early page.bound events before SW establishes WS traffic.
-void router.bootstrapGrouping();
+void router.bootstrapState();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) =>
     router.handleMessage(message as any, sender, sendResponse),
@@ -40,7 +39,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) =>
 
 chrome.tabs.onActivated.addListener((info) => router.onActivated(info));
 chrome.tabs.onRemoved.addListener((tabId) => router.onRemoved(tabId));
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => router.onUpdated(tabId, changeInfo));
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => router.onUpdated(tabId, changeInfo, tab));
+chrome.tabs.onAttached.addListener((tabId, info) => router.onAttached(tabId, info));
+chrome.windows.onFocusChanged.addListener((windowId) => router.onFocusChanged(windowId));
+chrome.windows.onRemoved.addListener((windowId) => router.onWindowRemoved(windowId));
 
 chrome.runtime.onStartup?.addListener(() => router.onStartup());
 chrome.runtime.onInstalled?.addListener(() => router.onInstalled());

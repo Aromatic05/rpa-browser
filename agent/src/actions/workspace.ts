@@ -7,6 +7,7 @@ import type { Action, ActionScope } from './action_protocol';
 import { makeErr, makeOk } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
+import { ACTION_TYPES } from './action_types';
 import {
     ensureRecorder,
     getRecordingBundle,
@@ -30,6 +31,8 @@ type TabReportPayload = { source?: string; url?: string; title?: string; at?: nu
 type TabActivatedPayload = { source?: string; url?: string; at?: number };
 type TabClosedPayload = { source?: string; at?: number };
 type TabPingPayload = { source?: string; url?: string; title?: string; at?: number };
+type TabReassignPayload = { workspaceId: string; source?: string; windowId?: number; at?: number };
+type WindowClosedPayload = { source?: string; windowId?: number; workspaceId?: string; at?: number };
 
 const actionLog = getLogger('action');
 
@@ -87,7 +90,7 @@ const ensureRecorderForTabIfRecording = async (
 };
 
 export const workspaceHandlers: Record<string, ActionHandler> = {
-    'tab.token.init': async (_ctx, _action) => {
+    [ACTION_TYPES.TAB_INIT]: async (_ctx, _action) => {
         return makeOk({ tabToken: crypto.randomUUID() });
     },
     'workspace.list': async (ctx, _action) => {
@@ -699,6 +702,41 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         };
         ctx.log('tab.ping', output);
         logPageEvent('tab.ping', output);
+        return makeOk(output);
+    },
+    [ACTION_TYPES.TAB_REASSIGN]: async (ctx, action) => {
+        const payload = (action.payload || {}) as TabReassignPayload;
+        if (!payload.workspaceId) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
+        }
+        const moved = ctx.pageRegistry.moveTokenToWorkspace?.(ctx.tabToken, payload.workspaceId);
+        if (!moved) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to reassign tab workspace');
+        }
+        ctx.pageRegistry.setActiveWorkspace(moved.workspaceId);
+        ctx.pageRegistry.setActiveTab(moved.workspaceId, moved.tabId);
+        const output = {
+            workspaceId: moved.workspaceId,
+            tabId: moved.tabId,
+            tabToken: ctx.tabToken,
+            source: payload.source || 'unknown',
+            windowId: payload.windowId,
+            reportedAt: payload.at,
+        };
+        ctx.log('tab.reassign', output);
+        logPageEvent('tab.reassign', output);
+        return makeOk(output);
+    },
+    [ACTION_TYPES.WINDOW_CLOSED]: async (ctx, action) => {
+        const payload = (action.payload || {}) as WindowClosedPayload;
+        const output = {
+            source: payload.source || 'unknown',
+            windowId: payload.windowId,
+            workspaceId: payload.workspaceId || null,
+            reportedAt: payload.at,
+        };
+        ctx.log('window.closed', output);
+        logPageEvent('window.closed', output);
         return makeOk(output);
     },
 };

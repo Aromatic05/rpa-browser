@@ -248,3 +248,47 @@ test('workspace.restore returns ERR_WORKSPACE_SNAPSHOT_NOT_FOUND when no snapsho
     if (result.ok) return;
     assert.equal(result.error.code, ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND);
 });
+
+test('tab.init returns generated token', async () => {
+    const result = await workspaceHandlers['tab.init']({} as any, {
+        v: 1,
+        id: 'init-1',
+        type: 'tab.init',
+        payload: {},
+    } as any);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(typeof result.data.tabToken, 'string');
+    assert.equal(result.data.tabToken.length > 10, true);
+});
+
+test('tab.reassign moves token to target workspace', async () => {
+    const logs: unknown[][] = [];
+    const ctx: any = {
+        tabToken: 'token-reassign',
+        log: (...args: unknown[]) => logs.push(args),
+        pageRegistry: {
+            moveTokenToWorkspace: (tabToken: string, workspaceId: string) => {
+                assert.equal(tabToken, 'token-reassign');
+                assert.equal(workspaceId, 'ws-target');
+                return { workspaceId: 'ws-target', tabId: 'tab-target' };
+            },
+            setActiveWorkspace: (_workspaceId: string) => undefined,
+            setActiveTab: (_workspaceId: string, _tabId: string) => undefined,
+        },
+    };
+
+    const result = await workspaceHandlers['tab.reassign'](ctx, {
+        v: 1,
+        id: 'reassign-1',
+        type: 'tab.reassign',
+        payload: { workspaceId: 'ws-target', source: 'extension.sw', at: 2001 },
+        scope: { tabToken: 'token-reassign' },
+    } as any);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.data.workspaceId, 'ws-target');
+    assert.equal(result.data.tabId, 'tab-target');
+    assert.equal(logs[0][0], 'tab.reassign');
+});
