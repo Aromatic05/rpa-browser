@@ -1,7 +1,5 @@
 import {
-    addWorkspaceTabId,
     ensureWorkspaceMeta,
-    removeWorkspaceTabId,
     resetMetaStore,
     updateWorkspaceMeta,
 } from '../services/name_store.js';
@@ -10,7 +8,6 @@ import { createLogger } from '../shared/logger.js';
 import type { Action, ActionErr, ActionOk, WsEventPayload } from '../shared/types.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
-import { resolveScope } from './scope_resolver.js';
 import type { WsClient } from './ws_client.js';
 
 export type CmdRouterOptions = {
@@ -23,6 +20,7 @@ export type CmdRouterOptions = {
 const GROUP_TRIGGER_ACTIONS = new Set<string>([
     'workspace.create',
     'workspace.restore',
+    'workspace.setActive',
     'tab.create',
     'tab.close',
     'tab.opened',
@@ -160,18 +158,22 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         return alive;
     };
 
+    const resolveWorkspaceTabIds = (workspaceId: string) => {
+        const ids: number[] = [];
+        for (const [tabId, state] of tabState.entries()) {
+            if (!isRealWebUrl(state.lastUrl)) continue;
+            const scope = tokenToScope.get(state.tabToken);
+            if (!scope || scope.workspaceId !== workspaceId) continue;
+            ids.push(tabId);
+        }
+        return ids;
+    };
+
     const regroupWorkspace = async (workspaceId: string) => {
         if (!supportsTabGroups) return;
         const meta = await ensureWorkspaceMeta(workspaceId);
-        const rawTabIds = meta.tabIds || [];
-        const aliveTabIds = await resolveAliveTabIds(rawTabIds);
-        if (aliveTabIds.length !== rawTabIds.length) {
-            await updateWorkspaceMeta(workspaceId, { tabIds: aliveTabIds });
-        }
+        const aliveTabIds = await resolveAliveTabIds(resolveWorkspaceTabIds(workspaceId));
         if (!aliveTabIds.length) {
-            if (meta.groupId != null) {
-                await updateWorkspaceMeta(workspaceId, { groupId: undefined });
-            }
             return;
         }
 
@@ -190,6 +192,16 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 await updateWorkspaceMeta(workspaceId, { groupId });
             } else {
                 await chrome.tabs.group({ tabIds: aliveTabIds, groupId });
+            }
+            if (groupId != null && chrome.tabs?.query && chrome.tabs?.ungroup) {
+                const groupedTabs = await chrome.tabs.query({ groupId });
+                const expected = new Set(aliveTabIds);
+                const foreign = groupedTabs
+                    .map((tab) => tab.id)
+                    .filter((id): id is number => typeof id === 'number' && !expected.has(id));
+                if (foreign.length) {
+                    await chrome.tabs.ungroup(foreign);
+                }
             }
             if (groupId != null && chrome.tabGroups?.update) {
                 await chrome.tabGroups.update(groupId, {
@@ -229,16 +241,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         groupFlushTimer = setTimeout(() => {
             groupFlushTimer = null;
             void flushGrouping();
-        }, 300);
-    };
-
-    const syncWorkspaceTabIdsByToken = async (workspaceId: string, tabToken: string) => {
-        const tabId = findTabIdByToken(tabToken);
-        if (tabId == null) return;
-        const tab = tabState.get(tabId);
-        if (!isRealWebUrl(tab?.lastUrl)) return;
-        await addWorkspaceTabId(workspaceId, tabId);
-        markWorkspaceDirty(workspaceId, 'sync-by-token');
+        }, 120);
     };
 
     const handleEvent = (payload: WsEventPayload) => {
@@ -246,10 +249,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const data = payload.data || {};
             if (data.tabToken && data.workspaceId) {
                 tokenToWorkspace.set(String(data.tabToken), String(data.workspaceId));
-                void syncWorkspaceTabIdsByToken(String(data.workspaceId), String(data.tabToken));
             }
             if (data.tabToken && data.workspaceId && data.tabId) {
-                upsertTokenScope(String(data.tabToken), String(data.workspaceId), String(data.tabId));
+                const ok = upsertTokenScope(String(data.tabToken), String(data.workspaceId), String(data.tabId));
+                if (ok) markWorkspaceDirty(String(data.workspaceId), 'page.bound');
             }
             if (!activeWorkspaceId && data.workspaceId) {
                 activeWorkspaceId = String(data.workspaceId);
@@ -300,9 +303,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         void (async () => {
             const tabInfo = await ensureTabToken(info.tabId);
             if (!tabInfo?.tabToken) return;
-            const workspaceId = tokenToWorkspace.get(tabInfo.tabToken) || undefined;
-            if (workspaceId && isRealWebUrl(tabInfo.lastUrl)) {
-                await addWorkspaceTabId(workspaceId, info.tabId);
+            const scope = tokenToScope.get(tabInfo.tabToken);
+            if (scope) {
+                activeWorkspaceId = scope.workspaceId;
+                activeScopeTabId = scope.tabId;
             }
             await emitLifecycleAction('tab.activated', tabInfo.tabToken, {
                 source: 'extension.sw',
@@ -317,17 +321,16 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const removed = tabState.get(tabId);
         tabState.delete(tabId);
         if (activeTabId === tabId) activeTabId = null;
-        if (removed?.tabToken) {
-            const workspaceId = tokenToWorkspace.get(removed.tabToken) || null;
-            void emitLifecycleAction('tab.closed', removed.tabToken, {
-                source: 'extension.sw',
-                at: Date.now(),
+            if (removed?.tabToken) {
+                const workspaceId = tokenToWorkspace.get(removed.tabToken) || null;
+                void emitLifecycleAction('tab.closed', removed.tabToken, {
+                    source: 'extension.sw',
+                    at: Date.now(),
             });
             tokenToWorkspace.delete(removed.tabToken);
-            tokenToScope.delete(removed.tabToken);
-            if (workspaceId) markWorkspaceDirty(workspaceId, 'tabs.onRemoved');
-        }
-        void removeWorkspaceTabId(tabId);
+                tokenToScope.delete(removed.tabToken);
+                if (workspaceId) markWorkspaceDirty(workspaceId, 'tabs.onRemoved');
+            }
         options.onRefresh();
     };
 
@@ -336,6 +339,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const existing = tabState.get(tabId);
         if (existing?.tabToken) {
             upsertTab(tabId, existing.tabToken, changeInfo.url);
+            const scope = tokenToScope.get(existing.tabToken);
+            if (scope && isRealWebUrl(changeInfo.url)) {
+                markWorkspaceDirty(scope.workspaceId, 'tabs.onUpdated:url');
+            }
         }
     };
 
@@ -347,37 +354,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         void resetMetaStore();
     };
 
-    const reconcileTabs = async () => {
-        const tabs = await chrome.tabs.query({});
-        const aliveIds = new Set<number>();
-        for (const tab of tabs) {
-            if (typeof tab.id === 'number') aliveIds.add(tab.id);
-        }
-
-        for (const [tabId, state] of tabState.entries()) {
-            if (aliveIds.has(tabId)) continue;
-            tabState.delete(tabId);
-            if (state.tabToken) {
-                const workspaceId = tokenToWorkspace.get(state.tabToken) || null;
-                await emitLifecycleAction('tab.closed', state.tabToken, {
-                    source: 'extension.reconcile',
-                    at: Date.now(),
-                });
-                tokenToWorkspace.delete(state.tabToken);
-                tokenToScope.delete(state.tabToken);
-                if (workspaceId) markWorkspaceDirty(workspaceId, 'reconcile');
-            }
-            await removeWorkspaceTabId(tabId);
-        }
-        options.onRefresh();
-    };
-
-    setInterval(() => {
-        void reconcileTabs().catch(() => {
-            // ignore
-        });
-    }, 15000);
-
     const handleMessage = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
         if (!message?.type) return;
 
@@ -386,10 +362,15 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             if (tabId == null) return;
             const tabToken = String(message.tabToken || '');
             upsertTab(tabId, tabToken, message.url || sender.tab?.url || '');
-            const workspaceId = tokenToWorkspace.get(tabToken);
-            if (workspaceId && isRealWebUrl(message.url || sender.tab?.url || '')) {
-                void addWorkspaceTabId(workspaceId, tabId);
-                markWorkspaceDirty(workspaceId, 'hello');
+            const scope = tokenToScope.get(tabToken);
+            if (scope) {
+                if (activeTabId === tabId) {
+                    activeWorkspaceId = scope.workspaceId;
+                    activeScopeTabId = scope.tabId;
+                }
+                if (isRealWebUrl(message.url || sender.tab?.url || '')) {
+                    markWorkspaceDirty(scope.workspaceId, 'hello:url-ready');
+                }
             }
             sendResponse({ ok: true });
             return;
@@ -416,10 +397,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 }
 
                 const tokenScope = tokenToScope.get(tabToken);
-                const fallbackScope = resolveScope(
-                    { activeWorkspaceId, activeTabId: activeScopeTabId },
-                    { workspaceId: action.scope?.workspaceId, tabId: action.scope?.tabId },
-                );
                 const scope = tokenScope ? { workspaceId: tokenScope.workspaceId, tabId: tokenScope.tabId } : undefined;
                 const requestedWorkspaceId = action.scope?.workspaceId;
                 const requestedTabId = action.scope?.tabId;
@@ -460,19 +437,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 }
 
                 if (typeof senderTabId === 'number') {
-                    if (action.type === 'tab.ping' && tabToken) {
+                    if (tabToken) {
                         const oldTabId = findTabIdByToken(tabToken);
                         if (oldTabId != null && oldTabId !== senderTabId) {
                             tabState.delete(oldTabId);
-                            await removeWorkspaceTabId(oldTabId);
-                            markWorkspaceDirty(String(effectiveWorkspaceId), 'ping-mismatch');
                         }
                     }
                     const senderUrl = sender.tab?.url || tabState.get(senderTabId)?.lastUrl || '';
                     upsertTab(senderTabId, tabToken, senderUrl);
-                    if (isRealWebUrl(senderUrl)) {
-                        await addWorkspaceTabId(String(effectiveWorkspaceId), senderTabId);
-                    }
                 }
 
                 const responseToken = responseTabToken || tabToken;
@@ -485,8 +457,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 const canGroupBySender = isRealWebUrl(senderUrlForGroup);
                 if (GROUP_TRIGGER_ACTIONS.has(action.type)) {
                     markWorkspaceDirty(String(effectiveWorkspaceId), `action:${action.type}`);
-                } else if (action.type === 'tab.ping' && canGroupBySender) {
-                    markWorkspaceDirty(String(effectiveWorkspaceId), 'ping-reconcile');
+                } else if (canGroupBySender && responseTabToken && responseTabId) {
+                    markWorkspaceDirty(String(effectiveWorkspaceId), 'action:scope-bound');
                 }
             })().catch((error) => {
                 const message = error instanceof Error ? error.message : String(error);
