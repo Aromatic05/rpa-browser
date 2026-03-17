@@ -149,7 +149,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const handleInboundAction = (action: Action) => {
-        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) {
+        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) return;
+
+        if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
+            const data = (action.payload || {}) as Record<string, unknown>;
+            const activeId = data.activeWorkspaceId ? String(data.activeWorkspaceId) : null;
+            if (activeId) activeWorkspaceId = activeId;
             options.onRefresh();
             return;
         }
@@ -255,6 +260,50 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             changeInfo.url || existing.lastUrl,
             typeof tab?.windowId === 'number' ? tab.windowId : undefined,
         );
+    };
+
+    const onCreated = (tab: chrome.tabs.Tab) => {
+        const tabId = tab.id;
+        const windowId = tab.windowId;
+        if (typeof tabId !== 'number' || typeof windowId !== 'number') {
+            throw new Error('tabs.onCreated missing tab/window id');
+        }
+        void (async () => {
+            const tabInfo = await ensureTabToken(tabId, windowId);
+            if (!tabInfo?.tabToken) {
+                throw new Error('tabs.onCreated tab token unavailable');
+            }
+            const workspaceId = windowToWorkspace.get(windowId);
+            if (!workspaceId) {
+                throw new Error(`tabs.onCreated workspace mapping missing for window ${windowId}`);
+            }
+            const result = await sendAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: ACTION_TYPES.TAB_OPENED,
+                tabToken: tabInfo.tabToken,
+                scope: { tabToken: tabInfo.tabToken, workspaceId },
+                payload: {
+                    source: 'extension.sw',
+                    url: tabInfo.lastUrl || tab.url || '',
+                    title: tab.title || '',
+                    at: Date.now(),
+                    windowId,
+                    workspaceId,
+                },
+            });
+            if (!result.ok) {
+                throw new Error(`tabs.onCreated tab.opened failed: ${result.error.code}:${result.error.message}`);
+            }
+            const tabScopeWorkspaceId = String((result.data as any)?.workspaceId || workspaceId);
+            const tabScopeTabId = String((result.data as any)?.tabId || '');
+            if (!tabScopeTabId) {
+                throw new Error('tabs.onCreated tab.opened missing tabId');
+            }
+            upsertTokenScope(tabInfo.tabToken, tabScopeWorkspaceId, tabScopeTabId);
+            windowToWorkspace.set(windowId, tabScopeWorkspaceId);
+            options.onRefresh();
+        })();
     };
 
     const onAttached = (tabId: number, info: chrome.tabs.TabAttachInfo) => {
@@ -500,6 +549,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         onActivated,
         onRemoved,
         onUpdated,
+        onCreated,
         onAttached,
         onFocusChanged,
         onWindowRemoved,
