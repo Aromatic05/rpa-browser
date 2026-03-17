@@ -192,6 +192,9 @@ const bootstrapWorkspaceBinding = async (tabToken: string) => {
         const listedWorkspaceId = listed?.ok ? String(listed?.data?.activeWorkspaceId || '') : '';
         workspaceId = listedWorkspaceId || undefined;
     }
+    if (!workspaceId) {
+        throw new Error('workspace binding missing');
+    }
     const opened = await sendAction(
         'tab.opened',
         {
@@ -218,9 +221,7 @@ void (async () => {
     } catch (error) {
         setStatus('offline');
         log('token.init.failed', { message: error instanceof Error ? error.message : String(error) });
-        setTimeout(() => {
-            void location.reload();
-        }, 1200);
+        throw error;
     }
 })();
 refreshRestoreBtn?.addEventListener('click', () => {
