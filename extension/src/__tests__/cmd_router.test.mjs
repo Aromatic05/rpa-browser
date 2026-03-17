@@ -228,7 +228,7 @@ await log('tabs.onCreated binds tab to window workspace via tab.opened', async (
     assert.equal(opened?.payload?.workspaceId, 'ws-1');
 });
 
-await log('tabs.onCreated binds workspace from newtab url when window mapping is not ready', async () => {
+await log('tabs.onCreated binds workspace from token scope when window mapping is not ready', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
@@ -244,10 +244,18 @@ await log('tabs.onCreated binds workspace from newtab url when window mapping is
         onRefresh: () => undefined,
     });
 
+    router.handleInboundAction({
+        v: 1,
+        id: 'evt-prebind',
+        type: ACTION_TYPES.TAB_BOUND,
+        payload: { workspaceId: 'ws-url', tabId: 'tab-pre', tabToken: 'token-new', url: 'https://example.com/pre' },
+        scope: { workspaceId: 'ws-url', tabId: 'tab-pre', tabToken: 'token-new' },
+    });
+
     router.onCreated({
         id: 21,
         windowId: 31,
-        url: 'chrome-extension://start/newtab.html?workspaceId=ws-url',
+        url: 'chrome-extension://start/newtab.html',
         title: 'RPA Start',
     });
     await new Promise((resolve) => setTimeout(resolve, 20));

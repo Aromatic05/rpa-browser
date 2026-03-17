@@ -154,27 +154,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         return { tabId, tabToken: tabInfo.tabToken, urlHint: tabInfo.lastUrl, windowId };
     };
 
-    const workspaceIdFromTabUrl = (url: string) => {
-        if (!url.startsWith('chrome-extension://') || !url.includes('/newtab.html')) return '';
-        try {
-            const parsed = new URL(url);
-            return String(parsed.searchParams.get('workspaceId') || '').trim();
-        } catch {
-            return '';
-        }
-    };
-
-    const waitForWindowWorkspace = async (windowId: number, fallbackUrl = '') => {
-        const fromUrl = workspaceIdFromTabUrl(fallbackUrl);
-        if (fromUrl) return fromUrl;
-        for (let i = 0; i < 20; i += 1) {
-            const mapped = windowToWorkspace.get(windowId);
-            if (mapped) return mapped;
-            await wait(25);
-        }
-        return '';
-    };
-
     const handleInboundAction = (action: Action) => {
         if (action.type === ACTION_TYPES.WORKSPACE_SYNC) return;
 
@@ -297,7 +276,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             if (!tabInfo?.tabToken) {
                 throw new Error(`tabs.onCreated tab token unavailable (tabId=${tabId}, windowId=${windowId})`);
             }
-            const workspaceId = await waitForWindowWorkspace(windowId, tabInfo.lastUrl || tab.url || '');
+            const boundScope = tokenToScope.get(tabInfo.tabToken);
+            const workspaceId = boundScope?.workspaceId || windowToWorkspace.get(windowId) || '';
             if (!workspaceId) {
                 throw new Error(
                     `tabs.onCreated workspace mapping missing (tabId=${tabId}, windowId=${windowId}, token=${tabInfo.tabToken})`,
@@ -445,13 +425,15 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         return;
                     }
                     activeWorkspaceId = workspaceId;
+                    const createdTabToken = String((created.data as any)?.tabToken || '');
+                    const createdTabId = String((created.data as any)?.tabId || '');
+                    if (createdTabToken && createdTabId) {
+                        upsertTokenScope(createdTabToken, workspaceId, createdTabId);
+                        bindWorkspaceToWindowIfKnown(createdTabToken);
+                    }
                     sendResponse({
                         ok: true,
-                        data: {
-                            workspaceId,
-                            tabId: null,
-                            tabToken: null,
-                        },
+                        data: created.data,
                     });
                     options.onRefresh();
                     return;
