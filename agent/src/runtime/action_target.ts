@@ -42,10 +42,7 @@ export const resolveActionTarget = (
             if (error instanceof ActionTargetError) {
                 throw error;
             }
-            // stale tabToken: only allow fallback when explicit workspace/tab scope is provided.
-            if (!scope?.workspaceId && !scope?.tabId) {
-                throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'workspace scope not found for tabToken');
-            }
+            throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'workspace scope not found for tabToken');
         }
     }
 

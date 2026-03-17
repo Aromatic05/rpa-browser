@@ -60,7 +60,7 @@ test('resolveActionTarget returns null when tabToken and scope are both missing'
     assert.equal(target, null);
 });
 
-test('resolveActionTarget falls back to scope when tabToken is stale', () => {
+test('resolveActionTarget throws when tabToken is stale even if scope is provided', () => {
     const action: Action = {
         v: 1,
         id: '4',
@@ -68,10 +68,7 @@ test('resolveActionTarget falls back to scope when tabToken is stale', () => {
         tabToken: 'token-missing',
         scope: { workspaceId: 'ws-1', tabId: 'tab-2' },
     };
-    const target = resolveActionTarget(action, createRegistry());
-    assert.equal(target.tabToken, 'token-b');
-    assert.equal(target.scope.workspaceId, 'ws-1');
-    assert.equal(target.scope.tabId, 'tab-2');
+    assert.throws(() => resolveActionTarget(action, createRegistry()), /workspace scope not found for tabToken/);
 });
 
 test('resolveActionTarget throws when tabToken is stale and scope is missing', () => {

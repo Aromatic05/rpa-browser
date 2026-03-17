@@ -102,6 +102,22 @@ const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
     });
 };
 
+const broadcastWorkspaceList = (reason: string) => {
+    const active = pageRegistry.getActiveWorkspace?.();
+    broadcast({
+        v: 1,
+        id: crypto.randomUUID(),
+        type: ACTION_TYPES.WORKSPACE_LIST,
+        payload: {
+            reason,
+            workspaces: pageRegistry.listWorkspaces(),
+            activeWorkspaceId: active?.workspaceId || null,
+        },
+        scope: {},
+        at: Date.now(),
+    });
+};
+
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
     getContext: contextManager.getContext,
@@ -212,15 +228,28 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     const payload = (action.payload || {}) as Record<string, unknown>;
 
     if (action.type === ACTION_TYPES.TAB_OPENED) {
-        const source = String(payload.source || 'unknown');
-        return {
-            ok: true as const,
-            data: { tabToken: token, orphan: true, pending: true, source },
-        };
+        const workspaceId =
+            (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
+            (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
+        if (!workspaceId) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
+        }
+        const scoped = pageRegistry.claimOrphanTokenToWorkspace(token, workspaceId);
+        if (!scoped) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to bind tab.opened to workspace');
+        }
+        return runAction(action, { tabToken: token, scope: scoped }, urlHint, { orphanClaim: true, byWindow: true });
     }
 
     if (action.type === ACTION_TYPES.WORKSPACE_RESTORE) {
         return runPagelessAction(action, token);
+    }
+
+    if (action.type === ACTION_TYPES.TAB_PING) {
+        const source = String(payload.source || '');
+        if (source !== 'extension.workspace.create') {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.ping orphan claim is forbidden without window mapping');
+        }
     }
 
     const maybeUrl =
@@ -394,6 +423,7 @@ wss.on('connection', (socket) => {
                         workspaceId: data?.workspaceId || action.scope?.workspaceId || null,
                         tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
                     });
+                    broadcastWorkspaceList(`report:${action.type}`);
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);

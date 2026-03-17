@@ -54,6 +54,10 @@ export type PageRegistry = {
     resolveTabToken: (scope?: WorkspaceScope) => string;
     touchTabToken: (tabToken: string, at?: number) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     hasScopeForToken: (tabToken: string) => boolean;
+    claimOrphanTokenToWorkspace: (
+        tabToken: string,
+        workspaceId: WorkspaceId,
+    ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     claimOrphanToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     moveTokenToWorkspace: (tabToken: string, workspaceId: WorkspaceId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     getTokenPageUrl: (tabToken: string) => string | null;
@@ -445,6 +449,18 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const hasScopeForToken = (tabToken: string) => tokenToTab.has(tabToken);
 
+    const claimOrphanTokenToWorkspace = (tabToken: string, workspaceId: WorkspaceId) => {
+        const existing = tokenToTab.get(tabToken);
+        if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
+        const page = tokenToPage.get(tabToken);
+        if (!page || page.isClosed()) return null;
+        const workspace = workspaces.get(workspaceId);
+        if (!workspace) return null;
+        const attached = attachTokenToWorkspace(workspace, tabToken, page);
+        activeWorkspaceId = workspaceId;
+        return attached;
+    };
+
     const claimOrphanToken = (tabToken: string) => {
         const existing = tokenToTab.get(tabToken);
         if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
@@ -503,6 +519,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         resolveTabToken,
         touchTabToken,
         hasScopeForToken,
+        claimOrphanTokenToWorkspace,
         claimOrphanToken,
         moveTokenToWorkspace,
         getTokenPageUrl,
