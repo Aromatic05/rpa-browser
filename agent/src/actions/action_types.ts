@@ -7,9 +7,6 @@ export const ACTION_TYPES = {
     WORKSPACE_CHANGED: 'workspace.changed',
     WORKSPACE_SYNC: 'workspace.sync',
 
-    WINDOW_FOCUSED: 'window.focused',
-    WINDOW_CLOSED: 'window.closed',
-
     TAB_INIT: 'tab.init',
     TAB_LIST: 'tab.list',
     TAB_CREATE: 'tab.create',

@@ -40,7 +40,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         options.wsClient.sendAction(withActionBase(action));
 
     const emitLifecycleAction = async (
-        type: 'tab.activated' | 'tab.closed' | 'window.focused' | 'window.closed',
+        type: 'tab.activated' | 'tab.closed',
         payload: Record<string, unknown>,
         tabToken?: string,
     ) => {
@@ -307,12 +307,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 payload: { workspaceId: scope.workspaceId },
                 scope: { workspaceId: scope.workspaceId },
             });
-            await emitLifecycleAction(ACTION_TYPES.WINDOW_FOCUSED, {
-                source: 'extension.sw',
-                windowId,
-                workspaceId: scope.workspaceId,
-                at: Date.now(),
-            });
             options.onRefresh();
         })();
     };
@@ -323,12 +317,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (workspaceId && activeWorkspaceId === workspaceId) {
             activeWorkspaceId = null;
         }
-        void emitLifecycleAction(ACTION_TYPES.WINDOW_CLOSED, {
-            source: 'extension.sw',
-            windowId,
-            workspaceId: workspaceId || null,
-            at: Date.now(),
-        });
         options.onRefresh();
     };
 

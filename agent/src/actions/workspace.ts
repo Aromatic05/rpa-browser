@@ -32,7 +32,6 @@ type TabActivatedPayload = { source?: string; url?: string; at?: number };
 type TabClosedPayload = { source?: string; at?: number };
 type TabPingPayload = { source?: string; url?: string; title?: string; at?: number };
 type TabReassignPayload = { workspaceId: string; source?: string; windowId?: number; at?: number };
-type WindowClosedPayload = { source?: string; windowId?: number; workspaceId?: string; at?: number };
 
 const actionLog = getLogger('action');
 
@@ -725,18 +724,6 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         };
         ctx.log('tab.reassign', output);
         logPageEvent('tab.reassign', output);
-        return makeOk(output);
-    },
-    [ACTION_TYPES.WINDOW_CLOSED]: async (ctx, action) => {
-        const payload = (action.payload || {}) as WindowClosedPayload;
-        const output = {
-            source: payload.source || 'unknown',
-            windowId: payload.windowId,
-            workspaceId: payload.workspaceId || null,
-            reportedAt: payload.at,
-        };
-        ctx.log('window.closed', output);
-        logPageEvent('window.closed', output);
         return makeOk(output);
     },
 };

@@ -84,7 +84,7 @@
 当前 action handler 来自：
 
 - workspace：`workspace.list`、`workspace.create`、`workspace.setActive`、`workspace.save`、`workspace.restore`、`workspace.changed`、`workspace.sync`
-- window：`window.focused`、`window.closed`
+- window：保留域（当前不单独下发动作，窗口副作用通过 `workspace.setActive` + `tab.reassign` 收敛）
 - tab：`tab.init`、`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`、`tab.report`、`tab.activated`、`tab.closed`、`tab.ping`、`tab.bound`、`tab.reassign`
 - record：`record.start`、`record.stop`、`record.get`、`record.clear`、`record.event`
 - play：`play.start`、`play.stop`
@@ -103,8 +103,6 @@
 | `workspace.*` | `workspace.restore` | `{ workspaceId: string }` |
 | `workspace.*` | `workspace.changed` | `{ workspaceId?: string, tabId?: string, sourceType?: string }` |
 | `workspace.*` | `workspace.sync` | `{ reason: string, workspaceId?: string, tabId?: string, tabToken?: string }` |
-| `window.*` | `window.focused` | `{ source: string, windowId: number, workspaceId?: string, at: number }` |
-| `window.*` | `window.closed` | `{ source: string, windowId: number, workspaceId?: string, at: number }` |
 | `tab.*` | `tab.init` | `{ source?: string, url?: string, at?: number }` |
 | `tab.*` | `tab.reassign` | `{ workspaceId: string, source?: string, windowId?: number, at?: number }` |
 
