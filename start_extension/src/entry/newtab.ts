@@ -27,49 +27,6 @@ const ensureTabToken = () => {
     return token;
 };
 
-const sendLifecycle = (tabToken: string, type: 'tab.opened' | 'tab.ping') => {
-    try {
-        const requestId = crypto.randomUUID();
-        const ws = new WebSocket(WS_URL);
-        log('lifecycle.ws.connecting', { type, requestId, tabToken, url: location.href });
-        ws.addEventListener('open', () => {
-            setStatus('connected', true);
-            log('lifecycle.ws.open', { type, requestId, tabToken });
-            ws.send(
-                JSON.stringify({
-                    v: 1,
-                    id: requestId,
-                    type,
-                    tabToken,
-                    scope: { tabToken },
-                    payload: {
-                        source: 'start_extension',
-                        url: location.href,
-                        title: document.title,
-                        at: Date.now(),
-                    },
-                }),
-            );
-            log('lifecycle.sent', { type, requestId, tabToken });
-            setTimeout(() => {
-                try {
-                    ws.close();
-                    log('lifecycle.ws.closed', { type, requestId });
-                } catch {
-                    // ignore
-                }
-            }, 300);
-        });
-        ws.addEventListener('error', () => {
-            setStatus('offline');
-            log('lifecycle.ws.error', { type, requestId, tabToken });
-        });
-    } catch {
-        setStatus('offline');
-        log('lifecycle.ws.init_failed', { type, tabToken });
-    }
-};
-
 const sendAction = async (type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>
     new Promise<any>((resolve) => {
         let settled = false;
@@ -228,11 +185,7 @@ void (async () => {
         const token = await ensureTabTokenFromAgent();
         if (tokenEl) tokenEl.textContent = `${token.slice(0, 8)}...`;
         if (urlEl) urlEl.textContent = location.href;
-        setStatus('connecting...');
-        sendLifecycle(token, 'tab.opened');
-        setInterval(() => {
-            sendLifecycle(token, 'tab.ping');
-        }, 15000);
+        setStatus('connected', true);
     } catch (error) {
         setStatus('offline');
         log('token.init.failed', { message: error instanceof Error ? error.message : String(error) });

@@ -32,7 +32,7 @@ export const defaultRunnerConfig: RunnerConfig = {
         traceConsoleEnabled: false,
         traceFileEnabled: true,
         traceFilePath: '.artifacts/trace/trace-{ts}.log',
-        actionConsoleEnabled: true,
+        actionConsoleEnabled: false,
         actionFileEnabled: true,
         actionFilePath: '.artifacts/logs/action-{ts}.log',
         recordConsoleEnabled: false,

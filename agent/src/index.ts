@@ -256,6 +256,10 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
         return runPagelessAction(action, token);
     }
 
+    if (action.type !== ACTION_TYPES.TAB_PING) {
+        return makeErr(ERROR_CODES.ERR_BAD_ARGS, `orphan action forbidden: ${action.type}`);
+    }
+
     if (action.type === ACTION_TYPES.TAB_PING) {
         const source = String(payload.source || '');
         if (source !== 'extension.workspace.create') {
