@@ -368,9 +368,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     activeWorkspaceId = scope.workspaceId;
                     activeScopeTabId = scope.tabId;
                 }
-                if (isRealWebUrl(message.url || sender.tab?.url || '')) {
-                    markWorkspaceDirty(scope.workspaceId, 'hello:url-ready');
-                }
             }
             sendResponse({ ok: true });
             return;
@@ -452,13 +449,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     tokenToWorkspace.set(responseToken, String(effectiveWorkspaceId));
                 }
 
-                const senderUrlForGroup =
-                    typeof senderTabId === 'number' ? sender.tab?.url || tabState.get(senderTabId)?.lastUrl || '' : '';
-                const canGroupBySender = isRealWebUrl(senderUrlForGroup);
                 if (GROUP_TRIGGER_ACTIONS.has(action.type)) {
                     markWorkspaceDirty(String(effectiveWorkspaceId), `action:${action.type}`);
-                } else if (canGroupBySender && responseTabToken && responseTabId) {
-                    markWorkspaceDirty(String(effectiveWorkspaceId), 'action:scope-bound');
                 }
             })().catch((error) => {
                 const message = error instanceof Error ? error.message : String(error);
