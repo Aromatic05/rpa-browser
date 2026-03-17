@@ -37,6 +37,28 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const supportsTabGroups = supportsTabGrouping(chrome);
     const tokenToWorkspace = new Map<string, string>();
     const tokenToScope = new Map<string, { workspaceId: string; tabId: string }>();
+    const upsertTokenScope = (
+        tabToken: string,
+        workspaceId: string,
+        tabId: string,
+        source: string,
+        actionType?: string,
+    ) => {
+        const existing = tokenToScope.get(tabToken);
+        if (existing && (existing.workspaceId !== workspaceId || existing.tabId !== tabId)) {
+            log('mapping.scope_conflict_drop', {
+                source,
+                actionType: actionType || null,
+                tabToken,
+                existing,
+                incoming: { workspaceId, tabId },
+            });
+            return false;
+        }
+        tokenToWorkspace.set(tabToken, workspaceId);
+        tokenToScope.set(tabToken, { workspaceId, tabId });
+        return true;
+    };
     const withActionBase = (action: Action) => ({
         v: 1 as const,
         id: action.id || crypto.randomUUID(),
@@ -127,6 +149,37 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         return { tabId, tabToken: tabInfo.tabToken, urlHint: tabInfo.lastUrl };
     };
 
+    const syncWorkspaceTabIdsByToken = async (workspaceId: string, tabToken: string) => {
+        const matchedTabIds: number[] = [];
+        for (const [tabId, state] of tabState.entries()) {
+            if (state.tabToken === tabToken) {
+                matchedTabIds.push(tabId);
+            }
+        }
+        if (matchedTabIds.length === 0) return;
+        for (const tabId of matchedTabIds) {
+            await addWorkspaceTabId(workspaceId, tabId);
+        }
+        log('workspace.tabIds.synced_by_token', {
+            workspaceId,
+            tabToken,
+            tabIds: matchedTabIds,
+        });
+    };
+
+    const resolveAliveTabIds = async (tabIds: number[]) => {
+        const alive: number[] = [];
+        for (const tabId of tabIds) {
+            try {
+                const tab = await chrome.tabs.get(tabId);
+                if (typeof tab.id === 'number') alive.push(tab.id);
+            } catch {
+                // tab already closed or inaccessible; skip
+            }
+        }
+        return alive;
+    };
+
     const ensureGroupedActiveTab = async (workspaceId: string) => {
         if (!supportsTabGroups) return;
         const meta = await ensureWorkspaceMeta(workspaceId);
@@ -168,7 +221,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const ensureWorkspaceTabsGrouped = async (workspaceId: string) => {
         if (!supportsTabGroups) return;
         const meta = await ensureWorkspaceMeta(workspaceId);
-        if (!meta.tabIds?.length) return;
+        const rawTabIds = meta.tabIds || [];
+        if (!rawTabIds.length) return;
+        const aliveTabIds = await resolveAliveTabIds(rawTabIds);
+        if (aliveTabIds.length !== rawTabIds.length) {
+            await updateWorkspaceMeta(workspaceId, { tabIds: aliveTabIds });
+        }
+        if (!aliveTabIds.length) return;
         let groupId = meta.groupId;
         if (groupId != null && chrome.tabGroups?.get) {
             try {
@@ -179,10 +238,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         }
         try {
             if (groupId == null) {
-                groupId = await chrome.tabs.group({ tabIds: meta.tabIds });
+                groupId = await chrome.tabs.group({ tabIds: aliveTabIds });
                 await updateWorkspaceMeta(workspaceId, { groupId });
             } else {
-                await chrome.tabs.group({ tabIds: meta.tabIds, groupId });
+                await chrome.tabs.group({ tabIds: aliveTabIds, groupId });
             }
             if (groupId != null && chrome.tabGroups?.update) {
                 await chrome.tabGroups.update(groupId, {
@@ -194,13 +253,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 workspaceId,
                 groupId,
                 mode: 'workspace-tabs',
-                tabCount: meta.tabIds.length,
+                tabCount: aliveTabIds.length,
             });
         } catch (error) {
             log('tab group failed', {
                 workspaceId,
                 mode: 'workspace-tabs',
-                tabCount: meta.tabIds.length,
+                tabCount: aliveTabIds.length,
                 message: error instanceof Error ? error.message : String(error),
             });
         }
@@ -211,12 +270,15 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const data = payload.data || {};
             if (data.tabToken && data.workspaceId) {
                 tokenToWorkspace.set(String(data.tabToken), String(data.workspaceId));
+                void syncWorkspaceTabIdsByToken(String(data.workspaceId), String(data.tabToken));
             }
             if (data.tabToken && data.workspaceId && data.tabId) {
-                tokenToScope.set(String(data.tabToken), {
-                    workspaceId: String(data.workspaceId),
-                    tabId: String(data.tabId),
-                });
+                upsertTokenScope(
+                    String(data.tabToken),
+                    String(data.workspaceId),
+                    String(data.tabId),
+                    'event.page.bound',
+                );
             }
             if (!activeWorkspaceId && data.workspaceId) {
                 activeWorkspaceId = String(data.workspaceId);
@@ -239,8 +301,46 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         }
     };
 
+    const bootstrapGrouping = async () => {
+        try {
+            const payload = await sendAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: 'workspace.list',
+                payload: {},
+                scope: {},
+            });
+            if (!payload?.ok) {
+                log('bootstrap.grouping.workspace_list_failed', payload?.error || null);
+                return;
+            }
+            const data = (payload.data || {}) as {
+                activeWorkspaceId?: string | null;
+                workspaces?: Array<{ workspaceId: string }>;
+            };
+            const activeId = data.activeWorkspaceId || null;
+            if (activeId) {
+                activeWorkspaceId = activeId;
+                await ensureGroupedActiveTab(activeId);
+                await ensureWorkspaceTabsGrouped(activeId);
+                log('bootstrap.grouping.active_done', { activeWorkspaceId: activeId });
+            }
+            const list = Array.isArray(data.workspaces) ? data.workspaces : [];
+            for (const ws of list) {
+                if (!ws?.workspaceId || ws.workspaceId === activeId) continue;
+                await ensureWorkspaceTabsGrouped(ws.workspaceId);
+            }
+            if (list.length) {
+                log('bootstrap.grouping.done', { workspaceCount: list.length, activeWorkspaceId: activeId });
+            }
+        } catch (error) {
+            log('bootstrap.grouping.failed', error instanceof Error ? error.message : String(error));
+        }
+    };
+
     const onActivated = (info: chrome.tabs.TabActiveInfo) => {
         activeTabId = info.tabId;
+        log('tab.onActivated', { tabId: info.tabId, activeWorkspaceId, activeScopeTabId });
         void (async () => {
             const tabInfo = await ensureTabToken(info.tabId);
             if (!tabInfo?.tabToken) return;
@@ -260,6 +360,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const onRemoved = (tabId: number) => {
+        log('tab.onRemoved', { tabId, known: tabState.has(tabId) });
         const removed = tabState.get(tabId);
         tabState.delete(tabId);
         if (activeTabId === tabId) {
@@ -279,6 +380,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const onUpdated = (tabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
         if (changeInfo.url) {
+            log('tab.onUpdated', { tabId, url: changeInfo.url });
             const existing = tabState.get(tabId);
             if (existing?.tabToken) {
                 upsertTab(tabId, existing.tabToken, changeInfo.url);
@@ -330,12 +432,19 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (message.type === MSG.HELLO) {
             const tabId = sender.tab?.id;
             if (tabId == null) return;
+            log('msg.hello', { tabId, tabToken: message.tabToken, url: message.url, activeWorkspaceId });
             upsertTab(tabId, message.tabToken, message.url || sender.tab?.url || '');
-            const workspaceId = tokenToWorkspace.get(message.tabToken) || activeWorkspaceId || undefined;
+            const workspaceId = tokenToWorkspace.get(message.tabToken);
             if (workspaceId) {
                 void addWorkspaceTabId(workspaceId, tabId);
                 void ensureGroupedActiveTab(workspaceId);
                 void ensureWorkspaceTabsGrouped(workspaceId);
+            } else {
+                log('msg.hello.workspace_pending', {
+                    tabId,
+                    tabToken: message.tabToken,
+                    reason: 'workspace not mapped yet',
+                });
             }
             sendResponse({ ok: true });
             return;
@@ -344,7 +453,32 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (message.type === MSG.ACTION) {
             (async () => {
                 const action = (message.action || {}) as Action;
+                log('msg.action.received', {
+                    id: action.id,
+                    type: action.type,
+                    tabToken: action.tabToken,
+                    scope: action.scope,
+                    senderTabId: sender.tab?.id,
+                    activeWorkspaceId,
+                    activeScopeTabId,
+                });
                 let tabToken = (action.tabToken || action.scope?.tabToken) as string | undefined;
+                const senderTabId = sender.tab?.id;
+                if (typeof senderTabId === 'number') {
+                    const senderTabInfo = await ensureTabToken(senderTabId);
+                    if (senderTabInfo?.tabToken) {
+                        if (!tabToken || tabToken !== senderTabInfo.tabToken) {
+                            log('msg.action.override_token_from_sender_tab', {
+                                id: action.id,
+                                type: action.type,
+                                inputTabToken: tabToken || null,
+                                senderTabToken: senderTabInfo.tabToken,
+                                senderTabId,
+                            });
+                        }
+                        tabToken = senderTabInfo.tabToken;
+                    }
+                }
                 if (!tabToken) {
                     const active = await getActiveTabToken();
                     if (!active) {
@@ -352,45 +486,153 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         return;
                     }
                     tabToken = active.tabToken;
+                    log('msg.action.resolved_active_token', { id: action.id, type: action.type, tabToken, tabId: active.tabId });
                 }
                 const tokenScope = tokenToScope.get(tabToken);
-                const scope = resolveScope(
+                const fallbackScope = resolveScope(
                     {
-                        activeWorkspaceId: tokenScope?.workspaceId || activeWorkspaceId,
-                        activeTabId: tokenScope?.tabId || activeScopeTabId,
+                        activeWorkspaceId: activeWorkspaceId,
+                        activeTabId: activeScopeTabId,
                     },
                     { workspaceId: action.scope?.workspaceId, tabId: action.scope?.tabId },
                 );
+                const scope = tokenScope ? { workspaceId: tokenScope.workspaceId, tabId: tokenScope.tabId } : undefined;
+                if (tokenScope) {
+                    log('msg.action.scope_forced_from_token', {
+                        id: action.id,
+                        type: action.type,
+                        tabToken,
+                        tokenScope,
+                        inputScope: action.scope || null,
+                    });
+                }
+                log('msg.action.scope_resolved', {
+                    id: action.id,
+                    type: action.type,
+                    tabToken,
+                    tokenScope,
+                    resolvedScope: scope || null,
+                    fallbackScope,
+                });
                 if (!action.type) {
                     sendResponse({ ok: false, error: 'missing action.type' });
                     return;
                 }
+                const requestedWorkspaceId = action.scope?.workspaceId;
+                const requestedTabId = action.scope?.tabId;
+                const hasExplicitScope = !!(requestedWorkspaceId || requestedTabId);
+                const conflictsWithTokenScope = !!(
+                    tokenScope &&
+                    ((requestedWorkspaceId && requestedWorkspaceId !== tokenScope.workspaceId) ||
+                        (requestedTabId && requestedTabId !== tokenScope.tabId))
+                );
+                if (hasExplicitScope) {
+                    log('msg.action.scope_mode', {
+                        id: action.id,
+                        type: action.type,
+                        mode: 'scope_only',
+                        requestedScope: action.scope || null,
+                        tokenScope: tokenScope || null,
+                    });
+                }
+                if (conflictsWithTokenScope) {
+                    log('msg.action.scope_token_conflict', {
+                        id: action.id,
+                        type: action.type,
+                        tabToken,
+                        tokenScope,
+                        requestedScope: action.scope || null,
+                        mode: 'scope_only_forward',
+                    });
+                }
+                // If token has no known scope yet, do not guess workspace/tab from global active state.
+                // Sending only tabToken avoids stale scope mismatch errors.
+                const scopedScope = hasExplicitScope
+                    ? {
+                          ...(requestedWorkspaceId ? { workspaceId: requestedWorkspaceId } : {}),
+                          ...(requestedTabId ? { tabId: requestedTabId } : {}),
+                      }
+                    : scope
+                      ? { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken }
+                      : { tabToken };
                 const scoped: Action = {
                     ...action,
                     v: 1,
                     id: action.id || crypto.randomUUID(),
-                    tabToken,
-                    scope: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken },
+                    tabToken: hasExplicitScope ? undefined : tabToken,
+                    scope: scopedScope,
                 };
-                if (scope.workspaceId) {
+                if (scope?.workspaceId) {
                     activeWorkspaceId = scope.workspaceId;
                 }
-                if (scope.tabId) {
+                if (scope?.tabId) {
                     activeScopeTabId = scope.tabId;
                 }
                 const payload = await sendAction(scoped);
+                log('msg.action.reply', {
+                    id: action.id,
+                    type: action.type,
+                    ok: payload?.ok,
+                    error: payload && !payload.ok ? payload.error : undefined,
+                    data: payload?.ok ? payload.data : undefined,
+                });
                 sendResponse(payload);
                 const effectiveWorkspaceId = payload?.ok
-                    ? (payload.data as any)?.workspaceId || scope.workspaceId || activeWorkspaceId
+                    ? (payload.data as any)?.workspaceId || scope?.workspaceId || activeWorkspaceId
                     : null;
                 if (!payload?.ok || !effectiveWorkspaceId) return;
-                const responseTabToken = ((payload.data as any)?.tabToken || tabToken) as string;
-                const responseTabId = (payload.data as any)?.tabId || scope.tabId;
+                const responseTabToken = (payload.data as any)?.tabToken as string | undefined;
+                const responseTabId = (payload.data as any)?.tabId as string | undefined;
+                let mappingUpdated = false;
                 if (responseTabToken && effectiveWorkspaceId && responseTabId) {
-                    tokenToScope.set(responseTabToken, {
-                        workspaceId: String(effectiveWorkspaceId),
-                        tabId: String(responseTabId),
-                    });
+                    mappingUpdated = upsertTokenScope(
+                        responseTabToken,
+                        String(effectiveWorkspaceId),
+                        String(responseTabId),
+                        'action.reply',
+                        action.type,
+                    );
+                    if (mappingUpdated) {
+                        log('mapping.updated', {
+                            id: action.id,
+                            type: action.type,
+                            responseTabToken,
+                            workspaceId: String(effectiveWorkspaceId),
+                            tabId: String(responseTabId),
+                        });
+                    }
+                }
+                if (mappingUpdated) {
+                    const mappedTabToken = responseTabToken as string;
+                    if (typeof senderTabId === 'number') {
+                        if (mappedTabToken === tabToken) {
+                            upsertTab(
+                                senderTabId,
+                                mappedTabToken,
+                                sender.tab?.url || tabState.get(senderTabId)?.lastUrl || '',
+                            );
+                            await addWorkspaceTabId(String(effectiveWorkspaceId), senderTabId);
+                            log('workspace.tabId.bound', {
+                                id: action.id,
+                                senderTabId,
+                                workspaceId: String(effectiveWorkspaceId),
+                                responseTabToken: mappedTabToken,
+                                mode: 'same-token',
+                            });
+                        } else {
+                            log('workspace.tabId.bind_skipped', {
+                                id: action.id,
+                                senderTabId,
+                                requestTabToken: tabToken,
+                                responseTabToken: mappedTabToken,
+                                workspaceId: String(effectiveWorkspaceId),
+                                reason: 'response token belongs to a different tab',
+                            });
+                        }
+                    }
+                    void ensureGroupedActiveTab(String(effectiveWorkspaceId));
+                    void ensureWorkspaceTabsGrouped(String(effectiveWorkspaceId));
+                    log('group.sync.triggered', { id: action.id, workspaceId: String(effectiveWorkspaceId) });
                 }
                 if (action.type === 'workspace.create' || action.type === 'tab.create') {
                     if ((payload.data as any)?.tabToken) {
@@ -427,6 +669,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         onUpdated,
         onStartup,
         onInstalled,
+        bootstrapGrouping,
     };
 };
     const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
