@@ -76,15 +76,17 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const requestTokenFromTab = async (tabId: number) => {
-        for (let attempt = 0; attempt < 8; attempt += 1) {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
             const result = await send.toTab<{ ok: boolean; tabToken?: string; url?: string }>(tabId, MSG.GET_TOKEN, undefined, {
                 timeoutMs: 1500,
             });
             if (result.ok) {
                 const data = result.data || { ok: false, error: 'no response' };
                 if (data?.ok && data.tabToken) return data;
+            } else if (result.error.code === 'NO_RECEIVER') {
+                return { ok: false, error: result.error.message } as const;
             }
-            if (attempt < 7) await wait(250);
+            if (attempt < 2) await wait(150);
         }
         return { ok: false, error: 'tab token request timeout' } as const;
     };
@@ -401,10 +403,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
                     const payload = (action.payload || {}) as { startUrl?: string };
                     const startUrl = String(payload.startUrl || '').trim();
-                    const senderUrl = String(sender.tab?.url || '').trim();
-                    const bootstrapUrl = startUrl || (senderUrl.startsWith('http://') || senderUrl.startsWith('https://') ? senderUrl : '');
                     const createdWindow = await chrome.windows.create({
-                        url: bootstrapUrl || undefined,
+                        url: startUrl || undefined,
                         focused: true,
                     });
                     const createdTabId = createdWindow.tabs?.[0]?.id;
@@ -427,7 +427,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         scope: { tabToken: tabInfo.tabToken },
                         payload: {
                             source: 'extension.workspace.create',
-                            url: tabInfo.lastUrl || bootstrapUrl || '',
+                            url: tabInfo.lastUrl || startUrl || '',
                             at: Date.now(),
                             windowId: createdWindowId,
                         },
