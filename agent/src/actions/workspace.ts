@@ -87,7 +87,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     'workspace.list': async (ctx, _action) => {
         const list = ctx.pageRegistry.listWorkspaces();
         const active = ctx.pageRegistry.getActiveWorkspace?.();
-        return makeOk({ workspaces: list, activeWorkspaceId: active?.id || null });
+        return makeOk({ workspaces: list, activeWorkspaceId: active?.workspaceId || null });
     },
     'workspace.create': async (ctx, action) => {
         const payload = (action.payload || {}) as WorkspaceCreatePayload;
