@@ -66,7 +66,7 @@ const loadFloatingUI = (() => {
         if (!tokenReady) {
             tokenReady = (async () => {
                 const mod = await loadTokenBridge();
-                const token = mod.ensureTabToken();
+                const token = await mod.ensureTabTokenAsync();
                 mod.bindHello(token);
                 return token;
             })();
@@ -98,26 +98,28 @@ const loadFloatingUI = (() => {
     // hello 由 token_bridge 负责
     const PING_INTERVAL_MS = 15000;
     let pingTimer: ReturnType<typeof setInterval> | null = null;
+    const sendPing = async () => {
+        const tabToken = await ensureToken();
+        const { send } = await loadSend();
+        await send.action({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: 'tab.ping',
+            tabToken,
+            scope: { tabToken },
+            payload: {
+                source: 'extension.content',
+                url: location.href,
+                title: document.title,
+                at: Date.now(),
+            },
+        });
+    };
     const startHeartbeat = () => {
         if (pingTimer) return;
+        void sendPing();
         pingTimer = setInterval(() => {
-            void (async () => {
-                const tabToken = await ensureToken();
-                const { send } = await loadSend();
-                await send.action({
-                    v: 1,
-                    id: crypto.randomUUID(),
-                    type: 'tab.ping',
-                    tabToken,
-                    scope: { tabToken },
-                    payload: {
-                        source: 'extension.content',
-                        url: location.href,
-                        title: document.title,
-                        at: Date.now(),
-                    },
-                });
-            })();
+            void sendPing();
         }, PING_INTERVAL_MS);
     };
 
@@ -131,13 +133,20 @@ const loadFloatingUI = (() => {
             tabToken,
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
+                const hasExplicitScope = !!((scope as any)?.workspaceId || (scope as any)?.tabId);
                 const scopedTabToken = (scope as any)?.tabToken || tabToken;
+                const normalizedScope = hasExplicitScope
+                    ? {
+                          ...((scope as any)?.workspaceId ? { workspaceId: (scope as any).workspaceId } : {}),
+                          ...((scope as any)?.tabId ? { tabId: (scope as any).tabId } : {}),
+                      }
+                    : { ...(scope || {}), tabToken: scopedTabToken };
                 const action = {
                     v: 1,
                     id: crypto.randomUUID(),
                     type,
-                    tabToken: scopedTabToken,
-                    scope: { ...(scope || {}), tabToken: scopedTabToken },
+                    tabToken: hasExplicitScope ? undefined : scopedTabToken,
+                    scope: normalizedScope,
                     payload: payload || {},
                 };
                 const result = await send.action(action);

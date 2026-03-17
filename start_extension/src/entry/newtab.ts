@@ -1,4 +1,5 @@
 const TAB_TOKEN_KEY = '__rpa_tab_token';
+const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
 const WS_URL = 'ws://127.0.0.1:17333';
 
 const wsStatusEl = document.getElementById('wsStatus');
@@ -7,6 +8,7 @@ const urlEl = document.getElementById('url');
 const restoreStatusEl = document.getElementById('restoreStatus');
 const restoreListEl = document.getElementById('restoreList');
 const refreshRestoreBtn = document.getElementById('refreshRestore');
+const log = (...args: unknown[]) => console.log('[RPA:start]', ...args);
 
 const setStatus = (text: string, ok = false) => {
     if (wsStatusEl) {
@@ -22,32 +24,21 @@ const ensureTabToken = () => {
     } catch {
         // ignore
     }
-    if (!token) {
-        token = crypto.randomUUID();
-        try {
-            sessionStorage.setItem(TAB_TOKEN_KEY, token);
-        } catch {
-            // ignore
-        }
-    }
-    try {
-        (window as any).__rpa_tab_token = token;
-        (window as any).__TAB_TOKEN__ = token;
-    } catch {
-        // ignore
-    }
     return token;
 };
 
 const sendLifecycle = (tabToken: string, type: 'tab.opened' | 'tab.ping') => {
     try {
+        const requestId = crypto.randomUUID();
         const ws = new WebSocket(WS_URL);
+        log('lifecycle.ws.connecting', { type, requestId, tabToken, url: location.href });
         ws.addEventListener('open', () => {
             setStatus('connected', true);
+            log('lifecycle.ws.open', { type, requestId, tabToken });
             ws.send(
                 JSON.stringify({
                     v: 1,
-                    id: crypto.randomUUID(),
+                    id: requestId,
                     type,
                     tabToken,
                     scope: { tabToken },
@@ -59,9 +50,11 @@ const sendLifecycle = (tabToken: string, type: 'tab.opened' | 'tab.ping') => {
                     },
                 }),
             );
+            log('lifecycle.sent', { type, requestId, tabToken });
             setTimeout(() => {
                 try {
                     ws.close();
+                    log('lifecycle.ws.closed', { type, requestId });
                 } catch {
                     // ignore
                 }
@@ -69,9 +62,11 @@ const sendLifecycle = (tabToken: string, type: 'tab.opened' | 'tab.ping') => {
         });
         ws.addEventListener('error', () => {
             setStatus('offline');
+            log('lifecycle.ws.error', { type, requestId, tabToken });
         });
     } catch {
         setStatus('offline');
+        log('lifecycle.ws.init_failed', { type, tabToken });
     }
 };
 
@@ -91,11 +86,14 @@ const sendAction = async (type: string, payload: Record<string, unknown> = {}, s
             resolve(result);
         };
         const timeout = setTimeout(() => {
+            log('action.timeout', { type, requestId, payload, scope: scope || {} });
             done({ ok: false, error: { message: 'ws action timeout' } });
         }, 5000);
         try {
             ws = new WebSocket(WS_URL);
+            log('action.ws.connecting', { type, requestId, payload, scope: scope || {} });
             ws.addEventListener('open', () => {
+                log('action.ws.open', { type, requestId });
                 ws?.send(
                     JSON.stringify({
                         v: 1,
@@ -105,12 +103,14 @@ const sendAction = async (type: string, payload: Record<string, unknown> = {}, s
                         scope: scope || {},
                     }),
                 );
+                log('action.sent', { type, requestId });
             });
             ws.addEventListener('message', (event) => {
                 try {
                     const message = JSON.parse(String(event.data || '{}'));
                     if (message?.replyTo !== requestId) return;
                     clearTimeout(timeout);
+                    log('action.reply', { type, requestId, ok: message?.payload?.ok, payload: message?.payload });
                     done(message?.payload || { ok: false, error: { message: 'empty payload' } });
                 } catch {
                     // ignore parse error
@@ -118,13 +118,48 @@ const sendAction = async (type: string, payload: Record<string, unknown> = {}, s
             });
             ws.addEventListener('error', () => {
                 clearTimeout(timeout);
+                log('action.ws.error', { type, requestId });
                 done({ ok: false, error: { message: 'ws action error' } });
             });
         } catch {
             clearTimeout(timeout);
+            log('action.ws.init_failed', { type, requestId });
             done({ ok: false, error: { message: 'ws action init failed' } });
         }
     });
+
+const ensureTabTokenFromAgent = async () => {
+    let token = ensureTabToken();
+    if (!token) {
+        const initialized = await sendAction('tab.token.init', {
+            source: 'start_extension',
+            url: location.href,
+            at: Date.now(),
+        });
+        if (!initialized?.ok || !initialized?.data?.tabToken) {
+            throw new Error(initialized?.error?.message || 'tab token init failed');
+        }
+        token = String(initialized.data.tabToken);
+        try {
+            sessionStorage.setItem(TAB_TOKEN_KEY, token);
+        } catch {
+            // ignore
+        }
+    }
+    try {
+        window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${token}`;
+    } catch {
+        // ignore
+    }
+    try {
+        (window as any).__rpa_tab_token = token;
+        (window as any).__TAB_TOKEN__ = token;
+    } catch {
+        // ignore
+    }
+    log('token.ensure', { token, url: location.href });
+    return token;
+};
 
 const formatTs = (ts: number) => {
     try {
@@ -188,14 +223,24 @@ const refreshRestoreList = async () => {
     if (restoreStatusEl) restoreStatusEl.textContent = `ready (${items.length})`;
 };
 
-const token = ensureTabToken();
-if (tokenEl) tokenEl.textContent = `${token.slice(0, 8)}...`;
-if (urlEl) urlEl.textContent = location.href;
-setStatus('connecting...');
-sendLifecycle(token, 'tab.opened');
-setInterval(() => {
-    sendLifecycle(token, 'tab.ping');
-}, 15000);
+void (async () => {
+    try {
+        const token = await ensureTabTokenFromAgent();
+        if (tokenEl) tokenEl.textContent = `${token.slice(0, 8)}...`;
+        if (urlEl) urlEl.textContent = location.href;
+        setStatus('connecting...');
+        sendLifecycle(token, 'tab.opened');
+        setInterval(() => {
+            sendLifecycle(token, 'tab.ping');
+        }, 15000);
+    } catch (error) {
+        setStatus('offline');
+        log('token.init.failed', { message: error instanceof Error ? error.message : String(error) });
+        setTimeout(() => {
+            void location.reload();
+        }, 1200);
+    }
+})();
 refreshRestoreBtn?.addEventListener('click', () => {
     void refreshRestoreList();
 });

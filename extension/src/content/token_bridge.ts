@@ -31,9 +31,38 @@ const writeTokenToWindowName = (tabToken: string) => {
 };
 
 export const ensureTabToken = () => {
-    let tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) || readTokenFromWindowName();
+    const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) || readTokenFromWindowName() || '';
+    if (!tabToken) return '';
+    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
+    writeTokenToWindowName(tabToken);
+    (window as any).__TAB_TOKEN__ = tabToken;
+    return tabToken;
+};
+
+export const ensureTabTokenAsync = async () => {
+    let tabToken = ensureTabToken();
     if (!tabToken) {
-        tabToken = crypto.randomUUID();
+        const response = await send.action<{
+            ok: boolean;
+            data?: { tabToken?: string };
+            error?: { message?: string };
+        }>({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: 'tab.token.init',
+            payload: {
+                source: 'extension.content',
+                url: location.href,
+                at: Date.now(),
+            },
+            scope: {},
+        });
+        if (response.ok && response.data?.ok && response.data?.data?.tabToken) {
+            tabToken = String(response.data.data.tabToken);
+        }
+        if (!tabToken) {
+            throw new Error('tab token init failed');
+        }
     }
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
     writeTokenToWindowName(tabToken);
