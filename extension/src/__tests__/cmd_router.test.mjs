@@ -164,6 +164,5 @@ await log('workspace.create opens a new window and returns claimed workspace', a
     assert.equal(reply?.ok, true);
     assert.equal(reply?.data?.workspaceId, 'ws-new');
     assert.equal(reply?.data?.windowId, 31);
-    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), true);
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), true);
 });

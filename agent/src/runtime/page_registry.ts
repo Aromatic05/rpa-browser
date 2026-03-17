@@ -54,12 +54,7 @@ export type PageRegistry = {
     resolveTabToken: (scope?: WorkspaceScope) => string;
     touchTabToken: (tabToken: string, at?: number) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     hasScopeForToken: (tabToken: string) => boolean;
-    markOrphanKind: (tabToken: string, kind: 'initial_start' | 'manual') => void;
-    getOrphanKind: (tabToken: string) => 'initial_start' | 'manual' | null;
-    claimOrphanToken: (
-        tabToken: string,
-        mode: 'create_workspace' | 'active_or_create',
-    ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    claimOrphanToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     moveTokenToWorkspace: (tabToken: string, workspaceId: WorkspaceId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     getTokenPageUrl: (tabToken: string) => string | null;
     listTimedOutTokens: (
@@ -76,7 +71,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const log = (...args: unknown[]) => actionLog('[RPA:page_registry]', ...args);
     const tokenToPage = new Map<string, Page>();
     const tokenToTab = new Map<string, { workspaceId: WorkspaceId; tabId: TabId }>();
-    const orphanKinds = new Map<string, 'initial_start' | 'manual'>();
     const workspaces = new Map<WorkspaceId, Workspace>();
     let activeWorkspaceId: WorkspaceId | null = null;
 
@@ -91,7 +85,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         page.on('close', () => {
             if (tokenToPage.get(tabToken) !== page) return;
             tokenToPage.delete(tabToken);
-            orphanKinds.delete(tabToken);
             const ref = tokenToTab.get(tabToken);
             tokenToTab.delete(tabToken);
             if (ref) {
@@ -168,7 +161,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         });
         if (!workspace.activeTabId) workspace.activeTabId = tabId;
         tokenToTab.set(tabToken, { workspaceId: workspace.workspaceId, tabId });
-        orphanKinds.delete(tabToken);
         touchWorkspace(workspace);
         log('attach_tab', { workspaceId: workspace.workspaceId, tabId, tabToken, pageUrl: page.url() });
     };
@@ -243,10 +235,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             log('bind_page.start', { hintedToken: hintedToken || null, resolvedToken: token, pageUrl: page.url() });
             attachTokenToRuntime(token, page);
             if (!tokenToTab.has(token)) {
-                if (!orphanKinds.has(token)) {
-                    orphanKinds.set(token, 'manual');
-                }
-                log('bind_page.orphan', { token, pageUrl: page.url(), orphanKind: orphanKinds.get(token) });
+                log('bind_page.orphan', { token, pageUrl: page.url() });
             } else {
                 const ref = tokenToTab.get(token)!;
                 const tab = workspaces.get(ref.workspaceId)?.tabs.get(ref.tabId);
@@ -281,9 +270,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             const token = await waitForToken(page, 3, 100);
             if (!token) continue;
             attachTokenToRuntime(token, page);
-            if (!tokenToTab.has(token) && !orphanKinds.has(token)) {
-                orphanKinds.set(token, 'manual');
-            }
             log('rebuild_token_map.bound', { token, pageUrl: page.url() });
         }
     };
@@ -413,7 +399,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const cleanupToken = (tabToken: string) => {
         tokenToPage.delete(tabToken);
-        orphanKinds.delete(tabToken);
         const ref = tokenToTab.get(tabToken);
         if (ref) {
             const ws = workspaces.get(ref.workspaceId);
@@ -460,30 +445,11 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const hasScopeForToken = (tabToken: string) => tokenToTab.has(tabToken);
 
-    const markOrphanKind = (tabToken: string, kind: 'initial_start' | 'manual') => {
-        if (!tabToken || tokenToTab.has(tabToken)) return;
-        orphanKinds.set(tabToken, kind);
-    };
-
-    const getOrphanKind = (tabToken: string) => orphanKinds.get(tabToken) || null;
-
-    const claimOrphanToken = (tabToken: string, mode: 'create_workspace' | 'active_or_create') => {
+    const claimOrphanToken = (tabToken: string) => {
         const existing = tokenToTab.get(tabToken);
         if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
         const page = tokenToPage.get(tabToken);
         if (!page || page.isClosed()) return null;
-        if (mode === 'active_or_create') {
-            const active = getActiveWorkspace();
-            if (active) {
-                activeWorkspaceId = active.workspaceId;
-                return attachTokenToWorkspace(active, tabToken, page);
-            }
-            const fallbackWorkspace = Array.from(workspaces.values()).sort((a, b) => b.updatedAt - a.updatedAt)[0];
-            if (fallbackWorkspace) {
-                activeWorkspaceId = fallbackWorkspace.workspaceId;
-                return attachTokenToWorkspace(fallbackWorkspace, tabToken, page);
-            }
-        }
         const created = createWorkspaceInternal(tabToken, page);
         activeWorkspaceId = created.workspaceId;
         return created;
@@ -537,8 +503,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         resolveTabToken,
         touchTabToken,
         hasScopeForToken,
-        markOrphanKind,
-        getOrphanKind,
         claimOrphanToken,
         moveTokenToWorkspace,
         getTokenPageUrl,

@@ -10,7 +10,7 @@ const createMockPage = (url: string) =>
         title: async () => '',
     }) as any;
 
-test('bindPage appends new token to active workspace instead of creating a new workspace', async () => {
+test('bindPage keeps token orphan until explicit claim', async () => {
     const pageRegistry = createPageRegistry({
         tabTokenKey: '__rpa_tab_token',
         getContext: async () =>
@@ -21,19 +21,16 @@ test('bindPage appends new token to active workspace instead of creating a new w
     });
 
     await pageRegistry.bindPage(createMockPage('https://example.com/a'), 'token-a');
-    const before = pageRegistry.listWorkspaces();
-    assert.equal(before.length, 1);
-    const activeWorkspaceId = before[0].workspaceId;
+    assert.equal(pageRegistry.listWorkspaces().length, 0);
 
     await pageRegistry.bindPage(createMockPage('https://example.com/b'), 'token-b');
-    const after = pageRegistry.listWorkspaces();
+    assert.equal(pageRegistry.listWorkspaces().length, 0);
 
-    assert.equal(after.length, 1);
-    const scopeA = pageRegistry.resolveScopeFromToken('token-a');
-    const scopeB = pageRegistry.resolveScopeFromToken('token-b');
-    assert.equal(scopeA.workspaceId, activeWorkspaceId);
-    assert.equal(scopeB.workspaceId, activeWorkspaceId);
-    assert.notEqual(scopeA.tabId, scopeB.tabId);
+    const claimedA = pageRegistry.claimOrphanToken('token-a');
+    const claimedB = pageRegistry.claimOrphanToken('token-b');
+    assert.ok(claimedA);
+    assert.ok(claimedB);
+    assert.notEqual(claimedA?.workspaceId, claimedB?.workspaceId);
 });
 
 test('touchTabToken updates tab timestamp for existing token', async () => {
@@ -47,6 +44,8 @@ test('touchTabToken updates tab timestamp for existing token', async () => {
     });
 
     await pageRegistry.bindPage(createMockPage('https://example.com/a'), 'token-touch');
+    const claimed = pageRegistry.claimOrphanToken('token-touch');
+    assert.ok(claimed);
     const scope = pageRegistry.resolveScopeFromToken('token-touch');
     const before = await pageRegistry.listTabs(scope.workspaceId);
     const prevUpdatedAt = before.find((item) => item.tabId === scope.tabId)?.updatedAt || 0;

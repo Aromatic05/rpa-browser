@@ -212,28 +212,10 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     const payload = (action.payload || {}) as Record<string, unknown>;
 
     if (action.type === ACTION_TYPES.TAB_OPENED) {
-        const source = String(payload.source || '');
-        if (source === 'extension.workspace.create') {
-            pageRegistry.markOrphanKind(token, 'initial_start');
-            return {
-                ok: true as const,
-                data: { tabToken: token, orphan: true, pending: true, source },
-            };
-        }
-        const activeWorkspace = pageRegistry.getActiveWorkspace?.();
-        const hasAnyWorkspace = pageRegistry.listWorkspaces().length > 0;
-        const shouldTreatAsInitialStart = source === 'start_extension' && !activeWorkspace && !hasAnyWorkspace;
-        if (shouldTreatAsInitialStart) {
-            pageRegistry.markOrphanKind(token, 'initial_start');
-            return {
-                ok: true as const,
-                data: { tabToken: token, orphan: true, pending: true, source },
-            };
-        }
-        pageRegistry.markOrphanKind(token, 'manual');
+        const source = String(payload.source || 'unknown');
         return {
             ok: true as const,
-            data: { tabToken: token, orphan: true, pending: true, source: source || 'unknown' },
+            data: { tabToken: token, orphan: true, pending: true, source },
         };
     }
 
@@ -251,18 +233,11 @@ const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
     }
 
     return withOrphanClaimLock(async () => {
-        const orphanKind = pageRegistry.getOrphanKind(token) || 'manual';
-        const policy = orphanKind === 'initial_start' ? 'create_workspace' : 'active_or_create';
-        const scope = pageRegistry.claimOrphanToken(token, policy);
+        const scope = pageRegistry.claimOrphanToken(token);
         if (!scope) {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to claim orphan tab');
         }
-        return runAction(
-            action,
-            { tabToken: token, scope },
-            urlHint,
-            { orphanClaim: true, orphanKind, orphanPolicy: policy },
-        );
+        return runAction(action, { tabToken: token, scope }, urlHint, { orphanClaim: true });
     });
 };
 

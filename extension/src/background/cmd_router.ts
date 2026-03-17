@@ -370,19 +370,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: 'new window tab token unavailable' } });
                         return;
                     }
-                    await sendAction({
-                        v: 1,
-                        id: crypto.randomUUID(),
-                        type: ACTION_TYPES.TAB_OPENED,
-                        tabToken: tabInfo.tabToken,
-                        scope: { tabToken: tabInfo.tabToken },
-                        payload: {
-                            source: 'extension.workspace.create',
-                            url: tabInfo.lastUrl || startUrl || '',
-                            at: Date.now(),
-                            windowId: createdWindowId,
-                        },
-                    });
                     const claimed = await sendAction({
                         v: 1,
                         id: crypto.randomUUID(),
