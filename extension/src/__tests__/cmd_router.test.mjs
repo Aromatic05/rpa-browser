@@ -29,15 +29,21 @@ const createChromeMock = () => ({
                 ? { id: tabId, windowId: 31, url: 'chrome-extension://start/newtab.html' }
                 : { id: tabId, windowId: 7, url: 'https://example.com' },
         update: async (_tabId, _update) => ({ ok: true }),
-        sendMessage: (_tabId, message, cb) => {
+        sendMessage: (tabId, message, cb) => {
             if (message?.type === MSG.GET_TOKEN) {
+                if (tabId === 21) {
+                    cb({ ok: true, tabToken: 'token-new', url: 'chrome-extension://start/newtab.html?workspaceId=ws-url' });
+                    return;
+                }
                 cb({ ok: true, tabToken: 'token-new', url: 'https://example.com/new' });
                 return;
             }
             cb({ ok: true });
         },
     },
-    runtime: {},
+    runtime: {
+        getURL: (path) => `chrome-extension://start/${String(path || '').replace(/^\//, '')}`,
+    },
 });
 
 await log('workspace.list action triggers refresh dispatch', async () => {
@@ -118,6 +124,9 @@ await log('window remove keeps router stable', async () => {
         wsClient: {
             sendAction: async (action) => {
                 sent.push(action);
+                if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
+                    return { ok: true, data: { workspaceId: 'ws-new' } };
+                }
                 return { ok: true, data: {} };
             },
         },
@@ -130,13 +139,16 @@ await log('window remove keeps router stable', async () => {
     assert.equal(Array.isArray(sent), true);
 });
 
-await log('workspace.create opens a new window and returns pending workspace binding', async () => {
+await log('workspace.create returns workspace shell without opening window', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
         wsClient: {
             sendAction: async (action) => {
                 sent.push(action);
+                if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
+                    return { ok: true, data: { workspaceId: 'ws-new' } };
+                }
                 return { ok: true, data: {} };
             },
         },
@@ -161,11 +173,10 @@ await log('workspace.create opens a new window and returns pending workspace bin
         },
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
-
     assert.equal(reply?.ok, true);
     assert.equal(typeof reply?.data?.workspaceId, 'string');
-    assert.equal(reply?.data?.windowId, 31);
-    assert.equal(reply?.data?.pending, true);
+    assert.equal(reply?.data?.windowId, undefined);
+    assert.equal(reply?.data?.pending, undefined);
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), false);
 });
 
@@ -209,12 +220,41 @@ await log('tabs.onCreated binds tab to window workspace via tab.opened', async (
         scope: { workspaceId: 'ws-1', tabId: 'tab-1', tabToken: 'token-1' },
     });
 
-    router.onCreated({ id: 21, windowId: 7, url: 'https://example.com/new', title: 'New' });
+    router.onCreated({ id: 22, windowId: 7, url: 'https://example.com/new', title: 'New' });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), true);
     const opened = sent.find((action) => action.type === ACTION_TYPES.TAB_OPENED);
     assert.equal(opened?.payload?.workspaceId, 'ws-1');
+});
+
+await log('tabs.onCreated binds workspace from newtab url when window mapping is not ready', async () => {
+    globalThis.chrome = createChromeMock();
+    const sent = [];
+    const router = createCmdRouter({
+        wsClient: {
+            sendAction: async (action) => {
+                sent.push(action);
+                if (action.type === ACTION_TYPES.TAB_OPENED) {
+                    return { ok: true, data: { workspaceId: 'ws-url', tabId: 'tab-new', tabToken: 'token-new' } };
+                }
+                return { ok: true, data: {} };
+            },
+        },
+        onRefresh: () => undefined,
+    });
+
+    router.onCreated({
+        id: 21,
+        windowId: 31,
+        url: 'chrome-extension://start/newtab.html?workspaceId=ws-url',
+        title: 'RPA Start',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const opened = sent.find((action) => action.type === ACTION_TYPES.TAB_OPENED);
+    assert.equal(Boolean(opened), true);
+    assert.equal(opened?.payload?.workspaceId, 'ws-url');
 });
 
 await log('tabs.onAttached triggers tab.reassign for cross-window move', async () => {
@@ -267,4 +307,59 @@ await log('tabs.onAttached triggers tab.reassign for cross-window move', async (
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_REASSIGN), true);
+});
+
+await log('workspace.list works without tab token', async () => {
+    globalThis.chrome = createChromeMock();
+    chrome.tabs.sendMessage = (tabId, message, cb) => {
+        if (tabId === 99 && message?.type === MSG.GET_TOKEN) {
+            cb({ ok: false });
+            return;
+        }
+        if (message?.type === MSG.GET_TOKEN) {
+            cb({ ok: true, tabToken: 'token-new', url: 'https://example.com/new' });
+            return;
+        }
+        cb({ ok: true });
+    };
+    chrome.tabs.query = async ({ windowId }) => {
+        if (windowId === 88) return [];
+        return [{ id: 11, windowId, url: 'https://example.com' }];
+    };
+    const sent = [];
+    const router = createCmdRouter({
+        wsClient: {
+            sendAction: async (action) => {
+                sent.push(action);
+                if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
+                    return { ok: true, data: { workspaces: [{ workspaceId: 'ws-shell', tabCount: 0 }], activeWorkspaceId: 'ws-shell' } };
+                }
+                return { ok: true, data: {} };
+            },
+        },
+        onRefresh: () => undefined,
+    });
+
+    let reply;
+    router.handleMessage(
+        {
+            type: MSG.ACTION,
+            action: {
+                v: 1,
+                id: 'list-no-token',
+                type: ACTION_TYPES.WORKSPACE_LIST,
+                payload: {},
+                scope: {},
+            },
+        },
+        { tab: { id: 99, windowId: 88, url: 'chrome-extension://start/newtab.html' } },
+        (payload) => {
+            reply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(reply?.ok, true);
+    assert.equal(Array.isArray(reply?.data?.workspaces), true);
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.WORKSPACE_LIST), true);
 });

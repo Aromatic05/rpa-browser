@@ -16,6 +16,12 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger || createLogger('sw');
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
+    const PAGELESS_ACTIONS = new Set<string>([
+        ACTION_TYPES.TAB_INIT,
+        ACTION_TYPES.WORKSPACE_LIST,
+        ACTION_TYPES.WORKSPACE_CREATE,
+        ACTION_TYPES.RECORD_LIST,
+    ]);
 
     const tabState = new Map<number, { tabToken: string; lastUrl: string; windowId: number | null; updatedAt: number }>();
     const tokenToScope = new Map<string, { workspaceId: string; tabId: string }>();
@@ -148,27 +154,23 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         return { tabId, tabToken: tabInfo.tabToken, urlHint: tabInfo.lastUrl, windowId };
     };
 
-    const resolveNewtabUrl = async (tabId: number, hintedUrl?: string) => {
-        const readUrl = async () => {
-            try {
-                const tab = await chrome.tabs.get(tabId);
-                return String(tab.url || '');
-            } catch {
-                return '';
-            }
-        };
-        const candidates = [String(hintedUrl || ''), await readUrl()];
-        for (const candidate of candidates) {
-            if (candidate.startsWith('chrome-extension://') && candidate.includes('/newtab.html')) {
-                return candidate;
-            }
+    const workspaceIdFromTabUrl = (url: string) => {
+        if (!url.startsWith('chrome-extension://') || !url.includes('/newtab.html')) return '';
+        try {
+            const parsed = new URL(url);
+            return String(parsed.searchParams.get('workspaceId') || '').trim();
+        } catch {
+            return '';
         }
+    };
+
+    const waitForWindowWorkspace = async (windowId: number, fallbackUrl = '') => {
+        const fromUrl = workspaceIdFromTabUrl(fallbackUrl);
+        if (fromUrl) return fromUrl;
         for (let i = 0; i < 20; i += 1) {
-            await wait(50);
-            const next = await readUrl();
-            if (next.startsWith('chrome-extension://') && next.includes('/newtab.html')) {
-                return next;
-            }
+            const mapped = windowToWorkspace.get(windowId);
+            if (mapped) return mapped;
+            await wait(25);
         }
         return '';
     };
@@ -211,24 +213,21 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const bootstrapState = async () => {
-        try {
-            const payload = await sendAction({
-                v: 1,
-                id: crypto.randomUUID(),
-                type: ACTION_TYPES.WORKSPACE_LIST,
-                payload: {},
-                scope: {},
-            });
-            if (!payload?.ok) {
-                log('bootstrap.workspace_list_failed', payload?.error || null);
-                return;
-            }
-            const data = payload.data || {};
-            const activeId = (data as any).activeWorkspaceId ? String((data as any).activeWorkspaceId) : null;
-            if (activeId) activeWorkspaceId = activeId;
-        } catch (error) {
-            log('bootstrap.failed', error instanceof Error ? error.message : String(error));
+        const payload = await sendAction({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.WORKSPACE_LIST,
+            payload: {},
+            scope: {},
+        });
+        if (!payload?.ok) {
+            throw new Error(
+                `bootstrap.workspace_list_failed: ${payload?.error?.code || 'UNKNOWN'}:${payload?.error?.message || 'unknown'}`,
+            );
         }
+        const data = payload.data || {};
+        const activeId = (data as any).activeWorkspaceId ? String((data as any).activeWorkspaceId) : null;
+        if (activeId) activeWorkspaceId = activeId;
     };
 
     const onActivated = (info: chrome.tabs.TabActiveInfo) => {
@@ -296,12 +295,15 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         void (async () => {
             const tabInfo = await ensureTabToken(tabId, windowId);
             if (!tabInfo?.tabToken) {
-                throw new Error('tabs.onCreated tab token unavailable');
+                throw new Error(`tabs.onCreated tab token unavailable (tabId=${tabId}, windowId=${windowId})`);
             }
-            const workspaceId = windowToWorkspace.get(windowId);
+            const workspaceId = await waitForWindowWorkspace(windowId, tabInfo.lastUrl || tab.url || '');
             if (!workspaceId) {
-                throw new Error(`tabs.onCreated workspace mapping missing for window ${windowId}`);
+                throw new Error(
+                    `tabs.onCreated workspace mapping missing (tabId=${tabId}, windowId=${windowId}, token=${tabInfo.tabToken})`,
+                );
             }
+            windowToWorkspace.set(windowId, workspaceId);
             const result = await sendAction({
                 v: 1,
                 id: crypto.randomUUID(),
@@ -323,7 +325,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const tabScopeWorkspaceId = String((result.data as any)?.workspaceId || workspaceId);
             const tabScopeTabId = String((result.data as any)?.tabId || '');
             if (!tabScopeTabId) {
-                throw new Error('tabs.onCreated tab.opened missing tabId');
+                throw new Error(`tabs.onCreated tab.opened missing tabId (tabId=${tabId}, windowId=${windowId})`);
             }
             upsertTokenScope(tabInfo.tabToken, tabScopeWorkspaceId, tabScopeTabId);
             windowToWorkspace.set(windowId, tabScopeWorkspaceId);
@@ -426,54 +428,51 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             (async () => {
                 const action = (message.action || {}) as Action;
                 if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
-                    const workspaceId = crypto.randomUUID();
-                    const createdWindow = await chrome.windows.create({
-                        focused: true,
+                    const created = await sendAction({
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: ACTION_TYPES.WORKSPACE_CREATE,
+                        payload: action.payload || {},
+                        scope: {},
                     });
-                    const createdTabId = createdWindow.tabs?.[0]?.id;
-                    const createdWindowId = createdWindow.id;
-                    if (typeof createdTabId !== 'number' || typeof createdWindowId !== 'number') {
-                        sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: 'failed to create window' } });
+                    if (!created.ok) {
+                        sendResponse(created);
                         return;
                     }
-                    activeWindowId = createdWindowId;
-                    activeWorkspaceId = workspaceId;
-                    windowToWorkspace.set(createdWindowId, workspaceId);
-
-                    const newtabUrl = await resolveNewtabUrl(createdTabId, createdWindow.tabs?.[0]?.url);
-                    if (newtabUrl) {
-                        const nextUrl = new URL(newtabUrl);
-                        nextUrl.searchParams.set('workspaceId', workspaceId);
-                        await chrome.tabs.update(createdTabId, { url: nextUrl.toString() });
+                    const workspaceId = String((created.data as any)?.workspaceId || '');
+                    if (!workspaceId) {
+                        sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: 'workspace.create missing workspaceId' } });
+                        return;
                     }
+                    activeWorkspaceId = workspaceId;
                     sendResponse({
                         ok: true,
                         data: {
                             workspaceId,
                             tabId: null,
                             tabToken: null,
-                            windowId: createdWindowId,
-                            pending: true,
                         },
                     });
                     options.onRefresh();
                     return;
                 }
+                const isWorkspaceAction = action.type.startsWith('workspace.');
+                const isPagelessAction = PAGELESS_ACTIONS.has(action.type) || isWorkspaceAction;
                 let tabToken = (action.tabToken || action.scope?.tabToken) as string | undefined;
                 const senderTabId = sender.tab?.id;
                 const senderWindowId = sender.tab?.windowId;
 
-                if (typeof senderTabId === 'number') {
+                if (!isPagelessAction && typeof senderTabId === 'number') {
                     const senderTabInfo = await ensureTabToken(senderTabId, senderWindowId);
                     if (senderTabInfo?.tabToken) tabToken = senderTabInfo.tabToken;
                 }
 
-                if (!tabToken && typeof senderWindowId === 'number') {
+                if (!isPagelessAction && !tabToken && typeof senderWindowId === 'number') {
                     const active = await getActiveTabTokenForWindow(senderWindowId);
                     if (active) tabToken = active.tabToken;
                 }
 
-                if (!tabToken && action.type !== ACTION_TYPES.TAB_INIT) {
+                if (!tabToken && !isPagelessAction) {
                     sendResponse({ ok: false, error: 'tab token unavailable' });
                     return;
                 }
