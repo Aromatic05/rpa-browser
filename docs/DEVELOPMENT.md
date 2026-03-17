@@ -259,6 +259,34 @@ pnpm test:extension
 - `agent/tests/integration/scenarios/*`：可插拔场景
 - `agent/tests/integration/*.test.ts`：统一入口（可按环境切换 headed/headless）
 
+## 9. Workspace / Tab 归属规则（无主标签页）
+
+Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 重绑”。
+
+### 9.1 无主标签页定义
+
+- token 已存在于运行时，但 `token -> (workspaceId, tabId)` 尚未建立。
+
+### 9.2 归属策略
+
+- 显式路径（`workspace.create` / `workspace.restore`）创建的 tab：直接归属目标 workspace。
+- 初始 start 页 token（`tab.opened` 且 `source=start_extension`）：
+  - 保持无主，直到首次 `tab.ping` 报告真实网页 URL（`http/https`）。
+  - 首次真实 URL 时，强制创建新 workspace 并归属。
+- 手动新开未知标签页 token：
+  - 首次真实 URL 时优先并入当前 active workspace。
+  - 若当前没有 workspace，则新建 workspace。
+- `workspace.restore` 若由无主标签页发起：restore 成功后关闭该源标签页。
+
+### 9.3 并发约束
+
+- 所有“无主 -> 归属”决策使用单一全局串行锁，避免并发抢占造成归属冲突。
+
+### 9.4 分组约束
+
+- extension 分组仅基于已归属 workspace 的 tab 集合。
+- 非真实网页（`chrome-extension://`、`about:*` 等）不进入 workspace 分组集合。
+
 设计原则：
 
 - 启动完整进程栈（mock + agent + 浏览器扩展）

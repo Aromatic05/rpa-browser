@@ -32,6 +32,9 @@ const router = createCmdRouter({
     logger: log,
 });
 
+// Eager bootstrap: avoid missing early page.bound events before SW establishes WS traffic.
+void router.bootstrapGrouping();
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) =>
     router.handleMessage(message as any, sender, sendResponse),
 );

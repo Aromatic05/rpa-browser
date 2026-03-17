@@ -121,6 +121,8 @@ const createActionContext = (page: any, tabToken: string): ActionContext => {
     return ctx;
 };
 
+const isRealWebUrl = (url?: string) => !!url && (url.startsWith('http://') || url.startsWith('https://'));
+
 const runAction = async (
     action: Action,
     target: { tabToken: string; scope: { workspaceId: string; tabId: string } },
@@ -141,7 +143,7 @@ const runAction = async (
     });
 };
 
-const runPagelessAction = async (action: Action) => {
+const runPagelessAction = async (action: Action, tabToken = '') => {
     const pageStub = new Proxy(
         {},
         {
@@ -150,63 +152,73 @@ const runPagelessAction = async (action: Action) => {
             },
         },
     ) as any;
-    actionLogger('action', { type: action.type, tabToken: null, id: action.id, mode: 'pageless' });
-    return executeAction(createActionContext(pageStub, ''), action);
+    actionLogger('action', { type: action.type, tabToken: tabToken || null, id: action.id, mode: 'pageless' });
+    return executeAction(createActionContext(pageStub, tabToken), action);
 };
 
-const recoverStaleToken = async (
-    action: Action,
-    staleToken: string,
-    urlHint?: string,
-): Promise<{ tabToken: string; scope: { workspaceId: string; tabId: string } } | null> => {
-    const context = await contextManager.getContext();
-    const pages = context.pages().filter((page) => !page.isClosed());
-    log('action.recover_token.start', {
-        id: action.id,
-        type: action.type,
-        staleToken,
-        pageCount: pages.length,
-        pageUrls: pages.map((p) => p.url()),
-        urlHint: urlHint || null,
+let orphanClaimChain = Promise.resolve();
+const withOrphanClaimLock = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const prev = orphanClaimChain;
+    let release: (() => void) | undefined;
+    orphanClaimChain = new Promise<void>((resolve) => {
+        release = resolve;
     });
-    if (!pages.length) return null;
-
-    const candidate = (urlHint && pages.find((page) => page.url() === urlHint)) || pages[0];
-    const existing = pageRegistry.listPages().find((item) => item.page === candidate);
-    const recoveredToken = existing?.tabToken || staleToken;
-
-    log('action.recover_token.candidate', {
-        id: action.id,
-        type: action.type,
-        staleToken,
-        candidateUrl: candidate.url(),
-        existingToken: existing?.tabToken || null,
-        recoveredToken,
-    });
-
-    if (!existing) {
-        await pageRegistry.bindPage(candidate, staleToken);
-        log('action.recover_token.bound', {
-            id: action.id,
-            type: action.type,
-            staleToken,
-            candidateUrl: candidate.url(),
-        });
-    }
-
+    await prev;
     try {
-        const recoveredScope = pageRegistry.resolveScopeFromToken(recoveredToken);
-        log('action.recover_token.success', {
-            id: action.id,
-            type: action.type,
-            recoveredToken,
-            recoveredScope,
-        });
-        return { tabToken: recoveredToken, scope: recoveredScope };
-    } catch {
-        log('action.recover_token.failed', { id: action.id, type: action.type, recoveredToken });
-        return null;
+        return await fn();
+    } finally {
+        if (release) release();
     }
+};
+
+const handleOrphanTokenAction = async (action: Action, urlHint?: string) => {
+    const token = String(action.scope?.tabToken || action.tabToken || '');
+    if (!token) return null;
+    const payload = (action.payload || {}) as Record<string, unknown>;
+
+    if (action.type === 'tab.opened') {
+        const source = String(payload.source || '');
+        if (source === 'start_extension') {
+            pageRegistry.markOrphanKind(token, 'initial_start');
+            return {
+                ok: true as const,
+                data: { tabToken: token, orphan: true, pending: true, source },
+            };
+        }
+        pageRegistry.markOrphanKind(token, 'manual');
+        return {
+            ok: true as const,
+            data: { tabToken: token, orphan: true, pending: true, source: source || 'unknown' },
+        };
+    }
+
+    if (action.type === 'workspace.restore') {
+        return runPagelessAction(action, token);
+    }
+
+    if (action.type !== 'tab.ping') return null;
+    const pingUrl = typeof payload.url === 'string' ? payload.url : '';
+    if (!isRealWebUrl(pingUrl)) {
+        return {
+            ok: true as const,
+            data: { tabToken: token, orphan: true, pending: true, reportedUrl: pingUrl || null },
+        };
+    }
+
+    return withOrphanClaimLock(async () => {
+        const orphanKind = pageRegistry.getOrphanKind(token) || 'manual';
+        const policy = orphanKind === 'initial_start' ? 'create_workspace' : 'active_or_create';
+        const scope = pageRegistry.claimOrphanToken(token, policy);
+        if (!scope) {
+            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to claim orphan tab');
+        }
+        return runAction(
+            action,
+            { tabToken: token, scope },
+            urlHint,
+            { orphanClaim: true, orphanKind, orphanPolicy: policy },
+        );
+    });
 };
 
 const handleAction = async (action: Action) => {
@@ -246,17 +258,13 @@ const handleAction = async (action: Action) => {
             tabToken: action.tabToken || action.scope?.tabToken || null,
         });
 
+        if (PAGELESS_ACTIONS.has(action.type)) {
+            return runPagelessAction(action);
+        }
+
         if (error.message === 'workspace scope not found for tabToken') {
-            const staleToken = String(action.scope?.tabToken || action.tabToken || '');
-            if (staleToken) {
-                const recovered = await recoverStaleToken(action, staleToken, urlHint);
-                if (recovered) {
-                    return runAction(action, recovered, urlHint, {
-                        recoveredFrom: staleToken,
-                        recoveryMode: 'stale-token-rebind',
-                    });
-                }
-            }
+            const orphanResult = await handleOrphanTokenAction(action, urlHint);
+            if (orphanResult) return orphanResult as any;
         }
 
         if (action.type === 'play.start' && error.message === 'workspace scope not found for tabToken') {

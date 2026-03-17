@@ -181,7 +181,9 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         if (!sourceWorkspaceId) {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
         }
-        ctx.log('workspace.restore.start', { sourceWorkspaceId, tabToken: ctx.tabToken });
+        const sourceToken = String(ctx.tabToken || action.scope?.tabToken || action.tabToken || '');
+        const sourceWasOrphan = sourceToken ? !ctx.pageRegistry.hasScopeForToken?.(sourceToken) : false;
+        ctx.log('workspace.restore.start', { sourceWorkspaceId, tabToken: sourceToken || null, sourceWasOrphan });
 
         const snapshot = getWorkspaceSnapshot(ctx.recordingState, sourceWorkspaceId);
         const fallbackRecordingToken = ctx.recordingState.workspaceLatestRecording.get(sourceWorkspaceId) || null;
@@ -263,37 +265,32 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 await bringWorkspaceTabToFront(ctx, { workspaceId: targetWorkspaceId, tabId: activeTab.tabId });
             }
 
-            let recordingToken = snapshot?.recording.recordingToken || fallbackRecordingToken;
+            let recordingToken: string | null = null;
             const sourceSteps = snapshot?.recording.steps || fallbackSteps;
-            if ((!recordingToken || !ctx.recordingState.recordings.has(recordingToken)) && sourceSteps.length > 0) {
+            if (sourceSteps.length > 0) {
                 recordingToken = crypto.randomUUID();
-                ctx.recordingState.recordings.set(recordingToken, sourceSteps as StepUnion[]);
+                ctx.recordingState.recordings.set(recordingToken, [...(sourceSteps as StepUnion[])]);
             }
 
             if (recordingToken) {
                 ctx.recordingState.workspaceLatestRecording.set(targetWorkspaceId, recordingToken);
-                const existingManifest = ctx.recordingState.recordingManifests.get(recordingToken);
-                if (existingManifest) {
-                    existingManifest.workspaceId = targetWorkspaceId;
-                } else {
-                    const entry = activeTab || restoredTabs[0];
-                    ctx.recordingState.recordingManifests.set(recordingToken, {
-                        recordingToken,
-                        workspaceId: targetWorkspaceId,
-                        entryTabRef: entry?.tabId,
-                        entryUrl: entry?.url || fallbackManifest?.entryUrl,
-                        startedAt: snapshot?.recording.manifest?.startedAt || fallbackManifest?.startedAt || Date.now(),
-                        tabs: restoredTabs.map((tab) => ({
-                            tabToken: tab.tabToken,
-                            tabRef: tab.tabId,
-                            tabId: tab.tabId,
-                            firstSeenUrl: tab.url,
-                            lastSeenUrl: tab.url,
-                            firstSeenAt: Date.now(),
-                            lastSeenAt: Date.now(),
-                        })),
-                    });
-                }
+                const entry = activeTab || restoredTabs[0];
+                ctx.recordingState.recordingManifests.set(recordingToken, {
+                    recordingToken,
+                    workspaceId: targetWorkspaceId,
+                    entryTabRef: entry?.tabId,
+                    entryUrl: entry?.url || fallbackManifest?.entryUrl,
+                    startedAt: snapshot?.recording.manifest?.startedAt || fallbackManifest?.startedAt || Date.now(),
+                    tabs: restoredTabs.map((tab) => ({
+                        tabToken: tab.tabToken,
+                        tabRef: tab.tabId,
+                        tabId: tab.tabId,
+                        firstSeenUrl: tab.url,
+                        lastSeenUrl: tab.url,
+                        firstSeenAt: Date.now(),
+                        lastSeenAt: Date.now(),
+                    })),
+                });
             }
 
             const savedSnapshot = saveWorkspaceSnapshot(ctx.recordingState, {
@@ -325,6 +322,10 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 stepCount: savedSnapshot.recording.steps.length,
                 restoredAt: Date.now(),
             });
+
+            if (sourceWasOrphan && sourceToken) {
+                await ctx.pageRegistry.closeTokenPage?.(sourceToken);
+            }
             return makeOk({
                 restored: true,
                 sourceWorkspaceId,
