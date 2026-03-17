@@ -1,44 +1,9 @@
 /**
  * 友好名称存储服务：封装 storage.local，提供统一分配/读写接口。
- *
- * 约束：
- * - 只处理数据读写，不依赖 UI 或 background 事件。
- * - 允许跨重启保留，但可通过 resetMetaStore 重置计数。
  */
-
-export type TabGroupColor =
-    | 'grey'
-    | 'blue'
-    | 'red'
-    | 'yellow'
-    | 'green'
-    | 'pink'
-    | 'purple'
-    | 'cyan'
-    | 'orange';
-
-export const ALLOWED_GROUP_COLORS: TabGroupColor[] = [
-    'grey',
-    'blue',
-    'red',
-    'yellow',
-    'green',
-    'pink',
-    'purple',
-    'cyan',
-    'orange',
-];
-
-export const pickRandomGroupColor = (rng: () => number = Math.random): TabGroupColor => {
-    const index = Math.floor(rng() * ALLOWED_GROUP_COLORS.length);
-    return ALLOWED_GROUP_COLORS[index] || 'blue';
-};
 
 export type WorkspaceMeta = {
     displayName: string;
-    groupId?: number;
-    color?: TabGroupColor;
-    tabIds?: number[];
     createdAt: number;
     updatedAt: number;
 };
@@ -106,19 +71,11 @@ export const ensureWorkspaceMeta = async (
             displayName: `Workspace ${meta.nextWorkspaceIndex}`,
             createdAt: now,
             updatedAt: now,
-            color: pickRandomGroupColor(),
         };
         meta.nextWorkspaceIndex += 1;
         meta.workspaces[workspaceId] = workspace;
         meta.tabs[workspaceId] = meta.tabs[workspaceId] || {};
         meta.nextTabIndexByWorkspace[workspaceId] = meta.nextTabIndexByWorkspace[workspaceId] || 1;
-        await saveMetaStore(meta, storage);
-        return workspace;
-    }
-    if (!workspace.color) {
-        workspace.color = pickRandomGroupColor();
-        workspace.updatedAt = Date.now();
-        meta.workspaces[workspaceId] = workspace;
         await saveMetaStore(meta, storage);
     }
     return workspace;
@@ -177,7 +134,6 @@ export const withWorkspaceDisplayNames = async <T extends { workspaceId: string 
                 displayName: `Workspace ${meta.nextWorkspaceIndex}`,
                 createdAt: now,
                 updatedAt: now,
-                color: pickRandomGroupColor(),
             };
             meta.nextWorkspaceIndex += 1;
             meta.tabs[workspace.workspaceId] = meta.tabs[workspace.workspaceId] || {};
@@ -223,36 +179,4 @@ export const withTabDisplayNames = async <T extends { tabId: string }>(
         ...tab,
         displayName: meta.tabs[workspaceId][tab.tabId]?.displayName || tab.tabId,
     }));
-};
-
-export const addWorkspaceTabId = async (
-    workspaceId: string,
-    tabId: number,
-    storage?: StorageLike,
-): Promise<void> => {
-    const meta = await loadMetaStore(storage);
-    const workspace = meta.workspaces[workspaceId];
-    if (!workspace) return;
-    const tabIds = new Set(workspace.tabIds || []);
-    tabIds.add(tabId);
-    workspace.tabIds = Array.from(tabIds);
-    workspace.updatedAt = Date.now();
-    meta.workspaces[workspaceId] = workspace;
-    await saveMetaStore(meta, storage);
-};
-
-export const removeWorkspaceTabId = async (tabId: number, storage?: StorageLike): Promise<void> => {
-    const meta = await loadMetaStore(storage);
-    let changed = false;
-    for (const [workspaceId, workspace] of Object.entries(meta.workspaces)) {
-        if (!workspace.tabIds?.length) continue;
-        const next = workspace.tabIds.filter((id) => id !== tabId);
-        if (next.length !== workspace.tabIds.length) {
-            meta.workspaces[workspaceId] = { ...workspace, tabIds: next, updatedAt: Date.now() };
-            changed = true;
-        }
-    }
-    if (changed) {
-        await saveMetaStore(meta, storage);
-    }
 };

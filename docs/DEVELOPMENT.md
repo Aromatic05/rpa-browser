@@ -265,7 +265,7 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 
 ### 9.0 token 单一真源
 
-- `tabToken` 只允许由 agent 生成（`tab.token.init`）。
+- `tabToken` 只允许由 agent 生成（`tab.init`）。
 - start/content 侧禁止本地 UUID 生成，只可读取已有 token 或向 agent 请求初始化。
 - token 丢失视为异常状态，必须重新向 agent 初始化，不做 token 改写重绑。
 
@@ -288,10 +288,11 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 
 - 所有“无主 -> 归属”决策使用单一全局串行锁，避免并发抢占造成归属冲突。
 
-### 9.4 分组约束
+### 9.4 窗口约束
 
-- extension 分组仅基于已归属 workspace 的 tab 集合。
-- 非真实网页（`chrome-extension://`、`about:*` 等）不进入 workspace 分组集合。
+- extension 使用 `windowId -> workspaceId` 运行时映射管理工作区归属。
+- `chrome.windows.onFocusChanged` 触发 `workspace.setActive` 同步。
+- `chrome.tabs.onAttached` 负责跨窗口拖拽时的 `tab.reassign` 重分配。
 
 设计原则：
 

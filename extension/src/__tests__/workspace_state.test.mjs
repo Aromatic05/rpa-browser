@@ -5,7 +5,6 @@ import {
     applyTabs,
     planNewTabScope,
     handleCloseTab,
-    supportsTabGroups,
     selectWorkspace,
 } from '../../dist/state/workspace_state.js';
 
@@ -69,9 +68,4 @@ log('applyWorkspaces prefers activeWorkspaceId when provided', () => {
         'ws-2',
     );
     assert.equal(state.activeWorkspaceId, 'ws-2');
-});
-
-log('tabGroups API unavailable -> still works (fallback)', () => {
-    assert.equal(supportsTabGroups(undefined), false);
-    assert.equal(supportsTabGroups({}), false);
 });

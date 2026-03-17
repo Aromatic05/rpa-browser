@@ -95,6 +95,3 @@ export const handleCloseTab = (
     }
     return next;
 };
-
-export const supportsTabGroups = (chromeLike: any) =>
-    Boolean(chromeLike?.tabGroups && chromeLike?.tabs && typeof chromeLike.tabs.group === 'function');
