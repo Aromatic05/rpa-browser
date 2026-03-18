@@ -245,7 +245,19 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             log('bind_page.start', { hintedToken: hintedToken || null, resolvedToken: token, pageUrl: page.url() });
             attachTokenToRuntime(token, page);
             if (!tokenToTab.has(token)) {
-                logWarning('bind_page.unbound', { token, pageUrl: page.url() });
+                const active = getActiveWorkspace();
+                if (active && active.tabs.size === 0) {
+                    const attached = attachTokenToWorkspace(active, token, page);
+                    activeWorkspaceId = active.workspaceId;
+                    log('bind_page.auto_bound_shell_workspace', {
+                        token,
+                        pageUrl: page.url(),
+                        workspaceId: attached.workspaceId,
+                        tabId: attached.tabId,
+                    });
+                } else {
+                    logWarning('bind_page.unbound', { token, pageUrl: page.url() });
+                }
             } else {
                 const ref = tokenToTab.get(token)!;
                 const tab = workspaces.get(ref.workspaceId)?.tabs.get(ref.tabId);

@@ -129,7 +129,13 @@ const pageRegistry = createPageRegistry({
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
-        if (runtimeRegistry) runtimeRegistry.bindPage(page, token);
+        if (runtimeRegistry) {
+            try {
+                runtimeRegistry.bindPage(page, token);
+            } catch {
+                // runtime trace binding is best-effort during early token/workspace races
+            }
+        }
         try {
             const scope = pageRegistry.resolveScopeFromToken(token);
             broadcast({
@@ -184,27 +190,6 @@ const retryClaim = async <T>(fn: () => T | null, attempts = 10, intervalMs = 60)
         if (result) return result;
         if (i < attempts - 1) await sleep(intervalMs);
     }
-    return null;
-};
-
-const resolveTargetWithRetry = async (
-    action: Action,
-    attempts = 25,
-    intervalMs = 80,
-): Promise<ReturnType<typeof resolveActionTarget>> => {
-    let lastError: unknown;
-    for (let i = 0; i < attempts; i += 1) {
-        try {
-            return resolveActionTarget(action, pageRegistry);
-        } catch (error) {
-            lastError = error;
-            const isScopeRace =
-                error instanceof ActionTargetError && error.message === 'workspace scope not found for tabToken';
-            if (!isScopeRace || i === attempts - 1) throw error;
-            await sleep(intervalMs);
-        }
-    }
-    if (lastError) throw lastError;
     return null;
 };
 
@@ -275,7 +260,7 @@ const handleAction = async (action: Action) => {
     }
 
     try {
-        const target = await resolveTargetWithRetry(action);
+        const target = resolveActionTarget(action, pageRegistry);
         if (target) {
             return runAction(action, target, urlHint);
         }

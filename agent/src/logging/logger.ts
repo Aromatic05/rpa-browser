@@ -53,14 +53,14 @@ const ensureStream = (type: LogType, filePath: string) => {
 const getTarget = (type: LogType): LogTarget => {
     const obs = loggerConfig?.observability;
     if (!obs) {
-        return { consoleEnabled: false, fileEnabled: false, filePath: '', minLevel: 'info' };
+        return { consoleEnabled: false, fileEnabled: false, filePath: '', minLevel: 'warning' };
     }
     if (type === 'action') {
         return {
             consoleEnabled: obs.actionConsoleEnabled,
             fileEnabled: obs.actionFileEnabled,
             filePath: resolveLogPath(obs.actionFilePath),
-            minLevel: obs.actionLogLevel || 'info',
+            minLevel: obs.actionLogLevel || 'warning',
         };
     }
     if (type === 'record') {
@@ -68,7 +68,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.recordConsoleEnabled,
             fileEnabled: obs.recordFileEnabled,
             filePath: resolveLogPath(obs.recordFilePath),
-            minLevel: obs.recordLogLevel || 'info',
+            minLevel: obs.recordLogLevel || 'warning',
         };
     }
     if (type === 'trace') {
@@ -76,14 +76,14 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.traceConsoleEnabled,
             fileEnabled: obs.traceFileEnabled,
             filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel || 'info',
+            minLevel: obs.traceLogLevel || 'warning',
         };
     }
     return {
         consoleEnabled: false,
         fileEnabled: false,
         filePath: '',
-        minLevel: obs.stepLogLevel || 'info',
+        minLevel: obs.stepLogLevel || 'warning',
     };
 };
 
