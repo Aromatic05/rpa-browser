@@ -1,7 +1,7 @@
 import type { StepName, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import type { RuntimeRegistry } from '../runtime/runtime_registry';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
-import type { RunnerConfig } from './config';
+import type { RunnerConfig } from '../config';
 
 export type StepEvent =
     | {

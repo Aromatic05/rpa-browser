@@ -15,7 +15,7 @@ import { createRuntimeRegistry } from '../../runtime/runtime_registry';
 import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
 import { createLoggingHooks } from '../trace/hooks';
-import { getRunnerConfig } from '../config';
+import { getRunnerConfig } from '../../config';
 import { RunnerPluginHost } from '../hotreload/plugin_host';
 
 const fixtureUrl = () =>

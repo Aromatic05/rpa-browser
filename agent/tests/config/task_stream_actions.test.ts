@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { executeAction } from '../../src/actions/execute';
 import { setRunStepsDeps } from '../../src/runner/run_steps';
-import { loadRunnerConfig } from '../../src/runner/config/loader';
+import { loadRunnerConfig } from '../../src/config/loader';
 import type { StepUnion } from '../../src/runner/steps/types';
 
 const buildCtx = () => {

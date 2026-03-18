@@ -27,6 +27,10 @@ export const defaultRunnerConfig: RunnerConfig = {
         idleBehavior: 'none',
     },
     observability: {
+        actionLogLevel: 'info',
+        recordLogLevel: 'info',
+        traceLogLevel: 'info',
+        stepLogLevel: 'info',
         traceEnabled: true,
         traceLogArgs: false,
         traceConsoleEnabled: false,
@@ -38,7 +42,6 @@ export const defaultRunnerConfig: RunnerConfig = {
         recordConsoleEnabled: false,
         recordFileEnabled: false,
         recordFilePath: '.artifacts/logs/record-{ts}.log',
-        stepLogLevel: 'info',
         screenshotOnError: false,
     },
     confidencePolicy: {

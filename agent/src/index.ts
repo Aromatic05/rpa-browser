@@ -11,7 +11,7 @@ import { makeErr, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
-import { getRunnerConfig } from './runner/config';
+import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
@@ -36,9 +36,11 @@ const REPLAY_OPTIONS = {
 const NAV_DEDUPE_WINDOW_MS = 1200;
 
 const actionLog = getLogger('action');
-const log = (...args: unknown[]) => actionLog('[RPA:agent]', ...args);
+const log = (...args: unknown[]) => actionLog.info('[RPA:agent]', ...args);
+const logWarning = (...args: unknown[]) => actionLog.warning('[RPA:agent]', ...args);
+const logError = (...args: unknown[]) => actionLog.error('[RPA:agent]', ...args);
 const logTabReportDebug = (stage: string, data: Record<string, unknown>) =>
-    actionLog('[RPA:tab.report]', { ts: Date.now(), stage, ...data });
+    actionLog.debug('[RPA:tab.report]', { ts: Date.now(), stage, ...data });
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -46,7 +48,7 @@ const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.jso
 await loadRecordingStateFromFile(recordingState, recordingStatePath);
 const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
     intervalMs: 1500,
-    onError: (error) => actionLog('[RPA:agent]', 'recording persistence error', String(error)),
+    onError: (error) => actionLog.error('[RPA:agent]', 'recording persistence error', String(error)),
 });
 
 const contextManager = createContextManager({
@@ -263,7 +265,7 @@ const handleAction = async (action: Action) => {
     } catch (error) {
         if (!(error instanceof ActionTargetError)) throw error;
 
-        log('action.target.error', {
+        logWarning('action.target.error', {
             id: action.id,
             type: action.type,
             code: error.code,
@@ -389,6 +391,7 @@ wss.on('connection', (socket) => {
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
+                logError('action.dispatch.failed', { message });
                 socket.send(JSON.stringify({ type: 'error', payload: makeErr(ERROR_CODES.ERR_BAD_ARGS, message) }));
             } finally {
                 void recordingPersistence.flush();
@@ -424,6 +427,6 @@ setInterval(() => {
     log('Playwright Chromium launched with extension.');
 })().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
-    log('Fatal startup error:', message);
+    logError('Fatal startup error:', message);
     throw error;
 });

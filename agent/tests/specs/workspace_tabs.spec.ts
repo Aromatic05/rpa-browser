@@ -4,7 +4,7 @@ import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runStepList } from '../../src/runner/run_steps';
-import { getRunnerConfig } from '../../src/runner/config';
+import { getRunnerConfig } from '../../src/config';
 import { createStep, createTestPluginHost } from '../helpers/steps';
 
 const runBatch = async (deps: any, workspaceId: string, step: ReturnType<typeof createStep>) => {

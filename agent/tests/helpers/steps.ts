@@ -5,7 +5,7 @@ import { createPageRegistry } from '../../src/runtime/page_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runStepList } from '../../src/runner/run_steps';
-import { getRunnerConfig } from '../../src/runner/config';
+import { getRunnerConfig } from '../../src/config';
 import type { StepArgsMap, StepName, StepUnion } from '../../src/runner/steps/types';
 import { RunnerPluginHost } from '../../src/runner/hotreload/plugin_host';
 

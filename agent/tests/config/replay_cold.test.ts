@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { replayRecording } from '../../src/play/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
-import { loadRunnerConfig } from '../../src/runner/config/loader';
+import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 
 test('replayRecording creates and switches tab when recorded tabToken is missing (cold replay)', async () => {

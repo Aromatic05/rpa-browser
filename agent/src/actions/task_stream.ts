@@ -20,7 +20,7 @@ import {
 } from '../runner/run_steps';
 import type { StepUnion } from '../runner/steps/types';
 import { createTaskCheckpointStore, type TaskRunCheckpoint } from '../runner/checkpoint_store';
-import { getRunnerConfig } from '../runner/config';
+import { getRunnerConfig } from '../config';
 
 type TaskRunState = {
     runId: string;

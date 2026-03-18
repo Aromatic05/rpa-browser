@@ -14,7 +14,7 @@ import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { runStepList, MemoryStepSink } from '../../src/runner/run_steps';
 import { MemorySink } from '../../src/runner/trace/sink';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
-import { getRunnerConfig } from '../../src/runner/config';
+import { getRunnerConfig } from '../../src/config';
 import { createTestPluginHost } from '../helpers/steps';
 
 const fixtureUrl = (name: string) =>

@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadRunnerConfig } from '../../src/runner/config/loader';
+import { loadRunnerConfig } from '../../src/config/loader';
 
 test('load default config', () => {
     const config = loadRunnerConfig({ configPath: '__non_exist__.json' });
@@ -17,7 +17,7 @@ test('load default config', () => {
     assert.equal(config.observability.actionFileEnabled, true);
     assert.equal(config.observability.traceConsoleEnabled, false);
     assert.equal(config.observability.actionConsoleEnabled, false);
-    assert.equal(config.observability.recordConsoleEnabled, true);
+    assert.equal(config.observability.recordConsoleEnabled, false);
     assert.equal(config.observability.recordFileEnabled, false);
     assert.equal(config.checkpointPolicy.enabled, true);
     assert.ok(config.checkpointPolicy.filePath.length > 0);
