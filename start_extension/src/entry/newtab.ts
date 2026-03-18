@@ -18,13 +18,7 @@ const setStatus = (text: string, ok = false) => {
 };
 
 const ensureTabToken = () => {
-    let token = '';
-    try {
-        token = sessionStorage.getItem(TAB_TOKEN_KEY) || '';
-    } catch {
-        // ignore
-    }
-    return token;
+    return sessionStorage.getItem(TAB_TOKEN_KEY) || '';
 };
 
 const sendAction = async (type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>
@@ -35,54 +29,40 @@ const sendAction = async (type: string, payload: Record<string, unknown> = {}, s
         const done = (result: any) => {
             if (settled) return;
             settled = true;
-            try {
-                ws?.close();
-            } catch {
-                // ignore
-            }
+            ws?.close();
             resolve(result);
         };
         const timeout = setTimeout(() => {
             log('action.timeout', { type, requestId, payload, scope: scope || {} });
             done({ ok: false, error: { message: 'ws action timeout' } });
         }, 5000);
-        try {
-            ws = new WebSocket(WS_URL);
-            log('action.ws.connecting', { type, requestId, payload, scope: scope || {} });
-            ws.addEventListener('open', () => {
-                log('action.ws.open', { type, requestId });
-                ws?.send(
-                    JSON.stringify({
-                        v: 1,
-                        id: requestId,
-                        type,
-                        payload,
-                        scope: scope || {},
-                    }),
-                );
-                log('action.sent', { type, requestId });
-            });
-            ws.addEventListener('message', (event) => {
-                try {
-                    const message = JSON.parse(String(event.data || '{}'));
-                    if (message?.replyTo !== requestId) return;
-                    clearTimeout(timeout);
-                    log('action.reply', { type, requestId, ok: message?.payload?.ok, payload: message?.payload });
-                    done(message?.payload || { ok: false, error: { message: 'empty payload' } });
-                } catch {
-                    // ignore parse error
-                }
-            });
-            ws.addEventListener('error', () => {
-                clearTimeout(timeout);
-                log('action.ws.error', { type, requestId });
-                done({ ok: false, error: { message: 'ws action error' } });
-            });
-        } catch {
+        ws = new WebSocket(WS_URL);
+        log('action.ws.connecting', { type, requestId, payload, scope: scope || {} });
+        ws.addEventListener('open', () => {
+            log('action.ws.open', { type, requestId });
+            ws?.send(
+                JSON.stringify({
+                    v: 1,
+                    id: requestId,
+                    type,
+                    payload,
+                    scope: scope || {},
+                }),
+            );
+            log('action.sent', { type, requestId });
+        });
+        ws.addEventListener('message', (event) => {
+            const message = JSON.parse(String(event.data || '{}'));
+            if (message?.replyTo !== requestId) return;
             clearTimeout(timeout);
-            log('action.ws.init_failed', { type, requestId });
-            done({ ok: false, error: { message: 'ws action init failed' } });
-        }
+            log('action.reply', { type, requestId, ok: message?.payload?.ok, payload: message?.payload });
+            done(message?.payload || { ok: false, error: { message: 'empty payload' } });
+        });
+        ws.addEventListener('error', () => {
+            clearTimeout(timeout);
+            log('action.ws.error', { type, requestId });
+            done({ ok: false, error: { message: 'ws action error' } });
+        });
     });
 
 const ensureTabTokenFromAgent = async () => {
@@ -97,34 +77,16 @@ const ensureTabTokenFromAgent = async () => {
             throw new Error(initialized?.error?.message || 'tab token init failed');
         }
         token = String(initialized.data.tabToken);
-        try {
-            sessionStorage.setItem(TAB_TOKEN_KEY, token);
-        } catch {
-            // ignore
-        }
+        sessionStorage.setItem(TAB_TOKEN_KEY, token);
     }
-    try {
-        window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${token}`;
-    } catch {
-        // ignore
-    }
-    try {
-        (window as any).__rpa_tab_token = token;
-        (window as any).__TAB_TOKEN__ = token;
-    } catch {
-        // ignore
-    }
+    window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${token}`;
+    (window as any).__rpa_tab_token = token;
+    (window as any).__TAB_TOKEN__ = token;
     log('token.ensure', { token, url: location.href });
     return token;
 };
 
-const formatTs = (ts: number) => {
-    try {
-        return new Date(ts).toLocaleString();
-    } catch {
-        return '-';
-    }
-};
+const formatTs = (ts: number) => new Date(ts).toLocaleString();
 
 const renderRestoreList = (items: Array<any>) => {
     if (!restoreListEl) return;

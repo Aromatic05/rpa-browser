@@ -88,16 +88,14 @@ test('tab.activated activates resolved workspace/tab and logs payload', async ()
     assert.equal(logs[0][0], 'tab.activated');
 });
 
-test('tab.closed returns stale response when token scope is missing', async () => {
+test('tab.closed resolves workspace/tab from token', async () => {
     const logs: unknown[][] = [];
     const ctx: any = {
-        tabToken: 'missing-token',
+        tabToken: 'token-closed',
         page: { url: () => 'about:blank' },
         log: (...args: unknown[]) => logs.push(args),
         pageRegistry: {
-            resolveScopeFromToken: () => {
-                throw new Error('not found');
-            },
+            resolveScopeFromToken: () => ({ workspaceId: 'ws-c', tabId: 'tab-c' }),
         },
     };
     const action: any = {
@@ -110,7 +108,8 @@ test('tab.closed returns stale response when token scope is missing', async () =
     const result = await workspaceHandlers['tab.closed'](ctx, action);
     assert.equal(result.ok, true);
     if (!result.ok) return;
-    assert.equal(result.data.stale, true);
+    assert.equal(result.data.workspaceId, 'ws-c');
+    assert.equal(result.data.tabId, 'tab-c');
     assert.equal(logs.length, 1);
     assert.equal(logs[0][0], 'tab.closed');
 });
@@ -166,7 +165,7 @@ test('tab.setActive records browser.switch_tab during active recording', async (
                 return 'token-b';
             },
             setActiveTab: (workspaceId: string, tabId: string) => activated.push({ ws: workspaceId, tab: tabId }),
-            resolvePage: async () => ({ bringToFront: async () => {} }),
+            resolvePage: async () => ({ bringToFront: async () => {}, url: () => 'https://example.com/b' }),
         },
     };
     const action: any = {

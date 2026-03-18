@@ -16,12 +16,7 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger || createLogger('sw');
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
-    const PAGELESS_ACTIONS = new Set<string>([
-        ACTION_TYPES.TAB_INIT,
-        ACTION_TYPES.WORKSPACE_LIST,
-        ACTION_TYPES.WORKSPACE_CREATE,
-        ACTION_TYPES.RECORD_LIST,
-    ]);
+    const PAGELESS_ACTIONS = new Set<string>([ACTION_TYPES.TAB_INIT, ACTION_TYPES.RECORD_LIST]);
 
     const tabState = new Map<number, { tabToken: string; lastUrl: string; windowId: number | null; updatedAt: number }>();
     const tokenToScope = new Map<string, { workspaceId: string; tabId: string }>();
@@ -50,18 +45,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         payload: Record<string, unknown>,
         tabToken?: string,
     ) => {
-        try {
-            await sendAction({
-                v: 1,
-                id: crypto.randomUUID(),
-                type,
-                tabToken,
-                scope: tabToken ? { tabToken } : {},
-                payload,
-            });
-        } catch {
-            // ignore lifecycle emit failures
-        }
+        await sendAction({
+            v: 1,
+            id: crypto.randomUUID(),
+            type,
+            tabToken,
+            scope: tabToken ? { tabToken } : {},
+            payload,
+        });
     };
 
     const upsertTab = (tabId: number, tabToken: string, url: string, windowId?: number | null) => {
@@ -109,12 +100,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (response?.ok && response.tabToken) {
             let windowId = typeof hintedWindowId === 'number' ? hintedWindowId : null;
             if (windowId == null) {
-                try {
-                    const tab = await chrome.tabs.get(tabId);
-                    windowId = typeof tab.windowId === 'number' ? tab.windowId : null;
-                } catch {
-                    windowId = null;
-                }
+                const tab = await chrome.tabs.get(tabId);
+                windowId = typeof tab.windowId === 'number' ? tab.windowId : null;
             }
             upsertTab(tabId, response.tabToken, response.url || '', windowId);
             return tabState.get(tabId) || null;
@@ -407,37 +394,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (message.type === MSG.ACTION) {
             (async () => {
                 const action = (message.action || {}) as Action;
-                if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
-                    const created = await sendAction({
-                        v: 1,
-                        id: crypto.randomUUID(),
-                        type: ACTION_TYPES.WORKSPACE_CREATE,
-                        payload: action.payload || {},
-                        scope: {},
-                    });
-                    if (!created.ok) {
-                        sendResponse(created);
-                        return;
-                    }
-                    const workspaceId = String((created.data as any)?.workspaceId || '');
-                    if (!workspaceId) {
-                        sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: 'workspace.create missing workspaceId' } });
-                        return;
-                    }
-                    activeWorkspaceId = workspaceId;
-                    const createdTabToken = String((created.data as any)?.tabToken || '');
-                    const createdTabId = String((created.data as any)?.tabId || '');
-                    if (createdTabToken && createdTabId) {
-                        upsertTokenScope(createdTabToken, workspaceId, createdTabId);
-                        bindWorkspaceToWindowIfKnown(createdTabToken);
-                    }
-                    sendResponse({
-                        ok: true,
-                        data: created.data,
-                    });
-                    options.onRefresh();
-                    return;
-                }
                 const isWorkspaceAction = action.type.startsWith('workspace.');
                 const isPagelessAction = PAGELESS_ACTIONS.has(action.type) || isWorkspaceAction;
                 let tabToken = (action.tabToken || action.scope?.tabToken) as string | undefined;
@@ -519,11 +475,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 }
             })().catch((error) => {
                 const message = error instanceof Error ? error.message : String(error);
-                try {
-                    sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: `ACTION dispatch failed: ${message}` } });
-                } catch {
-                    // ignore
-                }
+                sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: `ACTION dispatch failed: ${message}` } });
             });
             return true;
         }

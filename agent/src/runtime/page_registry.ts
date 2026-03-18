@@ -54,13 +54,11 @@ export type PageRegistry = {
     resolveScopeFromToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId };
     resolveTabToken: (scope?: WorkspaceScope) => string;
     touchTabToken: (tabToken: string, at?: number) => { workspaceId: WorkspaceId; tabId: TabId } | null;
-    hasScopeForToken: (tabToken: string) => boolean;
     bindTokenToWorkspace: (
         tabToken: string,
         workspaceId: WorkspaceId,
     ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     moveTokenToWorkspace: (tabToken: string, workspaceId: WorkspaceId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
-    getTokenPageUrl: (tabToken: string) => string | null;
     listTimedOutTokens: (
         timeoutMs: number,
         now?: number,
@@ -81,6 +79,22 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const touchWorkspace = (workspace: Workspace) => {
         workspace.updatedAt = Date.now();
     };
+    const removeTabRef = (workspaceId: WorkspaceId, tabId: TabId) => {
+        const ws = workspaces.get(workspaceId);
+        if (!ws) return;
+        ws.tabs.delete(tabId);
+        if (ws.activeTabId === tabId) {
+            ws.activeTabId = ws.tabs.keys().next().value;
+        }
+        if (ws.tabs.size === 0) {
+            workspaces.delete(workspaceId);
+            if (activeWorkspaceId === workspaceId) {
+                activeWorkspaceId = workspaces.keys().next().value || null;
+            }
+            return;
+        }
+        touchWorkspace(ws);
+    };
 
     const getActiveWorkspace = () => (activeWorkspaceId ? workspaces.get(activeWorkspaceId) || null : null);
 
@@ -92,21 +106,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             const ref = tokenToTab.get(tabToken);
             tokenToTab.delete(tabToken);
             if (ref) {
-                const ws = workspaces.get(ref.workspaceId);
-                if (ws) {
-                    ws.tabs.delete(ref.tabId);
-                    if (ws.activeTabId === ref.tabId) {
-                        ws.activeTabId = ws.tabs.keys().next().value;
-                    }
-                    if (ws.tabs.size === 0) {
-                        workspaces.delete(ref.workspaceId);
-                        if (activeWorkspaceId === ref.workspaceId) {
-                            activeWorkspaceId = workspaces.keys().next().value || null;
-                        }
-                    } else {
-                        touchWorkspace(ws);
-                    }
-                }
+                removeTabRef(ref.workspaceId, ref.tabId);
             }
             options.onTokenClosed?.(tabToken);
             log('bind_page.closed', { token: tabToken, pageUrl: page.url() });
@@ -384,20 +384,12 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         if (!workspace) return;
         const tab = workspace.tabs.get(tabId);
         if (!tab) return;
-        workspace.tabs.delete(tabId);
         tokenToPage.delete(tab.tabToken);
         tokenToTab.delete(tab.tabToken);
         if (!tab.page.isClosed()) {
             await tab.page.close({ runBeforeUnload: true });
         }
-        if (workspace.activeTabId === tabId) workspace.activeTabId = workspace.tabs.keys().next().value;
-        touchWorkspace(workspace);
-        if (workspace.tabs.size === 0) {
-            workspaces.delete(workspaceId);
-            if (activeWorkspaceId === workspaceId) {
-                activeWorkspaceId = workspaces.keys().next().value || null;
-            }
-        }
+        removeTabRef(workspaceId, tabId);
     };
 
     const setActiveWorkspace = (workspaceId: WorkspaceId) => {
@@ -439,21 +431,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const cleanupToken = (tabToken: string) => {
         tokenToPage.delete(tabToken);
         const ref = tokenToTab.get(tabToken);
-        if (ref) {
-            const ws = workspaces.get(ref.workspaceId);
-            if (ws) {
-                ws.tabs.delete(ref.tabId);
-                if (ws.activeTabId === ref.tabId) ws.activeTabId = ws.tabs.keys().next().value;
-                if (ws.tabs.size === 0) {
-                    workspaces.delete(ref.workspaceId);
-                    if (activeWorkspaceId === ref.workspaceId) {
-                        activeWorkspaceId = workspaces.keys().next().value || null;
-                    }
-                } else {
-                    touchWorkspace(ws);
-                }
-            }
-        }
+        if (ref) removeTabRef(ref.workspaceId, ref.tabId);
         tokenToTab.delete(tabToken);
     };
 
@@ -482,8 +460,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return { workspaceId: ref.workspaceId, tabId: ref.tabId };
     };
 
-    const hasScopeForToken = (tabToken: string) => tokenToTab.has(tabToken);
-
     const bindTokenToWorkspace = (tabToken: string, workspaceId: WorkspaceId) => {
         const existing = tokenToTab.get(tabToken);
         if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
@@ -494,12 +470,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         const attached = attachTokenToWorkspace(workspace, tabToken, page);
         activeWorkspaceId = workspaceId;
         return attached;
-    };
-
-    const getTokenPageUrl = (tabToken: string) => {
-        const page = tokenToPage.get(tabToken);
-        if (!page || page.isClosed()) return null;
-        return page.url();
     };
 
     const listTimedOutTokens = (timeoutMs: number, now = Date.now()) => {
@@ -544,10 +514,8 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         resolveScopeFromToken,
         resolveTabToken,
         touchTabToken,
-        hasScopeForToken,
         bindTokenToWorkspace,
         moveTokenToWorkspace,
-        getTokenPageUrl,
         listTimedOutTokens,
         closeTokenPage,
     };

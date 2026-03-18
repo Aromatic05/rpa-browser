@@ -39,10 +39,9 @@ export const resolveActionTarget = (
             }
             return { tabToken: token, scope: tokenScope };
         } catch (error) {
-            if (error instanceof ActionTargetError) {
-                throw error;
-            }
-            throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'workspace scope not found for tabToken');
+            throw error instanceof ActionTargetError
+                ? error
+                : new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'workspace scope not found for tabToken');
         }
     }
 

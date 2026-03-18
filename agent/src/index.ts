@@ -370,32 +370,6 @@ wss.on('connection', (socket) => {
                             : {},
                         at: Date.now(),
                     });
-                    if (action.type === ACTION_TYPES.TAB_OPENED) {
-                        const tabToken =
-                            (data?.tabToken as string | undefined) ||
-                            action.tabToken ||
-                            action.scope?.tabToken ||
-                            null;
-                        if (tabToken && data?.workspaceId && data?.tabId) {
-                            broadcast({
-                                v: 1,
-                                id: crypto.randomUUID(),
-                                type: ACTION_TYPES.TAB_BOUND,
-                                payload: {
-                                    workspaceId: String(data.workspaceId),
-                                    tabId: String(data.tabId),
-                                    tabToken: String(tabToken),
-                                    sourceType: action.type,
-                                },
-                                scope: {
-                                    workspaceId: String(data.workspaceId),
-                                    tabId: String(data.tabId),
-                                    tabToken: String(tabToken),
-                                },
-                                at: Date.now(),
-                            });
-                        }
-                    }
                 }
                 if (response.ok && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
                     const data = response.data as any;

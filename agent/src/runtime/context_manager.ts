@@ -36,10 +36,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
 
-    /**
-     * 启动后强制导航到 startUrl，并关闭多余的初始页签。
-     * 该流程仅用于提升 demo/工具测试稳定性，失败不应阻断启动。
-     */
+    // 启动后强制导航到 startUrl，并关闭多余的初始页签。
     const ensureStartPage = async (context: BrowserContext) => {
         try {
             const pages = context.pages();
@@ -50,12 +47,8 @@ export const createContextManager = (options: ContextManagerOptions) => {
             await primary.bringToFront();
             const toClose = context.pages().filter((page) => page !== primary);
             for (const page of toClose) {
-                try {
-                    if (!page.isClosed()) {
-                        await page.close({ runBeforeUnload: true });
-                    }
-                } catch {
-                    // ignore close errors
+                if (!page.isClosed()) {
+                    await page.close({ runBeforeUnload: true });
                 }
             }
         } catch {
