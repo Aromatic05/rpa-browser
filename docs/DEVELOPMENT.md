@@ -334,6 +334,8 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 
 - `RPA_INTEGRATION_HEADED=true|false`：控制集成测试是否有头
 - `RPA_HEADLESS=true|false`：agent 启动浏览器模式（由测试脚本自动设置）
+- `RPA_BROWSER_MODE=extension|cdp`：浏览器连接模式（默认 `extension`）
+- `RPA_CDP_ENDPOINT`：当 `RPA_BROWSER_MODE=cdp` 时，Playwright `connectOverCDP` 连接地址（如 `http://127.0.0.1:9222`）
 - `RPA_INTEGRATION_VERBOSE=true|false`：输出集成测试中 `mock/agent` 子进程日志（headed 默认开启）
 - `RPA_INTEGRATION_EXTENSION_AWARE=true|false`：是否固定使用扩展默认 WS 端口（`17333`）；headed 默认开启
 - `RPA_INTEGRATION_WS_PORT`：当 `RPA_INTEGRATION_EXTENSION_AWARE=true` 时使用的 agent WS 端口（默认 `17333`）

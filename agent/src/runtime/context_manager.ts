@@ -10,7 +10,7 @@
  * - 只在首次调用时真正启动浏览器，后续复用同一 context
  * - start page 失败不能影响整体启动（容错）
  */
-import { chromium, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import path from 'path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'url';
@@ -32,9 +32,12 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const actionLog = getLogger('action');
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
+    let cdpBrowserRef: Browser | undefined;
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
     const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
+    const browserMode = (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
+    const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
 
     // 启动后强制导航到 startUrl，并关闭多余的初始页签。
     const ensureStartPage = async (context: BrowserContext) => {
@@ -63,6 +66,39 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const getContext = async () => {
         if (contextRef) return contextRef;
         if (contextPromise) return contextPromise;
+        if (browserMode === 'cdp') {
+            if (!cdpEndpoint) {
+                throw new Error('RPA_CDP_ENDPOINT is required when RPA_BROWSER_MODE=cdp');
+            }
+            actionLog.info('[RPA:agent]', 'Connecting Chromium over CDP', cdpEndpoint);
+            contextPromise = chromium
+                .connectOverCDP(cdpEndpoint)
+                .then(async (browser) => {
+                    cdpBrowserRef = browser;
+                    const context = browser.contexts()[0] || (await browser.newContext());
+                    contextRef = context;
+                    browser.on('disconnected', () => {
+                        cdpBrowserRef = undefined;
+                        contextRef = undefined;
+                        contextPromise = undefined;
+                    });
+                    if (options.onPage) {
+                        context.on('page', options.onPage);
+                        for (const page of context.pages()) {
+                            options.onPage(page);
+                        }
+                    }
+                    return context;
+                })
+                .catch((error) => {
+                    contextPromise = undefined;
+                    contextRef = undefined;
+                    cdpBrowserRef = undefined;
+                    throw error;
+                });
+            return contextPromise;
+        }
+
         actionLog.info('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
         const policyDir = path.resolve(options.userDataDir, 'enterprise-policies', 'managed');
         const policyFile = path.join(policyDir, 'rpa_browser_policy.json');
