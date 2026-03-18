@@ -4,7 +4,7 @@
 
 import type { Action, ActionErr, ActionOk, WsActionReply } from '../shared/types.js';
 import { isActionType } from '../shared/action_types.js';
-import { createLogger } from '../shared/logger.js';
+import { createLogger, type Logger } from '../shared/logger.js';
 
 export type WsClient = {
     sendAction: (action: Action) => Promise<ActionOk<any> | ActionErr>;
@@ -12,7 +12,7 @@ export type WsClient = {
 
 export type WsClientOptions = {
     onAction: (action: Action) => void;
-    logger?: (...args: unknown[]) => void;
+    logger?: Logger;
 };
 
 export const createWsClient = (options: WsClientOptions): WsClient => {
@@ -81,7 +81,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             pending.clear();
         });
         wsRef.addEventListener('error', () => {
-            log('ws error');
+            log.warning('ws error');
         });
         return wsReady;
     };

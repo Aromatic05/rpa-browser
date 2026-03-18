@@ -1,4 +1,4 @@
-import { createLogger } from '../shared/logger.js';
+import { createLogger, type Logger } from '../shared/logger.js';
 import type { Action, ActionErr, ActionOk } from '../shared/types.js';
 import { ACTION_TYPES } from '../shared/action_types.js';
 import { MSG } from '../shared/protocol.js';
@@ -8,7 +8,7 @@ import type { WsClient } from './ws_client.js';
 export type CmdRouterOptions = {
     wsClient: WsClient;
     onRefresh: () => void;
-    logger?: (...args: unknown[]) => void;
+    logger?: Logger;
 };
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -112,7 +112,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const upsertTokenScope = (tabToken: string, workspaceId: string, tabId: string) => {
         const existing = tokenToScope.get(tabToken);
         if (existing && (existing.workspaceId !== workspaceId || existing.tabId !== tabId)) {
-            log('mapping.scope_replace', {
+            log.debug('mapping.scope_replace', {
                 tabToken,
                 existing,
                 incoming: { workspaceId, tabId },
