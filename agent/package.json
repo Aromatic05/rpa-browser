@@ -8,6 +8,7 @@
     },
     "scripts": {
         "dev": "tsx src/index.ts",
+        "dev:cdp": "RPA_BROWSER_MODE=cdp tsx src/index.ts",
         "dev:watch": "tsx watch src/index.ts",
         "dev:hot": "concurrently -k \"pnpm test:runner:bundle:watch\" \"pnpm dev\"",
         "mcp:demo": "tsx src/demo/server.ts",

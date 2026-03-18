@@ -6,6 +6,8 @@ export type CdpLaunchOptions = {
     port: number;
     userDataDir: string;
     chromePath?: string;
+    extensionPaths?: string[];
+    enterprisePolicyDir?: string;
     logger?: (...args: unknown[]) => void;
     timeoutMs?: number;
 };
@@ -19,6 +21,9 @@ export type CdpLaunchResult = {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const defaultChromeCandidates = () => {
+    if (process.platform === 'linux') {
+        return ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'];
+    }
     if (process.platform === 'darwin') {
         return [
             '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -74,8 +79,17 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         `--user-data-dir=${opts.userDataDir}`,
         '--no-first-run',
         '--no-default-browser-check',
-        'about:blank',
+        'chrome://newtab',
     ];
+    const extensionPaths = (opts.extensionPaths || []).filter(Boolean);
+    if (extensionPaths.length > 0) {
+        const extensionArg = extensionPaths.join(',');
+        args.unshift(`--load-extension=${extensionArg}`);
+        args.unshift(`--disable-extensions-except=${extensionArg}`);
+    }
+    if (opts.enterprisePolicyDir?.trim()) {
+        args.unshift(`--enterprise-policy-path=${opts.enterprisePolicyDir.trim()}`);
+    }
     opts.logger?.('cdp.launch.start', { chromePath, endpoint, userDataDir: opts.userDataDir });
     const proc = spawn(chromePath, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -113,4 +127,3 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         pid: proc.pid ?? -1,
     };
 };
-
