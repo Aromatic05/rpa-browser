@@ -12,7 +12,6 @@
  */
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import path from 'path';
-import fs from 'node:fs';
 import { fileURLToPath } from 'url';
 import { getLogger } from '../logging/logger';
 import { launchLocalChromeForCdp } from './cdp_launcher';
@@ -36,45 +35,6 @@ const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void
     }
 };
 
-const parseExtensionSettingsFromEnv = () => {
-    const raw = process.env.RPA_EXTENSION_SETTINGS_JSON?.trim();
-    if (!raw) return undefined;
-    try {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            return parsed as Record<string, unknown>;
-        }
-        return undefined;
-    } catch {
-        return undefined;
-    }
-};
-
-const writeManagedPolicy = (
-    userDataDir: string,
-    newTabUrl: string,
-    actionLog: ReturnType<typeof getLogger>,
-) => {
-    const policyDir = path.resolve(userDataDir, 'enterprise-policies', 'managed');
-    const policyFile = path.join(policyDir, 'rpa_browser_policy.json');
-    const policyPayload: Record<string, unknown> = { NewTabPageLocation: newTabUrl };
-    const extensionSettings = parseExtensionSettingsFromEnv();
-    if (extensionSettings) {
-        policyPayload.ExtensionSettings = extensionSettings;
-    }
-    try {
-        fs.mkdirSync(policyDir, { recursive: true });
-        fs.writeFileSync(policyFile, `${JSON.stringify(policyPayload, null, 2)}\n`, 'utf8');
-        actionLog.info('[RPA:agent]', 'Managed Chrome policy written', {
-            policyFile,
-            hasExtensionSettings: !!extensionSettings,
-        });
-    } catch (error) {
-        actionLog.error('[RPA:agent]', 'Failed to write managed Chrome policy', String(error));
-    }
-    return policyDir;
-};
-
 const createCdpContextProvider = (options: ContextManagerOptions): ContextProvider => {
     const actionLog = getLogger('action');
     let contextPromise: Promise<BrowserContext> | undefined;
@@ -87,7 +47,6 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
     const cdpAutoLaunch = !['0', 'false', 'no'].includes((process.env.RPA_CDP_AUTO_LAUNCH || 'true').toLowerCase());
     const cdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim() || path.resolve(options.userDataDir, 'cdp-browser');
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
-    const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
 
     return async () => {
         if (contextRef) return contextRef;
@@ -98,12 +57,10 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             if (!cdpAutoLaunch) {
                 throw new Error('RPA_CDP_ENDPOINT is required when RPA_CDP_AUTO_LAUNCH=false');
             }
-            const policyDir = writeManagedPolicy(cdpUserDataDir, newTabUrl, actionLog);
             const launched = await launchLocalChromeForCdp({
                 port: cdpPort,
                 userDataDir: cdpUserDataDir,
                 extensionPaths: options.extensionPaths,
-                enterprisePolicyDir: policyDir,
                 logger: (...args) => actionLog.info('[RPA:agent]', ...args),
             });
             endpoint = launched.endpoint;
@@ -147,7 +104,6 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
-    const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
 
     const ensureStartPage = async (context: BrowserContext) => {
@@ -174,12 +130,10 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
         if (contextPromise) return contextPromise;
 
         actionLog.info('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
-        const policyDir = writeManagedPolicy(options.userDataDir, newTabUrl, actionLog);
         const extensionArg = options.extensionPaths.join(',');
         const launchArgs = [
             `--disable-extensions-except=${extensionArg}`,
             `--load-extension=${extensionArg}`,
-            `--enterprise-policy-path=${policyDir}`,
         ];
         contextPromise = chromium
             .launchPersistentContext(options.userDataDir, {

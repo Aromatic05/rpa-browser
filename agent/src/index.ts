@@ -187,6 +187,27 @@ const retryClaim = async <T>(fn: () => T | null, attempts = 10, intervalMs = 60)
     return null;
 };
 
+const resolveTargetWithRetry = async (
+    action: Action,
+    attempts = 25,
+    intervalMs = 80,
+): Promise<ReturnType<typeof resolveActionTarget>> => {
+    let lastError: unknown;
+    for (let i = 0; i < attempts; i += 1) {
+        try {
+            return resolveActionTarget(action, pageRegistry);
+        } catch (error) {
+            lastError = error;
+            const isScopeRace =
+                error instanceof ActionTargetError && error.message === 'workspace scope not found for tabToken';
+            if (!isScopeRace || i === attempts - 1) throw error;
+            await sleep(intervalMs);
+        }
+    }
+    if (lastError) throw lastError;
+    return null;
+};
+
 const runAction = async (
     action: Action,
     target: { tabToken: string; scope: { workspaceId: string; tabId: string } },
@@ -254,7 +275,7 @@ const handleAction = async (action: Action) => {
     }
 
     try {
-        const target = resolveActionTarget(action, pageRegistry);
+        const target = await resolveTargetWithRetry(action);
         if (target) {
             return runAction(action, target, urlHint);
         }

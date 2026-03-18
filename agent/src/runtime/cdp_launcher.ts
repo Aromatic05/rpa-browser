@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -7,7 +7,6 @@ export type CdpLaunchOptions = {
     userDataDir: string;
     chromePath?: string;
     extensionPaths?: string[];
-    enterprisePolicyDir?: string;
     logger?: (...args: unknown[]) => void;
     timeoutMs?: number;
 };
@@ -22,21 +21,30 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 const defaultChromeCandidates = () => {
     if (process.platform === 'linux') {
-        return ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'];
+        return ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable'];
     }
     if (process.platform === 'darwin') {
         return [
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
             '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
             '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
         ];
     }
     if (process.platform === 'win32') {
         return [
+            'C:\\Program Files\\Chromium\\Application\\chromium.exe',
+            'C:\\Program Files (x86)\\Chromium\\Application\\chromium.exe',
             'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
             'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
         ];
     }
-    return ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'];
+    return ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable'];
+};
+
+const commandExists = (command: string) => {
+    const probe = process.platform === 'win32' ? 'where' : 'which';
+    const result = spawnSync(probe, [command], { stdio: 'ignore' });
+    return result.status === 0;
 };
 
 const resolveChromeExecutable = (explicitPath?: string) => {
@@ -44,14 +52,17 @@ const resolveChromeExecutable = (explicitPath?: string) => {
     const fromEnv = process.env.RPA_CDP_CHROME_PATH?.trim();
     if (fromEnv) return fromEnv;
     const candidates = defaultChromeCandidates();
+    const unavailable: string[] = [];
     for (const candidate of candidates) {
         if (candidate.includes(path.sep)) {
             if (fs.existsSync(candidate)) return candidate;
+            unavailable.push(candidate);
             continue;
         }
-        return candidate;
+        if (commandExists(candidate)) return candidate;
+        unavailable.push(candidate);
     }
-    return candidates[0];
+    throw new Error(`No Chrome/Chromium executable found. Tried: ${unavailable.join(', ')}`);
 };
 
 const waitForCdpReady = async (endpoint: string, timeoutMs: number) => {
@@ -86,9 +97,6 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         const extensionArg = extensionPaths.join(',');
         args.unshift(`--load-extension=${extensionArg}`);
         args.unshift(`--disable-extensions-except=${extensionArg}`);
-    }
-    if (opts.enterprisePolicyDir?.trim()) {
-        args.unshift(`--enterprise-policy-path=${opts.enterprisePolicyDir.trim()}`);
     }
     opts.logger?.('cdp.launch.start', { chromePath, endpoint, userDataDir: opts.userDataDir });
     const proc = spawn(chromePath, args, {

@@ -340,7 +340,6 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 - `RPA_CDP_PORT`：自动拉起 Chrome 时使用的远程调试端口（默认 `9222`）
 - `RPA_CDP_USER_DATA_DIR`：自动拉起 Chrome 时使用的用户目录；未设置则落到 `agent/.user-data/cdp-browser`
 - `RPA_CDP_CHROME_PATH`：自动拉起 Chrome 的可执行文件路径（可选）
-- `RPA_EXTENSION_SETTINGS_JSON`：写入企业策略 `ExtensionSettings` 的 JSON 对象字符串（可选）
 - `RPA_INTEGRATION_VERBOSE=true|false`：输出集成测试中 `mock/agent` 子进程日志（headed 默认开启）
 - `RPA_INTEGRATION_EXTENSION_AWARE=true|false`：是否固定使用扩展默认 WS 端口（`17333`）；headed 默认开启
 - `RPA_INTEGRATION_WS_PORT`：当 `RPA_INTEGRATION_EXTENSION_AWARE=true` 时使用的 agent WS 端口（默认 `17333`）
