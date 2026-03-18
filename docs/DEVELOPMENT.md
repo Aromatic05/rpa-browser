@@ -336,6 +336,10 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 - `RPA_HEADLESS=true|false`：agent 启动浏览器模式（由测试脚本自动设置）
 - `RPA_BROWSER_MODE=extension|cdp`：浏览器连接模式（默认 `extension`）
 - `RPA_CDP_ENDPOINT`：当 `RPA_BROWSER_MODE=cdp` 时，Playwright `connectOverCDP` 连接地址（如 `http://127.0.0.1:9222`）
+- `RPA_CDP_AUTO_LAUNCH=true|false`：CDP 模式下未提供 `RPA_CDP_ENDPOINT` 时，是否由 agent 自动拉起本地 Chrome（默认 `true`）
+- `RPA_CDP_PORT`：自动拉起 Chrome 时使用的远程调试端口（默认 `9222`）
+- `RPA_CDP_USER_DATA_DIR`：自动拉起 Chrome 时使用的用户目录；未设置则落到 `agent/.user-data/cdp-browser`
+- `RPA_CDP_CHROME_PATH`：自动拉起 Chrome 的可执行文件路径（可选）
 - `RPA_INTEGRATION_VERBOSE=true|false`：输出集成测试中 `mock/agent` 子进程日志（headed 默认开启）
 - `RPA_INTEGRATION_EXTENSION_AWARE=true|false`：是否固定使用扩展默认 WS 端口（`17333`）；headed 默认开启
 - `RPA_INTEGRATION_WS_PORT`：当 `RPA_INTEGRATION_EXTENSION_AWARE=true` 时使用的 agent WS 端口（默认 `17333`）

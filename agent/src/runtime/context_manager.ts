@@ -15,6 +15,7 @@ import path from 'path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'url';
 import { getLogger } from '../logging/logger';
+import { launchLocalChromeForCdp } from './cdp_launcher';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +39,10 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
     const browserMode = (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
     const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
+    const cdpPort = Number(process.env.RPA_CDP_PORT || 9222);
+    const cdpAutoLaunch = !['0', 'false', 'no'].includes((process.env.RPA_CDP_AUTO_LAUNCH || 'true').toLowerCase());
+    const cdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim() || path.resolve(options.userDataDir, 'cdp-browser');
+    let cdpLocalStop: (() => Promise<void>) | undefined;
 
     // 启动后强制导航到 startUrl，并关闭多余的初始页签。
     const ensureStartPage = async (context: BrowserContext) => {
@@ -67,17 +72,34 @@ export const createContextManager = (options: ContextManagerOptions) => {
         if (contextRef) return contextRef;
         if (contextPromise) return contextPromise;
         if (browserMode === 'cdp') {
-            if (!cdpEndpoint) {
-                throw new Error('RPA_CDP_ENDPOINT is required when RPA_BROWSER_MODE=cdp');
+            let endpoint = cdpEndpoint;
+            if (!endpoint) {
+                if (!cdpAutoLaunch) {
+                    throw new Error('RPA_CDP_ENDPOINT is required when RPA_CDP_AUTO_LAUNCH=false');
+                }
+                const launched = await launchLocalChromeForCdp({
+                    port: cdpPort,
+                    userDataDir: cdpUserDataDir,
+                    logger: (...args) => actionLog.info('[RPA:agent]', ...args),
+                });
+                endpoint = launched.endpoint;
+                cdpLocalStop = launched.stop;
+                actionLog.info('[RPA:agent]', 'Local Chrome started for CDP', {
+                    endpoint,
+                    pid: launched.pid,
+                    userDataDir: cdpUserDataDir,
+                });
             }
-            actionLog.info('[RPA:agent]', 'Connecting Chromium over CDP', cdpEndpoint);
+            actionLog.info('[RPA:agent]', 'Connecting Chromium over CDP', endpoint);
             contextPromise = chromium
-                .connectOverCDP(cdpEndpoint)
+                .connectOverCDP(endpoint)
                 .then(async (browser) => {
                     cdpBrowserRef = browser;
                     const context = browser.contexts()[0] || (await browser.newContext());
                     contextRef = context;
                     browser.on('disconnected', () => {
+                        if (cdpLocalStop) void cdpLocalStop();
+                        cdpLocalStop = undefined;
                         cdpBrowserRef = undefined;
                         contextRef = undefined;
                         contextPromise = undefined;
