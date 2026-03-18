@@ -26,25 +26,86 @@ export type ContextManagerOptions = {
     onPage?: (page: Page) => void;
 };
 
-/**
- * 创建 context 管理器。内部缓存 BrowserContext，并处理启动与关闭回收。
- */
-export const createContextManager = (options: ContextManagerOptions) => {
+type ContextProvider = () => Promise<BrowserContext>;
+
+const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void) => {
+    if (!onPage) return;
+    context.on('page', onPage);
+    for (const page of context.pages()) {
+        onPage(page);
+    }
+};
+
+const createCdpContextProvider = (options: ContextManagerOptions): ContextProvider => {
     const actionLog = getLogger('action');
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
     let cdpBrowserRef: Browser | undefined;
-    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
-    const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
-    const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
-    const browserMode = (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
+    let cdpLocalStop: (() => Promise<void>) | undefined;
+
     const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
     const cdpPort = Number(process.env.RPA_CDP_PORT || 9222);
     const cdpAutoLaunch = !['0', 'false', 'no'].includes((process.env.RPA_CDP_AUTO_LAUNCH || 'true').toLowerCase());
     const cdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim() || path.resolve(options.userDataDir, 'cdp-browser');
-    let cdpLocalStop: (() => Promise<void>) | undefined;
 
-    // 启动后强制导航到 startUrl，并关闭多余的初始页签。
+    return async () => {
+        if (contextRef) return contextRef;
+        if (contextPromise) return contextPromise;
+
+        let endpoint = cdpEndpoint;
+        if (!endpoint) {
+            if (!cdpAutoLaunch) {
+                throw new Error('RPA_CDP_ENDPOINT is required when RPA_CDP_AUTO_LAUNCH=false');
+            }
+            const launched = await launchLocalChromeForCdp({
+                port: cdpPort,
+                userDataDir: cdpUserDataDir,
+                logger: (...args) => actionLog.info('[RPA:agent]', ...args),
+            });
+            endpoint = launched.endpoint;
+            cdpLocalStop = launched.stop;
+            actionLog.info('[RPA:agent]', 'Local Chrome started for CDP', {
+                endpoint,
+                pid: launched.pid,
+                userDataDir: cdpUserDataDir,
+            });
+        }
+
+        actionLog.info('[RPA:agent]', 'Connecting Chromium over CDP', endpoint);
+        contextPromise = chromium
+            .connectOverCDP(endpoint)
+            .then(async (browser) => {
+                cdpBrowserRef = browser;
+                const context = browser.contexts()[0] || (await browser.newContext());
+                contextRef = context;
+                browser.on('disconnected', () => {
+                    if (cdpLocalStop) void cdpLocalStop();
+                    cdpLocalStop = undefined;
+                    cdpBrowserRef = undefined;
+                    contextRef = undefined;
+                    contextPromise = undefined;
+                });
+                bindContextPages(context, options.onPage);
+                return context;
+            })
+            .catch((error) => {
+                contextPromise = undefined;
+                contextRef = undefined;
+                cdpBrowserRef = undefined;
+                throw error;
+            });
+        return contextPromise;
+    };
+};
+
+const createExtensionContextProvider = (options: ContextManagerOptions): ContextProvider => {
+    const actionLog = getLogger('action');
+    let contextPromise: Promise<BrowserContext> | undefined;
+    let contextRef: BrowserContext | undefined;
+    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
+    const newTabUrl = process.env.RPA_NEWTAB_URL?.trim() || startUrl;
+    const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
+
     const ensureStartPage = async (context: BrowserContext) => {
         try {
             const pages = context.pages();
@@ -64,62 +125,9 @@ export const createContextManager = (options: ContextManagerOptions) => {
         }
     };
 
-    /**
-     * 获取或创建 BrowserContext。若已有实例则复用。
-     * 注意：这里会注册 close 监听以重置内部缓存。
-     */
-    const getContext = async () => {
+    return async () => {
         if (contextRef) return contextRef;
         if (contextPromise) return contextPromise;
-        if (browserMode === 'cdp') {
-            let endpoint = cdpEndpoint;
-            if (!endpoint) {
-                if (!cdpAutoLaunch) {
-                    throw new Error('RPA_CDP_ENDPOINT is required when RPA_CDP_AUTO_LAUNCH=false');
-                }
-                const launched = await launchLocalChromeForCdp({
-                    port: cdpPort,
-                    userDataDir: cdpUserDataDir,
-                    logger: (...args) => actionLog.info('[RPA:agent]', ...args),
-                });
-                endpoint = launched.endpoint;
-                cdpLocalStop = launched.stop;
-                actionLog.info('[RPA:agent]', 'Local Chrome started for CDP', {
-                    endpoint,
-                    pid: launched.pid,
-                    userDataDir: cdpUserDataDir,
-                });
-            }
-            actionLog.info('[RPA:agent]', 'Connecting Chromium over CDP', endpoint);
-            contextPromise = chromium
-                .connectOverCDP(endpoint)
-                .then(async (browser) => {
-                    cdpBrowserRef = browser;
-                    const context = browser.contexts()[0] || (await browser.newContext());
-                    contextRef = context;
-                    browser.on('disconnected', () => {
-                        if (cdpLocalStop) void cdpLocalStop();
-                        cdpLocalStop = undefined;
-                        cdpBrowserRef = undefined;
-                        contextRef = undefined;
-                        contextPromise = undefined;
-                    });
-                    if (options.onPage) {
-                        context.on('page', options.onPage);
-                        for (const page of context.pages()) {
-                            options.onPage(page);
-                        }
-                    }
-                    return context;
-                })
-                .catch((error) => {
-                    contextPromise = undefined;
-                    contextRef = undefined;
-                    cdpBrowserRef = undefined;
-                    throw error;
-                });
-            return contextPromise;
-        }
 
         actionLog.info('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
         const policyDir = path.resolve(options.userDataDir, 'enterprise-policies', 'managed');
@@ -152,12 +160,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
                     contextRef = undefined;
                     contextPromise = undefined;
                 });
-                if (options.onPage) {
-                    context.on('page', options.onPage);
-                    for (const page of context.pages()) {
-                        options.onPage(page);
-                    }
-                }
+                bindContextPages(context, options.onPage);
                 await ensureStartPage(context);
                 return context;
             })
@@ -168,6 +171,15 @@ export const createContextManager = (options: ContextManagerOptions) => {
             });
         return contextPromise;
     };
+};
+
+/**
+ * 创建 context 管理器。内部缓存 BrowserContext，并处理启动与关闭回收。
+ */
+export const createContextManager = (options: ContextManagerOptions) => {
+    const browserMode = (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
+    const getContext =
+        browserMode === 'cdp' ? createCdpContextProvider(options) : createExtensionContextProvider(options);
 
     return { getContext };
 };
