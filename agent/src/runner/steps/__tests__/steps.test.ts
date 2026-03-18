@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import type { Step } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { getRunnerConfig } from '../../config';
+import { getRunnerConfig } from '../../../config';
 import { executeBrowserClick } from '../executors/click';
 import { executeBrowserFill } from '../executors/fill';
 import { executeBrowserPressKey } from '../executors/press_key';

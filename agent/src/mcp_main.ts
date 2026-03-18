@@ -5,22 +5,23 @@ import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { startMcpServer } from './mcp/index';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
-import { getRunnerConfig } from './runner/config';
+import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
-import { initLogger, resolveLogPath } from './logging/logger';
+import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const NAV_DEDUPE_WINDOW_MS = 1200;
 
-const log = (...args: unknown[]) => console.error('[RPA:mcp]', ...args);
-console.log = (...args: unknown[]) => console.error(...args);
+const actionLog = getLogger('action');
+const log = (...args: unknown[]) => actionLog.info('[RPA:mcp]', ...args);
+const logError = (...args: unknown[]) => actionLog.error('[RPA:mcp]', ...args);
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
 
 const contextManager = createContextManager({
-    extensionPath: paths.extensionPath,
+    extensionPaths: paths.extensionPaths,
     userDataDir: paths.userDataDir,
     onPage: (page) => {
         void pageRegistry.bindPage(page);
@@ -78,7 +79,7 @@ setRunStepsDeps({
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        log('Failed to launch MCP server:', message);
+        logError('Failed to launch MCP server:', message);
         process.exit(1);
     }
 })();

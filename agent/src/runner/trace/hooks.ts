@@ -7,6 +7,9 @@
  */
 
 import type { ToolError, TraceEvent, TraceHooks, ToolResult } from './types';
+import { getLogger } from '../../logging/logger';
+
+const traceLog = getLogger('trace');
 
 export const createNoopHooks = (): TraceHooks => ({
     beforeOp: async () => {},
@@ -60,14 +63,14 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
             const ms = event.durationMs;
             const tags = formatTags(event);
             // 单行、稳定格式，便于 grep/分析
-            console.log(
+            traceLog(
                 `[trace]${tags} op=${event.op} ok=${event.ok} ms=${ms} args=${args} ${result}`,
             );
         },
         onError: async (event, error) => {
             if (event.type !== 'op.end') return;
             // afterOp 已打印失败路径，这里只补充一次 error（可选）
-            console.log(
+            traceLog(
                 `[trace]${formatTags(event)} op=${event.op} ok=false ms=${event.durationMs} error=${safeJson(
                     error,
                     maxStringLength,

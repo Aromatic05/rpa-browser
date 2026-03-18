@@ -9,14 +9,23 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { RunnerConfig } from '../runner/config';
+import type { RunnerConfig } from '../config';
 
 export type LogType = 'action' | 'record' | 'trace' | 'step';
+export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
+export type Logger = ((...args: unknown[]) => void) & {
+    debug: (...args: unknown[]) => void;
+    info: (...args: unknown[]) => void;
+    warning: (...args: unknown[]) => void;
+    warn: (...args: unknown[]) => void;
+    error: (...args: unknown[]) => void;
+};
 
 type LogTarget = {
     consoleEnabled: boolean;
     fileEnabled: boolean;
     filePath: string;
+    minLevel: LogLevel;
 };
 
 let loggerConfig: RunnerConfig | null = null;
@@ -44,13 +53,14 @@ const ensureStream = (type: LogType, filePath: string) => {
 const getTarget = (type: LogType): LogTarget => {
     const obs = loggerConfig?.observability;
     if (!obs) {
-        return { consoleEnabled: true, fileEnabled: false, filePath: '' };
+        return { consoleEnabled: false, fileEnabled: false, filePath: '', minLevel: 'warning' };
     }
     if (type === 'action') {
         return {
             consoleEnabled: obs.actionConsoleEnabled,
             fileEnabled: obs.actionFileEnabled,
             filePath: resolveLogPath(obs.actionFilePath),
+            minLevel: obs.actionLogLevel || 'warning',
         };
     }
     if (type === 'record') {
@@ -58,6 +68,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.recordConsoleEnabled,
             fileEnabled: obs.recordFileEnabled,
             filePath: resolveLogPath(obs.recordFilePath),
+            minLevel: obs.recordLogLevel || 'warning',
         };
     }
     if (type === 'trace') {
@@ -65,29 +76,66 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.traceConsoleEnabled,
             fileEnabled: obs.traceFileEnabled,
             filePath: resolveLogPath(obs.traceFilePath),
+            minLevel: obs.traceLogLevel || 'warning',
         };
     }
-    return { consoleEnabled: true, fileEnabled: false, filePath: '' };
+    return {
+        consoleEnabled: false,
+        fileEnabled: false,
+        filePath: '',
+        minLevel: obs.stepLogLevel || 'warning',
+    };
 };
 
 export const initLogger = (config: RunnerConfig) => {
     loggerConfig = config;
 };
 
-export const getLogger = (type: LogType) => {
-    return (...args: unknown[]) => {
-        const target = getTarget(type);
-        if (target.consoleEnabled) {
+const emit = (type: LogType, level: LogLevel, args: unknown[]) => {
+    const target = getTarget(type);
+    const levelRank = { debug: 10, info: 20, warning: 30, error: 40 } as const;
+    if (levelRank[level] < levelRank[target.minLevel]) {
+        return;
+    }
+    if (target.consoleEnabled) {
+        if (level === 'error') {
+            console.error(`[${type}]`, ...args);
+        } else if (level === 'warning') {
+            console.warn(`[${type}]`, ...args);
+        } else {
             console.log(`[${type}]`, ...args);
         }
-        if (target.fileEnabled && target.filePath) {
-            const stream = ensureStream(type, target.filePath);
-            const payload = {
-                ts: Date.now(),
-                type,
-                message: args,
-            };
-            stream.write(`${JSON.stringify(payload)}\n`);
-        }
+    }
+    if (target.fileEnabled && target.filePath) {
+        const stream = ensureStream(type, target.filePath);
+        const payload = {
+            ts: Date.now(),
+            type,
+            level,
+            message: args,
+        };
+        stream.write(`${JSON.stringify(payload)}\n`);
+    }
+};
+
+export const getLogger = (type: LogType): Logger => {
+    const logger = ((...args: unknown[]) => {
+        emit(type, 'info', args);
+    }) as Logger;
+    logger.debug = (...args: unknown[]) => {
+        emit(type, 'debug', args);
     };
+    logger.info = (...args: unknown[]) => {
+        emit(type, 'info', args);
+    };
+    logger.warning = (...args: unknown[]) => {
+        emit(type, 'warning', args);
+    };
+    logger.warn = (...args: unknown[]) => {
+        emit(type, 'warning', args);
+    };
+    logger.error = (...args: unknown[]) => {
+        emit(type, 'error', args);
+    };
+    return logger;
 };

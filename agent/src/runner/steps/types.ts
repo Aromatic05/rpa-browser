@@ -44,7 +44,7 @@ export type StepArgsMap = {
     'browser.go_back': { timeout?: number };
     'browser.reload': { timeout?: number };
     'browser.create_tab': { url?: string };
-    'browser.switch_tab': { tab_id: string };
+    'browser.switch_tab': { tab_id: string; tab_url?: string; tab_ref?: string };
     'browser.close_tab': { tab_id?: string };
     'browser.get_page_info': Record<string, never>;
     'browser.snapshot': { includeA11y?: boolean; focus_only?: boolean };
@@ -96,6 +96,11 @@ export type StepMeta = {
     requestId?: string;
     source: 'mcp' | 'play' | 'script' | 'record';
     ts?: number;
+    workspaceId?: string;
+    tabId?: string;
+    tabToken?: string;
+    tabRef?: string;
+    urlAtRecord?: string;
 };
 
 export type Step<TName extends StepName = StepName> = {

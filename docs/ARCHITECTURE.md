@@ -33,6 +33,8 @@
 - 扩展发 Action 包到 `ws://127.0.0.1:17333`
 - `agent/src/index.ts` 校验 action 后调用 `agent/src/actions/execute.ts`
 - 部分动作会进一步调用 `runSteps`
+- 广播同样使用 Action 协议（`workspace.sync/workspace.changed/tab.bound`），不再使用 `type="event"`。
+- workspace 物理承载以浏览器窗口为单位，extension 在 SW 内维护 `windowId -> workspaceId` 映射并同步焦点/关闭副作用。
 
 ## MCP（stdio）
 

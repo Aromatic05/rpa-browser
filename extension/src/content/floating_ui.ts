@@ -96,12 +96,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     row2.className = 'row';
     const showBtn = document.createElement('button');
     showBtn.textContent = 'Show Rec';
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save WS';
     const clearBtn = document.createElement('button');
     clearBtn.textContent = 'Clear Rec';
     const replayBtn = document.createElement('button');
     replayBtn.className = 'primary';
     replayBtn.textContent = 'Replay';
-    row2.append(showBtn, clearBtn);
+    row2.append(showBtn, saveBtn, clearBtn);
 
     const row3 = document.createElement('div');
     row3.className = 'row';
@@ -132,11 +134,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     tabList.className = 'list';
     const tabActions = document.createElement('div');
     tabActions.className = 'row';
-    const newTabBtn = document.createElement('button');
-    newTabBtn.textContent = 'New Tab';
     const closeTabBtn = document.createElement('button');
     closeTabBtn.textContent = 'Close Tab';
-    tabActions.append(newTabBtn, closeTabBtn);
+    tabActions.append(closeTabBtn);
     tabSection.append(tabTitle, tabList, tabActions);
 
     const out = document.createElement('pre');
@@ -180,35 +180,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         onResponse?.(response);
     };
 
-    const DEFAULT_MOCK_ORIGIN = 'http://localhost:4173';
-    const DEFAULT_MOCK_PATH = '/pages/start.html#beta';
-
-    const getMockStartUrl = (onUrl: (url: string) => void) => {
-        chrome.storage.local.get('mockBaseUrl', (data: any) => {
-            const base = (data?.mockBaseUrl as string | undefined) || DEFAULT_MOCK_ORIGIN;
-            const normalized = base.endsWith('/') ? base.slice(0, -1) : base;
-            onUrl(`${normalized}${DEFAULT_MOCK_PATH}`);
-        });
-    };
-
-    const createWithStartUrl = (
-        type: 'workspace.create' | 'tab.create',
-        args: Record<string, unknown>,
-        onDone?: (payload: any) => void,
-    ) => {
-        getMockStartUrl((startPageUrl) => {
-            void sendPanelAction(type, { ...args, startUrl: startPageUrl }, undefined, (payload) => {
-                if (payload?.ok === false) {
-                    render({ ok: false, error: `Mock start page unreachable: ${startPageUrl}` });
-                }
-                onDone?.(payload);
-            });
-        });
-    };
-
     startBtn.addEventListener('click', () => void sendPanelAction('record.start'));
     stopBtn.addEventListener('click', () => void sendPanelAction('record.stop'));
     showBtn.addEventListener('click', () => void sendPanelAction('record.get'));
+    saveBtn.addEventListener('click', () =>
+        void sendPanelAction('workspace.save', activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
+    );
     clearBtn.addEventListener('click', () => void sendPanelAction('record.clear'));
     replayBtn.addEventListener('click', () => void sendPanelAction('play.start'));
     stopReplayBtn.addEventListener('click', () => void sendPanelAction('play.stop'));
@@ -270,28 +247,13 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     newWorkspaceBtn.addEventListener('click', () => {
-        createWithStartUrl('workspace.create', {}, (payload) => {
+        void sendPanelAction('workspace.create', {}, undefined, (payload) => {
             if (payload?.data?.workspaceId) {
                 activeWorkspaceId = payload.data.workspaceId;
             }
             refreshWorkspaces();
             refreshTabs();
         });
-    });
-
-    newTabBtn.addEventListener('click', () => {
-        if (activeWorkspaceId) {
-            createWithStartUrl('tab.create', { workspaceId: activeWorkspaceId }, (payload) => {
-                activeTabId = payload?.data?.tabId || activeTabId;
-                refreshTabs();
-            });
-        } else {
-            createWithStartUrl('tab.create', {}, (payload) => {
-                activeWorkspaceId = payload?.data?.workspaceId || activeWorkspaceId;
-                activeTabId = payload?.data?.tabId || activeTabId;
-                refreshTabs();
-            });
-        }
     });
 
     closeTabBtn.addEventListener('click', () => {
@@ -301,7 +263,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 void sendPanelAction('workspace.list', {}, undefined, (payload) => {
                     const workspaces = payload?.data?.workspaces || [];
                     if (!workspaces.length) {
-                        createWithStartUrl('workspace.create', {}, (created) => {
+                        void sendPanelAction('workspace.create', {}, undefined, (created) => {
                             activeWorkspaceId = created?.data?.workspaceId || null;
                             refreshWorkspaces();
                             refreshTabs();
@@ -318,7 +280,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 void sendPanelAction('workspace.list', {}, undefined, (payload) => {
                     const workspaces = payload?.data?.workspaces || [];
                     if (!workspaces.length) {
-                        createWithStartUrl('workspace.create', {}, (created) => {
+                        void sendPanelAction('workspace.create', {}, undefined, (created) => {
                             activeWorkspaceId = created?.data?.workspaceId || null;
                             refreshWorkspaces();
                             refreshTabs();

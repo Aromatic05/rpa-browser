@@ -1,21 +1,18 @@
 /**
- * WS 客户端封装：维护与 agent 的长连接，发送命令并接收事件。
- *
- * 设计说明：
- * - 仅处理“连接/重连/超时/事件分发”，不做业务逻辑。
- * - 业务层通过 onEvent 接收 agent 广播事件。
+ * WS 客户端封装：维护与 agent 的长连接，发送命令并接收 Action 广播。
  */
 
-import type { Action, ActionErr, ActionOk, WsActionReply, WsEventPayload } from '../shared/types.js';
-import { createLogger } from '../shared/logger.js';
+import type { Action, ActionErr, ActionOk, WsActionReply } from '../shared/types.js';
+import { isActionType } from '../shared/action_types.js';
+import { createLogger, type Logger } from '../shared/logger.js';
 
 export type WsClient = {
     sendAction: (action: Action) => Promise<ActionOk<any> | ActionErr>;
 };
 
 export type WsClientOptions = {
-    onEvent: (payload: WsEventPayload) => void;
-    logger?: (...args: unknown[]) => void;
+    onAction: (action: Action) => void;
+    logger?: Logger;
 };
 
 export const createWsClient = (options: WsClientOptions): WsClient => {
@@ -29,8 +26,33 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             return wsReady || Promise.resolve();
         }
         wsRef = new WebSocket('ws://127.0.0.1:17333');
-        wsReady = new Promise((resolve) => {
-            wsRef?.addEventListener('open', () => resolve());
+        wsReady = new Promise((resolve, reject) => {
+            let settled = false;
+            const settleResolve = () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+            };
+            const settleReject = (message: string) => {
+                if (settled) return;
+                settled = true;
+                reject(new Error(message));
+            };
+            const timeoutId = setTimeout(() => {
+                settleReject('ws connect timeout');
+            }, 4000);
+            wsRef?.addEventListener('open', () => {
+                clearTimeout(timeoutId);
+                settleResolve();
+            });
+            wsRef?.addEventListener('error', () => {
+                clearTimeout(timeoutId);
+                settleReject('ws connect error');
+            });
+            wsRef?.addEventListener('close', () => {
+                clearTimeout(timeoutId);
+                settleReject('ws closed before open');
+            });
         });
         wsRef.addEventListener('message', (event) => {
             let payload: any = event.data;
@@ -41,15 +63,15 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            if (payload?.type === 'event') {
-                options.onEvent(payload as WsEventPayload);
-                return;
-            }
             if (payload?.replyTo) {
                 const resolver = pending.get(payload.replyTo as string);
                 if (!resolver) return;
                 pending.delete(payload.replyTo as string);
                 resolver((payload as WsActionReply).payload as ActionOk<any> | ActionErr);
+                return;
+            }
+            if (payload?.v === 1 && typeof payload?.id === 'string' && isActionType(String(payload?.type))) {
+                options.onAction(payload as Action);
             }
         });
         wsRef.addEventListener('close', () => {
@@ -59,7 +81,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             pending.clear();
         });
         wsRef.addEventListener('error', () => {
-            log('ws error');
+            log.warning('ws error');
         });
         return wsReady;
     };

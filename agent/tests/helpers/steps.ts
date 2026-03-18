@@ -4,8 +4,8 @@ import path from 'node:path';
 import { createPageRegistry } from '../../src/runtime/page_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
-import { runSteps } from '../../src/runner/run_steps';
-import { getRunnerConfig } from '../../src/runner/config';
+import { runStepList } from '../../src/runner/run_steps';
+import { getRunnerConfig } from '../../src/config';
 import type { StepArgsMap, StepName, StepUnion } from '../../src/runner/steps/types';
 import { RunnerPluginHost } from '../../src/runner/hotreload/plugin_host';
 
@@ -42,8 +42,12 @@ export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.rand
 
     const deps = { runtime, config: getRunnerConfig(), pluginHost };
 
-    const run = async (steps: StepUnion[]) =>
-        runSteps({ workspaceId: scope.workspaceId, steps, options: { stopOnError: true } }, deps);
+    const run = async (steps: StepUnion[]) => {
+        const { pipe, checkpoint } = await runStepList(scope.workspaceId, steps, deps, { stopOnError: true });
+        const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown }>;
+        const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data }));
+        return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
+    };
 
     return { run, workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken, pageRegistry, deps };
 };

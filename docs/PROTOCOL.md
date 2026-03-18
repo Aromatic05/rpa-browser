@@ -39,6 +39,8 @@
 - `v` 必须为 `1`
 - `id` 必须为非空字符串
 - `type` 必须为非空字符串
+- `type` 必须在 ActionType 映射表中
+- 当 `tabToken` 存在时，`scope.workspaceId/tabId` 必须与该 token 解析结果一致；冲突返回 `ERR_BAD_ARGS`
 
 代码来源：`agent/src/actions/action_protocol.ts`、`agent/src/index.ts`。
 
@@ -56,31 +58,121 @@
 { "type": "error", "replyTo": "<id>", "payload": { "ok": false, "error": { "code": "ERR_*", "message": "...", "details": {} } } }
 ```
 
-### 2.3 广播事件
+### 2.3 广播结构（统一 Action）
 
-当前 `agent/src/index.ts` 会广播：
-
-- `workspace.changed`
-- `page.bound`
-
-示例：
+当前广播不再使用 `{"type":"event"}`，统一为标准 Action：
 
 ```json
-{ "type": "event", "event": "workspace.changed", "data": { "workspaceId": "...", "tabId": "...", "type": "tab.create" } }
+{
+  "v": 1,
+  "id": "evt-xxx",
+  "type": "workspace.changed",
+  "payload": { "workspaceId": "ws-1", "tabId": "tab-1", "sourceType": "tab.create" },
+  "scope": { "workspaceId": "ws-1", "tabId": "tab-1" },
+  "at": 1710000000000
+}
 ```
+
+已实现广播类型：
+
+- `workspace.changed`
+- `workspace.sync`
+- `tab.bound`
 
 ### 2.4 支持的 action types
 
 当前 action handler 来自：
 
-- workspace：`workspace.list`、`workspace.create`、`workspace.setActive`
-- tab：`tab.list`、`tab.create`、`tab.close`、`tab.setActive`
+- workspace：`workspace.list`、`workspace.create`、`workspace.setActive`、`workspace.save`、`workspace.restore`、`workspace.changed`、`workspace.sync`
+- window：保留域（当前不单独下发动作，窗口副作用通过 `workspace.setActive` + `tab.reassign` 收敛）
+- tab：`tab.init`、`tab.list`、`tab.create`、`tab.close`、`tab.setActive`、`tab.opened`、`tab.report`、`tab.activated`、`tab.closed`、`tab.ping`、`tab.bound`、`tab.reassign`
 - record：`record.start`、`record.stop`、`record.get`、`record.clear`、`record.event`
 - play：`play.start`、`play.stop`
+- task：`task.run.start`、`task.run.push`、`task.run.poll`、`task.run.checkpoint`、`task.run.halt`、`task.run.suspend`、`task.run.continue`、`task.run.flush`、`task.run.resume`
 
 代码来源：`agent/src/actions/workspace.ts`、`agent/src/actions/recording.ts`。
 
-### 2.5 Action 错误码
+### 2.5 ActionType 对照表（核心域）
+
+| Domain | Type | Payload |
+| --- | --- | --- |
+| `workspace.*` | `workspace.list` | `{}` |
+| `workspace.*` | `workspace.create` | `{ startUrl?: string, waitUntil?: 'domcontentloaded' \\| 'load' \\| 'networkidle' }` |
+| `workspace.*` | `workspace.setActive` | `{ workspaceId: string }` |
+| `workspace.*` | `workspace.save` | `{ workspaceId?: string }` |
+| `workspace.*` | `workspace.restore` | `{ workspaceId: string }` |
+| `workspace.*` | `workspace.changed` | `{ workspaceId?: string, tabId?: string, sourceType?: string }` |
+| `workspace.*` | `workspace.sync` | `{ reason: string, workspaceId?: string, tabId?: string, tabToken?: string }` |
+| `tab.*` | `tab.init` | `{ source?: string, url?: string, at?: number }` |
+| `tab.*` | `tab.reassign` | `{ workspaceId: string, source?: string, windowId?: number, at?: number }` |
+
+### 2.6 `tab.opened` 合同
+
+用途：`start_extension` 新标签页打开时上报，通知后端将当前 `tabToken` 对齐到 workspace 活跃上下文并记录 action 日志。
+
+约束补充：
+- 当 `tabToken` 尚未绑定 workspace 时，`tab.opened` 必须携带 `workspaceId`（来自窗口映射）；缺失会返回 `ERR_BAD_ARGS`。
+- `tab.opened` 不负责自动创建 workspace。
+
+请求示例：
+
+```json
+{
+  "v": 1,
+  "id": "evt-1",
+  "type": "tab.opened",
+  "tabToken": "token-xxx",
+  "scope": { "tabToken": "token-xxx" },
+  "payload": {
+    "source": "start_extension",
+    "url": "chrome://newtab/",
+    "title": "New Tab",
+    "at": 1710000000000
+  }
+}
+```
+
+成功响应 `data` 字段：
+
+```json
+{
+  "workspaceId": "ws-xxx",
+  "tabId": "tab-xxx",
+  "tabToken": "token-xxx",
+  "pageUrl": "chrome-extension://.../newtab.html",
+  "source": "start_extension",
+  "reportedUrl": "chrome://newtab/",
+  "reportedTitle": "New Tab",
+  "reportedAt": 1710000000000
+}
+```
+
+### 2.7 `tab.init` 合同
+
+- `tab.init`：统一 token 初始化握手（替代 `tab.token.init`）。
+- 返回：`{ tabToken: string }`。
+
+### 2.8 `tab.activated` / `tab.closed` 合同
+
+- `tab.activated`：扩展侧检测到激活 tab 变化后上报，用于 runner 同步 active workspace/tab。
+- `tab.closed`：扩展侧检测到 tab 关闭后上报，用于记录生命周期日志；若 token 已失效会返回 `stale: true`。
+
+### 2.9 `tab.ping` 合同
+
+- `tab.ping`：content/newtab 周期上报存活信息，用于 token 同步和断连恢复（`lastSeen` 语义）。
+- 若 token 可解析，返回对应 `workspaceId/tabId`；否则返回 `stale: true`。
+- orphan `tab.ping` 默认禁止 claim 新 workspace；仅 `source=extension.workspace.create` 允许用于新建 workspace 首 tab 绑定。
+
+### 2.10 `workspace.save` / `workspace.restore` 合同
+
+- `workspace.save`：将当前（或指定）workspace 保存为可恢复快照。
+- 快照内容：
+  - `tabs`: `tabId/url/title/active`
+  - `recording.steps`
+  - `recording.manifest`（去除 `tabs[].tabToken`）
+- `workspace.restore`：仅恢复 workspace/tab 与录制上下文；不自动触发 `play.start`。
+
+### 2.11 Action 错误码
 
 ```text
 ERR_TIMEOUT
@@ -91,6 +183,8 @@ ERR_ASSERTION_FAILED
 ERR_DIALOG_BLOCKED
 ERR_POPUP_BLOCKED
 ERR_BAD_ARGS
+ERR_WORKSPACE_SNAPSHOT_NOT_FOUND
+ERR_WORKSPACE_RESTORE_FAILED
 ```
 
 代码来源：`agent/src/actions/error_codes.ts`。
@@ -109,7 +203,10 @@ ERR_BAD_ARGS
   meta?: {
     requestId?: string,
     source: 'mcp' | 'play' | 'script' | 'record',
-    ts?: number
+    ts?: number,
+    workspaceId?: string,
+    tabId?: string,
+    tabToken?: string
   }
 }
 ```

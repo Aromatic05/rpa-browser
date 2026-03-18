@@ -8,6 +8,7 @@
     },
     "scripts": {
         "dev": "tsx src/index.ts",
+        "dev:cdp": "RPA_BROWSER_MODE=cdp tsx src/index.ts",
         "dev:watch": "tsx watch src/index.ts",
         "dev:hot": "concurrently -k \"pnpm test:runner:bundle:watch\" \"pnpm dev\"",
         "mcp:demo": "tsx src/demo/server.ts",
@@ -20,6 +21,9 @@
         "test:runner:bundle": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --outfile=.runner-dist/plugin.mjs --sourcemap",
         "test:runner:bundle:watch": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --outfile=.runner-dist/plugin.mjs --sourcemap --watch",
         "test:unit": "node --import tsx --test src/runner/steps/__tests__/*.test.ts tests/config/*.test.ts",
+        "test:integration:run": "pnpm test:runner:bundle && pnpm -C .. build:extension && node --import tsx --test --test-concurrency=1 tests/integration/*.test.ts",
+        "test:integration": "RPA_INTEGRATION_HEADED=false pnpm test:integration:run",
+        "test:integration:headed": "RPA_INTEGRATION_HEADED=true pnpm test:integration:run",
         "test:e2e": "playwright test tests/specs",
         "test:runner": "node --import tsx --test tests/runner/*.test.ts",
         "test:trace": "node --import tsx --test tests/trace/*.test.ts",

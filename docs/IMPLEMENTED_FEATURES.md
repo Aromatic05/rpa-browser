@@ -27,7 +27,7 @@
 
 | 任务 | 状态 | 现状说明 |
 |---|---|---|
-| A1 会话/工作区恢复能力 | 部分实现 | 已有 workspace/tab 运行时模型与切换；未见持久化恢复与 checkpoint 续跑。 |
+| A1 会话/工作区恢复能力 | 已实现 | 已支持录制与 workspace 快照持久化（`recordings.state.json`），并可 `workspace.restore` 恢复 tab URL + 录制内容；恢复失败具备明确错误码与日志事件。 |
 | A2 任务审计视图 | 部分实现 | 已有 step/trace/action 日志与文件输出；未见统一 TaskRun 查询视图。 |
 | A3 A11y 树剪枝与预处理 | 部分实现 | 已有 snapshotA11y 与 a11y cache；未见系统化剪枝/预处理策略。 |
 | A4 选择器多重定位与置信度融合 | 部分实现 | 已有 selector + a11yHint + confidence 校验；高级模糊匹配与多候选融合未完整。 |

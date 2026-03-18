@@ -171,6 +171,48 @@ pnpm -C agent mcp:hot
 - 不要在新层复制执行逻辑
 - 新层应是“协议翻译器”，不是“第二套执行引擎”
 
+### 7.1 DSL 预留：流式 Step 协议（最小版）
+
+为避免在 agent 侧提前引入完整 DSL VM（循环/分支/变量），当前采用“流式 step 执行”边界：
+
+- agent 只负责执行 `StepEnvelope`，输出 `StepResultEnvelope`
+- DSL 组件负责：
+  - 解析 DSL
+  - 依据反馈生成后续 step（分支/循环/条件）
+  - 维护变量上下文
+
+最小 action 协议（agent）：
+
+- `task.run.start`
+- `task.run.push`
+- `task.run.poll`
+- `task.run.checkpoint`
+- `task.run.halt`
+- `task.run.resume`
+
+核心实现位置：
+
+- `agent/src/runner/run_steps.ts`（Step Pipeline 主循环）
+- `agent/src/runner/run_steps_types.ts`（Step Pipeline 对外类型）
+- `agent/src/actions/task_stream.ts`
+- `agent/src/runner/checkpoint_store.ts`（task.run checkpoint 持久化）
+- `docs/DSL_EXECUTOR_PIPELINE.md`（DSL 对接规范）
+
+Checkpoint 配置：
+
+- 配置项：`runner.config.checkpointPolicy`
+- 默认文件：`.artifacts/checkpoints/task_runs.json`
+- 环境变量：
+  - `RUNNER_CHECKPOINT_ENABLED`
+  - `RUNNER_CHECKPOINT_FILE_PATH`
+  - `RUNNER_CHECKPOINT_FLUSH_INTERVAL_MS`
+
+设计原则：
+
+- 执行器不感知 DSL 语法结构
+- 每个 step 使用稳定 `step.id`，并配合 `seq` 支持 checkpoint/续跑
+- 结果输出保持结构化字段（`outputs` + `raw`），供 DSL 变量绑定
+
 ## 8. 测试布局与规范
 
 Agent 测试分层：
@@ -191,6 +233,8 @@ Extension 测试：
 
 ```bash
 pnpm -C agent test:unit
+pnpm -C agent test:integration
+pnpm -C agent test:integration:headed
 pnpm -C agent test:trace
 pnpm -C agent test:runner
 pnpm -C agent test:e2e
@@ -206,6 +250,109 @@ pnpm test:extension
 - 优先使用可重复的 fixture
 - 协议变更至少补一个协议级断言
 - 新 trace op 在必要时断言 op 序列
+
+## 8.1 集成测试框架（多 tab 录制）
+
+目录：
+
+- `agent/tests/integration/harness/*`：进程编排与 WS action 客户端
+- `agent/tests/integration/scenarios/*`：可插拔场景
+- `agent/tests/integration/*.test.ts`：统一入口（可按环境切换 headed/headless）
+
+## 9. Workspace / Tab 归属规则（无主标签页）
+
+Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 重绑”。
+
+### 9.0 token 单一真源
+
+- `tabToken` 只允许由 agent 生成（`tab.init`）。
+- start/content 侧禁止本地 UUID 生成，只可读取已有 token 或向 agent 请求初始化。
+- token 丢失视为异常状态，必须重新向 agent 初始化，不做 token 改写重绑。
+
+### 9.1 无主标签页定义
+
+- token 已存在于运行时，但 `token -> (workspaceId, tabId)` 尚未建立。
+
+### 9.2 归属策略
+
+- 显式路径（`workspace.create` / `workspace.restore`）创建的 tab：直接归属目标 workspace。
+- 初始 start 页 token（`tab.opened` 且 `source=start_extension`）：
+  - 保持无主，直到首次 `tab.ping` 报告真实网页 URL（`http/https`）。
+  - 首次真实 URL 时，强制创建新 workspace 并归属。
+- 手动新开未知标签页 token：
+  - 首次真实 URL 时优先并入当前 active workspace。
+  - 若当前没有 workspace，则新建 workspace。
+- `workspace.restore` 若由无主标签页发起：restore 成功后关闭该源标签页。
+
+### 9.3 并发约束
+
+- 所有“无主 -> 归属”决策使用单一全局串行锁，避免并发抢占造成归属冲突。
+
+### 9.4 窗口约束
+
+- extension 使用 `windowId -> workspaceId` 运行时映射管理工作区归属。
+- `chrome.windows.onFocusChanged` 触发 `workspace.setActive` 同步。
+- `chrome.tabs.onCreated` 必须携带 `windowId` 并执行 `tab.opened` 归属（按窗口映射绑定，不允许自动新建 workspace）。
+- `chrome.tabs.onAttached` 负责跨窗口拖拽时的 `tab.reassign` 重分配。
+- `workspace.create` 在 extension 侧通过 `chrome.windows.create` 强制创建新窗口，再用首 tab 的 `tab.ping` 完成 workspace 绑定。
+
+设计原则：
+
+- 启动完整进程栈（mock + agent + 浏览器扩展）
+- 场景只描述行为与断言，框架负责启动、连接、清理
+- `headless` 用于 CI/CD，`headed` 用于本地可视化调试
+- 场景建议覆盖组合动作（fill/click/scroll/switch/select），避免使用固定 `sleep`
+- 时序诊断优先依赖 `step.start/step.end` 时间戳和步骤顺序断言
+- 多 tab 录制依赖 `tab.activated` 生命周期事件自动落库为 `browser.switch_tab`（同 workspace 下跨 tab）
+- `record.stop/get/clear` 在仅有一个录制会话时允许“错误 tabToken”兜底到该会话，避免 UI 焦点切换导致停错录制
+- 面板 `tab.setActive` 也会直接写入 `browser.switch_tab`，不依赖生命周期回调先到达
+
+## 9. A1 持久化契约（workspace restore）
+
+- 持久化文件：`agent` userData 目录下 `recordings.state.json`。
+- 版本：当前 `version: 1`（后续结构变更必须升级版本并提供迁移）。
+- 存储范围：
+  - 录制 bundle（`recordings` + `recordingManifests`）。
+  - `workspaceLatestRecording` 索引。
+  - `workspaceSnapshots`（`workspace.save` 产物）。
+
+`workspaceSnapshots` 约束：
+- 保存 `tabs`（`tabId/url/title/active`），不保存运行时 `tabToken`。
+- 保存录制 `steps`，并移除 step `meta.tabToken`。
+- 保存录制 `manifest` 的 tab 列表时，移除 `tabs[].tabToken`。
+
+恢复语义约束：
+- `workspace.restore` 只负责恢复 workspace/tab 与录制上下文，不自动触发 `play.start`。
+- 若无可恢复快照，返回 `ERR_WORKSPACE_SNAPSHOT_NOT_FOUND`。
+- 失败路径统一返回 `ERR_WORKSPACE_RESTORE_FAILED`（含原始 message）。
+- 切换到目标 tab 时会补装 recorder，确保新 tab 后续动作可继续录制
+- 热回放会优先使用当前运行时的 `tabToken -> tabId` 映射；仅在无法解析时才走 `browser.create_tab`（cold replay）
+- 录制结果包含 `manifest`（`workspaceId`、`entryTabRef`、`entryUrl`、tabs 快照）以及步骤级 `meta.tabRef/meta.urlAtRecord`
+- 回放采用 `workspace` 先决策略：命中录制 workspace 走热启动；未命中走冷启动（创建 workspace/tab 并用记录 URL 预热）
+
+关键环境变量：
+
+- `RPA_INTEGRATION_HEADED=true|false`：控制集成测试是否有头
+- `RPA_HEADLESS=true|false`：agent 启动浏览器模式（由测试脚本自动设置）
+- `RPA_BROWSER_MODE=extension|cdp`：浏览器连接模式（默认 `extension`）
+- `RPA_CDP_ENDPOINT`：当 `RPA_BROWSER_MODE=cdp` 时，Playwright `connectOverCDP` 连接地址（如 `http://127.0.0.1:9222`）
+- `RPA_CDP_AUTO_LAUNCH=true|false`：CDP 模式下未提供 `RPA_CDP_ENDPOINT` 时，是否由 agent 自动拉起本地 Chrome（默认 `true`）
+- `RPA_CDP_PORT`：自动拉起 Chrome 时使用的远程调试端口（默认 `9222`）
+- `RPA_CDP_USER_DATA_DIR`：自动拉起 Chrome 时使用的用户目录；未设置则落到 `agent/.user-data/cdp-browser`
+- `RPA_CDP_CHROME_PATH`：自动拉起 Chrome 的可执行文件路径（可选）
+- `RPA_INTEGRATION_VERBOSE=true|false`：输出集成测试中 `mock/agent` 子进程日志（headed 默认开启）
+- `RPA_INTEGRATION_EXTENSION_AWARE=true|false`：是否固定使用扩展默认 WS 端口（`17333`）；headed 默认开启
+- `RPA_INTEGRATION_WS_PORT`：当 `RPA_INTEGRATION_EXTENSION_AWARE=true` 时使用的 agent WS 端口（默认 `17333`）
+
+CDP 快速入口：
+
+- 根目录：`pnpm dev:cdp`
+- `agent` 目录：`pnpm dev:cdp`
+
+脚本复用说明：
+
+- `pnpm -C agent test:integration:run`：统一执行入口
+- `test:integration` 与 `test:integration:headed` 仅通过 `RPA_INTEGRATION_HEADED` 切换模式
 
 ## 9. 文档维护规则
 

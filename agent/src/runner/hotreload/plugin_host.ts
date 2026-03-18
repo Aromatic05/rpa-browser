@@ -41,11 +41,11 @@ export class RunnerPluginHost {
         try {
             const plugin = await this.importPlugin();
             this.plugin = plugin;
-            log('[runner] hot reload OK');
+            log.info('[runner] hot reload OK');
             this.emitReload(plugin);
             return plugin;
         } catch (error) {
-            log('[runner] hot reload FAILED (kept previous)', error instanceof Error ? error.message : error);
+            log.warning('[runner] hot reload FAILED (kept previous)', error instanceof Error ? error.message : error);
             return this.plugin;
         }
     }

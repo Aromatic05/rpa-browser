@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { TraceEvent, TraceSink } from './types';
+import { getLogger } from '../../logging/logger';
 
 /**
  * MemorySink：将事件存入内存数组，便于测试与调试。
@@ -31,9 +32,11 @@ export class MemorySink implements TraceSink {
  * 适合本地 demo/调试，不建议在生产环境默认启用。
  */
 export class ConsoleSink implements TraceSink {
+    private readonly log = getLogger('trace');
+
     write(event: TraceEvent) {
         // 控制台输出保持简洁，避免泄露敏感数据
-        console.log('[trace]', event.type, event.op, event);
+        this.log('[trace]', event.type, event.op, event);
     }
 }
 

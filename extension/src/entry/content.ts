@@ -62,12 +62,31 @@ const loadFloatingUI = (() => {
 
     // tabToken + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<string> | null = null;
+    const sendReport = async (tabToken?: string) => {
+        const token = tabToken || (await ensureToken());
+        const { send } = await loadSend();
+        await send.action({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: 'tab.report',
+            tabToken: token,
+            scope: { tabToken: token },
+            payload: {
+                source: 'extension.content',
+                url: location.href,
+                title: document.title,
+                at: Date.now(),
+            },
+        });
+    };
     const ensureToken = () => {
         if (!tokenReady) {
             tokenReady = (async () => {
                 const mod = await loadTokenBridge();
-                const token = mod.ensureTabToken();
-                mod.bindHello(token);
+                const token = await mod.ensureTabTokenAsync();
+                mod.bindHello(token, () => {
+                    void sendReport(token);
+                });
                 return token;
             })();
         }
@@ -96,22 +115,58 @@ const loadFloatingUI = (() => {
     );
 
     // hello 由 token_bridge 负责
+    const PING_INTERVAL_MS = 15000;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
+    const sendPing = async () => {
+        const tabToken = await ensureToken();
+        const { send } = await loadSend();
+        await send.action({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: 'tab.ping',
+            tabToken,
+            scope: { tabToken },
+            payload: {
+                source: 'extension.content',
+                url: location.href,
+                title: document.title,
+                at: Date.now(),
+            },
+        });
+    };
+    const startHeartbeat = () => {
+        if (pingTimer) return;
+        void sendPing();
+        pingTimer = setInterval(() => {
+            void sendPing();
+        }, PING_INTERVAL_MS);
+    };
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const tabToken = await ensureToken();
+        void sendReport(tabToken);
+        startHeartbeat();
         uiHandle = mountFloatingUI({
             tabToken,
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
+                const hasExplicitScope = !!((scope as any)?.workspaceId || (scope as any)?.tabId);
+                const scopedTabToken = (scope as any)?.tabToken || tabToken;
+                const normalizedScope = hasExplicitScope
+                    ? {
+                          ...((scope as any)?.workspaceId ? { workspaceId: (scope as any).workspaceId } : {}),
+                          ...((scope as any)?.tabId ? { tabId: (scope as any).tabId } : {}),
+                      }
+                    : { ...(scope || {}), tabToken: scopedTabToken };
                 const action = {
                     v: 1,
                     id: crypto.randomUUID(),
                     type,
-                    tabToken,
-                    scope: { ...(scope || {}), tabToken },
+                    tabToken: hasExplicitScope ? undefined : scopedTabToken,
+                    scope: normalizedScope,
                     payload: payload || {},
                 };
                 const result = await send.action(action);

@@ -11,10 +11,10 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../src/runtime/page_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
-import { runSteps, MemoryStepSink } from '../../src/runner/run_steps';
+import { runStepList, MemoryStepSink } from '../../src/runner/run_steps';
 import { MemorySink } from '../../src/runner/trace/sink';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
-import { getRunnerConfig } from '../../src/runner/config';
+import { getRunnerConfig } from '../../src/config';
 import { createTestPluginHost } from '../helpers/steps';
 
 const fixtureUrl = (name: string) =>
@@ -51,20 +51,26 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
         pluginHost,
     });
     const stepSink = new MemoryStepSink();
+    const runBatch = async (workspaceId: string, steps: any[]) => {
+        const { pipe, checkpoint } = await runStepList(
+            workspaceId,
+            steps,
+            { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
+            { stopOnError: true },
+        );
+        assert.notEqual(checkpoint.status, 'failed');
+        const items = pipe.items as any[];
+        const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
+        return { ok: results.every((item) => item.ok), results };
+    };
 
     const ws1 = await pageRegistry.createWorkspace();
     const ws2 = await pageRegistry.createWorkspace();
 
-    const steps1 = await runSteps(
-        {
-            workspaceId: ws1.workspaceId,
-            steps: [
-                { id: 'ws1-goto', name: 'browser.goto', args: { url: fixtureUrl('run_steps_fixture_a.html') }, meta: { source: 'script' } },
-                { id: 'ws1-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
-            ],
-        },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
-    );
+    const steps1 = await runBatch(ws1.workspaceId, [
+        { id: 'ws1-goto', name: 'browser.goto', args: { url: fixtureUrl('run_steps_fixture_a.html') }, meta: { source: 'script' } },
+        { id: 'ws1-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
+    ]);
     assert.equal(steps1.ok, true);
     const snap1 = steps1.results.find((r) => r.stepId === 'ws1-snap');
     assert.ok(snap1?.ok);
@@ -74,28 +80,16 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
     assert.ok(btn1);
     assert.ok(input1);
 
-    const steps1b = await runSteps(
-        {
-            workspaceId: ws1.workspaceId,
-            steps: [
-                { id: 'ws1-click', name: 'browser.click', args: { a11yNodeId: btn1! }, meta: { source: 'script' } },
-                { id: 'ws1-fill', name: 'browser.fill', args: { a11yNodeId: input1!, value: 'hello-a' }, meta: { source: 'script' } },
-            ],
-        },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
-    );
+    const steps1b = await runBatch(ws1.workspaceId, [
+        { id: 'ws1-click', name: 'browser.click', args: { a11yNodeId: btn1! }, meta: { source: 'script' } },
+        { id: 'ws1-fill', name: 'browser.fill', args: { a11yNodeId: input1!, value: 'hello-a' }, meta: { source: 'script' } },
+    ]);
     assert.equal(steps1b.ok, true);
 
-    const steps2 = await runSteps(
-        {
-            workspaceId: ws2.workspaceId,
-            steps: [
-                { id: 'ws2-goto', name: 'browser.goto', args: { url: fixtureUrl('run_steps_fixture_b.html') }, meta: { source: 'script' } },
-                { id: 'ws2-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
-            ],
-        },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
-    );
+    const steps2 = await runBatch(ws2.workspaceId, [
+        { id: 'ws2-goto', name: 'browser.goto', args: { url: fixtureUrl('run_steps_fixture_b.html') }, meta: { source: 'script' } },
+        { id: 'ws2-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
+    ]);
     assert.equal(steps2.ok, true);
     const snap2 = steps2.results.find((r) => r.stepId === 'ws2-snap');
     const tree2 = JSON.parse((snap2?.data as any)?.a11y || '{}');
@@ -104,16 +98,10 @@ test('runSteps isolates workspaces and emits step/trace events', async () => {
     assert.ok(btn2);
     assert.ok(input2);
 
-    const steps2b = await runSteps(
-        {
-            workspaceId: ws2.workspaceId,
-            steps: [
-                { id: 'ws2-click', name: 'browser.click', args: { a11yNodeId: btn2! }, meta: { source: 'script' } },
-                { id: 'ws2-fill', name: 'browser.fill', args: { a11yNodeId: input2!, value: 'hello-b' }, meta: { source: 'script' } },
-            ],
-        },
-        { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
-    );
+    const steps2b = await runBatch(ws2.workspaceId, [
+        { id: 'ws2-click', name: 'browser.click', args: { a11yNodeId: btn2! }, meta: { source: 'script' } },
+        { id: 'ws2-fill', name: 'browser.fill', args: { a11yNodeId: input2!, value: 'hello-b' }, meta: { source: 'script' } },
+    ]);
     assert.equal(steps2b.ok, true);
 
     const binding1 = await runtimeRegistry.ensureActivePage(ws1.workspaceId);

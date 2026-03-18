@@ -4,8 +4,9 @@
     "packageManager": "pnpm@10.28.0",
     "scripts": {
         "dev:agent": "pnpm --filter ./agent dev:hot",
+        "dev:cdp": "pnpm build:extension && pnpm --filter ./agent dev:cdp",
         "dev:mcp": "pnpm --filter ./agent mcp:hot",
-        "build:extension": "pnpm --filter ./extension build",
+        "build:extension": "pnpm --filter ./extension build && pnpm --filter ./start_extension build",
         "dev": "pnpm build:extension && pnpm dev:agent",
         "mock:dev": "node mock/server.js",
         "mcp": "pnpm --filter ./agent mcp:demo",

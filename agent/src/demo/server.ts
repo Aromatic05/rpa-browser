@@ -11,7 +11,7 @@ import { cleanupRecording, createRecordingState, ensureRecorder } from '../recor
 import { runAgentLoop } from './agent_loop';
 import { createChatCompletion } from './openai_compat_client';
 import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
-import { getRunnerConfig } from '../runner/config';
+import { getRunnerConfig } from '../config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 import { initLogger, resolveLogPath } from '../logging/logger';
 import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
@@ -56,7 +56,7 @@ const serveFile = async (res: http.ServerResponse, filePath: string, contentType
 const paths = resolvePaths();
 const recordingState = createRecordingState();
 const contextManager = createContextManager({
-    extensionPath: paths.extensionPath,
+    extensionPaths: paths.extensionPaths,
     userDataDir: paths.userDataDir,
     onPage: (page) => {
         void pageRegistry.bindPage(page);

@@ -47,6 +47,14 @@ export type HumanPolicy = {
 };
 
 export type Observability = {
+    /** action 最低日志级别 */
+    actionLogLevel: 'debug' | 'info' | 'warning' | 'error';
+    /** record 最低日志级别 */
+    recordLogLevel: 'debug' | 'info' | 'warning' | 'error';
+    /** trace 最低日志级别 */
+    traceLogLevel: 'debug' | 'info' | 'warning' | 'error';
+    /** step 最低日志级别 */
+    stepLogLevel: 'debug' | 'info' | 'warning' | 'error';
     /** 是否启用 trace */
     traceEnabled: boolean;
     /** 是否输出 trace 参数（默认 false，避免泄露） */
@@ -69,8 +77,6 @@ export type Observability = {
     recordFileEnabled: boolean;
     /** record 日志输出路径 */
     recordFilePath: string;
-    /** step 日志级别 */
-    stepLogLevel: 'info' | 'debug';
     /** 出错时截图 */
     screenshotOnError: boolean;
 };
@@ -90,10 +96,20 @@ export type ConfidencePolicy = {
     selectorBonus: number;
 };
 
+export type CheckpointPolicy = {
+    /** 是否启用 task.run checkpoint 持久化 */
+    enabled: boolean;
+    /** checkpoint 文件路径（相对项目根目录） */
+    filePath: string;
+    /** 自动刷盘间隔（毫秒） */
+    flushIntervalMs: number;
+};
+
 export type RunnerConfig = {
     waitPolicy: WaitPolicy;
     retryPolicy: RetryPolicy;
     humanPolicy: HumanPolicy;
     observability: Observability;
     confidencePolicy: ConfidencePolicy;
+    checkpointPolicy: CheckpointPolicy;
 };

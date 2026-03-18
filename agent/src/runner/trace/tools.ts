@@ -44,7 +44,9 @@ export type BrowserAutomationTools = {
     'trace.locator.focus': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
     'trace.locator.fill': (args: { a11yNodeId?: string; selector?: string; value: string }) => Promise<ToolResult<void>>;
     'trace.locator.type': (args: { a11yNodeId?: string; selector?: string; text: string; delayMs?: number }) => Promise<ToolResult<void>>;
-    'trace.locator.selectOption': (args: { a11yNodeId?: string; selector?: string; values: string[]; timeout?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.selectOption': (
+        args: { a11yNodeId?: string; selector?: string; values: string[]; timeout?: number },
+    ) => Promise<ToolResult<{ selected: string[] }>>;
     'trace.locator.hover': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
     'trace.locator.dragDrop': (args: { sourceNodeId: string; destNodeId?: string; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
     'trace.page.scrollTo': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
@@ -110,6 +112,8 @@ export const createTraceTools = (opts: {
                 if (args.url) {
                     await currentPage.goto(args.url, { timeout: args.timeout });
                 }
+                // Keep headed replay deterministic: operate on the visible tab.
+                await currentPage.bringToFront().catch(() => undefined);
                 return { tabId };
             }),
         'trace.tabs.switch': async (args) =>
@@ -120,6 +124,14 @@ export const createTraceTools = (opts: {
                 opts.pageRegistry.setActiveTab(args.workspaceId, args.tabId);
                 const page = await opts.pageRegistry.resolvePage({ workspaceId: args.workspaceId, tabId: args.tabId });
                 currentPage = page;
+                // A tab switch step is only complete when target tab is actually foregrounded.
+                await currentPage.bringToFront();
+                await currentPage.waitForTimeout(120);
+                await currentPage.waitForFunction(
+                    () => document.visibilityState === 'visible' && document.hasFocus(),
+                    undefined,
+                    { timeout: 2500 },
+                );
             }),
         'trace.tabs.close': async (args) =>
             run('trace.tabs.close', args, async () => {
@@ -326,8 +338,8 @@ export const createTraceTools = (opts: {
             const result = await run('trace.locator.selectOption', args, async () => {
                 if (args.selector) {
                     const locator = await resolveSelectorLocator(args.selector);
-                    await locator.selectOption(args.values, { timeout: args.timeout });
-                    return;
+                    const selected = await locator.selectOption(args.values, { timeout: args.timeout });
+                    return { selected };
                 }
                 if (!args.a11yNodeId) {
                     throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
@@ -335,7 +347,8 @@ export const createTraceTools = (opts: {
                 await ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, ctx.cache);
                 if (!adopted.ok) throw adopted.error;
-                await adopted.data!.selectOption(args.values, { timeout: args.timeout });
+                const selected = await adopted.data!.selectOption(args.values, { timeout: args.timeout });
+                return { selected };
             });
             if (result.ok) invalidateA11yCache(ctx.cache, 'input', ctx.tags);
             return result;

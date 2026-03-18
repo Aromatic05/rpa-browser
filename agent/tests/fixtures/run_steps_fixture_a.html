@@ -5,6 +5,7 @@
     <title>RunSteps Fixture A</title>
     <style>
       body { font-family: sans-serif; padding: 16px; }
+      .spacer { height: 1200px; background: linear-gradient(#fff, #f5f5f5); }
       #log { margin-top: 12px; padding: 8px; border: 1px solid #ccc; }
     </style>
   </head>
@@ -12,12 +13,21 @@
     <h1>Fixture A</h1>
     <label for="input-a">Name A</label>
     <input id="input-a" aria-label="Name A" />
+    <label for="select-a">Select A</label>
+    <select id="select-a" aria-label="Select A">
+      <option value="opt-a-1">Option A1</option>
+      <option value="opt-a-2">Option A2</option>
+    </select>
     <button id="btn-a" aria-label="Action A">Do Action A</button>
+    <div class="spacer"></div>
     <div id="log" role="status">idle</div>
 
     <script>
       document.getElementById('btn-a').addEventListener('click', () => {
         document.getElementById('log').textContent = 'clicked-a';
+      });
+      document.getElementById('select-a').addEventListener('change', (event) => {
+        document.getElementById('log').textContent = `select-a:${event.target.value}`;
       });
     </script>
   </body>

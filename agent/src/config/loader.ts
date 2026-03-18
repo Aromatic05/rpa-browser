@@ -78,15 +78,22 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['observability', 'actionConsoleEnabled'], envBool('RUNNER_ACTION_CONSOLE_ENABLED'));
     set(['observability', 'actionFileEnabled'], envBool('RUNNER_ACTION_FILE_ENABLED'));
     set(['observability', 'actionFilePath'], process.env.RUNNER_ACTION_FILE_PATH);
+    set(['observability', 'actionLogLevel'], process.env.RUNNER_ACTION_LOG_LEVEL);
     set(['observability', 'recordConsoleEnabled'], envBool('RUNNER_RECORD_CONSOLE_ENABLED'));
     set(['observability', 'recordFileEnabled'], envBool('RUNNER_RECORD_FILE_ENABLED'));
     set(['observability', 'recordFilePath'], process.env.RUNNER_RECORD_FILE_PATH);
+    set(['observability', 'recordLogLevel'], process.env.RUNNER_RECORD_LOG_LEVEL);
+    set(['observability', 'traceLogLevel'], process.env.RUNNER_TRACE_LOG_LEVEL);
+    set(['observability', 'stepLogLevel'], process.env.RUNNER_STEP_LOG_LEVEL);
     set(['confidencePolicy', 'enabled'], envBool('RUNNER_CONFIDENCE_ENABLED'));
     set(['confidencePolicy', 'minScore'], envNumber('RUNNER_CONFIDENCE_MIN_SCORE'));
     set(['confidencePolicy', 'roleWeight'], envNumber('RUNNER_CONFIDENCE_ROLE_WEIGHT'));
     set(['confidencePolicy', 'nameWeight'], envNumber('RUNNER_CONFIDENCE_NAME_WEIGHT'));
     set(['confidencePolicy', 'textWeight'], envNumber('RUNNER_CONFIDENCE_TEXT_WEIGHT'));
     set(['confidencePolicy', 'selectorBonus'], envNumber('RUNNER_CONFIDENCE_SELECTOR_BONUS'));
+    set(['checkpointPolicy', 'enabled'], envBool('RUNNER_CHECKPOINT_ENABLED'));
+    set(['checkpointPolicy', 'filePath'], process.env.RUNNER_CHECKPOINT_FILE_PATH);
+    set(['checkpointPolicy', 'flushIntervalMs'], envNumber('RUNNER_CHECKPOINT_FLUSH_INTERVAL_MS'));
 
     return mergeDeep(config, patch);
 };

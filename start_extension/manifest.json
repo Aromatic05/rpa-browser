@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "RPA Start Extension",
+  "version": "0.1.0",
+  "description": "New tab helper and tab-open reporter for RPA Browser.",
+  "permissions": ["storage"],
+  "host_permissions": ["ws://127.0.0.1/*", "ws://localhost/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src ws://127.0.0.1:17333 ws://localhost:17333"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  }
+}

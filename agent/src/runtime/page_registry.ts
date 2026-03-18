@@ -1,36 +1,22 @@
-/**
- * PageRegistry：维护 tabToken 与 Playwright Page 的映射，并在此之上提供
- * workspace -> tabs 的抽象（对外暴露 workspaceId/tabId）。
- *
- * 依赖关系：
- * - 上游：agent/index.ts 通过 createPageRegistry 管理页面生命周期
- * - 下游：actions/execute 通过 resolvePage/resolveScope 获取 Page
- *
- * 关键约束：
- * - tabToken 是内部绑定键，不应对外暴露给 AI 或 UI
- * - workspace/tab 仅作为 UI/协议层的稳定标识，仍由 tabToken 驱动具体 Page
- * - Page 可能在浏览器事件中被关闭，需要容错与重建映射
- */
 import type { BrowserContext, Page } from 'playwright';
 import crypto from 'crypto';
+import { getLogger } from '../logging/logger';
 
 export type WorkspaceId = string;
 export type TabId = string;
 
-export type WorkspacePublicInfo = {
-    workspaceId: WorkspaceId;
-    activeTabId?: TabId;
-    tabCount: number;
-    groupId?: string;
+export type Tab = {
+    tabId: TabId;
+    tabToken: string;
+    page: Page;
     createdAt: number;
     updatedAt: number;
 };
 
-export type TabPublicInfo = {
-    tabId: TabId;
-    url: string;
-    title: string;
-    active: boolean;
+export type Workspace = {
+    workspaceId: WorkspaceId;
+    tabs: Map<TabId, Tab>;
+    activeTabId?: TabId;
     createdAt: number;
     updatedAt: number;
 };
@@ -47,76 +33,97 @@ export type PageRegistryOptions = {
     onTokenClosed?: (token: string) => void;
 };
 
-type WorkspaceTab = {
-    tabId: TabId;
-    tabToken: string;
-    page: Page;
-    createdAt: number;
-    updatedAt: number;
-};
-
-type Workspace = {
-    id: WorkspaceId;
-    tabs: Map<TabId, WorkspaceTab>;
-    activeTabId?: TabId;
-    groupId?: string;
-    createdAt: number;
-    updatedAt: number;
-};
-
 export type PageRegistry = {
     bindPage: (page: Page, hintedToken?: string) => Promise<string | null>;
     getPage: (tabToken: string, urlHint?: string) => Promise<Page>;
-    listPages: () => Array<{ tabToken: string; page: Page }>;
-    cleanup: (tabToken?: string) => void;
     createWorkspace: () => Promise<{ workspaceId: WorkspaceId; tabId: TabId }>;
-    listWorkspaces: () => WorkspacePublicInfo[];
+    createWorkspaceShell: (workspaceId?: WorkspaceId) => { workspaceId: WorkspaceId };
+    listWorkspaces: () => Array<
+        Pick<Workspace, 'workspaceId' | 'activeTabId' | 'createdAt' | 'updatedAt'> & { tabCount: number }
+    >;
     setActiveWorkspace: (workspaceId: WorkspaceId) => void;
     getActiveWorkspace: () => Workspace | null;
     createTab: (workspaceId: WorkspaceId) => Promise<TabId>;
     closeTab: (workspaceId: WorkspaceId, tabId: TabId) => Promise<void>;
     setActiveTab: (workspaceId: WorkspaceId, tabId: TabId) => void;
-    listTabs: (workspaceId: WorkspaceId) => Promise<TabPublicInfo[]>;
+    listTabs: (
+        workspaceId: WorkspaceId,
+    ) => Promise<Array<Pick<Tab, 'tabId' | 'createdAt' | 'updatedAt'> & { url: string; title: string; active: boolean }>>;
     resolvePage: (scope?: WorkspaceScope) => Promise<Page>;
     resolveScope: (scope?: WorkspaceScope) => { workspaceId: WorkspaceId; tabId: TabId };
     resolveScopeFromToken: (tabToken: string) => { workspaceId: WorkspaceId; tabId: TabId };
     resolveTabToken: (scope?: WorkspaceScope) => string;
+    touchTabToken: (tabToken: string, at?: number) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    bindTokenToWorkspace: (
+        tabToken: string,
+        workspaceId: WorkspaceId,
+    ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    moveTokenToWorkspace: (tabToken: string, workspaceId: WorkspaceId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    listTimedOutTokens: (
+        timeoutMs: number,
+        now?: number,
+    ) => Array<{ tabToken: string; workspaceId: WorkspaceId; tabId: TabId; lastSeenAt: number }>;
+    closeTokenPage: (tabToken: string) => Promise<void>;
 };
 
 const randomId = () => crypto.randomUUID();
 
-/**
- * 创建 PageRegistry。负责：
- * - tabToken <-> Page 的绑定
- * - workspace/tab 的创建、切换、关闭
- * - scope 解析（workspaceId/tabId -> Page）
- */
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
+    const actionLog = getLogger('action');
+    const log = (...args: unknown[]) => actionLog.info('[RPA:page_registry]', ...args);
+    const logDebug = (...args: unknown[]) => actionLog.debug('[RPA:page_registry]', ...args);
+    const logWarning = (...args: unknown[]) => actionLog.warning('[RPA:page_registry]', ...args);
+    const logError = (...args: unknown[]) => actionLog.error('[RPA:page_registry]', ...args);
     const tokenToPage = new Map<string, Page>();
     const tokenToTab = new Map<string, { workspaceId: WorkspaceId; tabId: TabId }>();
     const workspaces = new Map<WorkspaceId, Workspace>();
     let activeWorkspaceId: WorkspaceId | null = null;
 
-    // 统一更新 workspace 的更新时间戳，便于 UI 层排序/高亮。
     const touchWorkspace = (workspace: Workspace) => {
         workspace.updatedAt = Date.now();
     };
+    const removeTabRef = (workspaceId: WorkspaceId, tabId: TabId) => {
+        const ws = workspaces.get(workspaceId);
+        if (!ws) return;
+        ws.tabs.delete(tabId);
+        if (ws.activeTabId === tabId) {
+            ws.activeTabId = ws.tabs.keys().next().value;
+        }
+        if (ws.tabs.size === 0) {
+            workspaces.delete(workspaceId);
+            if (activeWorkspaceId === workspaceId) {
+                activeWorkspaceId = workspaces.keys().next().value || null;
+            }
+            return;
+        }
+        touchWorkspace(ws);
+    };
 
-    /**
-     * 等待页面中写入 tabToken（content script 负责注入）。
-     * 若页面尚未可执行脚本，则重试并容错。
-     */
+    const getActiveWorkspace = () => (activeWorkspaceId ? workspaces.get(activeWorkspaceId) || null : null);
+
+    const attachTokenToRuntime = (tabToken: string, page: Page) => {
+        tokenToPage.set(tabToken, page);
+        page.on('close', () => {
+            if (tokenToPage.get(tabToken) !== page) return;
+            tokenToPage.delete(tabToken);
+            const ref = tokenToTab.get(tabToken);
+            tokenToTab.delete(tabToken);
+            if (ref) {
+                removeTabRef(ref.workspaceId, ref.tabId);
+            }
+            options.onTokenClosed?.(tabToken);
+            log('bind_page.closed', { token: tabToken, pageUrl: page.url() });
+        });
+    };
+
     const waitForToken = async (page: Page, attempts = 20, delayMs = 200) => {
         for (let i = 0; i < attempts; i += 1) {
             if (page.isClosed()) return null;
             try {
-                const token = await page.evaluate(
-                    (key) => sessionStorage.getItem(key),
-                    options.tabTokenKey,
-                );
+                const token = await page.evaluate((key) => sessionStorage.getItem(key), options.tabTokenKey);
                 if (token) return token;
             } catch {
-                // ignore evaluation failures while page is loading
+                // ignore
             }
             try {
                 await page.waitForTimeout(delayMs);
@@ -127,10 +134,12 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return null;
     };
 
-    /**
-     * 将 tabToken 写入 sessionStorage，保障后续回连与重建映射。
-     */
-    const ensureTokenOnPage = async (page: Page, tabToken: string) => {
+    const installTokenToPage = async (page: Page, tabToken: string) => {
+        const script = `
+            try { sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)}); } catch {}
+            try { window.__rpa_tab_token = ${JSON.stringify(tabToken)}; window.__TAB_TOKEN__ = ${JSON.stringify(tabToken)}; } catch {}
+        `;
+        await page.addInitScript({ content: script });
         try {
             await page.evaluate(
                 (args: { token: string; key: string }) => {
@@ -145,120 +154,169 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                 { token: tabToken, key: options.tabTokenKey },
             );
         } catch {
-            // ignore if sessionStorage is unavailable
+            // ignore
         }
     };
 
-    /**
-     * 在 workspace 内部建立 tabId -> tabToken -> Page 的映射。
-     */
-    const attachTabToWorkspace = (
-        workspace: Workspace,
-        tabId: TabId,
-        tabToken: string,
-        page: Page,
-    ) => {
-        const tab: WorkspaceTab = {
+    const addTabRecord = (workspace: Workspace, tabId: TabId, tabToken: string, page: Page) => {
+        workspace.tabs.set(tabId, {
             tabId,
             tabToken,
             page,
             createdAt: Date.now(),
             updatedAt: Date.now(),
-        };
-        workspace.tabs.set(tabId, tab);
-        workspace.activeTabId = workspace.activeTabId || tabId;
+        });
+        if (!workspace.activeTabId) workspace.activeTabId = tabId;
+        tokenToTab.set(tabToken, { workspaceId: workspace.workspaceId, tabId });
         touchWorkspace(workspace);
-        tokenToPage.set(tabToken, page);
-        tokenToTab.set(tabToken, { workspaceId: workspace.id, tabId });
+        log('attach_tab', { workspaceId: workspace.workspaceId, tabId, tabToken, pageUrl: page.url() });
     };
 
-    /**
-     * 内部创建 workspace，并用当前 page 作为首个 tab。
-     * 对外只返回 workspaceId/tabId。
-     */
-    const createWorkspaceInternal = (
-        tabToken: string,
-        page: Page,
-    ): { workspaceId: WorkspaceId; tabId: TabId } => {
-        const workspaceId = randomId();
+    const attachTokenToWorkspace = (workspace: Workspace, tabToken: string, page: Page) => {
+        const tabId = randomId();
+        addTabRecord(workspace, tabId, tabToken, page);
+        workspace.activeTabId = tabId;
+        touchWorkspace(workspace);
+        return { workspaceId: workspace.workspaceId, tabId };
+    };
+
+    const moveTokenToWorkspace = (tabToken: string, workspaceId: WorkspaceId) => {
+        const ref = tokenToTab.get(tabToken);
+        if (!ref) return null;
+        if (ref.workspaceId === workspaceId) return { workspaceId, tabId: ref.tabId };
+
+        const sourceWorkspace = workspaces.get(ref.workspaceId);
+        const sourceTab = sourceWorkspace?.tabs.get(ref.tabId);
+        const targetWorkspace = workspaces.get(workspaceId);
+        if (!sourceWorkspace || !sourceTab || !targetWorkspace) return null;
+
+        sourceWorkspace.tabs.delete(ref.tabId);
+        if (sourceWorkspace.activeTabId === ref.tabId) {
+            sourceWorkspace.activeTabId = sourceWorkspace.tabs.keys().next().value;
+        }
+        if (sourceWorkspace.tabs.size === 0) {
+            workspaces.delete(sourceWorkspace.workspaceId);
+            if (activeWorkspaceId === sourceWorkspace.workspaceId) {
+                activeWorkspaceId = workspaceId;
+            }
+        } else {
+            touchWorkspace(sourceWorkspace);
+        }
+
+        const nextTabId = randomId();
+        targetWorkspace.tabs.set(nextTabId, {
+            ...sourceTab,
+            tabId: nextTabId,
+            updatedAt: Date.now(),
+        });
+        targetWorkspace.activeTabId = nextTabId;
+        touchWorkspace(targetWorkspace);
+        tokenToTab.set(tabToken, { workspaceId, tabId: nextTabId });
+        return { workspaceId, tabId: nextTabId };
+    };
+
+    const createWorkspaceInternal = (tabToken: string, page: Page, forcedWorkspaceId?: WorkspaceId) => {
+        const workspaceId = forcedWorkspaceId || randomId();
+        if (workspaces.has(workspaceId)) {
+            throw new Error(`workspace already exists: ${workspaceId}`);
+        }
         const tabId = randomId();
         const now = Date.now();
         const workspace: Workspace = {
-            id: workspaceId,
+            workspaceId,
             tabs: new Map(),
             activeTabId: tabId,
             createdAt: now,
             updatedAt: now,
         };
-        attachTabToWorkspace(workspace, tabId, tabToken, page);
+        addTabRecord(workspace, tabId, tabToken, page);
         workspaces.set(workspaceId, workspace);
-        if (!activeWorkspaceId) activeWorkspaceId = workspaceId;
+        activeWorkspaceId = workspaceId;
+        log('create_workspace_internal', { workspaceId, tabId, tabToken, pageUrl: page.url() });
         return { workspaceId, tabId };
     };
 
-    /**
-     * 绑定 Page 与 tabToken，必要时创建新的 workspace。
-     * 用于 context 的 page 事件，以及新页面的显式绑定。
-     */
     const bindPage = async (page: Page, hintedToken?: string) => {
         try {
             if (page.isClosed()) return null;
             const token = hintedToken || (await waitForToken(page));
             if (!token) return null;
-            tokenToPage.set(token, page);
+
+            log('bind_page.start', { hintedToken: hintedToken || null, resolvedToken: token, pageUrl: page.url() });
+            attachTokenToRuntime(token, page);
             if (!tokenToTab.has(token)) {
-                createWorkspaceInternal(token, page);
+                const active = getActiveWorkspace();
+                if (active && active.tabs.size === 0) {
+                    const attached = attachTokenToWorkspace(active, token, page);
+                    activeWorkspaceId = active.workspaceId;
+                    log('bind_page.auto_bound_shell_workspace', {
+                        token,
+                        pageUrl: page.url(),
+                        workspaceId: attached.workspaceId,
+                        tabId: attached.tabId,
+                    });
+                } else {
+                    logWarning('bind_page.unbound', { token, pageUrl: page.url() });
+                }
             } else {
-                const ref = tokenToTab.get(token);
-                if (ref) {
-                    const workspace = workspaces.get(ref.workspaceId);
-                    const tab = workspace?.tabs.get(ref.tabId);
-                    if (workspace && tab) {
-                        tab.page = page;
-                        tab.updatedAt = Date.now();
-                        touchWorkspace(workspace);
-                    }
+                const ref = tokenToTab.get(token)!;
+                const tab = workspaces.get(ref.workspaceId)?.tabs.get(ref.tabId);
+                if (tab) {
+                    tab.page = page;
+                    tab.updatedAt = Date.now();
+                    const ws = workspaces.get(ref.workspaceId);
+                    if (ws) touchWorkspace(ws);
                 }
             }
-            page.on('close', () => {
-                const current = tokenToPage.get(token);
-                if (current === page) {
-                    tokenToPage.delete(token);
-                    tokenToTab.delete(token);
-                    options.onTokenClosed?.(token);
-                }
-            });
             options.onPageBound?.(page, token);
+            log('bind_page.done', { token, pageUrl: page.url() });
             return token;
         } catch {
+            logError('bind_page.error', { hintedToken: hintedToken || null, pageUrl: page.url() });
             return null;
         }
     };
 
-    /**
-     * 当 tokenToPage 缓存失效时，尝试从当前 context 的 pages 重建映射。
-     */
+    const openPageWithToken = async (tabToken: string, opts?: { newWindow?: boolean }) => {
+        const context = await options.getContext();
+        let page: Page;
+        if (opts?.newWindow) {
+            const pagesBefore = new Set(context.pages());
+            const waitNewPage = context.waitForEvent('page', {
+                timeout: 10000,
+                predicate: (next) => !pagesBefore.has(next),
+            });
+            const browser = context.browser();
+            if (!browser) {
+                throw new Error('browser handle unavailable for new window creation');
+            }
+            const cdp = await browser.newBrowserCDPSession();
+            await cdp.send('Target.createTarget', { url: 'chrome://newtab/', newWindow: true, background: false });
+            await cdp.detach().catch(() => {});
+            page = await waitNewPage;
+        } else {
+            page = await context.newPage();
+        }
+        await installTokenToPage(page, tabToken);
+        return page;
+    };
+
     const rebuildTokenMap = async () => {
         const context = await options.getContext();
         const pages = context.pages();
+        logDebug('rebuild_token_map.start', { pageCount: pages.length });
         for (const page of pages) {
             const token = await waitForToken(page, 3, 100);
-            if (token) {
-                tokenToPage.set(token, page);
-                if (!tokenToTab.has(token)) {
-                    createWorkspaceInternal(token, page);
-                }
-            }
+            if (!token) continue;
+            attachTokenToRuntime(token, page);
+            logDebug('rebuild_token_map.bound', { token, pageUrl: page.url() });
         }
     };
 
-    /**
-     * 根据 tabToken 获取 Page。若已关闭或不存在则新建并写入 token。
-     */
     const getPage = async (tabToken: string, urlHint?: string) => {
-        if (!tabToken) {
-            throw new Error('missing tabToken');
-        }
+        if (!tabToken) throw new Error('missing tabToken');
+        logDebug('get_page.start', { tabToken, urlHint: urlHint || null });
+
         let page = tokenToPage.get(tabToken);
         if (page && !page.isClosed()) return page;
 
@@ -266,214 +324,199 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         page = tokenToPage.get(tabToken);
         if (page && !page.isClosed()) return page;
 
-        const context = await options.getContext();
-        page = await context.newPage();
-        const initContent = `
-            try { sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)}); } catch {}
-            try { window.__rpa_tab_token = ${JSON.stringify(tabToken)}; window.__TAB_TOKEN__ = ${JSON.stringify(tabToken)}; } catch {}
-        `;
-        await page.addInitScript({ content: initContent });
-
+        page = await openPageWithToken(tabToken);
         if (urlHint) {
             await page.goto(urlHint, { waitUntil: 'domcontentloaded' });
         }
-
-        await ensureTokenOnPage(page, tabToken);
         await bindPage(page, tabToken);
+        logDebug('get_page.done', { tabToken, finalUrl: page.url() });
         return page;
     };
 
-    const listPages = () =>
-        Array.from(tokenToPage.entries()).map(([tabToken, page]) => ({ tabToken, page }));
-
-    /**
-     * 清理映射：可按 tabToken 精确清理，或全量清空。
-     */
-    const cleanup = (tabToken?: string) => {
-        if (!tabToken) {
-            tokenToPage.clear();
-            tokenToTab.clear();
-            workspaces.clear();
-            activeWorkspaceId = null;
-            return;
-        }
-        tokenToPage.delete(tabToken);
-        const ref = tokenToTab.get(tabToken);
-        if (ref) {
-            const workspace = workspaces.get(ref.workspaceId);
-            if (workspace) {
-                workspace.tabs.delete(ref.tabId);
-                if (workspace.activeTabId === ref.tabId) {
-                    workspace.activeTabId = workspace.tabs.keys().next().value;
-                }
-                touchWorkspace(workspace);
-            }
-        }
-        tokenToTab.delete(tabToken);
+    const resolveScope = (scope?: WorkspaceScope) => {
+        const workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
+        if (!workspace) throw new Error('workspace not found');
+        const tabId = scope?.tabId || workspace.activeTabId;
+        if (!tabId || !workspace.tabs.has(tabId)) throw new Error('tab not found');
+        return { workspaceId: workspace.workspaceId, tabId };
     };
 
-    /**
-     * 创建新 workspace，并同时创建首个 tab。
-     */
+    const resolveTabToken = (scope?: WorkspaceScope) => {
+        const resolved = resolveScope(scope);
+        const tab = workspaces.get(resolved.workspaceId)?.tabs.get(resolved.tabId);
+        if (!tab) throw new Error('tab not found');
+        return tab.tabToken;
+    };
+
+    const resolvePage = async (scope?: WorkspaceScope) => {
+        const workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
+        if (!workspace) throw new Error('workspace not found');
+        const tabId = scope?.tabId || workspace.activeTabId;
+        if (!tabId) throw new Error('tab not found');
+        const tab = workspace.tabs.get(tabId);
+        if (!tab) throw new Error('tab not found');
+        return tab.page;
+    };
+
     const createWorkspace = async () => {
-        const context = await options.getContext();
-        const page = await context.newPage();
         const tabToken = randomId();
-        await page.addInitScript({
-            content: `
-                try { sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)}); } catch {}
-                try { window.__rpa_tab_token = ${JSON.stringify(tabToken)}; window.__TAB_TOKEN__ = ${JSON.stringify(tabToken)}; } catch {}
-            `,
-        });
-        await ensureTokenOnPage(page, tabToken);
+        const page = await openPageWithToken(tabToken, { newWindow: true });
         const result = createWorkspaceInternal(tabToken, page);
         await bindPage(page, tabToken);
         return result;
     };
 
-    const listWorkspaces = () =>
-        Array.from(workspaces.values()).map((workspace) => ({
-            workspaceId: workspace.id,
-            activeTabId: workspace.activeTabId,
-            tabCount: workspace.tabs.size,
-            groupId: workspace.groupId,
-            createdAt: workspace.createdAt,
-            updatedAt: workspace.updatedAt,
-        }));
-
-    /**
-     * 设置 active workspace，仅在存在时生效。
-     */
-    const setActiveWorkspace = (workspaceId: WorkspaceId) => {
-        if (workspaces.has(workspaceId)) {
-            activeWorkspaceId = workspaceId;
-        }
+    const createWorkspaceShell = (workspaceId?: WorkspaceId) => {
+        const id = workspaceId || randomId();
+        if (workspaces.has(id)) return { workspaceId: id };
+        const now = Date.now();
+        workspaces.set(id, {
+            workspaceId: id,
+            tabs: new Map(),
+            activeTabId: undefined,
+            createdAt: now,
+            updatedAt: now,
+        });
+        if (!activeWorkspaceId) activeWorkspaceId = id;
+        return { workspaceId: id };
     };
 
-    const getActiveWorkspace = () => (activeWorkspaceId ? workspaces.get(activeWorkspaceId) || null : null);
-
-    /**
-     * 在指定 workspace 内创建新 tab，并更新 activeTabId。
-     */
     const createTab = async (workspaceId: WorkspaceId) => {
         const workspace = workspaces.get(workspaceId);
-        if (!workspace) {
-            throw new Error('workspace not found');
-        }
-        const context = await options.getContext();
-        const page = await context.newPage();
+        if (!workspace) throw new Error('workspace not found');
         const tabToken = randomId();
-        await page.addInitScript({
-            content: `
-                try { sessionStorage.setItem(${JSON.stringify(options.tabTokenKey)}, ${JSON.stringify(tabToken)}); } catch {}
-                try { window.__rpa_tab_token = ${JSON.stringify(tabToken)}; window.__TAB_TOKEN__ = ${JSON.stringify(tabToken)}; } catch {}
-            `,
-        });
-        await ensureTokenOnPage(page, tabToken);
+        const page = await openPageWithToken(tabToken);
         const tabId = randomId();
-        attachTabToWorkspace(workspace, tabId, tabToken, page);
+        addTabRecord(workspace, tabId, tabToken, page);
         workspace.activeTabId = tabId;
         touchWorkspace(workspace);
         await bindPage(page, tabToken);
         return tabId;
     };
 
-    /**
-     * 关闭 tab，并在必要时回收空 workspace。
-     */
     const closeTab = async (workspaceId: WorkspaceId, tabId: TabId) => {
         const workspace = workspaces.get(workspaceId);
         if (!workspace) return;
         const tab = workspace.tabs.get(tabId);
         if (!tab) return;
-        workspace.tabs.delete(tabId);
         tokenToPage.delete(tab.tabToken);
         tokenToTab.delete(tab.tabToken);
         if (!tab.page.isClosed()) {
             await tab.page.close({ runBeforeUnload: true });
         }
-        if (workspace.activeTabId === tabId) {
-            workspace.activeTabId = workspace.tabs.keys().next().value;
-        }
-        touchWorkspace(workspace);
-        if (workspace.tabs.size === 0) {
-            workspaces.delete(workspaceId);
-            if (activeWorkspaceId === workspaceId) {
-                activeWorkspaceId = workspaces.keys().next().value || null;
-            }
-        }
+        removeTabRef(workspaceId, tabId);
+    };
+
+    const setActiveWorkspace = (workspaceId: WorkspaceId) => {
+        if (workspaces.has(workspaceId)) activeWorkspaceId = workspaceId;
     };
 
     const setActiveTab = (workspaceId: WorkspaceId, tabId: TabId) => {
         const workspace = workspaces.get(workspaceId);
-        if (!workspace) return;
-        if (!workspace.tabs.has(tabId)) return;
+        if (!workspace || !workspace.tabs.has(tabId)) return;
         workspace.activeTabId = tabId;
         touchWorkspace(workspace);
     };
 
-    /**
-     * 读取 workspace 内所有 tab 的可展示信息。
-     */
     const listTabs = async (workspaceId: WorkspaceId) => {
         const workspace = workspaces.get(workspaceId);
         if (!workspace) return [];
-        const items: TabPublicInfo[] = [];
-        for (const tab of workspace.tabs.values()) {
-            items.push({
+        const tabs = Array.from(workspace.tabs.values());
+        return Promise.all(
+            tabs.map(async (tab) => ({
                 tabId: tab.tabId,
                 url: tab.page.url(),
                 title: await tab.page.title().catch(() => ''),
                 active: workspace.activeTabId === tab.tabId,
                 createdAt: tab.createdAt,
                 updatedAt: tab.updatedAt,
+            })),
+        );
+    };
+
+    const listWorkspaces = () =>
+        Array.from(workspaces.values()).map((workspace) => ({
+            workspaceId: workspace.workspaceId,
+            activeTabId: workspace.activeTabId,
+            tabCount: workspace.tabs.size,
+            createdAt: workspace.createdAt,
+            updatedAt: workspace.updatedAt,
+        }));
+
+    const cleanupToken = (tabToken: string) => {
+        tokenToPage.delete(tabToken);
+        const ref = tokenToTab.get(tabToken);
+        if (ref) removeTabRef(ref.workspaceId, ref.tabId);
+        tokenToTab.delete(tabToken);
+    };
+
+    const resolveScopeFromToken = (tabToken: string) => {
+        const ref = tokenToTab.get(tabToken);
+        if (!ref) {
+            logWarning('resolve_scope_from_token.miss', {
+                tabToken,
+                knownTokenCount: tokenToTab.size,
+                workspaceCount: workspaces.size,
+                activeWorkspaceId,
             });
+            throw new Error('workspace scope not found for tabToken');
         }
-        return items;
+        return { workspaceId: ref.workspaceId, tabId: ref.tabId };
     };
 
-    /**
-     * 解析 scope（workspaceId/tabId），用于“只检查、不过度创建”的场景。
-     */
-    const resolveScope = (scope?: WorkspaceScope) => {
-        let workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
-        if (!workspace) {
-            throw new Error('workspace not found');
-        }
-        const tabId = scope?.tabId || workspace.activeTabId;
-        if (!tabId || !workspace.tabs.has(tabId)) {
-            throw new Error('tab not found');
-        }
-        return { workspaceId: workspace.id, tabId };
+    const touchTabToken = (tabToken: string, at?: number) => {
+        const ref = tokenToTab.get(tabToken);
+        if (!ref) return null;
+        const ws = workspaces.get(ref.workspaceId);
+        const tab = ws?.tabs.get(ref.tabId);
+        if (!ws || !tab) return null;
+        tab.updatedAt = typeof at === 'number' ? at : Date.now();
+        touchWorkspace(ws);
+        return { workspaceId: ref.workspaceId, tabId: ref.tabId };
     };
 
-    /**
-     * 解析 scope 并返回 Page；若缺少 workspace/tab 则自动创建。
-     * 该策略主要用于“默认作用于 active workspace/tab”的工具调用。
-     */
-    const resolvePage = async (scope?: WorkspaceScope) => {
-        let workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
-        if (!workspace) {
-            const created = await createWorkspace();
-            workspace = workspaces.get(created.workspaceId) || null;
+    const bindTokenToWorkspace = (tabToken: string, workspaceId: WorkspaceId) => {
+        const existing = tokenToTab.get(tabToken);
+        if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
+        const page = tokenToPage.get(tabToken);
+        if (!page || page.isClosed()) return null;
+        const workspace = workspaces.get(workspaceId);
+        if (!workspace) return null;
+        const attached = attachTokenToWorkspace(workspace, tabToken, page);
+        activeWorkspaceId = workspaceId;
+        return attached;
+    };
+
+    const listTimedOutTokens = (timeoutMs: number, now = Date.now()) => {
+        const timedOut: Array<{ tabToken: string; workspaceId: WorkspaceId; tabId: TabId; lastSeenAt: number }> = [];
+        for (const workspace of workspaces.values()) {
+            for (const tab of workspace.tabs.values()) {
+                if (now - tab.updatedAt <= timeoutMs) continue;
+                timedOut.push({
+                    tabToken: tab.tabToken,
+                    workspaceId: workspace.workspaceId,
+                    tabId: tab.tabId,
+                    lastSeenAt: tab.updatedAt,
+                });
+            }
         }
-        if (!workspace) throw new Error('workspace not found');
-        const tabId = scope?.tabId || workspace.activeTabId;
-        if (!tabId) {
-            const createdTabId = await createTab(workspace.id);
-            return workspace.tabs.get(createdTabId)!.page;
+        return timedOut;
+    };
+
+    const closeTokenPage = async (tabToken: string) => {
+        const page = tokenToPage.get(tabToken);
+        if (!page || page.isClosed()) {
+            cleanupToken(tabToken);
+            return;
         }
-        const tab = workspace.tabs.get(tabId);
-        if (!tab) throw new Error('tab not found');
-        return tab.page;
+        await page.close({ runBeforeUnload: true });
     };
 
     return {
         bindPage,
         getPage,
-        listPages,
-        cleanup,
         createWorkspace,
+        createWorkspaceShell,
         listWorkspaces,
         setActiveWorkspace,
         getActiveWorkspace,
@@ -483,20 +526,12 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         listTabs,
         resolvePage,
         resolveScope,
-        resolveScopeFromToken: (tabToken: string) => {
-            const ref = tokenToTab.get(tabToken);
-            if (!ref) {
-                throw new Error('workspace scope not found for tabToken');
-            }
-            return { workspaceId: ref.workspaceId, tabId: ref.tabId };
-        },
-        resolveTabToken: (scope?: WorkspaceScope) => {
-            const resolved = resolveScope(scope);
-            const workspace = workspaces.get(resolved.workspaceId);
-            if (!workspace) throw new Error('workspace not found');
-            const tab = workspace.tabs.get(resolved.tabId);
-            if (!tab) throw new Error('tab not found');
-            return tab.tabToken;
-        },
+        resolveScopeFromToken,
+        resolveTabToken,
+        touchTabToken,
+        bindTokenToWorkspace,
+        moveTokenToWorkspace,
+        listTimedOutTokens,
+        closeTokenPage,
     };
 };

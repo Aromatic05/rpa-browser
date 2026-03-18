@@ -3,9 +3,14 @@ import { createPageRegistry } from '../../src/runtime/page_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
-import { runSteps } from '../../src/runner/run_steps';
-import { getRunnerConfig } from '../../src/runner/config';
+import { runStepList } from '../../src/runner/run_steps';
+import { getRunnerConfig } from '../../src/config';
 import { createStep, createTestPluginHost } from '../helpers/steps';
+
+const runBatch = async (deps: any, workspaceId: string, step: ReturnType<typeof createStep>) => {
+    const { checkpoint } = await runStepList(workspaceId, [step], deps, { stopOnError: true });
+    expect(checkpoint.status).not.toBe('failed');
+};
 
 test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
@@ -27,24 +32,10 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
 
     await Promise.all([
         runnerScope.run(wsA.workspaceId, () =>
-            runSteps(
-                {
-                    workspaceId: wsA.workspaceId,
-                    steps: [createStep('browser.goto', { url: `${fixtureURL}/choices.html` })],
-                    options: { stopOnError: true },
-                },
-                deps,
-            ),
+            runBatch(deps, wsA.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/choices.html` })),
         ),
         runnerScope.run(wsB.workspaceId, () =>
-            runSteps(
-                {
-                    workspaceId: wsB.workspaceId,
-                    steps: [createStep('browser.goto', { url: `${fixtureURL}/date.html` })],
-                    options: { stopOnError: true },
-                },
-                deps,
-            ),
+            runBatch(deps, wsB.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/date.html` })),
         ),
     ]);
 
@@ -75,26 +66,12 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
     const events: string[] = [];
     const task1 = runnerScope.run(ws.workspaceId, async () => {
         events.push('start1');
-        await runSteps(
-            {
-                workspaceId: ws.workspaceId,
-                steps: [createStep('browser.goto', { url: `${fixtureURL}/choices.html` })],
-                options: { stopOnError: true },
-            },
-            deps,
-        );
+        await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
         events.push('end1');
     });
     const task2 = runnerScope.run(ws.workspaceId, async () => {
         events.push('start2');
-        await runSteps(
-            {
-                workspaceId: ws.workspaceId,
-                steps: [createStep('browser.goto', { url: `${fixtureURL}/date.html` })],
-                options: { stopOnError: true },
-            },
-            deps,
-        );
+        await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
         events.push('end2');
     });
 
@@ -123,23 +100,9 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
     const tab2Token = pageRegistry.resolveTabToken({ workspaceId: ws.workspaceId, tabId: tab2 });
 
     pageRegistry.setActiveTab(ws.workspaceId, ws.tabId);
-    await runSteps(
-        {
-            workspaceId: ws.workspaceId,
-            steps: [createStep('browser.goto', { url: `${fixtureURL}/choices.html` })],
-            options: { stopOnError: true },
-        },
-        deps,
-    );
+    await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
     pageRegistry.setActiveTab(ws.workspaceId, tab2);
-    await runSteps(
-        {
-            workspaceId: ws.workspaceId,
-            steps: [createStep('browser.goto', { url: `${fixtureURL}/date.html` })],
-            options: { stopOnError: true },
-        },
-        deps,
-    );
+    await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
 
     pageRegistry.setActiveTab(ws.workspaceId, tab2);
     const activePage = await pageRegistry.resolvePage({ workspaceId: ws.workspaceId });
