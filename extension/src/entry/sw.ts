@@ -12,6 +12,43 @@ import { createWsClient } from '../background/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 
 const log = createLogger('sw');
+const REFRESH_DEBOUNCE_MS = 120;
+
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let refreshInFlight = false;
+let refreshQueued = false;
+
+const dispatchRefresh = () => {
+    if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+    }
+    refreshInFlight = true;
+    chrome.tabs
+        .query({ active: true, currentWindow: true })
+        .then((tabs) => {
+            const active = tabs[0];
+            if (!active?.id) return;
+            void send.toTab(active.id, MSG.REFRESH);
+        })
+        .catch((error) => {
+            log.debug('refresh.dispatch.failed', String(error));
+        })
+        .finally(() => {
+            refreshInFlight = false;
+            if (!refreshQueued) return;
+            refreshQueued = false;
+            dispatchRefresh();
+        });
+};
+
+const scheduleRefresh = () => {
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        dispatchRefresh();
+    }, REFRESH_DEBOUNCE_MS);
+};
 
 const wsClient = createWsClient({
     onAction: (action) => router.handleInboundAction(action),
@@ -20,13 +57,7 @@ const wsClient = createWsClient({
 
 const router = createCmdRouter({
     wsClient,
-    onRefresh: () => {
-        chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-            const active = tabs[0];
-            if (!active?.id) return;
-            void send.toTab(active.id, MSG.REFRESH);
-        });
-    },
+    onRefresh: scheduleRefresh,
     logger: log,
 });
 

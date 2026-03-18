@@ -17,6 +17,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger || createLogger('sw');
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
     const PAGELESS_ACTIONS = new Set<string>([ACTION_TYPES.TAB_INIT, ACTION_TYPES.RECORD_LIST]);
+    const LIFECYCLE_THROTTLE_MS = 180;
 
     const tabState = new Map<number, { tabToken: string; lastUrl: string; windowId: number | null; updatedAt: number }>();
     const tokenToScope = new Map<string, { workspaceId: string; tabId: string }>();
@@ -25,6 +26,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     let activeTabId: number | null = null;
     let activeWorkspaceId: string | null = null;
     let activeWindowId: number | null = null;
+    let lastTabActivatedKey = '';
+    let lastTabActivatedAt = 0;
+    let lastWorkspaceSetActiveKey = '';
+    let lastWorkspaceSetActiveAt = 0;
 
     const withActionBase = (action: Action): Action => ({
         v: 1 as const,
@@ -197,6 +202,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const onActivated = (info: chrome.tabs.TabActiveInfo) => {
+        const previousActiveTabId = activeTabId;
+        const previousActiveWindowId = activeWindowId;
         activeTabId = info.tabId;
         activeWindowId = info.windowId;
         void (async () => {
@@ -207,17 +214,26 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 activeWorkspaceId = scope.workspaceId;
                 windowToWorkspace.set(info.windowId, scope.workspaceId);
             }
+            const now = Date.now();
+            const key = `${info.windowId}:${info.tabId}:${tabInfo.tabToken}`;
+            const duplicated = key === lastTabActivatedKey && now - lastTabActivatedAt < LIFECYCLE_THROTTLE_MS;
+            if (duplicated) return;
+            lastTabActivatedKey = key;
+            lastTabActivatedAt = now;
             await emitLifecycleAction(
                 ACTION_TYPES.TAB_ACTIVATED,
                 {
                     source: 'extension.sw',
                     url: tabInfo.lastUrl || '',
-                    at: Date.now(),
+                    at: now,
                     windowId: info.windowId,
                 },
                 tabInfo.tabToken,
             );
         })();
+        // Same tab/window activation bursts are common during focus transitions.
+        // Skip eager refresh when the active pointer is unchanged.
+        if (previousActiveTabId === info.tabId && previousActiveWindowId === info.windowId) return;
         options.onRefresh();
     };
 
@@ -341,8 +357,17 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             if (!active) return;
             const scope = tokenToScope.get(active.tabToken);
             if (!scope) return;
+            const now = Date.now();
+            const key = `${windowId}:${scope.workspaceId}`;
+            const duplicated = key === lastWorkspaceSetActiveKey && now - lastWorkspaceSetActiveAt < LIFECYCLE_THROTTLE_MS;
+            if (duplicated) {
+                options.onRefresh();
+                return;
+            }
             activeWorkspaceId = scope.workspaceId;
             windowToWorkspace.set(windowId, scope.workspaceId);
+            lastWorkspaceSetActiveKey = key;
+            lastWorkspaceSetActiveAt = now;
             await sendAction({
                 v: 1,
                 id: crypto.randomUUID(),
