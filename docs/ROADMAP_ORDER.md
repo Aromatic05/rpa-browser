@@ -11,29 +11,19 @@
 
 ## A. 必做任务（建议优先）
 
-### A1. 会话/工作区恢复能力（`L`）
+### A1. 会话/工作区恢复能力（`L`）[Aromatic finished]
 
 - `A1-1` 定义 session/workspace 持久化数据模型（`M`）
 - `A1-2` 启动恢复流程与失效数据清理（`M`）
-- `A1-3` 任务 checkpoint 与断点续跑（`M`）
-- `A1-4` 恢复失败时的错误码与可观测日志（`S`）
+- `A1-3` 恢复失败时的错误码与可观测日志（`S`）
 
 完成定义：
 - 重启后可恢复有效 workspace/session。
-- 中断任务可从 checkpoint 继续，避免重复执行已完成 step。
+- 恢复链路可观测，失败场景有稳定错误码与日志定位信息。
 
 当前落地状态（2026-03）：
 - 已完成：workspace 录制快照持久化与恢复（`workspace.save` / `workspace.restore`），包含 tab URL（不含 tabToken）与录制 steps。
 - 已完成：恢复专用日志事件（`workspace.restore.start/end`）和错误码（快照缺失/恢复失败）。
-- 进行中：任务级 checkpoint 落盘（`task.run` 的 runId/workspaceId/nextSeq/status 持久化，支持 `task.run.resume`）。
-- 未完成：跨进程/跨版本 checkpoint 迁移与更细粒度断点语义（`A1-3` 完整版）。
-
-实施建议（当前仓库最小落地顺序）：
-- `A1-S0` 先接入流式执行壳（`task.run.*`），把“任务游标”从动作执行中抽离（已具备最小实现）
-- `A1-1` 在 `TaskCheckpoint` 基础上持久化 `runId/taskId/workspaceId/nextSeq/status`
-- `A1-2` 启动阶段恢复 checkpoint，校验 workspace 存在性并清理脏 run
-- `A1-3` 增加 resume 接口（按 checkpoint 的 `nextSeq` 继续）
-- `A1-4` 增加恢复专用错误码与日志事件（restore.start/end、checkpoint.read/write）
 
 ### A2. 任务审计视图（`L`）
 
