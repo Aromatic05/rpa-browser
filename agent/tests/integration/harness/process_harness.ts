@@ -2,6 +2,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
+import { promises as fs } from 'node:fs';
 import { WebSocket } from 'ws';
 
 const reservePort = async () =>
@@ -110,6 +112,10 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
     const preferredWsPort = Number(process.env.RPA_INTEGRATION_WS_PORT || 17333);
     const wsPort = extensionAware ? preferredWsPort : await reservePort();
     const mockPort = await reservePort();
+    const userDataDir = path.join(
+        os.tmpdir(),
+        `rpa-agent-integration-user-data-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    );
     const verbose =
         String(process.env.RPA_INTEGRATION_VERBOSE || (opts?.headed ? 'true' : 'false')).toLowerCase() === 'true';
 
@@ -125,6 +131,7 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
         ...process.env,
         RPA_HEADLESS: opts?.headed ? 'false' : 'true',
         RPA_WS_PORT: String(wsPort),
+        RPA_USER_DATA_DIR: userDataDir,
     } as Record<string, string>;
     if (opts?.fixtureBaseUrl) {
         env.RPA_START_URL = `${opts.fixtureBaseUrl}/run_steps_fixture_a.html`;
@@ -163,6 +170,7 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
                 });
             await killOne(agentProc);
             await killOne(mockProc);
+            await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => undefined);
         },
     };
 };
