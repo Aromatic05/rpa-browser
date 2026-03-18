@@ -69,11 +69,11 @@ export const createWsActionClient = async (url = 'ws://127.0.0.1:17333'): Promis
 
     return {
         sendAction,
-        waitForEvent: async (event, timeoutMs = 20000) =>
-            new Promise<Record<string, unknown>>((resolve, reject) => {
+        waitForEvent: <T = Record<string, unknown>>(event: string, timeoutMs = 20000): Promise<T> =>
+            new Promise<T>((resolve, reject) => {
                 const cached = lastEvents.get(event);
                 if (cached) {
-                    resolve(cached);
+                    resolve(cached as T);
                     return;
                 }
                 const timeout = setTimeout(() => {
@@ -82,7 +82,7 @@ export const createWsActionClient = async (url = 'ws://127.0.0.1:17333'): Promis
                 const waiters = eventWaiters.get(event) || [];
                 waiters.push((data) => {
                     clearTimeout(timeout);
-                    resolve(data);
+                    resolve(data as T);
                 });
                 eventWaiters.set(event, waiters);
             }),

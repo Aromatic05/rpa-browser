@@ -1,36 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
-
-const waitForLine = (proc: ChildProcess, pattern: RegExp, timeoutMs = 30000) =>
-    new Promise<void>((resolve, reject) => {
-        let out = '';
-        const timer = setTimeout(() => {
-            reject(new Error(`timeout waiting for pattern: ${pattern}\\n${out}`));
-        }, timeoutMs);
-        const onChunk = (chunk: Buffer | string) => {
-            const text = String(chunk);
-            out += text;
-            if (pattern.test(out)) {
-                clearTimeout(timer);
-                cleanup();
-                resolve();
-            }
-        };
-        const onExit = () => {
-            clearTimeout(timer);
-            cleanup();
-            reject(new Error(`process exited before ready: ${pattern}\\n${out}`));
-        };
-        const cleanup = () => {
-            proc.stdout?.off('data', onChunk);
-            proc.stderr?.off('data', onChunk);
-            proc.off('exit', onExit);
-        };
-        proc.stdout?.on('data', onChunk);
-        proc.stderr?.on('data', onChunk);
-        proc.on('exit', onExit);
-    });
+import crypto from 'node:crypto';
+import { WebSocket } from 'ws';
 
 const reservePort = async () =>
     new Promise<number>((resolve, reject) => {
@@ -47,6 +19,74 @@ const reservePort = async () =>
         });
         server.on('error', reject);
     });
+
+const waitForPort = async (host: string, port: number, timeoutMs = 30000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const ok = await new Promise<boolean>((resolve) => {
+            const socket = net.createConnection({ host, port });
+            socket.once('connect', () => {
+                socket.end();
+                resolve(true);
+            });
+            socket.once('error', () => resolve(false));
+            socket.setTimeout(1500, () => {
+                socket.destroy();
+                resolve(false);
+            });
+        });
+        if (ok) return;
+        await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    throw new Error(`timeout waiting for tcp port ${host}:${port}`);
+};
+
+const waitForWsReady = async (url: string, timeoutMs = 45000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const result = await new Promise<boolean>((resolve) => {
+            const ws = new WebSocket(url);
+            const actionId = crypto.randomUUID();
+            const timer = setTimeout(() => {
+                try {
+                    ws.close();
+                } catch {
+                    // ignore
+                }
+                resolve(false);
+            }, 3000);
+            ws.on('open', () => {
+                ws.send(
+                    JSON.stringify({
+                        v: 1,
+                        id: actionId,
+                        type: 'workspace.list',
+                    }),
+                );
+            });
+            ws.on('message', (raw) => {
+                try {
+                    const packet = JSON.parse(String(raw));
+                    if (packet?.replyTo === actionId && packet?.payload) {
+                        clearTimeout(timer);
+                        ws.close();
+                        resolve(true);
+                    }
+                } catch {
+                    // ignore non-json packet
+                }
+            });
+            ws.on('error', () => {
+                clearTimeout(timer);
+                resolve(false);
+            });
+            ws.on('close', () => clearTimeout(timer));
+        });
+        if (result) return;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error(`timeout waiting for ws ready: ${url}`);
+};
 
 const pipeProcLogs = (proc: ChildProcess, prefix: string, enabled: boolean) => {
     if (!enabled) return;
@@ -79,7 +119,7 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
         stdio: ['ignore', 'pipe', 'pipe'],
     });
     pipeProcLogs(mockProc, '[integration:mock]', verbose);
-    await waitForLine(mockProc, /\[mock\] server listening/i, 20000);
+    await waitForPort('127.0.0.1', mockPort, 20000);
 
     const env = {
         ...process.env,
@@ -97,8 +137,8 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
     });
     pipeProcLogs(agentProc, '[integration:agent]', verbose);
     try {
-        await waitForLine(agentProc, /WS listening on ws:\/\/127\.0\.0\.1:/, 45000);
-        await waitForLine(agentProc, /Playwright Chromium launched with extension\./, 45000);
+        await waitForPort('127.0.0.1', wsPort, 45000);
+        await waitForWsReady(`ws://127.0.0.1:${wsPort}`, 45000);
     } catch (error) {
         if (!agentProc.killed && agentProc.exitCode == null) {
             agentProc.kill('SIGTERM');
