@@ -70,7 +70,10 @@ const randomId = () => crypto.randomUUID();
 
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
     const actionLog = getLogger('action');
-    const log = (...args: unknown[]) => actionLog('[RPA:page_registry]', ...args);
+    const log = (...args: unknown[]) => actionLog.info('[RPA:page_registry]', ...args);
+    const logDebug = (...args: unknown[]) => actionLog.debug('[RPA:page_registry]', ...args);
+    const logWarning = (...args: unknown[]) => actionLog.warning('[RPA:page_registry]', ...args);
+    const logError = (...args: unknown[]) => actionLog.error('[RPA:page_registry]', ...args);
     const tokenToPage = new Map<string, Page>();
     const tokenToTab = new Map<string, { workspaceId: WorkspaceId; tabId: TabId }>();
     const workspaces = new Map<WorkspaceId, Workspace>();
@@ -242,7 +245,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             log('bind_page.start', { hintedToken: hintedToken || null, resolvedToken: token, pageUrl: page.url() });
             attachTokenToRuntime(token, page);
             if (!tokenToTab.has(token)) {
-                log('bind_page.unbound', { token, pageUrl: page.url() });
+                logWarning('bind_page.unbound', { token, pageUrl: page.url() });
             } else {
                 const ref = tokenToTab.get(token)!;
                 const tab = workspaces.get(ref.workspaceId)?.tabs.get(ref.tabId);
@@ -257,7 +260,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             log('bind_page.done', { token, pageUrl: page.url() });
             return token;
         } catch {
-            log('bind_page.error', { hintedToken: hintedToken || null, pageUrl: page.url() });
+            logError('bind_page.error', { hintedToken: hintedToken || null, pageUrl: page.url() });
             return null;
         }
     };
@@ -289,18 +292,18 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const rebuildTokenMap = async () => {
         const context = await options.getContext();
         const pages = context.pages();
-        log('rebuild_token_map.start', { pageCount: pages.length });
+        logDebug('rebuild_token_map.start', { pageCount: pages.length });
         for (const page of pages) {
             const token = await waitForToken(page, 3, 100);
             if (!token) continue;
             attachTokenToRuntime(token, page);
-            log('rebuild_token_map.bound', { token, pageUrl: page.url() });
+            logDebug('rebuild_token_map.bound', { token, pageUrl: page.url() });
         }
     };
 
     const getPage = async (tabToken: string, urlHint?: string) => {
         if (!tabToken) throw new Error('missing tabToken');
-        log('get_page.start', { tabToken, urlHint: urlHint || null });
+        logDebug('get_page.start', { tabToken, urlHint: urlHint || null });
 
         let page = tokenToPage.get(tabToken);
         if (page && !page.isClosed()) return page;
@@ -314,7 +317,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             await page.goto(urlHint, { waitUntil: 'domcontentloaded' });
         }
         await bindPage(page, tabToken);
-        log('get_page.done', { tabToken, finalUrl: page.url() });
+        logDebug('get_page.done', { tabToken, finalUrl: page.url() });
         return page;
     };
 
@@ -438,7 +441,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const resolveScopeFromToken = (tabToken: string) => {
         const ref = tokenToTab.get(tabToken);
         if (!ref) {
-            log('resolve_scope_from_token.miss', {
+            logWarning('resolve_scope_from_token.miss', {
                 tabToken,
                 knownTokenCount: tokenToTab.size,
                 workspaceCount: workspaces.size,

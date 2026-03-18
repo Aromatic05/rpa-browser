@@ -63,7 +63,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
     const getContext = async () => {
         if (contextRef) return contextRef;
         if (contextPromise) return contextPromise;
-        actionLog('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
+        actionLog.info('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
         const policyDir = path.resolve(options.userDataDir, 'enterprise-policies', 'managed');
         const policyFile = path.join(policyDir, 'rpa_browser_policy.json');
         try {
@@ -74,7 +74,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
                 'utf8',
             );
         } catch (error) {
-            actionLog('[RPA:agent]', 'Failed to write NewTabPageLocation policy', String(error));
+            actionLog.error('[RPA:agent]', 'Failed to write NewTabPageLocation policy', String(error));
         }
         const extensionArg = options.extensionPaths.join(',');
         const launchArgs = [
