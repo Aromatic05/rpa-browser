@@ -24,11 +24,18 @@ export const executeBrowserSnapshot = async (
         return { stepId: step.id, ok: false, error: mapTraceError(info.error) };
     }
 
-    // 当前先保留参数占位，不做 mode 分流。
-    void step.args.focus_only;
+    const includeA11y = step.args.includeA11y !== false;
+    const focusOnly = step.args.focus_only === true;
+    const traceSnapshot = await binding.traceTools['trace.page.snapshotA11y']({
+        includeA11y,
+        focusOnly,
+    });
+    if (!traceSnapshot.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(traceSnapshot.error) };
+    }
 
     const snapshot = await generateSemanticSnapshot(binding.page);
-    const snapshotId = crypto.randomUUID();
+    const snapshotId = traceSnapshot.data?.snapshotId || crypto.randomUUID();
 
     return {
         stepId: step.id,
@@ -37,7 +44,7 @@ export const executeBrowserSnapshot = async (
             snapshot_id: snapshotId,
             url: info.data?.url,
             title: info.data?.title,
-            a11y: step.args.includeA11y === false ? undefined : JSON.stringify(snapshot),
+            a11y: includeA11y ? traceSnapshot.data?.a11y || JSON.stringify(snapshot) : undefined,
         },
     };
 };
