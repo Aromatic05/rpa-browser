@@ -18,10 +18,11 @@ import type {
     TraceTags,
 } from './types';
 import { traceCall } from './trace_call';
-import { adoptA11yNode, cacheA11ySnapshot, type A11ySnapshotNode } from './a11y_adopt';
+import { adoptA11yNode, type A11ySnapshotNode } from './a11y_adopt';
 import { findA11yCandidates, type A11yCandidate } from './a11y_find';
 import { createLoggingHooks } from './hooks';
 import { invalidateA11yCache } from './a11y_cache';
+import { getA11yTree } from './getA11yTree';
 import type { A11yHint } from '../steps/types';
 import type { PageRegistry, WorkspaceId } from '../../runtime/page_registry';
 
@@ -424,72 +425,4 @@ export const createTraceTools = (opts: {
     };
 
     return { tools, ctx };
-};
-
-type CdpAXNode = {
-    nodeId: string;
-    ignored?: boolean;
-    role?: { value?: string };
-    name?: { value?: string };
-    description?: { value?: string };
-    value?: { value?: string };
-    parentId?: string;
-    childIds?: string[];
-};
-
-type RawA11yNode = {
-    role?: string;
-    name?: string;
-    description?: string;
-    value?: string;
-    children?: RawA11yNode[];
-};
-
-const getA11yTree = async (page: Page, cache: TraceContext['cache']): Promise<A11ySnapshotNode | null> => {
-    if (cache.a11yTree) return cache.a11yTree as A11ySnapshotNode;
-    const snapshot = await (page as any).accessibility?.snapshot?.({
-        interestingOnly: false,
-    });
-    if (snapshot) {
-        const raw = JSON.stringify(snapshot);
-        return cacheA11ySnapshot(cache, raw);
-    }
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Accessibility.enable');
-    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-    const tree = buildA11yTreeFromCdp(nodes);
-    const raw = JSON.stringify(tree);
-    return cacheA11ySnapshot(cache, raw);
-};
-
-const buildA11yTreeFromCdp = (nodes: CdpAXNode[]): RawA11yNode => {
-    const map = new Map<string, CdpAXNode>();
-    for (const node of nodes) {
-        map.set(node.nodeId, node);
-    }
-
-    const root =
-        nodes.find((node) => !node.parentId && !node.ignored) ||
-        nodes.find((node) => !node.parentId) ||
-        nodes[0];
-
-    const visited = new Set<string>();
-    const walk = (id: string): RawA11yNode | null => {
-        if (visited.has(id)) return null;
-        const node = map.get(id);
-        if (!node) return null;
-        visited.add(id);
-        const children = (node.childIds || [])
-            .map((childId) => walk(childId))
-            .filter((child): child is RawA11yNode => Boolean(child));
-        return {
-            role: node.role?.value,
-            name: node.name?.value,
-            description: node.description?.value,
-            value: node.value?.value,
-            children: children.length ? children : undefined,
-        };
-    };
-
-    return root ? walk(root.nodeId) || { role: 'document' } : { role: 'document' };
 };
