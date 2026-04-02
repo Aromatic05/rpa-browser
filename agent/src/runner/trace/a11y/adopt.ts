@@ -12,7 +12,7 @@
  */
 
 import type { Locator, Page } from 'playwright';
-import type { A11yNodeInfo, ToolResult, TraceCache } from './types';
+import type { A11yNodeInfo, ToolResult, TraceCache } from '../types';
 
 export type A11ySnapshotNode = {
     id: string;

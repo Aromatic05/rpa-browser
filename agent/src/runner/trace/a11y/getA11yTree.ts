@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
-import { cacheA11ySnapshot, type A11ySnapshotNode } from './a11y_adopt';
-import type { TraceCache } from './types';
+import { cacheA11ySnapshot, type A11ySnapshotNode } from './adopt';
+import type { TraceCache } from '../types';
 
 type CdpAXNode = {
     nodeId: string;

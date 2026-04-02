@@ -2,8 +2,8 @@
  * a11y_find：根据 A11yHint 从缓存树中筛选候选节点。
  */
 
-import type { A11yHint } from '../steps/types';
-import type { A11ySnapshotNode } from './a11y_adopt';
+import type { A11yHint } from '../../steps/types';
+import type { A11ySnapshotNode } from './adopt';
 
 export type A11yCandidate = {
     nodeId: string;

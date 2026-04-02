@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Locator } from 'playwright';
-import { adoptA11yNode } from '../../src/runner/trace/a11y_adopt';
+import { adoptA11yNode } from '../../src/runner/trace/a11y/adopt';
 import type { TraceCache } from '../../src/runner/trace/types';
 
 test('adoptA11yNode returns ERR_NOT_FOUND when cache missing', async () => {
