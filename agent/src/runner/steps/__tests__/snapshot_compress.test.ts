@@ -295,6 +295,43 @@ test('compress should drop head subtree even when represented by role', () => {
     assert.equal(out.children[0].children[0].role, 'body');
 });
 
+test('compress should still drop head subtree when head is wrongly marked as entity/card', () => {
+    const root = node('root', 'root', [
+        node('head', 'head', [
+            node('asset', 'link', [], {
+                target: { ref: '/css/app.css', kind: 'url' },
+                attrs: {
+                    tag: 'link',
+                    href: '/css/app.css',
+                    strongSemantic: 'true',
+                    entityId: 'entity:n0.0',
+                },
+            }),
+            node('title', 'title', [], {
+                content: '订单管理 - title',
+                attrs: { tag: 'title' },
+            }),
+        ], {
+            attrs: {
+                tag: 'head',
+                entity: 'true',
+                entityId: 'entity:n0.0',
+                entityType: 'card',
+            },
+            entityId: 'entity:n0.0',
+            entityType: 'card',
+        }),
+        node('body', 'body', [
+            node('main', 'main', [], { content: '正文', attrs: { tag: 'main' } }),
+        ], { attrs: { tag: 'body' } }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'body');
+});
+
 test('compress should remove breadcrumb separator and collapse wrapper span', () => {
     const root = node('root', 'root', [
         node('wrapper', 'span', [

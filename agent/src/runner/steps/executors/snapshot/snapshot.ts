@@ -95,6 +95,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
         if (isNoiseLayer(overlay)) continue;
         root.children.push(overlay);
     }
+    root.children = root.children.filter((layer) => !isNonPerceivableLayer(layer));
     snapshotDebugLog('attach-layers', {
         virtualRootChildren: root.children.length,
         topNodes: summarizeTopNodes(root),
@@ -110,7 +111,10 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
         });
         for (const region of regions) {
             const processed = processRegion(region);
-            if (!processed) continue;
+            if (!processed) {
+                removeRegion(layer, region);
+                continue;
+            }
             replaceRegion(layer, region, processed);
         }
     }
@@ -150,3 +154,27 @@ const replaceRegion = (layer: UnifiedNode, target: UnifiedNode, next: UnifiedNod
         replaceRegion(child, target, next);
     }
 };
+
+const removeRegion = (layer: UnifiedNode, target: UnifiedNode): boolean => {
+    const index = layer.children.findIndex((child) => child === target || child.id === target.id);
+    if (index >= 0) {
+        layer.children.splice(index, 1);
+        return true;
+    }
+    for (const child of layer.children) {
+        if (removeRegion(child, target)) return true;
+    }
+    return false;
+};
+
+const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
+    const role = normalizeLower(node.role);
+    const tag = normalizeLower(node.attrs?.tag || node.attrs?.tagName || '');
+    if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) return true;
+    if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) return true;
+    return false;
+};
+
+const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
+const NON_PERCEIVABLE_LAYER_ROLES = new Set(['head', 'meta', 'link', 'style', 'script', 'title']);
+const NON_PERCEIVABLE_LAYER_TAGS = new Set(['head', 'meta', 'link', 'style', 'script', 'title']);

@@ -1,7 +1,7 @@
 import type { UnifiedNode } from './types';
 
 export const compress = (node: UnifiedNode): UnifiedNode | null => {
-    const result = compressNode(node, true, null);
+    const result = compressNode(node, false, null);
     if (result.nodes.length === 0) return null;
     return result.nodes[0] || null;
 };
@@ -121,10 +121,13 @@ const isDeleteNode = (node: UnifiedNode, isRoot: boolean): boolean => {
 
 const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
     if (isRoot) return false;
-    if (isProtectedNode(node)) return false;
 
     const tag = inferTag(node);
     const role = normalizeRole(node.role);
+    // 文档元信息/资源声明分支必须优先裁掉，不受 entity 等保护字段影响。
+    if (FORCE_DROP_SUBTREE_TAGS.has(tag)) return true;
+    if (FORCE_DROP_SUBTREE_ROLES.has(role)) return true;
+    if (isProtectedNode(node)) return false;
     if (DROP_SUBTREE_TAGS.has(tag)) return true;
     if (DROP_SUBTREE_ROLES.has(role)) return true;
 
@@ -741,7 +744,6 @@ const TEXT_RECEIVER_ROLES = new Set([
 ]);
 const MERGE_TEXT_ROLES = new Set(['heading', 'label', 'cell', 'gridcell', 'columnheader', 'rowheader', 'paragraph']);
 const DROP_SUBTREE_TAGS = new Set([
-    'head',
     'meta',
     'link',
     'script',
@@ -751,7 +753,9 @@ const DROP_SUBTREE_TAGS = new Set([
     'source',
     'track',
 ]);
-const DROP_SUBTREE_ROLES = new Set(['head', 'doc-subtitle', 'doc-tip', 'doc-endnote']);
+const FORCE_DROP_SUBTREE_TAGS = new Set(['head']);
+const FORCE_DROP_SUBTREE_ROLES = new Set(['head']);
+const DROP_SUBTREE_ROLES = new Set(['doc-subtitle', 'doc-tip', 'doc-endnote']);
 const PSEUDO_ROLES = new Set(['::before', '::after', 'before', 'after']);
 const PSEUDO_TAGS = new Set(['::before', '::after']);
 const VECTOR_SUBTREE_TAGS = new Set(['svg', 'path', 'g', 'defs', 'symbol', 'use', 'clipPath'.toLowerCase()]);
