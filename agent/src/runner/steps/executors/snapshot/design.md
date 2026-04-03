@@ -24,6 +24,14 @@
 - `assignStableIds(root)`
 - `buildSnapshot(root)`
 
+`processRegion` 当前固定顺序：
+- `detectBusinessEntities`
+- `buildTree`
+- `markStrongSemantics`
+- `applyLCA`
+- `rankTiers`
+- `compress`
+
 ## 4. 伪代码原文
 
 ```ts
@@ -157,7 +165,7 @@ class SemanticPerceiver {
 - `regions.ts`：区域检测骨架（返回普通节点数组）。
 - `process_region.ts`：区域处理主链（实体识别/树构建/语义标记/LCA/tier/压缩）。
 - `lca.ts`：弱语义节点最近业务实体归因骨架。
-- `compress.ts`：按 tier 删除/折叠/摘要骨架。
+- `compress.ts`：结构压缩（删除/折叠/文本上浮 + 保守摘要）。
 - `relations.ts`：跨层跨区域关系链接骨架。
 - `stable_id.ts`：稳定 ID 生成骨架。
 - `build_snapshot.ts`：输出结构构建骨架。
@@ -209,13 +217,13 @@ LCA 当前直接把语义挂在节点 `attrs` 上，不引入复杂结构：
 
 ## 9. 当前占位、后续待实现
 
-以下内容目前均为轻量占位：
+以下内容目前仍为轻量占位：
 - 真实 DOM+A11y 融合策略。
 - 复杂空间重排与完整噪声层规则。
 - 业务区域检测细则。
 - 复杂 LCA 场景（跨表格多列关联、复杂视觉邻近匹配、多语言意图细分）。
 - 完整 tier 分级细则。
-- 复杂压缩与摘要策略。
+- 激进压缩与复杂摘要策略（当前仅保守压缩）。
 - 全局关系链接规则。
 
 LCA 当前限制（明确）：
@@ -289,3 +297,62 @@ LCA 顺序：
 - “空间层”通过 `NodeGraph.root.children` 顶层并列子树表达。
 - “业务区域”直接使用普通节点子树表达。
 - 保留概念与流程位置，但类型系统保持克制。
+
+## 13. Compress 阶段（当前实现）
+
+### 13.1 在 pipeline 中的位置
+
+`compress` 固定在 `processRegion` 内，并且发生在 `applyLCA` 之后：
+
+`detectBusinessEntities -> buildTree -> markStrongSemantics -> applyLCA -> rankTiers -> compress`
+
+这样可以保证：
+- `compress` 能消费实体标记（`entityId/entityType/formRole/tableRole`）
+- `compress` 能消费 LCA 结果（`fieldLabel/actionIntent/actionTargetId`）
+- 不会在语义归因之前过早丢节点
+
+### 13.2 删除规则（保守）
+
+当前会直接删除：
+- 标签为 `script/style/svg/path` 的节点
+- 纯装饰噪声叶子（无文本、无交互、无目标，且角色/类名明显装饰）
+- 明显空壳节点（无文本、无子节点、无交互、无关键语义）
+
+保护条件优先：
+- 交互节点、结构节点、实体节点、LCA 已标注节点、关键状态节点不会被删
+
+### 13.3 折叠规则（壳层上提）
+
+当前可折叠壳层主要是：
+- 非交互、非强语义、无关键状态的 `div/span/p` 这类包装节点
+- tier 为 `C` 且本身无关键语义的节点
+- 叶子文本壳（仅在父节点可接收文本时折叠）
+
+折叠行为：
+- 保留其有效子节点
+- 子节点上提到父节点
+- 当前壳层移除
+
+### 13.4 文本上浮为何放在 compress
+
+当前不做“压缩前全树文本聚合”。
+
+文本只在以下场景发生上浮：
+- 子节点被删除
+- 子节点被折叠
+
+上浮规则是轻量且保守的：
+- 仅短文本（轻文本）参与上浮
+- URL/超长混合文本不会无脑拼接给父节点
+- 优先给可接收文本的语义父节点（例如 button/link/field 等）
+
+这样可以减少“先聚合再误传染”的问题，避免把大段噪声文本提前扩散到上层节点。
+
+### 13.5 当前保守边界
+
+当前 `compress` 仍保持保守，不做：
+- 激进跨层重写
+- 高风险的语义节点合并
+- 复杂摘要重排（仅保留极简占位摘要）
+
+目标是先稳定“删噪 + 去壳 + 按需上浮文本”，再逐步扩展更复杂策略。
