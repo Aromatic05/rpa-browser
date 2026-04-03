@@ -100,7 +100,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
         topNodes: summarizeTopNodes(root),
     });
 
-    // 6) 每层做区域处理与语义处理。
+    // 6) 每层做区域处理与语义处理（含 applyLCA 后的 compress）。
     for (const layer of root.children) {
         const regions = detectRegions(layer);
         snapshotDebugLog('regions', {

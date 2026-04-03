@@ -10,9 +10,11 @@ export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
     applyLCA(tree, entities);
     rankTiers(tree);
 
-    const compressed = compress(tree);
-    if (!compressed) return null;
-    return compressed;
+    return runCompressStage(tree);
+};
+
+const runCompressStage = (tree: UnifiedNode): UnifiedNode | null => {
+    return compress(tree);
 };
 
 const detectBusinessEntities = (node: UnifiedNode): UnifiedNode[] => {
