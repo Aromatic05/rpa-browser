@@ -16,7 +16,7 @@ type DumpPayload = {
 
 const DEFAULT_URL = 'https://shop.yingdao.com/list/table-list';
 const DEFAULT_OUTPUT_BASE = path.join(os.tmpdir(), 'rpa-snapshot', 'shop.yingdao.table-list');
-const DEFAULT_VIEWER_API_BASE = 'http://127.0.0.1:5173';
+const DEFAULT_VIEWER_API_BASE = 'http://localhost:5173';
 
 const countNodes = (node: unknown): number => {
     if (!node || typeof node !== 'object') return 0;
