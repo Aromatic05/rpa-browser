@@ -15,35 +15,80 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
 
     const a11yRoot = asA11yNode(a11yTree);
     const a11yById = new Map<string, A11yNodeInput>();
-    const a11yList: A11yNodeInput[] = [];
+    const a11yByIndex: IndexedA11yNode[] = [];
     const a11yRoleBuckets = new Map<string, IndexedA11yNode[]>();
+    const a11yIndexById = new Map<string, number>();
+    const a11ySubtreeEndByIndex = new Map<number, number>();
 
-    walkA11y(a11yRoot, (node) => {
-        if (node.id) a11yById.set(node.id, node);
-        a11yList.push(node);
-        const index = a11yList.length - 1;
-        const indexed: IndexedA11yNode = {
-            index,
-            node,
-            role: normalizeRole(node.role).toLowerCase(),
-            name: normalizeLabel(splitA11yName(normalizeText(node.name)).name),
-        };
-        const bucket = a11yRoleBuckets.get(indexed.role) || [];
-        bucket.push(indexed);
-        a11yRoleBuckets.set(indexed.role, bucket);
-    });
+    indexA11yTree(
+        a11yRoot,
+        a11yById,
+        a11yByIndex,
+        a11yRoleBuckets,
+        a11yIndexById,
+        a11ySubtreeEndByIndex,
+    );
+    const a11yList = a11yByIndex.map((item) => item.node);
 
     let fallbackCursor = 0;
     const usedA11yIndexes = new Set<number>();
     let matchedById = 0;
     let matchedByLabel = 0;
     let matchedByFallback = 0;
+    let matchedByScopedFallback = 0;
     let fallbackMiss = 0;
     let annotatedByA11yRole = 0;
     let keptDomRole = 0;
     let domNameFallback = 0;
     let downgradedA11yNameToContent = 0;
     let linkTargetExtracted = 0;
+
+    const findScopedFallback = (node: DomNodeInput): A11yNodeInput | undefined => {
+        const anchorIndex = findBestA11yAnchorIndex(node.id, a11yIndexById);
+        if (anchorIndex === undefined) return undefined;
+
+        const rangeStart = anchorIndex;
+        const rangeEnd = a11ySubtreeEndByIndex.get(anchorIndex) ?? anchorIndex;
+        if (rangeEnd < rangeStart) return undefined;
+
+        const hint = normalizeLabel(inferDomFallbackHint(node));
+        let best: IndexedA11yNode | undefined;
+        let bestScore = Number.POSITIVE_INFINITY;
+
+        for (let index = rangeStart; index <= rangeEnd; index += 1) {
+            const candidate = a11yByIndex[index];
+            if (!candidate) continue;
+            if (usedA11yIndexes.has(candidate.index)) continue;
+            if (isWeakA11yRole(candidate.role)) continue;
+            if (!isRoleCompatible(node, candidate.role)) continue;
+
+            let score =
+                candidate.index >= fallbackCursor
+                    ? candidate.index - fallbackCursor
+                    : 10_000 + (fallbackCursor - candidate.index);
+
+            if (hint) {
+                if (candidate.name === hint) {
+                    score -= 4_000;
+                } else if (candidate.name && (candidate.name.includes(hint) || hint.includes(candidate.name))) {
+                    score -= 2_000;
+                } else if (candidate.name) {
+                    score += 500;
+                }
+            }
+
+            if (score < bestScore) {
+                best = candidate;
+                bestScore = score;
+            }
+        }
+
+        if (!best) return undefined;
+        usedA11yIndexes.add(best.index);
+        fallbackCursor = Math.max(fallbackCursor, best.index + 1);
+        matchedByScopedFallback += 1;
+        return best.node;
+    };
 
     const nextByRoleAndLabel = (node: DomNodeInput): A11yNodeInput | undefined => {
         const domRole = normalizeRole(pickDomBaseRole(node)).toLowerCase();
@@ -73,6 +118,12 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
         if (!canUseFallback(node)) {
             fallbackMiss += 1;
             return undefined;
+        }
+
+        const scoped = findScopedFallback(node);
+        if (scoped) {
+            matchedByFallback += 1;
+            return scoped;
         }
 
         const windowEnd = Math.min(a11yList.length, fallbackCursor + FALLBACK_LOOKAHEAD);
@@ -133,7 +184,7 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
             content,
             target,
             bbox: node.bbox,
-            attrs: node.attrs,
+            attrs: mergeDomAttrs(node),
             children: (node.children || []).map((child) => build(child)),
         };
     };
@@ -145,6 +196,7 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
         matchedById,
         matchedByLabel,
         matchedByFallback,
+        matchedByScopedFallback,
         fallbackMiss,
         annotatedByA11yRole,
         keptDomRole,
@@ -159,6 +211,12 @@ type DomNodeInput = {
     id?: string;
     tag?: string;
     text?: string;
+    class?: string;
+    href?: string;
+    src?: string;
+    title?: string;
+    placeholder?: string;
+    type?: string;
     bbox?: { x: number; y: number; width: number; height: number };
     attrs?: Record<string, string>;
     children?: DomNodeInput[];
@@ -188,12 +246,42 @@ const asA11yNode = (value: unknown): A11yNodeInput | null => {
     return value as A11yNodeInput;
 };
 
-const walkA11y = (node: A11yNodeInput | null, visitor: (node: A11yNodeInput) => void) => {
-    if (!node) return;
-    visitor(node);
-    for (const child of node.children || []) {
-        walkA11y(child, visitor);
+const indexA11yTree = (
+    node: A11yNodeInput | null,
+    a11yById: Map<string, A11yNodeInput>,
+    a11yByIndex: IndexedA11yNode[],
+    a11yRoleBuckets: Map<string, IndexedA11yNode[]>,
+    a11yIndexById: Map<string, number>,
+    a11ySubtreeEndByIndex: Map<number, number>,
+): number => {
+    if (!node) return -1;
+
+    const index = a11yByIndex.length;
+    if (node.id) a11yById.set(node.id, node);
+
+    const indexed: IndexedA11yNode = {
+        index,
+        node,
+        role: normalizeRole(node.role).toLowerCase(),
+        name: normalizeLabel(splitA11yName(normalizeText(node.name)).name),
+    };
+    a11yByIndex.push(indexed);
+
+    const bucket = a11yRoleBuckets.get(indexed.role) || [];
+    bucket.push(indexed);
+    a11yRoleBuckets.set(indexed.role, bucket);
+
+    if (node.id) {
+        a11yIndexById.set(node.id, index);
     }
+
+    for (const child of node.children || []) {
+        indexA11yTree(child, a11yById, a11yByIndex, a11yRoleBuckets, a11yIndexById, a11ySubtreeEndByIndex);
+    }
+
+    const end = a11yByIndex.length - 1;
+    a11ySubtreeEndByIndex.set(index, end);
+    return index;
 };
 
 const pickRole = (node: DomNodeInput, matched: A11yNodeInput | undefined): string => {
@@ -217,9 +305,9 @@ const pickName = (
     a11yNameParts: { name?: string; content?: string },
 ): string | undefined => {
     const domLabel = inferExplicitDomName(node, normalizeRole(role).toLowerCase());
-    const a11yName = a11yNameParts.name;
     const ariaLabel = pickExplicitDomLabel(node);
     const normalizedRole = normalizeRole(role).toLowerCase();
+    const a11yName = A11Y_NAME_ALLOWED_ROLES.has(normalizedRole) ? a11yNameParts.name : undefined;
 
     if (a11yName && domLabel) {
         if (PREFER_A11Y_NAME_ROLES.has(normalizedRole)) return a11yName;
@@ -236,6 +324,29 @@ const normalizeRole = (value: string | undefined): string => (value || '').trim(
 const normalizeText = (value: string | undefined): string | undefined => {
     const text = (value || '').trim();
     return text ? text : undefined;
+};
+
+const mergeDomAttrs = (node: DomNodeInput): Record<string, string> | undefined => {
+    const next: Record<string, string> = {
+        ...(node.attrs || {}),
+    };
+
+    const setAttr = (key: string, value: string | undefined) => {
+        const normalized = normalizeText(value);
+        if (!normalized) return;
+        next[key] = normalized;
+    };
+
+    setAttr('tag', node.tag);
+    setAttr('class', node.class);
+    setAttr('href', node.href);
+    setAttr('src', node.src);
+    setAttr('title', node.title);
+    setAttr('placeholder', node.placeholder);
+    setAttr('type', node.type);
+
+    if (Object.keys(next).length === 0) return undefined;
+    return next;
 };
 
 const pickDomBaseRole = (node: DomNodeInput): string => {
@@ -259,6 +370,36 @@ const canUseFallback = (node: DomNodeInput): boolean => {
     if (ANNOTATABLE_ROLES.has(role)) return true;
     if (role === 'div' || role === 'span' || role === 'generic') return true;
     return false;
+};
+
+const inferDomFallbackHint = (node: DomNodeInput): string | undefined => {
+    const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
+    const explicit = inferExplicitDomName(node, role);
+    if (explicit) return explicit;
+
+    const ownText = normalizeText(node.text);
+    if (!ownText) return undefined;
+    if (!FALLBACK_TEXT_HINT_ROLES.has(role)) return undefined;
+    if (!isLikelyShortLabel(ownText)) return undefined;
+    return ownText;
+};
+
+const findBestA11yAnchorIndex = (
+    domId: string | undefined,
+    a11yIndexById: Map<string, number>,
+): number | undefined => {
+    const normalized = normalizeText(domId);
+    if (!normalized) return undefined;
+    if (a11yIndexById.has(normalized)) return a11yIndexById.get(normalized);
+
+    let cursor = normalized;
+    while (cursor.includes('.')) {
+        cursor = cursor.slice(0, cursor.lastIndexOf('.'));
+        if (a11yIndexById.has(cursor)) {
+            return a11yIndexById.get(cursor);
+        }
+    }
+    return undefined;
 };
 
 const shouldBlockLooseFallback = (node: DomNodeInput): boolean => {
@@ -297,7 +438,20 @@ const isRoleCompatible = (node: DomNodeInput, role: string | undefined): boolean
     if (TEXTUAL_ROLES.has(domRole)) return TEXTUAL_ROLES.has(normalizedRole);
 
     if (domRole === 'div' || domRole === 'span' || domRole === 'generic') {
-        return ANNOTATABLE_ROLES.has(normalizedRole);
+        if (!ANNOTATABLE_ROLES.has(normalizedRole)) return false;
+
+        const classTokens = inferDomClassTokens(node);
+        const hasTableHint =
+            hasAnyClassPrefix(classTokens, ['ant-table']) ||
+            hasAnyClassExact(classTokens, ['table', 'grid']) ||
+            hasTagHint(node, ['table', 'thead', 'tbody', 'tr', 'td', 'th']);
+        const hasListHint = hasAnyClassPrefix(classTokens, ['ant-list', 'list', 'menu']) || hasTagHint(node, ['ul', 'ol', 'li']);
+        const hasFormHint = hasAnyClassPrefix(classTokens, ['ant-form', 'form']) || hasTagHint(node, ['form']);
+
+        if (TABLE_SEMANTIC_ROLES.has(normalizedRole)) return hasTableHint;
+        if (LIST_SEMANTIC_ROLES.has(normalizedRole)) return hasListHint;
+        if (FORM_SEMANTIC_ROLES.has(normalizedRole)) return hasFormHint;
+        return true;
     }
 
     if (ANNOTATABLE_ROLES.has(domRole)) {
@@ -305,6 +459,36 @@ const isRoleCompatible = (node: DomNodeInput, role: string | undefined): boolean
     }
 
     return false;
+};
+
+const inferDomClassTokens = (node: DomNodeInput): Set<string> => {
+    const merged = `${node.class || ''} ${node.attrs?.class || ''}`.trim();
+    return new Set(
+        merged
+            .split(/\s+/)
+            .map((item) => item.trim().toLowerCase())
+            .filter((item) => item.length > 0),
+    );
+};
+
+const hasAnyClassPrefix = (tokens: Set<string>, prefixes: string[]): boolean => {
+    for (const token of tokens) {
+        if (prefixes.some((prefix) => token.startsWith(prefix))) return true;
+    }
+    return false;
+};
+
+const hasAnyClassExact = (tokens: Set<string>, names: string[]): boolean => {
+    for (const token of tokens) {
+        if (names.includes(token)) return true;
+    }
+    return false;
+};
+
+const hasTagHint = (node: DomNodeInput, tags: string[]): boolean => {
+    const tag = normalizeRole(node.tag).toLowerCase();
+    if (!tag) return false;
+    return tags.includes(tag);
 };
 
 const isWeakA11yRole = (role: string | undefined): boolean => {
@@ -342,7 +526,14 @@ const findBestLabelMatch = (
 
 const inferDomMatchLabel = (node: DomNodeInput, domRole: string): string | undefined => {
     // 匹配标签必须来源于显式命名候选，不能使用子树文本拼接。
-    return inferExplicitDomName(node, domRole);
+    const explicit = inferExplicitDomName(node, domRole);
+    if (explicit) return explicit;
+
+    const ownText = normalizeText(node.text);
+    if (!ownText) return undefined;
+    if (!MATCH_LABEL_FROM_OWN_TEXT_ROLES.has(domRole)) return undefined;
+    if (!isLikelyShortLabel(ownText)) return undefined;
+    return ownText;
 };
 
 const pickExplicitDomLabel = (node: DomNodeInput): string | undefined => {
@@ -578,6 +769,57 @@ const CONTENT_BY_A11Y_NAME_ROLES = new Set([
     'rowheader',
     'text',
 ]);
+const A11Y_NAME_ALLOWED_ROLES = new Set([
+    'link',
+    'button',
+    'label',
+    'option',
+    'menuitem',
+    'tab',
+    'checkbox',
+    'radio',
+    'navigation',
+    'main',
+    'banner',
+    'contentinfo',
+    'complementary',
+    'region',
+    'form',
+    'article',
+    'dialog',
+    'list',
+    'table',
+    'listitem',
+    'row',
+    'cell',
+    'columnheader',
+    'rowheader',
+    'heading',
+]);
+const FALLBACK_TEXT_HINT_ROLES = new Set([
+    'link',
+    'button',
+    'listitem',
+    'row',
+    'cell',
+    'columnheader',
+    'rowheader',
+    'paragraph',
+    'heading',
+]);
+const MATCH_LABEL_FROM_OWN_TEXT_ROLES = new Set([
+    'link',
+    'button',
+    'listitem',
+    'cell',
+    'columnheader',
+    'rowheader',
+    'heading',
+    'paragraph',
+]);
+const TABLE_SEMANTIC_ROLES = new Set(['table', 'row', 'cell', 'columnheader', 'rowheader']);
+const LIST_SEMANTIC_ROLES = new Set(['list', 'listitem']);
+const FORM_SEMANTIC_ROLES = new Set(['form']);
 const DOM_SEMANTIC_ROLE_BY_TAG = new Map<string, string>([
     ['a', 'link'],
     ['button', 'button'],
