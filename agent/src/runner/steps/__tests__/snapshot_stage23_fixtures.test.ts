@@ -15,6 +15,7 @@ type RawFixture = {
 };
 
 const FIXTURE_DIR = path.resolve(process.cwd(), 'tests/fixtures/snapshot');
+const HAS_FIXTURE_DIR = fs.existsSync(FIXTURE_DIR);
 const ENTITY_TYPES = new Set([
     'form',
     'field_group',
@@ -83,7 +84,7 @@ const findById = (root: UnifiedNode, id: string): UnifiedNode | undefined => {
     return matched;
 };
 
-test('snapshot stage2/3 acceptance on fixture dataset', () => {
+test('snapshot stage2/3 acceptance on fixture dataset', { skip: !HAS_FIXTURE_DIR }, () => {
     const fixtureFiles = fs
         .readdirSync(FIXTURE_DIR)
         .filter((name) => name.endsWith('.raw.json'))
@@ -144,37 +145,29 @@ test('snapshot stage2/3 acceptance on fixture dataset', () => {
     assert.ok(globalHeaderSectionCount > 0, 'expected explicit header section annotation');
 });
 
-test('shop.yingdao table cells should keep stable and non-polluted names', () => {
+test('shop.yingdao table cells should keep stable roles and avoid guessed names', { skip: !HAS_FIXTURE_DIR }, () => {
     const raw = JSON.parse(
         fs.readFileSync(path.join(FIXTURE_DIR, 'shop.yingdao.table-list.raw.json'), 'utf8'),
     ) as RawFixture;
     const snapshot = generateSemanticSnapshotFromRaw(raw);
     const root = snapshot.root;
 
-    const expectedNodes: Array<{ id: string; role: string; name: string; content: string }> = [
+    const expectedNodes: Array<{ id: string; role: string }> = [
         {
             id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.2.2.1',
             role: 'cell',
-            name: '短袖T恤',
-            content: '短袖T恤',
         },
         {
             id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.2.4.1',
             role: 'cell',
-            name: '短袖T恤',
-            content: '短袖T恤',
         },
         {
             id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.1.0.1',
             role: 'columnheader',
-            name: '商品名称',
-            content: '商品名称',
         },
         {
             id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.1.0.3',
             role: 'columnheader',
-            name: '日期',
-            content: '日期',
         },
     ];
 
@@ -182,8 +175,8 @@ test('shop.yingdao table cells should keep stable and non-polluted names', () =>
         const node = findById(root, expected.id);
         assert.ok(node, `expected snapshot node: ${expected.id}`);
         assert.equal(node?.role, expected.role, `${expected.id}: role mismatch`);
-        assert.equal(node?.name, expected.name, `${expected.id}: name mismatch`);
-        assert.equal(node?.content, expected.content, `${expected.id}: content mismatch`);
+        assert.equal(node?.name, undefined, `${expected.id}: name should stay empty without precise a11y match`);
+        assert.equal(node?.content, undefined, `${expected.id}: content should stay empty without precise a11y match`);
     }
 
     let pollutedCellCount = 0;
