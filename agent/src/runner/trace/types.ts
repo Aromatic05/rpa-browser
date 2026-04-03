@@ -92,6 +92,7 @@ export type A11yNodeInfo = {
     name?: string;
     description?: string;
     value?: string;
+    backendDOMNodeId?: string;
 };
 
 export type TraceSink = {

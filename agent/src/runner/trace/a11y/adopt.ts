@@ -20,6 +20,7 @@ export type A11ySnapshotNode = {
     name?: string;
     description?: string;
     value?: string;
+    backendDOMNodeId?: string;
     children?: A11ySnapshotNode[];
 };
 
@@ -28,6 +29,7 @@ type RawA11yNode = {
     name?: string;
     description?: string;
     value?: string;
+    backendDOMNodeId?: string;
     children?: RawA11yNode[];
 };
 
@@ -57,6 +59,7 @@ const buildTree = (node: RawA11yNode, id: string, map: Map<string, A11yNodeInfo>
         name: node.name,
         description: node.description,
         value: node.value,
+        backendDOMNodeId: node.backendDOMNodeId,
     };
     map.set(id, info);
     const children = (node.children || []).map((child, idx) =>
@@ -68,6 +71,7 @@ const buildTree = (node: RawA11yNode, id: string, map: Map<string, A11yNodeInfo>
         name: node.name,
         description: node.description,
         value: node.value,
+        backendDOMNodeId: node.backendDOMNodeId,
         children: children.length ? children : undefined,
     };
 };

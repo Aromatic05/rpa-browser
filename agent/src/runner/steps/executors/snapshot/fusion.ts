@@ -2,10 +2,6 @@ import type { NodeGraph, UnifiedNode } from './types';
 import { snapshotDebugLog } from './debug';
 
 export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph => {
-    // 第一阶段最小实现：
-    // 1) 以 DOM 为骨架，保证结构稳定
-    // 2) A11y 主要用于内容标注（role/name），不改变树结构
-    // 3) 匹配不上时保守回退，不做激进推断
     const domRoot = asDomNode(domTree);
     if (!domRoot) {
         return {
@@ -14,171 +10,50 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
     }
 
     const a11yRoot = asA11yNode(a11yTree);
-    const a11yById = new Map<string, A11yNodeInput>();
-    const a11yByIndex: IndexedA11yNode[] = [];
-    const a11yRoleBuckets = new Map<string, IndexedA11yNode[]>();
-    const a11yIndexById = new Map<string, number>();
-    const a11ySubtreeEndByIndex = new Map<number, number>();
+    const a11yByBackendDomId = new Map<string, IndexedA11yNode[]>();
+    let a11yNodeCount = 0;
+    indexA11yTree(a11yRoot, a11yByBackendDomId, () => {
+        a11yNodeCount += 1;
+    });
 
-    indexA11yTree(
-        a11yRoot,
-        a11yById,
-        a11yByIndex,
-        a11yRoleBuckets,
-        a11yIndexById,
-        a11ySubtreeEndByIndex,
-    );
-    const a11yList = a11yByIndex.map((item) => item.node);
-
-    let fallbackCursor = 0;
-    const usedA11yIndexes = new Set<number>();
-    let matchedById = 0;
-    let matchedByLabel = 0;
-    let matchedByFallback = 0;
-    let matchedByScopedFallback = 0;
-    let fallbackMiss = 0;
+    let matchedByBackendId = 0;
+    let ambiguousBackendId = 0;
+    let unmatchedNoBackendId = 0;
+    let unmatchedNoA11y = 0;
     let annotatedByA11yRole = 0;
     let keptDomRole = 0;
-    let domNameFallback = 0;
-    let downgradedA11yNameToContent = 0;
     let linkTargetExtracted = 0;
 
-    const findScopedFallback = (node: DomNodeInput): A11yNodeInput | undefined => {
-        const anchorIndex = findBestA11yAnchorIndex(node.id, a11yIndexById);
-        if (anchorIndex === undefined) return undefined;
-
-        const rangeStart = anchorIndex;
-        const rangeEnd = a11ySubtreeEndByIndex.get(anchorIndex) ?? anchorIndex;
-        if (rangeEnd < rangeStart) return undefined;
-
-        const hint = normalizeLabel(inferDomFallbackHint(node));
-        let best: IndexedA11yNode | undefined;
-        let bestScore = Number.POSITIVE_INFINITY;
-
-        for (let index = rangeStart; index <= rangeEnd; index += 1) {
-            const candidate = a11yByIndex[index];
-            if (!candidate) continue;
-            if (usedA11yIndexes.has(candidate.index)) continue;
-            if (isWeakA11yRole(candidate.role)) continue;
-            if (!isRoleCompatible(node, candidate.role)) continue;
-
-            let score =
-                candidate.index >= fallbackCursor
-                    ? candidate.index - fallbackCursor
-                    : 10_000 + (fallbackCursor - candidate.index);
-
-            if (hint) {
-                if (candidate.name === hint) {
-                    score -= 4_000;
-                } else if (candidate.name && (candidate.name.includes(hint) || hint.includes(candidate.name))) {
-                    score -= 2_000;
-                } else if (candidate.name) {
-                    score += 500;
-                }
-            }
-
-            if (score < bestScore) {
-                best = candidate;
-                bestScore = score;
-            }
-        }
-
-        if (!best) return undefined;
-        usedA11yIndexes.add(best.index);
-        fallbackCursor = Math.max(fallbackCursor, best.index + 1);
-        matchedByScopedFallback += 1;
-        return best.node;
-    };
-
-    const nextByRoleAndLabel = (node: DomNodeInput): A11yNodeInput | undefined => {
-        const domRole = normalizeRole(pickDomBaseRole(node)).toLowerCase();
-        const domLabel = normalizeLabel(inferDomMatchLabel(node, domRole));
-        if (!domRole || !domLabel) return undefined;
-
-        const bucket = a11yRoleBuckets.get(domRole);
-        if (!bucket || bucket.length === 0) return undefined;
-
-        const exact = findBestLabelMatch(bucket, domLabel, usedA11yIndexes, fallbackCursor, true);
-        if (exact) {
-            usedA11yIndexes.add(exact.index);
-            fallbackCursor = Math.max(fallbackCursor, exact.index + 1);
-            matchedByLabel += 1;
-            return exact.node;
-        }
-
-        const fuzzy = findBestLabelMatch(bucket, domLabel, usedA11yIndexes, fallbackCursor, false);
-        if (!fuzzy) return undefined;
-        usedA11yIndexes.add(fuzzy.index);
-        fallbackCursor = Math.max(fallbackCursor, fuzzy.index + 1);
-        matchedByLabel += 1;
-        return fuzzy.node;
-    };
-
-    const nextFallback = (node: DomNodeInput): A11yNodeInput | undefined => {
-        if (!canUseFallback(node)) {
-            fallbackMiss += 1;
-            return undefined;
-        }
-
-        const scoped = findScopedFallback(node);
-        if (scoped) {
-            matchedByFallback += 1;
-            return scoped;
-        }
-
-        const windowEnd = Math.min(a11yList.length, fallbackCursor + FALLBACK_LOOKAHEAD);
-        for (let index = fallbackCursor; index < windowEnd; index += 1) {
-            if (usedA11yIndexes.has(index)) continue;
-            const candidate = a11yList[index];
-            if (!candidate) continue;
-            if (isWeakA11yRole(candidate.role)) continue;
-            if (!isRoleCompatible(node, candidate.role)) continue;
-
-            usedA11yIndexes.add(index);
-            fallbackCursor = Math.max(fallbackCursor, index + 1);
-            matchedByFallback += 1;
-            return candidate;
-        }
-
-        fallbackMiss += 1;
-        return undefined;
-    };
-
     const build = (node: DomNodeInput): UnifiedNode => {
-        const matchedByNodeId = node.id ? a11yById.get(node.id) : undefined;
-        if (matchedByNodeId) matchedById += 1;
+        const matchResult = matchByBackendDomId(node, a11yByBackendDomId);
+        if (matchResult.type === 'matched') {
+            matchedByBackendId += 1;
+        } else if (matchResult.type === 'ambiguous') {
+            ambiguousBackendId += 1;
+        } else if (matchResult.type === 'no_backend') {
+            unmatchedNoBackendId += 1;
+        } else {
+            unmatchedNoA11y += 1;
+        }
 
-        const matchedByText = matchedByNodeId ? undefined : nextByRoleAndLabel(node);
-        const matched =
-            matchedByNodeId ||
-            matchedByText ||
-            (shouldBlockLooseFallback(node) ? undefined : nextFallback(node));
-
-        const role = pickRole(node, matched);
+        const matched = matchResult.type === 'matched' ? matchResult.node : undefined;
         const domBaseRole = pickDomBaseRole(node);
+        const role = pickRole(node, matched);
         if (normalizeRole(role) !== normalizeRole(domBaseRole) && matched?.role) {
             annotatedByA11yRole += 1;
         } else {
             keptDomRole += 1;
         }
 
-        const a11yNameParts = splitA11yName(normalizeText(matched?.name));
-        if (a11yNameParts.content) {
-            downgradedA11yNameToContent += 1;
-        }
-
-        const name = pickName(node, matched, role, a11yNameParts);
-        if (name && !a11yNameParts.name) {
-            domNameFallback += 1;
-        }
-        const content = pickContent(node, matched, role, name, a11yNameParts);
+        const name = pickName(node, matched, role);
+        const content = pickContent(node, matched, role, name);
         const target = pickTarget(node, role);
         if (target) {
             linkTargetExtracted += 1;
         }
 
         return {
-            id: node.id || `dom-${fallbackCursor}`,
+            id: node.id || 'dom',
             role,
             name,
             content,
@@ -192,16 +67,13 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
     const graph = { root: build(domRoot) };
     snapshotDebugLog('fuse-map', {
         domRootId: domRoot.id || 'n0',
-        a11yNodeCount: a11yList.length,
-        matchedById,
-        matchedByLabel,
-        matchedByFallback,
-        matchedByScopedFallback,
-        fallbackMiss,
+        a11yNodeCount,
+        matchedByBackendId,
+        ambiguousBackendId,
+        unmatchedNoBackendId,
+        unmatchedNoA11y,
         annotatedByA11yRole,
         keptDomRole,
-        domNameFallback,
-        downgradedA11yNameToContent,
         linkTargetExtracted,
     });
     return graph;
@@ -218,6 +90,7 @@ type DomNodeInput = {
     placeholder?: string;
     type?: string;
     bbox?: { x: number; y: number; width: number; height: number };
+    backendDOMNodeId?: string;
     attrs?: Record<string, string>;
     children?: DomNodeInput[];
 };
@@ -226,15 +99,20 @@ type A11yNodeInput = {
     id?: string;
     role?: string;
     name?: string;
+    backendDOMNodeId?: string;
     children?: A11yNodeInput[];
 };
 
 type IndexedA11yNode = {
-    index: number;
     node: A11yNodeInput;
     role: string;
-    name: string;
 };
+
+type MatchByBackendResult =
+    | { type: 'matched'; node: A11yNodeInput }
+    | { type: 'ambiguous' }
+    | { type: 'no_backend' }
+    | { type: 'not_found' };
 
 const asDomNode = (value: unknown): DomNodeInput | null => {
     if (!value || typeof value !== 'object') return null;
@@ -248,40 +126,42 @@ const asA11yNode = (value: unknown): A11yNodeInput | null => {
 
 const indexA11yTree = (
     node: A11yNodeInput | null,
-    a11yById: Map<string, A11yNodeInput>,
-    a11yByIndex: IndexedA11yNode[],
-    a11yRoleBuckets: Map<string, IndexedA11yNode[]>,
-    a11yIndexById: Map<string, number>,
-    a11ySubtreeEndByIndex: Map<number, number>,
-): number => {
-    if (!node) return -1;
+    a11yByBackendDomId: Map<string, IndexedA11yNode[]>,
+    onEach: () => void,
+) => {
+    if (!node) return;
 
-    const index = a11yByIndex.length;
-    if (node.id) a11yById.set(node.id, node);
-
-    const indexed: IndexedA11yNode = {
-        index,
-        node,
-        role: normalizeRole(node.role).toLowerCase(),
-        name: normalizeLabel(splitA11yName(normalizeText(node.name)).name),
-    };
-    a11yByIndex.push(indexed);
-
-    const bucket = a11yRoleBuckets.get(indexed.role) || [];
-    bucket.push(indexed);
-    a11yRoleBuckets.set(indexed.role, bucket);
-
-    if (node.id) {
-        a11yIndexById.set(node.id, index);
+    onEach();
+    const backendDomId = normalizeBackendDomId(node.backendDOMNodeId);
+    if (backendDomId) {
+        const bucket = a11yByBackendDomId.get(backendDomId) || [];
+        bucket.push({
+            node,
+            role: normalizeRole(node.role).toLowerCase(),
+        });
+        a11yByBackendDomId.set(backendDomId, bucket);
     }
 
     for (const child of node.children || []) {
-        indexA11yTree(child, a11yById, a11yByIndex, a11yRoleBuckets, a11yIndexById, a11ySubtreeEndByIndex);
+        indexA11yTree(child, a11yByBackendDomId, onEach);
     }
+};
 
-    const end = a11yByIndex.length - 1;
-    a11ySubtreeEndByIndex.set(index, end);
-    return index;
+const matchByBackendDomId = (
+    node: DomNodeInput,
+    a11yByBackendDomId: Map<string, IndexedA11yNode[]>,
+): MatchByBackendResult => {
+    const backendDomId = normalizeBackendDomId(node.backendDOMNodeId || node.attrs?.backendDOMNodeId);
+    if (!backendDomId) return { type: 'no_backend' };
+
+    const bucket = a11yByBackendDomId.get(backendDomId) || [];
+    if (bucket.length === 0) return { type: 'not_found' };
+
+    const strong = bucket.filter((item) => !isWeakA11yRole(item.role));
+    if (strong.length === 1) return { type: 'matched', node: strong[0].node };
+    if (strong.length === 0) return { type: 'not_found' };
+    // 严格模式：同一 backendDOMNodeId 出现多个强语义候选时直接判歧义，不做猜测消歧。
+    return { type: 'ambiguous' };
 };
 
 const pickRole = (node: DomNodeInput, matched: A11yNodeInput | undefined): string => {
@@ -289,7 +169,7 @@ const pickRole = (node: DomNodeInput, matched: A11yNodeInput | undefined): strin
     const tag = normalizeRole(node.tag).toLowerCase();
     if (tag && STRUCTURAL_TAGS.has(tag)) return tag;
 
-    // 对语义稳定标签优先保留 DOM 语义，避免错配漂移。
+    // 稳定标签使用 DOM role，避免浏览器 a11y role 摇摆造成不必要抖动。
     if (tag && DOM_STABLE_ROLE_TAGS.has(tag)) return domRole;
 
     const a11yRole = normalizeRole(matched?.role).toLowerCase();
@@ -302,288 +182,21 @@ const pickName = (
     node: DomNodeInput,
     matched: A11yNodeInput | undefined,
     role: string,
-    a11yNameParts: { name?: string; content?: string },
 ): string | undefined => {
-    const domLabel = inferExplicitDomName(node, normalizeRole(role).toLowerCase());
-    const ariaLabel = pickExplicitDomLabel(node);
     const normalizedRole = normalizeRole(role).toLowerCase();
-    const a11yName = A11Y_NAME_ALLOWED_ROLES.has(normalizedRole) ? a11yNameParts.name : undefined;
-
-    if (a11yName && domLabel) {
-        if (PREFER_A11Y_NAME_ROLES.has(normalizedRole)) return a11yName;
-        return labelsSimilar(a11yName, domLabel) ? a11yName : domLabel;
-    }
-    if (a11yName) return a11yName;
-    if (ariaLabel) return ariaLabel;
-    if (domLabel) return domLabel;
-    return undefined;
-};
-
-const normalizeRole = (value: string | undefined): string => (value || '').trim();
-
-const normalizeText = (value: string | undefined): string | undefined => {
-    const text = (value || '').trim();
-    return text ? text : undefined;
-};
-
-const mergeDomAttrs = (node: DomNodeInput): Record<string, string> | undefined => {
-    const next: Record<string, string> = {
-        ...(node.attrs || {}),
-    };
-
-    const setAttr = (key: string, value: string | undefined) => {
-        const normalized = normalizeText(value);
-        if (!normalized) return;
-        next[key] = normalized;
-    };
-
-    setAttr('tag', node.tag);
-    setAttr('class', node.class);
-    setAttr('href', node.href);
-    setAttr('src', node.src);
-    setAttr('title', node.title);
-    setAttr('placeholder', node.placeholder);
-    setAttr('type', node.type);
-
-    if (Object.keys(next).length === 0) return undefined;
-    return next;
-};
-
-const pickDomBaseRole = (node: DomNodeInput): string => {
-    const domRole = normalizeRole(node.attrs?.role);
-    if (domRole) return domRole;
-
-    const tag = normalizeRole(node.tag).toLowerCase();
-    if (!tag) return 'generic';
-
-    const mapped = DOM_SEMANTIC_ROLE_BY_TAG.get(tag);
-    if (mapped) return mapped;
-    return tag;
-};
-
-const canUseFallback = (node: DomNodeInput): boolean => {
-    const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
-    if (!role) return false;
-    if (isDecorativeTableNode(node)) return false;
-    if (INTERACTIVE_ROLES.has(role)) return true;
-    if (LANDMARK_ROLES.has(role)) return true;
-    if (TEXTUAL_ROLES.has(role)) return true;
-    if (ANNOTATABLE_ROLES.has(role)) return true;
-    if (role === 'div' || role === 'span' || role === 'generic') return true;
-    return false;
-};
-
-const inferDomFallbackHint = (node: DomNodeInput): string | undefined => {
-    const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
-    const explicit = inferExplicitDomName(node, role);
-    if (explicit) return explicit;
-
-    const visible = inferVisibleDomText(node, role);
-    if (!visible) return undefined;
-    if (!FALLBACK_TEXT_HINT_ROLES.has(role)) return undefined;
-    if (!isLikelyShortLabel(visible)) return undefined;
-    return visible;
-};
-
-const findBestA11yAnchorIndex = (
-    domId: string | undefined,
-    a11yIndexById: Map<string, number>,
-): number | undefined => {
-    const normalized = normalizeText(domId);
-    if (!normalized) return undefined;
-    if (a11yIndexById.has(normalized)) return a11yIndexById.get(normalized);
-
-    let cursor = normalized;
-    while (cursor.includes('.')) {
-        cursor = cursor.slice(0, cursor.lastIndexOf('.'));
-        if (a11yIndexById.has(cursor)) {
-            return a11yIndexById.get(cursor);
-        }
-    }
-    return undefined;
-};
-
-const shouldBlockLooseFallback = (node: DomNodeInput): boolean => {
-    const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
-    const domLabel = normalizeLabel(inferDomMatchLabel(node, role));
-    if (!domLabel) return false;
-    return INTERACTIVE_ROLES.has(role) || TEXTUAL_ROLES.has(role);
-};
-
-const isRoleCompatible = (node: DomNodeInput, role: string | undefined): boolean => {
-    const normalizedRole = normalizeRole(role).toLowerCase();
-    if (!normalizedRole) return false;
-
-    const domRole = normalizeRole(pickDomBaseRole(node)).toLowerCase();
-    if (!domRole) return false;
-
-    if (INTERACTIVE_ROLES.has(domRole)) {
-        return INTERACTIVE_ROLES.has(normalizedRole);
+    const a11yNameParts = splitA11yName(normalizeText(matched?.name));
+    if (a11yNameParts.name && A11Y_NAME_ALLOWED_ROLES.has(normalizedRole)) {
+        return a11yNameParts.name;
     }
 
-    if (domRole === 'navigation') return normalizedRole === 'navigation';
-    if (domRole === 'main') return normalizedRole === 'main';
-    if (domRole === 'banner') return normalizedRole === 'banner';
-    if (domRole === 'contentinfo') return normalizedRole === 'contentinfo';
-    if (domRole === 'complementary') return normalizedRole === 'complementary';
-    if (domRole === 'region') return normalizedRole === 'region';
-    if (domRole === 'form') return normalizedRole === 'form';
-    if (domRole === 'list') return normalizedRole === 'list';
-    if (domRole === 'listitem') return normalizedRole === 'listitem';
-    if (domRole === 'table') return normalizedRole === 'table';
-    if (domRole === 'row') return normalizedRole === 'row';
-    if (domRole === 'cell' || domRole === 'columnheader' || domRole === 'rowheader') {
-        return normalizedRole === 'cell' || normalizedRole === 'columnheader' || normalizedRole === 'rowheader';
-    }
-
-    if (TEXTUAL_ROLES.has(domRole)) return TEXTUAL_ROLES.has(normalizedRole);
-
-    if (domRole === 'div' || domRole === 'span' || domRole === 'generic') {
-        if (!ANNOTATABLE_ROLES.has(normalizedRole)) return false;
-
-        const classTokens = inferDomClassTokens(node);
-        const hasTableHint =
-            hasAnyClassPrefix(classTokens, ['ant-table']) ||
-            hasAnyClassExact(classTokens, ['table', 'grid']) ||
-            hasTagHint(node, ['table', 'thead', 'tbody', 'tr', 'td', 'th']);
-        const hasListHint = hasAnyClassPrefix(classTokens, ['ant-list', 'list', 'menu']) || hasTagHint(node, ['ul', 'ol', 'li']);
-        const hasFormHint = hasAnyClassPrefix(classTokens, ['ant-form', 'form']) || hasTagHint(node, ['form']);
-
-        if (TABLE_SEMANTIC_ROLES.has(normalizedRole)) return hasTableHint;
-        if (LIST_SEMANTIC_ROLES.has(normalizedRole)) return hasListHint;
-        if (FORM_SEMANTIC_ROLES.has(normalizedRole)) return hasFormHint;
-        return true;
-    }
-
-    if (ANNOTATABLE_ROLES.has(domRole)) {
-        return ANNOTATABLE_ROLES.has(normalizedRole);
-    }
-
-    return false;
-};
-
-const inferDomClassTokens = (node: DomNodeInput): Set<string> => {
-    const merged = `${node.class || ''} ${node.attrs?.class || ''}`.trim();
-    return new Set(
-        merged
-            .split(/\s+/)
-            .map((item) => item.trim().toLowerCase())
-            .filter((item) => item.length > 0),
-    );
-};
-
-const isDecorativeTableNode = (node: DomNodeInput): boolean => {
-    const classes = inferDomClassTokens(node);
-    if (classes.has('ant-table-column-sorter')) return true;
-    return false;
-};
-
-const hasAnyClassPrefix = (tokens: Set<string>, prefixes: string[]): boolean => {
-    for (const token of tokens) {
-        if (prefixes.some((prefix) => token.startsWith(prefix))) return true;
-    }
-    return false;
-};
-
-const hasAnyClassExact = (tokens: Set<string>, names: string[]): boolean => {
-    for (const token of tokens) {
-        if (names.includes(token)) return true;
-    }
-    return false;
-};
-
-const hasTagHint = (node: DomNodeInput, tags: string[]): boolean => {
-    const tag = normalizeRole(node.tag).toLowerCase();
-    if (!tag) return false;
-    return tags.includes(tag);
-};
-
-const isWeakA11yRole = (role: string | undefined): boolean => {
-    const normalized = normalizeRole(role).toLowerCase();
-    return WEAK_A11Y_ROLES.has(normalized);
-};
-
-const findBestLabelMatch = (
-    bucket: IndexedA11yNode[],
-    domLabel: string,
-    used: Set<number>,
-    cursor: number,
-    exactOnly: boolean,
-): IndexedA11yNode | undefined => {
-    let best: IndexedA11yNode | undefined;
-    let bestScore = Number.POSITIVE_INFINITY;
-
-    for (const item of bucket) {
-        if (used.has(item.index)) continue;
-        if (!item.name) continue;
-
-        const isExact = item.name === domLabel;
-        const isFuzzy = !isExact && (item.name.includes(domLabel) || domLabel.includes(item.name));
-        if (!isExact && (exactOnly || !isFuzzy)) continue;
-
-        const score = item.index >= cursor ? item.index - cursor : 10_000 + (cursor - item.index);
-        if (score < bestScore) {
-            best = item;
-            bestScore = score;
-        }
-    }
-
-    return best;
-};
-
-const inferDomMatchLabel = (node: DomNodeInput, domRole: string): string | undefined => {
-    // 匹配标签必须来源于显式命名候选，不能使用子树文本拼接。
-    const explicit = inferExplicitDomName(node, domRole);
-    if (explicit) return explicit;
-
-    const visible = inferVisibleDomText(node, domRole);
-    if (!visible) return undefined;
-    if (!MATCH_LABEL_FROM_OWN_TEXT_ROLES.has(domRole)) return undefined;
-    if (!isLikelyShortLabel(visible)) return undefined;
-    return visible;
-};
-
-const pickExplicitDomLabel = (node: DomNodeInput): string | undefined => {
-    const ariaLabel = normalizeText(node.attrs?.['aria-label']);
-    if (ariaLabel) return ariaLabel;
-
-    const title = normalizeText(node.attrs?.title);
-    if (title) return title;
-
-    const alt = normalizeText(node.attrs?.alt);
-    if (alt) return alt;
-
-    return undefined;
-};
-
-const inferExplicitDomName = (node: DomNodeInput, role: string): string | undefined => {
     const explicit = pickExplicitDomLabel(node);
     if (explicit) return explicit;
 
     const ownText = normalizeText(node.text);
-    if (!ownText) return undefined;
-
     const tag = normalizeRole(node.tag).toLowerCase();
-    if (NAME_FROM_OWN_TEXT_ROLES.has(role) || NAME_FROM_OWN_TEXT_TAGS.has(tag)) {
+    if (!ownText) return undefined;
+    if (NAME_FROM_OWN_TEXT_ROLES.has(normalizedRole) || NAME_FROM_OWN_TEXT_TAGS.has(tag)) {
         if (isLikelyShortLabel(ownText)) return ownText;
-    }
-    return undefined;
-};
-
-const inferVisibleDomText = (node: DomNodeInput, role: string): string | undefined => {
-    const own = normalizeText(node.text);
-    if (own) return own;
-    if (!DESCENDANT_TEXT_HINT_ROLES.has(role)) return undefined;
-    return firstReadableDescendantText(node, 3);
-};
-
-const firstReadableDescendantText = (node: DomNodeInput, depth: number): string | undefined => {
-    if (depth <= 0) return undefined;
-    for (const child of node.children || []) {
-        const own = normalizeText(child.text);
-        if (own) return own;
-        const nested = firstReadableDescendantText(child, depth - 1);
-        if (nested) return nested;
     }
     return undefined;
 };
@@ -593,54 +206,19 @@ const pickContent = (
     matched: A11yNodeInput | undefined,
     role: string,
     name: string | undefined,
-    a11yNameParts: { name?: string; content?: string },
 ): string | undefined => {
     const ownText = normalizeText(node.text);
     if (ownText) return ownText;
 
-    const visible = inferVisibleDomText(node, normalizeRole(role).toLowerCase());
-    if (visible && CONTENT_PREFER_VISIBLE_TEXT_ROLES.has(normalizeRole(role).toLowerCase())) {
-        return visible;
-    }
-
+    const a11yNameParts = splitA11yName(normalizeText(matched?.name));
     if (a11yNameParts.content) return a11yNameParts.content;
 
     const normalizedRole = normalizeRole(role).toLowerCase();
     if (CONTENT_BY_A11Y_NAME_ROLES.has(normalizedRole)) {
         return a11yNameParts.name || normalizeText(matched?.name);
     }
-
     if (normalizedRole === 'link') return a11yNameParts.name || name;
     return undefined;
-};
-
-const splitA11yName = (value: string | undefined): { name?: string; content?: string } => {
-    const text = normalizeText(value);
-    if (!text) return {};
-    if (isLikelyShortLabel(text)) {
-        return { name: text };
-    }
-    return { content: text };
-};
-
-const isLikelyShortLabel = (value: string): boolean => {
-    const text = value.trim();
-    if (!text) return false;
-
-    const charCount = text.length;
-    if (charCount > 72) return false;
-
-    const wordCount = text.split(/\s+/).filter(Boolean).length;
-    if (wordCount > 9) return false;
-
-    const sentencePunctuation = (text.match(/[.!?。！？]/g) || []).length;
-    if (sentencePunctuation >= 2) return false;
-
-    const punctuationCount = (text.match(/[,:;，；、]/g) || []).length;
-    if (punctuationCount >= 4) return false;
-
-    if (/\b(and|or|but|because|which|that)\b/i.test(text) && wordCount >= 8) return false;
-    return true;
 };
 
 const pickTarget = (
@@ -674,20 +252,100 @@ const classifyTargetKind = (ref: string, node: DomNodeInput): NonNullable<Unifie
     return 'unknown';
 };
 
-const normalizeLabel = (value: string | undefined): string => {
-    return (value || '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, '')
-        .replace(/[\u200b-\u200d\ufeff]/g, '');
+const pickDomBaseRole = (node: DomNodeInput): string => {
+    const domRole = normalizeRole(node.attrs?.role);
+    if (domRole) return domRole;
+
+    const tag = normalizeRole(node.tag).toLowerCase();
+    if (!tag) return 'generic';
+
+    const mapped = DOM_SEMANTIC_ROLE_BY_TAG.get(tag);
+    if (mapped) return mapped;
+    return tag;
 };
 
-const labelsSimilar = (left: string, right: string): boolean => {
-    const a = normalizeLabel(left);
-    const b = normalizeLabel(right);
-    if (!a || !b) return false;
-    if (a === b) return true;
-    return a.includes(b) || b.includes(a);
+const isWeakA11yRole = (role: string | undefined): boolean => {
+    const normalized = normalizeRole(role).toLowerCase();
+    return WEAK_A11Y_ROLES.has(normalized);
+};
+
+const mergeDomAttrs = (node: DomNodeInput): Record<string, string> | undefined => {
+    const next: Record<string, string> = {
+        ...(node.attrs || {}),
+    };
+
+    const setAttr = (key: string, value: string | undefined) => {
+        const normalized = normalizeText(value);
+        if (!normalized) return;
+        next[key] = normalized;
+    };
+
+    setAttr('tag', node.tag);
+    setAttr('class', node.class);
+    setAttr('href', node.href);
+    setAttr('src', node.src);
+    setAttr('title', node.title);
+    setAttr('placeholder', node.placeholder);
+    setAttr('type', node.type);
+    setAttr('backendDOMNodeId', node.backendDOMNodeId);
+
+    if (Object.keys(next).length === 0) return undefined;
+    return next;
+};
+
+const splitA11yName = (value: string | undefined): { name?: string; content?: string } => {
+    const text = normalizeText(value);
+    if (!text) return {};
+    if (isLikelyShortLabel(text)) {
+        return { name: text };
+    }
+    return { content: text };
+};
+
+const pickExplicitDomLabel = (node: DomNodeInput): string | undefined => {
+    const ariaLabel = normalizeText(node.attrs?.['aria-label']);
+    if (ariaLabel) return ariaLabel;
+
+    const title = normalizeText(node.attrs?.title);
+    if (title) return title;
+
+    const alt = normalizeText(node.attrs?.alt);
+    if (alt) return alt;
+
+    return undefined;
+};
+
+const isLikelyShortLabel = (value: string): boolean => {
+    const text = value.trim();
+    if (!text) return false;
+
+    const charCount = text.length;
+    if (charCount > 72) return false;
+
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 9) return false;
+
+    const sentencePunctuation = (text.match(/[.!?。！？]/g) || []).length;
+    if (sentencePunctuation >= 2) return false;
+
+    const punctuationCount = (text.match(/[,:;，；、]/g) || []).length;
+    if (punctuationCount >= 4) return false;
+
+    if (/\b(and|or|but|because|which|that)\b/i.test(text) && wordCount >= 8) return false;
+    return true;
+};
+
+const normalizeRole = (value: string | undefined): string => (value || '').trim();
+
+const normalizeText = (value: string | undefined): string | undefined => {
+    const text = (value || '').trim();
+    return text ? text : undefined;
+};
+
+const normalizeBackendDomId = (value: string | undefined): string | undefined => {
+    const normalized = normalizeText(value);
+    if (!normalized) return undefined;
+    return /^\d+$/.test(normalized) ? normalized : undefined;
 };
 
 const STRUCTURAL_TAGS = new Set(['html', 'head', 'body']);
@@ -723,67 +381,7 @@ const DOM_STABLE_ROLE_TAGS = new Set([
     'h6',
     'img',
 ]);
-const INTERACTIVE_ROLES = new Set([
-    'link',
-    'button',
-    'textbox',
-    'checkbox',
-    'radio',
-    'combobox',
-    'option',
-    'menuitem',
-    'switch',
-]);
-const LANDMARK_ROLES = new Set(['navigation', 'main', 'banner', 'contentinfo', 'complementary', 'region', 'form']);
-const TEXTUAL_ROLES = new Set(['paragraph', 'heading', 'text']);
-const ANNOTATABLE_ROLES = new Set([
-    'navigation',
-    'main',
-    'banner',
-    'contentinfo',
-    'complementary',
-    'region',
-    'form',
-    'article',
-    'list',
-    'listitem',
-    'dialog',
-    'table',
-    'row',
-    'cell',
-    'columnheader',
-    'rowheader',
-    'img',
-    'image',
-    'heading',
-    'paragraph',
-]);
 const WEAK_A11Y_ROLES = new Set(['none', 'generic', 'statictext', 'inlinetextbox', 'text']);
-const FALLBACK_LOOKAHEAD = 32;
-const PREFER_A11Y_NAME_ROLES = new Set([
-    'navigation',
-    'main',
-    'banner',
-    'contentinfo',
-    'complementary',
-    'region',
-    'form',
-    'article',
-    'dialog',
-    'list',
-    'table',
-]);
-const NAME_FROM_OWN_TEXT_ROLES = new Set([
-    'button',
-    'link',
-    'label',
-    'option',
-    'menuitem',
-    'tab',
-    'checkbox',
-    'radio',
-]);
-const NAME_FROM_OWN_TEXT_TAGS = new Set(['button', 'a', 'label', 'option']);
 const CONTENT_BY_A11Y_NAME_ROLES = new Set([
     'link',
     'button',
@@ -826,47 +424,17 @@ const A11Y_NAME_ALLOWED_ROLES = new Set([
     'rowheader',
     'heading',
 ]);
-const FALLBACK_TEXT_HINT_ROLES = new Set([
-    'link',
+const NAME_FROM_OWN_TEXT_ROLES = new Set([
     'button',
-    'listitem',
-    'row',
-    'cell',
-    'columnheader',
-    'rowheader',
-    'paragraph',
-    'heading',
-]);
-const DESCENDANT_TEXT_HINT_ROLES = new Set([
     'link',
-    'button',
-    'listitem',
-    'cell',
-    'columnheader',
-    'rowheader',
-    'heading',
-    'paragraph',
+    'label',
+    'option',
+    'menuitem',
+    'tab',
+    'checkbox',
+    'radio',
 ]);
-const MATCH_LABEL_FROM_OWN_TEXT_ROLES = new Set([
-    'link',
-    'button',
-    'listitem',
-    'cell',
-    'columnheader',
-    'rowheader',
-    'heading',
-    'paragraph',
-]);
-const CONTENT_PREFER_VISIBLE_TEXT_ROLES = new Set([
-    'cell',
-    'columnheader',
-    'rowheader',
-    'listitem',
-    'row',
-]);
-const TABLE_SEMANTIC_ROLES = new Set(['table', 'row', 'cell', 'columnheader', 'rowheader']);
-const LIST_SEMANTIC_ROLES = new Set(['list', 'listitem']);
-const FORM_SEMANTIC_ROLES = new Set(['form']);
+const NAME_FROM_OWN_TEXT_TAGS = new Set(['button', 'a', 'label', 'option']);
 const DOM_SEMANTIC_ROLE_BY_TAG = new Map<string, string>([
     ['a', 'link'],
     ['button', 'button'],

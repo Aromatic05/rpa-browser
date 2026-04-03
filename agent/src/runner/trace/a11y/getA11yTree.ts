@@ -7,6 +7,7 @@ type CdpAXNode = {
     ignored?: boolean;
     role?: { value?: string };
     name?: { value?: string };
+    backendDOMNodeId?: number;
     parentId?: string;
     childIds?: string[];
 };
@@ -14,14 +15,29 @@ type CdpAXNode = {
 type MinimalA11yNode = {
     role?: string;
     name?: string;
+    backendDOMNodeId?: string;
     children?: MinimalA11yNode[];
 };
 
 export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11ySnapshotNode | null> => {
-    // 第一阶段最小实现：拿到浏览器 A11y 树（role/name/children）并写入可复用缓存。
+    // 优先 CDP：保留 backendDOMNodeId，实现与 DOM 树的稳定对齐。
     const targetCache: TraceCache = cache || {};
     if (targetCache.a11yTree) {
         return targetCache.a11yTree as A11ySnapshotNode;
+    }
+
+    try {
+        const cdp = await page.context().newCDPSession(page);
+        try {
+            await cdp.send('Accessibility.enable');
+            const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+            const tree = buildA11yTreeFromCdp(nodes as CdpAXNode[]);
+            return cacheA11ySnapshot(targetCache, JSON.stringify(tree));
+        } finally {
+            await cdp.detach().catch(() => undefined);
+        }
+    } catch {
+        // CDP 失败时再回退到 Playwright accessibility.snapshot。
     }
 
     try {
@@ -34,20 +50,9 @@ export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11yS
             return cacheA11ySnapshot(targetCache, JSON.stringify(normalized));
         }
     } catch {
-        // 第一阶段先忽略该分支错误，尝试 CDP 回退。
+        // fallback 失败时返回空，避免阻塞上层流程。
     }
-
-    try {
-        const cdp = await page.context().newCDPSession(page);
-        await cdp.send('Accessibility.enable');
-        const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-        const tree = buildA11yTreeFromCdp(nodes as CdpAXNode[]);
-        await cdp.detach().catch(() => undefined);
-        return cacheA11ySnapshot(targetCache, JSON.stringify(tree));
-    } catch {
-        // 第一阶段失败时返回空，避免阻塞上层流程。
-        return null;
-    }
+    return null;
 };
 
 const normalizeFromSnapshot = (node: any): MinimalA11yNode | null => {
@@ -91,6 +96,7 @@ const buildA11yTreeFromCdp = (nodes: CdpAXNode[]): MinimalA11yNode => {
         return {
             role: node.role?.value,
             name: node.name?.value,
+            backendDOMNodeId: node.backendDOMNodeId ? String(node.backendDOMNodeId) : undefined,
             children: children.length > 0 ? children : undefined,
         };
     };

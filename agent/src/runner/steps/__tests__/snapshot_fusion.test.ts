@@ -6,6 +6,7 @@ type DomNode = {
     id: string;
     tag: string;
     text?: string;
+    backendDOMNodeId?: string;
     attrs?: Record<string, string>;
     children: DomNode[];
 };
@@ -13,6 +14,7 @@ type DomNode = {
 type A11yNode = {
     role?: string;
     name?: string;
+    backendDOMNodeId?: string;
     children?: A11yNode[];
 };
 
@@ -156,11 +158,22 @@ test('fuseDomAndA11y should use a11y role to annotate div content nodes without 
                     {
                         id: 'n0.0.0',
                         tag: 'div',
+                        backendDOMNodeId: '100',
+                        attrs: { backendDOMNodeId: '100' },
                         children: [
                             {
                                 id: 'n0.0.0.0',
                                 tag: 'div',
-                                children: [{ id: 'n0.0.0.0.0', tag: 'a', text: 'Donate', children: [] }],
+                                children: [
+                                    {
+                                        id: 'n0.0.0.0.0',
+                                        tag: 'a',
+                                        text: 'Donate',
+                                        backendDOMNodeId: '101',
+                                        attrs: { backendDOMNodeId: '101' },
+                                        children: [],
+                                    },
+                                ],
                             },
                         ],
                     },
@@ -174,8 +187,8 @@ test('fuseDomAndA11y should use a11y role to annotate div content nodes without 
         children: [
             { role: 'none' },
             { role: 'generic' },
-            { role: 'navigation', name: 'Main Nav' },
-            { role: 'link', name: 'Donate' },
+            { role: 'navigation', name: 'Main Nav', backendDOMNodeId: '100' },
+            { role: 'link', name: 'Donate', backendDOMNodeId: '101' },
         ],
     };
 
@@ -213,11 +226,14 @@ test('fuseDomAndA11y should downgrade long a11y name into content', () => {
     const domTree: DomNode = {
         id: 'n0',
         tag: 'p',
+        backendDOMNodeId: '300',
+        attrs: { backendDOMNodeId: '300' },
         children: [],
     };
     const a11yTree: A11yNode = {
         role: 'paragraph',
         name: longName,
+        backendDOMNodeId: '300',
     };
 
     const graph = fuseDomAndA11y(domTree, a11yTree);
@@ -244,4 +260,62 @@ test('fuseDomAndA11y should expose link href as target', () => {
     assert.equal(graph.root.content, 'Open Docs');
     assert.equal(graph.root.target?.ref, 'https://example.com/docs');
     assert.equal(graph.root.target?.kind, 'url');
+});
+
+test('fuseDomAndA11y should prioritize backendDOMNodeId over nearby a11y text', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'div',
+        attrs: { class: 'ant-table-wrapper' },
+        children: [
+            {
+                id: 'n0.0',
+                tag: 'span',
+                text: '商品名称',
+                backendDOMNodeId: '5001',
+                attrs: { class: 'ant-table-column-title', backendDOMNodeId: '5001' },
+                children: [],
+            },
+        ],
+    };
+
+    const a11yTree: A11yNode = {
+        role: 'RootWebArea',
+        children: [
+            { role: 'table' },
+            { role: 'row' },
+            { role: 'cell', name: '确认发货' },
+            { role: 'cell', name: '完成' },
+            { role: 'columnheader', name: '商品名称', backendDOMNodeId: '5001' },
+        ],
+    };
+
+    const graph = fuseDomAndA11y(domTree, a11yTree);
+    const headerTitle = findNode(graph.root, 'n0.0');
+
+    assert.equal(headerTitle?.role, 'columnheader');
+    assert.equal(headerTitle?.name, '商品名称');
+    assert.equal(headerTitle?.content, '商品名称');
+});
+
+test('fuseDomAndA11y should not fallback to unrelated a11y nodes without backendDOMNodeId match', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'div',
+        children: [{ id: 'n0.0', tag: 'span', children: [] }],
+    };
+    const a11yTree: A11yNode = {
+        role: 'RootWebArea',
+        children: [
+            { role: 'cell', name: '确认发货' },
+            { role: 'cell', name: '完成' },
+            { role: 'columnheader', name: '商品名称' },
+        ],
+    };
+
+    const graph = fuseDomAndA11y(domTree, a11yTree);
+    const node = findNode(graph.root, 'n0.0');
+    assert.equal(node?.role, 'span');
+    assert.equal(node?.name, undefined);
+    assert.equal(node?.content, undefined);
 });
