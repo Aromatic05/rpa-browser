@@ -26,6 +26,13 @@ const compressNode = (
     }
     node.children = nextChildren;
 
+    if (shouldDropSubtree(node, isRoot)) {
+        return {
+            nodes: [],
+            liftedTexts: [],
+        };
+    }
+
     if (isDeleteNode(node, isRoot)) {
         return {
             nodes: [],
@@ -45,12 +52,37 @@ const compressNode = (
         };
     }
 
-    if (!isRoot && isCollapsibleShell(node, parent)) {
+    if (isAtomicSemanticNode(node)) {
+        const truncated = truncateAtomicNode(node);
+        if (liftedFromChildren.length > 0 && canReceiveLiftedText(truncated)) {
+            applyLiftedText(truncated, liftedFromChildren);
+        }
         return {
-            nodes: node.children,
-            liftedTexts: compactLiftTexts([...liftedFromChildren, ...collectOwnLiftableTexts(node)]),
+            nodes: [truncated],
+            liftedTexts: [],
         };
     }
+
+    if (!isRoot && isCollapsibleShell(node, parent)) {
+        const liftedTexts = compactLiftTexts([...liftedFromChildren, ...collectOwnLiftableTexts(node)]);
+        if (hasImportantSemanticPayload(node) && node.children.length === 1) {
+            const receiver = node.children[0];
+            absorbImportantSemantics(node, receiver);
+            if (liftedTexts.length > 0 && canReceiveLiftedText(receiver)) {
+                applyLiftedText(receiver, liftedTexts);
+                return { nodes: [receiver], liftedTexts: [] };
+            }
+            return { nodes: [receiver], liftedTexts };
+        }
+
+        return {
+            nodes: node.children,
+            liftedTexts,
+        };
+    }
+
+    removeRedundantTextChildren(node);
+    dedupeImplementationChildren(node);
 
     if (liftedFromChildren.length === 0) {
         return {
@@ -85,9 +117,27 @@ const isDeleteNode = (node: UnifiedNode, isRoot: boolean): boolean => {
     return false;
 };
 
+const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
+    if (isRoot) return false;
+    if (isProtectedNode(node)) return false;
+
+    const tag = inferTag(node);
+    const role = normalizeRole(node.role);
+    if (DROP_SUBTREE_TAGS.has(tag)) return true;
+    if (DROP_SUBTREE_ROLES.has(role)) return true;
+
+    // svg/shape 子树默认不进入最终语义树，除非该节点本身承载图片语义。
+    if (VECTOR_SUBTREE_TAGS.has(tag) && !isMeaningfulImageNode(node)) return true;
+
+    if (isDecorativeSubtree(node)) return true;
+    return false;
+};
+
 const isCollapsibleShell = (node: UnifiedNode, parent: UnifiedNode | null): boolean => {
     if (isProtectedNode(node)) return false;
     if (hasCriticalState(node)) return false;
+    if (isStructuralBoundary(node)) return false;
+    if (hasImportantSemanticPayload(node) && node.children.length !== 1) return false;
 
     const ownTexts = collectOwnLiftableTexts(node);
     const textHeavy = hasOwnText(node) && ownTexts.length === 0;
@@ -110,6 +160,68 @@ const isCollapsibleShell = (node: UnifiedNode, parent: UnifiedNode | null): bool
     if (!isWrapperRoleOrTag(node)) return false;
     if (node.target) return false;
     return true;
+};
+
+const isAtomicSemanticNode = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    const tag = inferTag(node);
+
+    const atomicByRole = ATOMIC_ROLES.has(role);
+    const atomicByTag = ATOMIC_TAGS.has(tag);
+    if (!atomicByRole && !atomicByTag) return false;
+
+    // 没有语义负载时不强制原子化，避免把普通容器误截断。
+    if (normalizeText(node.name) || normalizeText(node.content) || node.target) return true;
+    if (isInteractiveNode(node)) return true;
+    if (isMeaningfulImageNode(node)) return true;
+    return false;
+};
+
+const truncateAtomicNode = (node: UnifiedNode): UnifiedNode => {
+    const droppedTexts: string[] = [];
+    const keptChildren: UnifiedNode[] = [];
+
+    for (const child of node.children) {
+        if (shouldKeepInsideAtomic(node, child)) {
+            keptChildren.push(child);
+            continue;
+        }
+        droppedTexts.push(...collectDescendantLiftableTexts(child));
+    }
+
+    node.children = keptChildren;
+    if (droppedTexts.length > 0 && canReceiveLiftedText(node)) {
+        applyLiftedText(node, droppedTexts);
+    }
+    return node;
+};
+
+const shouldKeepInsideAtomic = (parent: UnifiedNode, child: UnifiedNode): boolean => {
+    if (isStructuralBoundary(child)) return true;
+    if (isMeaningfulImageNode(child)) return true;
+    if (hasHeavyText(child) && !normalizeText(parent.name || parent.content)) return true;
+
+    // 原子节点内部仅保留真正独立的交互对象，避免把图标/装饰实现留下来。
+    if (isInteractiveNode(child)) {
+        if (!hasDistinctTarget(parent, child)) return false;
+        if (!normalizeText(child.name) && !normalizeText(child.content)) return false;
+        return true;
+    }
+    return false;
+};
+
+const hasHeavyText = (node: UnifiedNode): boolean => {
+    const text = normalizeText(node.name || node.content);
+    if (!text) return false;
+    return !isLightweightText(text);
+};
+
+const hasDistinctTarget = (parent: UnifiedNode, child: UnifiedNode): boolean => {
+    const parentTarget = normalizeText(parent.target?.ref);
+    const childTarget = normalizeText(child.target?.ref);
+    if (!childTarget) return false;
+    if (!parentTarget) return true;
+    return parentTarget !== childTarget;
 };
 
 const shouldSummarize = (node: UnifiedNode): boolean => {
@@ -145,7 +257,31 @@ const applyLiftedText = (node: UnifiedNode, rawTexts: string[]) => {
     }
     if (!node.content) {
         node.content = lifted;
+        return;
     }
+
+    if (canMergeLiftedText(node)) {
+        const merged = mergeText(node.content, lifted);
+        if (merged) {
+            node.content = merged;
+        }
+    }
+};
+
+const canMergeLiftedText = (node: UnifiedNode): boolean => {
+    if (isInteractiveNode(node)) return false;
+    const role = normalizeRole(node.role);
+    return MERGE_TEXT_ROLES.has(role);
+};
+
+const mergeText = (base: string, extra: string): string | undefined => {
+    const left = normalizeText(base);
+    const right = normalizeText(extra);
+    if (!left || !right) return undefined;
+    if (left.includes(right)) return left;
+    const merged = `${left} ${right}`.trim();
+    if (merged.length > 64) return undefined;
+    return merged;
 };
 
 const shouldAttachName = (node: UnifiedNode): boolean => {
@@ -171,10 +307,12 @@ const canReceiveLiftedText = (node: UnifiedNode): boolean => {
 const isProtectedNode = (node: UnifiedNode): boolean => {
     if (isInteractiveNode(node)) return true;
     if (node.target) return true;
-    if (hasEntitySignals(node)) return true;
+    if (hasHardEntityBoundary(node)) return true;
     if (hasLcaSignals(node)) return true;
     if (node.attrs?.strongSemantic === 'true') return true;
     if (hasCriticalState(node)) return true;
+    if (isStructuralBoundary(node)) return true;
+    if (isMeaningfulImageNode(node)) return true;
 
     const role = normalizeRole(node.role);
     if (PRESERVE_ROLES.has(role)) return true;
@@ -191,6 +329,43 @@ const hasLcaSignals = (node: UnifiedNode): boolean => {
     if (node.fieldLabel || node.actionIntent || node.actionTargetId) return true;
     if (node.attrs?.fieldLabel || node.attrs?.actionIntent || node.attrs?.actionTargetId) return true;
     return false;
+};
+
+const hasHardEntityBoundary = (node: UnifiedNode): boolean => {
+    const entityType = normalizeRole(node.entityType || node.attrs?.entityType);
+    if (HARD_ENTITY_TYPES.has(entityType)) return true;
+
+    const formRole = normalizeRole(node.formRole || node.attrs?.formRole);
+    if (HARD_FORM_ROLES.has(formRole)) return true;
+
+    const tableRole = normalizeRole(node.tableRole || node.attrs?.tableRole);
+    if (HARD_TABLE_ROLES.has(tableRole)) return true;
+    return false;
+};
+
+const hasImportantSemanticPayload = (node: UnifiedNode): boolean => {
+    if (node.entityId || node.entityType || node.parentEntityId) return true;
+    if (node.formRole || node.tableRole) return true;
+    if (node.fieldLabel || node.actionIntent || node.actionTargetId) return true;
+    return IMPORTANT_ATTR_KEYS.some((key) => Boolean(node.attrs?.[key]));
+};
+
+const absorbImportantSemantics = (source: UnifiedNode, target: UnifiedNode) => {
+    if (!target.entityId && source.entityId) target.entityId = source.entityId;
+    if (!target.entityType && source.entityType) target.entityType = source.entityType;
+    if (!target.parentEntityId && source.parentEntityId) target.parentEntityId = source.parentEntityId;
+    if (!target.formRole && source.formRole) target.formRole = source.formRole;
+    if (!target.tableRole && source.tableRole) target.tableRole = source.tableRole;
+    if (!target.fieldLabel && source.fieldLabel) target.fieldLabel = source.fieldLabel;
+    if (!target.actionIntent && source.actionIntent) target.actionIntent = source.actionIntent;
+    if (!target.actionTargetId && source.actionTargetId) target.actionTargetId = source.actionTargetId;
+
+    const sourceAttrs = source.attrs || {};
+    if (Object.keys(sourceAttrs).length === 0) return;
+    target.attrs = {
+        ...sourceAttrs,
+        ...(target.attrs || {}),
+    };
 };
 
 const isInteractiveNode = (node: UnifiedNode): boolean => {
@@ -214,6 +389,62 @@ const isDecorativeNoise = (node: UnifiedNode): boolean => {
 
     if (DECORATIVE_ROLES.has(role) || DECORATIVE_TAGS.has(tag)) return true;
     if (classes && DECORATIVE_CLASS_PATTERN.test(classes)) return true;
+    return false;
+};
+
+const isDecorativeSubtree = (node: UnifiedNode): boolean => {
+    if (isProtectedNode(node)) return false;
+    if (hasOwnText(node)) return false;
+    if (hasCriticalState(node)) return false;
+
+    const classes = normalizeRole(node.attrs?.class);
+    if (!classes || !DECORATIVE_CLASS_PATTERN.test(classes)) return false;
+
+    if (containsInteractiveDescendant(node)) return false;
+    if (containsStructuralBoundaryDescendant(node)) return false;
+    return true;
+};
+
+const containsInteractiveDescendant = (node: UnifiedNode): boolean => {
+    for (const child of node.children) {
+        if (isInteractiveNode(child)) return true;
+        if (containsInteractiveDescendant(child)) return true;
+    }
+    return false;
+};
+
+const containsStructuralBoundaryDescendant = (node: UnifiedNode): boolean => {
+    for (const child of node.children) {
+        if (isStructuralBoundary(child)) return true;
+        if (containsStructuralBoundaryDescendant(child)) return true;
+    }
+    return false;
+};
+
+const isStructuralBoundary = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    if (STRUCTURE_BOUNDARY_ROLES.has(role)) return true;
+
+    const entityType = normalizeRole(node.entityType || node.attrs?.entityType);
+    if (HARD_ENTITY_TYPES.has(entityType)) return true;
+
+    const formRole = normalizeRole(node.formRole || node.attrs?.formRole);
+    if (HARD_FORM_ROLES.has(formRole)) return true;
+
+    const tableRole = normalizeRole(node.tableRole || node.attrs?.tableRole);
+    if (HARD_TABLE_ROLES.has(tableRole)) return true;
+    return false;
+};
+
+const isMeaningfulImageNode = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    const tag = inferTag(node);
+    const isImageRole = role === 'image' || role === 'img';
+    const isImageTag = tag === 'img';
+    if (!isImageRole && !isImageTag) return false;
+    if (normalizeText(node.name) || normalizeText(node.content)) return true;
+    if (normalizeText(node.attrs?.alt)) return true;
+    if (normalizeText(node.attrs?.src)) return true;
     return false;
 };
 
@@ -253,8 +484,100 @@ const collectOwnLiftableTexts = (node: UnifiedNode): string[] => {
     return compactLiftTexts([node.name, node.content]);
 };
 
+const collectDescendantLiftableTexts = (node: UnifiedNode): string[] => {
+    const texts: string[] = [...collectOwnLiftableTexts(node)];
+    for (const child of node.children) {
+        texts.push(...collectDescendantLiftableTexts(child));
+    }
+    return compactLiftTexts(texts);
+};
+
 const hasOwnText = (node: UnifiedNode): boolean => {
     return Boolean(normalizeText(node.name) || normalizeText(node.content));
+};
+
+const removeRedundantTextChildren = (node: UnifiedNode) => {
+    const parentText = normalizeText(node.name || node.content);
+    const nextChildren: UnifiedNode[] = [];
+
+    for (const child of node.children) {
+        if (!isTextFragmentLike(child)) {
+            nextChildren.push(child);
+            continue;
+        }
+        const childText = normalizeText(child.name || child.content);
+        if (!childText) {
+            nextChildren.push(child);
+            continue;
+        }
+
+        // 父节点已有稳定文本时，重复文本碎片直接回收删除。
+        if (parentText && childText === parentText) {
+            continue;
+        }
+        nextChildren.push(child);
+    }
+
+    node.children = nextChildren;
+};
+
+const isTextFragmentLike = (node: UnifiedNode): boolean => {
+    if (node.children.length > 0) return false;
+    if (isInteractiveNode(node)) return false;
+    if (isStructuralBoundary(node)) return false;
+    if (!isInlineTextShell(node)) return false;
+    return Boolean(normalizeText(node.name || node.content));
+};
+
+const dedupeImplementationChildren = (node: UnifiedNode) => {
+    const kept = new Set<string>();
+    const nextChildren: UnifiedNode[] = [];
+
+    for (const child of node.children) {
+        const key = semanticKey(child);
+        if (!key) {
+            nextChildren.push(child);
+            continue;
+        }
+
+        const dedupable = isDedupableImplementationNode(child);
+        if (!dedupable) {
+            nextChildren.push(child);
+            continue;
+        }
+        if (kept.has(key)) continue;
+
+        kept.add(key);
+        nextChildren.push(child);
+    }
+
+    node.children = nextChildren;
+};
+
+const isDedupableImplementationNode = (node: UnifiedNode): boolean => {
+    if (isStructuralBoundary(node)) return false;
+    if (isInteractiveNode(node)) return false;
+    if (hasHardEntityBoundary(node)) return false;
+    if (hasCriticalState(node)) return false;
+
+    const role = normalizeRole(node.role);
+    const tag = inferTag(node);
+    if (isInlineTextShell(node)) return true;
+    if (WRAPPER_ROLES.has(role) || WRAPPER_TAGS.has(tag)) return true;
+    if (DECORATIVE_ROLES.has(role) || DECORATIVE_TAGS.has(tag)) return true;
+    if (VECTOR_SUBTREE_TAGS.has(tag)) return true;
+    return false;
+};
+
+const semanticKey = (node: UnifiedNode): string | null => {
+    const role = normalizeRole(node.role);
+    const tag = inferTag(node);
+    const text = normalizeText(node.name || node.content || '') || '';
+    const ref = normalizeText(node.target?.ref) || '';
+    const cls = normalizeText(node.attrs?.class) || '';
+    const key = `${role}|${tag}|${text}|${ref}|${cls}`;
+    if (!role && !tag && !text && !ref && !cls) return null;
+    return key;
 };
 
 const compactLiftTexts = (values: Array<string | undefined>): string[] => {
@@ -320,6 +643,20 @@ const INTERACTIVE_ROLES = new Set([
     'tab',
 ]);
 const INTERACTIVE_TAGS = new Set(['button', 'a', 'input', 'textarea', 'select', 'option']);
+const ATOMIC_ROLES = new Set([
+    'button',
+    'link',
+    'textbox',
+    'checkbox',
+    'radio',
+    'switch',
+    'combobox',
+    'menuitem',
+    'tab',
+    'image',
+    'img',
+]);
+const ATOMIC_TAGS = new Set(['button', 'a', 'input', 'textarea', 'select', 'img']);
 const PRESERVE_ROLES = new Set([
     'root',
     'html',
@@ -342,6 +679,33 @@ const PRESERVE_ROLES = new Set([
     'list',
     'listitem',
 ]);
+const STRUCTURE_BOUNDARY_ROLES = new Set([
+    'root',
+    'html',
+    'body',
+    'main',
+    'navigation',
+    'banner',
+    'contentinfo',
+    'complementary',
+    'region',
+    'section',
+    'article',
+    'list',
+    'listitem',
+    'table',
+    'row',
+    'cell',
+    'gridcell',
+    'columnheader',
+    'rowheader',
+    'form',
+    'dialog',
+    'alertdialog',
+]);
+const HARD_ENTITY_TYPES = new Set(['form', 'field_group', 'table', 'row', 'card', 'dialog', 'list_item', 'section']);
+const HARD_FORM_ROLES = new Set(['form', 'field_group']);
+const HARD_TABLE_ROLES = new Set(['table', 'row', 'header_cell', 'cell']);
 const NAME_RECEIVER_ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'option']);
 const TEXT_RECEIVER_ROLES = new Set([
     ...NAME_RECEIVER_ROLES,
@@ -353,6 +717,20 @@ const TEXT_RECEIVER_ROLES = new Set([
     'rowheader',
     'dialog',
 ]);
+const MERGE_TEXT_ROLES = new Set(['heading', 'label', 'cell', 'gridcell', 'columnheader', 'rowheader', 'paragraph']);
+const DROP_SUBTREE_TAGS = new Set([
+    'head',
+    'meta',
+    'link',
+    'script',
+    'style',
+    'noscript',
+    'template',
+    'source',
+    'track',
+]);
+const DROP_SUBTREE_ROLES = new Set(['doc-subtitle', 'doc-tip', 'doc-endnote']);
+const VECTOR_SUBTREE_TAGS = new Set(['svg', 'path', 'g', 'defs', 'symbol', 'use', 'clipPath'.toLowerCase()]);
 const CRITICAL_ATTR_KEYS = [
     'entityId',
     'entityType',
@@ -367,6 +745,11 @@ const CRITICAL_ATTR_KEYS = [
     'columnId',
     'rowId',
     'tableSection',
+] as const;
+const IMPORTANT_ATTR_KEYS = [
+    ...CRITICAL_ATTR_KEYS,
+    'strongSemantic',
+    'labelFor',
 ] as const;
 const CRITICAL_STATE_KEYS = [
     'aria-expanded',
