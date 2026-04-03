@@ -256,3 +256,66 @@ test('compress should cut non-page subtree in one shot', () => {
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].role, 'main');
 });
+
+test('compress should prune pseudo-element nodes like ::before/::after', () => {
+    const root = node('root', 'root', [
+        node('container', 'div', [
+            node('before', '::before', [], { attrs: { tag: '::before', backendDOMNodeId: '197' } }),
+            node('real', 'link', [], {
+                name: '主页',
+                content: '主页',
+                target: { ref: '/', kind: 'url' },
+                attrs: { tag: 'a' },
+            }),
+            node('after', '::after', [], { attrs: { tag: '::after', backendDOMNodeId: '198' } }),
+        ], { attrs: { tag: 'div' } }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'link');
+});
+
+test('compress should drop head subtree even when represented by role', () => {
+    const root = node('root', 'root', [
+        node('html', 'html', [
+            node('head-role', 'head', [
+                node('meta', 'meta', [], { attrs: { tag: 'meta' } }),
+            ]),
+            node('body', 'body', [
+                node('main', 'main', [], { content: '正文', attrs: { tag: 'main' } }),
+            ]),
+        ]),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children[0].children.length, 1);
+    assert.equal(out.children[0].children[0].role, 'body');
+});
+
+test('compress should remove breadcrumb separator and collapse wrapper span', () => {
+    const root = node('root', 'root', [
+        node('wrapper', 'span', [
+            node('home', 'link', [], {
+                name: '主页',
+                content: '主页',
+                target: { ref: '/', kind: 'url' },
+                attrs: { tag: 'a', class: 'router-link-active', entityId: 'entity:x' },
+            }),
+            node('separator', 'span', [], {
+                content: '/',
+                attrs: { tag: 'span', class: 'ant-breadcrumb-separator' },
+            }),
+        ], {
+            attrs: { tag: 'span', parentEntityId: 'entity:x' },
+        }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'link');
+    assert.equal(out.children[0].content, '主页');
+});

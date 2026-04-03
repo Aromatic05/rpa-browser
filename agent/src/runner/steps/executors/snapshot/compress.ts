@@ -110,8 +110,10 @@ const isDeleteNode = (node: UnifiedNode, isRoot: boolean): boolean => {
     if (isProtectedNode(node)) return false;
     if (node.tier === 'D') return true;
 
+    if (isPseudoNode(node)) return true;
     const tag = inferTag(node);
     if (DELETE_TAGS.has(tag)) return true;
+    if (isSeparatorNoiseNode(node)) return true;
     if (isDecorativeNoise(node)) return true;
     if (isMeaninglessEmptyShell(node)) return true;
     return false;
@@ -224,6 +226,12 @@ const hasDistinctTarget = (parent: UnifiedNode, child: UnifiedNode): boolean => 
     return parentTarget !== childTarget;
 };
 
+const isPseudoNode = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    const tag = inferTag(node);
+    return PSEUDO_ROLES.has(role) || PSEUDO_TAGS.has(tag);
+};
+
 const shouldSummarize = (node: UnifiedNode): boolean => {
     if (isProtectedNode(node)) return false;
     if (!isWrapperRoleOrTag(node)) return false;
@@ -320,9 +328,9 @@ const isProtectedNode = (node: UnifiedNode): boolean => {
 };
 
 const hasEntitySignals = (node: UnifiedNode): boolean => {
-    if (node.entityId || node.entityType || node.parentEntityId) return true;
+    if (node.entityId || node.entityType) return true;
     if (node.tableRole || node.formRole) return true;
-    return CRITICAL_ATTR_KEYS.some((key) => Boolean(node.attrs?.[key]));
+    return ENTITY_SIGNAL_ATTR_KEYS.some((key) => Boolean(node.attrs?.[key]));
 };
 
 const hasLcaSignals = (node: UnifiedNode): boolean => {
@@ -344,7 +352,7 @@ const hasHardEntityBoundary = (node: UnifiedNode): boolean => {
 };
 
 const hasImportantSemanticPayload = (node: UnifiedNode): boolean => {
-    if (node.entityId || node.entityType || node.parentEntityId) return true;
+    if (node.entityId || node.entityType) return true;
     if (node.formRole || node.tableRole) return true;
     if (node.fieldLabel || node.actionIntent || node.actionTargetId) return true;
     return IMPORTANT_ATTR_KEYS.some((key) => Boolean(node.attrs?.[key]));
@@ -403,6 +411,20 @@ const isDecorativeSubtree = (node: UnifiedNode): boolean => {
     if (containsInteractiveDescendant(node)) return false;
     if (containsStructuralBoundaryDescendant(node)) return false;
     return true;
+};
+
+const isSeparatorNoiseNode = (node: UnifiedNode): boolean => {
+    if (isInteractiveNode(node)) return false;
+    if (node.children.length > 0) return false;
+    if (node.target) return false;
+
+    const classes = normalizeRole(node.attrs?.class);
+    if (!classes || !SEPARATOR_CLASS_PATTERN.test(classes)) return false;
+
+    const text = normalizeText(node.name || node.content || '');
+    if (!text) return true;
+    if (text.length > 3) return false;
+    return SEPARATOR_TEXT_PATTERN.test(text);
 };
 
 const containsInteractiveDescendant = (node: UnifiedNode): boolean => {
@@ -729,12 +751,13 @@ const DROP_SUBTREE_TAGS = new Set([
     'source',
     'track',
 ]);
-const DROP_SUBTREE_ROLES = new Set(['doc-subtitle', 'doc-tip', 'doc-endnote']);
+const DROP_SUBTREE_ROLES = new Set(['head', 'doc-subtitle', 'doc-tip', 'doc-endnote']);
+const PSEUDO_ROLES = new Set(['::before', '::after', 'before', 'after']);
+const PSEUDO_TAGS = new Set(['::before', '::after']);
 const VECTOR_SUBTREE_TAGS = new Set(['svg', 'path', 'g', 'defs', 'symbol', 'use', 'clipPath'.toLowerCase()]);
-const CRITICAL_ATTR_KEYS = [
+const IMPORTANT_ATTR_KEYS = [
     'entityId',
     'entityType',
-    'parentEntityId',
     'tableRole',
     'formRole',
     'fieldLabel',
@@ -745,11 +768,22 @@ const CRITICAL_ATTR_KEYS = [
     'columnId',
     'rowId',
     'tableSection',
-] as const;
-const IMPORTANT_ATTR_KEYS = [
-    ...CRITICAL_ATTR_KEYS,
     'strongSemantic',
     'labelFor',
+] as const;
+const ENTITY_SIGNAL_ATTR_KEYS = [
+    'entityId',
+    'entityType',
+    'tableRole',
+    'formRole',
+    'fieldLabel',
+    'actionIntent',
+    'actionTargetId',
+    'rowIndex',
+    'columnIndex',
+    'columnId',
+    'rowId',
+    'tableSection',
 ] as const;
 const CRITICAL_STATE_KEYS = [
     'aria-expanded',
@@ -767,5 +801,7 @@ const CRITICAL_STATE_KEYS = [
     'invalid',
 ] as const;
 const DECORATIVE_CLASS_PATTERN = /\b(icon|spinner|loading|skeleton|divider)\b/i;
+const SEPARATOR_CLASS_PATTERN = /\b(separator|breadcrumb-separator)\b/i;
+const SEPARATOR_TEXT_PATTERN = /^[\/|>»›·•-]+$/;
 const URL_LIKE_PATTERN = /^(https?:\/\/|www\.)/i;
 const HAS_TEXT_CHAR_PATTERN = /[\p{L}\p{N}]/u;
