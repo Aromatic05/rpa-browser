@@ -356,3 +356,31 @@ test('compress should remove breadcrumb separator and collapse wrapper span', ()
     assert.equal(out.children[0].role, 'link');
     assert.equal(out.children[0].content, '主页');
 });
+
+test('compress should enforce strict atomic link and cut heading/image descendants', () => {
+    const root = node('root', 'root', [
+        node('brand-link', 'link', [
+            node('wrap', 'div', [
+                node('logo', 'image', [], { attrs: { tag: 'img' } }),
+                node('title', 'heading', [], {
+                    name: '影刀商城',
+                    content: '影刀商城',
+                    attrs: { tag: 'h1' },
+                }),
+            ], { attrs: { tag: 'div' } }),
+        ], {
+            name: '影刀商城',
+            content: '影刀商城',
+            target: { ref: '/', kind: 'url' },
+            attrs: { tag: 'a', href: '/' },
+        }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'link');
+    assert.equal(out.children[0].name, '影刀商城');
+    assert.equal(out.children[0].content, '影刀商城');
+    assert.equal(out.children[0].children.length, 0);
+});

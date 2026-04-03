@@ -185,8 +185,13 @@ const isAtomicSemanticNode = (node: UnifiedNode): boolean => {
 const truncateAtomicNode = (node: UnifiedNode): UnifiedNode => {
     const droppedTexts: string[] = [];
     const keptChildren: UnifiedNode[] = [];
+    const strictAtomic = isStrictAtomicNode(node);
 
     for (const child of node.children) {
+        if (strictAtomic) {
+            droppedTexts.push(...collectDescendantLiftableTexts(child));
+            continue;
+        }
         if (shouldKeepInsideAtomic(node, child)) {
             keptChildren.push(child);
             continue;
@@ -199,6 +204,12 @@ const truncateAtomicNode = (node: UnifiedNode): UnifiedNode => {
         applyLiftedText(node, droppedTexts);
     }
     return node;
+};
+
+const isStrictAtomicNode = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    const tag = inferTag(node);
+    return role === 'link' || tag === 'a';
 };
 
 const shouldKeepInsideAtomic = (parent: UnifiedNode, child: UnifiedNode): boolean => {
