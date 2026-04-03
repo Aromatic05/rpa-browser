@@ -1,4 +1,5 @@
 packages:
-  - "agent"
-  - "extension"
-  - "start_extension"
+  - agent
+  - extension
+  - start_extension
+  - agent/debug/snapshot-viewer
