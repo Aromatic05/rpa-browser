@@ -15,3 +15,14 @@ export type DataPack = {
   a11yTree: unknown;
   unifiedGraph: unknown;
 };
+
+export type SnapshotApiResponse = {
+  ok: boolean;
+  data?: {
+    url: string;
+    domTree: unknown;
+    a11yTree: unknown;
+    unifiedGraph: unknown;
+  };
+  error?: string;
+};

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import TreeNode from './components/TreeNode.vue';
-import type { DataPack, SourceKind, TreeNodeLike } from './types';
+import type { DataPack, SnapshotApiResponse, SourceKind, TreeNodeLike } from './types';
 
 const source = ref<SourceKind>('unifiedGraph');
 const error = ref('');
-const jsonInput = ref('');
+const loading = ref(false);
+const targetUrl = ref('https://example.com');
+const resolvedUrl = ref('');
 const selectedNode = ref<TreeNodeLike | null>(null);
 
 const dataPack = ref<DataPack>({
@@ -53,58 +55,46 @@ const activeRoot = computed(() => {
 
 const selectedAttrs = computed(() => JSON.stringify(selectedNode.value?.attrs || {}, null, 2));
 
-const loadSample = async () => {
+const fetchSnapshot = async () => {
   error.value = '';
+  const url = targetUrl.value.trim();
+  if (!url) {
+    error.value = '请输入 URL';
+    return;
+  }
+
+  loading.value = true;
   try {
-    const url = `${import.meta.env.BASE_URL}sample-data.json`;
-    const response = await fetch(url);
-    const sample = await response.json();
+    const response = await fetch('/api/snapshot', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url }),
+    });
+
+    const payload = (await response.json()) as SnapshotApiResponse;
+    if (!response.ok || !payload.ok || !payload.data) {
+      throw new Error(payload.error || `request failed (${response.status})`);
+    }
 
     dataPack.value = {
-      domTree: (sample as Record<string, unknown>).domTree || null,
-      a11yTree: (sample as Record<string, unknown>).a11yTree || null,
-      unifiedGraph: (sample as Record<string, unknown>).unifiedGraph || null,
+      domTree: payload.data.domTree || null,
+      a11yTree: payload.data.a11yTree || null,
+      unifiedGraph: payload.data.unifiedGraph || null,
     };
+    resolvedUrl.value = payload.data.url || url;
     selectedNode.value = null;
   } catch (cause) {
-    error.value = `load sample failed: ${String(cause)}`;
+    error.value = `抓取失败: ${String(cause)}`;
+  } finally {
+    loading.value = false;
   }
 };
 
 const onSelect = (node: TreeNodeLike) => {
   selectedNode.value = node;
 };
-
-const onFileChange = (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    jsonInput.value = String(reader.result || '');
-  };
-  reader.readAsText(file);
-};
-
-const applyJson = () => {
-  error.value = '';
-  try {
-    const parsed = JSON.parse(jsonInput.value || '{}') as Record<string, unknown>;
-    dataPack.value = {
-      domTree: parsed.domTree || null,
-      a11yTree: parsed.a11yTree || null,
-      unifiedGraph: parsed.unifiedGraph || (parsed.root ? { root: parsed.root } : null),
-    };
-    selectedNode.value = null;
-  } catch (cause) {
-    error.value = `invalid json: ${String(cause)}`;
-  }
-};
-
-onMounted(() => {
-  void loadSample();
-});
 </script>
 
 <template>
@@ -119,11 +109,12 @@ onMounted(() => {
     </div>
 
     <div class="section">
-      <h2>Load JSON</h2>
-      <input type="file" accept="application/json" @change="onFileChange" />
-      <textarea v-model="jsonInput" rows="9" placeholder="paste json here" />
-      <button @click="applyJson">Apply JSON</button>
-      <button class="secondary" @click="loadSample">Load Sample</button>
+      <h2>Fetch Snapshot</h2>
+      <input v-model="targetUrl" placeholder="https://example.com" />
+      <button :disabled="loading" @click="fetchSnapshot">
+        {{ loading ? '抓取中...' : '抓取真实页面' }}
+      </button>
+      <div v-if="resolvedUrl" class="muted">当前页面：{{ resolvedUrl }}</div>
       <div v-if="error" class="error-text">{{ error }}</div>
     </div>
   </div>
