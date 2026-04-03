@@ -143,3 +143,49 @@ test('fuseDomAndA11y should keep structural containers and avoid weak a11y role 
     assert.equal(findNode(graph.root, 'n0.1.0.0')?.role, 'link');
     assert.equal(findNode(graph.root, 'n0.1.0.0')?.name, 'Doc');
 });
+
+test('fuseDomAndA11y should use a11y role to annotate div content nodes without changing structure', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'html',
+        children: [
+            {
+                id: 'n0.0',
+                tag: 'body',
+                children: [
+                    {
+                        id: 'n0.0.0',
+                        tag: 'div',
+                        children: [
+                            {
+                                id: 'n0.0.0.0',
+                                tag: 'div',
+                                children: [{ id: 'n0.0.0.0.0', tag: 'a', text: 'Donate', children: [] }],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ],
+    };
+
+    const a11yTree: A11yNode = {
+        role: 'RootWebArea',
+        children: [
+            { role: 'none' },
+            { role: 'generic' },
+            { role: 'navigation', name: 'Main Nav' },
+            { role: 'link', name: 'Donate' },
+        ],
+    };
+
+    const graph = fuseDomAndA11y(domTree, a11yTree);
+    assert.equal(countNodes(graph.root), countNodes(domTree));
+    assert.equal(findNode(graph.root, 'n0')?.role, 'html');
+    assert.equal(findNode(graph.root, 'n0.0')?.role, 'body');
+    assert.equal(findNode(graph.root, 'n0.0.0')?.role, 'navigation');
+    assert.equal(findNode(graph.root, 'n0.0.0')?.name, 'Main Nav');
+    assert.equal(findNode(graph.root, 'n0.0.0.0')?.role, 'div');
+    assert.equal(findNode(graph.root, 'n0.0.0.0.0')?.role, 'link');
+    assert.equal(findNode(graph.root, 'n0.0.0.0.0')?.name, 'Donate');
+});

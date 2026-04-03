@@ -22,21 +22,28 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
     });
 
     let fallbackCursor = 0;
+    const usedA11yIndexes = new Set<number>();
     let matchedById = 0;
     let matchedByFallback = 0;
     let fallbackMiss = 0;
+    let annotatedByA11yRole = 0;
+    let keptDomRole = 0;
     const nextFallback = (node: DomNodeInput): A11yNodeInput | undefined => {
         if (!canUseFallback(node)) {
             fallbackMiss += 1;
             return undefined;
         }
 
-        while (fallbackCursor < a11yList.length) {
-            const candidate = a11yList[fallbackCursor];
-            fallbackCursor += 1;
+        const windowEnd = Math.min(a11yList.length, fallbackCursor + FALLBACK_LOOKAHEAD);
+        for (let index = fallbackCursor; index < windowEnd; index += 1) {
+            if (usedA11yIndexes.has(index)) continue;
+            const candidate = a11yList[index];
             if (!candidate) continue;
             if (isWeakA11yRole(candidate.role)) continue;
             if (!isRoleCompatible(node, candidate.role)) continue;
+
+            usedA11yIndexes.add(index);
+            fallbackCursor = Math.max(fallbackCursor, index + 1);
             matchedByFallback += 1;
             return candidate;
         }
@@ -49,10 +56,17 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
         const matchedByNodeId = node.id ? a11yById.get(node.id) : undefined;
         if (matchedByNodeId) matchedById += 1;
         const matched = matchedByNodeId || nextFallback(node);
+        const role = pickRole(node, matched);
+        const domBaseRole = pickDomBaseRole(node);
+        if (normalizeRole(role) !== normalizeRole(domBaseRole) && matched?.role) {
+            annotatedByA11yRole += 1;
+        } else {
+            keptDomRole += 1;
+        }
 
         return {
             id: node.id || `dom-${fallbackCursor}`,
-            role: pickRole(node, matched),
+            role,
             name: pickName(node, matched),
             text: node.text,
             bbox: node.bbox,
@@ -68,6 +82,8 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
         matchedById,
         matchedByFallback,
         fallbackMiss,
+        annotatedByA11yRole,
+        keptDomRole,
     });
     return graph;
 };
@@ -107,17 +123,14 @@ const walkA11y = (node: A11yNodeInput | null, visitor: (node: A11yNodeInput) => 
 };
 
 const pickRole = (node: DomNodeInput, matched: A11yNodeInput | undefined): string => {
-    const domRole = normalizeRole(node.attrs?.role);
-    if (domRole) return domRole;
-
+    const domRole = pickDomBaseRole(node);
     const tag = normalizeRole(node.tag);
     if (tag && STRUCTURAL_TAGS.has(tag)) return tag;
 
     const a11yRole = normalizeRole(matched?.role);
     if (a11yRole && !isWeakA11yRole(a11yRole)) return a11yRole;
 
-    if (tag) return tag;
-    return a11yRole || 'generic';
+    return domRole;
 };
 
 const pickName = (node: DomNodeInput, matched: A11yNodeInput | undefined): string | undefined => {
@@ -136,11 +149,22 @@ const normalizeText = (value: string | undefined): string | undefined => {
     return text ? text : undefined;
 };
 
+const pickDomBaseRole = (node: DomNodeInput): string => {
+    const domRole = normalizeRole(node.attrs?.role);
+    if (domRole) return domRole;
+
+    const tag = normalizeRole(node.tag);
+    if (tag) return tag;
+    return 'generic';
+};
+
 const canUseFallback = (node: DomNodeInput): boolean => {
     const tag = normalizeRole(node.tag).toLowerCase();
     if (!tag) return false;
     if (INTERACTIVE_TAGS.has(tag)) return true;
     if (LANDMARK_TAGS.has(tag)) return true;
+    if (ANNOTATABLE_CONTAINER_TAGS.has(tag)) return true;
+    if (TEXTUAL_TAGS.has(tag)) return true;
     return false;
 };
 
@@ -162,6 +186,13 @@ const isRoleCompatible = (node: DomNodeInput, role: string | undefined): boolean
     if (tag === 'aside') return normalizedRole === 'complementary';
     if (tag === 'section') return normalizedRole === 'region';
     if (tag === 'form') return normalizedRole === 'form';
+    if (tag === 'ul' || tag === 'ol') return normalizedRole === 'list';
+    if (tag === 'li') return normalizedRole === 'listitem';
+    if (tag === 'table') return normalizedRole === 'table';
+    if (tag === 'tr') return normalizedRole === 'row';
+    if (tag === 'td' || tag === 'th') return normalizedRole === 'cell' || normalizedRole === 'columnheader' || normalizedRole === 'rowheader';
+    if (TEXTUAL_TAGS.has(tag)) return TEXTUAL_ROLES.has(normalizedRole);
+    if (ANNOTATABLE_CONTAINER_TAGS.has(tag)) return ANNOTATABLE_ROLES.has(normalizedRole);
 
     return false;
 };
@@ -174,6 +205,8 @@ const isWeakA11yRole = (role: string | undefined): boolean => {
 const STRUCTURAL_TAGS = new Set(['html', 'head', 'body']);
 const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'textarea', 'select', 'option', 'label']);
 const LANDMARK_TAGS = new Set(['nav', 'main', 'header', 'footer', 'aside', 'section', 'form']);
+const TEXTUAL_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+const ANNOTATABLE_CONTAINER_TAGS = new Set(['div', 'span', 'article']);
 const INTERACTIVE_ROLES = new Set([
     'link',
     'button',
@@ -185,4 +218,28 @@ const INTERACTIVE_ROLES = new Set([
     'menuitem',
     'switch',
 ]);
+const TEXTUAL_ROLES = new Set(['paragraph', 'heading', 'text']);
+const ANNOTATABLE_ROLES = new Set([
+    'navigation',
+    'main',
+    'banner',
+    'contentinfo',
+    'complementary',
+    'region',
+    'form',
+    'article',
+    'list',
+    'listitem',
+    'dialog',
+    'table',
+    'row',
+    'cell',
+    'columnheader',
+    'rowheader',
+    'img',
+    'image',
+    'heading',
+    'paragraph',
+]);
 const WEAK_A11Y_ROLES = new Set(['none', 'generic', 'statictext', 'inlinetextbox', 'text']);
+const FALLBACK_LOOKAHEAD = 24;
