@@ -1,0 +1,71 @@
+{
+  "domTree": {
+    "id": "n0",
+    "tag": "html",
+    "children": [
+      {
+        "id": "n0.0",
+        "tag": "body",
+        "children": [
+          {
+            "id": "n0.0.0",
+            "tag": "main",
+            "attrs": {
+              "role": "main"
+            },
+            "children": [
+              {
+                "id": "n0.0.0.0",
+                "tag": "button",
+                "text": "Save",
+                "attrs": {
+                  "id": "save-btn"
+                },
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "a11yTree": {
+    "id": "n0",
+    "role": "document",
+    "children": [
+      {
+        "id": "n0.0",
+        "role": "main",
+        "children": [
+          {
+            "id": "n0.0.0",
+            "role": "button",
+            "name": "Save",
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "unifiedGraph": {
+    "root": {
+      "id": "n0",
+      "role": "document",
+      "children": [
+        {
+          "id": "n0.0",
+          "role": "main",
+          "children": [
+            {
+              "id": "n0.0.0",
+              "role": "button",
+              "name": "Save",
+              "text": "Save",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
