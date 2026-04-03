@@ -14,7 +14,16 @@ type RawFixture = {
 };
 
 const FIXTURE_DIR = path.resolve(process.cwd(), 'tests/fixtures/snapshot');
-const STAGE2_ENTITY_TYPES = new Set(['form', 'row', 'card', 'dialog', 'list_item']);
+const SUPPORTED_ENTITY_TYPES = new Set([
+    'form',
+    'field_group',
+    'table',
+    'row',
+    'card',
+    'dialog',
+    'list_item',
+    'section',
+]);
 
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
     visitor(node);
@@ -98,7 +107,7 @@ test('detectBusinessEntities should tag entityId/entityType on fixture dataset',
             const attrs = node.attrs || {};
             if (!attrs.entityType) return;
             entityCount += 1;
-            if (STAGE2_ENTITY_TYPES.has(attrs.entityType)) {
+            if (SUPPORTED_ENTITY_TYPES.has(attrs.entityType)) {
                 allowedTypeCount += 1;
             }
             if (attrs.entityId) {

@@ -14,7 +14,16 @@ type RawFixture = {
 };
 
 const FIXTURE_DIR = path.resolve(process.cwd(), 'tests/fixtures/snapshot');
-const ENTITY_TYPES = new Set(['form', 'row', 'card', 'dialog', 'list_item']);
+const ENTITY_TYPES = new Set([
+    'form',
+    'field_group',
+    'table',
+    'row',
+    'card',
+    'dialog',
+    'list_item',
+    'section',
+]);
 
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
     visitor(node);
