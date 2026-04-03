@@ -28,11 +28,16 @@ const buildTree = (node: UnifiedNode): SemanticNode => {
 };
 
 const markStrongSemantics = (tree: SemanticNode) => {
-    // 强语义标记占位：input/button/link/checkbox/label/error。
-    const strongRoles = new Set(['input', 'button', 'link', 'checkbox', 'label', 'error']);
+    // 第三阶段：为 LCA 提供强语义基础。
+    const strongRoles = new Set(['button', 'textbox', 'checkbox', 'link']);
     walk(tree, (node) => {
-        if (strongRoles.has(node.role)) {
+        const normalizedRole = node.role.toLowerCase();
+        if (strongRoles.has(normalizedRole)) {
             node.tier = 'A';
+            node.attrs = {
+                ...(node.attrs || {}),
+                strongSemantic: 'true',
+            };
         }
     });
 };

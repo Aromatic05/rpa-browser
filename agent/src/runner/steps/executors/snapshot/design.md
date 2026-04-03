@@ -172,24 +172,66 @@ class SemanticPerceiver {
 
 其余阶段仍保持占位并持续被调用。
 
-## 7. 当前占位、后续待实现
+## 7. 第三阶段填充项（Stage3）
+
+在不改变主流程骨架的前提下，当前新增：
+
+- `applyLCA(tree, entities)`：最小可用 LCA 归因
+- `markStrongSemantics(tree)`：基础强语义标记（button/textbox/checkbox/link）
+- `detectBusinessEntities(region)`：补充 `entityId/entityType`（form/row/card/dialog/list_item）
+
+LCA 当前直接把语义挂在节点 `attrs` 上，不引入复杂结构：
+
+- `entityId`
+- `fieldLabel`
+- `actionIntent`
+- `actionTargetId`
+
+## 8. LCA 简化设计说明
+
+为什么使用“最近 business entity”：
+
+- 局部语义通常在最近业务边界内最稳定（例如 form、row、card、dialog、list item）
+- 先做最近实体归因，可以避免把跨区域文本错误挂到节点上
+- 对第一版能力来说实现成本低、行为可预期
+
+简化版流程：
+
+1. 只处理关键节点（输入类控件、按钮、链接、行内动作、搜索筛选控件）
+2. 向上找到最近实体（form/row/card/dialog/list_item）
+3. 在实体内按优先级找上下文（显式 label、邻近文本、section 标题、表头/行头）
+4. 挂载 `fieldLabel/actionIntent/actionTargetId/entityId`
+
+示例：
+
+- `textbox`（在 `form` 内）可获得 `fieldLabel=Email` 与 `entityId=entity:form-1`
+- `button`（在 `row` 内）可获得 `actionIntent=delete` 与 `actionTargetId=entity:row-1`
+
+## 9. 当前占位、后续待实现
 
 以下内容目前均为轻量占位：
 - 真实 DOM+A11y 融合策略。
 - 复杂空间重排与完整噪声层规则。
 - 业务区域检测细则。
-- 完整 LCA 归因、上下文扫描、tier 分级细则。
+- 复杂 LCA 场景（跨表格多列关联、复杂视觉邻近匹配、多语言意图细分）。
+- 完整 tier 分级细则。
 - 复杂压缩与摘要策略。
 - 全局关系链接规则。
 
-## 8. 为什么 `getA11yTree/getDomTree` 下沉到 trace
+LCA 当前限制（明确）：
+
+- 不是完美匹配，优先保证稳定和保守
+- 复杂布局中“左侧/上方”判断只做低成本近似
+- `actionIntent` 依赖关键词启发，覆盖范围有限
+
+## 10. 为什么 `getA11yTree/getDomTree` 下沉到 trace
 
 `trace` 是 runner 的基础观测与原子能力层。`getA11yTree/getDomTree` 放在 `trace` 后：
 - 复用范围更广，不只服务 snapshot。
 - snapshot 保持“编排层”定位，减少底层采集耦合。
 - 后续可在 trace 层统一处理缓存、观测、兼容性细节。
 
-## 9. Layer/Region 类型系统收缩说明
+## 11. Layer/Region 类型系统收缩说明
 
 实现层未引入额外 `Layer/SpatialLayers/Region` 类型系统。
 - “空间层”通过 `NodeGraph.root.children` 顶层并列子树表达。

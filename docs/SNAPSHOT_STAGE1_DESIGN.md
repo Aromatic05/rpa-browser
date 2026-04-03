@@ -132,3 +132,40 @@ generateSemanticSnapshot(page)
 - 跨层关系链接
 - 稳定 ID 生成策略
 - 高亮页面 / bbox overlay / 实时注入调试
+
+## 11. 第三阶段目标（LCA 语义归因）
+
+在不改变 pipeline 骨架前提下，第三阶段新增最小可用 LCA：
+
+- 为输入类控件补 `fieldLabel`
+- 为按钮/链接补 `actionIntent`
+- 为动作节点补 `actionTargetId`
+- 为关键节点补 `entityId`
+
+语义直接挂在 `node.attrs`，不引入复杂类型结构。
+
+## 12. 为什么采用最近 business entity
+
+采用最近实体（`form/row/card/dialog/list_item`）作为语义宿主，原因是：
+
+- 归因边界清晰，稳定性高
+- 能覆盖表单、表格行、列表项等高频场景
+- 第一版实现成本低且可迭代
+
+## 13. LCA 当前限制
+
+- 仍是可用版，不是最终版
+- 邻近文本判断是低成本近似，不保证复杂布局完美
+- `actionIntent` 主要靠关键词启发，覆盖有限
+- 跨区域多跳语义关系尚未覆盖
+
+## 14. 归因示例
+
+- input/textbox：
+  - `fieldLabel=Email`
+  - `entityId=entity:form-1`
+
+- row 内 delete button：
+  - `actionIntent=delete`
+  - `actionTargetId=entity:row-1`
+  - `entityId=entity:row-1`
