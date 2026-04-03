@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import TreeNode from './components/TreeNode.vue';
-import type { DataPack, SnapshotApiResponse, TreeNodeLike } from './types';
+import type {
+  CaptureEnvelope,
+  CaptureItemApiResponse,
+  CaptureListApiResponse,
+  CaptureListItem,
+  DataPack,
+  SnapshotApiResponse,
+  TreeNodeLike,
+} from './types';
 
 type DetectedEntity = {
   entityId: string;
@@ -19,10 +27,11 @@ const resolvedUrl = ref('');
 const selectedNode = ref<TreeNodeLike | null>(null);
 const copyMessage = ref('');
 
-const localLabel = ref('local-fixture');
-const localDomTree = ref<unknown | null>(null);
-const localA11yTree = ref<unknown | null>(null);
-const localRawName = ref('');
+const captures = ref<CaptureListItem[]>([]);
+const captureStoreDir = ref('');
+const captureLoading = ref(false);
+const selectedCaptureId = ref('');
+let capturePollTimer: number | null = null;
 
 const contextMenu = ref<{
   visible: boolean;
@@ -144,7 +153,7 @@ const detectedEntities = computed<DetectedEntity[]>(() => {
     const label =
       nodeText(node) ||
       (typeof attrs.fieldLabel === 'string' ? attrs.fieldLabel : '') ||
-      node.id;
+      '(unnamed)';
 
     const fieldCount = countByPredicate(node, (n) => typeof n.attrs?.fieldLabel === 'string');
     const actionCount = countByPredicate(node, (n) => typeof n.attrs?.actionIntent === 'string');
@@ -206,60 +215,87 @@ const fetchSnapshot = async () => {
   }
 };
 
-const readJsonFile = async (file: File): Promise<unknown> => {
-  const text = await file.text();
-  return JSON.parse(text);
-};
-
-const onLocalRawFileChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-
+const fetchCaptureList = async () => {
+  captureLoading.value = true;
   try {
-    const raw = (await readJsonFile(file)) as Record<string, unknown>;
-    if (!raw.domTree || !raw.a11yTree) {
-      throw new Error('raw 文件需要包含 domTree 和 a11yTree');
+    const response = await fetch('/api/capture/list');
+    const payload = (await response.json()) as CaptureListApiResponse;
+    if (!response.ok || !payload.ok || !payload.data) {
+      throw new Error(payload.error || `request failed (${response.status})`);
     }
 
-    localDomTree.value = raw.domTree;
-    localA11yTree.value = raw.a11yTree;
-    localRawName.value = file.name;
-    error.value = '';
+    captures.value = payload.data.items || [];
+    captureStoreDir.value = payload.data.storeDir || '';
   } catch (cause) {
-    error.value = `RAW 文件解析失败: ${String(cause)}`;
+    error.value = `加载采集列表失败: ${String(cause)}`;
+  } finally {
+    captureLoading.value = false;
   }
 };
 
-const buildSnapshotFromLocal = async () => {
-  error.value = '';
-  if (!localDomTree.value || !localA11yTree.value) {
-    error.value = '请先提供本地 DOM + A11y JSON';
+const applyCaptureEnvelope = async (envelope: CaptureEnvelope) => {
+  if (envelope.snapshot) {
+    applySnapshotPayload(
+      {
+        ok: true,
+        data: {
+          url: envelope.finalUrl || envelope.sourceUrl || `capture://${envelope.label}`,
+          unifiedGraph: envelope.snapshot,
+        },
+      },
+      envelope.finalUrl || envelope.sourceUrl || `capture://${envelope.label}`,
+    );
     return;
   }
 
-  loading.value = true;
-  try {
+  if (envelope.raw?.domTree && envelope.raw?.a11yTree) {
     const response = await fetch('/api/snapshot/from-raw', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        domTree: localDomTree.value,
-        a11yTree: localA11yTree.value,
-        label: localLabel.value.trim() || 'local-fixture',
+        domTree: envelope.raw.domTree,
+        a11yTree: envelope.raw.a11yTree,
+        label: envelope.label,
       }),
     });
-
     const payload = (await response.json()) as SnapshotApiResponse;
     if (!response.ok) {
       throw new Error(payload.error || `request failed (${response.status})`);
     }
-    applySnapshotPayload(payload, `local://${localLabel.value.trim() || 'local-fixture'}`);
+    applySnapshotPayload(payload, envelope.finalUrl || envelope.sourceUrl || `capture://${envelope.label}`);
+    return;
+  }
+
+  throw new Error('capture 中没有 snapshot 或 raw 数据');
+};
+
+const loadCapture = async (id: string) => {
+  if (!id) return;
+  error.value = '';
+  loading.value = true;
+  try {
+    const response = await fetch(`/api/capture/item?id=${encodeURIComponent(id)}`);
+    const payload = (await response.json()) as CaptureItemApiResponse;
+    if (!response.ok || !payload.ok || !payload.data) {
+      throw new Error(payload.error || `request failed (${response.status})`);
+    }
+    selectedCaptureId.value = payload.data.id;
+    await applyCaptureEnvelope(payload.data);
   } catch (cause) {
-    error.value = `本地构建失败: ${String(cause)}`;
+    error.value = `加载采集数据失败: ${String(cause)}`;
   } finally {
     loading.value = false;
   }
+};
+
+const loadLatestCapture = async () => {
+  await fetchCaptureList();
+  const latest = captures.value[0];
+  if (!latest) {
+    error.value = '当前没有采集记录';
+    return;
+  }
+  await loadCapture(latest.id);
 };
 
 const onSelect = (node: TreeNodeLike) => {
@@ -379,12 +415,22 @@ const copyCurrentNodeNameOrContent = async () => {
 };
 
 onMounted(() => {
+  void fetchCaptureList();
+  capturePollTimer = window.setInterval(() => {
+    void fetchCaptureList();
+  }, 3000);
+
   window.addEventListener('click', hideContextMenu);
   window.addEventListener('resize', hideContextMenu);
   window.addEventListener('scroll', hideContextMenu, true);
 });
 
 onBeforeUnmount(() => {
+  if (capturePollTimer) {
+    window.clearInterval(capturePollTimer);
+    capturePollTimer = null;
+  }
+
   window.removeEventListener('click', hideContextMenu);
   window.removeEventListener('resize', hideContextMenu);
   window.removeEventListener('scroll', hideContextMenu, true);
@@ -402,15 +448,33 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="section">
-      <h2>Local DOM/A11y</h2>
-      <input v-model="localLabel" placeholder="fixture name" />
-      <label class="muted">RAW JSON (domTree + a11yTree)</label>
-      <input type="file" accept="application/json" @change="onLocalRawFileChange" />
-      <div v-if="localRawName" class="muted">raw: {{ localRawName }}</div>
-
-      <button :disabled="loading || !localDomTree || !localA11yTree" @click="buildSnapshotFromLocal">
-        {{ loading ? '构建中...' : '用本地树构建 Snapshot' }}
-      </button>
+      <h2>Test Captures</h2>
+      <div class="row">
+        <button :disabled="captureLoading" @click="fetchCaptureList">
+          {{ captureLoading ? '刷新中...' : '刷新采集列表' }}
+        </button>
+        <button :disabled="loading || captures.length === 0" @click="loadLatestCapture">
+          {{ loading ? '加载中...' : '加载最新采集' }}
+        </button>
+      </div>
+      <div v-if="captureStoreDir" class="muted">store: {{ captureStoreDir }}</div>
+      <div v-if="captures.length === 0" class="muted">暂无采集数据（测试可调用 /api/capture/ingest 推送）</div>
+      <div v-else class="entity-list">
+        <button
+          v-for="capture in captures"
+          :key="capture.id"
+          class="entity-item"
+          :class="{ selected: selectedCaptureId === capture.id }"
+          @click="loadCapture(capture.id)"
+        >
+          <div class="entity-top">
+            <span class="badge">{{ capture.hasSnapshot ? 'snapshot' : 'raw' }}</span>
+            <span class="entity-id">{{ capture.label }}</span>
+          </div>
+          <div class="entity-label">{{ capture.title || capture.finalUrl || capture.sourceUrl || '(untitled)' }}</div>
+          <div class="entity-metrics">{{ capture.capturedAt }}</div>
+        </button>
+      </div>
     </div>
 
     <div class="section">

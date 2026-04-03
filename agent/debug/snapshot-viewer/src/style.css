@@ -42,6 +42,11 @@ body {
   border-bottom: none;
 }
 
+.row {
+  gap: 8px;
+  display: flex;
+}
+
 h2 {
   margin: 0 0 10px 0;
   font-size: 14px;
@@ -210,6 +215,11 @@ pre {
 
 .entity-item:hover {
   background: #edf3ff;
+}
+
+.entity-item.selected {
+  border-color: #94b6ff;
+  background: #e5efff;
 }
 
 .entity-top {

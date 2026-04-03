@@ -25,6 +25,8 @@ const open = ref(props.depth < 2);
 
 const hasChildren = computed(() => props.node.children.length > 0);
 const isSelected = computed(() => props.selectedId === props.node.id);
+const roleLabel = computed(() => props.node.role || props.node.tag || 'node');
+const nodeLabel = computed(() => props.node.name || props.node.content || props.node.text || '');
 
 const toggle = (event: MouseEvent) => {
   event.stopPropagation();
@@ -52,11 +54,8 @@ const openContextMenu = (event: MouseEvent) => {
   <div class="tree-node">
     <div class="tree-line" :class="{ selected: isSelected }" @click="selectNode" @contextmenu="openContextMenu">
       <span class="badge" @click="toggle">{{ hasChildren ? (open ? '-' : '+') : '·' }}</span>
-      <span>{{ node.role || node.tag || 'node' }}</span>
-      <span class="badge">{{ node.id }}</span>
-      <span v-if="node.name">{{ node.name }}</span>
-      <span v-else-if="node.content">{{ node.content }}</span>
-      <span v-else-if="node.text">{{ node.text }}</span>
+      <span>{{ roleLabel }}</span>
+      <span v-if="nodeLabel" class="muted">[{{ nodeLabel }}]</span>
     </div>
 
     <div v-if="hasChildren && open" class="tree-children">

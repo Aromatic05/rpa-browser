@@ -33,3 +33,44 @@ export type SnapshotApiResponse = {
   };
   error?: string;
 };
+
+export type CaptureListItem = {
+  id: string;
+  label: string;
+  capturedAt: string;
+  sourceUrl?: string;
+  finalUrl?: string;
+  title?: string;
+  hasRaw: boolean;
+  hasSnapshot: boolean;
+};
+
+export type CaptureEnvelope = {
+  id: string;
+  label: string;
+  capturedAt: string;
+  sourceUrl?: string;
+  finalUrl?: string;
+  title?: string;
+  raw?: {
+    domTree?: unknown;
+    a11yTree?: unknown;
+  };
+  snapshot?: unknown;
+  meta?: Record<string, unknown>;
+};
+
+export type CaptureListApiResponse = {
+  ok: boolean;
+  data?: {
+    storeDir: string;
+    items: CaptureListItem[];
+  };
+  error?: string;
+};
+
+export type CaptureItemApiResponse = {
+  ok: boolean;
+  data?: CaptureEnvelope;
+  error?: string;
+};
