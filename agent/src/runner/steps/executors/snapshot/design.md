@@ -162,24 +162,34 @@ class SemanticPerceiver {
 - `stable_id.ts`：稳定 ID 生成骨架。
 - `build_snapshot.ts`：输出结构构建骨架。
 
-## 6. 当前占位、后续待实现
+## 6. 第二阶段填充项（Stage2）
+
+在不改变主流程骨架的前提下，当前已填充：
+
+- `buildSpatialLayers(graph)`：轻量空间分层（主内容与 overlay 顶层重排）
+- `isNoiseLayer(layer)`：保守噪声判定（小尺寸 + 靠边 + 无交互）
+- `detectBusinessEntities(region)`：最小业务实体识别（form/table/row/dialog/list item/card）
+
+其余阶段仍保持占位并持续被调用。
+
+## 7. 当前占位、后续待实现
 
 以下内容目前均为轻量占位：
 - 真实 DOM+A11y 融合策略。
-- 空间重排与噪声层判定规则。
-- 业务区域检测规则。
-- LCA 归因、上下文扫描、tier 分级细则。
+- 复杂空间重排与完整噪声层规则。
+- 业务区域检测细则。
+- 完整 LCA 归因、上下文扫描、tier 分级细则。
 - 复杂压缩与摘要策略。
 - 全局关系链接规则。
 
-## 7. 为什么 `getA11yTree/getDomTree` 下沉到 trace
+## 8. 为什么 `getA11yTree/getDomTree` 下沉到 trace
 
 `trace` 是 runner 的基础观测与原子能力层。`getA11yTree/getDomTree` 放在 `trace` 后：
 - 复用范围更广，不只服务 snapshot。
 - snapshot 保持“编排层”定位，减少底层采集耦合。
 - 后续可在 trace 层统一处理缓存、观测、兼容性细节。
 
-## 8. Layer/Region 类型系统收缩说明
+## 9. Layer/Region 类型系统收缩说明
 
 实现层未引入额外 `Layer/SpatialLayers/Region` 类型系统。
 - “空间层”通过 `NodeGraph.root.children` 顶层并列子树表达。
