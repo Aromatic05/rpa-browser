@@ -150,7 +150,7 @@ class SemanticPerceiver {
 ## 5. 各文件职责
 
 - `snapshot.ts`：模块入口与主流程串联。
-- `types.ts`：最小必要类型（`RawData/UnifiedNode/NodeGraph/SemanticNode/SnapshotResult/NodeTier`）。
+- `types.ts`：最小必要类型（`RawData/UnifiedNode/NodeGraph/SnapshotResult/NodeTier`）。
 - `collect.ts`：采集原始数据，调用 trace 基础能力。
 - `fusion.ts`：DOM 与 A11y 融合骨架。
 - `spatial.ts`：顶层子树空间重排与噪声层占位判定。
@@ -224,14 +224,66 @@ LCA 当前限制（明确）：
 - 复杂布局中“左侧/上方”判断只做低成本近似
 - `actionIntent` 依赖关键词启发，覆盖范围有限
 
-## 10. 为什么 `getA11yTree/getDomTree` 下沉到 trace
+## 10. 第四阶段返工项（Stage4）
+
+第四阶段的目标不是继续堆补丁，而是“收口重构”：
+
+- 撤销 `SemanticNode`，统一到 `UnifiedNode`
+- `detectBusinessEntities` 从“找节点”升级为“识别结构并回写到树”
+- `applyLCA` 优先消费结构化字段，再退化到邻近文本
+- 在树上形成最小结构化语义（表单/表格/通用实体）
+
+### 10.1 为什么撤销 `SemanticNode`
+
+- 之前存在两棵平行树（`UnifiedNode` 与 `SemanticNode`），语义和结构会漂移。
+- 实体识别与 LCA 结果如果只在中间树里，后续阶段很难保持一致。
+- 用单一 `UnifiedNode` 承载结构 + 语义，数据流更稳定，也更容易调试。
+
+### 10.2 为什么把结构语义直接写回 `UnifiedNode`
+
+- `processRegion` 之后的模块（LCA/compress/relations/stable_id）都能直接消费同一批字段。
+- viewer 和测试可以直接观察最终树，不依赖隐式中间对象。
+- 降低跨阶段同步成本，减少“识别结果丢失”。
+
+### 10.3 detectBusinessEntities 返工后支持结构
+
+- 表单结构：`form` / `field_group` / `field` / `submit_area`
+- 表格结构：`table` / `row` / `cell` / `header_cell`
+- 通用结构：`dialog` / `list_item` / `card` / `section`
+
+识别结果会反标注回树（节点字段 + `attrs`）：
+
+- `entityId`
+- `entityType`
+- `parentEntityId`
+- `fieldLabel`
+- `tableRole`
+- `formRole`
+
+### 10.4 LCA 如何消费结构化字段
+
+LCA 顺序：
+
+1. 先读目标节点已有结构字段（`fieldLabel/formRole/tableRole/entityId`）
+2. 再找最近实体（树上已有 `entityId/entityType`）
+3. 在实体内优先查 `header_cell/row/section` 等结构提示
+4. 最后退化到邻近文本扫描
+
+结果继续直接回写：
+
+- `fieldLabel`
+- `actionIntent`
+- `actionTargetId`
+- `entityId`
+
+## 11. 为什么 `getA11yTree/getDomTree` 下沉到 trace
 
 `trace` 是 runner 的基础观测与原子能力层。`getA11yTree/getDomTree` 放在 `trace` 后：
 - 复用范围更广，不只服务 snapshot。
 - snapshot 保持“编排层”定位，减少底层采集耦合。
 - 后续可在 trace 层统一处理缓存、观测、兼容性细节。
 
-## 11. Layer/Region 类型系统收缩说明
+## 12. Layer/Region 类型系统收缩说明
 
 实现层未引入额外 `Layer/SpatialLayers/Region` 类型系统。
 - “空间层”通过 `NodeGraph.root.children` 顶层并列子树表达。

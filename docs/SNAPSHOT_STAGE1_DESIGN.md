@@ -57,7 +57,7 @@ generateSemanticSnapshot(page)
 - `role`
 - `children`
 - `name?`
-- `text?`
+- `content?`
 - `bbox?`
 - `attrs?`
 
@@ -169,3 +169,58 @@ generateSemanticSnapshot(page)
   - `actionIntent=delete`
   - `actionTargetId=entity:row-1`
   - `entityId=entity:row-1`
+
+## 15. 第四阶段返工（模型收口）
+
+第四阶段核心是“收口重构”而不是新增平行逻辑：
+
+- 移除 `SemanticNode`，统一使用 `UnifiedNode`
+- 结构化识别结果直接写回树，不再只保留临时结果
+- LCA 优先消费结构化字段，再退化到邻近文本
+
+### 15.1 UnifiedNode 扩展字段
+
+在不引入复杂类型系统前提下，`UnifiedNode` 扩展了最小字段：
+
+- `tier`
+- `entityId`
+- `entityType`
+- `parentEntityId`
+- `fieldLabel`
+- `actionIntent`
+- `actionTargetId`
+- `tableRole`（`table/row/cell/header_cell`）
+- `formRole`（`form/field_group/field/submit_area`）
+
+### 15.2 detectBusinessEntities 支持范围（返工后）
+
+- 表单：`form` / `field_group` / `field` / `submit_area`
+- 表格：`table` / `row` / `cell` / `header_cell`
+- 通用：`dialog` / `list_item` / `card` / `section`
+
+并且会回写：
+
+- `entityId/entityType/parentEntityId`
+- `fieldLabel/tableRole/formRole`
+
+### 15.3 LCA 消费结构字段
+
+LCA 当前优先读取：
+
+- `entityId/entityType`
+- `fieldLabel`
+- `tableRole/formRole`
+
+然后再做最近实体与邻近文本退化扫描，最终回写：
+
+- `fieldLabel`
+- `actionIntent`
+- `actionTargetId`
+- `entityId`
+
+### 15.4 当前限制
+
+- 仍是“稳定可用版”，不是完整语义系统
+- 表格跨列多跳关联尚不完整
+- 复杂视觉布局依然是近似匹配
+- 意图识别仍主要依赖关键词
