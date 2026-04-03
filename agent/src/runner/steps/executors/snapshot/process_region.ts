@@ -16,8 +16,10 @@ export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
 };
 
 const detectBusinessEntities = (node: UnifiedNode): SemanticNode[] => {
-    // 业务实体占位：form、field group、table、row、card、dialog。
-    return node.children.map((child) => toSemanticNode(child));
+    // 第二阶段最小实现：form/table/row/dialog/list item/card。
+    const entities: SemanticNode[] = [];
+    collectEntities(node, entities);
+    return entities;
 };
 
 const buildTree = (node: UnifiedNode): SemanticNode => {
@@ -68,3 +70,77 @@ const toUnifiedNode = (node: SemanticNode): UnifiedNode => ({
     text: node.text,
     children: node.children.map((child) => toUnifiedNode(child)),
 });
+
+const collectEntities = (node: UnifiedNode, entities: SemanticNode[]) => {
+    const entityType = detectEntityType(node);
+    if (entityType) {
+        node.attrs = {
+            ...(node.attrs || {}),
+            entity: 'true',
+            entityType,
+        };
+        entities.push(toSemanticNode(node));
+    }
+
+    for (const child of node.children) {
+        collectEntities(child, entities);
+    }
+};
+
+const detectEntityType = (node: UnifiedNode): string | null => {
+    const role = node.role.toLowerCase();
+    const tag = inferTag(node);
+
+    if (role === 'form' || tag === 'form') return 'form';
+    if (role === 'table' || tag === 'table') return 'table';
+    if (role === 'row' || tag === 'tr') return 'row';
+    if (role === 'dialog' || role === 'alertdialog') return 'dialog';
+    if (role === 'listitem' || tag === 'li') return 'list-item';
+
+    if (looksLikeCard(node)) return 'card';
+    return null;
+};
+
+const looksLikeCard = (node: UnifiedNode): boolean => {
+    if (node.children.length < 3) return false;
+    if (!hasTextSignal(node)) return false;
+    if (!hasInteractiveDescendant(node)) return false;
+    return true;
+};
+
+const hasTextSignal = (node: UnifiedNode): boolean => {
+    const hasSelfText = (node.text || node.name || '').trim().length > 0;
+    if (hasSelfText) return true;
+    return node.children.some((child) => hasTextSignal(child));
+};
+
+const hasInteractiveDescendant = (node: UnifiedNode): boolean => {
+    if (INTERACTIVE_ROLES.has(node.role.toLowerCase())) return true;
+    if (node.attrs?.onclick || node.attrs?.href || node.attrs?.tabindex) return true;
+    return node.children.some((child) => hasInteractiveDescendant(child));
+};
+
+const inferTag = (node: UnifiedNode): string => {
+    const attrs = node.attrs || {};
+    const raw =
+        attrs.tag ||
+        attrs.tagName ||
+        attrs.nodeName ||
+        attrs.localName ||
+        attrs['data-tag'] ||
+        '';
+
+    return raw.trim().toLowerCase();
+};
+
+const INTERACTIVE_ROLES = new Set([
+    'button',
+    'link',
+    'textbox',
+    'input',
+    'checkbox',
+    'radio',
+    'combobox',
+    'menuitem',
+    'option',
+]);
