@@ -11,12 +11,17 @@
 
 ## 运行
 
-在该目录启动静态服务，例如：
-
 ```bash
-python3 -m http.server 4173
+cd agent/debug/snapshot-viewer
+pnpm install
+pnpm dev
 ```
 
-访问：
+打开 `http://localhost:5173/`。
 
-- `http://localhost:4173/`
+## 构建
+
+```bash
+pnpm build
+pnpm preview
+```

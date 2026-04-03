@@ -1,0 +1,151 @@
+:root {
+  --bg: #f4f7fd;
+  --panel: #ffffff;
+  --line: #dbe3f1;
+  --text: #1f2a44;
+  --muted: #5f6f8f;
+  --accent: #246bff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: linear-gradient(150deg, #edf2ff, var(--bg));
+  font-family: 'Segoe UI', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+}
+
+#app {
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 320px 1fr 360px;
+  gap: 12px;
+  padding: 12px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: auto;
+}
+
+.section {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+h2 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+}
+
+label,
+select,
+textarea,
+button,
+input {
+  width: 100%;
+  font-size: 12px;
+}
+
+select,
+textarea,
+input,
+button {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+button {
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  background: var(--accent);
+}
+
+button.secondary {
+  color: var(--text);
+  border: 1px solid var(--line);
+  background: #e6eeff;
+}
+
+.tree-wrap {
+  padding: 10px;
+}
+
+.tree-node {
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.tree-line {
+  display: flex;
+  gap: 6px;
+  padding: 2px 4px;
+  cursor: pointer;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.tree-line:hover {
+  background: #eef3ff;
+}
+
+.tree-line.selected {
+  background: #dce8ff;
+}
+
+.tree-children {
+  margin-left: 18px;
+  padding-left: 8px;
+  border-left: 1px dashed var(--line);
+}
+
+.badge {
+  color: var(--muted);
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.kv {
+  margin: 8px 0;
+}
+
+.k {
+  width: 90px;
+  color: var(--muted);
+  display: inline-block;
+}
+
+pre {
+  margin: 0;
+  font-size: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--line);
+  background: #f7faff;
+}
+
+.error-text {
+  margin-top: 8px;
+  color: #b42318;
+  font-size: 12px;
+}
+
+.muted {
+  font-size: 12px;
+  color: #6a7892;
+}
