@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyLCA } from '../executors/snapshot/lca';
-import type { SemanticNode } from '../executors/snapshot/types';
+import type { UnifiedNode } from '../executors/snapshot/types';
 
-const makeNode = (partial: Partial<SemanticNode> & { id: string; role: string }): SemanticNode => ({
+const makeNode = (partial: Partial<UnifiedNode> & { id: string; role: string }): UnifiedNode => ({
     id: partial.id,
     role: partial.role,
-    tier: partial.tier || 'B',
     children: partial.children || [],
+    tier: partial.tier || 'B',
     name: partial.name,
     content: partial.content,
     attrs: partial.attrs,
