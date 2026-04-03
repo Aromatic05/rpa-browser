@@ -1,8 +1,9 @@
 import { applyLCA } from './lca';
 import { compress } from './compress';
-import type { NodeTier, SemanticNode, UnifiedNode } from './types';
+import type { UnifiedNode } from './types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
+    // 第一阶段占位：保留链路，不实现复杂实体检测/分级逻辑。
     const entities = detectBusinessEntities(node);
     const tree = buildTree(node);
 
@@ -12,59 +13,25 @@ export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
 
     const compressed = compress(tree);
     if (!compressed) return null;
-    return toUnifiedNode(compressed);
+    return compressed;
 };
 
-const detectBusinessEntities = (node: UnifiedNode): SemanticNode[] => {
+const detectBusinessEntities = (node: UnifiedNode): UnifiedNode[] => {
     // 业务实体占位：form、field group、table、row、card、dialog。
-    return node.children.map((child) => toSemanticNode(child));
+    return node.children;
 };
 
-const buildTree = (node: UnifiedNode): SemanticNode => {
+const buildTree = (node: UnifiedNode): UnifiedNode => {
     // 区域初始树：当前直接从统一节点树映射。
-    return toSemanticNode(node);
+    return node;
 };
 
-const markStrongSemantics = (tree: SemanticNode) => {
+const markStrongSemantics = (tree: UnifiedNode) => {
     // 强语义标记占位：input/button/link/checkbox/label/error。
-    const strongRoles = new Set(['input', 'button', 'link', 'checkbox', 'label', 'error']);
-    walk(tree, (node) => {
-        if (strongRoles.has(node.role)) {
-            node.tier = 'A';
-        }
-    });
+    void tree;
 };
 
-const rankTiers = (tree: SemanticNode) => {
+const rankTiers = (tree: UnifiedNode) => {
     // 节点价值分级占位：后续补完整规则。
-    walk(tree, (node) => {
-        if (node.tier) return;
-        node.tier = defaultTier(node);
-    });
+    void tree;
 };
-
-const defaultTier = (_node: SemanticNode): NodeTier => 'B';
-
-const walk = (node: SemanticNode, visitor: (node: SemanticNode) => void) => {
-    visitor(node);
-    for (const child of node.children) {
-        walk(child, visitor);
-    }
-};
-
-const toSemanticNode = (node: UnifiedNode): SemanticNode => ({
-    id: node.id,
-    role: node.role,
-    tier: 'B',
-    name: node.name,
-    text: node.text,
-    children: node.children.map((child) => toSemanticNode(child)),
-});
-
-const toUnifiedNode = (node: SemanticNode): UnifiedNode => ({
-    id: node.id,
-    role: node.role,
-    name: node.name,
-    text: node.text,
-    children: node.children.map((child) => toUnifiedNode(child)),
-});
