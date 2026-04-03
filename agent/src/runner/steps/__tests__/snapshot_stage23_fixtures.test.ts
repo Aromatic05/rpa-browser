@@ -83,6 +83,7 @@ test('snapshot stage2/3 acceptance on fixture dataset', () => {
     let globalRowIndexCount = 0;
     let globalColumnIndexCount = 0;
     let globalColumnIdCount = 0;
+    let globalHeaderSectionCount = 0;
 
     for (const file of fixtureFiles) {
         const raw = JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, file), 'utf8')) as RawFixture;
@@ -97,6 +98,7 @@ test('snapshot stage2/3 acceptance on fixture dataset', () => {
         let rowIndexCount = 0;
         let columnIndexCount = 0;
         let columnIdCount = 0;
+        let headerSectionCount = 0;
 
         walk(root, (node) => {
             nodeCount += 1;
@@ -109,6 +111,7 @@ test('snapshot stage2/3 acceptance on fixture dataset', () => {
             if (attrs.rowIndex) rowIndexCount += 1;
             if (attrs.columnIndex) columnIndexCount += 1;
             if (attrs.columnId) columnIdCount += 1;
+            if (attrs.tableSection === 'header') headerSectionCount += 1;
         });
 
         assert.ok(nodeCount > 0, `${file}: expected nodes after stage2/3 pipeline`);
@@ -121,9 +124,11 @@ test('snapshot stage2/3 acceptance on fixture dataset', () => {
         globalRowIndexCount += rowIndexCount;
         globalColumnIndexCount += columnIndexCount;
         globalColumnIdCount += columnIdCount;
+        globalHeaderSectionCount += headerSectionCount;
     }
 
     assert.ok(globalRowIndexCount > 0, 'expected row index annotation on table/list structures');
     assert.ok(globalColumnIndexCount > 0, 'expected column index annotation on table cells');
     assert.ok(globalColumnIdCount > 0, 'expected column id annotation on table cells');
+    assert.ok(globalHeaderSectionCount > 0, 'expected explicit header section annotation');
 });

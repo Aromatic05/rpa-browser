@@ -235,6 +235,8 @@ const annotateTableStructure = (root: UnifiedNode) => {
 };
 
 const annotateSingleTable = (table: UnifiedNode) => {
+    annotateTableSectionContainers(table);
+
     const rows = collectTableRows(table);
     if (rows.length === 0) return;
 
@@ -276,6 +278,7 @@ const annotateSingleTable = (table: UnifiedNode) => {
                 rowType: isHeader ? 'header' : 'body',
                 rowIndex: rowIndexValue,
                 rowId: rowIdValue,
+                tableSection: isHeader ? 'header' : 'body',
             },
         });
 
@@ -290,6 +293,7 @@ const annotateSingleTable = (table: UnifiedNode) => {
                     columnLabel: column.label,
                     rowIndex: rowIndexValue,
                     rowId: rowIdValue,
+                    tableSection: isHeader ? 'header' : 'body',
                 },
             });
         });
@@ -298,6 +302,31 @@ const annotateSingleTable = (table: UnifiedNode) => {
             bodyRowIndex += 1;
         }
     }
+};
+
+const annotateTableSectionContainers = (table: UnifiedNode) => {
+    const walkSection = (node: UnifiedNode, inherited: 'header' | 'body' | null) => {
+        const classes = inferClassTokens(node);
+        const tag = inferTag(node);
+
+        let section = inherited;
+        if (tag === 'thead' || classes.has('ant-table-thead')) section = 'header';
+        if (tag === 'tbody' || classes.has('ant-table-tbody')) section = 'body';
+
+        if (section) {
+            patchNode(node, {
+                attrs: {
+                    tableSection: section,
+                },
+            });
+        }
+
+        for (const child of node.children) {
+            walkSection(child, section);
+        }
+    };
+
+    walkSection(table, null);
 };
 
 const collectTableRows = (table: UnifiedNode): Array<{ node: UnifiedNode; kind: 'header' | 'body' }> => {
