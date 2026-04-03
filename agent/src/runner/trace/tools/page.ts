@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { adoptA11yNode } from '../a11y/adopt';
 import { invalidateA11yCache } from '../a11y/cache';
-import { getA11yTree } from '../a11y/getA11yTree';
+import { getA11yTree } from '../getA11yTree';
 import type { ToolsBuildContext } from './context';
 
 export const createPageTools = (base: ToolsBuildContext) => ({

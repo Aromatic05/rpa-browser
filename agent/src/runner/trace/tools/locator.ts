@@ -1,7 +1,7 @@
 import { adoptA11yNode, type A11ySnapshotNode } from '../a11y/adopt';
 import { invalidateA11yCache } from '../a11y/cache';
 import { findA11yCandidates, type A11yCandidate } from '../a11y/find';
-import { getA11yTree } from '../a11y/getA11yTree';
+import { getA11yTree } from '../getA11yTree';
 import type { A11yHint } from '../../steps/types';
 import type { ToolsBuildContext } from './context';
 
