@@ -31,6 +31,8 @@ export type SemanticNode = {
     content?: string;
     name?: string;
     target?: UnifiedNode['target'];
+    bbox?: UnifiedNode['bbox'];
+    attrs?: Record<string, string>;
 };
 
 export type SnapshotResult = {

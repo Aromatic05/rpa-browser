@@ -61,6 +61,8 @@ const toSemanticNode = (node: UnifiedNode): SemanticNode => ({
     name: node.name,
     content: node.content,
     target: node.target,
+    bbox: node.bbox,
+    attrs: node.attrs ? { ...node.attrs } : undefined,
     children: node.children.map((child) => toSemanticNode(child)),
 });
 
@@ -70,16 +72,20 @@ const toUnifiedNode = (node: SemanticNode): UnifiedNode => ({
     name: node.name,
     content: node.content,
     target: node.target,
+    bbox: node.bbox,
+    attrs: node.attrs ? { ...node.attrs } : undefined,
     children: node.children.map((child) => toUnifiedNode(child)),
 });
 
 const collectEntities = (node: UnifiedNode, entities: SemanticNode[]) => {
     const entityType = detectEntityType(node);
     if (entityType) {
+        const entityId = `entity:${node.id}`;
         node.attrs = {
             ...(node.attrs || {}),
             entity: 'true',
             entityType,
+            entityId,
         };
         entities.push(toSemanticNode(node));
     }
@@ -94,10 +100,9 @@ const detectEntityType = (node: UnifiedNode): string | null => {
     const tag = inferTag(node);
 
     if (role === 'form' || tag === 'form') return 'form';
-    if (role === 'table' || tag === 'table') return 'table';
     if (role === 'row' || tag === 'tr') return 'row';
     if (role === 'dialog' || role === 'alertdialog') return 'dialog';
-    if (role === 'listitem' || tag === 'li') return 'list-item';
+    if (role === 'listitem' || tag === 'li') return 'list_item';
 
     if (looksLikeCard(node)) return 'card';
     return null;
