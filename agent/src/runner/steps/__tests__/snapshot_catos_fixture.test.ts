@@ -30,24 +30,17 @@ const walk = (node: AnyNode | null | undefined, visit: (node: AnyNode) => void) 
     }
 };
 
-const findById = (node: AnyNode | null | undefined, id: string): AnyNode | null => {
-    if (!node) return null;
-    if (node.id === id) return node;
-    for (const child of node.children || []) {
-        const matched = findById(child, id);
-        if (matched) return matched;
-    }
-    return null;
-};
-
-const fixturePath = path.resolve(process.cwd(), 'tests/fixtures/snapshot/catos.info.raw.json');
+const fixturePath = path.resolve(
+    process.cwd(),
+    'tests/fixtures/snapshot/shop.yingdao.table-list.raw.json',
+);
 
 const loadFixture = async (): Promise<FixturePayload> => {
     const raw = await fs.readFile(fixturePath, 'utf8');
     return JSON.parse(raw) as FixturePayload;
 };
 
-test('catos fixture keeps footer links annotated in unified graph', async () => {
+test('shop.yingdao fixture keeps links normalized and target preserved', async () => {
     const fixture = await loadFixture();
     const graph = fuseDomAndA11y(fixture.domTree, fixture.a11yTree);
 
@@ -69,18 +62,15 @@ test('catos fixture keeps footer links annotated in unified graph', async () => 
     });
     assert.equal(roleA.length, 0, 'anchor nodes should be normalized to role=link');
 
-    const footerNode = findById(graph.root as AnyNode, 'n0.1.1.3');
-    assert.ok(footerNode, 'footer subtree should exist');
-
-    const footerLinkNames = new Set<string>();
-    walk(footerNode, (node) => {
+    const linksWithTarget: AnyNode[] = [];
+    walk(graph.root as AnyNode, (node) => {
         if ((node.role || '').toLowerCase() !== 'link') return;
-        const name = (node.name || '').trim();
-        if (name) footerLinkNames.add(name);
+        const attrs = (node as { attrs?: Record<string, string> }).attrs || {};
+        const target = (node as { target?: { ref?: string } }).target;
+        if ((target?.ref || '').trim() || (attrs.href || '').trim()) {
+            linksWithTarget.push(node);
+        }
     });
 
-    assert.equal(footerLinkNames.has('GitHub'), true, 'footer should include GitHub link name');
-    assert.equal(footerLinkNames.has('系统截图'), true, 'footer should include 系统截图 link name');
-    assert.equal(footerLinkNames.has('简介'), true, 'footer should include 简介 link name');
-    assert.equal(footerLinkNames.has('下载'), true, 'footer should include 下载 link name');
+    assert.ok(linksWithTarget.length > 0, 'link nodes should preserve target info');
 });

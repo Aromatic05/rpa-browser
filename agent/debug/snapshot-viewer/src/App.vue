@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import TreeNode from './components/TreeNode.vue';
-import type { DataPack, SnapshotApiResponse, SourceKind, TreeNodeLike } from './types';
+import type { DataPack, SnapshotApiResponse, TreeNodeLike } from './types';
 
 type DetectedEntity = {
   entityId: string;
@@ -12,7 +12,6 @@ type DetectedEntity = {
   actionCount: number;
 };
 
-const source = ref<SourceKind>('unifiedGraph');
 const error = ref('');
 const loading = ref(false);
 const targetUrl = ref('https://example.com');
@@ -23,8 +22,6 @@ const copyMessage = ref('');
 const localLabel = ref('local-fixture');
 const localDomTree = ref<unknown | null>(null);
 const localA11yTree = ref<unknown | null>(null);
-const localDomName = ref('');
-const localA11yName = ref('');
 const localRawName = ref('');
 
 const contextMenu = ref<{
@@ -40,8 +37,6 @@ const contextMenu = ref<{
 });
 
 const dataPack = ref<DataPack>({
-  domTree: null,
-  a11yTree: null,
   unifiedGraph: null,
 });
 
@@ -90,11 +85,11 @@ const normalizeNode = (value: unknown, fallbackId = 'n0'): TreeNodeLike | null =
 };
 
 const activeRoot = computed(() => {
-  const raw = dataPack.value[source.value as keyof DataPack];
+  const raw = dataPack.value.unifiedGraph;
   if (!raw) return null;
 
   const graphRoot =
-    source.value === 'unifiedGraph' && typeof raw === 'object' && raw && 'root' in (raw as object)
+    typeof raw === 'object' && raw && 'root' in (raw as object)
       ? (raw as { root: unknown }).root
       : raw;
 
@@ -177,13 +172,10 @@ const applySnapshotPayload = (payload: SnapshotApiResponse, fallbackUrl: string)
   }
 
   dataPack.value = {
-    domTree: payload.data.domTree || null,
-    a11yTree: payload.data.a11yTree || null,
     unifiedGraph: payload.data.unifiedGraph || null,
   };
   resolvedUrl.value = payload.data.url || fallbackUrl;
   selectedNode.value = null;
-  source.value = 'unifiedGraph';
 };
 
 const fetchSnapshot = async () => {
@@ -219,36 +211,6 @@ const readJsonFile = async (file: File): Promise<unknown> => {
   return JSON.parse(text);
 };
 
-const onLocalDomFileChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-
-  try {
-    localDomTree.value = await readJsonFile(file);
-    localDomName.value = file.name;
-    dataPack.value.domTree = localDomTree.value;
-    error.value = '';
-  } catch (cause) {
-    error.value = `DOM 文件解析失败: ${String(cause)}`;
-  }
-};
-
-const onLocalA11yFileChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-
-  try {
-    localA11yTree.value = await readJsonFile(file);
-    localA11yName.value = file.name;
-    dataPack.value.a11yTree = localA11yTree.value;
-    error.value = '';
-  } catch (cause) {
-    error.value = `A11y 文件解析失败: ${String(cause)}`;
-  }
-};
-
 const onLocalRawFileChange = async (event: Event) => {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -263,11 +225,6 @@ const onLocalRawFileChange = async (event: Event) => {
     localDomTree.value = raw.domTree;
     localA11yTree.value = raw.a11yTree;
     localRawName.value = file.name;
-    localDomName.value = `${file.name}#domTree`;
-    localA11yName.value = `${file.name}#a11yTree`;
-
-    dataPack.value.domTree = localDomTree.value;
-    dataPack.value.a11yTree = localA11yTree.value;
     error.value = '';
   } catch (cause) {
     error.value = `RAW 文件解析失败: ${String(cause)}`;
@@ -314,7 +271,6 @@ const selectEntity = (entity: DetectedEntity) => {
   const node = findNodeById(unifiedRoot.value, entity.nodeId);
   if (!node) return;
 
-  source.value = 'unifiedGraph';
   selectedNode.value = node;
 };
 
@@ -438,15 +394,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="panel">
     <div class="section">
-      <h2>Data Source</h2>
-      <select v-model="source">
-        <option value="domTree">DOM tree</option>
-        <option value="a11yTree">A11y tree</option>
-        <option value="unifiedGraph">Unified graph</option>
-      </select>
-    </div>
-
-    <div class="section">
       <h2>Fetch Snapshot</h2>
       <input v-model="targetUrl" placeholder="https://example.com" />
       <button :disabled="loading" @click="fetchSnapshot">
@@ -460,14 +407,6 @@ onBeforeUnmount(() => {
       <label class="muted">RAW JSON (domTree + a11yTree)</label>
       <input type="file" accept="application/json" @change="onLocalRawFileChange" />
       <div v-if="localRawName" class="muted">raw: {{ localRawName }}</div>
-
-      <label class="muted">DOM JSON</label>
-      <input type="file" accept="application/json" @change="onLocalDomFileChange" />
-      <div v-if="localDomName" class="muted">dom: {{ localDomName }}</div>
-
-      <label class="muted">A11y JSON</label>
-      <input type="file" accept="application/json" @change="onLocalA11yFileChange" />
-      <div v-if="localA11yName" class="muted">a11y: {{ localA11yName }}</div>
 
       <button :disabled="loading || !localDomTree || !localA11yTree" @click="buildSnapshotFromLocal">
         {{ loading ? '构建中...' : '用本地树构建 Snapshot' }}

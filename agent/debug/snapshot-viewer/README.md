@@ -6,7 +6,7 @@
 
 - 输入 URL 抓取真实页面数据
 - 后端直接调用 snapshot 入口函数生成 unified graph
-- 在 `DOM tree / A11y tree / Unified graph` 间切换
+- 支持加载本地 `raw.json`（`domTree + a11yTree`）并构建 unified graph
 - 递归树展示，支持展开/折叠
 - 点击节点查看详情（`id / role / name / text / attrs`）
 

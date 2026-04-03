@@ -21,8 +21,6 @@ type SnapshotApiSuccess = {
   ok: true;
   data: {
     url: string;
-    domTree: unknown;
-    a11yTree: unknown;
     unifiedGraph: unknown;
   };
 };
@@ -71,6 +69,51 @@ export const createSnapshotApiPlugin = (): Plugin => ({
       process.env.RPA_SNAPSHOT_DEBUG = '1';
     }
 
+    // 注意顺序：from-raw 必须放在 /api/snapshot 之前，避免被前缀路由提前拦截。
+    server.middlewares.use('/api/snapshot/from-raw', async (req, res) => {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, error: 'method not allowed' });
+        return;
+      }
+
+      let request: LocalSnapshotRequest;
+      try {
+        request = JSON.parse(await readBody(req)) as LocalSnapshotRequest;
+      } catch {
+        sendJson(res, 400, { ok: false, error: 'invalid json body' });
+        return;
+      }
+
+      if (!request.domTree || !request.a11yTree) {
+        sendJson(res, 400, { ok: false, error: 'domTree and a11yTree are required' });
+        return;
+      }
+
+      try {
+        const unifiedGraph = generateSemanticSnapshotFromRaw({
+          domTree: request.domTree,
+          a11yTree: request.a11yTree,
+        });
+        const label = (request.label || 'local-fixture').trim();
+        console.log(
+          `[snapshot-viewer] local source=${label} dom=${countNodes(request.domTree)} a11y=${countNodes(request.a11yTree)} snapshot=${countNodes((unifiedGraph as { root?: unknown })?.root)}`,
+        );
+
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            url: `local://${label}`,
+            unifiedGraph,
+          },
+        });
+      } catch (cause) {
+        sendJson(res, 500, {
+          ok: false,
+          error: `local snapshot failed: ${String(cause)}`,
+        });
+      }
+    });
+
     server.middlewares.use('/api/snapshot', async (req, res) => {
       if (req.method !== 'POST') {
         sendJson(res, 405, { ok: false, error: 'method not allowed' });
@@ -111,8 +154,6 @@ export const createSnapshotApiPlugin = (): Plugin => ({
           ok: true,
           data: {
             url: page.url(),
-            domTree: raw.domTree,
-            a11yTree: raw.a11yTree,
             unifiedGraph,
           },
         });
@@ -126,50 +167,5 @@ export const createSnapshotApiPlugin = (): Plugin => ({
       }
     });
 
-    server.middlewares.use('/api/snapshot/from-raw', async (req, res) => {
-      if (req.method !== 'POST') {
-        sendJson(res, 405, { ok: false, error: 'method not allowed' });
-        return;
-      }
-
-      let request: LocalSnapshotRequest;
-      try {
-        request = JSON.parse(await readBody(req)) as LocalSnapshotRequest;
-      } catch {
-        sendJson(res, 400, { ok: false, error: 'invalid json body' });
-        return;
-      }
-
-      if (!request.domTree || !request.a11yTree) {
-        sendJson(res, 400, { ok: false, error: 'domTree and a11yTree are required' });
-        return;
-      }
-
-      try {
-        const unifiedGraph = generateSemanticSnapshotFromRaw({
-          domTree: request.domTree,
-          a11yTree: request.a11yTree,
-        });
-        const label = (request.label || 'local-fixture').trim();
-        console.log(
-          `[snapshot-viewer] local source=${label} dom=${countNodes(request.domTree)} a11y=${countNodes(request.a11yTree)} snapshot=${countNodes((unifiedGraph as { root?: unknown })?.root)}`,
-        );
-
-        sendJson(res, 200, {
-          ok: true,
-          data: {
-            url: `local://${label}`,
-            domTree: request.domTree,
-            a11yTree: request.a11yTree,
-            unifiedGraph,
-          },
-        });
-      } catch (cause) {
-        sendJson(res, 500, {
-          ok: false,
-          error: `local snapshot failed: ${String(cause)}`,
-        });
-      }
-    });
   },
 });

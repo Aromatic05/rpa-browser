@@ -1,4 +1,4 @@
-export type SourceKind = 'domTree' | 'a11yTree' | 'unifiedGraph';
+export type SourceKind = 'unifiedGraph';
 
 export type TreeNodeLike = {
   id: string;
@@ -22,8 +22,6 @@ export type TreeNodeLike = {
 };
 
 export type DataPack = {
-  domTree: unknown;
-  a11yTree: unknown;
   unifiedGraph: unknown;
 };
 
@@ -31,8 +29,6 @@ export type SnapshotApiResponse = {
   ok: boolean;
   data?: {
     url: string;
-    domTree: unknown;
-    a11yTree: unknown;
     unifiedGraph: unknown;
   };
   error?: string;
