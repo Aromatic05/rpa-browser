@@ -26,7 +26,7 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
             index,
             node,
             role: normalizeRole(node.role).toLowerCase(),
-            name: normalizeLabel(node.name),
+            name: normalizeLabel(splitA11yName(normalizeText(node.name)).name),
         };
         const bucket = a11yRoleBuckets.get(indexed.role) || [];
         bucket.push(indexed);
@@ -42,10 +42,12 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
     let annotatedByA11yRole = 0;
     let keptDomRole = 0;
     let domNameFallback = 0;
+    let downgradedA11yNameToContent = 0;
+    let linkTargetExtracted = 0;
 
     const nextByRoleAndLabel = (node: DomNodeInput): A11yNodeInput | undefined => {
         const domRole = normalizeRole(pickDomBaseRole(node)).toLowerCase();
-        const domLabel = normalizeLabel(inferDomLabel(node));
+        const domLabel = normalizeLabel(inferDomMatchLabel(node, domRole));
         if (!domRole || !domLabel) return undefined;
 
         const bucket = a11yRoleBuckets.get(domRole);
@@ -109,16 +111,27 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
             keptDomRole += 1;
         }
 
-        const name = pickName(node, matched, role);
-        if (name && !matched?.name) {
+        const a11yNameParts = splitA11yName(normalizeText(matched?.name));
+        if (a11yNameParts.content) {
+            downgradedA11yNameToContent += 1;
+        }
+
+        const name = pickName(node, matched, role, a11yNameParts);
+        if (name && !a11yNameParts.name) {
             domNameFallback += 1;
+        }
+        const content = pickContent(node, matched, role, name, a11yNameParts);
+        const target = pickTarget(node, role);
+        if (target) {
+            linkTargetExtracted += 1;
         }
 
         return {
             id: node.id || `dom-${fallbackCursor}`,
             role,
             name,
-            text: node.text,
+            content,
+            target,
             bbox: node.bbox,
             attrs: node.attrs,
             children: (node.children || []).map((child) => build(child)),
@@ -136,6 +149,8 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
         annotatedByA11yRole,
         keptDomRole,
         domNameFallback,
+        downgradedA11yNameToContent,
+        linkTargetExtracted,
     });
     return graph;
 };
@@ -195,10 +210,15 @@ const pickRole = (node: DomNodeInput, matched: A11yNodeInput | undefined): strin
     return domRole;
 };
 
-const pickName = (node: DomNodeInput, matched: A11yNodeInput | undefined, role: string): string | undefined => {
-    const domLabel = inferDomLabel(node);
-    const a11yName = normalizeText(matched?.name);
-    const ariaLabel = normalizeText(node.attrs?.['aria-label']);
+const pickName = (
+    node: DomNodeInput,
+    matched: A11yNodeInput | undefined,
+    role: string,
+    a11yNameParts: { name?: string; content?: string },
+): string | undefined => {
+    const domLabel = inferExplicitDomName(node, normalizeRole(role).toLowerCase());
+    const a11yName = a11yNameParts.name;
+    const ariaLabel = pickExplicitDomLabel(node);
     const normalizedRole = normalizeRole(role).toLowerCase();
 
     if (a11yName && domLabel) {
@@ -243,7 +263,7 @@ const canUseFallback = (node: DomNodeInput): boolean => {
 
 const shouldBlockLooseFallback = (node: DomNodeInput): boolean => {
     const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
-    const domLabel = normalizeLabel(inferDomLabel(node));
+    const domLabel = normalizeLabel(inferDomMatchLabel(node, role));
     if (!domLabel) return false;
     return INTERACTIVE_ROLES.has(role) || TEXTUAL_ROLES.has(role);
 };
@@ -320,10 +340,12 @@ const findBestLabelMatch = (
     return best;
 };
 
-const inferDomLabel = (node: DomNodeInput): string | undefined => {
-    const direct = normalizeText(node.text);
-    if (direct) return direct;
+const inferDomMatchLabel = (node: DomNodeInput, domRole: string): string | undefined => {
+    // 匹配标签必须来源于显式命名候选，不能使用子树文本拼接。
+    return inferExplicitDomName(node, domRole);
+};
 
+const pickExplicitDomLabel = (node: DomNodeInput): string | undefined => {
     const ariaLabel = normalizeText(node.attrs?.['aria-label']);
     if (ariaLabel) return ariaLabel;
 
@@ -333,22 +355,102 @@ const inferDomLabel = (node: DomNodeInput): string | undefined => {
     const alt = normalizeText(node.attrs?.alt);
     if (alt) return alt;
 
-    const tokens: string[] = [];
-    collectTextTokens(node, tokens, 6);
-    if (tokens.length === 0) return undefined;
-    return normalizeText(tokens.join(' '));
+    return undefined;
 };
 
-const collectTextTokens = (node: DomNodeInput, out: string[], maxTokens: number) => {
-    if (out.length >= maxTokens) return;
+const inferExplicitDomName = (node: DomNodeInput, role: string): string | undefined => {
+    const explicit = pickExplicitDomLabel(node);
+    if (explicit) return explicit;
 
-    const text = normalizeText(node.text);
-    if (text) out.push(text);
+    const ownText = normalizeText(node.text);
+    if (!ownText) return undefined;
 
-    for (const child of node.children || []) {
-        if (out.length >= maxTokens) break;
-        collectTextTokens(child, out, maxTokens);
+    const tag = normalizeRole(node.tag).toLowerCase();
+    if (NAME_FROM_OWN_TEXT_ROLES.has(role) || NAME_FROM_OWN_TEXT_TAGS.has(tag)) {
+        if (isLikelyShortLabel(ownText)) return ownText;
     }
+    return undefined;
+};
+
+const pickContent = (
+    node: DomNodeInput,
+    matched: A11yNodeInput | undefined,
+    role: string,
+    name: string | undefined,
+    a11yNameParts: { name?: string; content?: string },
+): string | undefined => {
+    const ownText = normalizeText(node.text);
+    if (ownText) return ownText;
+
+    if (a11yNameParts.content) return a11yNameParts.content;
+
+    const normalizedRole = normalizeRole(role).toLowerCase();
+    if (CONTENT_BY_A11Y_NAME_ROLES.has(normalizedRole)) {
+        return a11yNameParts.name || normalizeText(matched?.name);
+    }
+
+    if (normalizedRole === 'link') return a11yNameParts.name || name;
+    return undefined;
+};
+
+const splitA11yName = (value: string | undefined): { name?: string; content?: string } => {
+    const text = normalizeText(value);
+    if (!text) return {};
+    if (isLikelyShortLabel(text)) {
+        return { name: text };
+    }
+    return { content: text };
+};
+
+const isLikelyShortLabel = (value: string): boolean => {
+    const text = value.trim();
+    if (!text) return false;
+
+    const charCount = text.length;
+    if (charCount > 72) return false;
+
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 9) return false;
+
+    const sentencePunctuation = (text.match(/[.!?。！？]/g) || []).length;
+    if (sentencePunctuation >= 2) return false;
+
+    const punctuationCount = (text.match(/[,:;，；、]/g) || []).length;
+    if (punctuationCount >= 4) return false;
+
+    if (/\b(and|or|but|because|which|that)\b/i.test(text) && wordCount >= 8) return false;
+    return true;
+};
+
+const pickTarget = (
+    node: DomNodeInput,
+    role: string,
+): UnifiedNode['target'] | undefined => {
+    const tag = normalizeRole(node.tag).toLowerCase();
+    const normalizedRole = normalizeRole(role).toLowerCase();
+    if (normalizedRole !== 'link' && tag !== 'a') return undefined;
+
+    const href = normalizeText(node.attrs?.href);
+    if (!href) return undefined;
+
+    return {
+        ref: href,
+        kind: classifyTargetKind(href, node),
+    };
+};
+
+const classifyTargetKind = (ref: string, node: DomNodeInput): NonNullable<UnifiedNode['target']>['kind'] => {
+    const lowered = ref.toLowerCase();
+    if (lowered.startsWith('#')) return 'hash';
+    if (lowered.startsWith('mailto:')) return 'mailto';
+    if (lowered.startsWith('tel:')) return 'tel';
+    if (lowered.startsWith('javascript:')) return 'javascript';
+
+    const hasDownload = typeof node.attrs?.download === 'string';
+    if (hasDownload) return 'download';
+
+    if (lowered.startsWith('http://') || lowered.startsWith('https://') || lowered.startsWith('/')) return 'url';
+    return 'unknown';
 };
 
 const normalizeLabel = (value: string | undefined): string => {
@@ -449,6 +551,32 @@ const PREFER_A11Y_NAME_ROLES = new Set([
     'dialog',
     'list',
     'table',
+]);
+const NAME_FROM_OWN_TEXT_ROLES = new Set([
+    'button',
+    'link',
+    'label',
+    'option',
+    'menuitem',
+    'tab',
+    'checkbox',
+    'radio',
+]);
+const NAME_FROM_OWN_TEXT_TAGS = new Set(['button', 'a', 'label', 'option']);
+const CONTENT_BY_A11Y_NAME_ROLES = new Set([
+    'link',
+    'button',
+    'label',
+    'option',
+    'heading',
+    'paragraph',
+    'article',
+    'listitem',
+    'row',
+    'cell',
+    'columnheader',
+    'rowheader',
+    'text',
 ]);
 const DOM_SEMANTIC_ROLE_BY_TAG = new Map<string, string>([
     ['a', 'link'],

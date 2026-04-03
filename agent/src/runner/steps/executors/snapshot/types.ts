@@ -8,7 +8,11 @@ export type UnifiedNode = {
     role: string;
     children: UnifiedNode[];
     name?: string;
-    text?: string;
+    content?: string;
+    target?: {
+        ref: string;
+        kind?: 'url' | 'hash' | 'mailto' | 'tel' | 'javascript' | 'download' | 'unknown';
+    };
     bbox?: { x: number; y: number; width: number; height: number };
     attrs?: Record<string, string>;
 };
@@ -24,8 +28,9 @@ export type SemanticNode = {
     role: string;
     tier: NodeTier;
     children: SemanticNode[];
-    text?: string;
+    content?: string;
     name?: string;
+    target?: UnifiedNode['target'];
 };
 
 export type SnapshotResult = {

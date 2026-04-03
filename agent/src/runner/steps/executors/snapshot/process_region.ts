@@ -59,7 +59,8 @@ const toSemanticNode = (node: UnifiedNode): SemanticNode => ({
     role: node.role,
     tier: 'B',
     name: node.name,
-    text: node.text,
+    content: node.content,
+    target: node.target,
     children: node.children.map((child) => toSemanticNode(child)),
 });
 
@@ -67,7 +68,8 @@ const toUnifiedNode = (node: SemanticNode): UnifiedNode => ({
     id: node.id,
     role: node.role,
     name: node.name,
-    text: node.text,
+    content: node.content,
+    target: node.target,
     children: node.children.map((child) => toUnifiedNode(child)),
 });
 
@@ -109,7 +111,7 @@ const looksLikeCard = (node: UnifiedNode): boolean => {
 };
 
 const hasTextSignal = (node: UnifiedNode): boolean => {
-    const hasSelfText = (node.text || node.name || '').trim().length > 0;
+    const hasSelfText = (node.content || node.name || '').trim().length > 0;
     if (hasSelfText) return true;
     return node.children.some((child) => hasTextSignal(child));
 };

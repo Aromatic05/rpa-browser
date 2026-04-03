@@ -74,7 +74,7 @@ const isOverlayLikeNode = (node: UnifiedNode): boolean => {
 const hasInteractiveSignal = (node: UnifiedNode): boolean => {
     if (INTERACTIVE_ROLES.has(node.role.toLowerCase())) return true;
     if (node.attrs?.onclick || node.attrs?.href || node.attrs?.tabindex) return true;
-    if ((node.text || node.name || '').trim().length > 0) return true;
+    if ((node.content || node.name || '').trim().length > 0) return true;
     return node.children.some((child) => hasInteractiveSignal(child));
 };
 

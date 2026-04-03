@@ -18,8 +18,8 @@ export const snapshotDebugLog = (stage: string, payload: Record<string, unknown>
 export const countTreeNodes = (node: unknown): number => {
     if (!node || typeof node !== 'object') return 0;
     const current = node as { children?: unknown[] };
-    const children = Array.isArray(current.children) ? current.children : [];
-    return 1 + children.reduce((sum, child) => sum + countTreeNodes(child), 0);
+    const children: unknown[] = Array.isArray(current.children) ? current.children : [];
+    return 1 + children.reduce<number>((sum, child) => sum + countTreeNodes(child), 0);
 };
 
 export const summarizeTopNodes = (node: unknown, limit = 8): Array<{ id: string; role: string; childCount: number }> => {

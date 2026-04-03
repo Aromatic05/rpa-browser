@@ -18,8 +18,8 @@ type A11yNode = {
 
 const countNodes = (node: { children?: unknown[] } | null | undefined): number => {
     if (!node) return 0;
-    const children = Array.isArray(node.children) ? node.children : [];
-    return 1 + children.reduce((sum, child) => sum + countNodes(child as any), 0);
+    const children: unknown[] = Array.isArray(node.children) ? node.children : [];
+    return 1 + children.reduce<number>((sum, child) => sum + countNodes(child as any), 0);
 };
 
 const findNode = (node: any, id: string): any => {
@@ -188,4 +188,60 @@ test('fuseDomAndA11y should use a11y role to annotate div content nodes without 
     assert.equal(findNode(graph.root, 'n0.0.0.0')?.role, 'div');
     assert.equal(findNode(graph.root, 'n0.0.0.0.0')?.role, 'link');
     assert.equal(findNode(graph.root, 'n0.0.0.0.0')?.name, 'Donate');
+});
+
+test('fuseDomAndA11y should not build container name from descendant text', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'div',
+        children: [{ id: 'n0.0', tag: 'a', text: 'Read more', children: [] }],
+    };
+    const a11yTree: A11yNode = {
+        role: 'generic',
+        children: [{ role: 'link', name: 'Read more' }],
+    };
+
+    const graph = fuseDomAndA11y(domTree, a11yTree);
+
+    assert.equal(findNode(graph.root, 'n0')?.name, undefined);
+    assert.equal(findNode(graph.root, 'n0.0')?.name, 'Read more');
+});
+
+test('fuseDomAndA11y should downgrade long a11y name into content', () => {
+    const longName =
+        'This paragraph explains how to configure advanced options, and it should not be treated as a short control label.';
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'p',
+        children: [],
+    };
+    const a11yTree: A11yNode = {
+        role: 'paragraph',
+        name: longName,
+    };
+
+    const graph = fuseDomAndA11y(domTree, a11yTree);
+    assert.equal(graph.root.name, undefined);
+    assert.equal(graph.root.content, longName);
+});
+
+test('fuseDomAndA11y should expose link href as target', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'a',
+        text: 'Open Docs',
+        attrs: { href: 'https://example.com/docs' },
+        children: [],
+    };
+    const a11yTree: A11yNode = {
+        role: 'link',
+        name: 'Open Docs',
+    };
+
+    const graph = fuseDomAndA11y(domTree, a11yTree);
+    assert.equal(graph.root.role, 'link');
+    assert.equal(graph.root.name, 'Open Docs');
+    assert.equal(graph.root.content, 'Open Docs');
+    assert.equal(graph.root.target?.ref, 'https://example.com/docs');
+    assert.equal(graph.root.target?.kind, 'url');
 });
