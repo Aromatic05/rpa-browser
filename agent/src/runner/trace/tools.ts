@@ -21,7 +21,7 @@ import type { A11yHint } from '../steps/types';
 import type { PageRegistry, WorkspaceId } from '../../runtime/page_registry';
 import { traceCall } from './trace_call';
 import { createLoggingHooks } from './hooks';
-import { getA11yTree } from './getA11yTree';
+import { getA11yTree } from './a11y/getA11yTree';
 import { createTabsTools } from './tools/tabs';
 import { createPageTools } from './tools/page';
 import { createLocatorTools } from './tools/locator';

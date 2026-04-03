@@ -1,1 +1,1 @@
-export * from '../getDomTree';
+export * from './getDomTree';
