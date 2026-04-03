@@ -6,6 +6,7 @@ import { fuseDomAndA11y } from '../executors/snapshot/fusion';
 import { buildSpatialLayers, isNoiseLayer } from '../executors/snapshot/spatial';
 import { detectRegions } from '../executors/snapshot/regions';
 import { processRegion } from '../executors/snapshot/process_region';
+import { generateSemanticSnapshotFromRaw } from '../executors/snapshot/snapshot';
 import type { UnifiedNode } from '../executors/snapshot/types';
 
 type RawFixture = {
@@ -72,6 +73,16 @@ const runStage23Pipeline = (raw: RawFixture): UnifiedNode => {
     return root;
 };
 
+const findById = (root: UnifiedNode, id: string): UnifiedNode | undefined => {
+    let matched: UnifiedNode | undefined;
+    walk(root, (node) => {
+        if (!matched && node.id === id) {
+            matched = node;
+        }
+    });
+    return matched;
+};
+
 test('snapshot stage2/3 acceptance on fixture dataset', () => {
     const fixtureFiles = fs
         .readdirSync(FIXTURE_DIR)
@@ -131,4 +142,59 @@ test('snapshot stage2/3 acceptance on fixture dataset', () => {
     assert.ok(globalColumnIndexCount > 0, 'expected column index annotation on table cells');
     assert.ok(globalColumnIdCount > 0, 'expected column id annotation on table cells');
     assert.ok(globalHeaderSectionCount > 0, 'expected explicit header section annotation');
+});
+
+test('shop.yingdao table cells should keep stable and non-polluted names', () => {
+    const raw = JSON.parse(
+        fs.readFileSync(path.join(FIXTURE_DIR, 'shop.yingdao.table-list.raw.json'), 'utf8'),
+    ) as RawFixture;
+    const snapshot = generateSemanticSnapshotFromRaw(raw);
+    const root = snapshot.root;
+
+    const expectedNodes: Array<{ id: string; role: string; name: string; content: string }> = [
+        {
+            id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.2.2.1',
+            role: 'cell',
+            name: '短袖T恤',
+            content: '短袖T恤',
+        },
+        {
+            id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.2.4.1',
+            role: 'cell',
+            name: '短袖T恤',
+            content: '短袖T恤',
+        },
+        {
+            id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.1.0.1',
+            role: 'columnheader',
+            name: '商品名称',
+            content: '商品名称',
+        },
+        {
+            id: 'root.0.1.1.0.1.1.0.0.0.1.0.0.0.2.0.0.0.0.0.0.1.0.3',
+            role: 'columnheader',
+            name: '日期',
+            content: '日期',
+        },
+    ];
+
+    for (const expected of expectedNodes) {
+        const node = findById(root, expected.id);
+        assert.ok(node, `expected snapshot node: ${expected.id}`);
+        assert.equal(node?.role, expected.role, `${expected.id}: role mismatch`);
+        assert.equal(node?.name, expected.name, `${expected.id}: name mismatch`);
+        assert.equal(node?.content, expected.content, `${expected.id}: content mismatch`);
+    }
+
+    let pollutedCellCount = 0;
+    walk(root, (node) => {
+        const tag = node.attrs?.tag;
+        if (tag !== 'td' && tag !== 'th') return;
+        if (!node.name || !node.content) return;
+        if (node.name !== node.content) {
+            pollutedCellCount += 1;
+        }
+    });
+
+    assert.equal(pollutedCellCount, 0, 'expected td/th to avoid name-content pollution');
 });

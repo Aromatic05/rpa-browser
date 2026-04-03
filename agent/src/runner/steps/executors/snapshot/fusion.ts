@@ -364,6 +364,7 @@ const pickDomBaseRole = (node: DomNodeInput): string => {
 const canUseFallback = (node: DomNodeInput): boolean => {
     const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
     if (!role) return false;
+    if (isDecorativeTableNode(node)) return false;
     if (INTERACTIVE_ROLES.has(role)) return true;
     if (LANDMARK_ROLES.has(role)) return true;
     if (TEXTUAL_ROLES.has(role)) return true;
@@ -377,11 +378,11 @@ const inferDomFallbackHint = (node: DomNodeInput): string | undefined => {
     const explicit = inferExplicitDomName(node, role);
     if (explicit) return explicit;
 
-    const ownText = normalizeText(node.text);
-    if (!ownText) return undefined;
+    const visible = inferVisibleDomText(node, role);
+    if (!visible) return undefined;
     if (!FALLBACK_TEXT_HINT_ROLES.has(role)) return undefined;
-    if (!isLikelyShortLabel(ownText)) return undefined;
-    return ownText;
+    if (!isLikelyShortLabel(visible)) return undefined;
+    return visible;
 };
 
 const findBestA11yAnchorIndex = (
@@ -471,6 +472,12 @@ const inferDomClassTokens = (node: DomNodeInput): Set<string> => {
     );
 };
 
+const isDecorativeTableNode = (node: DomNodeInput): boolean => {
+    const classes = inferDomClassTokens(node);
+    if (classes.has('ant-table-column-sorter')) return true;
+    return false;
+};
+
 const hasAnyClassPrefix = (tokens: Set<string>, prefixes: string[]): boolean => {
     for (const token of tokens) {
         if (prefixes.some((prefix) => token.startsWith(prefix))) return true;
@@ -529,11 +536,11 @@ const inferDomMatchLabel = (node: DomNodeInput, domRole: string): string | undef
     const explicit = inferExplicitDomName(node, domRole);
     if (explicit) return explicit;
 
-    const ownText = normalizeText(node.text);
-    if (!ownText) return undefined;
+    const visible = inferVisibleDomText(node, domRole);
+    if (!visible) return undefined;
     if (!MATCH_LABEL_FROM_OWN_TEXT_ROLES.has(domRole)) return undefined;
-    if (!isLikelyShortLabel(ownText)) return undefined;
-    return ownText;
+    if (!isLikelyShortLabel(visible)) return undefined;
+    return visible;
 };
 
 const pickExplicitDomLabel = (node: DomNodeInput): string | undefined => {
@@ -563,6 +570,24 @@ const inferExplicitDomName = (node: DomNodeInput, role: string): string | undefi
     return undefined;
 };
 
+const inferVisibleDomText = (node: DomNodeInput, role: string): string | undefined => {
+    const own = normalizeText(node.text);
+    if (own) return own;
+    if (!DESCENDANT_TEXT_HINT_ROLES.has(role)) return undefined;
+    return firstReadableDescendantText(node, 3);
+};
+
+const firstReadableDescendantText = (node: DomNodeInput, depth: number): string | undefined => {
+    if (depth <= 0) return undefined;
+    for (const child of node.children || []) {
+        const own = normalizeText(child.text);
+        if (own) return own;
+        const nested = firstReadableDescendantText(child, depth - 1);
+        if (nested) return nested;
+    }
+    return undefined;
+};
+
 const pickContent = (
     node: DomNodeInput,
     matched: A11yNodeInput | undefined,
@@ -572,6 +597,11 @@ const pickContent = (
 ): string | undefined => {
     const ownText = normalizeText(node.text);
     if (ownText) return ownText;
+
+    const visible = inferVisibleDomText(node, normalizeRole(role).toLowerCase());
+    if (visible && CONTENT_PREFER_VISIBLE_TEXT_ROLES.has(normalizeRole(role).toLowerCase())) {
+        return visible;
+    }
 
     if (a11yNameParts.content) return a11yNameParts.content;
 
@@ -807,6 +837,16 @@ const FALLBACK_TEXT_HINT_ROLES = new Set([
     'paragraph',
     'heading',
 ]);
+const DESCENDANT_TEXT_HINT_ROLES = new Set([
+    'link',
+    'button',
+    'listitem',
+    'cell',
+    'columnheader',
+    'rowheader',
+    'heading',
+    'paragraph',
+]);
 const MATCH_LABEL_FROM_OWN_TEXT_ROLES = new Set([
     'link',
     'button',
@@ -816,6 +856,13 @@ const MATCH_LABEL_FROM_OWN_TEXT_ROLES = new Set([
     'rowheader',
     'heading',
     'paragraph',
+]);
+const CONTENT_PREFER_VISIBLE_TEXT_ROLES = new Set([
+    'cell',
+    'columnheader',
+    'rowheader',
+    'listitem',
+    'row',
 ]);
 const TABLE_SEMANTIC_ROLES = new Set(['table', 'row', 'cell', 'columnheader', 'rowheader']);
 const LIST_SEMANTIC_ROLES = new Set(['list', 'listitem']);
