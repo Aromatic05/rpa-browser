@@ -192,3 +192,46 @@ pre {
   padding: 8px 10px;
   background: rgba(20, 32, 60, 0.92);
 }
+
+.entity-list {
+  display: flex;
+  gap: 8px;
+  flex-direction: column;
+}
+
+.entity-item {
+  margin: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #f7faff;
+  color: var(--text);
+  text-align: left;
+}
+
+.entity-item:hover {
+  background: #edf3ff;
+}
+
+.entity-top {
+  gap: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.entity-id {
+  color: var(--muted);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.entity-label {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.entity-metrics {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}

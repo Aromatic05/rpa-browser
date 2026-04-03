@@ -3,6 +3,15 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import TreeNode from './components/TreeNode.vue';
 import type { DataPack, SnapshotApiResponse, SourceKind, TreeNodeLike } from './types';
 
+type DetectedEntity = {
+  entityId: string;
+  entityType: string;
+  nodeId: string;
+  label: string;
+  fieldCount: number;
+  actionCount: number;
+};
+
 const source = ref<SourceKind>('unifiedGraph');
 const error = ref('');
 const loading = ref(false);
@@ -10,6 +19,14 @@ const targetUrl = ref('https://example.com');
 const resolvedUrl = ref('');
 const selectedNode = ref<TreeNodeLike | null>(null);
 const copyMessage = ref('');
+
+const localLabel = ref('local-fixture');
+const localDomTree = ref<unknown | null>(null);
+const localA11yTree = ref<unknown | null>(null);
+const localDomName = ref('');
+const localA11yName = ref('');
+const localRawName = ref('');
+
 const contextMenu = ref<{
   visible: boolean;
   x: number;
@@ -84,9 +101,90 @@ const activeRoot = computed(() => {
   return normalizeNode(graphRoot, 'n0');
 });
 
+const unifiedRoot = computed(() => {
+  const raw = dataPack.value.unifiedGraph;
+  if (!raw || typeof raw !== 'object') return null;
+  if (!('root' in (raw as object))) return null;
+  return normalizeNode((raw as { root: unknown }).root, 'n0');
+});
+
+const walk = (node: TreeNodeLike, visitor: (node: TreeNodeLike) => void) => {
+  visitor(node);
+  for (const child of node.children) {
+    walk(child, visitor);
+  }
+};
+
+const nodeText = (node: TreeNodeLike): string => {
+  return (node.name || node.content || node.text || '').trim();
+};
+
+const findNodeById = (root: TreeNodeLike, id: string): TreeNodeLike | null => {
+  if (root.id === id) return root;
+  for (const child of root.children) {
+    const matched = findNodeById(child, id);
+    if (matched) return matched;
+  }
+  return null;
+};
+
+const countByPredicate = (root: TreeNodeLike, predicate: (node: TreeNodeLike) => boolean): number => {
+  let count = 0;
+  walk(root, (node) => {
+    if (predicate(node)) count += 1;
+  });
+  return count;
+};
+
+const detectedEntities = computed<DetectedEntity[]>(() => {
+  if (!unifiedRoot.value) return [];
+  const entities: DetectedEntity[] = [];
+
+  walk(unifiedRoot.value, (node) => {
+    const attrs = node.attrs || {};
+    const entityId = typeof attrs.entityId === 'string' ? attrs.entityId : '';
+    const entityType = typeof attrs.entityType === 'string' ? attrs.entityType : '';
+    if (!entityId || !entityType) return;
+
+    const label =
+      nodeText(node) ||
+      (typeof attrs.fieldLabel === 'string' ? attrs.fieldLabel : '') ||
+      node.id;
+
+    const fieldCount = countByPredicate(node, (n) => typeof n.attrs?.fieldLabel === 'string');
+    const actionCount = countByPredicate(node, (n) => typeof n.attrs?.actionIntent === 'string');
+
+    entities.push({
+      entityId,
+      entityType,
+      nodeId: node.id,
+      label,
+      fieldCount,
+      actionCount,
+    });
+  });
+
+  return entities.sort((a, b) => a.entityId.localeCompare(b.entityId));
+});
+
 const selectedAttrs = computed(() => JSON.stringify(selectedNode.value?.attrs || {}, null, 2));
 const selectedTarget = computed(() => JSON.stringify(selectedNode.value?.target || {}, null, 2));
 const selectedBbox = computed(() => JSON.stringify(selectedNode.value?.bbox || {}, null, 2));
+
+const applySnapshotPayload = (payload: SnapshotApiResponse, fallbackUrl: string) => {
+  if (!payload.ok || !payload.data) {
+    throw new Error(payload.error || 'invalid snapshot payload');
+  }
+
+  dataPack.value = {
+    domTree: payload.data.domTree || null,
+    a11yTree: payload.data.a11yTree || null,
+    unifiedGraph: payload.data.unifiedGraph || null,
+  };
+  resolvedUrl.value = payload.data.url || fallbackUrl;
+  selectedNode.value = null;
+  source.value = 'unifiedGraph';
+};
 
 const fetchSnapshot = async () => {
   error.value = '';
@@ -100,24 +198,15 @@ const fetchSnapshot = async () => {
   try {
     const response = await fetch('/api/snapshot', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
 
     const payload = (await response.json()) as SnapshotApiResponse;
-    if (!response.ok || !payload.ok || !payload.data) {
+    if (!response.ok) {
       throw new Error(payload.error || `request failed (${response.status})`);
     }
-
-    dataPack.value = {
-      domTree: payload.data.domTree || null,
-      a11yTree: payload.data.a11yTree || null,
-      unifiedGraph: payload.data.unifiedGraph || null,
-    };
-    resolvedUrl.value = payload.data.url || url;
-    selectedNode.value = null;
+    applySnapshotPayload(payload, url);
   } catch (cause) {
     error.value = `抓取失败: ${String(cause)}`;
   } finally {
@@ -125,7 +214,107 @@ const fetchSnapshot = async () => {
   }
 };
 
+const readJsonFile = async (file: File): Promise<unknown> => {
+  const text = await file.text();
+  return JSON.parse(text);
+};
+
+const onLocalDomFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    localDomTree.value = await readJsonFile(file);
+    localDomName.value = file.name;
+    dataPack.value.domTree = localDomTree.value;
+    error.value = '';
+  } catch (cause) {
+    error.value = `DOM 文件解析失败: ${String(cause)}`;
+  }
+};
+
+const onLocalA11yFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    localA11yTree.value = await readJsonFile(file);
+    localA11yName.value = file.name;
+    dataPack.value.a11yTree = localA11yTree.value;
+    error.value = '';
+  } catch (cause) {
+    error.value = `A11y 文件解析失败: ${String(cause)}`;
+  }
+};
+
+const onLocalRawFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    const raw = (await readJsonFile(file)) as Record<string, unknown>;
+    if (!raw.domTree || !raw.a11yTree) {
+      throw new Error('raw 文件需要包含 domTree 和 a11yTree');
+    }
+
+    localDomTree.value = raw.domTree;
+    localA11yTree.value = raw.a11yTree;
+    localRawName.value = file.name;
+    localDomName.value = `${file.name}#domTree`;
+    localA11yName.value = `${file.name}#a11yTree`;
+
+    dataPack.value.domTree = localDomTree.value;
+    dataPack.value.a11yTree = localA11yTree.value;
+    error.value = '';
+  } catch (cause) {
+    error.value = `RAW 文件解析失败: ${String(cause)}`;
+  }
+};
+
+const buildSnapshotFromLocal = async () => {
+  error.value = '';
+  if (!localDomTree.value || !localA11yTree.value) {
+    error.value = '请先提供本地 DOM + A11y JSON';
+    return;
+  }
+
+  loading.value = true;
+  try {
+    const response = await fetch('/api/snapshot/from-raw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        domTree: localDomTree.value,
+        a11yTree: localA11yTree.value,
+        label: localLabel.value.trim() || 'local-fixture',
+      }),
+    });
+
+    const payload = (await response.json()) as SnapshotApiResponse;
+    if (!response.ok) {
+      throw new Error(payload.error || `request failed (${response.status})`);
+    }
+    applySnapshotPayload(payload, `local://${localLabel.value.trim() || 'local-fixture'}`);
+  } catch (cause) {
+    error.value = `本地构建失败: ${String(cause)}`;
+  } finally {
+    loading.value = false;
+  }
+};
+
 const onSelect = (node: TreeNodeLike) => {
+  selectedNode.value = node;
+};
+
+const selectEntity = (entity: DetectedEntity) => {
+  if (!unifiedRoot.value) return;
+  const node = findNodeById(unifiedRoot.value, entity.nodeId);
+  if (!node) return;
+
+  source.value = 'unifiedGraph';
   selectedNode.value = node;
 };
 
@@ -167,16 +356,16 @@ const serializeTreeNode = (node: TreeNodeLike): unknown => ({
 
 const findNodePath = (root: TreeNodeLike, targetId: string): string[] => {
   const path: string[] = [];
-  const walk = (node: TreeNodeLike): boolean => {
+  const walkPath = (node: TreeNodeLike): boolean => {
     path.push(node.id);
     if (node.id === targetId) return true;
     for (const child of node.children) {
-      if (walk(child)) return true;
+      if (walkPath(child)) return true;
     }
     path.pop();
     return false;
   };
-  return walk(root) ? path : [];
+  return walkPath(root) ? path : [];
 };
 
 const copyText = async (value: string, successLabel: string) => {
@@ -218,9 +407,9 @@ const copyCurrentNodePath = async () => {
 
 const copyCurrentTargetRef = async () => {
   const node = contextMenu.value.node || selectedNode.value;
-  const ref = node?.target?.ref;
-  if (!ref) return;
-  await copyText(ref, '已复制 target.ref');
+  const targetRef = node?.target?.ref;
+  if (!targetRef) return;
+  await copyText(targetRef, '已复制 target.ref');
   hideContextMenu();
 };
 
@@ -263,7 +452,30 @@ onBeforeUnmount(() => {
       <button :disabled="loading" @click="fetchSnapshot">
         {{ loading ? '抓取中...' : '抓取真实页面' }}
       </button>
-      <div v-if="resolvedUrl" class="muted">当前页面：{{ resolvedUrl }}</div>
+    </div>
+
+    <div class="section">
+      <h2>Local DOM/A11y</h2>
+      <input v-model="localLabel" placeholder="fixture name" />
+      <label class="muted">RAW JSON (domTree + a11yTree)</label>
+      <input type="file" accept="application/json" @change="onLocalRawFileChange" />
+      <div v-if="localRawName" class="muted">raw: {{ localRawName }}</div>
+
+      <label class="muted">DOM JSON</label>
+      <input type="file" accept="application/json" @change="onLocalDomFileChange" />
+      <div v-if="localDomName" class="muted">dom: {{ localDomName }}</div>
+
+      <label class="muted">A11y JSON</label>
+      <input type="file" accept="application/json" @change="onLocalA11yFileChange" />
+      <div v-if="localA11yName" class="muted">a11y: {{ localA11yName }}</div>
+
+      <button :disabled="loading || !localDomTree || !localA11yTree" @click="buildSnapshotFromLocal">
+        {{ loading ? '构建中...' : '用本地树构建 Snapshot' }}
+      </button>
+    </div>
+
+    <div class="section">
+      <div v-if="resolvedUrl" class="muted">当前数据：{{ resolvedUrl }}</div>
       <div v-if="error" class="error-text">{{ error }}</div>
     </div>
   </div>
@@ -305,6 +517,26 @@ onBeforeUnmount(() => {
 
     <div v-else class="section">
       <div class="muted">click one node in tree</div>
+    </div>
+
+    <div class="section">
+      <h2>Detected Entities</h2>
+      <div v-if="detectedEntities.length === 0" class="muted">no entity recognized</div>
+      <div v-else class="entity-list">
+        <button
+          v-for="entity in detectedEntities"
+          :key="`${entity.entityId}-${entity.nodeId}`"
+          class="entity-item"
+          @click="selectEntity(entity)"
+        >
+          <div class="entity-top">
+            <span class="badge">{{ entity.entityType }}</span>
+            <span class="entity-id">{{ entity.entityId }}</span>
+          </div>
+          <div class="entity-label">{{ entity.label }}</div>
+          <div class="entity-metrics">fields={{ entity.fieldCount }} actions={{ entity.actionCount }}</div>
+        </button>
+      </div>
     </div>
   </div>
 

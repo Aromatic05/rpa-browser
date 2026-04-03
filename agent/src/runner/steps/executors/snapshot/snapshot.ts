@@ -12,7 +12,7 @@ import { linkGlobalRelations } from './relations';
 import { assignStableIds } from './stable_id';
 import { buildSnapshot } from './build_snapshot';
 import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from './debug';
-import type { SnapshotResult, UnifiedNode } from './types';
+import type { RawData, SnapshotResult, UnifiedNode } from './types';
 
 export const executeBrowserSnapshot = async (
     step: Step<'browser.snapshot'>,
@@ -63,6 +63,10 @@ export const generateSemanticSnapshot = async (page: Page): Promise<SnapshotResu
         a11yCount: countTreeNodes(raw.a11yTree),
     });
 
+    return generateSemanticSnapshotFromRaw(raw);
+};
+
+export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult => {
     // 2) DOM + A11y 融合为统一节点图。
     const graph = fuseDomAndA11y(raw.domTree, raw.a11yTree);
     snapshotDebugLog('fuse', {

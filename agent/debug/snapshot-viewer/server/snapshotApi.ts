@@ -2,10 +2,19 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { chromium } from 'playwright';
 import { collectRawData } from '../../../src/runner/steps/executors/snapshot/collect';
-import { generateSemanticSnapshot } from '../../../src/runner/steps/executors/snapshot/snapshot';
+import {
+  generateSemanticSnapshot,
+  generateSemanticSnapshotFromRaw,
+} from '../../../src/runner/steps/executors/snapshot/snapshot';
 
 type SnapshotRequest = {
   url?: string;
+};
+
+type LocalSnapshotRequest = {
+  domTree?: unknown;
+  a11yTree?: unknown;
+  label?: string;
 };
 
 type SnapshotApiSuccess = {
@@ -114,6 +123,52 @@ export const createSnapshotApiPlugin = (): Plugin => ({
         });
       } finally {
         await browser?.close().catch(() => undefined);
+      }
+    });
+
+    server.middlewares.use('/api/snapshot/from-raw', async (req, res) => {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { ok: false, error: 'method not allowed' });
+        return;
+      }
+
+      let request: LocalSnapshotRequest;
+      try {
+        request = JSON.parse(await readBody(req)) as LocalSnapshotRequest;
+      } catch {
+        sendJson(res, 400, { ok: false, error: 'invalid json body' });
+        return;
+      }
+
+      if (!request.domTree || !request.a11yTree) {
+        sendJson(res, 400, { ok: false, error: 'domTree and a11yTree are required' });
+        return;
+      }
+
+      try {
+        const unifiedGraph = generateSemanticSnapshotFromRaw({
+          domTree: request.domTree,
+          a11yTree: request.a11yTree,
+        });
+        const label = (request.label || 'local-fixture').trim();
+        console.log(
+          `[snapshot-viewer] local source=${label} dom=${countNodes(request.domTree)} a11y=${countNodes(request.a11yTree)} snapshot=${countNodes((unifiedGraph as { root?: unknown })?.root)}`,
+        );
+
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            url: `local://${label}`,
+            domTree: request.domTree,
+            a11yTree: request.a11yTree,
+            unifiedGraph,
+          },
+        });
+      } catch (cause) {
+        sendJson(res, 500, {
+          ok: false,
+          error: `local snapshot failed: ${String(cause)}`,
+        });
       }
     });
   },
