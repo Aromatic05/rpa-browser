@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
-import { getA11yTree } from '../../../trace/a11y/getA11yTree';
-import { getDomTree } from '../../../trace/dom/getDomTree';
+import { getA11yTree } from '../../../trace/getA11yTree';
+import { getDomTree } from '../../../trace/getDomTree';
 import type { RawData } from './types';
 
 export const collectRawData = async (page: Page): Promise<RawData> => {

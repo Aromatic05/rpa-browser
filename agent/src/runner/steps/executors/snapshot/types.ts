@@ -19,15 +19,6 @@ export type NodeGraph = {
 
 export type NodeTier = 'A' | 'B' | 'C' | 'D';
 
-export type SemanticNode = {
-    id: string;
-    role: string;
-    tier: NodeTier;
-    children: SemanticNode[];
-    text?: string;
-    name?: string;
-};
-
 export type SnapshotResult = {
     root: UnifiedNode;
 };
