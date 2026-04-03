@@ -3,9 +3,9 @@ import { snapshotDebugLog } from './debug';
 
 export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph => {
     // 第一阶段最小实现：
-    // 1) 以 DOM 为骨架
-    // 2) 用 id 尝试注入 A11y role/name
-    // 3) 对不上就跳过，不做复杂匹配
+    // 1) 以 DOM 为骨架，保证结构稳定
+    // 2) A11y 主要用于内容标注（role/name），不改变树结构
+    // 3) 匹配不上时保守回退，不做激进推断
     const domRoot = asDomNode(domTree);
     if (!domRoot) {
         return {
@@ -16,18 +16,57 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
     const a11yRoot = asA11yNode(a11yTree);
     const a11yById = new Map<string, A11yNodeInput>();
     const a11yList: A11yNodeInput[] = [];
+    const a11yRoleBuckets = new Map<string, IndexedA11yNode[]>();
+
     walkA11y(a11yRoot, (node) => {
         if (node.id) a11yById.set(node.id, node);
         a11yList.push(node);
+        const index = a11yList.length - 1;
+        const indexed: IndexedA11yNode = {
+            index,
+            node,
+            role: normalizeRole(node.role).toLowerCase(),
+            name: normalizeLabel(node.name),
+        };
+        const bucket = a11yRoleBuckets.get(indexed.role) || [];
+        bucket.push(indexed);
+        a11yRoleBuckets.set(indexed.role, bucket);
     });
 
     let fallbackCursor = 0;
     const usedA11yIndexes = new Set<number>();
     let matchedById = 0;
+    let matchedByLabel = 0;
     let matchedByFallback = 0;
     let fallbackMiss = 0;
     let annotatedByA11yRole = 0;
     let keptDomRole = 0;
+    let domNameFallback = 0;
+
+    const nextByRoleAndLabel = (node: DomNodeInput): A11yNodeInput | undefined => {
+        const domRole = normalizeRole(pickDomBaseRole(node)).toLowerCase();
+        const domLabel = normalizeLabel(inferDomLabel(node));
+        if (!domRole || !domLabel) return undefined;
+
+        const bucket = a11yRoleBuckets.get(domRole);
+        if (!bucket || bucket.length === 0) return undefined;
+
+        const exact = findBestLabelMatch(bucket, domLabel, usedA11yIndexes, fallbackCursor, true);
+        if (exact) {
+            usedA11yIndexes.add(exact.index);
+            fallbackCursor = Math.max(fallbackCursor, exact.index + 1);
+            matchedByLabel += 1;
+            return exact.node;
+        }
+
+        const fuzzy = findBestLabelMatch(bucket, domLabel, usedA11yIndexes, fallbackCursor, false);
+        if (!fuzzy) return undefined;
+        usedA11yIndexes.add(fuzzy.index);
+        fallbackCursor = Math.max(fallbackCursor, fuzzy.index + 1);
+        matchedByLabel += 1;
+        return fuzzy.node;
+    };
+
     const nextFallback = (node: DomNodeInput): A11yNodeInput | undefined => {
         if (!canUseFallback(node)) {
             fallbackMiss += 1;
@@ -55,7 +94,13 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
     const build = (node: DomNodeInput): UnifiedNode => {
         const matchedByNodeId = node.id ? a11yById.get(node.id) : undefined;
         if (matchedByNodeId) matchedById += 1;
-        const matched = matchedByNodeId || nextFallback(node);
+
+        const matchedByText = matchedByNodeId ? undefined : nextByRoleAndLabel(node);
+        const matched =
+            matchedByNodeId ||
+            matchedByText ||
+            (shouldBlockLooseFallback(node) ? undefined : nextFallback(node));
+
         const role = pickRole(node, matched);
         const domBaseRole = pickDomBaseRole(node);
         if (normalizeRole(role) !== normalizeRole(domBaseRole) && matched?.role) {
@@ -64,10 +109,15 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
             keptDomRole += 1;
         }
 
+        const name = pickName(node, matched, role);
+        if (name && !matched?.name) {
+            domNameFallback += 1;
+        }
+
         return {
             id: node.id || `dom-${fallbackCursor}`,
             role,
-            name: pickName(node, matched),
+            name,
             text: node.text,
             bbox: node.bbox,
             attrs: node.attrs,
@@ -80,10 +130,12 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
         domRootId: domRoot.id || 'n0',
         a11yNodeCount: a11yList.length,
         matchedById,
+        matchedByLabel,
         matchedByFallback,
         fallbackMiss,
         annotatedByA11yRole,
         keptDomRole,
+        domNameFallback,
     });
     return graph;
 };
@@ -102,6 +154,13 @@ type A11yNodeInput = {
     role?: string;
     name?: string;
     children?: A11yNodeInput[];
+};
+
+type IndexedA11yNode = {
+    index: number;
+    node: A11yNodeInput;
+    role: string;
+    name: string;
 };
 
 const asDomNode = (value: unknown): DomNodeInput | null => {
@@ -123,22 +182,32 @@ const walkA11y = (node: A11yNodeInput | null, visitor: (node: A11yNodeInput) => 
 };
 
 const pickRole = (node: DomNodeInput, matched: A11yNodeInput | undefined): string => {
-    const domRole = pickDomBaseRole(node);
-    const tag = normalizeRole(node.tag);
+    const domRole = normalizeRole(pickDomBaseRole(node));
+    const tag = normalizeRole(node.tag).toLowerCase();
     if (tag && STRUCTURAL_TAGS.has(tag)) return tag;
 
-    const a11yRole = normalizeRole(matched?.role);
+    // 对语义稳定标签优先保留 DOM 语义，避免错配漂移。
+    if (tag && DOM_STABLE_ROLE_TAGS.has(tag)) return domRole;
+
+    const a11yRole = normalizeRole(matched?.role).toLowerCase();
     if (a11yRole && !isWeakA11yRole(a11yRole)) return a11yRole;
 
     return domRole;
 };
 
-const pickName = (node: DomNodeInput, matched: A11yNodeInput | undefined): string | undefined => {
+const pickName = (node: DomNodeInput, matched: A11yNodeInput | undefined, role: string): string | undefined => {
+    const domLabel = inferDomLabel(node);
     const a11yName = normalizeText(matched?.name);
-    if (a11yName) return a11yName;
-
     const ariaLabel = normalizeText(node.attrs?.['aria-label']);
+    const normalizedRole = normalizeRole(role).toLowerCase();
+
+    if (a11yName && domLabel) {
+        if (PREFER_A11Y_NAME_ROLES.has(normalizedRole)) return a11yName;
+        return labelsSimilar(a11yName, domLabel) ? a11yName : domLabel;
+    }
+    if (a11yName) return a11yName;
     if (ariaLabel) return ariaLabel;
+    if (domLabel) return domLabel;
     return undefined;
 };
 
@@ -153,46 +222,67 @@ const pickDomBaseRole = (node: DomNodeInput): string => {
     const domRole = normalizeRole(node.attrs?.role);
     if (domRole) return domRole;
 
-    const tag = normalizeRole(node.tag);
-    if (tag) return tag;
-    return 'generic';
+    const tag = normalizeRole(node.tag).toLowerCase();
+    if (!tag) return 'generic';
+
+    const mapped = DOM_SEMANTIC_ROLE_BY_TAG.get(tag);
+    if (mapped) return mapped;
+    return tag;
 };
 
 const canUseFallback = (node: DomNodeInput): boolean => {
-    const tag = normalizeRole(node.tag).toLowerCase();
-    if (!tag) return false;
-    if (INTERACTIVE_TAGS.has(tag)) return true;
-    if (LANDMARK_TAGS.has(tag)) return true;
-    if (ANNOTATABLE_CONTAINER_TAGS.has(tag)) return true;
-    if (TEXTUAL_TAGS.has(tag)) return true;
+    const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
+    if (!role) return false;
+    if (INTERACTIVE_ROLES.has(role)) return true;
+    if (LANDMARK_ROLES.has(role)) return true;
+    if (TEXTUAL_ROLES.has(role)) return true;
+    if (ANNOTATABLE_ROLES.has(role)) return true;
+    if (role === 'div' || role === 'span' || role === 'generic') return true;
     return false;
+};
+
+const shouldBlockLooseFallback = (node: DomNodeInput): boolean => {
+    const role = normalizeRole(pickDomBaseRole(node)).toLowerCase();
+    const domLabel = normalizeLabel(inferDomLabel(node));
+    if (!domLabel) return false;
+    return INTERACTIVE_ROLES.has(role) || TEXTUAL_ROLES.has(role);
 };
 
 const isRoleCompatible = (node: DomNodeInput, role: string | undefined): boolean => {
     const normalizedRole = normalizeRole(role).toLowerCase();
     if (!normalizedRole) return false;
 
-    const tag = normalizeRole(node.tag).toLowerCase();
-    if (!tag) return false;
+    const domRole = normalizeRole(pickDomBaseRole(node)).toLowerCase();
+    if (!domRole) return false;
 
-    if (INTERACTIVE_TAGS.has(tag)) {
+    if (INTERACTIVE_ROLES.has(domRole)) {
         return INTERACTIVE_ROLES.has(normalizedRole);
     }
 
-    if (tag === 'nav') return normalizedRole === 'navigation';
-    if (tag === 'main') return normalizedRole === 'main';
-    if (tag === 'header') return normalizedRole === 'banner';
-    if (tag === 'footer') return normalizedRole === 'contentinfo';
-    if (tag === 'aside') return normalizedRole === 'complementary';
-    if (tag === 'section') return normalizedRole === 'region';
-    if (tag === 'form') return normalizedRole === 'form';
-    if (tag === 'ul' || tag === 'ol') return normalizedRole === 'list';
-    if (tag === 'li') return normalizedRole === 'listitem';
-    if (tag === 'table') return normalizedRole === 'table';
-    if (tag === 'tr') return normalizedRole === 'row';
-    if (tag === 'td' || tag === 'th') return normalizedRole === 'cell' || normalizedRole === 'columnheader' || normalizedRole === 'rowheader';
-    if (TEXTUAL_TAGS.has(tag)) return TEXTUAL_ROLES.has(normalizedRole);
-    if (ANNOTATABLE_CONTAINER_TAGS.has(tag)) return ANNOTATABLE_ROLES.has(normalizedRole);
+    if (domRole === 'navigation') return normalizedRole === 'navigation';
+    if (domRole === 'main') return normalizedRole === 'main';
+    if (domRole === 'banner') return normalizedRole === 'banner';
+    if (domRole === 'contentinfo') return normalizedRole === 'contentinfo';
+    if (domRole === 'complementary') return normalizedRole === 'complementary';
+    if (domRole === 'region') return normalizedRole === 'region';
+    if (domRole === 'form') return normalizedRole === 'form';
+    if (domRole === 'list') return normalizedRole === 'list';
+    if (domRole === 'listitem') return normalizedRole === 'listitem';
+    if (domRole === 'table') return normalizedRole === 'table';
+    if (domRole === 'row') return normalizedRole === 'row';
+    if (domRole === 'cell' || domRole === 'columnheader' || domRole === 'rowheader') {
+        return normalizedRole === 'cell' || normalizedRole === 'columnheader' || normalizedRole === 'rowheader';
+    }
+
+    if (TEXTUAL_ROLES.has(domRole)) return TEXTUAL_ROLES.has(normalizedRole);
+
+    if (domRole === 'div' || domRole === 'span' || domRole === 'generic') {
+        return ANNOTATABLE_ROLES.has(normalizedRole);
+    }
+
+    if (ANNOTATABLE_ROLES.has(domRole)) {
+        return ANNOTATABLE_ROLES.has(normalizedRole);
+    }
 
     return false;
 };
@@ -202,11 +292,114 @@ const isWeakA11yRole = (role: string | undefined): boolean => {
     return WEAK_A11Y_ROLES.has(normalized);
 };
 
+const findBestLabelMatch = (
+    bucket: IndexedA11yNode[],
+    domLabel: string,
+    used: Set<number>,
+    cursor: number,
+    exactOnly: boolean,
+): IndexedA11yNode | undefined => {
+    let best: IndexedA11yNode | undefined;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const item of bucket) {
+        if (used.has(item.index)) continue;
+        if (!item.name) continue;
+
+        const isExact = item.name === domLabel;
+        const isFuzzy = !isExact && (item.name.includes(domLabel) || domLabel.includes(item.name));
+        if (!isExact && (exactOnly || !isFuzzy)) continue;
+
+        const score = item.index >= cursor ? item.index - cursor : 10_000 + (cursor - item.index);
+        if (score < bestScore) {
+            best = item;
+            bestScore = score;
+        }
+    }
+
+    return best;
+};
+
+const inferDomLabel = (node: DomNodeInput): string | undefined => {
+    const direct = normalizeText(node.text);
+    if (direct) return direct;
+
+    const ariaLabel = normalizeText(node.attrs?.['aria-label']);
+    if (ariaLabel) return ariaLabel;
+
+    const title = normalizeText(node.attrs?.title);
+    if (title) return title;
+
+    const alt = normalizeText(node.attrs?.alt);
+    if (alt) return alt;
+
+    const tokens: string[] = [];
+    collectTextTokens(node, tokens, 6);
+    if (tokens.length === 0) return undefined;
+    return normalizeText(tokens.join(' '));
+};
+
+const collectTextTokens = (node: DomNodeInput, out: string[], maxTokens: number) => {
+    if (out.length >= maxTokens) return;
+
+    const text = normalizeText(node.text);
+    if (text) out.push(text);
+
+    for (const child of node.children || []) {
+        if (out.length >= maxTokens) break;
+        collectTextTokens(child, out, maxTokens);
+    }
+};
+
+const normalizeLabel = (value: string | undefined): string => {
+    return (value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/[\u200b-\u200d\ufeff]/g, '');
+};
+
+const labelsSimilar = (left: string, right: string): boolean => {
+    const a = normalizeLabel(left);
+    const b = normalizeLabel(right);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    return a.includes(b) || b.includes(a);
+};
+
 const STRUCTURAL_TAGS = new Set(['html', 'head', 'body']);
-const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'textarea', 'select', 'option', 'label']);
-const LANDMARK_TAGS = new Set(['nav', 'main', 'header', 'footer', 'aside', 'section', 'form']);
-const TEXTUAL_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-const ANNOTATABLE_CONTAINER_TAGS = new Set(['div', 'span', 'article']);
+const DOM_STABLE_ROLE_TAGS = new Set([
+    'a',
+    'button',
+    'input',
+    'textarea',
+    'select',
+    'option',
+    'label',
+    'nav',
+    'main',
+    'header',
+    'footer',
+    'aside',
+    'section',
+    'form',
+    'article',
+    'ul',
+    'ol',
+    'li',
+    'table',
+    'tr',
+    'td',
+    'th',
+    'p',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'img',
+]);
 const INTERACTIVE_ROLES = new Set([
     'link',
     'button',
@@ -218,6 +411,7 @@ const INTERACTIVE_ROLES = new Set([
     'menuitem',
     'switch',
 ]);
+const LANDMARK_ROLES = new Set(['navigation', 'main', 'banner', 'contentinfo', 'complementary', 'region', 'form']);
 const TEXTUAL_ROLES = new Set(['paragraph', 'heading', 'text']);
 const ANNOTATABLE_ROLES = new Set([
     'navigation',
@@ -242,4 +436,49 @@ const ANNOTATABLE_ROLES = new Set([
     'paragraph',
 ]);
 const WEAK_A11Y_ROLES = new Set(['none', 'generic', 'statictext', 'inlinetextbox', 'text']);
-const FALLBACK_LOOKAHEAD = 24;
+const FALLBACK_LOOKAHEAD = 32;
+const PREFER_A11Y_NAME_ROLES = new Set([
+    'navigation',
+    'main',
+    'banner',
+    'contentinfo',
+    'complementary',
+    'region',
+    'form',
+    'article',
+    'dialog',
+    'list',
+    'table',
+]);
+const DOM_SEMANTIC_ROLE_BY_TAG = new Map<string, string>([
+    ['a', 'link'],
+    ['button', 'button'],
+    ['input', 'textbox'],
+    ['textarea', 'textbox'],
+    ['select', 'combobox'],
+    ['option', 'option'],
+    ['label', 'label'],
+    ['nav', 'navigation'],
+    ['main', 'main'],
+    ['header', 'banner'],
+    ['footer', 'contentinfo'],
+    ['aside', 'complementary'],
+    ['section', 'region'],
+    ['form', 'form'],
+    ['article', 'article'],
+    ['ul', 'list'],
+    ['ol', 'list'],
+    ['li', 'listitem'],
+    ['table', 'table'],
+    ['tr', 'row'],
+    ['td', 'cell'],
+    ['th', 'columnheader'],
+    ['p', 'paragraph'],
+    ['h1', 'heading'],
+    ['h2', 'heading'],
+    ['h3', 'heading'],
+    ['h4', 'heading'],
+    ['h5', 'heading'],
+    ['h6', 'heading'],
+    ['img', 'image'],
+]);
