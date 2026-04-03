@@ -1,0 +1,99 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { compress } from '../executors/snapshot/compress';
+import type { UnifiedNode } from '../executors/snapshot/types';
+
+const node = (
+    id: string,
+    role: string,
+    children: UnifiedNode[] = [],
+    patch: Partial<UnifiedNode> = {},
+): UnifiedNode => ({
+    id,
+    role,
+    children,
+    ...patch,
+});
+
+test('compress should delete script/style/svg/path and empty decorative shells', () => {
+    const root = node('root', 'root', [
+        node('script', 'script', [], { attrs: { tag: 'script' } }),
+        node('style', 'style', [], { attrs: { tag: 'style' } }),
+        node('svg', 'svg', [], { attrs: { tag: 'svg' } }),
+        node('path', 'path', [], { attrs: { tag: 'path' } }),
+        node('empty', 'div', [], { attrs: { tag: 'div', class: 'ant-space' } }),
+        node('button', 'button', [], { name: '提交', content: '提交', attrs: { tag: 'button' } }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'button');
+});
+
+test('compress should collapse wrapper shells and lift child text to interactive parent', () => {
+    const root = node('root', 'root', [
+        node('shell', 'div', [
+            node('btn', 'button', [
+                node('text-shell', 'span', [], {
+                    name: '查询',
+                    content: '查询',
+                    attrs: { tag: 'span' },
+                }),
+            ], {
+                attrs: { tag: 'button' },
+            }),
+        ], {
+            attrs: { tag: 'div', class: 'ant-btn-content' },
+        }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'button');
+    assert.equal(out.children[0].name, '查询');
+    assert.equal(out.children[0].content, '查询');
+    assert.equal(out.children[0].children.length, 0);
+});
+
+test('compress should keep entity/structure nodes even if they look like wrappers', () => {
+    const rowEntity = node('row-entity', 'div', [
+        node('cell-1', 'cell', [], { attrs: { tag: 'td' } }),
+    ], {
+        entityId: 'entity:row-1',
+        entityType: 'row',
+        attrs: { tag: 'div', entityId: 'entity:row-1', entityType: 'row' },
+    });
+    const root = node('root', 'root', [rowEntity]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].id, 'row-entity');
+    assert.equal(out.children[0].entityType, 'row');
+});
+
+test('compress should not blindly lift long mixed text into parent', () => {
+    const longText =
+        'This is a very long mixed sentence that should stay on the text node and must not be lifted into button name.';
+    const root = node('root', 'root', [
+        node('btn', 'button', [
+            node('text-shell', 'span', [], {
+                content: longText,
+                attrs: { tag: 'span' },
+            }),
+        ], {
+            attrs: { tag: 'button' },
+        }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'button');
+    assert.equal(out.children[0].name, undefined);
+    assert.equal(out.children[0].content, undefined);
+    assert.equal(out.children[0].children.length, 1);
+    assert.equal(out.children[0].children[0].content, longText);
+});
