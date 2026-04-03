@@ -15,6 +15,15 @@ export type UnifiedNode = {
     };
     bbox?: { x: number; y: number; width: number; height: number };
     attrs?: Record<string, string>;
+    tier?: NodeTier;
+    entityId?: string;
+    entityType?: string;
+    parentEntityId?: string;
+    fieldLabel?: string;
+    actionIntent?: string;
+    actionTargetId?: string;
+    tableRole?: 'table' | 'row' | 'cell' | 'header_cell';
+    formRole?: 'form' | 'field_group' | 'field' | 'submit_area';
 };
 
 export type NodeGraph = {
@@ -22,18 +31,6 @@ export type NodeGraph = {
 };
 
 export type NodeTier = 'A' | 'B' | 'C' | 'D';
-
-export type SemanticNode = {
-    id: string;
-    role: string;
-    tier: NodeTier;
-    children: SemanticNode[];
-    content?: string;
-    name?: string;
-    target?: UnifiedNode['target'];
-    bbox?: UnifiedNode['bbox'];
-    attrs?: Record<string, string>;
-};
 
 export type SnapshotResult = {
     root: UnifiedNode;

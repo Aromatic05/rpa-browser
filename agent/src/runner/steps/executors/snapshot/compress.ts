@@ -1,9 +1,9 @@
-import type { SemanticNode } from './types';
+import type { UnifiedNode } from './types';
 
-export const compress = (node: SemanticNode): SemanticNode | null => {
+export const compress = (node: UnifiedNode): UnifiedNode | null => {
     node.children = node.children
         .map((child) => compress(child))
-        .filter((child): child is SemanticNode => Boolean(child));
+        .filter((child): child is UnifiedNode => Boolean(child));
 
     // D 类节点直接删除。
     if (isDeleteTier(node)) return null;
@@ -17,23 +17,23 @@ export const compress = (node: SemanticNode): SemanticNode | null => {
     return node;
 };
 
-const isDeleteTier = (node: SemanticNode) => node.tier === 'D';
+const isDeleteTier = (node: UnifiedNode) => node.tier === 'D';
 
-const isCollapsibleShell = (node: SemanticNode) => node.tier === 'C' && node.children.length > 0;
+const isCollapsibleShell = (node: UnifiedNode) => node.tier === 'C' && node.children.length > 0;
 
-const liftChildren = (node: SemanticNode): SemanticNode => {
+const liftChildren = (node: UnifiedNode): UnifiedNode => {
     if (node.children.length === 1) {
         return node.children[0];
     }
     return node;
 };
 
-const shouldSummarize = (_node: SemanticNode) => {
+const shouldSummarize = (_node: UnifiedNode) => {
     // 占位：后续补摘要触发条件。
     return false;
 };
 
-const summarize = (node: SemanticNode): SemanticNode => ({
+const summarize = (node: UnifiedNode): UnifiedNode => ({
     ...node,
     children: [],
 });
