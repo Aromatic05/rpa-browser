@@ -18,6 +18,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'select', value: TreeNodeLike): void;
+  (e: 'contextmenu-node', value: { node: TreeNodeLike; x: number; y: number }): void;
 }>();
 
 const open = ref(props.depth < 2);
@@ -34,15 +35,27 @@ const toggle = (event: MouseEvent) => {
 const selectNode = () => {
   emit('select', props.node);
 };
+
+const openContextMenu = (event: MouseEvent) => {
+  event.preventDefault();
+  event.stopPropagation();
+  emit('select', props.node);
+  emit('contextmenu-node', {
+    node: props.node,
+    x: event.clientX,
+    y: event.clientY,
+  });
+};
 </script>
 
 <template>
   <div class="tree-node">
-    <div class="tree-line" :class="{ selected: isSelected }" @click="selectNode">
+    <div class="tree-line" :class="{ selected: isSelected }" @click="selectNode" @contextmenu="openContextMenu">
       <span class="badge" @click="toggle">{{ hasChildren ? (open ? '-' : '+') : '·' }}</span>
       <span>{{ node.role || node.tag || 'node' }}</span>
       <span class="badge">{{ node.id }}</span>
       <span v-if="node.name">{{ node.name }}</span>
+      <span v-else-if="node.content">{{ node.content }}</span>
       <span v-else-if="node.text">{{ node.text }}</span>
     </div>
 
@@ -54,6 +67,7 @@ const selectNode = () => {
         :depth="depth + 1"
         :selected-id="selectedId"
         @select="emit('select', $event)"
+        @contextmenu-node="emit('contextmenu-node', $event)"
       />
     </div>
   </div>

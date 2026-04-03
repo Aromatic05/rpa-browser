@@ -79,6 +79,11 @@ button.secondary {
   background: #e6eeff;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .tree-wrap {
   padding: 10px;
 }
@@ -148,4 +153,42 @@ pre {
 .muted {
   font-size: 12px;
   color: #6a7892;
+}
+
+.context-menu {
+  z-index: 50;
+  position: fixed;
+  min-width: 190px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(31, 42, 68, 0.18);
+  padding: 6px;
+}
+
+.context-item {
+  width: 100%;
+  margin: 0;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.context-item:hover:not(:disabled) {
+  background: #eef3ff;
+}
+
+.copy-toast {
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  color: #fff;
+  position: fixed;
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(20, 32, 60, 0.92);
 }

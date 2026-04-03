@@ -5,7 +5,18 @@ export type TreeNodeLike = {
   role?: string;
   tag?: string;
   name?: string;
+  content?: string;
   text?: string;
+  target?: {
+    ref?: string;
+    kind?: string;
+  };
+  bbox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   attrs?: Record<string, unknown>;
   children: TreeNodeLike[];
 };
