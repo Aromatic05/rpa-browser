@@ -23,6 +23,14 @@ type SnapshotApiFailure = {
   error: string;
 };
 
+const countNodes = (node: unknown): number => {
+  if (!node || typeof node !== 'object') return 0;
+  const children = Array.isArray((node as { children?: unknown[] }).children)
+    ? ((node as { children?: unknown[] }).children as unknown[])
+    : [];
+  return 1 + children.reduce((sum, child) => sum + countNodes(child), 0);
+};
+
 const readBody = async (req: IncomingMessage): Promise<string> => {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -49,6 +57,11 @@ const isHttpUrl = (value: string): boolean => {
 export const createSnapshotApiPlugin = (): Plugin => ({
   name: 'snapshot-viewer-api',
   configureServer(server) {
+    // viewer 场景默认开启 snapshot 调试日志，便于定位节点缺失问题。
+    if (!process.env.RPA_SNAPSHOT_DEBUG) {
+      process.env.RPA_SNAPSHOT_DEBUG = '1';
+    }
+
     server.middlewares.use('/api/snapshot', async (req, res) => {
       if (req.method !== 'POST') {
         sendJson(res, 405, { ok: false, error: 'method not allowed' });
@@ -71,6 +84,7 @@ export const createSnapshotApiPlugin = (): Plugin => ({
 
       let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
       try {
+        console.log(`[snapshot-viewer] request url=${targetUrl}`);
         browser = await chromium.launch({ headless: true });
         const page = await browser.newPage();
         await page.goto(targetUrl, {
@@ -80,6 +94,9 @@ export const createSnapshotApiPlugin = (): Plugin => ({
 
         const raw = await collectRawData(page);
         const unifiedGraph = await generateSemanticSnapshot(page);
+        console.log(
+          `[snapshot-viewer] collected url=${page.url()} dom=${countNodes(raw.domTree)} a11y=${countNodes(raw.a11yTree)} snapshot=${countNodes((unifiedGraph as { root?: unknown })?.root)}`,
+        );
 
         sendJson(res, 200, {
           ok: true,

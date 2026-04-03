@@ -11,6 +11,7 @@ import { processRegion } from './process_region';
 import { linkGlobalRelations } from './relations';
 import { assignStableIds } from './stable_id';
 import { buildSnapshot } from './build_snapshot';
+import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from './debug';
 import type { SnapshotResult, UnifiedNode } from './types';
 
 export const executeBrowserSnapshot = async (
@@ -50,14 +51,31 @@ export const executeBrowserSnapshot = async (
 };
 
 export const generateSemanticSnapshot = async (page: Page): Promise<SnapshotResult> => {
+    const currentUrl = typeof (page as { url?: unknown }).url === 'function' ? page.url() : '';
+    snapshotDebugLog('start', {
+        url: currentUrl,
+    });
+
     // 1) 采集原始观察：DOM、A11y 等基础数据。
     const raw = await collectRawData(page);
+    snapshotDebugLog('collect', {
+        domCount: countTreeNodes(raw.domTree),
+        a11yCount: countTreeNodes(raw.a11yTree),
+    });
 
     // 2) DOM + A11y 融合为统一节点图。
     const graph = fuseDomAndA11y(raw.domTree, raw.a11yTree);
+    snapshotDebugLog('fuse', {
+        unifiedCount: countTreeNodes(graph.root),
+        topNodes: summarizeTopNodes(graph.root),
+    });
 
     // 3) 对顶层子树做空间重排。
     const layeredGraph = buildSpatialLayers(graph);
+    snapshotDebugLog('spatial', {
+        layeredCount: countTreeNodes(layeredGraph.root),
+        topNodes: summarizeTopNodes(layeredGraph.root),
+    });
 
     // 4) 创建虚拟根，先挂主内容。
     const root = createVirtualRoot();
@@ -73,10 +91,19 @@ export const generateSemanticSnapshot = async (page: Page): Promise<SnapshotResu
         if (isNoiseLayer(overlay)) continue;
         root.children.push(overlay);
     }
+    snapshotDebugLog('attach-layers', {
+        virtualRootChildren: root.children.length,
+        topNodes: summarizeTopNodes(root),
+    });
 
     // 6) 每层做区域处理与语义处理。
     for (const layer of root.children) {
         const regions = detectRegions(layer);
+        snapshotDebugLog('regions', {
+            layerId: layer.id,
+            layerRole: layer.role,
+            regionCount: regions.length,
+        });
         for (const region of regions) {
             const processed = processRegion(region);
             if (!processed) continue;
@@ -89,9 +116,18 @@ export const generateSemanticSnapshot = async (page: Page): Promise<SnapshotResu
 
     // 8) 压缩后生成稳定 ID。
     assignStableIds(root);
+    snapshotDebugLog('stable-id', {
+        snapshotCount: countTreeNodes(root),
+        topNodes: summarizeTopNodes(root),
+    });
 
     // 9) 输出 snapshot。
-    return buildSnapshot(root);
+    const snapshot = buildSnapshot(root);
+    snapshotDebugLog('done', {
+        snapshotCount: countTreeNodes(snapshot.root),
+        topNodes: summarizeTopNodes(snapshot.root),
+    });
+    return snapshot;
 };
 
 const createVirtualRoot = (): UnifiedNode => ({

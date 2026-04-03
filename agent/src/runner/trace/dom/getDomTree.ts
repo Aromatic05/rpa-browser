@@ -14,7 +14,10 @@ export const getDomTree = async (page: Page): Promise<DomTreeNode | null> => {
     try {
         // 用字符串脚本避免构建产物中的 __name 注入破坏 page.evaluate。
         return await page.evaluate(DOM_TREE_EVAL_SCRIPT);
-    } catch {
+    } catch (error) {
+        if (process.env.RPA_SNAPSHOT_DEBUG === '1' || process.env.RPA_SNAPSHOT_DEBUG === 'true') {
+            console.warn('[snapshot][dom] getDomTree failed', error);
+        }
         // 第一阶段失败时返回空树，避免阻塞上层流程。
         return null;
     }
