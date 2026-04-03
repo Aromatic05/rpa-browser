@@ -183,6 +183,7 @@ const isAtomicSemanticNode = (node: UnifiedNode): boolean => {
 };
 
 const truncateAtomicNode = (node: UnifiedNode): UnifiedNode => {
+    const originalChildren = [...node.children];
     const droppedTexts: string[] = [];
     const keptChildren: UnifiedNode[] = [];
     const strictAtomic = isStrictAtomicNode(node);
@@ -200,10 +201,64 @@ const truncateAtomicNode = (node: UnifiedNode): UnifiedNode => {
     }
 
     node.children = keptChildren;
+    normalizeAtomicText(node, originalChildren);
     if (droppedTexts.length > 0 && canReceiveLiftedText(node)) {
         applyLiftedText(node, droppedTexts);
     }
     return node;
+};
+
+const normalizeAtomicText = (node: UnifiedNode, originalChildren: UnifiedNode[]) => {
+    const role = normalizeRole(node.role);
+    if (role !== 'heading') return;
+
+    const cleanedName = sanitizeHeadingText(node.name, originalChildren);
+    const cleanedContent = sanitizeHeadingText(node.content, originalChildren);
+    if (cleanedName) node.name = cleanedName;
+    if (cleanedContent) node.content = cleanedContent;
+
+    if (!node.content && node.name) {
+        node.content = node.name;
+    } else if (!node.name && node.content) {
+        node.name = node.content;
+    }
+};
+
+const sanitizeHeadingText = (
+    value: string | undefined,
+    originalChildren: UnifiedNode[],
+): string | undefined => {
+    const normalized = normalizeText(value);
+    if (!normalized) return undefined;
+
+    let text = normalized.replace(/^\s*(image|图像|图片)\s*[:：]\s*/i, '').trim();
+    if (!text) return undefined;
+
+    // heading 存在图片子节点时，优先清理由图片 alt 混入造成的前导英文片段。
+    if (hasImageLikeChild(originalChildren)) {
+        const firstCjk = text.search(/[\u3400-\u9FFF]/u);
+        if (firstCjk > 0) {
+            const prefix = text.slice(0, firstCjk).trim();
+            if (
+                prefix.length >= 3 &&
+                prefix.length <= 80 &&
+                /^[A-Za-z0-9\s+&|/_.:-]+$/.test(prefix) &&
+                /[A-Za-z]/.test(prefix)
+            ) {
+                text = text.slice(firstCjk).trim();
+            }
+        }
+    }
+
+    return normalizeText(text);
+};
+
+const hasImageLikeChild = (children: UnifiedNode[]): boolean => {
+    return children.some((child) => {
+        const role = normalizeRole(child.role);
+        const tag = inferTag(child);
+        return role === 'image' || role === 'img' || tag === 'img';
+    });
 };
 
 const isStrictAtomicNode = (node: UnifiedNode): boolean => {
@@ -213,9 +268,20 @@ const isStrictAtomicNode = (node: UnifiedNode): boolean => {
 };
 
 const shouldKeepInsideAtomic = (parent: UnifiedNode, child: UnifiedNode): boolean => {
+    const parentRole = normalizeRole(parent.role);
+    const parentText = normalizeText(parent.name || parent.content);
+
+    // heading 已有稳定文本时，子节点大多是排版实现（span/b/img/icon），默认裁掉。
+    if (parentRole === 'heading' && parentText) {
+        if (!isInteractiveNode(child)) return false;
+        if (!hasDistinctTarget(parent, child)) return false;
+        if (!normalizeText(child.name) && !normalizeText(child.content)) return false;
+        return true;
+    }
+
     if (isStructuralBoundary(child)) return true;
     if (isMeaningfulImageNode(child)) return true;
-    if (hasHeavyText(child) && !normalizeText(parent.name || parent.content)) return true;
+    if (hasHeavyText(child) && !parentText) return true;
 
     // 原子节点内部仅保留真正独立的交互对象，避免把图标/装饰实现留下来。
     if (isInteractiveNode(child)) {
@@ -689,6 +755,7 @@ const ATOMIC_ROLES = new Set([
     'combobox',
     'menuitem',
     'tab',
+    'heading',
     'image',
     'img',
 ]);

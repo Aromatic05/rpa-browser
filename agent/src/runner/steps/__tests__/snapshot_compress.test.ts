@@ -384,3 +384,38 @@ test('compress should enforce strict atomic link and cut heading/image descendan
     assert.equal(out.children[0].content, '影刀商城');
     assert.equal(out.children[0].children.length, 0);
 });
+
+test('compress should atomize polluted heading and drop image/span/b descendants', () => {
+    const root = node('root', 'root', [
+        node('hero-title', 'heading', [
+            node('hero-logo', 'image', [], {
+                attrs: { tag: 'img', class: 'heroLogo_jM6J' },
+            }),
+            node('hero-text', 'span', [
+                node('b1', 'b', [], { content: '开箱即用', attrs: { tag: 'b' } }),
+                node('b2', 'b', [], { content: '用户体验', attrs: { tag: 'b' } }),
+            ], {
+                content: '基于 Arch Linux、 的Linux发行版，提供出色的操作系统',
+                attrs: { tag: 'span', class: 'heroTitleTextHtml_zYwv' },
+            }),
+        ], {
+            name: 'Image: Docusaurus with Keytar 基于 Arch Linux、开箱即用的Linux发行版，提供出色的操作系统用户体验',
+            content: 'Image: Docusaurus with Keytar 基于 Arch Linux、开箱即用的Linux发行版，提供出色的操作系统用户体验',
+            attrs: { tag: 'h1', class: 'heroProjectTagline_EkV5' },
+        }),
+    ]);
+
+    const out = compress(root);
+    assert.ok(out);
+    assert.equal(out.children.length, 1);
+    assert.equal(out.children[0].role, 'heading');
+    assert.equal(out.children[0].children.length, 0);
+    assert.equal(
+        out.children[0].content,
+        '基于 Arch Linux、开箱即用的Linux发行版，提供出色的操作系统用户体验',
+    );
+    assert.equal(
+        out.children[0].name,
+        '基于 Arch Linux、开箱即用的Linux发行版，提供出色的操作系统用户体验',
+    );
+});
