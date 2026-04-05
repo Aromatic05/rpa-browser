@@ -7,6 +7,7 @@ export const finalizeLabel = (tree: UnifiedNode): UnifiedNode => {
     normalizeSemanticTexts(tree);
     migrateSemanticPayload(tree, parentById);
     applyLocalRejudge(tree, parentById);
+    repairSemanticReferences(tree, parentById);
     return tree;
 };
 
@@ -50,10 +51,24 @@ const normalizeSemanticTexts = (tree: UnifiedNode) => {
 
 const migrateSemanticPayload = (tree: UnifiedNode, parentById: Map<string, UnifiedNode | null>) => {
     walk(tree, (node) => {
+        migrateEntityIdPayload(node, parentById);
         migrateEntityTypePayload(node, parentById);
         migrateFieldLabel(node, parentById);
         migrateActionPayload(node, parentById);
     });
+};
+
+const migrateEntityIdPayload = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>) => {
+    const entityId = normalizeText(node.entityId || node.attrs?.entityId);
+    if (!entityId) return;
+    if (isEntityIdCarrier(node)) return;
+
+    const receiver = findNearestCarrier(node, parentById, isEntityIdCarrier);
+    if (!receiver || receiver.id === node.id) return;
+    if (!normalizeText(receiver.entityId || receiver.attrs?.entityId)) {
+        setEntityId(receiver, entityId);
+    }
+    clearEntityId(node);
 };
 
 const migrateEntityTypePayload = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>) => {
@@ -119,6 +134,114 @@ const applyLocalRejudge = (tree: UnifiedNode, parentById: Map<string, UnifiedNod
             finalizeContainerNode(node);
         }
     });
+};
+
+const repairSemanticReferences = (tree: UnifiedNode, parentById: Map<string, UnifiedNode | null>) => {
+    const entityIndex = buildEntityIndex(tree);
+    if (entityIndex.size === 0) return;
+
+    walk(tree, (node) => {
+        repairParentEntityReference(node, parentById, entityIndex);
+        repairActionTargetReference(node, parentById, entityIndex);
+    });
+};
+
+const buildEntityIndex = (tree: UnifiedNode): Map<string, UnifiedNode> => {
+    const entities = new Map<string, UnifiedNode>();
+    walk(tree, (node) => {
+        const entityId = normalizeText(node.entityId || node.attrs?.entityId);
+        if (!entityId) return;
+        entities.set(entityId, node);
+    });
+    return entities;
+};
+
+const repairParentEntityReference = (
+    node: UnifiedNode,
+    parentById: Map<string, UnifiedNode | null>,
+    entityIndex: Map<string, UnifiedNode>,
+) => {
+    const current = normalizeText(node.parentEntityId || node.attrs?.parentEntityId);
+    const fallback = findNearestAncestorEntityId(node, parentById, entityIndex);
+
+    if (!current) {
+        if (fallback) setParentEntityId(node, fallback);
+        return;
+    }
+
+    if (entityIndex.has(current)) return;
+    if (fallback) {
+        setParentEntityId(node, fallback);
+        return;
+    }
+    clearParentEntityId(node);
+};
+
+const repairActionTargetReference = (
+    node: UnifiedNode,
+    parentById: Map<string, UnifiedNode | null>,
+    entityIndex: Map<string, UnifiedNode>,
+) => {
+    const current = normalizeText(node.actionTargetId || node.attrs?.actionTargetId);
+    if (current && entityIndex.has(current)) return;
+
+    const fallback = findActionTargetFallback(node, parentById, entityIndex);
+    if (fallback) {
+        setActionTargetId(node, fallback);
+        return;
+    }
+    if (current) {
+        clearActionTargetId(node);
+    }
+};
+
+const findNearestAncestorEntityId = (
+    node: UnifiedNode,
+    parentById: Map<string, UnifiedNode | null>,
+    entityIndex: Map<string, UnifiedNode>,
+): string | undefined => {
+    let cursor = parentById.get(node.id) || null;
+    while (cursor) {
+        const entityId = normalizeText(cursor.entityId || cursor.attrs?.entityId);
+        if (entityId && entityIndex.has(entityId)) return entityId;
+        cursor = parentById.get(cursor.id) || null;
+    }
+    return undefined;
+};
+
+const findActionTargetFallback = (
+    node: UnifiedNode,
+    parentById: Map<string, UnifiedNode | null>,
+    entityIndex: Map<string, UnifiedNode>,
+): string | undefined => {
+    const ownEntityId = normalizeText(node.entityId || node.attrs?.entityId);
+    if (ownEntityId && entityIndex.has(ownEntityId)) return ownEntityId;
+
+    const parentEntityId = normalizeText(node.parentEntityId || node.attrs?.parentEntityId);
+    if (parentEntityId && entityIndex.has(parentEntityId)) return parentEntityId;
+
+    let firstEntity: string | undefined;
+    let cursor = parentById.get(node.id) || null;
+    while (cursor) {
+        const candidateId = normalizeText(cursor.entityId || cursor.attrs?.entityId);
+        if (!candidateId || !entityIndex.has(candidateId)) {
+            cursor = parentById.get(cursor.id) || null;
+            continue;
+        }
+
+        if (!firstEntity) {
+            firstEntity = candidateId;
+        }
+
+        const entityType = normalizeRole(cursor.entityType || cursor.attrs?.entityType);
+        const tableRole = normalizeRole(cursor.tableRole || cursor.attrs?.tableRole);
+        if (ACTION_TARGET_ENTITY_TYPES.has(entityType) || tableRole === 'row') {
+            return candidateId;
+        }
+        cursor = parentById.get(cursor.id) || null;
+    }
+
+    return firstEntity;
 };
 
 const finalizeActionNode = (node: UnifiedNode) => {
@@ -381,6 +504,15 @@ const isEntityBoundaryCarrier = (node: UnifiedNode): boolean => {
     return false;
 };
 
+const isEntityIdCarrier = (node: UnifiedNode): boolean => {
+    if (isActionCarrier(node)) return true;
+    if (isFieldCarrier(node)) return true;
+    if (isEntityBoundaryCarrier(node)) return true;
+    if (isContainerCarrier(node)) return true;
+    if (normalizeRole(node.attrs?.strongSemantic) === 'true') return true;
+    return false;
+};
+
 const isFieldScopeBoundary = (node: UnifiedNode): boolean => {
     const entityType = normalizeRole(node.entityType || node.attrs?.entityType);
     const formRole = normalizeRole(node.formRole || node.attrs?.formRole);
@@ -423,6 +555,14 @@ const setFieldLabel = (node: UnifiedNode, value: string) => {
     };
 };
 
+const setEntityId = (node: UnifiedNode, value: string) => {
+    node.entityId = value;
+    node.attrs = {
+        ...(node.attrs || {}),
+        entityId: value,
+    };
+};
+
 const setEntityType = (node: UnifiedNode, value: string) => {
     node.entityType = value;
     node.attrs = {
@@ -458,6 +598,11 @@ const setActionTargetId = (node: UnifiedNode, value: string) => {
 const clearFieldLabel = (node: UnifiedNode) => {
     delete node.fieldLabel;
     if (node.attrs) delete node.attrs.fieldLabel;
+};
+
+const clearEntityId = (node: UnifiedNode) => {
+    delete node.entityId;
+    if (node.attrs) delete node.attrs.entityId;
 };
 
 const clearEntityType = (node: UnifiedNode) => {
@@ -512,3 +657,4 @@ const ACTION_INTENT_KEYWORDS: Array<[string, string[]]> = [
     ['save', ['save', '保存']],
     ['close', ['close', 'cancel', '关闭', '取消']],
 ];
+const ACTION_TARGET_ENTITY_TYPES = new Set(['row', 'list_item', 'card', 'dialog', 'section', 'form']);

@@ -64,3 +64,47 @@ test('finalizeLabel should settle container title for card-like entity after com
     assert.equal(card.name, '订单列表');
     assert.equal(card.content, '订单列表');
 });
+
+test('finalizeLabel should migrate entityId from shell to nearest retained semantic carrier', () => {
+    const link = node('link', 'link', [], {
+        target: { ref: '/detail', kind: 'url' },
+        attrs: { tag: 'a' },
+    });
+    const shell = node('shell', 'div', [link], {
+        entityId: 'entity:item-1',
+        attrs: { entityId: 'entity:item-1', tag: 'div' },
+    });
+    const root = node('root', 'root', [shell]);
+
+    finalizeLabel(root);
+
+    assert.equal(shell.entityId, undefined);
+    assert.equal(shell.attrs?.entityId, undefined);
+    assert.equal(link.entityId, 'entity:item-1');
+    assert.equal(link.attrs?.entityId, 'entity:item-1');
+});
+
+test('finalizeLabel should repair invalid parentEntityId and actionTargetId after compression', () => {
+    const button = node('button', 'button', [], {
+        content: '删除',
+        parentEntityId: 'entity:missing-parent',
+        actionTargetId: 'entity:missing-target',
+        attrs: {
+            tag: 'button',
+            parentEntityId: 'entity:missing-parent',
+            actionTargetId: 'entity:missing-target',
+        },
+    });
+    const row = node('row', 'row', [button], {
+        entityId: 'entity:row-1',
+        entityType: 'row',
+        attrs: { entityId: 'entity:row-1', entityType: 'row' },
+    });
+
+    finalizeLabel(row);
+
+    assert.equal(button.parentEntityId, 'entity:row-1');
+    assert.equal(button.attrs?.parentEntityId, 'entity:row-1');
+    assert.equal(button.actionTargetId, 'entity:row-1');
+    assert.equal(button.attrs?.actionTargetId, 'entity:row-1');
+});
