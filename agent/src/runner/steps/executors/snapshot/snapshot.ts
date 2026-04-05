@@ -10,6 +10,7 @@ import { detectRegions } from './regions';
 import { processRegion } from './process_region';
 import { linkGlobalRelations } from './relations';
 import { assignStableIds } from './stable_id';
+import { buildEntityIndex } from './entity';
 import { buildSnapshot } from './build_snapshot';
 import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from './debug';
 import { getNodeAttr } from './runtime_store';
@@ -130,8 +131,14 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
         topNodes: summarizeTopNodes(root),
     });
 
-    // 9) 输出 snapshot。
-    const snapshot = buildSnapshot(root);
+    // 9) 构建树外 entity 索引（仅大实体）。
+    const { entityIndex } = buildEntityIndex(root);
+
+    // 10) 输出 snapshot。
+    const snapshot = buildSnapshot({
+        root,
+        entityIndex,
+    });
     snapshotDebugLog('done', {
         snapshotCount: countTreeNodes(snapshot.root),
         topNodes: summarizeTopNodes(snapshot.root),
