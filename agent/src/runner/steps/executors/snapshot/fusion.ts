@@ -1,5 +1,6 @@
 import type { NodeGraph, UnifiedNode } from './types';
 import { snapshotDebugLog } from './debug';
+import { setNodeAttrs, setNodeBbox, setNodeContent } from './runtime_store';
 
 export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph => {
     const domRoot = asDomNode(domTree);
@@ -52,16 +53,17 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
             linkTargetExtracted += 1;
         }
 
-        return {
+        const unified: UnifiedNode = {
             id: node.id || 'dom',
             role,
             name,
-            content,
             target,
-            bbox: node.bbox,
-            attrs: mergeDomAttrs(node),
             children: (node.children || []).map((child) => build(child)),
         };
+        setNodeAttrs(unified, mergeDomAttrs(node));
+        setNodeBbox(unified, node.bbox);
+        setNodeContent(unified, content);
+        return unified;
     };
 
     const graph = { root: build(domRoot) };

@@ -12,6 +12,7 @@ import { linkGlobalRelations } from './relations';
 import { assignStableIds } from './stable_id';
 import { buildSnapshot } from './build_snapshot';
 import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from './debug';
+import { getNodeAttr } from './runtime_store';
 import type { RawData, SnapshotResult, UnifiedNode } from './types';
 
 export const executeBrowserSnapshot = async (
@@ -169,7 +170,7 @@ const removeRegion = (layer: UnifiedNode, target: UnifiedNode): boolean => {
 
 const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
-    const tag = normalizeLower(node.attrs?.tag || node.attrs?.tagName || '');
+    const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName') || '');
     if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) return true;
     if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) return true;
     return false;

@@ -1,4 +1,5 @@
 import type { NodeGraph, UnifiedNode } from './types';
+import { getNodeAttr, getNodeBbox, getNodeContent } from './runtime_store';
 
 export const buildSpatialLayers = (graph: NodeGraph): NodeGraph => {
     // 这里不是独立 Layer 类型系统，只对 NodeGraph 顶层子树做重排/抽取。
@@ -42,7 +43,7 @@ export const buildSpatialLayers = (graph: NodeGraph): NodeGraph => {
 
 export const isNoiseLayer = (node: UnifiedNode): boolean => {
     // 第二阶段轻量版：小尺寸 + 靠边 + 无交互 才判噪声（保守策略）。
-    const bbox = node.bbox;
+    const bbox = getNodeBbox(node);
     if (!bbox) return false;
 
     const hasSmallArea = bbox.width * bbox.height <= 16_000;
@@ -73,8 +74,8 @@ const isOverlayLikeNode = (node: UnifiedNode): boolean => {
 
 const hasInteractiveSignal = (node: UnifiedNode): boolean => {
     if (INTERACTIVE_ROLES.has(node.role.toLowerCase())) return true;
-    if (node.attrs?.onclick || node.attrs?.href || node.attrs?.tabindex) return true;
-    if ((node.content || node.name || '').trim().length > 0) return true;
+    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) return true;
+    if ((getNodeContent(node) || node.name || '').trim().length > 0) return true;
     return node.children.some((child) => hasInteractiveSignal(child));
 };
 
@@ -91,9 +92,8 @@ const readZIndex = (node: UnifiedNode): number => {
 };
 
 const getAttr = (node: UnifiedNode, keys: string[]): string => {
-    const attrs = node.attrs || {};
     for (const key of keys) {
-        const value = attrs[key];
+        const value = getNodeAttr(node, key);
         if (typeof value === 'string') {
             return value.trim().toLowerCase();
         }
