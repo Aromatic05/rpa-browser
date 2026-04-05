@@ -13,6 +13,7 @@ import { assignStableIds } from './stable_id';
 import { buildEntityIndex } from './entity';
 import { buildLocatorIndex } from './locator';
 import { buildExternalIndexes } from './indexes';
+import { computeBucketHash, computeBucketKey, createCacheStats, readBucketCache, writeBucketCache } from './cache';
 import { buildSnapshot } from './build_snapshot';
 import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from './debug';
 import { getNodeAttr } from './runtime_store';
@@ -71,6 +72,8 @@ export const generateSemanticSnapshot = async (page: Page): Promise<SnapshotResu
 };
 
 export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult => {
+    const cacheStats = createCacheStats();
+
     // 2) DOM + A11y 融合为统一节点图。
     const graph = fuseDomAndA11y(raw.domTree, raw.a11yTree);
     snapshotDebugLog('fuse', {
@@ -114,11 +117,23 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
             regionCount: regions.length,
         });
         for (const region of regions) {
+            cacheStats.bucketTotal += 1;
+            const bucketKey = computeBucketKey(region);
+            const bucketHash = computeBucketHash(region);
+            const cached = readBucketCache(bucketKey, bucketHash);
+            if (cached) {
+                cacheStats.bucketHit += 1;
+                replaceRegion(layer, region, cached);
+                continue;
+            }
+
+            cacheStats.bucketMiss += 1;
             const processed = processRegion(region);
             if (!processed) {
                 removeRegion(layer, region);
                 continue;
             }
+            writeBucketCache(bucketKey, bucketHash, processed);
             replaceRegion(layer, region, processed);
         }
     }
@@ -155,6 +170,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
         bboxIndex,
         attrIndex,
         contentStore,
+        cacheStats,
     });
     snapshotDebugLog('done', {
         snapshotCount: countTreeNodes(snapshot.root),
