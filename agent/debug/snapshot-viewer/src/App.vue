@@ -6,6 +6,7 @@ import type {
   CaptureItemApiResponse,
   CaptureListApiResponse,
   CaptureListItem,
+  Content,
   DataPack,
   EntityLike,
   LocatorLike,
@@ -43,19 +44,42 @@ const dataPack = ref<DataPack>({
   snapshot: null,
 });
 
+const normalizeContent = (
+  maybe: Record<string, unknown>,
+  id: string,
+  legacyContent: Record<string, string>,
+): Content | undefined => {
+  if (typeof maybe.content === 'string') {
+    const inlineContent = maybe.content.trim();
+    return inlineContent ? inlineContent : undefined;
+  }
+
+  if (maybe.content && typeof maybe.content === 'object') {
+    const ref = (maybe.content as Record<string, unknown>).ref;
+    if (typeof ref === 'string' && ref.trim()) {
+      return { ref: ref.trim() };
+    }
+  }
+
+  if (typeof maybe.contentRef === 'string' && maybe.contentRef.trim()) {
+    return { ref: maybe.contentRef.trim() };
+  }
+
+  const legacy = typeof maybe.text === 'string' ? maybe.text.trim() : '';
+  if (legacy) {
+    const contentRef = `legacy_content_${id}`;
+    legacyContent[contentRef] = legacy;
+    return { ref: contentRef };
+  }
+
+  return undefined;
+};
+
 const normalizeNode = (value: unknown, fallbackId = 'n0', legacyContent: Record<string, string>): TreeNodeLike | null => {
   if (!value || typeof value !== 'object') return null;
   const maybe = value as Record<string, unknown>;
   const id = typeof maybe.id === 'string' ? maybe.id : fallbackId;
-
-  let contentRef = typeof maybe.contentRef === 'string' ? maybe.contentRef : undefined;
-  if (!contentRef) {
-    const legacy = typeof maybe.content === 'string' ? maybe.content : typeof maybe.text === 'string' ? maybe.text : '';
-    if (legacy.trim()) {
-      contentRef = `legacy_content_${id}`;
-      legacyContent[contentRef] = legacy.trim();
-    }
-  }
+  const content = normalizeContent(maybe, id, legacyContent);
 
   const rawChildren = Array.isArray(maybe.children) ? maybe.children : [];
   const children = rawChildren
@@ -66,7 +90,7 @@ const normalizeNode = (value: unknown, fallbackId = 'n0', legacyContent: Record<
     id,
     role: typeof maybe.role === 'string' ? maybe.role : undefined,
     name: typeof maybe.name === 'string' ? maybe.name : undefined,
-    contentRef,
+    content,
     target:
       maybe.target && typeof maybe.target === 'object'
         ? (maybe.target as { ref?: string; kind?: string })
@@ -145,12 +169,22 @@ const locatorItems = computed(() =>
   Object.entries(activeSnapshot.value?.locatorIndex || {}).map(([nodeId, locator]) => ({ nodeId, locator })),
 );
 
+const resolveNodeContent = (node: TreeNodeLike, snapshot: SnapshotGraphLike): string => {
+  if (typeof node.content === 'string') return node.content;
+  if (node.content?.ref) return snapshot.contentStore?.[node.content.ref] || '';
+  return '';
+};
+
+const contentRefOf = (node: TreeNodeLike | null): string => {
+  if (!node || typeof node.content === 'string') return '';
+  return node.content?.ref || '';
+};
+
 const selectedContent = computed(() => {
   const node = selectedNode.value;
   const snapshot = activeSnapshot.value;
   if (!node || !snapshot) return '';
-  if (!node.contentRef) return '';
-  return snapshot.contentStore?.[node.contentRef] || '';
+  return resolveNodeContent(node, snapshot);
 });
 
 const selectedAttrs = computed(() => {
@@ -386,7 +420,7 @@ const serializeTreeNode = (node: TreeNodeLike): unknown => ({
   id: node.id,
   role: node.role,
   name: node.name,
-  contentRef: node.contentRef,
+  content: node.content,
   target: node.target,
   children: node.children.map((child) => serializeTreeNode(child)),
 });
@@ -458,7 +492,8 @@ const copyCurrentTargetRef = async () => {
 const copyCurrentNodeNameOrContent = async () => {
   const node = contextMenu.value.node || selectedNode.value;
   if (!node) return;
-  const value = node.name || (node.contentRef ? activeSnapshot.value?.contentStore?.[node.contentRef] || '' : '');
+  const snapshot = activeSnapshot.value;
+  const value = node.name || (snapshot ? resolveNodeContent(node, snapshot) : '');
   if (!value) return;
   await copyText(value, '已复制节点 name/content');
   hideContextMenu();
@@ -570,8 +605,9 @@ onBeforeUnmount(() => {
       <div class="kv"><span class="k">id</span><span>{{ selectedNode.id }}</span></div>
       <div class="kv"><span class="k">role</span><span>{{ selectedNode.role || '-' }}</span></div>
       <div class="kv"><span class="k">name</span><span>{{ selectedNode.name || '-' }}</span></div>
-      <div class="kv"><span class="k">contentRef</span><span>{{ selectedNode.contentRef || '-' }}</span></div>
-      <div class="kv"><span class="k">content</span><span>{{ selectedContent || '-' }}</span></div>
+      <div class="kv"><span class="k">content</span><span>{{ typeof selectedNode.content === 'string' ? selectedNode.content : selectedNode.content?.ref || '-' }}</span></div>
+      <div class="kv"><span class="k">contentResolved</span><span>{{ selectedContent || '-' }}</span></div>
+      <div class="kv"><span class="k">contentRef</span><span>{{ contentRefOf(selectedNode) || '-' }}</span></div>
       <div class="kv"><span class="k">target</span></div>
       <pre>{{ selectedTarget }}</pre>
       <div class="kv"><span class="k">bboxIndex</span></div>

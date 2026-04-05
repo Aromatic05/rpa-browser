@@ -1,10 +1,12 @@
 export type SourceKind = 'unifiedGraph';
 
+export type Content = string | { ref: string };
+
 export type TreeNodeLike = {
   id: string;
   role?: string;
   name?: string;
-  contentRef?: string;
+  content?: Content;
   target?: {
     ref?: string;
     kind?: string;
