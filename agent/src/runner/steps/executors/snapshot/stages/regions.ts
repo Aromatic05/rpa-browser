@@ -1,4 +1,4 @@
-import type { UnifiedNode } from './types';
+import type { UnifiedNode } from '../core/types';
 
 export const detectRegions = (node: UnifiedNode): UnifiedNode[] => {
     // 目标区域：form/table/list/card/dialog/nav/search/detail。

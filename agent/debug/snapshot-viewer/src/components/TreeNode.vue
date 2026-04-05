@@ -25,8 +25,8 @@ const open = ref(props.depth < 2);
 
 const hasChildren = computed(() => props.node.children.length > 0);
 const isSelected = computed(() => props.selectedId === props.node.id);
-const roleLabel = computed(() => props.node.role || props.node.tag || 'node');
-const nodeLabel = computed(() => props.node.name || props.node.content || props.node.text || '');
+const roleLabel = computed(() => props.node.role || 'node');
+const nodeLabel = computed(() => props.node.name || props.node.contentRef || '');
 
 const toggle = (event: MouseEvent) => {
   event.stopPropagation();

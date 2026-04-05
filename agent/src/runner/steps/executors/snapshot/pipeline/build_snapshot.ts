@@ -1,4 +1,4 @@
-import type { SnapshotResult, UnifiedNode } from './types';
+import type { SnapshotResult, UnifiedNode } from '../core/types';
 
 type BuildSnapshotInput = {
     root: UnifiedNode;

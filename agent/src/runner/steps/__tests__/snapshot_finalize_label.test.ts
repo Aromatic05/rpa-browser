@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { finalizeLabel } from '../executors/snapshot/finalize_label';
-import type { UnifiedNode } from '../executors/snapshot/types';
+import { finalizeLabel } from '../executors/snapshot/stages/finalize_label';
+import type { UnifiedNode } from '../executors/snapshot/core/types';
 
 const node = (
     id: string,

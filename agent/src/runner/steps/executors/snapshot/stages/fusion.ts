@@ -1,6 +1,6 @@
-import type { NodeGraph, UnifiedNode } from './types';
-import { snapshotDebugLog } from './debug';
-import { setNodeAttrs, setNodeBbox, setNodeContent } from './runtime_store';
+import type { NodeGraph, UnifiedNode } from '../core/types';
+import { snapshotDebugLog } from '../core/debug';
+import { setNodeAttrs, setNodeBbox, setNodeContent } from '../core/runtime_store';
 
 export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph => {
     const domRoot = asDomNode(domTree);

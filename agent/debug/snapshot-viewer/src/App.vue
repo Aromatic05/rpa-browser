@@ -7,18 +7,12 @@ import type {
   CaptureListApiResponse,
   CaptureListItem,
   DataPack,
+  EntityLike,
+  LocatorLike,
   SnapshotApiResponse,
+  SnapshotGraphLike,
   TreeNodeLike,
 } from './types';
-
-type DetectedEntity = {
-  entityId: string;
-  entityType: string;
-  nodeId: string;
-  label: string;
-  fieldCount: number;
-  actionCount: number;
-};
 
 const error = ref('');
 const loading = ref(false);
@@ -46,71 +40,40 @@ const contextMenu = ref<{
 });
 
 const dataPack = ref<DataPack>({
-  unifiedGraph: null,
+  snapshot: null,
 });
 
-const normalizeNode = (value: unknown, fallbackId = 'n0'): TreeNodeLike | null => {
+const normalizeNode = (value: unknown, fallbackId = 'n0', legacyContent: Record<string, string>): TreeNodeLike | null => {
   if (!value || typeof value !== 'object') return null;
+  const maybe = value as Record<string, unknown>;
+  const id = typeof maybe.id === 'string' ? maybe.id : fallbackId;
 
-  const maybeRecord = value as Record<string, unknown>;
-  const id = typeof maybeRecord.id === 'string' ? maybeRecord.id : fallbackId;
+  let contentRef = typeof maybe.contentRef === 'string' ? maybe.contentRef : undefined;
+  if (!contentRef) {
+    const legacy = typeof maybe.content === 'string' ? maybe.content : typeof maybe.text === 'string' ? maybe.text : '';
+    if (legacy.trim()) {
+      contentRef = `legacy_content_${id}`;
+      legacyContent[contentRef] = legacy.trim();
+    }
+  }
 
-  const rawChildren = Array.isArray(maybeRecord.children) ? maybeRecord.children : [];
+  const rawChildren = Array.isArray(maybe.children) ? maybe.children : [];
   const children = rawChildren
-    .map((child, index) => normalizeNode(child, `${id}.${index}`))
+    .map((child, index) => normalizeNode(child, `${id}.${index}`, legacyContent))
     .filter((node): node is TreeNodeLike => Boolean(node));
 
   return {
     id,
-    role: typeof maybeRecord.role === 'string' ? maybeRecord.role : undefined,
-    tag: typeof maybeRecord.tag === 'string' ? maybeRecord.tag : undefined,
-    name: typeof maybeRecord.name === 'string' ? maybeRecord.name : undefined,
-    content:
-      typeof maybeRecord.content === 'string'
-        ? maybeRecord.content
-        : typeof maybeRecord.text === 'string'
-          ? maybeRecord.text
-          : undefined,
-    text: typeof maybeRecord.text === 'string' ? maybeRecord.text : undefined,
+    role: typeof maybe.role === 'string' ? maybe.role : undefined,
+    name: typeof maybe.name === 'string' ? maybe.name : undefined,
+    contentRef,
     target:
-      maybeRecord.target && typeof maybeRecord.target === 'object'
-        ? (maybeRecord.target as { ref?: string; kind?: string })
-        : undefined,
-    bbox:
-      maybeRecord.bbox &&
-      typeof maybeRecord.bbox === 'object' &&
-      typeof (maybeRecord.bbox as Record<string, unknown>).x === 'number' &&
-      typeof (maybeRecord.bbox as Record<string, unknown>).y === 'number' &&
-      typeof (maybeRecord.bbox as Record<string, unknown>).width === 'number' &&
-      typeof (maybeRecord.bbox as Record<string, unknown>).height === 'number'
-        ? (maybeRecord.bbox as { x: number; y: number; width: number; height: number })
-        : undefined,
-    attrs:
-      maybeRecord.attrs && typeof maybeRecord.attrs === 'object'
-        ? (maybeRecord.attrs as Record<string, unknown>)
+      maybe.target && typeof maybe.target === 'object'
+        ? (maybe.target as { ref?: string; kind?: string })
         : undefined,
     children,
   };
 };
-
-const activeRoot = computed(() => {
-  const raw = dataPack.value.unifiedGraph;
-  if (!raw) return null;
-
-  const graphRoot =
-    typeof raw === 'object' && raw && 'root' in (raw as object)
-      ? (raw as { root: unknown }).root
-      : raw;
-
-  return normalizeNode(graphRoot, 'n0');
-});
-
-const unifiedRoot = computed(() => {
-  const raw = dataPack.value.unifiedGraph;
-  if (!raw || typeof raw !== 'object') return null;
-  if (!('root' in (raw as object))) return null;
-  return normalizeNode((raw as { root: unknown }).root, 'n0');
-});
 
 const walk = (node: TreeNodeLike, visitor: (node: TreeNodeLike) => void) => {
   visitor(node);
@@ -119,9 +82,126 @@ const walk = (node: TreeNodeLike, visitor: (node: TreeNodeLike) => void) => {
   }
 };
 
-const nodeText = (node: TreeNodeLike): string => {
-  return (node.name || node.content || node.text || '').trim();
+const buildNodeIndexFromTree = (root: TreeNodeLike): Record<string, TreeNodeLike> => {
+  const out: Record<string, TreeNodeLike> = {};
+  walk(root, (node) => {
+    out[node.id] = node;
+  });
+  return out;
 };
+
+const normalizeSnapshot = (value: unknown): SnapshotGraphLike | null => {
+  if (!value || typeof value !== 'object') return null;
+
+  const maybe = value as Record<string, unknown>;
+  const rawRoot = 'root' in maybe ? maybe.root : value;
+  const legacyContent: Record<string, string> = {};
+  const root = normalizeNode(rawRoot, 'n0', legacyContent);
+  if (!root) return null;
+
+  const nodeIndex =
+    maybe.nodeIndex && typeof maybe.nodeIndex === 'object'
+      ? (maybe.nodeIndex as Record<string, TreeNodeLike>)
+      : buildNodeIndexFromTree(root);
+
+  const contentStore = {
+    ...(maybe.contentStore && typeof maybe.contentStore === 'object'
+      ? (maybe.contentStore as Record<string, string>)
+      : {}),
+    ...legacyContent,
+  };
+
+  return {
+    root,
+    nodeIndex,
+    entityIndex:
+      maybe.entityIndex && typeof maybe.entityIndex === 'object'
+        ? (maybe.entityIndex as Record<string, EntityLike>)
+        : {},
+    locatorIndex:
+      maybe.locatorIndex && typeof maybe.locatorIndex === 'object'
+        ? (maybe.locatorIndex as Record<string, LocatorLike>)
+        : {},
+    bboxIndex:
+      maybe.bboxIndex && typeof maybe.bboxIndex === 'object'
+        ? (maybe.bboxIndex as Record<string, { x: number; y: number; width: number; height: number }>)
+        : {},
+    attrIndex:
+      maybe.attrIndex && typeof maybe.attrIndex === 'object'
+        ? (maybe.attrIndex as Record<string, Record<string, unknown>>)
+        : {},
+    contentStore,
+    cacheStats:
+      maybe.cacheStats && typeof maybe.cacheStats === 'object'
+        ? (maybe.cacheStats as { bucketTotal: number; bucketHit: number; bucketMiss: number })
+        : undefined,
+  };
+};
+
+const activeSnapshot = computed(() => dataPack.value.snapshot);
+const activeRoot = computed(() => dataPack.value.snapshot?.root || null);
+const entityItems = computed(() => Object.values(activeSnapshot.value?.entityIndex || {}));
+const locatorItems = computed(() =>
+  Object.entries(activeSnapshot.value?.locatorIndex || {}).map(([nodeId, locator]) => ({ nodeId, locator })),
+);
+
+const selectedContent = computed(() => {
+  const node = selectedNode.value;
+  const snapshot = activeSnapshot.value;
+  if (!node || !snapshot) return '';
+  if (!node.contentRef) return '';
+  return snapshot.contentStore?.[node.contentRef] || '';
+});
+
+const selectedAttrs = computed(() => {
+  const node = selectedNode.value;
+  const snapshot = activeSnapshot.value;
+  if (!node || !snapshot) return {};
+  return snapshot.attrIndex?.[node.id] || {};
+});
+
+const selectedBbox = computed(() => {
+  const node = selectedNode.value;
+  const snapshot = activeSnapshot.value;
+  if (!node || !snapshot) return {};
+  return snapshot.bboxIndex?.[node.id] || {};
+});
+
+const selectedLocator = computed(() => {
+  const node = selectedNode.value;
+  const snapshot = activeSnapshot.value;
+  if (!node || !snapshot) return {};
+  return snapshot.locatorIndex?.[node.id] || {};
+});
+
+const selectedEntity = computed(() => {
+  const node = selectedNode.value;
+  const snapshot = activeSnapshot.value;
+  if (!node || !snapshot) return null;
+  return (
+    Object.values(snapshot.entityIndex || {}).find((entity) => entity.nodeId === node.id) ||
+    null
+  );
+});
+
+const summaryRows = computed(() => {
+  const snapshot = activeSnapshot.value;
+  if (!snapshot) return [];
+  return [
+    ['nodes', Object.keys(snapshot.nodeIndex || {}).length],
+    ['entities', Object.keys(snapshot.entityIndex || {}).length],
+    ['locators', Object.keys(snapshot.locatorIndex || {}).length],
+    ['bbox', Object.keys(snapshot.bboxIndex || {}).length],
+    ['attrs', Object.keys(snapshot.attrIndex || {}).length],
+    ['content', Object.keys(snapshot.contentStore || {}).length],
+  ];
+});
+
+const selectedTarget = computed(() => JSON.stringify(selectedNode.value?.target || {}, null, 2));
+const selectedAttrsJson = computed(() => JSON.stringify(selectedAttrs.value, null, 2));
+const selectedBboxJson = computed(() => JSON.stringify(selectedBbox.value, null, 2));
+const selectedLocatorJson = computed(() => JSON.stringify(selectedLocator.value, null, 2));
+const selectedEntityJson = computed(() => JSON.stringify(selectedEntity.value || {}, null, 2));
 
 const findNodeById = (root: TreeNodeLike, id: string): TreeNodeLike | null => {
   if (root.id === id) return root;
@@ -132,56 +212,18 @@ const findNodeById = (root: TreeNodeLike, id: string): TreeNodeLike | null => {
   return null;
 };
 
-const countByPredicate = (root: TreeNodeLike, predicate: (node: TreeNodeLike) => boolean): number => {
-  let count = 0;
-  walk(root, (node) => {
-    if (predicate(node)) count += 1;
-  });
-  return count;
-};
-
-const detectedEntities = computed<DetectedEntity[]>(() => {
-  if (!unifiedRoot.value) return [];
-  const entities: DetectedEntity[] = [];
-
-  walk(unifiedRoot.value, (node) => {
-    const attrs = node.attrs || {};
-    const entityId = typeof attrs.entityId === 'string' ? attrs.entityId : '';
-    const entityType = typeof attrs.entityType === 'string' ? attrs.entityType : '';
-    if (!entityId || !entityType) return;
-
-    const label =
-      nodeText(node) ||
-      (typeof attrs.fieldLabel === 'string' ? attrs.fieldLabel : '') ||
-      '(unnamed)';
-
-    const fieldCount = countByPredicate(node, (n) => typeof n.attrs?.fieldLabel === 'string');
-    const actionCount = countByPredicate(node, (n) => typeof n.attrs?.actionIntent === 'string');
-
-    entities.push({
-      entityId,
-      entityType,
-      nodeId: node.id,
-      label,
-      fieldCount,
-      actionCount,
-    });
-  });
-
-  return entities.sort((a, b) => a.entityId.localeCompare(b.entityId));
-});
-
-const selectedAttrs = computed(() => JSON.stringify(selectedNode.value?.attrs || {}, null, 2));
-const selectedTarget = computed(() => JSON.stringify(selectedNode.value?.target || {}, null, 2));
-const selectedBbox = computed(() => JSON.stringify(selectedNode.value?.bbox || {}, null, 2));
-
 const applySnapshotPayload = (payload: SnapshotApiResponse, fallbackUrl: string) => {
   if (!payload.ok || !payload.data) {
     throw new Error(payload.error || 'invalid snapshot payload');
   }
 
+  const snapshot = normalizeSnapshot(payload.data.unifiedGraph);
+  if (!snapshot) {
+    throw new Error('snapshot payload has no valid root');
+  }
+
   dataPack.value = {
-    unifiedGraph: payload.data.unifiedGraph || null,
+    snapshot,
   };
   resolvedUrl.value = payload.data.url || fallbackUrl;
   selectedNode.value = null;
@@ -302,11 +344,17 @@ const onSelect = (node: TreeNodeLike) => {
   selectedNode.value = node;
 };
 
-const selectEntity = (entity: DetectedEntity) => {
-  if (!unifiedRoot.value) return;
-  const node = findNodeById(unifiedRoot.value, entity.nodeId);
+const selectEntity = (entity: EntityLike) => {
+  if (!activeRoot.value) return;
+  const node = findNodeById(activeRoot.value, entity.nodeId);
   if (!node) return;
+  selectedNode.value = node;
+};
 
+const selectLocatorNode = (nodeId: string) => {
+  if (!activeRoot.value) return;
+  const node = findNodeById(activeRoot.value, nodeId);
+  if (!node) return;
   selectedNode.value = node;
 };
 
@@ -337,12 +385,9 @@ const onNodeContextMenu = (payload: { node: TreeNodeLike; x: number; y: number }
 const serializeTreeNode = (node: TreeNodeLike): unknown => ({
   id: node.id,
   role: node.role,
-  tag: node.tag,
   name: node.name,
-  content: node.content,
+  contentRef: node.contentRef,
   target: node.target,
-  bbox: node.bbox,
-  attrs: node.attrs,
   children: node.children.map((child) => serializeTreeNode(child)),
 });
 
@@ -374,15 +419,21 @@ const copyText = async (value: string, successLabel: string) => {
 };
 
 const copyCurrentTree = async () => {
-  if (!activeRoot.value) return;
-  await copyText(JSON.stringify(serializeTreeNode(activeRoot.value), null, 2), '已复制整棵树 JSON');
+  if (!activeSnapshot.value) return;
+  await copyText(JSON.stringify(activeSnapshot.value, null, 2), '已复制完整 snapshot JSON');
   hideContextMenu();
 };
 
 const copyCurrentNode = async () => {
   const node = contextMenu.value.node || selectedNode.value;
   if (!node) return;
-  await copyText(JSON.stringify(serializeTreeNode(node), null, 2), '已复制当前节点 JSON');
+  const payload = {
+    node: serializeTreeNode(node),
+    attrs: activeSnapshot.value?.attrIndex?.[node.id] || {},
+    bbox: activeSnapshot.value?.bboxIndex?.[node.id] || {},
+    locator: activeSnapshot.value?.locatorIndex?.[node.id] || {},
+  };
+  await copyText(JSON.stringify(payload, null, 2), '已复制当前节点详情');
   hideContextMenu();
 };
 
@@ -390,7 +441,6 @@ const copyCurrentNodePath = async () => {
   const root = activeRoot.value;
   const node = contextMenu.value.node || selectedNode.value;
   if (!root || !node) return;
-
   const path = findNodePath(root, node.id);
   if (path.length === 0) return;
   await copyText(path.join(' > '), '已复制节点路径');
@@ -408,7 +458,7 @@ const copyCurrentTargetRef = async () => {
 const copyCurrentNodeNameOrContent = async () => {
   const node = contextMenu.value.node || selectedNode.value;
   if (!node) return;
-  const value = node.name || node.content || node.text || '';
+  const value = node.name || (node.contentRef ? activeSnapshot.value?.contentStore?.[node.contentRef] || '' : '');
   if (!value) return;
   await copyText(value, '已复制节点 name/content');
   hideContextMenu();
@@ -458,7 +508,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <div v-if="captureStoreDir" class="muted">store: {{ captureStoreDir }}</div>
-      <div v-if="captures.length === 0" class="muted">暂无采集数据（测试可调用 /api/capture/ingest 推送）</div>
+      <div v-if="captures.length === 0" class="muted">暂无采集数据</div>
       <div v-else class="entity-list">
         <button
           v-for="capture in captures"
@@ -502,42 +552,78 @@ onBeforeUnmount(() => {
 
   <div class="panel">
     <div class="section">
-      <h2>Node Detail</h2>
+      <h2>Snapshot Overview</h2>
+      <div v-if="summaryRows.length === 0" class="muted">no snapshot loaded</div>
+      <div v-else>
+        <div v-for="row in summaryRows" :key="row[0]" class="kv">
+          <span class="k">{{ row[0] }}</span>
+          <span>{{ row[1] }}</span>
+        </div>
+      </div>
+      <div v-if="activeSnapshot?.cacheStats" class="muted">
+        cache: total={{ activeSnapshot.cacheStats.bucketTotal }} hit={{ activeSnapshot.cacheStats.bucketHit }} miss={{ activeSnapshot.cacheStats.bucketMiss }}
+      </div>
     </div>
 
     <div v-if="selectedNode" class="section">
+      <h2>Node Detail</h2>
       <div class="kv"><span class="k">id</span><span>{{ selectedNode.id }}</span></div>
       <div class="kv"><span class="k">role</span><span>{{ selectedNode.role || '-' }}</span></div>
       <div class="kv"><span class="k">name</span><span>{{ selectedNode.name || '-' }}</span></div>
-      <div class="kv"><span class="k">content</span><span>{{ selectedNode.content || selectedNode.text || '-' }}</span></div>
+      <div class="kv"><span class="k">contentRef</span><span>{{ selectedNode.contentRef || '-' }}</span></div>
+      <div class="kv"><span class="k">content</span><span>{{ selectedContent || '-' }}</span></div>
       <div class="kv"><span class="k">target</span></div>
       <pre>{{ selectedTarget }}</pre>
-      <div class="kv"><span class="k">bbox</span></div>
-      <pre>{{ selectedBbox }}</pre>
-      <div class="kv"><span class="k">attrs</span></div>
-      <pre>{{ selectedAttrs }}</pre>
+      <div class="kv"><span class="k">bboxIndex</span></div>
+      <pre>{{ selectedBboxJson }}</pre>
+      <div class="kv"><span class="k">attrIndex</span></div>
+      <pre>{{ selectedAttrsJson }}</pre>
+      <div class="kv"><span class="k">locatorIndex</span></div>
+      <pre>{{ selectedLocatorJson }}</pre>
+      <div class="kv"><span class="k">entity</span></div>
+      <pre>{{ selectedEntityJson }}</pre>
     </div>
-
     <div v-else class="section">
+      <h2>Node Detail</h2>
       <div class="muted">click one node in tree</div>
     </div>
 
     <div class="section">
-      <h2>Detected Entities</h2>
-      <div v-if="detectedEntities.length === 0" class="muted">no entity recognized</div>
+      <h2>Entity Index</h2>
+      <div v-if="entityItems.length === 0" class="muted">no entity index</div>
       <div v-else class="entity-list">
         <button
-          v-for="entity in detectedEntities"
-          :key="`${entity.entityId}-${entity.nodeId}`"
+          v-for="entity in entityItems"
+          :key="entity.id"
           class="entity-item"
           @click="selectEntity(entity)"
         >
           <div class="entity-top">
-            <span class="badge">{{ entity.entityType }}</span>
-            <span class="entity-id">{{ entity.entityId }}</span>
+            <span class="badge">{{ entity.kind }}</span>
+            <span class="entity-id">{{ entity.id }}</span>
           </div>
-          <div class="entity-label">{{ entity.label }}</div>
-          <div class="entity-metrics">fields={{ entity.fieldCount }} actions={{ entity.actionCount }}</div>
+          <div class="entity-label">{{ entity.name || '(unnamed)' }}</div>
+          <div class="entity-metrics">node={{ entity.nodeId }}</div>
+        </button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Locator Index</h2>
+      <div v-if="locatorItems.length === 0" class="muted">no locator index</div>
+      <div v-else class="entity-list">
+        <button
+          v-for="item in locatorItems.slice(0, 120)"
+          :key="item.nodeId"
+          class="entity-item"
+          @click="selectLocatorNode(item.nodeId)"
+        >
+          <div class="entity-top">
+            <span class="badge">{{ item.locator.direct?.kind || 'origin' }}</span>
+            <span class="entity-id">{{ item.nodeId }}</span>
+          </div>
+          <div class="entity-label">{{ item.locator.direct?.query || item.locator.origin.primaryDomId }}</div>
+          <div class="entity-metrics">scope={{ item.locator.scope?.id || '-' }}</div>
         </button>
       </div>
     </div>
@@ -549,8 +635,8 @@ onBeforeUnmount(() => {
     :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
     @click.stop
   >
-    <button class="context-item" @click="copyCurrentTree">复制整棵树 JSON</button>
-    <button class="context-item" @click="copyCurrentNode">复制当前节点 JSON</button>
+    <button class="context-item" @click="copyCurrentTree">复制完整 snapshot JSON</button>
+    <button class="context-item" @click="copyCurrentNode">复制当前节点详情</button>
     <button class="context-item" @click="copyCurrentNodePath">复制节点路径</button>
     <button class="context-item" @click="copyCurrentNodeNameOrContent">复制 name/content</button>
     <button class="context-item" :disabled="!(contextMenu.node?.target?.ref || selectedNode?.target?.ref)" @click="copyCurrentTargetRef">

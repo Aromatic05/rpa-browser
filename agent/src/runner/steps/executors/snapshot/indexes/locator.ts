@@ -1,5 +1,5 @@
-import { getNodeAttr, normalizeText } from './runtime_store';
-import type { EntityIndex, Locator, LocatorIndex, UnifiedNode } from './types';
+import { getNodeAttr, normalizeText } from '../core/runtime_store';
+import type { EntityIndex, Locator, LocatorIndex, UnifiedNode } from '../core/types';
 
 type BuildLocatorIndexInput = {
     root: UnifiedNode;

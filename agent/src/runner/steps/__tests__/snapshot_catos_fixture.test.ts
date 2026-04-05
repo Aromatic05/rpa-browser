@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fuseDomAndA11y } from '../executors/snapshot/fusion';
+import { fuseDomAndA11y } from '../executors/snapshot/stages/fusion';
 
 type AnyNode = {
     id?: string;

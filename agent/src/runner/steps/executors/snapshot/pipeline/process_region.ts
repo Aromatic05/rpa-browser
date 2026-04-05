@@ -1,8 +1,8 @@
-import { applyLCA, type BusinessEntitySeed } from './lca';
-import { compress } from './compress';
-import { finalizeLabel } from './finalize_label';
-import { getNodeAttr } from './runtime_store';
-import type { NodeTier, UnifiedNode } from './types';
+import { applyLCA, type BusinessEntitySeed } from '../stages/lca';
+import { compress } from '../stages/compress';
+import { finalizeLabel } from '../stages/finalize_label';
+import { getNodeAttr } from '../core/runtime_store';
+import type { NodeTier, UnifiedNode } from '../core/types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
     const entities = detectBusinessEntities(node);

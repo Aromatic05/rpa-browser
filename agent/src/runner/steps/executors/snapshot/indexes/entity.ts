@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { getNodeBbox, getNodeContent, getNodeSemanticHints, normalizeText } from './runtime_store';
-import type { Entity, EntityIndex, EntityKind, UnifiedNode } from './types';
+import { getNodeBbox, getNodeContent, getNodeSemanticHints, normalizeText } from '../core/runtime_store';
+import type { Entity, EntityIndex, EntityKind, UnifiedNode } from '../core/types';
 
 export type EntityBuildResult = {
     entityIndex: EntityIndex;

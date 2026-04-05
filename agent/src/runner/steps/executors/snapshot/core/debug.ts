@@ -1,4 +1,4 @@
-import { getLogger } from '../../../../logging/logger';
+import { getLogger } from '../../../../../logging/logger';
 import type { UnifiedNode } from './types';
 
 const traceLogger = getLogger('trace');

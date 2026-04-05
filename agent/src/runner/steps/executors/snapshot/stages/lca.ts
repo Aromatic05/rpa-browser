@@ -1,5 +1,5 @@
-import { getNodeAttr, getNodeContent, mergeNodeSemanticHints, normalizeText } from './runtime_store';
-import type { EntityKind, UnifiedNode } from './types';
+import { getNodeAttr, getNodeContent, mergeNodeSemanticHints, normalizeText } from '../core/runtime_store';
+import type { EntityKind, UnifiedNode } from '../core/types';
 
 export type BusinessEntitySeed = {
     nodeId: string;

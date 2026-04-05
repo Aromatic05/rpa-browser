@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyLCA } from '../executors/snapshot/lca';
-import type { UnifiedNode } from '../executors/snapshot/types';
+import { applyLCA } from '../executors/snapshot/stages/lca';
+import type { UnifiedNode } from '../executors/snapshot/core/types';
 
 const makeNode = (partial: Partial<UnifiedNode> & { id: string; role: string }): UnifiedNode => ({
     id: partial.id,

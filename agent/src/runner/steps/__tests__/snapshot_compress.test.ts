@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compress } from '../executors/snapshot/compress';
-import type { UnifiedNode } from '../executors/snapshot/types';
+import { compress } from '../executors/snapshot/stages/compress';
+import type { UnifiedNode } from '../executors/snapshot/core/types';
 
 const node = (
     id: string,

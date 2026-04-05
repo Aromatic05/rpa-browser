@@ -1,23 +1,29 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
-import type { Step, StepResult } from '../../types';
-import type { RunStepsDeps } from '../../../run_steps';
-import { mapTraceError } from '../../helpers/target';
-import { collectRawData } from './collect';
-import { fuseDomAndA11y } from './fusion';
-import { buildSpatialLayers, isNoiseLayer } from './spatial';
-import { detectRegions } from './regions';
+import type { Step, StepResult } from '../../../types';
+import type { RunStepsDeps } from '../../../../run_steps';
+import { mapTraceError } from '../../../helpers/target';
+import { collectRawData } from '../stages/collect';
+import { fuseDomAndA11y } from '../stages/fusion';
+import { buildSpatialLayers, isNoiseLayer } from '../stages/spatial';
+import { detectRegions } from '../stages/regions';
 import { processRegion } from './process_region';
-import { linkGlobalRelations } from './relations';
-import { assignStableIds } from './stable_id';
-import { buildEntityIndex } from './entity';
-import { buildLocatorIndex } from './locator';
-import { buildExternalIndexes } from './indexes';
-import { computeBucketHash, computeBucketKey, createCacheStats, readBucketCache, writeBucketCache } from './cache';
+import { linkGlobalRelations } from '../stages/relations';
+import { assignStableIds } from '../core/stable_id';
+import { buildEntityIndex } from '../indexes/entity';
+import { buildLocatorIndex } from '../indexes/locator';
+import { buildExternalIndexes } from '../indexes/external_indexes';
+import {
+    computeBucketHash,
+    computeBucketKey,
+    createCacheStats,
+    readBucketCache,
+    writeBucketCache,
+} from '../core/cache';
 import { buildSnapshot } from './build_snapshot';
-import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from './debug';
-import { getNodeAttr } from './runtime_store';
-import type { RawData, SnapshotResult, UnifiedNode } from './types';
+import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from '../core/debug';
+import { getNodeAttr } from '../core/runtime_store';
+import type { RawData, SnapshotResult, UnifiedNode } from '../core/types';
 
 export const executeBrowserSnapshot = async (
     step: Step<'browser.snapshot'>,

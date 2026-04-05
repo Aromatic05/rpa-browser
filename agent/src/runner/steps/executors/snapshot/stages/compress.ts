@@ -5,8 +5,8 @@ import {
     mergeNodeSemanticHints,
     normalizeText,
     setNodeContent,
-} from './runtime_store';
-import type { UnifiedNode } from './types';
+} from '../core/runtime_store';
+import type { UnifiedNode } from '../core/types';
 
 export const compress = (node: UnifiedNode): UnifiedNode | null => {
     const result = compressNode(node, true, null);

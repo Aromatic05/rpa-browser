@@ -5,11 +5,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import type { Plugin } from 'vite';
 import { chromium } from 'playwright';
-import { collectRawData } from '../../../src/runner/steps/executors/snapshot/collect';
+import { collectRawData } from '../../../src/runner/steps/executors/snapshot/stages/collect';
 import {
   generateSemanticSnapshot,
   generateSemanticSnapshotFromRaw,
-} from '../../../src/runner/steps/executors/snapshot/snapshot';
+} from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
 
 type SnapshotRequest = {
   url?: string;

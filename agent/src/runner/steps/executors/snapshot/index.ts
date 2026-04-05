@@ -1,1 +1,1 @@
-export * from './snapshot';
+export * from './pipeline/snapshot';

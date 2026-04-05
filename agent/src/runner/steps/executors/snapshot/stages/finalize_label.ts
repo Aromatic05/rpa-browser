@@ -1,5 +1,11 @@
-import { getNodeAttr, getNodeContent, getNodeSemanticHints, mergeNodeSemanticHints, normalizeText } from './runtime_store';
-import type { UnifiedNode } from './types';
+import {
+    getNodeAttr,
+    getNodeContent,
+    getNodeSemanticHints,
+    mergeNodeSemanticHints,
+    normalizeText,
+} from '../core/runtime_store';
+import type { UnifiedNode } from '../core/types';
 
 export const finalizeLabel = (tree: UnifiedNode): UnifiedNode => {
     const parentById = new Map<string, UnifiedNode | null>();

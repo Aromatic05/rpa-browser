@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { getDomTree, type DomTreeNode } from '../../src/runner/trace/dom/getDomTree';
-import { generateSemanticSnapshot } from '../../src/runner/steps/executors/snapshot/snapshot';
+import { generateSemanticSnapshot } from '../../src/runner/steps/executors/snapshot/pipeline/snapshot';
 
 type TreeNode = {
     id?: string;

@@ -1,5 +1,5 @@
-import type { NodeGraph, UnifiedNode } from './types';
-import { getNodeAttr, getNodeBbox, getNodeContent } from './runtime_store';
+import type { NodeGraph, UnifiedNode } from '../core/types';
+import { getNodeAttr, getNodeBbox, getNodeContent } from '../core/runtime_store';
 
 export const buildSpatialLayers = (graph: NodeGraph): NodeGraph => {
     // 这里不是独立 Layer 类型系统，只对 NodeGraph 顶层子树做重排/抽取。

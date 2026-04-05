@@ -3,33 +3,77 @@ export type SourceKind = 'unifiedGraph';
 export type TreeNodeLike = {
   id: string;
   role?: string;
-  tag?: string;
   name?: string;
-  content?: string;
-  text?: string;
+  contentRef?: string;
   target?: {
     ref?: string;
     kind?: string;
   };
+  children: TreeNodeLike[];
+};
+
+export type EntityLike = {
+  id: string;
+  kind: string;
+  nodeId: string;
+  name?: string;
   bbox?: {
     x: number;
     y: number;
     width: number;
     height: number;
   };
-  attrs?: Record<string, unknown>;
-  children: TreeNodeLike[];
+  childNodeIds?: string[];
+};
+
+export type LocatorLike = {
+  origin: {
+    primaryDomId: string;
+    sourceDomIds?: string[];
+  };
+  direct?: {
+    kind: string;
+    query: string;
+    source: string;
+    fallback?: string;
+  };
+  scope?: {
+    id: string;
+    kind: string;
+  };
+  policy?: {
+    preferDirect?: boolean;
+    preferScopedSearch?: boolean;
+    requireVisible?: boolean;
+    allowIndexDrift?: boolean;
+    allowFuzzy?: boolean;
+  };
+};
+
+export type SnapshotGraphLike = {
+  root: TreeNodeLike;
+  nodeIndex?: Record<string, TreeNodeLike>;
+  entityIndex?: Record<string, EntityLike>;
+  locatorIndex?: Record<string, LocatorLike>;
+  bboxIndex?: Record<string, { x: number; y: number; width: number; height: number }>;
+  attrIndex?: Record<string, Record<string, unknown>>;
+  contentStore?: Record<string, string>;
+  cacheStats?: {
+    bucketTotal: number;
+    bucketHit: number;
+    bucketMiss: number;
+  };
 };
 
 export type DataPack = {
-  unifiedGraph: unknown;
+  snapshot: SnapshotGraphLike | null;
 };
 
 export type SnapshotApiResponse = {
   ok: boolean;
   data?: {
     url: string;
-    unifiedGraph: unknown;
+    unifiedGraph: SnapshotGraphLike | TreeNodeLike | unknown;
   };
   error?: string;
 };

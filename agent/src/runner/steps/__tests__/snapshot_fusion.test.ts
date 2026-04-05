@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fuseDomAndA11y } from '../executors/snapshot/fusion';
+import { fuseDomAndA11y } from '../executors/snapshot/stages/fusion';
 
 type DomNode = {
     id: string;

@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fuseDomAndA11y } from '../executors/snapshot/fusion';
-import { buildSpatialLayers, isNoiseLayer } from '../executors/snapshot/spatial';
-import { detectRegions } from '../executors/snapshot/regions';
-import { processRegion } from '../executors/snapshot/process_region';
-import { generateSemanticSnapshotFromRaw } from '../executors/snapshot/snapshot';
-import type { UnifiedNode } from '../executors/snapshot/types';
+import { fuseDomAndA11y } from '../executors/snapshot/stages/fusion';
+import { buildSpatialLayers, isNoiseLayer } from '../executors/snapshot/stages/spatial';
+import { detectRegions } from '../executors/snapshot/stages/regions';
+import { processRegion } from '../executors/snapshot/pipeline/process_region';
+import { generateSemanticSnapshotFromRaw } from '../executors/snapshot/pipeline/snapshot';
+import type { UnifiedNode } from '../executors/snapshot/core/types';
 
 type RawFixture = {
     domTree: unknown;
