@@ -5,12 +5,16 @@ export type RawData = {
 
 export type BBox = { x: number; y: number; width: number; height: number };
 
+export type Content =
+    | string
+    | { ref: string };
+
 export type UnifiedNode = {
     id: string;
     role: string;
     children: UnifiedNode[];
     name?: string;
-    contentRef?: string;
+    content?: Content;
     target?: {
         ref: string;
         kind?: 'url' | 'hash' | 'mailto' | 'tel' | 'javascript' | 'download' | 'unknown';

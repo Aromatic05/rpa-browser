@@ -27,7 +27,7 @@ export const buildExternalIndexes = (root: UnifiedNode): ExternalIndexes => {
             attrIndex[node.id] = attrs;
         }
 
-        assignContentRef(node, contentStore);
+        assignNodeContent(node, contentStore);
     });
 
     return {
@@ -38,25 +38,21 @@ export const buildExternalIndexes = (root: UnifiedNode): ExternalIndexes => {
     };
 };
 
-const assignContentRef = (node: UnifiedNode, contentStore: ContentStore) => {
+const assignNodeContent = (node: UnifiedNode, contentStore: ContentStore) => {
     const content = normalizeText(getNodeContent(node));
-    if (!content) return;
-
-    const normalizedName = normalizeText(node.name);
-    if (!normalizedName && content.length <= 40) {
-        node.name = content;
-        node.contentRef = undefined;
+    if (!content) {
+        node.content = undefined;
         return;
     }
 
-    if (normalizedName && normalizedName === content) {
-        node.contentRef = undefined;
+    if (content.length <= INLINE_CONTENT_MAX) {
+        node.content = content;
         return;
     }
 
     const ref = `content_${node.id}`;
     contentStore[ref] = content;
-    node.contentRef = ref;
+    node.content = { ref };
 };
 
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
@@ -65,3 +61,5 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
         walk(child, visitor);
     }
 };
+
+const INLINE_CONTENT_MAX = 80;
