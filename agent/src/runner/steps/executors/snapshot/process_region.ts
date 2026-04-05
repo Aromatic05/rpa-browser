@@ -1,5 +1,6 @@
 import { applyLCA } from './lca';
 import { compress } from './compress';
+import { finalizeLabel } from './finalize_label';
 import type { NodeTier, UnifiedNode } from './types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
@@ -14,7 +15,9 @@ export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
 };
 
 const runCompressStage = (tree: UnifiedNode): UnifiedNode | null => {
-    return compress(tree);
+    const compressed = compress(tree);
+    if (!compressed) return null;
+    return finalizeLabel(compressed);
 };
 
 const detectBusinessEntities = (node: UnifiedNode): UnifiedNode[] => {
