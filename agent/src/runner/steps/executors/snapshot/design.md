@@ -407,3 +407,93 @@ LCA 顺序：
 
 - 放在 `compress` 后：才能看到最终承载结构，避免在压缩前迁移到即将被折叠/删除的节点。
 - 放在 `linkGlobalRelations` 前：先把局部语义与引用收口，再做跨层关系链接，降低关系链接的悬空引用风险。
+
+## 15. 结构收口与性能基础设施（Stage5）
+
+### 15.1 为什么 UnifiedNode 要继续精简
+
+`UnifiedNode` 现在只承担“结构 + 主语义”：
+- `id`
+- `role`
+- `children`
+- `name`
+- `contentRef`
+- `target`
+- `tier`
+
+这样可以降低树体积、减少复制成本，并让树结构在多轮 snapshot 中更稳定。
+
+### 15.2 为什么 locator 放在树外
+
+locator 属于执行辅助信息，不是页面结构的一部分。把 locator 放在树外可以：
+- 避免每个节点冗余携带执行策略
+- 让执行策略可独立迭代，不污染树模型
+- 支持按 `nodeId` O(1) 查询：`locatorIndex[nodeId]`
+
+### 15.3 为什么 entity 放在树外
+
+entity 用于范围理解、高亮和 scope，不应反写到每个节点。外置后：
+- `entityIndex` 统一管理
+- 树节点不再携带 entity 膨胀字段
+- 支持按 `entityId` 与 `nodeId` 双向快速访问（轻量反向索引）
+
+### 15.4 Entity 只保留大实体的原因
+
+本阶段仅保留网页级大实体：
+- `form`
+- `table`
+- `dialog`
+- `list`
+- `panel`
+- `toolbar`
+
+这样可以控制复杂度，优先覆盖真正影响执行 scope 与高亮的结构边界。
+
+### 15.5 单一稳定 id 生成策略
+
+`node.id` 本身就是稳定 id（无 path id、无 uuid、无双 id）：
+1. 取 `role`
+2. 取规范化 `name`（若无则降级到外置 content）
+3. 取最近结构上下文（form/table/dialog/list/toolbar/section/article/main）
+4. 拼接 `target` 与 `childCount` 作为轻量结构特征
+5. 计算短 hash
+6. 冲突时追加有序后缀做 disambiguation
+
+### 15.6 SnapshotResult 结构
+
+当前 SnapshotResult 为：
+- `root`
+- `nodeIndex`
+- `entityIndex`
+- `locatorIndex`
+- `bboxIndex`
+- `attrIndex`
+- `contentStore`
+- `cacheStats`
+
+### 15.7 为什么选择“主树 + 少量索引表”
+
+该结构兼顾可读性与执行效率：
+- 主树保持轻量，便于传输和调试
+- 热路径字段可 O(1) 访问
+- 重字段（bbox/attrs/长文本）不再压在树节点上
+
+### 15.8 反复 snapshot 的 bucket/hash/cache 设计
+
+第一版引入了 bucket 级缓存基础设施：
+- bucket 切分：region 子树
+- bucket key：`role + backendDOMNodeId + name`
+- bucket hash：基于浅层结构签名（role/name/tag/domId/childCount）
+- 命中策略：hash 不变则复用已处理子树
+- 复用载荷：压缩 + finalize 后的子树（含运行时 side-store 数据）
+
+### 15.9 当前性能优化做到哪一步
+
+已打通：
+- `detectBusinessEntities -> applyLCA -> compress -> finalizeLabel` 的 region 级复用闭环
+- `cacheStats` 输出命中信息（total/hit/miss）
+
+仍是基础设施、待继续深化：
+- locator 与 entity 子索引的 bucket 级增量刷新
+- 更细粒度 bucket（如大 entity 内分片）
+- 跨轮次更强的变更定位与局部重算策略
