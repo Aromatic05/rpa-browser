@@ -69,12 +69,14 @@ const compressNode = (node: UnifiedNode, isRoot: boolean, parent: UnifiedNode | 
 };
 
 const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
+    const tag = inferTag(node);
+    const role = normalizeRole(node.role);
+    // head 分支必须强制裁掉，即使它正好是当前 region 根。
+    if (FORCE_DROP_SUBTREE_TAGS.has(tag) || FORCE_DROP_SUBTREE_ROLES.has(role)) return true;
+
     if (isRoot) return false;
     if (isProtectedNode(node)) return false;
 
-    const tag = inferTag(node);
-    const role = normalizeRole(node.role);
-    if (FORCE_DROP_SUBTREE_TAGS.has(tag) || FORCE_DROP_SUBTREE_ROLES.has(role)) return true;
     if (DROP_SUBTREE_TAGS.has(tag) || DROP_SUBTREE_ROLES.has(role)) return true;
     if (VECTOR_SUBTREE_TAGS.has(tag) && !isMeaningfulImageNode(node)) return true;
     return false;

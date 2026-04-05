@@ -12,6 +12,7 @@ export const finalizeLabel = (tree: UnifiedNode): UnifiedNode => {
     buildParentIndex(tree, null, parentById);
 
     walk(tree, (node) => {
+        relabelStructuralNode(node, parentById);
         if (isActionNode(node)) finalizeActionNode(node);
         if (isFieldNode(node)) finalizeFieldNode(node, parentById);
         if (isContainerNode(node)) finalizeContainerNode(node);
@@ -55,6 +56,34 @@ const finalizeContainerNode = (node: UnifiedNode) => {
     if (title) {
         node.name = title;
     }
+};
+
+const relabelStructuralNode = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>) => {
+    const role = normalizeRole(node.role);
+    if (!WEAK_TEXT_CONTAINER_ROLES.has(role)) return;
+    if (node.children.length > 0) return;
+
+    const text = normalizeText(node.name || getNodeContent(node));
+    if (!text || text.length > 24) return;
+
+    const parent = parentById.get(node.id) || null;
+    if (!parent) return;
+
+    const parentRole = normalizeRole(parent.role);
+    if (!RELABELED_PARENT_ROLES.has(parentRole)) return;
+
+    const index = parent.children.findIndex((child) => child.id === node.id);
+    if (index < 0) return;
+
+    const hasNearbyList = parent.children.some((sibling, siblingIndex) => {
+        if (siblingIndex === index) return false;
+        if (Math.abs(siblingIndex - index) > 2) return false;
+        const siblingRole = normalizeRole(sibling.role);
+        return siblingRole === 'list';
+    });
+    if (!hasNearbyList) return;
+
+    node.role = 'heading';
 };
 
 const buildParentIndex = (node: UnifiedNode, parent: UnifiedNode | null, parentById: Map<string, UnifiedNode | null>) => {
@@ -179,6 +208,8 @@ const FIELD_ROLES = new Set(['input', 'textarea', 'select', 'textbox', 'combobox
 const FIELD_TAGS = new Set(['input', 'textarea', 'select']);
 const CONTAINER_ROLES = new Set(['dialog', 'alertdialog', 'form', 'table', 'list', 'section', 'article', 'toolbar']);
 const LABEL_ROLES = new Set(['label', 'heading', 'columnheader', 'rowheader']);
+const WEAK_TEXT_CONTAINER_ROLES = new Set(['div', 'generic', 'group', 'section', 'article']);
+const RELABELED_PARENT_ROLES = new Set(['contentinfo', 'navigation', 'complementary', 'region', 'section', 'article']);
 const ACTION_INTENT_KEYWORDS: Array<[string, string[]]> = [
     ['search', ['search', 'find', '查询', '搜索']],
     ['filter', ['filter', '筛选']],
