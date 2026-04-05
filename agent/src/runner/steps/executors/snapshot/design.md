@@ -31,6 +31,7 @@
 - `applyLCA`
 - `rankTiers`
 - `compress`
+- `finalizeLabel`
 
 ## 4. 伪代码原文
 
@@ -93,7 +94,10 @@ class SemanticPerceiver {
     rankTiers(tree);
 
     // 6. 按 tier 压缩树
-    return compress(tree);
+    const compressed = compress(tree);
+
+    // 7. 压缩后轻量语义收口（迁移/校正，不重跑完整识别）
+    return compressed ? finalizeLabel(compressed) : null;
   }
 
   applyLCA(tree: Node, entities: Node[]) {
@@ -304,7 +308,7 @@ LCA 顺序：
 
 `compress` 固定在 `processRegion` 内，并且发生在 `applyLCA` 之后：
 
-`detectBusinessEntities -> buildTree -> markStrongSemantics -> applyLCA -> rankTiers -> compress`
+`detectBusinessEntities -> buildTree -> markStrongSemantics -> applyLCA -> rankTiers -> compress -> finalizeLabel`
 
 这样可以保证：
 - `compress` 能消费实体标记（`entityId/entityType/formRole/tableRole`）
@@ -356,3 +360,50 @@ LCA 顺序：
 - 复杂摘要重排（仅保留极简占位摘要）
 
 目标是先稳定“删噪 + 去壳 + 按需上浮文本”，再逐步扩展更复杂策略。
+
+## 14. finalizeLabel 阶段（压缩后最终语义收口）
+
+### 14.1 为什么 compress 后还需要 finalizeLabel
+
+`compress` 会触发节点删除、壳层折叠、文本上浮，导致：
+- 旧标注仍挂在已不合适的节点上
+- 强语义节点（button/link/field 等）的最终文本承载发生变化
+- `parentEntityId/actionTargetId` 可能指向压缩后不再存在的实体
+
+所以需要在压缩后的最终树上做一次轻量收口，保证语义挂载点与引用一致。
+
+### 14.2 为什么 finalizeLabel 不是第二轮完整 detect/LCA
+
+`finalizeLabel` 的目标是“轻量修正”，不是重算：
+- 不重跑 `detectBusinessEntities`
+- 不重跑 `applyLCA`
+- 不做全树新识别，不引入新树或复杂上下文类型
+
+它只消费压缩后的现有字段与局部邻近信息，做低成本迁移和纠偏。
+
+### 14.3 职责边界
+
+`finalizeLabel` 只做：
+- 语义承载节点文本归一化（button/link/input/textarea/select/row/card/dialog/field 等）
+- 轻量语义迁移（被压缩影响的挂载点迁到最近保留节点）
+- 局部重判（action 文本与意图、fieldLabel 缺失补全、容器标题收口）
+- 引用修复（`parentEntityId/actionTargetId` 指向当前树中仍存在节点）
+
+`finalizeLabel` 不做：
+- locator 生成
+- 新的大规模启发式识别
+- 第二轮完整语义引擎
+
+### 14.4 当前主要修正字段
+
+- `fieldLabel`
+- `entityId`
+- `entityType`
+- `parentEntityId`
+- `actionIntent`
+- `actionTargetId`
+
+### 14.5 为什么放在 compress 后、linkGlobalRelations 前
+
+- 放在 `compress` 后：才能看到最终承载结构，避免在压缩前迁移到即将被折叠/删除的节点。
+- 放在 `linkGlobalRelations` 前：先把局部语义与引用收口，再做跨层关系链接，降低关系链接的悬空引用风险。
