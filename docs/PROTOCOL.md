@@ -10,7 +10,7 @@
 2. 内部 Step IR 协议（`runSteps` 输入输出）
 3. Step 事件协议（`step.start` / `step.end`）
 4. Trace 事件协议（`op.start` / `op.end`）
-5. MCP stdio tool-call 协议（外部程序 <-> agent）
+5. MCP HTTP tool-call 协议（外部程序 <-> agent）
 6. Script DSL 协议（`run_script.ts`，内部辅助层）
 
 ## 2. WS Action 协议
@@ -363,11 +363,11 @@ Trace 协议负责原子执行与观测。
 
 来源：`agent/src/runner/trace/types.ts`、`agent/src/runner/trace/tools.ts`。
 
-## 6. MCP stdio tool-call 协议
+## 6. MCP HTTP tool-call 协议
 
 ### 6.1 运行方式
 
-- 传输：stdio（`@modelcontextprotocol/sdk`）
+- 传输：HTTP(SSE)（`@modelcontextprotocol/sdk`）
 - 服务入口：`agent/src/mcp_main.ts`
 - 协议处理：`agent/src/mcp/server.ts`
 - tool -> step 翻译：`agent/src/mcp/tool_handlers.ts`

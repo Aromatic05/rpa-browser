@@ -1,5 +1,6 @@
+import http from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
@@ -168,11 +169,106 @@ export const createMcpServer = (deps: McpToolDeps) => {
     return server;
 };
 
-export const startMcpServer = async (deps: McpToolDeps) => {
-    const server = createMcpServer(deps);
-    server.onerror = (error: unknown) => {
-        deps.log?.('mcp error', error);
-    };
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
+type McpHttpOptions = {
+    host?: string;
+    port?: number;
+    ssePath?: string;
+    messagePath?: string;
+    healthPath?: string;
+};
+
+type SessionEntry = {
+    transport: SSEServerTransport;
+    server: Server;
+};
+
+const normalizePath = (value: string): string => {
+    if (!value) return '/';
+    return value.startsWith('/') ? value : `/${value}`;
+};
+
+const writeJson = (res: http.ServerResponse, status: number, payload: unknown) => {
+    res.statusCode = status;
+    res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify(payload));
+};
+
+export const startMcpServer = async (deps: McpToolDeps, options: McpHttpOptions = {}) => {
+    const host = options.host || process.env.RPA_MCP_HOST || '127.0.0.1';
+    const port = options.port ?? Number(process.env.RPA_MCP_PORT || 17654);
+    const ssePath = normalizePath(options.ssePath || process.env.RPA_MCP_SSE_PATH || '/sse');
+    const messagePath = normalizePath(options.messagePath || process.env.RPA_MCP_MESSAGE_PATH || '/message');
+    const healthPath = normalizePath(options.healthPath || process.env.RPA_MCP_HEALTH_PATH || '/health');
+    const sessions = new Map<string, SessionEntry>();
+
+    const app = http.createServer((req, res) => {
+        void (async () => {
+            const url = new URL(req.url || '/', `http://${req.headers.host || `${host}:${port}`}`);
+            const path = url.pathname;
+
+            if (req.method === 'GET' && path === healthPath) {
+                writeJson(res, 200, {
+                    ok: true,
+                    transport: 'sse',
+                    ssePath,
+                    messagePath,
+                });
+                return;
+            }
+
+            if (req.method === 'GET' && path === ssePath) {
+                const server = createMcpServer(deps);
+                server.onerror = (error: unknown) => {
+                    deps.log?.('mcp session error', error);
+                };
+                const transport = new SSEServerTransport(messagePath, res);
+                transport.onclose = () => {
+                    sessions.delete(transport.sessionId);
+                    void server.close().catch(() => undefined);
+                };
+                await server.connect(transport);
+                sessions.set(transport.sessionId, { transport, server });
+                deps.log?.('mcp session connected', { sessionId: transport.sessionId });
+                return;
+            }
+
+            if (req.method === 'POST' && path === messagePath) {
+                const sessionId = url.searchParams.get('sessionId') || '';
+                if (!sessionId) {
+                    writeJson(res, 400, { error: 'missing sessionId' });
+                    return;
+                }
+                const session = sessions.get(sessionId);
+                if (!session) {
+                    writeJson(res, 404, { error: 'session not found' });
+                    return;
+                }
+                await session.transport.handlePostMessage(req, res);
+                return;
+            }
+
+            writeJson(res, 404, { error: 'not found' });
+        })().catch((error) => {
+            deps.log?.('mcp http handler error', error);
+            if (!res.headersSent) {
+                writeJson(res, 500, { error: 'internal error' });
+            } else {
+                res.end();
+            }
+        });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+        app.once('error', reject);
+        app.listen(port, host, () => {
+            app.off('error', reject);
+            resolve();
+        });
+    });
+
+    deps.log?.('MCP HTTP server listening', {
+        sseUrl: `http://${host}:${port}${ssePath}`,
+        messageUrl: `http://${host}:${port}${messagePath}`,
+        healthUrl: `http://${host}:${port}${healthPath}`,
+    });
 };
