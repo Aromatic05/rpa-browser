@@ -38,7 +38,7 @@ const resolveLocalContext = (node: UnifiedNode, parentByNode: Map<UnifiedNode, U
     while (cursor) {
         const role = normalizeRole(cursor.role);
         if (CONTEXT_ROLES.has(role)) {
-            return `${role}:${normalizeName(cursor.name || getNodeContent(cursor))}`;
+            return role;
         }
         cursor = parentByNode.get(cursor) || null;
     }
@@ -47,10 +47,9 @@ const resolveLocalContext = (node: UnifiedNode, parentByNode: Map<UnifiedNode, U
 
 const buildStableBase = (node: UnifiedNode, context: string): string => {
     const role = normalizeRole(node.role);
-    const name = normalizeName(node.name || getNodeContent(node));
+    const name = normalizeNameForId(node.name || getNodeContent(node));
     const target = normalizeName(node.target?.ref);
-    const childCount = String(node.children.length);
-    return `${role}|${name}|${context}|${target}|${childCount}`;
+    return `${role}|${name}|${context}|${target}`;
 };
 
 const shortHash = (value: string): string => {
@@ -66,6 +65,18 @@ const sanitizePrefix = (role: string): string => {
 const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const normalizeName = (value: string | undefined): string => {
     return (normalizeText(value) || '').toLowerCase().slice(0, 80);
+};
+const normalizeNameForId = (value: string | undefined): string => {
+    const normalized = normalizeName(value);
+    if (!normalized) return '';
+    return normalized
+        // reduce small textual drifts (counts, dates, dynamic ids)
+        .replace(/\d+/g, '#')
+        // keep semantic words, down-weight punctuation noise
+        .replace(/[^\p{L}\p{N}\s#]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 64);
 };
 
 const CONTEXT_ROLES = new Set(['form', 'table', 'dialog', 'list', 'toolbar', 'section', 'article', 'main']);
