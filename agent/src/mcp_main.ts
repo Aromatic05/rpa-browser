@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
@@ -38,10 +39,18 @@ initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
-const runnerPluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
+const sourcePluginEntry = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
+const bundledPluginEntry = path.resolve(process.cwd(), '.runner-dist/plugin.mjs');
+const pluginEntry = process.env.RUNNER_PLUGIN_ENTRY
+    ? path.resolve(process.cwd(), process.env.RUNNER_PLUGIN_ENTRY)
+    : sourcePluginEntry;
+const runnerPluginHost = new RunnerPluginHost(pluginEntry);
 await runnerPluginHost.load();
 if (process.env.NODE_ENV !== 'production') {
-    runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
+    const watchTarget = fs.existsSync(pluginEntry) && pluginEntry === sourcePluginEntry
+        ? path.resolve(process.cwd(), 'src/runner')
+        : path.resolve(process.cwd(), '.runner-dist');
+    runnerPluginHost.watchDev(watchTarget);
 }
 
 const pageRegistry = createPageRegistry({

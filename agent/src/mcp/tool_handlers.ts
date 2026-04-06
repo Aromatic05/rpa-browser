@@ -149,12 +149,20 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    return runSingleStep(deps, input.tabToken, {
+    const result = await runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
         args: { url: input.url },
         meta: { source: 'mcp' },
     });
+    if (!result.ok) return result;
+
+    const createdTabId = result.results.find((item) => item.ok)?.data as { tab_id?: unknown } | undefined;
+    if (typeof createdTabId?.tab_id === 'string') {
+        const scope = deps.pageRegistry.resolveScopeFromToken(input.tabToken);
+        deps.pageRegistry.rebindTokenToTab(input.tabToken, scope.workspaceId, createdTabId.tab_id);
+    }
+    return result;
 };
 
 const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
