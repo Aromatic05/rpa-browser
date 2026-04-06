@@ -85,7 +85,7 @@ const buildDirectLocator = (node: UnifiedNode): Locator['direct'] | undefined =>
     }
 
     const href = normalizeText(getNodeAttr(node, 'href'));
-    if (href && normalizeRole(node.role) === 'link') {
+    if (href && normalizeRole(node.role) === 'link' && isNavigableHref(href)) {
         return {
             kind: 'css',
             query: `a[href="${escapeQuote(href)}"]`,
@@ -140,10 +140,18 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
 const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const escapeQuote = (value: string): string => value.replace(/"/g, '\\"');
 const escapeCssId = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
+const isNavigableHref = (href: string): boolean => {
+    const normalized = href.trim().toLowerCase();
+    if (!normalized) return false;
+    if (normalized === '#') return false;
+    if (normalized.startsWith('javascript:')) return false;
+    return true;
+};
 
 const LOCATOR_TARGET_ROLES = new Set([
     'button',
     'link',
+    'menuitem',
     'input',
     'textarea',
     'select',
@@ -151,5 +159,6 @@ const LOCATOR_TARGET_ROLES = new Set([
     'combobox',
     'checkbox',
     'radio',
+    'tab',
 ]);
 const LOCATOR_TARGET_TAGS = new Set(['button', 'a', 'input', 'textarea', 'select']);
