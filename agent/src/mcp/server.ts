@@ -62,8 +62,28 @@ export const createMcpServer = (deps: McpToolDeps) => {
             },
             {
                 name: 'browser.snapshot',
-                description: 'Return page metadata or run an a11y scan.',
+                description: 'Return the latest structured UnifiedNode snapshot tree.',
                 inputSchema: toolInputJsonSchemas['browser.snapshot'],
+            },
+            {
+                name: 'browser.get_content',
+                description: 'Resolve snapshot content by content ref.',
+                inputSchema: toolInputJsonSchemas['browser.get_content'],
+            },
+            {
+                name: 'browser.read_console',
+                description: 'Read recent console entries from the active tab.',
+                inputSchema: toolInputJsonSchemas['browser.read_console'],
+            },
+            {
+                name: 'browser.read_network',
+                description: 'Read recent network entries from the active tab.',
+                inputSchema: toolInputJsonSchemas['browser.read_network'],
+            },
+            {
+                name: 'browser.evaluate',
+                description: 'Evaluate JavaScript expression in the page context.',
+                inputSchema: toolInputJsonSchemas['browser.evaluate'],
             },
             {
                 name: 'browser.take_screenshot',
@@ -72,12 +92,12 @@ export const createMcpServer = (deps: McpToolDeps) => {
             },
             {
                 name: 'browser.click',
-                description: 'Click an element using an a11y node id.',
+                description: 'Click an element by id or selector.',
                 inputSchema: toolInputJsonSchemas['browser.click'],
             },
             {
                 name: 'browser.fill',
-                description: 'Fill an element using an a11y node id.',
+                description: 'Fill an element by id or selector.',
                 inputSchema: toolInputJsonSchemas['browser.fill'],
             },
             {

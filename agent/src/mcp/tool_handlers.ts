@@ -10,6 +10,14 @@ import {
     type BrowserClickInput,
     type BrowserGotoInput,
     type BrowserSnapshotInput,
+    browserGetContentInputSchema,
+    type BrowserGetContentInput,
+    browserReadConsoleInputSchema,
+    type BrowserReadConsoleInput,
+    browserReadNetworkInputSchema,
+    type BrowserReadNetworkInput,
+    browserEvaluateInputSchema,
+    type BrowserEvaluateInput,
     browserFillInputSchema,
     type BrowserFillInput,
     browserGoBackInputSchema,
@@ -179,12 +187,11 @@ const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         id: crypto.randomUUID(),
         name: 'browser.click',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             coord: input.coord,
             options,
             timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -198,11 +205,10 @@ const handleFill = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
         id: crypto.randomUUID(),
         name: 'browser.fill',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             value: input.value,
             timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -216,12 +222,11 @@ const handleType = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
         id: crypto.randomUUID(),
         name: 'browser.type',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             text: input.text,
             delay_ms: input.delay_ms ?? 0,
             timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -235,11 +240,10 @@ const handleSelectOption = (deps: McpToolDeps): McpToolHandler => async (args: u
         id: crypto.randomUUID(),
         name: 'browser.select_option',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             values: input.values,
             timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -253,10 +257,9 @@ const handleHover = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         id: crypto.randomUUID(),
         name: 'browser.hover',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -270,12 +273,11 @@ const handleScroll = (deps: McpToolDeps): McpToolHandler => async (args: unknown
         id: crypto.randomUUID(),
         name: 'browser.scroll',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             direction: input.direction,
             amount: input.amount ?? 600,
             timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -290,10 +292,9 @@ const handlePressKey = (deps: McpToolDeps): McpToolHandler => async (args: unkno
         name: 'browser.press_key',
         args: {
             key: input.key,
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -307,8 +308,17 @@ const handleDragAndDrop = (deps: McpToolDeps): McpToolHandler => async (args: un
         id: crypto.randomUUID(),
         name: 'browser.drag_and_drop',
         args: {
-            source: input.source,
-            dest_target: input.dest_target,
+            source: {
+                id: input.source_id,
+                selector: input.source_selector,
+            },
+            dest_target:
+                input.dest_id || input.dest_selector
+                    ? {
+                          id: input.dest_id,
+                          selector: input.dest_selector,
+                      }
+                    : undefined,
             dest_coord: input.dest_coord,
             timeout: input.timeout,
         },
@@ -341,7 +351,55 @@ const handleSnapshot = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.snapshot',
-        args: { includeA11y: input.includeA11y ?? true, focus_only: input.focus_only ?? false },
+        args: {},
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleGetContent = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserGetContentInput>(browserGetContentInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.get_content',
+        args: { ref: input.ref },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleReadConsole = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserReadConsoleInput>(browserReadConsoleInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.read_console',
+        args: { limit: input.limit },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleReadNetwork = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserReadNetworkInput>(browserReadNetworkInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.read_network',
+        args: { limit: input.limit },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleEvaluate = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserEvaluateInput>(browserEvaluateInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.evaluate',
+        args: { expression: input.expression, arg: input.arg },
         meta: { source: 'mcp' },
     });
 };
@@ -354,10 +412,9 @@ const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args:
         id: crypto.randomUUID(),
         name: 'browser.take_screenshot',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             full_page: input.full_page,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -373,6 +430,10 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.get_page_info': handleGetPageInfo(deps),
     'browser.click': handleClick(deps),
     'browser.snapshot': handleSnapshot(deps),
+    'browser.get_content': handleGetContent(deps),
+    'browser.read_console': handleReadConsole(deps),
+    'browser.read_network': handleReadNetwork(deps),
+    'browser.evaluate': handleEvaluate(deps),
     'browser.fill': handleFill(deps),
     'browser.take_screenshot': handleTakeScreenshot(deps),
     'browser.type': handleType(deps),

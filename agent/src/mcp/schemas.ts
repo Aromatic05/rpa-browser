@@ -1,21 +1,13 @@
 import { z } from 'zod';
 
-const a11yHintSchema = z.object({
-    role: z.string().optional(),
-    name: z.string().optional(),
-    text: z.string().optional(),
-});
-
-const targetSchema = z.object({
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
-    selector: z.string().optional(),
-});
-
 const coordSchema = z.object({
     x: z.number(),
     y: z.number(),
 });
+
+const ensureIdOrSelector = <T extends { id?: string; selector?: string }>(value: T) => {
+    return Boolean(value.id || value.selector);
+};
 
 export const browserGotoInputSchema = z.object({
     tabToken: z.string(),
@@ -54,95 +46,135 @@ export const browserGetPageInfoInputSchema = z.object({
 
 export const browserSnapshotInputSchema = z.object({
     tabToken: z.string(),
-    includeA11y: z.boolean().optional(),
-    focus_only: z.boolean().optional(),
+});
+
+export const browserGetContentInputSchema = z.object({
+    tabToken: z.string(),
+    ref: z.string(),
+});
+
+export const browserReadConsoleInputSchema = z.object({
+    tabToken: z.string(),
+    limit: z.number().int().min(1).max(500).optional(),
+});
+
+export const browserReadNetworkInputSchema = z.object({
+    tabToken: z.string(),
+    limit: z.number().int().min(1).max(500).optional(),
+});
+
+export const browserEvaluateInputSchema = z.object({
+    tabToken: z.string(),
+    expression: z.string(),
+    arg: z.unknown().optional(),
 });
 
 export const browserTakeScreenshotInputSchema = z.object({
     tabToken: z.string(),
-    target: targetSchema.optional(),
+    id: z.string().optional(),
+    selector: z.string().optional(),
     full_page: z.boolean().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
 });
 
-export const browserClickInputSchema = z.object({
-    tabToken: z.string(),
-    target: targetSchema.optional(),
-    coord: coordSchema.optional(),
-    options: z
-        .object({
-            button: z.enum(['left', 'right', 'middle']).optional(),
-            double: z.boolean().optional(),
-        })
-        .optional(),
-    timeout: z.number().int().positive().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
-});
+export const browserClickInputSchema = z
+    .object({
+        tabToken: z.string(),
+        id: z.string().optional(),
+        selector: z.string().optional(),
+        coord: coordSchema.optional(),
+        options: z
+            .object({
+                button: z.enum(['left', 'right', 'middle']).optional(),
+                double: z.boolean().optional(),
+            })
+            .optional(),
+        timeout: z.number().int().positive().optional(),
+    })
+    .refine((value) => Boolean(value.coord) || ensureIdOrSelector(value), {
+        message: 'click requires coord or id/selector',
+    });
 
-export const browserFillInputSchema = z.object({
-    tabToken: z.string(),
-    target: targetSchema.optional(),
-    value: z.string(),
-    timeout: z.number().int().positive().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
-});
+export const browserFillInputSchema = z
+    .object({
+        tabToken: z.string(),
+        id: z.string().optional(),
+        selector: z.string().optional(),
+        value: z.string(),
+        timeout: z.number().int().positive().optional(),
+    })
+    .refine(ensureIdOrSelector, {
+        message: 'fill requires id or selector',
+    });
 
-export const browserTypeInputSchema = z.object({
-    tabToken: z.string(),
-    target: targetSchema.optional(),
-    text: z.string(),
-    delay_ms: z.number().int().min(0).optional(),
-    timeout: z.number().int().positive().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
-});
+export const browserTypeInputSchema = z
+    .object({
+        tabToken: z.string(),
+        id: z.string().optional(),
+        selector: z.string().optional(),
+        text: z.string(),
+        delay_ms: z.number().int().min(0).optional(),
+        timeout: z.number().int().positive().optional(),
+    })
+    .refine(ensureIdOrSelector, {
+        message: 'type requires id or selector',
+    });
 
-export const browserSelectOptionInputSchema = z.object({
-    tabToken: z.string(),
-    target: targetSchema.optional(),
-    values: z.array(z.string()),
-    timeout: z.number().int().positive().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
-});
+export const browserSelectOptionInputSchema = z
+    .object({
+        tabToken: z.string(),
+        id: z.string().optional(),
+        selector: z.string().optional(),
+        values: z.array(z.string()),
+        timeout: z.number().int().positive().optional(),
+    })
+    .refine(ensureIdOrSelector, {
+        message: 'select_option requires id or selector',
+    });
 
-export const browserHoverInputSchema = z.object({
-    tabToken: z.string(),
-    target: targetSchema.optional(),
-    timeout: z.number().int().positive().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
-});
+export const browserHoverInputSchema = z
+    .object({
+        tabToken: z.string(),
+        id: z.string().optional(),
+        selector: z.string().optional(),
+        timeout: z.number().int().positive().optional(),
+    })
+    .refine(ensureIdOrSelector, {
+        message: 'hover requires id or selector',
+    });
 
 export const browserScrollInputSchema = z.object({
     tabToken: z.string(),
-    target: targetSchema.optional(),
+    id: z.string().optional(),
+    selector: z.string().optional(),
     direction: z.enum(['up', 'down']).optional(),
     amount: z.number().int().positive().optional(),
     timeout: z.number().int().positive().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
 });
 
 export const browserPressKeyInputSchema = z.object({
     tabToken: z.string(),
     key: z.string(),
-    target: targetSchema.optional(),
+    id: z.string().optional(),
+    selector: z.string().optional(),
     timeout: z.number().int().positive().optional(),
-    a11yNodeId: z.string().optional(),
-    a11yHint: a11yHintSchema.optional(),
 });
 
-export const browserDragAndDropInputSchema = z.object({
-    tabToken: z.string(),
-    source: targetSchema,
-    dest_target: targetSchema.optional(),
-    dest_coord: coordSchema.optional(),
-    timeout: z.number().int().positive().optional(),
-});
+export const browserDragAndDropInputSchema = z
+    .object({
+        tabToken: z.string(),
+        source_id: z.string().optional(),
+        source_selector: z.string().optional(),
+        dest_id: z.string().optional(),
+        dest_selector: z.string().optional(),
+        dest_coord: coordSchema.optional(),
+        timeout: z.number().int().positive().optional(),
+    })
+    .refine((value) => Boolean(value.source_id || value.source_selector), {
+        message: 'drag_and_drop requires source_id or source_selector',
+    })
+    .refine((value) => Boolean(value.dest_id || value.dest_selector || value.dest_coord), {
+        message: 'drag_and_drop requires destination target or dest_coord',
+    });
 
 export const browserMouseInputSchema = z.object({
     tabToken: z.string(),
@@ -161,6 +193,10 @@ export type BrowserSwitchTabInput = z.infer<typeof browserSwitchTabInputSchema>;
 export type BrowserCloseTabInput = z.infer<typeof browserCloseTabInputSchema>;
 export type BrowserGetPageInfoInput = z.infer<typeof browserGetPageInfoInputSchema>;
 export type BrowserSnapshotInput = z.infer<typeof browserSnapshotInputSchema>;
+export type BrowserGetContentInput = z.infer<typeof browserGetContentInputSchema>;
+export type BrowserReadConsoleInput = z.infer<typeof browserReadConsoleInputSchema>;
+export type BrowserReadNetworkInput = z.infer<typeof browserReadNetworkInputSchema>;
+export type BrowserEvaluateInput = z.infer<typeof browserEvaluateInputSchema>;
 export type BrowserTakeScreenshotInput = z.infer<typeof browserTakeScreenshotInputSchema>;
 export type BrowserClickInput = z.infer<typeof browserClickInputSchema>;
 export type BrowserFillInput = z.infer<typeof browserFillInputSchema>;
@@ -241,8 +277,43 @@ export const toolInputJsonSchemas = {
         required: ['tabToken'],
         properties: {
             tabToken: { type: 'string' },
-            includeA11y: { type: 'boolean' },
-            focus_only: { type: 'boolean' },
+        },
+        additionalProperties: false,
+    },
+    'browser.get_content': {
+        type: 'object',
+        required: ['tabToken', 'ref'],
+        properties: {
+            tabToken: { type: 'string' },
+            ref: { type: 'string' },
+        },
+        additionalProperties: false,
+    },
+    'browser.read_console': {
+        type: 'object',
+        required: ['tabToken'],
+        properties: {
+            tabToken: { type: 'string' },
+            limit: { type: 'integer', minimum: 1, maximum: 500 },
+        },
+        additionalProperties: false,
+    },
+    'browser.read_network': {
+        type: 'object',
+        required: ['tabToken'],
+        properties: {
+            tabToken: { type: 'string' },
+            limit: { type: 'integer', minimum: 1, maximum: 500 },
+        },
+        additionalProperties: false,
+    },
+    'browser.evaluate': {
+        type: 'object',
+        required: ['tabToken', 'expression'],
+        properties: {
+            tabToken: { type: 'string' },
+            expression: { type: 'string' },
+            arg: {},
         },
         additionalProperties: false,
     },
@@ -251,34 +322,9 @@ export const toolInputJsonSchemas = {
         required: ['tabToken'],
         properties: {
             tabToken: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             full_page: { type: 'boolean' },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
@@ -287,23 +333,8 @@ export const toolInputJsonSchemas = {
         required: ['tabToken'],
         properties: {
             tabToken: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             coord: {
                 type: 'object',
                 properties: {
@@ -322,16 +353,6 @@ export const toolInputJsonSchemas = {
                 additionalProperties: false,
             },
             timeout: { type: 'integer', minimum: 1 },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
@@ -340,35 +361,10 @@ export const toolInputJsonSchemas = {
         required: ['tabToken', 'value'],
         properties: {
             tabToken: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             value: { type: 'string' },
             timeout: { type: 'integer', minimum: 1 },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
@@ -377,36 +373,11 @@ export const toolInputJsonSchemas = {
         required: ['tabToken', 'text'],
         properties: {
             tabToken: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             text: { type: 'string' },
             delay_ms: { type: 'integer', minimum: 0 },
             timeout: { type: 'integer', minimum: 1 },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
@@ -415,35 +386,10 @@ export const toolInputJsonSchemas = {
         required: ['tabToken', 'values'],
         properties: {
             tabToken: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             values: { type: 'array', items: { type: 'string' } },
             timeout: { type: 'integer', minimum: 1 },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
@@ -452,34 +398,9 @@ export const toolInputJsonSchemas = {
         required: ['tabToken'],
         properties: {
             tabToken: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             timeout: { type: 'integer', minimum: 1 },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
@@ -488,36 +409,11 @@ export const toolInputJsonSchemas = {
         required: ['tabToken'],
         properties: {
             tabToken: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             direction: { type: 'string', enum: ['up', 'down'] },
             amount: { type: 'integer', minimum: 1 },
             timeout: { type: 'integer', minimum: 1 },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
@@ -527,76 +423,21 @@ export const toolInputJsonSchemas = {
         properties: {
             tabToken: { type: 'string' },
             key: { type: 'string' },
-            target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            id: { type: 'string' },
+            selector: { type: 'string' },
             timeout: { type: 'integer', minimum: 1 },
-            a11yNodeId: { type: 'string' },
-            a11yHint: {
-                type: 'object',
-                properties: {
-                    role: { type: 'string' },
-                    name: { type: 'string' },
-                    text: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
         },
         additionalProperties: false,
     },
     'browser.drag_and_drop': {
         type: 'object',
-        required: ['tabToken', 'source'],
+        required: ['tabToken'],
         properties: {
             tabToken: { type: 'string' },
-            source: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
-            dest_target: {
-                type: 'object',
-                properties: {
-                    a11yNodeId: { type: 'string' },
-                    a11yHint: {
-                        type: 'object',
-                        properties: {
-                            role: { type: 'string' },
-                            name: { type: 'string' },
-                            text: { type: 'string' },
-                        },
-                        additionalProperties: false,
-                    },
-                    selector: { type: 'string' },
-                },
-                additionalProperties: false,
-            },
+            source_id: { type: 'string' },
+            source_selector: { type: 'string' },
+            dest_id: { type: 'string' },
+            dest_selector: { type: 'string' },
             dest_coord: {
                 type: 'object',
                 properties: {
