@@ -10,6 +10,10 @@ import { executeBrowserCreateTab } from './create_tab';
 import { executeBrowserSwitchTab } from './switch_tab';
 import { executeBrowserCloseTab } from './close_tab';
 import { executeBrowserGetPageInfo } from './get_page_info';
+import { executeBrowserGetContent } from './get_content';
+import { executeBrowserReadConsole } from './read_console';
+import { executeBrowserReadNetwork } from './read_network';
+import { executeBrowserEvaluate } from './evaluate';
 import { executeBrowserTakeScreenshot } from './take_screenshot';
 import { executeBrowserType } from './type';
 import { executeBrowserSelectOption } from './select_option';
@@ -30,6 +34,10 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.close_tab': executeBrowserCloseTab as ExecutorFn,
     'browser.get_page_info': executeBrowserGetPageInfo as ExecutorFn,
     'browser.snapshot': executeBrowserSnapshot as ExecutorFn,
+    'browser.get_content': executeBrowserGetContent as ExecutorFn,
+    'browser.read_console': executeBrowserReadConsole as ExecutorFn,
+    'browser.read_network': executeBrowserReadNetwork as ExecutorFn,
+    'browser.evaluate': executeBrowserEvaluate as ExecutorFn,
     'browser.take_screenshot': executeBrowserTakeScreenshot as ExecutorFn,
     'browser.click': executeBrowserClick as ExecutorFn,
     'browser.fill': executeBrowserFill as ExecutorFn,

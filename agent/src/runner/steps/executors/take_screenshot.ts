@@ -10,15 +10,25 @@ export const executeBrowserTakeScreenshot = async (
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const target = normalizeTarget(step.args);
-    let nodeId: string | undefined;
+    let resolvedTarget:
+        | {
+              a11yNodeId?: string;
+              selector?: string;
+              role?: string;
+              name?: string;
+          }
+        | undefined;
     if (target) {
         const resolved = await resolveTargetNodeId(binding, target);
         if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
-        nodeId = resolved.nodeId;
+        resolvedTarget = resolved.target;
     }
     const shot = await binding.traceTools['trace.page.screenshot']({
         fullPage: step.args.full_page,
-        a11yNodeId: nodeId,
+        a11yNodeId: resolvedTarget?.a11yNodeId,
+        selector: resolvedTarget?.selector,
+        role: resolvedTarget?.role,
+        name: resolvedTarget?.name,
     });
     if (!shot.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(shot.error) };

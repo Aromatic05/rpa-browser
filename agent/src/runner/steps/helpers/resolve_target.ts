@@ -1,13 +1,21 @@
 /**
- * 统一 a11y 解析：基于 trace.a11y 找到唯一 nodeId。
+ * 统一目标解析：优先 id/selector，新协议失败时再回退旧 a11y 兼容路径。
  */
 
 import type { PageBinding } from '../../../runtime/runtime_registry';
 import type { A11yHint, Target } from '../types';
 import type { StepResult } from '../types';
+import type { SnapshotResult } from '../executors/snapshot/core/types';
 import { mapTraceError } from './target';
 
-type ResolveResult = { ok: true; nodeId: string } | { ok: false; error: StepResult['error'] };
+export type ResolvedLocatorTarget = {
+    selector?: string;
+    role?: string;
+    name?: string;
+    a11yNodeId?: string;
+};
+
+type ResolveResult = { ok: true; target: ResolvedLocatorTarget } | { ok: false; error: StepResult['error'] };
 
 const buildNotFound = (hint?: A11yHint): StepResult['error'] => ({
     code: 'ERR_NOT_FOUND',
@@ -28,15 +36,24 @@ export const resolveTargetNodeId = async (
     if (!target) {
         return { ok: false, error: { code: 'ERR_INTERNAL', message: 'missing target' } };
     }
-    if (target.selector) {
-        return { ok: false, error: { code: 'ERR_INTERNAL', message: 'selector not supported' } };
+
+    if (target.id) {
+        const resolved = resolveBySnapshotNodeId(binding, target.id);
+        if (!resolved.ok) return resolved;
+        return { ok: true, target: resolved.target };
     }
+
+    if (target.selector) {
+        return { ok: true, target: { selector: target.selector } };
+    }
+
+    // 旧协议兼容：a11yNodeId/a11yHint 仅在 step 层兜底，不再作为 MCP 主协议。
     if (target.a11yNodeId) {
         const resolved = await binding.traceTools['trace.a11y.resolveByNodeId']({
             a11yNodeId: target.a11yNodeId,
         });
         if (!resolved.ok) return { ok: false, error: mapTraceError(resolved.error) };
-        return { ok: true, nodeId: target.a11yNodeId };
+        return { ok: true, target: { a11yNodeId: target.a11yNodeId } };
     }
     if (target.a11yHint) {
         const found = await binding.traceTools['trace.a11y.findByA11yHint']({
@@ -50,7 +67,67 @@ export const resolveTargetNodeId = async (
         if (candidates.length > 1) {
             return { ok: false, error: buildAmbiguous(target.a11yHint, candidates) };
         }
-        return { ok: true, nodeId: candidates[0].nodeId };
+        return { ok: true, target: { a11yNodeId: candidates[0].nodeId } };
     }
     return { ok: false, error: buildNotFound() };
+};
+
+const resolveBySnapshotNodeId = (
+    binding: PageBinding,
+    nodeId: string,
+): { ok: true; target: ResolvedLocatorTarget } | { ok: false; error: StepResult['error'] } => {
+    const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
+    const snapshot = cache.latestSnapshot as SnapshotResult | undefined;
+    if (!snapshot || !snapshot.locatorIndex) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'snapshot cache missing, call browser.snapshot before targeting by id',
+                details: { id: nodeId },
+            },
+        };
+    }
+
+    const locator = snapshot.locatorIndex[nodeId];
+    if (!locator) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'node id not found in snapshot locator index',
+                details: { id: nodeId },
+            },
+        };
+    }
+
+    const direct = locator.direct;
+    if (direct?.kind === 'css' && direct.query) {
+        return { ok: true, target: { selector: direct.query } };
+    }
+    if (direct?.kind === 'role' && direct.query) {
+        const parsed = parseRoleQuery(direct.query);
+        if (parsed) return { ok: true, target: parsed };
+    }
+    if (direct?.fallback) {
+        return { ok: true, target: { selector: direct.fallback } };
+    }
+
+    return {
+        ok: false,
+        error: {
+            code: 'ERR_NOT_FOUND',
+            message: 'node id has no executable direct locator',
+            details: { id: nodeId, locator },
+        },
+    };
+};
+
+const parseRoleQuery = (query: string): ResolvedLocatorTarget | null => {
+    const index = query.indexOf(':');
+    if (index <= 0) return null;
+    const role = query.slice(0, index).trim();
+    const name = query.slice(index + 1).trim();
+    if (!role) return null;
+    return { role, name: name || undefined };
 };

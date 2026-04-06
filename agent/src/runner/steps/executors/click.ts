@@ -3,17 +3,28 @@ import type { RunStepsDeps } from '../../run_steps';
 import { normalizeTarget, mapTraceError, matchesA11yHint } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { scoreA11yConfidence } from '../helpers/confidence';
-import { resolveTargetNodeId } from '../helpers/resolve_target';
+import { resolveTargetNodeId, type ResolvedLocatorTarget } from '../helpers/resolve_target';
 import { describeSelector } from '../helpers/selector';
 
 const ensureVisible = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
-    nodeId: string,
+    target: ResolvedLocatorTarget,
     timeout?: number,
 ) => {
-    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ a11yNodeId: nodeId });
+    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({
+        a11yNodeId: target.a11yNodeId,
+        selector: target.selector,
+        role: target.role,
+        name: target.name,
+    });
     if (!scroll.ok) return scroll;
-    return binding.traceTools['trace.locator.waitForVisible']({ a11yNodeId: nodeId, timeout });
+    return binding.traceTools['trace.locator.waitForVisible']({
+        a11yNodeId: target.a11yNodeId,
+        selector: target.selector,
+        role: target.role,
+        name: target.name,
+        timeout,
+    });
 };
 
 export const executeBrowserClick = async (
@@ -27,7 +38,7 @@ export const executeBrowserClick = async (
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
 
     if (coord) {
-        if (step.args.target || step.args.a11yNodeId || step.args.a11yHint) {
+        if (step.args.target || step.args.id || step.args.selector || step.args.a11yNodeId || step.args.a11yHint) {
             return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'coord and target are mutually exclusive' } };
         }
         const count = options?.double ? 2 : 1;
@@ -59,8 +70,11 @@ export const executeBrowserClick = async (
     }
 
     const target = normalizeTarget(step.args);
-    if (target?.selector) {
-        const described = await describeSelector(binding.page, target.selector);
+    const resolved = await resolveTargetNodeId(binding, target);
+    if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+
+    if (resolved.target.selector && target?.a11yHint) {
+        const described = await describeSelector(binding.page, resolved.target.selector);
         if (!described.ok) {
             return { stepId: step.id, ok: false, error: described.error };
         }
@@ -80,7 +94,7 @@ export const executeBrowserClick = async (
                         code: 'ERR_NOT_FOUND',
                         message: 'selector matched element but a11y hint mismatch',
                         details: {
-                            selector: target.selector,
+                            selector: resolved.target.selector,
                             hint: target.a11yHint,
                             candidate: described.data,
                             confidence: confidence.details,
@@ -90,14 +104,14 @@ export const executeBrowserClick = async (
             }
         }
         const visible = await binding.traceTools['trace.locator.waitForVisible']({
-            selector: target.selector,
+            selector: resolved.target.selector,
             timeout,
         });
         if (!visible.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
         }
         const scrolled = await binding.traceTools['trace.locator.scrollIntoView']({
-            selector: target.selector,
+            selector: resolved.target.selector,
         });
         if (!scrolled.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(scrolled.error) };
@@ -105,7 +119,7 @@ export const executeBrowserClick = async (
         const count = options?.double ? 2 : 1;
         for (let i = 0; i < count; i += 1) {
             const click = await binding.traceTools['trace.locator.click']({
-                selector: target.selector,
+                selector: resolved.target.selector,
                 timeout,
                 button: options?.button,
             });
@@ -122,17 +136,18 @@ export const executeBrowserClick = async (
         }
         return { stepId: step.id, ok: true };
     }
-    const resolved = await resolveTargetNodeId(binding, target);
-    if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
 
-    const visible = await ensureVisible(binding, resolved.nodeId, timeout);
+    const visible = await ensureVisible(binding, resolved.target, timeout);
     if (!visible.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
     }
     const count = options?.double ? 2 : 1;
     for (let i = 0; i < count; i += 1) {
         const click = await binding.traceTools['trace.locator.click']({
-            a11yNodeId: resolved.nodeId,
+            a11yNodeId: resolved.target.a11yNodeId,
+            selector: resolved.target.selector,
+            role: resolved.target.role,
+            name: resolved.target.name,
             timeout,
             button: options?.button,
         });

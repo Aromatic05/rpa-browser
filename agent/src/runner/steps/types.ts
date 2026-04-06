@@ -16,6 +16,10 @@ export type StepName =
     | 'browser.close_tab'
     | 'browser.get_page_info'
     | 'browser.snapshot'
+    | 'browser.get_content'
+    | 'browser.read_console'
+    | 'browser.read_network'
+    | 'browser.evaluate'
     | 'browser.take_screenshot'
     | 'browser.click'
     | 'browser.fill'
@@ -34,9 +38,10 @@ export type A11yHint = {
 };
 
 export type Target = {
+    id?: string;
+    selector?: string;
     a11yNodeId?: string;
     a11yHint?: A11yHint;
-    selector?: string;
 };
 
 export type StepArgsMap = {
@@ -48,8 +53,21 @@ export type StepArgsMap = {
     'browser.close_tab': { tab_id?: string };
     'browser.get_page_info': Record<string, never>;
     'browser.snapshot': { includeA11y?: boolean; focus_only?: boolean };
-    'browser.take_screenshot': { target?: Target; full_page?: boolean; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.get_content': { ref: string };
+    'browser.read_console': { limit?: number };
+    'browser.read_network': { limit?: number };
+    'browser.evaluate': { expression: string; arg?: unknown };
+    'browser.take_screenshot': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        full_page?: boolean;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.click': {
+        id?: string;
+        selector?: string;
         target?: Target;
         coord?: { x: number; y: number };
         options?: { button?: 'left' | 'right' | 'middle'; double?: boolean };
@@ -57,8 +75,18 @@ export type StepArgsMap = {
         a11yNodeId?: string;
         a11yHint?: A11yHint;
     };
-    'browser.fill': { target?: Target; value: string; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.fill': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        value: string;
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.type': {
+        id?: string;
+        selector?: string;
         target?: Target;
         text: string;
         delay_ms?: number;
@@ -66,9 +94,26 @@ export type StepArgsMap = {
         a11yNodeId?: string;
         a11yHint?: A11yHint;
     };
-    'browser.select_option': { target?: Target; values: string[]; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
-    'browser.hover': { target?: Target; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.select_option': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        values: string[];
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
+    'browser.hover': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.scroll': {
+        id?: string;
+        selector?: string;
         target?: Target;
         direction?: 'up' | 'down';
         amount?: number;
@@ -76,7 +121,15 @@ export type StepArgsMap = {
         a11yNodeId?: string;
         a11yHint?: A11yHint;
     };
-    'browser.press_key': { key: string; target?: Target; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.press_key': {
+        key: string;
+        id?: string;
+        selector?: string;
+        target?: Target;
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.drag_and_drop': {
         source: Target;
         dest_target?: Target;

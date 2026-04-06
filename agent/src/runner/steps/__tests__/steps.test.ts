@@ -9,16 +9,17 @@ import { executeBrowserFill } from '../executors/fill';
 import { executeBrowserPressKey } from '../executors/press_key';
 import { executeBrowserSnapshot } from '../executors/snapshot';
 import { executeBrowserMouse } from '../executors/mouse';
+import { executeBrowserGetContent } from '../executors/get_content';
 import { RunnerPluginHost } from '../../hotreload/plugin_host';
 
-const createDeps = (traceTools: any): RunStepsDeps => {
+const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unknown> = {}): RunStepsDeps => {
     const binding = {
         workspaceId: 'ws1',
         tabId: 'tab1',
         tabToken: 'token1',
-        page: {} as any,
+        page: page as any,
         traceTools,
-        traceCtx: { cache: {} },
+        traceCtx: { cache: { ...cache } },
     };
     return {
         runtime: {
@@ -88,6 +89,45 @@ test('click(target) resolves then scrolls/waits/clicks', async () => {
     ]);
 });
 
+test('click(id) resolves via snapshot locator index and uses selector path', async () => {
+    const calls: Array<{ name: string; args: any }> = [];
+    const traceTools = {
+        'trace.locator.scrollIntoView': async (args: any) => {
+            calls.push({ name: 'trace.locator.scrollIntoView', args });
+            return { ok: true };
+        },
+        'trace.locator.waitForVisible': async (args: any) => {
+            calls.push({ name: 'trace.locator.waitForVisible', args });
+            return { ok: true };
+        },
+        'trace.locator.click': async (args: any) => {
+            calls.push({ name: 'trace.locator.click', args });
+            return { ok: true };
+        },
+    };
+    const deps = createDeps(traceTools, {}, {
+        latestSnapshot: {
+            locatorIndex: {
+                node_btn: {
+                    origin: { primaryDomId: '42' },
+                    direct: { kind: 'css', query: '#submit-btn', source: 'id' },
+                },
+            },
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 's2b',
+        name: 'browser.click',
+        args: { id: 'node_btn' },
+    };
+
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0].args.selector, '#submit-btn');
+    assert.equal(calls[2].args.selector, '#submit-btn');
+});
+
 test('fill uses trace.locator.fill', async () => {
     const calls: string[] = [];
     const traceTools = {
@@ -139,16 +179,57 @@ test('press_key(target) focuses before keyboard.press', async () => {
     assert.deepEqual(calls, ['trace.locator.focus', 'trace.keyboard.press']);
 });
 
-test('snapshot returns snapshot_id and calls snapshotA11y when includeA11y', async () => {
-    const calls: string[] = [];
-    const traceTools = {
-        'trace.page.getInfo': async () => ({ ok: true, data: { url: 'http://x', title: 'X' } }),
-        'trace.page.snapshotA11y': async () => {
-            calls.push('trace.page.snapshotA11y');
-            return { ok: true, data: { snapshotId: 'snap1', a11y: '{}' } };
+test('snapshot returns UnifiedNode root and keeps latest snapshot in trace cache', async () => {
+    const fakeCdp = {
+        send: async (method: string) => {
+            if (method === 'DOMSnapshot.captureSnapshot') {
+                return {
+                    documents: [
+                        {
+                            nodes: {
+                                parentIndex: [-1, 0, 1, 2, 3],
+                                nodeType: [9, 1, 1, 1, 3],
+                                nodeName: [0, 1, 2, 3, 0],
+                                nodeValue: [0, 0, 0, 0, 4],
+                                backendNodeId: [0, 11, 12, 13, 0],
+                                attributes: [[], [], [], [5, 6], []],
+                            },
+                            layout: {
+                                nodeIndex: [1, 2, 3],
+                                bounds: [
+                                    [0, 0, 1280, 800],
+                                    [0, 0, 1280, 800],
+                                    [24, 40, 120, 30],
+                                ],
+                            },
+                        },
+                    ],
+                    strings: ['#document', 'HTML', 'BODY', 'BUTTON', 'Click me', 'id', 'submit-btn'],
+                };
+            }
+            if (method === 'Accessibility.enable') {
+                return {};
+            }
+            if (method === 'Accessibility.getFullAXTree') {
+                return {
+                    nodes: [
+                        { nodeId: 'ax0', role: { value: 'WebArea' }, backendDOMNodeId: 11, childIds: ['ax1'] },
+                        { nodeId: 'ax1', role: { value: 'generic' }, backendDOMNodeId: 12, childIds: ['ax2'] },
+                        { nodeId: 'ax2', role: { value: 'button' }, name: { value: 'Click me' }, backendDOMNodeId: 13 },
+                    ],
+                };
+            }
+            return {};
         },
+        detach: async () => {},
     };
-    const deps = createDeps(traceTools);
+    const fakePage = {
+        url: () => 'https://example.test',
+        context: () => ({
+            newCDPSession: async () => fakeCdp,
+        }),
+    };
+    const deps = createDeps({}, fakePage);
     const step: Step<'browser.snapshot'> = {
         id: 's5',
         name: 'browser.snapshot',
@@ -157,8 +238,10 @@ test('snapshot returns snapshot_id and calls snapshotA11y when includeA11y', asy
 
     const result = await executeBrowserSnapshot(step, deps, 'ws1');
     assert.equal(result.ok, true);
-    assert.equal((result.data as any).snapshot_id, 'snap1');
-    assert.deepEqual(calls, ['trace.page.snapshotA11y']);
+    assert.equal((result.data as any)?.role, 'root');
+    assert.ok(Array.isArray((result.data as any)?.children));
+    assert.equal((result.data as any)?.snapshot_id, undefined);
+    assert.equal((result.data as any)?.a11y, undefined);
 });
 
 test('not found returns error code and message', async () => {
@@ -208,4 +291,21 @@ test('mouse wheel requires deltaY', async () => {
     const result = await executeBrowserMouse(step, deps, 'ws1');
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, 'ERR_INTERNAL');
+});
+
+test('get_content returns resolved content text by ref', async () => {
+    const traceTools = {
+        'trace.page.getContent': async (args: any) => ({ ok: true, data: { ref: args.ref, content: 'hello world' } }),
+    };
+    const deps = createDeps(traceTools);
+    const step: Step<'browser.get_content'> = {
+        id: 's9',
+        name: 'browser.get_content',
+        args: { ref: 'content_node_1' },
+    };
+
+    const result = await executeBrowserGetContent(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal((result.data as any)?.ref, 'content_node_1');
+    assert.equal((result.data as any)?.content, 'hello world');
 });

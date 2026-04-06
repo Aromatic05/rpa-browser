@@ -19,8 +19,8 @@ export const executeBrowserDragAndDrop = async (
         const dest = await resolveTargetNodeId(binding, destTarget);
         if (!dest.ok) return { stepId: step.id, ok: false, error: dest.error };
         const result = await binding.traceTools['trace.locator.dragDrop']({
-            sourceNodeId: source.nodeId,
-            destNodeId: dest.nodeId,
+            source: source.target,
+            dest: dest.target,
         });
         if (!result.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
@@ -39,7 +39,7 @@ export const executeBrowserDragAndDrop = async (
         return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'missing drag destination' } };
     }
     const result = await binding.traceTools['trace.locator.dragDrop']({
-        sourceNodeId: source.nodeId,
+        source: source.target,
         destCoord: step.args.dest_coord,
     });
     if (!result.ok) {

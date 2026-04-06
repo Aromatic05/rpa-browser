@@ -8,15 +8,22 @@ import type { ToolError } from '../../trace/types';
 
 type TargetInput = {
     target?: Target;
+    id?: string;
+    selector?: string;
     a11yNodeId?: string;
     a11yHint?: A11yHint;
-    selector?: string;
 };
 
 export const normalizeTarget = (input: TargetInput): Target | undefined => {
-    if (input.target) return input.target;
-    if (input.a11yNodeId || input.a11yHint || input.selector) {
-        return { a11yNodeId: input.a11yNodeId, a11yHint: input.a11yHint, selector: input.selector };
+    const merged: Target = {
+        ...(input.target || {}),
+        ...(input.id ? { id: input.id } : {}),
+        ...(input.selector ? { selector: input.selector } : {}),
+        ...(input.a11yNodeId ? { a11yNodeId: input.a11yNodeId } : {}),
+        ...(input.a11yHint ? { a11yHint: input.a11yHint } : {}),
+    };
+    if (merged.id || merged.selector || merged.a11yNodeId || merged.a11yHint) {
+        return merged;
     }
     return undefined;
 };
