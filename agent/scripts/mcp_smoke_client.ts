@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -44,87 +45,31 @@ const waitForServer = async (baseUrl: string) => {
     throw new Error('failed to start MCP HTTP server');
 };
 
-const createSseClient = async (baseUrl: string) => {
-    const abortController = new AbortController();
-    const res = await fetch(`${baseUrl}/sse`, {
-        headers: { accept: 'text/event-stream' },
-        signal: abortController.signal,
-    });
-    if (!res.ok || !res.body) {
-        throw new Error(`failed to open SSE: ${res.status}`);
+const stopServer = async (child: ChildProcess) => {
+    if (child.killed || child.exitCode !== null) return;
+    child.kill('SIGTERM');
+    const graceful = await Promise.race([
+        new Promise<boolean>((resolve) => {
+            child.once('exit', () => resolve(true));
+        }),
+        sleep(3000).then(() => false),
+    ]);
+    if (!graceful && child.exitCode === null) {
+        child.kill('SIGKILL');
     }
+};
 
-    let messageEndpoint = '';
+const createHttpClient = (baseUrl: string) => {
     let nextId = 1;
-    const pending = new Map<number, (message: JsonRpcMessage) => void>();
-    let readyResolve: (() => void) | null = null;
-    const ready = new Promise<void>((resolve) => {
-        readyResolve = resolve;
-    });
-
-    let currentEvent = '';
-    let currentData = '';
-    let buffer = '';
-    const reader = res.body.getReader();
-
-    const flushEvent = () => {
-        if (!currentEvent) return;
-        if (currentEvent === 'endpoint') {
-            messageEndpoint = currentData.trim();
-            if (messageEndpoint && readyResolve) {
-                readyResolve();
-                readyResolve = null;
-            }
-        } else if (currentEvent === 'message') {
-            try {
-                const message = JSON.parse(currentData) as JsonRpcMessage;
-                if (typeof message.id === 'number') {
-                    const resolver = pending.get(message.id);
-                    if (resolver) {
-                        pending.delete(message.id);
-                        resolver(message);
-                    }
-                }
-            } catch {
-                // ignore malformed events
-            }
-        }
-        currentEvent = '';
-        currentData = '';
-    };
-
-    const loop = (async () => {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += new TextDecoder().decode(value, { stream: true });
-            let newlineIndex = buffer.indexOf('\n');
-            while (newlineIndex >= 0) {
-                const line = buffer.slice(0, newlineIndex).replace(/\r$/, '');
-                buffer = buffer.slice(newlineIndex + 1);
-                if (!line) {
-                    flushEvent();
-                } else if (line.startsWith('event:')) {
-                    currentEvent = line.slice(6).trim();
-                } else if (line.startsWith('data:')) {
-                    const piece = line.slice(5).trim();
-                    currentData = currentData ? `${currentData}\n${piece}` : piece;
-                }
-                newlineIndex = buffer.indexOf('\n');
-            }
-        }
-    })();
 
     const request = async (method: string, params: Record<string, unknown>) => {
-        await ready;
         const id = nextId++;
-        const promise = new Promise<JsonRpcMessage>((resolve) => {
-            pending.set(id, resolve);
-        });
-        const postUrl = new URL(messageEndpoint, baseUrl).toString();
-        const postRes = await fetch(postUrl, {
+        const postRes = await fetch(`${baseUrl}/mcp`, {
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers: {
+                'content-type': 'application/json',
+                connection: 'close',
+            },
             body: JSON.stringify({
                 jsonrpc: '2.0',
                 id,
@@ -132,18 +77,15 @@ const createSseClient = async (baseUrl: string) => {
                 params,
             }),
         });
-        if (postRes.status !== 202) {
+        if (!postRes.ok) {
             throw new Error(`unexpected MCP POST status: ${postRes.status}`);
         }
-        return promise;
+        return (await postRes.json()) as JsonRpcMessage;
     };
 
     return {
         request,
-        close: async () => {
-            abortController.abort();
-            await loop.catch(() => undefined);
-        },
+        close: async () => undefined,
     };
 };
 
@@ -162,7 +104,7 @@ const main = async () => {
 
     try {
         await waitForServer(baseUrl);
-        const client = await createSseClient(baseUrl);
+        const client = createHttpClient(baseUrl);
 
         const listResp = await client.request('tools/list', {});
         console.log('tools/list:', JSON.stringify(listResp.result, null, 2));
@@ -192,7 +134,7 @@ const main = async () => {
         console.error('smoke client failed:', error instanceof Error ? error.message : String(error));
         process.exitCode = 1;
     } finally {
-        child.kill('SIGTERM');
+        await stopServer(child);
     }
 };
 

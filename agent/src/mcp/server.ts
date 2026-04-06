@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
@@ -172,14 +173,8 @@ export const createMcpServer = (deps: McpToolDeps) => {
 type McpHttpOptions = {
     host?: string;
     port?: number;
-    ssePath?: string;
-    messagePath?: string;
+    mcpPath?: string;
     healthPath?: string;
-};
-
-type SessionEntry = {
-    transport: SSEServerTransport;
-    server: Server;
 };
 
 const normalizePath = (value: string): string => {
@@ -193,13 +188,99 @@ const writeJson = (res: http.ServerResponse, status: number, payload: unknown) =
     res.end(JSON.stringify(payload));
 };
 
+const readJsonBody = async (req: http.IncomingMessage): Promise<unknown> => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const raw = Buffer.concat(chunks).toString('utf8').trim();
+    if (!raw) {
+        throw new Error('empty request body');
+    }
+    return JSON.parse(raw);
+};
+
+class HttpPostServerTransport implements Transport {
+    onclose?: () => void;
+    onerror?: (error: Error) => void;
+    onmessage?: (message: JSONRPCMessage) => void;
+
+    private readonly pendingResponses = new Map<string, http.ServerResponse>();
+
+    async start(): Promise<void> {
+        // no-op
+    }
+
+    async close(): Promise<void> {
+        for (const res of this.pendingResponses.values()) {
+            if (!res.writableEnded) {
+                res.statusCode = 503;
+                res.end();
+            }
+        }
+        this.pendingResponses.clear();
+        this.onclose?.();
+    }
+
+    async send(message: JSONRPCMessage): Promise<void> {
+        // This transport only supports replying to request/response messages.
+        if (!('id' in message)) {
+            return;
+        }
+        const key = String(message.id);
+        const res = this.pendingResponses.get(key);
+        if (!res) {
+            this.onerror?.(new Error(`MCP HTTP response has no pending request (id=${key})`));
+            return;
+        }
+        this.pendingResponses.delete(key);
+        if (!res.writableEnded) {
+            writeJson(res, 200, message);
+        }
+    }
+
+    async handlePostMessage(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+        const payload = await readJsonBody(req);
+        const message = payload as JSONRPCMessage;
+        const isRequest = Boolean(
+            message &&
+                typeof message === 'object' &&
+                'jsonrpc' in message &&
+                'method' in message &&
+                'id' in message,
+        );
+        if (isRequest) {
+            this.pendingResponses.set(String((message as { id: unknown }).id), res);
+        }
+        try {
+            await this.onmessage?.(message);
+            if (!isRequest && !res.writableEnded) {
+                // notifications do not expect a response body
+                res.statusCode = 202;
+                res.end();
+            }
+        } catch (error) {
+            if (isRequest) {
+                this.pendingResponses.delete(String((message as { id: unknown }).id));
+            }
+            if (!res.writableEnded) {
+                throw error;
+            }
+        }
+    }
+}
+
 export const startMcpServer = async (deps: McpToolDeps, options: McpHttpOptions = {}) => {
     const host = options.host || process.env.RPA_MCP_HOST || '127.0.0.1';
     const port = options.port ?? Number(process.env.RPA_MCP_PORT || 17654);
-    const ssePath = normalizePath(options.ssePath || process.env.RPA_MCP_SSE_PATH || '/sse');
-    const messagePath = normalizePath(options.messagePath || process.env.RPA_MCP_MESSAGE_PATH || '/message');
+    const mcpPath = normalizePath(options.mcpPath || process.env.RPA_MCP_PATH || '/mcp');
     const healthPath = normalizePath(options.healthPath || process.env.RPA_MCP_HEALTH_PATH || '/health');
-    const sessions = new Map<string, SessionEntry>();
+    const server = createMcpServer(deps);
+    server.onerror = (error: unknown) => {
+        deps.log?.('mcp error', error);
+    };
+    const transport = new HttpPostServerTransport();
+    await server.connect(transport);
 
     const app = http.createServer((req, res) => {
         void (async () => {
@@ -209,41 +290,14 @@ export const startMcpServer = async (deps: McpToolDeps, options: McpHttpOptions 
             if (req.method === 'GET' && path === healthPath) {
                 writeJson(res, 200, {
                     ok: true,
-                    transport: 'sse',
-                    ssePath,
-                    messagePath,
+                    transport: 'http',
+                    mcpPath,
                 });
                 return;
             }
 
-            if (req.method === 'GET' && path === ssePath) {
-                const server = createMcpServer(deps);
-                server.onerror = (error: unknown) => {
-                    deps.log?.('mcp session error', error);
-                };
-                const transport = new SSEServerTransport(messagePath, res);
-                transport.onclose = () => {
-                    sessions.delete(transport.sessionId);
-                    void server.close().catch(() => undefined);
-                };
-                await server.connect(transport);
-                sessions.set(transport.sessionId, { transport, server });
-                deps.log?.('mcp session connected', { sessionId: transport.sessionId });
-                return;
-            }
-
-            if (req.method === 'POST' && path === messagePath) {
-                const sessionId = url.searchParams.get('sessionId') || '';
-                if (!sessionId) {
-                    writeJson(res, 400, { error: 'missing sessionId' });
-                    return;
-                }
-                const session = sessions.get(sessionId);
-                if (!session) {
-                    writeJson(res, 404, { error: 'session not found' });
-                    return;
-                }
-                await session.transport.handlePostMessage(req, res);
+            if (req.method === 'POST' && path === mcpPath) {
+                await transport.handlePostMessage(req, res);
                 return;
             }
 
@@ -267,8 +321,7 @@ export const startMcpServer = async (deps: McpToolDeps, options: McpHttpOptions 
     });
 
     deps.log?.('MCP HTTP server listening', {
-        sseUrl: `http://${host}:${port}${ssePath}`,
-        messageUrl: `http://${host}:${port}${messagePath}`,
+        mcpUrl: `http://${host}:${port}${mcpPath}`,
         healthUrl: `http://${host}:${port}${healthPath}`,
     });
 };
