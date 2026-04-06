@@ -1,8 +1,6 @@
-import crypto from 'node:crypto';
 import type { Page } from 'playwright';
 import type { Step, StepResult } from '../../../types';
 import type { RunStepsDeps } from '../../../../run_steps';
-import { mapTraceError } from '../../../helpers/target';
 import { collectRawData } from '../stages/collect';
 import { fuseDomAndA11y } from '../stages/fusion';
 import { buildSpatialLayers, isNoiseLayer } from '../stages/spatial';
@@ -31,33 +29,14 @@ export const executeBrowserSnapshot = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const info = await binding.traceTools['trace.page.getInfo']();
-    if (!info.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(info.error) };
-    }
-
-    const includeA11y = step.args.includeA11y !== false;
-    const focusOnly = step.args.focus_only === true;
-    const traceSnapshot = await binding.traceTools['trace.page.snapshotA11y']({
-        includeA11y,
-        focusOnly,
-    });
-    if (!traceSnapshot.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(traceSnapshot.error) };
-    }
-
     const snapshot = await generateSemanticSnapshot(binding.page);
-    const snapshotId = traceSnapshot.data?.snapshotId || crypto.randomUUID();
+    (binding.traceCtx.cache as Record<string, unknown>).latestSnapshot = snapshot;
+    (binding.traceCtx.cache as Record<string, unknown>).latestSnapshotAt = Date.now();
 
     return {
         stepId: step.id,
         ok: true,
-        data: {
-            snapshot_id: snapshotId,
-            url: info.data?.url,
-            title: info.data?.title,
-            a11y: includeA11y ? traceSnapshot.data?.a11y || JSON.stringify(snapshot) : undefined,
-        },
+        data: snapshot.root,
     };
 };
 
