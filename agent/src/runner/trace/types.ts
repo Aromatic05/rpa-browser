@@ -16,6 +16,10 @@ export type TraceOpName =
     | 'trace.page.reload'
     | 'trace.page.getInfo'
     | 'trace.page.snapshotA11y'
+    | 'trace.page.getContent'
+    | 'trace.page.readConsole'
+    | 'trace.page.readNetwork'
+    | 'trace.page.evaluate'
     | 'trace.page.screenshot'
     | 'trace.page.scrollTo'
     | 'trace.page.scrollBy'
@@ -84,6 +88,32 @@ export type TraceCache = {
     a11yTree?: unknown;
     lastSnapshotId?: string;
     a11yCacheGen?: number;
+    latestSnapshot?: unknown;
+    latestSnapshotAt?: number;
+    consoleEntries?: ConsoleEntry[];
+    networkEntries?: NetworkEntry[];
+};
+
+export type ConsoleEntry = {
+    ts: number;
+    type: string;
+    text: string;
+    location?: {
+        url?: string;
+        lineNumber?: number;
+        columnNumber?: number;
+    };
+};
+
+export type NetworkEntry = {
+    ts: number;
+    type: 'response' | 'failed';
+    url: string;
+    method: string;
+    resourceType: string;
+    status?: number;
+    ok?: boolean;
+    failureText?: string;
 };
 
 export type A11yNodeInfo = {

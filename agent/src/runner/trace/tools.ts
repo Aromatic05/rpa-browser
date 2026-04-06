@@ -9,6 +9,8 @@
 
 import type { BrowserContext, Locator, Page } from 'playwright';
 import type {
+    ConsoleEntry,
+    NetworkEntry,
     ToolResult,
     TraceContext,
     TraceHooks,
@@ -26,6 +28,13 @@ import { createTabsTools } from './tools/tabs';
 import { createPageTools } from './tools/page';
 import { createLocatorTools } from './tools/locator';
 
+export type TraceLocatorTarget = {
+    a11yNodeId?: string;
+    selector?: string;
+    role?: string;
+    name?: string;
+};
+
 export type BrowserAutomationTools = {
     'trace.tabs.create': (args: { workspaceId: WorkspaceId; url?: string; timeout?: number }) => Promise<ToolResult<{ tabId: string }>>;
     'trace.tabs.switch': (args: { workspaceId: WorkspaceId; tabId: string }) => Promise<ToolResult<void>>;
@@ -35,21 +44,25 @@ export type BrowserAutomationTools = {
     'trace.page.reload': (args: { timeout?: number }) => Promise<ToolResult<void>>;
     'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string; tabId?: string; tabs?: Array<{ tabId: string; url?: string; title?: string }> }>>;
     'trace.page.snapshotA11y': (args: { includeA11y: boolean; focusOnly: boolean }) => Promise<ToolResult<{ snapshotId: string; a11y?: string }>>;
-    'trace.page.screenshot': (args: { fullPage?: boolean; a11yNodeId?: string }) => Promise<ToolResult<string>>;
+    'trace.page.getContent': (args: { ref: string }) => Promise<ToolResult<{ ref: string; content: string }>>;
+    'trace.page.readConsole': (args?: { limit?: number }) => Promise<ToolResult<ConsoleEntry[]>>;
+    'trace.page.readNetwork': (args?: { limit?: number }) => Promise<ToolResult<NetworkEntry[]>>;
+    'trace.page.evaluate': (args: { expression: string; arg?: unknown }) => Promise<ToolResult<unknown>>;
+    'trace.page.screenshot': (args: { fullPage?: boolean } & TraceLocatorTarget) => Promise<ToolResult<string>>;
     'trace.page.scrollBy': (args: { direction: 'up' | 'down'; amount: number }) => Promise<ToolResult<void>>;
     'trace.a11y.findByA11yHint': (args: { hint: A11yHint }) => Promise<ToolResult<A11yCandidate[]>>;
     'trace.a11y.resolveByNodeId': (args: { a11yNodeId: string }) => Promise<ToolResult<{ a11yNodeId: string }>>;
-    'trace.locator.waitForVisible': (args: { a11yNodeId?: string; selector?: string; timeout?: number }) => Promise<ToolResult<void>>;
-    'trace.locator.scrollIntoView': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
-    'trace.locator.click': (args: { a11yNodeId?: string; selector?: string; timeout?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
-    'trace.locator.focus': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
-    'trace.locator.fill': (args: { a11yNodeId?: string; selector?: string; value: string }) => Promise<ToolResult<void>>;
-    'trace.locator.type': (args: { a11yNodeId?: string; selector?: string; text: string; delayMs?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.waitForVisible': (args: TraceLocatorTarget & { timeout?: number }) => Promise<ToolResult<void>>;
+    'trace.locator.scrollIntoView': (args: TraceLocatorTarget) => Promise<ToolResult<void>>;
+    'trace.locator.click': (args: TraceLocatorTarget & { timeout?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
+    'trace.locator.focus': (args: TraceLocatorTarget) => Promise<ToolResult<void>>;
+    'trace.locator.fill': (args: TraceLocatorTarget & { value: string }) => Promise<ToolResult<void>>;
+    'trace.locator.type': (args: TraceLocatorTarget & { text: string; delayMs?: number }) => Promise<ToolResult<void>>;
     'trace.locator.selectOption': (
-        args: { a11yNodeId?: string; selector?: string; values: string[]; timeout?: number },
+        args: TraceLocatorTarget & { values: string[]; timeout?: number },
     ) => Promise<ToolResult<{ selected: string[] }>>;
-    'trace.locator.hover': (args: { a11yNodeId?: string; selector?: string }) => Promise<ToolResult<void>>;
-    'trace.locator.dragDrop': (args: { sourceNodeId: string; destNodeId?: string; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
+    'trace.locator.hover': (args: TraceLocatorTarget) => Promise<ToolResult<void>>;
+    'trace.locator.dragDrop': (args: { source: TraceLocatorTarget; dest?: TraceLocatorTarget; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
     'trace.page.scrollTo': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
     'trace.keyboard.press': (args: { key: string }) => Promise<ToolResult<void>>;
     'trace.mouse.action': (args: { action: 'move' | 'down' | 'up' | 'wheel'; x: number; y: number; deltaY?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
