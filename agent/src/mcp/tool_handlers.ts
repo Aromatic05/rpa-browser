@@ -75,7 +75,7 @@ const buildParseErrorResult = (error: unknown) => ({
 });
 
 const runSingleStep = async (deps: McpToolDeps, tabToken: string, step: StepUnion) => {
-    const scope = deps.pageRegistry.resolveScopeFromToken(tabToken);
+    const scope = await resolveOrBootstrapScope(deps, tabToken);
     deps.pageRegistry.setActiveWorkspace(scope.workspaceId);
     deps.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
     const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], undefined, { stopOnError: true });
@@ -89,6 +89,24 @@ const runSingleStep = async (deps: McpToolDeps, tabToken: string, step: StepUnio
         };
     }
     return { ok: results.every((item) => item.ok), results };
+};
+
+const resolveOrBootstrapScope = async (
+    deps: McpToolDeps,
+    tabToken: string,
+): Promise<{ workspaceId: string; tabId: string }> => {
+    try {
+        return deps.pageRegistry.resolveScopeFromToken(tabToken);
+    } catch {
+        const shell = deps.pageRegistry.createWorkspaceShell();
+        deps.pageRegistry.setActiveWorkspace(shell.workspaceId);
+        await deps.pageRegistry.getPage(tabToken);
+        const bound = deps.pageRegistry.bindTokenToWorkspace(tabToken, shell.workspaceId);
+        if (bound) {
+            return bound;
+        }
+        return deps.pageRegistry.resolveScopeFromToken(tabToken);
+    }
 };
 
 const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {

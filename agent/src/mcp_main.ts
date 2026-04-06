@@ -12,6 +12,9 @@ import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const NAV_DEDUPE_WINDOW_MS = 1200;
+if (!process.env.RPA_USER_DATA_DIR) {
+    process.env.RPA_USER_DATA_DIR = path.resolve(process.cwd(), '.user-data-mcp');
+}
 
 const actionLog = getLogger('action');
 const log = (...args: unknown[]) => actionLog.info('[RPA:mcp]', ...args);
