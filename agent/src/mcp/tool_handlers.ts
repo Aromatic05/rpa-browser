@@ -169,12 +169,17 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserSwitchTabInput>(browserSwitchTabInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    return runSingleStep(deps, input.tabToken, {
+    const result = await runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
         args: { tab_id: input.tab_id },
         meta: { source: 'mcp' },
     });
+    if (!result.ok) return result;
+
+    const scope = deps.pageRegistry.resolveScopeFromToken(input.tabToken);
+    deps.pageRegistry.rebindTokenToTab(input.tabToken, scope.workspaceId, input.tab_id);
+    return result;
 };
 
 const handleCloseTab = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
