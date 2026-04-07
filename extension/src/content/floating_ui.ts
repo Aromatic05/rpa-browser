@@ -31,6 +31,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const host = document.createElement('div');
     host.id = ROOT_ID;
+    host.setAttribute('data-rpa-panel', 'true');
+    host.setAttribute('data-rpa-snapshot-ignore', 'true');
     host.style.position = 'fixed';
     host.style.top = '16px';
     host.style.right = '16px';

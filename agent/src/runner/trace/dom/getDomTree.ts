@@ -157,6 +157,11 @@ const buildElementNode = (view: NodeView, index: number, id: string): DomTreeNod
     const tag = readTagName(view, index);
     if (!tag || BLACKLIST_TAGS.has(tag)) return null;
 
+    const backendNodeId = view.backendNodeId[index];
+    const backendDOMNodeId = typeof backendNodeId === 'number' && backendNodeId > 0 ? String(backendNodeId) : undefined;
+    const attrs = decodeWhitelistedAttrs(view, index, backendDOMNodeId);
+    if (shouldIgnoreSnapshotNode(attrs)) return null;
+
     const childIndexes = view.childrenByParent.get(index) || [];
     const children: DomTreeNode[] = [];
     let childIndex = 0;
@@ -166,10 +171,6 @@ const buildElementNode = (view: NodeView, index: number, id: string): DomTreeNod
         childIndex += 1;
         if (childNode) children.push(childNode);
     }
-
-    const backendNodeId = view.backendNodeId[index];
-    const backendDOMNodeId = typeof backendNodeId === 'number' && backendNodeId > 0 ? String(backendNodeId) : undefined;
-    const attrs = decodeWhitelistedAttrs(view, index, backendDOMNodeId);
 
     return {
         id,
@@ -296,6 +297,12 @@ const isElementNode = (view: NodeView, index: number): boolean => {
 };
 
 const BLACKLIST_TAGS = new Set(['script', 'style']);
+const shouldIgnoreSnapshotNode = (attrs: Record<string, string> | undefined): boolean => {
+    if (!attrs) return false;
+    const marker = (attrs['data-rpa-snapshot-ignore'] || '').trim().toLowerCase();
+    if (marker === '1' || marker === 'true' || marker === 'yes') return true;
+    return (attrs.id || '').trim().toLowerCase() === 'rpa-floating-panel';
+};
 const ATTR_WHITELIST = new Set([
     'id',
     'class',
@@ -306,4 +313,6 @@ const ATTR_WHITELIST = new Set([
     'placeholder',
     'href',
     'value',
+    'data-rpa-panel',
+    'data-rpa-snapshot-ignore',
 ]);
