@@ -178,7 +178,7 @@ export const browserDragAndDropInputSchema = z
 
 export const browserMouseInputSchema = z.object({
     tabToken: z.string(),
-    action: z.enum(['move', 'down', 'up', 'wheel']),
+    action: z.enum(['move', 'down', 'up', 'wheel', 'click', 'dblclick']),
     x: z.number(),
     y: z.number(),
     deltaY: z.number().optional(),
@@ -456,7 +456,7 @@ export const toolInputJsonSchemas = {
         required: ['tabToken', 'action', 'x', 'y'],
         properties: {
             tabToken: { type: 'string' },
-            action: { type: 'string', enum: ['move', 'down', 'up', 'wheel'] },
+            action: { type: 'string', enum: ['move', 'down', 'up', 'wheel', 'click', 'dblclick'] },
             x: { type: 'number' },
             y: { type: 'number' },
             deltaY: { type: 'number' },

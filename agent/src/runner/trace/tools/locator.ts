@@ -128,7 +128,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
     },
 
     'trace.mouse.action': async (args: {
-        action: 'move' | 'down' | 'up' | 'wheel';
+        action: 'move' | 'down' | 'up' | 'wheel' | 'click' | 'dblclick';
         x: number;
         y: number;
         deltaY?: number;
@@ -148,9 +148,16 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
             }
             if (args.action === 'wheel') {
                 await currentPage.mouse.wheel(0, args.deltaY || 0);
+                return;
+            }
+            if (args.action === 'click' || args.action === 'dblclick') {
+                await currentPage.mouse.click(args.x, args.y, {
+                    button: args.button,
+                    clickCount: args.action === 'dblclick' ? 2 : 1,
+                });
             }
         });
-        if (result.ok && (args.action === 'down' || args.action === 'up')) {
+        if (result.ok && (args.action === 'down' || args.action === 'up' || args.action === 'click' || args.action === 'dblclick')) {
             invalidateA11yCache(base.ctx.cache, 'mouse', base.ctx.tags);
         }
         return result;

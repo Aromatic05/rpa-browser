@@ -300,6 +300,27 @@ test('mouse wheel requires deltaY', async () => {
     assert.equal(result.error?.code, 'ERR_INTERNAL');
 });
 
+test('mouse click forwards action without deltaY', async () => {
+    const calls: any[] = [];
+    const traceTools = {
+        'trace.mouse.action': async (args: any) => {
+            calls.push(args);
+            return { ok: true };
+        },
+    };
+    const deps = createDeps(traceTools);
+    const step: Step<'browser.mouse'> = {
+        id: 's8b',
+        name: 'browser.mouse',
+        args: { action: 'click', x: 10, y: 20, button: 'left' },
+    };
+
+    const result = await executeBrowserMouse(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].action, 'click');
+});
+
 test('get_content returns resolved content text by ref', async () => {
     const traceTools = {
         'trace.page.getContent': async (args: any) => ({ ok: true, data: { ref: args.ref, content: 'hello world' } }),

@@ -137,7 +137,7 @@ export type StepArgsMap = {
         timeout?: number;
     };
     'browser.mouse': {
-        action: 'move' | 'down' | 'up' | 'wheel';
+        action: 'move' | 'down' | 'up' | 'wheel' | 'click' | 'dblclick';
         x: number;
         y: number;
         deltaY?: number;

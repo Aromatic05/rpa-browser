@@ -65,7 +65,15 @@ export type BrowserAutomationTools = {
     'trace.locator.dragDrop': (args: { source: TraceLocatorTarget; dest?: TraceLocatorTarget; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
     'trace.page.scrollTo': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
     'trace.keyboard.press': (args: { key: string }) => Promise<ToolResult<void>>;
-    'trace.mouse.action': (args: { action: 'move' | 'down' | 'up' | 'wheel'; x: number; y: number; deltaY?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult<void>>;
+    'trace.mouse.action': (
+        args: {
+            action: 'move' | 'down' | 'up' | 'wheel' | 'click' | 'dblclick';
+            x: number;
+            y: number;
+            deltaY?: number;
+            button?: 'left' | 'right' | 'middle';
+        },
+    ) => Promise<ToolResult<void>>;
 };
 
 export const createTraceContext = (opts: {
