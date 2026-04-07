@@ -6,7 +6,7 @@ import type { RunStepsDeps } from '../../run_steps';
 import { getRunnerConfig } from '../../../config';
 import { executeBrowserClick } from '../executors/click';
 import { executeBrowserFill } from '../executors/fill';
-import { executeBrowserPressKey } from '../executors/press_key';
+import { executeBrowserPressKey, normalizeBrowserPressKey } from '../executors/press_key';
 import { executeBrowserSnapshot } from '../executors/snapshot';
 import { executeBrowserMouse } from '../executors/mouse';
 import { executeBrowserGetContent } from '../executors/get_content';
@@ -177,6 +177,13 @@ test('press_key(target) focuses before keyboard.press', async () => {
     const result = await executeBrowserPressKey(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.deepEqual(calls, ['trace.locator.focus', 'trace.keyboard.press']);
+});
+
+test('press_key normalizes primary shortcut by platform', () => {
+    assert.equal(normalizeBrowserPressKey('ctrl+a', 'darwin'), 'Meta+A');
+    assert.equal(normalizeBrowserPressKey('Control+Shift+a', 'darwin'), 'Meta+Shift+A');
+    assert.equal(normalizeBrowserPressKey('CmdOrCtrl+a', 'linux'), 'Control+A');
+    assert.equal(normalizeBrowserPressKey('CmdOrCtrl+a', 'darwin'), 'Meta+A');
 });
 
 test('snapshot returns UnifiedNode root and keeps latest snapshot in trace cache', async () => {

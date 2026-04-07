@@ -50,7 +50,9 @@ export const executeBrowserPressKey = async (
             return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
         }
     }
-    const pressed = await binding.traceTools['trace.keyboard.press']({ key: step.args.key });
+    const pressed = await binding.traceTools['trace.keyboard.press']({
+        key: normalizeBrowserPressKey(step.args.key),
+    });
     if (!pressed.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(pressed.error) };
     }
@@ -63,3 +65,35 @@ export const executeBrowserPressKey = async (
     }
     return { stepId: step.id, ok: true };
 };
+
+export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platform = process.platform): string => {
+    const key = String(rawKey || '').trim();
+    if (!key) return key;
+
+    const normalized = key
+        .split('+')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .map((part) => {
+            const lower = part.toLowerCase();
+            if (lower === 'ctrl') return 'Control';
+            if (lower === 'cmdorctrl') return platform === 'darwin' ? 'Meta' : 'Control';
+            if (lower === 'cmd' || lower === 'command') return 'Meta';
+            if (lower === 'esc') return 'Escape';
+            return part.length === 1 ? part.toUpperCase() : part;
+        });
+
+    // On macOS, Control+<key> usually does not represent "primary shortcut".
+    // Map to Meta+<key> for common automation expectations (e.g. select-all).
+    if (platform === 'darwin') {
+        const hasMeta = normalized.some((part) => part.toLowerCase() === 'meta');
+        const hasControl = normalized.some((part) => part.toLowerCase() === 'control');
+        const hasNonModifier = normalized.some((part) => !MODIFIER_KEYS.has(part.toLowerCase()));
+        if (!hasMeta && hasControl && hasNonModifier) {
+            return normalized.map((part) => (part.toLowerCase() === 'control' ? 'Meta' : part)).join('+');
+        }
+    }
+    return normalized.join('+');
+};
+
+const MODIFIER_KEYS = new Set(['shift', 'control', 'meta', 'alt', 'altgraph']);
