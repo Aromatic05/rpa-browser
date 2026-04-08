@@ -7,6 +7,7 @@ out
 tsconfig.tsbuildinfo
 extension/dist
 agent/.user-data
+agent/.user-data-*
 agent/node_modules
 extension/node_modules
 agent/test-results
