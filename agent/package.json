@@ -28,6 +28,7 @@
         "test:runner": "node --import tsx --test tests/runner/*.test.ts",
         "test:trace": "node --import tsx --test tests/trace/*.test.ts",
         "test:smoke:mcp": "tsx scripts/mcp_smoke_client.ts",
+        "snapshot:bulk:collect": "tsx scripts/snapshot_bulk_collect.ts",
         "test:all": "pnpm test:e2e && pnpm test:runner && pnpm test:trace && pnpm test:unit",
         "typecheck": "tsc --noEmit",
         "pw:install": "pnpm exec playwright install chromium",
