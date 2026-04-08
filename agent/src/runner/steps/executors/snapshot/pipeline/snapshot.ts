@@ -133,14 +133,13 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
         topNodes: summarizeTopNodes(root),
     });
 
-    // 9) 构建树外 entity 索引（仅大实体）。
-    const { entityIndex, nodeEntityIndex } = buildEntityIndex(root);
+    // 9) 构建树外统一实体索引（region + group）。
+    const entityIndex = buildEntityIndex(root);
 
     // 10) 构建树外 locator 索引。
     const locatorIndex = buildLocatorIndex({
         root,
         entityIndex,
-        nodeEntityIndex,
     });
 
     // 11) 构建树外字段索引。

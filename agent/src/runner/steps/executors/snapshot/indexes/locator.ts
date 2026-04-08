@@ -1,14 +1,13 @@
 import { getNodeAttr, normalizeText } from '../core/runtime_store';
-import type { EntityIndex, Locator, LocatorIndex, UnifiedNode } from '../core/types';
+import type { EntityIndex, EntityRecord, Locator, LocatorIndex, NodeEntityRef, UnifiedNode } from '../core/types';
 
 type BuildLocatorIndexInput = {
     root: UnifiedNode;
     entityIndex: EntityIndex;
-    nodeEntityIndex: Record<string, string>;
 };
 
 export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex => {
-    const { root, entityIndex, nodeEntityIndex } = input;
+    const { root, entityIndex } = input;
     const parentById = new Map<string, UnifiedNode | null>();
     buildParentIndex(root, null, parentById);
 
@@ -18,8 +17,7 @@ export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex =
         const primaryDomId = normalizeText(getNodeAttr(node, 'backendDOMNodeId'));
         if (!primaryDomId) return;
 
-        const scopeEntityId = resolveScopeEntityId(node, parentById, nodeEntityIndex);
-        const scopeEntity = scopeEntityId ? entityIndex[scopeEntityId] : undefined;
+        const scopeEntity = resolveScopeEntity(node, parentById, entityIndex);
         const direct = buildDirectLocator(node);
 
         const locator: Locator = {
@@ -51,18 +49,65 @@ export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex =
     return locatorIndex;
 };
 
-const resolveScopeEntityId = (
+const resolveScopeEntity = (
     node: UnifiedNode,
     parentById: Map<string, UnifiedNode | null>,
-    nodeEntityIndex: Record<string, string>,
-): string | undefined => {
+    entityIndex: EntityIndex,
+): EntityRecord | undefined => {
+    const entities = entityIndex.entities || {};
+    const byNodeId = entityIndex.byNodeId || {};
+    let fallback: EntityRecord | undefined;
+    let fallbackScore = Number.NEGATIVE_INFINITY;
+
     let cursor: UnifiedNode | null = node;
     while (cursor) {
-        const entityId = nodeEntityIndex[cursor.id];
-        if (entityId) return entityId;
+        const refs = byNodeId[cursor.id] || [];
+        const picked = pickScopeRef(refs, entities);
+        if (picked) {
+            const entity = entities[picked.entityId];
+            if (entity && picked.role === 'container') {
+                return entity;
+            }
+            if (entity) {
+                const nextScore = scoreScopeRef(picked, entity);
+                if (nextScore > fallbackScore) {
+                    fallback = entity;
+                    fallbackScore = nextScore;
+                }
+            }
+        }
         cursor = parentById.get(cursor.id) || null;
     }
-    return undefined;
+    return fallback;
+};
+
+const pickScopeRef = (
+    refs: NodeEntityRef[],
+    entities: Record<string, EntityRecord>,
+): NodeEntityRef | undefined => {
+    let picked: NodeEntityRef | undefined;
+    let score = Number.NEGATIVE_INFINITY;
+
+    for (const ref of refs) {
+        const entity = entities[ref.entityId];
+        if (!entity) continue;
+        const nextScore = scoreScopeRef(ref, entity);
+        if (nextScore > score) {
+            score = nextScore;
+            picked = ref;
+        }
+    }
+
+    return picked;
+};
+
+const scoreScopeRef = (ref: NodeEntityRef, entity: EntityRecord): number => {
+    let score = 0;
+    if (entity.type === 'region') score += 5;
+    if (ref.role === 'container') score += 3;
+    if (ref.role === 'item') score += 2;
+    if (ref.role === 'descendant') score += 1;
+    return score;
 };
 
 const buildDirectLocator = (node: UnifiedNode): Locator['direct'] | undefined => {

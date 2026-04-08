@@ -1,5 +1,5 @@
 import { getNodeAttr, getNodeContent, mergeNodeSemanticHints, normalizeText } from '../core/runtime_store';
-import type { EntityKind, UnifiedNode } from '../core/types';
+import type { EntityIndex, EntityKind, UnifiedNode } from '../core/types';
 
 export type BusinessEntitySeed = {
     nodeId: string;
@@ -7,15 +7,17 @@ export type BusinessEntitySeed = {
     name?: string;
 };
 
-export const applyLCA = (tree: UnifiedNode, entities: BusinessEntitySeed[]) => {
-    const parentById = new Map<string, UnifiedNode | null>();
-    const nodeById = new Map<string, UnifiedNode>();
-    buildIndex(tree, null, parentById, nodeById);
+type EntityAnchor = {
+    nodeId: string;
+    kind: EntityKind;
+    entityType: 'region' | 'group';
+    role: 'container' | 'item' | 'descendant';
+};
 
-    const entityByNodeId = new Map<string, BusinessEntitySeed>();
-    for (const entity of entities) {
-        entityByNodeId.set(entity.nodeId, entity);
-    }
+export const applyLCA = (tree: UnifiedNode, entities: EntityIndex | BusinessEntitySeed[]) => {
+    const parentById = new Map<string, UnifiedNode | null>();
+    buildIndex(tree, null, parentById);
+    const entityByNodeId = buildEntityLookup(entities);
 
     forEachNode(tree, (node) => {
         if (!isLCATargetNode(node)) return;
@@ -47,12 +49,10 @@ const buildIndex = (
     node: UnifiedNode,
     parent: UnifiedNode | null,
     parentById: Map<string, UnifiedNode | null>,
-    nodeById: Map<string, UnifiedNode>,
 ) => {
     parentById.set(node.id, parent);
-    nodeById.set(node.id, node);
     for (const child of node.children) {
-        buildIndex(child, node, parentById, nodeById);
+        buildIndex(child, node, parentById);
     }
 };
 
@@ -68,14 +68,108 @@ const isLCATargetNode = (node: UnifiedNode): boolean => {
 const findNearestEntity = (
     node: UnifiedNode,
     parentById: Map<string, UnifiedNode | null>,
-    entityByNodeId: Map<string, BusinessEntitySeed>,
-): BusinessEntitySeed | undefined => {
+    entityByNodeId: Map<string, EntityAnchor[]>,
+): EntityAnchor | undefined => {
     let cursor: UnifiedNode | null = node;
     while (cursor) {
-        const entity = entityByNodeId.get(cursor.id);
-        if (entity) return entity;
+        const entities = entityByNodeId.get(cursor.id);
+        if (entities && entities.length > 0) {
+            return pickPreferredEntity(entities);
+        }
         cursor = parentById.get(cursor.id) || null;
     }
+    return undefined;
+};
+
+const pickPreferredEntity = (entities: EntityAnchor[]): EntityAnchor | undefined => {
+    let picked: EntityAnchor | undefined;
+    let score = Number.NEGATIVE_INFINITY;
+
+    for (const candidate of entities) {
+        const nextScore = scoreEntity(candidate);
+        if (nextScore > score) {
+            score = nextScore;
+            picked = candidate;
+        }
+    }
+
+    return picked;
+};
+
+const scoreEntity = (entity: EntityAnchor): number => {
+    let score = 0;
+    if (entity.entityType === 'region') score += 5;
+    if (entity.role === 'container') score += 3;
+    if (entity.role === 'item') score += 2;
+    if (entity.role === 'descendant') score += 1;
+    return score;
+};
+
+const buildEntityLookup = (input: EntityIndex | BusinessEntitySeed[]): Map<string, EntityAnchor[]> => {
+    const map = new Map<string, EntityAnchor[]>();
+    if (Array.isArray(input)) {
+        for (const entity of input as unknown[]) {
+            const normalized = normalizeLooseEntitySeed(entity);
+            if (!normalized) continue;
+            pushEntityAnchor(map, normalized.nodeId, {
+                nodeId: normalized.nodeId,
+                kind: normalized.kind,
+                entityType: 'region',
+                role: 'container',
+            });
+        }
+        return map;
+    }
+
+    for (const [nodeId, refs] of Object.entries(input.byNodeId || {})) {
+        if (!refs || refs.length === 0) continue;
+        for (const ref of refs) {
+            const entity = input.entities[ref.entityId];
+            if (!entity) continue;
+            const nodeAnchorId = entity.type === 'region' ? entity.nodeId : entity.containerId;
+            pushEntityAnchor(map, nodeId, {
+                nodeId: nodeAnchorId,
+                kind: entity.kind,
+                entityType: entity.type,
+                role: ref.role,
+            });
+        }
+    }
+    return map;
+};
+
+const pushEntityAnchor = (lookup: Map<string, EntityAnchor[]>, nodeId: string, anchor: EntityAnchor) => {
+    const current = lookup.get(nodeId) || [];
+    current.push(anchor);
+    lookup.set(nodeId, current);
+};
+
+const normalizeLooseEntitySeed = (
+    value: unknown,
+): { nodeId: string; kind: EntityKind } | undefined => {
+    if (!value || typeof value !== 'object') return undefined;
+    const candidate = value as Partial<BusinessEntitySeed> &
+        Partial<UnifiedNode> & {
+            attrs?: Record<string, string>;
+        };
+
+    const nodeId = normalizeText(candidate.nodeId || candidate.id);
+    if (!nodeId) return undefined;
+
+    const kind = normalizeEntityKind(candidate.kind || candidate.attrs?.entityType || candidate.role);
+    if (!kind) return undefined;
+    return { nodeId, kind };
+};
+
+const normalizeEntityKind = (value: string | undefined): EntityKind | undefined => {
+    const normalized = normalizeRole(value);
+    if (ENTITY_KIND_SET.has(normalized as EntityKind)) {
+        return normalized as EntityKind;
+    }
+    if (normalized === 'alertdialog') return 'dialog';
+    if (normalized === 'grid' || normalized === 'treegrid') return 'table';
+    if (normalized === 'listbox') return 'list';
+    if (normalized === 'section' || normalized === 'article' || normalized === 'region') return 'panel';
     return undefined;
 };
 
@@ -167,3 +261,4 @@ const ACTION_INTENT_KEYWORDS: Array<[string, string[]]> = [
     ['save', ['save', '保存']],
     ['close', ['close', 'cancel', '关闭', '取消']],
 ];
+const ENTITY_KIND_SET = new Set<EntityKind>(['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv']);

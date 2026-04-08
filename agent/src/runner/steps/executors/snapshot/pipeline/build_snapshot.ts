@@ -16,7 +16,7 @@ export const buildSnapshot = (input: UnifiedNode | BuildSnapshotInput): Snapshot
     return {
         root: payload.root,
         nodeIndex: payload.nodeIndex || {},
-        entityIndex: payload.entityIndex || {},
+        entityIndex: payload.entityIndex || { entities: {}, byNodeId: {} },
         locatorIndex: payload.locatorIndex || {},
         bboxIndex: payload.bboxIndex || {},
         attrIndex: payload.attrIndex || {},

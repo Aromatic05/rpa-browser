@@ -22,8 +22,10 @@ test('locator index includes menuitem nodes with executable role locator', () =>
 
     const locatorIndex = buildLocatorIndex({
         root,
-        entityIndex: {},
-        nodeEntityIndex: {},
+        entityIndex: {
+            entities: {},
+            byNodeId: {},
+        },
     });
 
     assert.ok(locatorIndex.menuitem_test, 'menuitem should be indexed');
@@ -51,8 +53,10 @@ test('javascript href link falls back to role locator', () => {
 
     const locatorIndex = buildLocatorIndex({
         root,
-        entityIndex: {},
-        nodeEntityIndex: {},
+        entityIndex: {
+            entities: {},
+            byNodeId: {},
+        },
     });
 
     assert.ok(locatorIndex.link_test, 'link should be indexed');
@@ -78,8 +82,10 @@ test('tab nodes are indexed for id-based click', () => {
 
     const locatorIndex = buildLocatorIndex({
         root,
-        entityIndex: {},
-        nodeEntityIndex: {},
+        entityIndex: {
+            entities: {},
+            byNodeId: {},
+        },
     });
 
     assert.ok(locatorIndex.tab_test, 'tab should be indexed');

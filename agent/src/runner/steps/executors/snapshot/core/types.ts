@@ -28,15 +28,41 @@ export type NodeGraph = {
 
 export type NodeTier = 'A' | 'B' | 'C' | 'D';
 
-export type EntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar';
+export type RegionKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar';
+export type GroupKind = 'table' | 'kv' | 'list';
+export type EntityKind = RegionKind | GroupKind;
 
-export type Entity = {
+export type RegionEntity = {
     id: string;
-    kind: EntityKind;
+    type: 'region';
+    kind: RegionKind;
     nodeId: string;
     name?: string;
     bbox?: BBox;
-    childNodeIds?: string[];
+};
+
+export type GroupEntity = {
+    id: string;
+    type: 'group';
+    kind: GroupKind;
+    containerId: string;
+    itemIds: string[];
+    keySlot: number;
+};
+
+export type EntityRecord = RegionEntity | GroupEntity;
+
+export type NodeEntityRef = {
+    type: 'region' | 'group';
+    entityId: string;
+    role: 'container' | 'item' | 'descendant';
+    itemId?: string;
+    slotIndex?: number;
+};
+
+export type EntityIndex = {
+    entities: Record<string, EntityRecord>;
+    byNodeId: Record<string, NodeEntityRef[] | undefined>;
 };
 
 export type Locator = {
@@ -64,7 +90,6 @@ export type Locator = {
 };
 
 export type NodeIndex = Record<string, UnifiedNode>;
-export type EntityIndex = Record<string, Entity>;
 export type LocatorIndex = Record<string, Locator>;
 export type BBoxIndex = Record<string, BBox>;
 export type AttrIndex = Record<string, Record<string, string>>;

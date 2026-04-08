@@ -1,15 +1,16 @@
-import { applyLCA, type BusinessEntitySeed } from '../stages/lca';
+import { applyLCA } from '../stages/lca';
 import { compress } from '../stages/compress';
 import { finalizeLabel } from '../stages/finalize_label';
-import { getNodeAttr } from '../core/runtime_store';
+import { buildStructureEntityIndex, detectStructure } from '../stages/entity_index';
 import type { NodeTier, UnifiedNode } from '../core/types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
-    const entities = detectBusinessEntities(node);
     const tree = buildTree(node);
+    const structure = detectStructure(tree);
+    const entityIndex = buildStructureEntityIndex(tree, structure, { includeDescendants: false });
 
     markStrongSemantics(tree);
-    applyLCA(tree, entities);
+    applyLCA(tree, entityIndex);
     rankTiers(tree);
 
     return runCompressStage(tree);
@@ -19,20 +20,6 @@ const runCompressStage = (tree: UnifiedNode): UnifiedNode | null => {
     const compressed = compress(tree);
     if (!compressed) return null;
     return finalizeLabel(compressed);
-};
-
-const detectBusinessEntities = (node: UnifiedNode): BusinessEntitySeed[] => {
-    const entities: BusinessEntitySeed[] = [];
-    walk(node, (candidate) => {
-        const kind = detectEntityKind(candidate);
-        if (!kind) return;
-        entities.push({
-            nodeId: candidate.id,
-            kind,
-            name: candidate.name,
-        });
-    });
-    return entities;
 };
 
 const buildTree = (node: UnifiedNode): UnifiedNode => {
@@ -63,20 +50,6 @@ const defaultTier = (node: UnifiedNode): NodeTier => {
         return 'D';
     }
     return 'B';
-};
-
-const detectEntityKind = (node: UnifiedNode): BusinessEntitySeed['kind'] | undefined => {
-    const role = normalizeRole(node.role);
-    const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    const cls = normalizeRole(getNodeAttr(node, 'class'));
-
-    if (role === 'form' || tag === 'form') return 'form';
-    if (role === 'table' || tag === 'table') return 'table';
-    if (role === 'dialog' || role === 'alertdialog') return 'dialog';
-    if (role === 'list' || tag === 'ul' || tag === 'ol') return 'list';
-    if (role === 'toolbar' || cls.includes('toolbar')) return 'toolbar';
-    if (role === 'section' || role === 'article' || cls.includes('panel') || cls.includes('card')) return 'panel';
-    return undefined;
 };
 
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
