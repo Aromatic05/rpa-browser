@@ -26,11 +26,14 @@ type SignatureBucket = {
 export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
     const parentById = new Map<string, UnifiedNode | null>();
     buildParentIndex(root, null, parentById);
+    const codeLikeSubtree = new Set<string>();
+    markCodeLikeSubtree(root, false, codeLikeSubtree);
 
     const groups: GroupDetection[] = [];
     const dedup = new Set<string>();
 
     walk(root, (parent) => {
+        if (codeLikeSubtree.has(parent.id)) return;
         if (parent.children.length < 2) return;
         if (isTooNoisyGroupContainer(parent)) return;
 
@@ -79,6 +82,7 @@ const passesGroupGate = (
 ): boolean => {
     const itemCount = items.length;
     if (itemCount < 2) return false;
+    if (isShellLikeNode(container)) return false;
 
     const slotCount = estimateSlotCount(items, slotMap);
     const hasTable = hasTableSemantic(container, parentById);
@@ -742,24 +746,30 @@ const isWrapperItem = (node: UnifiedNode): boolean => {
 
 const isTooNoisyGroupContainer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
+    if (isCodeLikeNode(node)) return true;
+    if (SHELL_ROLES.has(role)) return true;
     if (role === 'none' || role === 'presentation') return true;
     if (node.children.length < 2) return true;
     return false;
 };
 
 const isGroupCandidateChild = (node: UnifiedNode): boolean => {
+    if (isCodeLikeNode(node)) return false;
     if (isNoiseNode(node)) return false;
     if (hasInteractiveSignal(node, 1)) return true;
     if (readSlotText(node)) return true;
-    if (node.children.length >= 1) return true;
+    if (countCandidateChildren(node) >= 2) return true;
     return false;
 };
 
 const isNoiseNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    if (isCodeLikeNode(node)) return true;
     if (NOISE_ROLES.has(role) || NOISE_TAGS.has(tag)) return true;
-    if (node.children.length === 0 && !readSlotText(node) && !hasInteractiveSignal(node, 0)) return true;
+    const text = readSlotText(node);
+    if (text && isCodeTokenText(text)) return true;
+    if (node.children.length === 0 && !text && !hasInteractiveSignal(node, 0)) return true;
     return false;
 };
 
@@ -782,6 +792,16 @@ const buildParentIndex = (node: UnifiedNode, parent: UnifiedNode | null, parentB
     }
 };
 
+const markCodeLikeSubtree = (node: UnifiedNode, inCodeLike: boolean, out: Set<string>) => {
+    const nextInCodeLike = inCodeLike || isCodeLikeNode(node);
+    if (nextInCodeLike) {
+        out.add(node.id);
+    }
+    for (const child of node.children) {
+        markCodeLikeSubtree(child, nextInCodeLike, out);
+    }
+};
+
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
     visitor(node);
     for (const child of node.children) {
@@ -791,7 +811,40 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
 
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
 
+const countCandidateChildren = (node: UnifiedNode): number => {
+    let count = 0;
+    for (const child of node.children) {
+        if (!isNoiseNode(child)) {
+            count += 1;
+        }
+    }
+    return count;
+};
+
+const isCodeLikeNode = (node: UnifiedNode): boolean => {
+    const role = normalizeLower(node.role);
+    const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    const cls = normalizeLower(getNodeAttr(node, 'class'));
+    if (CODE_ROLES.has(role) || CODE_TAGS.has(tag)) return true;
+    if (CODE_CLASS_HINTS.some((hint) => cls.includes(hint))) return true;
+    return false;
+};
+
+const isShellLikeNode = (node: UnifiedNode): boolean => {
+    const role = normalizeLower(node.role);
+    return SHELL_ROLES.has(role);
+};
+
+const isCodeTokenText = (text: string): boolean => {
+    const value = text.trim();
+    if (!value) return true;
+    if (value.length <= 2 && !HAS_TEXT_PATTERN.test(value)) return true;
+    if (CODE_TOKEN_PATTERN.test(value)) return true;
+    return false;
+};
+
 const HAS_TEXT_PATTERN = /[A-Za-z0-9\u4E00-\u9FFF]/;
+const CODE_TOKEN_PATTERN = /^(<|>|\/>|<\/|=>|=|{|}|\(|\)|\[|\]|:|,|;|\"|'|`)+$/;
 const VOLATILE_PATTERN = /(^\d+$)|(\d{4}[-/]\d{1,2}[-/]\d{1,2})|(\d{1,2}:\d{2})|(%$)|(^[#№]?\d+)/;
 const VOLATILE_KEYWORDS = ['today', 'yesterday', 'now', 'pending', 'failed', 'success', '状态', '时间', '数量', '总数', 'percent'];
 const TABLE_KEYWORDS = ['table', 'grid', 'datatable', 'data-table'];
@@ -815,6 +868,10 @@ const ACTION_WORDS = [
     '编辑',
 ];
 const WRAPPER_ROLES = new Set(['generic', 'group', 'presentation', 'none', 'paragraph', 'text', 'div', 'span']);
+const SHELL_ROLES = new Set(['root', 'main', 'body', 'document', 'application', 'webarea']);
+const CODE_ROLES = new Set(['code']);
+const CODE_TAGS = new Set(['code', 'pre']);
+const CODE_CLASS_HINTS = ['language-', 'code-block', 'highlight', 'hljs', 'shiki', 'vp-code'];
 const NOISE_ROLES = new Set(['none', 'presentation', 'separator']);
 const NOISE_TAGS = new Set(['script', 'style', 'path']);
 const TABLE_ROLES = new Set(['table', 'grid', 'treegrid', 'rowgroup']);

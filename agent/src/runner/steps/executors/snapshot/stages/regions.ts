@@ -76,8 +76,10 @@ const detectRegionKind = (node: UnifiedNode, signal: NodeSignal): RegionKind | u
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const cls = normalizeLower(getNodeAttr(node, 'class'));
 
+    if (isCodeLikeNode(role, tag, cls)) return undefined;
+
     if ((role === 'form' || tag === 'form') && signal.field >= 1) return 'form';
-    if (role === 'table' || role === 'grid' || role === 'treegrid' || tag === 'table' || signal.row >= 2) return 'table';
+    if (isTableLikeNode(role, tag, cls) || hasDenseRowChildren(node)) return 'table';
     if (role === 'dialog' || role === 'alertdialog') return 'dialog';
     if (role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol' || signal.listItem >= 3) return 'list';
     if (role === 'toolbar' || cls.includes('toolbar')) return 'toolbar';
@@ -94,6 +96,11 @@ const passesRegionGate = (
     name: string | undefined,
 ): boolean => {
     const role = normalizeLower(node.role);
+    const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    const cls = normalizeLower(getNodeAttr(node, 'class'));
+
+    if (SHELL_ROLES.has(role)) return false;
+    if (isCodeLikeNode(role, tag, cls)) return false;
 
     if (kind === 'dialog') {
         return signal.size >= 4;
@@ -263,6 +270,32 @@ const isInteractiveNode = (node: UnifiedNode): boolean => {
     return false;
 };
 
+const isTableLikeNode = (role: string, tag: string, cls: string): boolean => {
+    if (role === 'table' || role === 'grid' || role === 'treegrid' || role === 'rowgroup') return true;
+    if (tag === 'table' || tag === 'thead' || tag === 'tbody') return true;
+    if (TABLE_KEYWORDS.some((keyword) => cls.includes(keyword))) return true;
+    return false;
+};
+
+const hasDenseRowChildren = (node: UnifiedNode): boolean => {
+    if (node.children.length < 2) return false;
+    let rowLikeCount = 0;
+    for (const child of node.children) {
+        const role = normalizeLower(child.role);
+        const tag = normalizeLower(getNodeAttr(child, 'tag') || getNodeAttr(child, 'tagName'));
+        if (role === 'row' || role === 'listitem' || tag === 'tr') {
+            rowLikeCount += 1;
+        }
+    }
+    return rowLikeCount >= 2;
+};
+
+const isCodeLikeNode = (role: string, tag: string, cls: string): boolean => {
+    if (CODE_ROLES.has(role) || CODE_TAGS.has(tag)) return true;
+    if (CODE_CLASS_HINTS.some((hint) => cls.includes(hint))) return true;
+    return false;
+};
+
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
     visitor(node);
     for (const child of node.children) {
@@ -273,6 +306,11 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
 
 const PANEL_ROLES = new Set(['section', 'article', 'region', 'complementary', 'contentinfo']);
+const SHELL_ROLES = new Set(['root', 'main', 'body', 'document', 'application', 'webarea']);
+const TABLE_KEYWORDS = ['table', 'grid', 'datatable', 'data-table'];
+const CODE_ROLES = new Set(['code']);
+const CODE_TAGS = new Set(['code', 'pre']);
+const CODE_CLASS_HINTS = ['language-', 'code-block', 'highlight', 'hljs', 'shiki', 'vp-code'];
 const INTERACTIVE_ROLES = new Set([
     'button',
     'link',
