@@ -1414,6 +1414,8 @@ const buildDomPreviewSrcdoc = (
 ): string => {
   const state = { count: 0 };
   const bodyHtml = serializeRawDomNode(root, state, focusRootId);
+  const rootTag = sanitizeRawTag(root.tag);
+  const wrappedBodyHtml = wrapDomPreviewRoot(rootTag, bodyHtml);
   const links = stylesheetHrefs
     .slice(0, 16)
     .map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`)
@@ -1430,7 +1432,27 @@ const buildDomPreviewSrcdoc = (
 html, body { margin: 0; padding: 0; background: #fff; }
 body { padding: 12px; overflow: auto; }
 [data-focus-root="1"] { outline: 2px solid #3b82f6; outline-offset: 2px; }
-</style></head><body>${bodyHtml}</body></html>`;
+</style></head><body>${wrappedBodyHtml}</body></html>`;
+};
+
+const wrapDomPreviewRoot = (rootTag: string, html: string): string => {
+  if (!html) return html;
+  if (rootTag === 'tbody' || rootTag === 'thead' || rootTag === 'tfoot') {
+    return `<table>${html}</table>`;
+  }
+  if (rootTag === 'tr') {
+    return `<table><tbody>${html}</tbody></table>`;
+  }
+  if (rootTag === 'td' || rootTag === 'th') {
+    return `<table><tbody><tr>${html}</tr></tbody></table>`;
+  }
+  if (rootTag === 'li') {
+    return `<ul>${html}</ul>`;
+  }
+  if (rootTag === 'option') {
+    return `<select>${html}</select>`;
+  }
+  return html;
 };
 
 const selectedEntityDomPreview = computed<EntityDomPreview | null>(() => {
