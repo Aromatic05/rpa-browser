@@ -26,6 +26,10 @@ type SnapshotApiSuccess = {
   data: {
     url: string;
     unifiedGraph: unknown;
+    raw?: {
+      domTree?: unknown;
+      a11yTree?: unknown;
+    };
   };
 };
 
@@ -309,6 +313,10 @@ export const createSnapshotApiPlugin = (): Plugin => ({
           data: {
             url: `local://${label}`,
             unifiedGraph,
+            raw: {
+              domTree: request.domTree,
+              a11yTree: request.a11yTree,
+            },
           },
         });
       } catch (cause) {
@@ -360,6 +368,7 @@ export const createSnapshotApiPlugin = (): Plugin => ({
           data: {
             url: page.url(),
             unifiedGraph,
+            raw,
           },
         });
       } catch (cause) {

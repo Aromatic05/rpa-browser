@@ -13,6 +13,7 @@ import type {
   GroupEntityLike,
   LocatorLike,
   NodeEntityRefLike,
+  RawDomNodeLike,
   RegionEntityLike,
   SnapshotApiResponse,
   SnapshotGraphLike,
@@ -92,6 +93,30 @@ type FormPreviewRow = {
   nodeId: string;
   field: string;
   value: string;
+};
+
+type PreviewControl = {
+  kind: 'input' | 'select' | 'textarea' | 'switch' | 'checkbox' | 'radio' | 'button' | 'text';
+  text?: string;
+  primary?: boolean;
+};
+
+type GroupFormRow = {
+  id: string;
+  label: string;
+  controls: PreviewControl[];
+};
+
+type RawDomIndex = {
+  byBackendId: Record<string, RawDomNodeLike>;
+  parentByBackendId: Record<string, string>;
+  stylesheetHrefs: string[];
+};
+
+type EntityDomPreview = {
+  rootDomId: string;
+  mappedDomCount: number;
+  srcdoc: string;
 };
 
 const normalizeContent = (
@@ -278,6 +303,14 @@ const normalizeEntityIndex = (value: unknown): EntityIndexLike => {
   }
 
   return normalized;
+};
+
+const normalizeRawDomTree = (value: unknown): RawDomNodeLike | null => {
+  if (!value || typeof value !== 'object') return null;
+  const maybe = value as Record<string, unknown>;
+  if (typeof maybe.tag !== 'string') return null;
+  if (!Array.isArray(maybe.children)) return null;
+  return value as RawDomNodeLike;
 };
 
 const normalizeSnapshot = (value: unknown): SnapshotGraphLike | null => {
@@ -634,6 +667,25 @@ const activeTreeRoot = computed<TreeNodeLike | null>(() => {
 
 const groupSlotMap = computed(() => buildGroupSlotMap(activeEntityIndex.value));
 
+const parentNodeIdMap = computed<Record<string, string>>(() => {
+  const root = activeRoot.value;
+  const map: Record<string, string> = {};
+  if (!root) return map;
+
+  const stack: Array<{ node: TreeNodeLike; parentId: string }> = [{ node: root, parentId: '' }];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) break;
+    map[current.node.id] = current.parentId;
+    for (let i = current.node.children.length - 1; i >= 0; i -= 1) {
+      const child = current.node.children[i];
+      if (!child) continue;
+      stack.push({ node: child, parentId: current.node.id });
+    }
+  }
+  return map;
+});
+
 const selectedGroupPreview = computed<GroupPreview | null>(() => {
   const snapshot = activeSnapshot.value;
   const entity = selectedEntity.value;
@@ -689,6 +741,132 @@ const selectedGroupPreview = computed<GroupPreview | null>(() => {
   };
 });
 
+const nodeTag = (snapshot: SnapshotGraphLike, nodeId: string): string => {
+  const attrs = snapshot.attrIndex?.[nodeId] || {};
+  const value = typeof attrs.tag === 'string'
+    ? attrs.tag
+    : typeof attrs.tagName === 'string'
+      ? attrs.tagName
+      : '';
+  return normalizeText(value)?.toLowerCase() || '';
+};
+
+const isHeaderLikeNode = (snapshot: SnapshotGraphLike, nodeId: string): boolean => {
+  const node = snapshot.nodeIndex?.[nodeId];
+  if (!node) return false;
+  const role = normalizeText(node.role)?.toLowerCase() || '';
+  const tag = nodeTag(snapshot, nodeId);
+  return role === 'columnheader' || role === 'rowheader' || role === 'heading' || tag === 'th';
+};
+
+const pickMostFrequentText = (texts: string[]): string => {
+  const scoreByText = new Map<string, number>();
+  const rawByLower = new Map<string, string>();
+  for (const text of texts) {
+    const normalized = normalizeText(text);
+    if (!normalized) continue;
+    const lower = normalized.toLowerCase();
+    rawByLower.set(lower, normalized);
+    scoreByText.set(lower, (scoreByText.get(lower) || 0) + 1);
+  }
+  let best = '';
+  let bestScore = 0;
+  for (const [lower, score] of scoreByText.entries()) {
+    if (score > bestScore) {
+      best = rawByLower.get(lower) || '';
+      bestScore = score;
+    }
+  }
+  return best;
+};
+
+const extractTheadHeaders = (snapshot: SnapshotGraphLike, tableNode: TreeNodeLike, slotCount: number): string[] => {
+  const thead = tableNode.children.find((child) => {
+    const role = normalizeText(child.role)?.toLowerCase() || '';
+    const tag = nodeTag(snapshot, child.id);
+    return role === 'thead' || tag === 'thead';
+  });
+  if (!thead) return [];
+
+  const row = thead.children.find((child) => {
+    const role = normalizeText(child.role)?.toLowerCase() || '';
+    const tag = nodeTag(snapshot, child.id);
+    return role === 'row' || tag === 'tr';
+  });
+  if (!row) return [];
+
+  const cells = row.children.filter((child) => {
+    const role = normalizeText(child.role)?.toLowerCase() || '';
+    const tag = nodeTag(snapshot, child.id);
+    return role === 'columnheader' || role === 'cell' || tag === 'th' || tag === 'td';
+  });
+
+  if (cells.length === 0) return [];
+  const out: string[] = [];
+  const max = Math.min(slotCount, cells.length);
+  for (let i = 0; i < max; i += 1) {
+    const cell = cells[i];
+    if (!cell) {
+      out.push('');
+      continue;
+    }
+    out.push(resolveNodeText(cell.id, snapshot));
+  }
+  return out;
+};
+
+const selectedGroupColumnHeaders = computed<Record<number, string>>(() => {
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  const preview = selectedGroupPreview.value;
+  if (!snapshot || !entity || entity.type !== 'group' || entity.kind !== 'table' || !preview) return {};
+
+  const headers: Record<number, string> = {};
+  const byItem = groupSlotMap.value.get(entity.id) || new Map<string, Map<number, string[]>>();
+
+  for (const slot of preview.slots) {
+    const texts: string[] = [];
+    for (const itemId of entity.itemIds.slice(0, 8)) {
+      const bySlot = byItem.get(itemId);
+      if (!bySlot) continue;
+      const nodeIds = bySlot.get(slot) || [];
+      for (const nodeId of nodeIds) {
+        if (!isHeaderLikeNode(snapshot, nodeId)) continue;
+        const text = resolveNodeText(nodeId, snapshot);
+        if (text) texts.push(text);
+      }
+    }
+    const best = pickMostFrequentText(texts);
+    if (best) headers[slot] = best;
+  }
+
+  if (Object.keys(headers).length > 0) return headers;
+
+  const containerNode = snapshot.nodeIndex?.[entity.containerId];
+  const containerTag = nodeTag(snapshot, entity.containerId);
+  const isBodyLike = containerTag === 'tbody' || normalizeText(containerNode?.role)?.toLowerCase() === 'tbody';
+  if (!isBodyLike) return headers;
+
+  const parentId = parentNodeIdMap.value[entity.containerId] || '';
+  if (!parentId) return headers;
+  const tableNode = snapshot.nodeIndex?.[parentId];
+  if (!tableNode) return headers;
+
+  const tableRole = normalizeText(tableNode.role)?.toLowerCase() || '';
+  const tableTag = nodeTag(snapshot, tableNode.id);
+  if (tableRole !== 'table' && tableTag !== 'table') return headers;
+
+  const theadHeaders = extractTheadHeaders(snapshot, tableNode, preview.slots.length);
+  for (let i = 0; i < preview.slots.length; i += 1) {
+    const slot = preview.slots[i];
+    const text = normalizeText(theadHeaders[i]);
+    if (!slot && slot !== 0) continue;
+    if (text) headers[slot] = text;
+  }
+
+  return headers;
+});
+
 const selectedFormPreview = computed<FormPreviewRow[]>(() => {
   const snapshot = activeSnapshot.value;
   const entity = selectedEntity.value;
@@ -718,42 +896,209 @@ const selectedGroupAssessment = computed(() => {
   return groupAssessmentMap.value.get(entity.id) || null;
 });
 
-const isActionLikeText = (value: string): boolean => {
-  const lower = value.toLowerCase();
-  return [
-    'edit',
-    'delete',
-    'remove',
-    'more',
-    'view',
-    'detail',
-    'submit',
-    'save',
-    'open',
-    'reset',
-    'add',
-    'new',
-    '修改',
-    '删除',
-    '更多',
-    '详情',
-    '查看',
-    '编辑',
-    '提交',
-    '重置',
-    '新增',
-  ].some((token) => lower.includes(token));
+const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();
+const MACHINE_ID_TEXT_PATTERN = /^[a-z][a-z0-9-]*_[0-9a-f]{6,}(?:_[0-9]+)?$/i;
+const FORM_LABEL_CLASS_HINTS = ['form-item__label', 'form-label', 'field-label'];
+const OPTION_CLASS_HINTS = ['checkbox', 'radio'];
+const FORM_CONTROL_ROLES = new Set([
+  'textbox',
+  'input',
+  'combobox',
+  'searchbox',
+  'spinbutton',
+  'textarea',
+  'select',
+  'checkbox',
+  'radio',
+  'switch',
+  'slider',
+  'listbox',
+]);
+const FORM_CONTROL_TAGS = new Set(['input', 'textarea', 'select']);
+const ACTION_CONTROL_ROLES = new Set(['button', 'link', 'menuitem', 'tab']);
+const ACTION_CONTROL_TAGS = new Set(['button', 'a']);
+
+const normalizeTag = (snapshot: SnapshotGraphLike, nodeId: string): string => {
+  const attrs = snapshot.attrIndex?.[nodeId] || {};
+  const rawTag = typeof attrs.tag === 'string'
+    ? attrs.tag
+    : typeof attrs.tagName === 'string'
+      ? attrs.tagName
+      : '';
+  return normalizeRole(rawTag);
 };
 
-const isLikelyFormLabel = (value: string): boolean => {
-  const text = value.trim();
+const getNodeClass = (snapshot: SnapshotGraphLike, nodeId: string): string => {
+  const attrs = snapshot.attrIndex?.[nodeId] || {};
+  const value = typeof attrs.class === 'string' ? attrs.class : '';
+  return normalizeRole(value);
+};
+
+const getNodeAttrText = (snapshot: SnapshotGraphLike, nodeId: string, key: string): string => {
+  const attrs = snapshot.attrIndex?.[nodeId] || {};
+  const value = attrs[key];
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+const readNodeTextDeep = (snapshot: SnapshotGraphLike, nodeId: string): string => {
+  const direct = resolveNodeText(nodeId, snapshot);
+  if (direct) return direct;
+  return firstReadableDescendantText(nodeId, snapshot, 3);
+};
+
+const sanitizeLabelText = (value: string): string => {
+  const text = normalizeText(value);
+  if (!text) return '';
+  if (MACHINE_ID_TEXT_PATTERN.test(text)) return '';
+  return text;
+};
+
+const isFormLabelLikeNode = (snapshot: SnapshotGraphLike, node: TreeNodeLike): boolean => {
+  const role = normalizeRole(node.role);
+  const cls = getNodeClass(snapshot, node.id);
+  const text = sanitizeLabelText(readNodeTextDeep(snapshot, node.id));
+  const hasLabelClass = FORM_LABEL_CLASS_HINTS.some((hint) => cls.includes(hint));
+  if (hasLabelClass) return Boolean(text);
+  if (role !== 'label') return false;
+  if (OPTION_CLASS_HINTS.some((hint) => cls.includes(hint))) return false;
   if (!text) return false;
-  if (text.length > 40) return false;
-  if (isActionLikeText(text)) return false;
-  if (text.includes(':') || text.includes('：')) return true;
-  if (!/[A-Za-z\u4E00-\u9FFF]/.test(text)) return false;
   return true;
 };
+
+const toControlKind = (snapshot: SnapshotGraphLike, node: TreeNodeLike): PreviewControl['kind'] | undefined => {
+  const role = normalizeRole(node.role);
+  const tag = normalizeTag(snapshot, node.id);
+  if (ACTION_CONTROL_ROLES.has(role) || ACTION_CONTROL_TAGS.has(tag)) return 'button';
+  if (role === 'switch') return 'switch';
+  if (role === 'checkbox') return 'checkbox';
+  if (role === 'radio') return 'radio';
+  if (role === 'combobox' || role === 'listbox' || tag === 'select') return 'select';
+  if (role === 'textbox' || role === 'input' || role === 'searchbox' || role === 'spinbutton' || tag === 'input') {
+    const inputType = normalizeRole(getNodeAttrText(snapshot, node.id, 'type'));
+    if (inputType === 'checkbox') return 'checkbox';
+    if (inputType === 'radio') return 'radio';
+    return 'input';
+  }
+  if (role === 'textarea' || tag === 'textarea') return 'textarea';
+  return undefined;
+};
+
+const buildControlText = (snapshot: SnapshotGraphLike, node: TreeNodeLike, kind: PreviewControl['kind']): string => {
+  if (kind === 'input' || kind === 'select' || kind === 'textarea') {
+    const placeholder = getNodeAttrText(snapshot, node.id, 'placeholder');
+    if (placeholder) return placeholder;
+    const value = getNodeAttrText(snapshot, node.id, 'value');
+    if (value) return value;
+  }
+  return sanitizeLabelText(readNodeTextDeep(snapshot, node.id));
+};
+
+const buildControlFromNode = (snapshot: SnapshotGraphLike, node: TreeNodeLike): PreviewControl | undefined => {
+  const kind = toControlKind(snapshot, node);
+  if (!kind) return undefined;
+  const text = buildControlText(snapshot, node, kind);
+  if ((kind === 'button' || kind === 'checkbox' || kind === 'radio') && !text) return undefined;
+  const cls = getNodeClass(snapshot, node.id);
+  return {
+    kind,
+    text: text || undefined,
+    primary: kind === 'button' ? (cls.includes('primary') || cls.includes('--primary')) : undefined,
+  };
+};
+
+const extractControlsFromNodes = (snapshot: SnapshotGraphLike, roots: TreeNodeLike[]): PreviewControl[] => {
+  const out: PreviewControl[] = [];
+  const dedupe = new Set<string>();
+  const queue: Array<{ node: TreeNodeLike; depth: number }> = roots.map((node) => ({ node, depth: 0 }));
+  let visited = 0;
+  while (queue.length > 0 && visited < 400) {
+    const current = queue.shift();
+    if (!current) break;
+    visited += 1;
+
+    const control = buildControlFromNode(snapshot, current.node);
+    if (control) {
+      const key = `${control.kind}|${control.text || ''}|${control.primary ? '1' : '0'}`;
+      if (!dedupe.has(key)) {
+        dedupe.add(key);
+        out.push(control);
+      }
+    } else {
+      const inlineText = sanitizeLabelText(readNodeTextDeep(snapshot, current.node.id));
+      if (inlineText && inlineText.length <= 24 && current.depth <= 1) {
+        const key = `text|${inlineText}`;
+        if (!dedupe.has(key)) {
+          dedupe.add(key);
+          out.push({ kind: 'text', text: inlineText });
+        }
+      }
+    }
+
+    if (current.depth >= 2) continue;
+    for (const child of current.node.children) {
+      queue.push({ node: child, depth: current.depth + 1 });
+    }
+  }
+  return out.slice(0, 8);
+};
+
+const buildFormRowsFromContainer = (snapshot: SnapshotGraphLike, containerId: string): GroupFormRow[] => {
+  const container = snapshot.nodeIndex?.[containerId];
+  if (!container || container.children.length === 0) return [];
+
+  const labelIndexes: number[] = [];
+  for (let i = 0; i < container.children.length; i += 1) {
+    const child = container.children[i];
+    if (!child) continue;
+    if (!isFormLabelLikeNode(snapshot, child)) continue;
+    labelIndexes.push(i);
+  }
+  if (labelIndexes.length < 2) return [];
+
+  const rows: GroupFormRow[] = [];
+  for (let i = 0; i < labelIndexes.length; i += 1) {
+    const index = labelIndexes[i];
+    const labelNode = container.children[index];
+    if (!labelNode) continue;
+    const label = sanitizeLabelText(readNodeTextDeep(snapshot, labelNode.id));
+    if (!label) continue;
+
+    const nextIndex = labelIndexes[i + 1] ?? container.children.length;
+    const segment = container.children.slice(index + 1, nextIndex);
+    const controls = extractControlsFromNodes(snapshot, segment);
+    rows.push({
+      id: labelNode.id,
+      label,
+      controls,
+    });
+  }
+  return rows;
+};
+
+const selectedGroupFormRows = computed<GroupFormRow[]>(() => {
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  const preview = selectedGroupPreview.value;
+  if (!snapshot || !entity || entity.type !== 'group' || !preview) return [];
+
+  const byContainer = buildFormRowsFromContainer(snapshot, entity.containerId);
+  if (byContainer.length > 0) return byContainer;
+
+  const rows: GroupFormRow[] = [];
+  for (const row of preview.rows) {
+    const itemNode = snapshot.nodeIndex?.[row.itemId];
+    if (!itemNode) continue;
+    const label = sanitizeLabelText((row.slots[entity.keySlot] || row.summary || '').trim());
+    if (!label) continue;
+    const controls = extractControlsFromNodes(snapshot, [itemNode]);
+    rows.push({
+      id: row.itemId,
+      label,
+      controls,
+    });
+  }
+  return rows;
+});
 
 const selectedGroupRenderMode = computed<'table' | 'form'>(() => {
   const entity = selectedEntity.value;
@@ -762,75 +1107,356 @@ const selectedGroupRenderMode = computed<'table' | 'form'>(() => {
   if (entity.kind === 'table') return 'table';
   if (entity.kind === 'kv') return 'form';
 
-  const slots = preview.slots;
-  if (slots.length < 2) return 'table';
-  if (slots.length > 3) return 'table';
-
-  let sampled = 0;
-  let labelHit = 0;
-  let valueHit = 0;
-  let actionHit = 0;
-  for (const row of preview.rows.slice(0, 20)) {
-    const labelText = (row.slots[entity.keySlot] || '').trim();
-    const restTexts = slots
-      .filter((slot) => slot !== entity.keySlot)
-      .map((slot) => (row.slots[slot] || '').trim())
-      .filter((text) => Boolean(text));
-    if (!labelText && restTexts.length === 0) continue;
-    sampled += 1;
-    if (labelText && isLikelyFormLabel(labelText)) labelHit += 1;
-    if (restTexts.length > 0) valueHit += 1;
-    if (restTexts.some((text) => isActionLikeText(text))) actionHit += 1;
-  }
-
-  if (sampled === 0) return 'table';
-  const labelRate = labelHit / sampled;
-  const valueRate = valueHit / sampled;
-  const actionRate = actionHit / sampled;
-  if (labelRate >= 0.45 && valueRate >= 0.45) return 'form';
-  if (actionRate >= 0.35 && valueRate >= 0.5) return 'form';
+  const formRows = selectedGroupFormRows.value;
+  if (formRows.length < 2) return 'table';
+  const labeledCount = formRows.filter((row) => row.label.length > 0).length;
+  const controlCount = formRows.filter((row) => row.controls.length > 0).length;
+  const labeledRate = labeledCount / formRows.length;
+  const controlRate = controlCount / formRows.length;
+  if (labeledRate >= 0.7 && controlRate >= 0.4) return 'form';
+  if (preview.slots.length <= 1 && labeledRate >= 0.65) return 'form';
   return 'table';
 });
 
-const resolveKvValue = (row: GroupPreviewRow, keySlot: number): string => {
-  const keys = Object.keys(row.slots)
-    .map((slot) => Number(slot))
-    .filter((slot) => !Number.isNaN(slot))
-    .sort((a, b) => a - b);
-  for (const slot of keys) {
-    if (slot === keySlot) continue;
-    const text = row.slots[slot] || '';
-    if (text.trim()) return text;
+const rawDomRoot = computed(() => dataPack.value.rawDomTree || null);
+
+const WRAPPER_DOM_TAGS = new Set(['div', 'span', 'section', 'article', 'main', 'aside']);
+const RAW_PREVIEW_SAFE_ATTRS = new Set([
+  'class',
+  'id',
+  'role',
+  'type',
+  'name',
+  'placeholder',
+  'value',
+  'for',
+  'href',
+  'src',
+  'alt',
+  'title',
+  'style',
+  'checked',
+  'selected',
+  'disabled',
+  'readonly',
+  'multiple',
+  'colspan',
+  'rowspan',
+]);
+const RAW_PREVIEW_VOID_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
+const RAW_PREVIEW_BLOCKED_TAGS = new Set(['script', 'noscript']);
+const RAW_PREVIEW_NODE_LIMIT = 1500;
+
+const getRawBackendDomId = (node: RawDomNodeLike): string => {
+  if (typeof node.backendDOMNodeId === 'string' || typeof node.backendDOMNodeId === 'number') {
+    return String(node.backendDOMNodeId);
   }
-  return row.summary;
+  const attrs = node.attrs || {};
+  const attrId = attrs.backendDOMNodeId;
+  if (typeof attrId === 'string' || typeof attrId === 'number') {
+    return String(attrId);
+  }
+  return '';
 };
 
-const resolveGroupFormValue = (row: GroupPreviewRow, keySlot: number): string => {
-  const keys = Object.keys(row.slots)
-    .map((slot) => Number(slot))
-    .filter((slot) => !Number.isNaN(slot))
-    .sort((a, b) => a - b);
-  const values = keys
-    .filter((slot) => slot !== keySlot)
-    .map((slot) => row.slots[slot] || '')
-    .map((text) => text.trim())
-    .filter((text) => Boolean(text) && !isActionLikeText(text));
-  if (values.length > 0) return values.join(' | ');
-  return resolveKvValue(row, keySlot);
+const getRawAttrText = (node: RawDomNodeLike, key: string): string => {
+  const attrs = node.attrs || {};
+  const value = attrs[key];
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? 'true' : '';
+  return '';
 };
 
-const resolveGroupFormActions = (row: GroupPreviewRow, keySlot: number): string => {
-  const keys = Object.keys(row.slots)
-    .map((slot) => Number(slot))
-    .filter((slot) => !Number.isNaN(slot))
-    .sort((a, b) => a - b);
-  const actions = keys
-    .filter((slot) => slot !== keySlot)
-    .map((slot) => row.slots[slot] || '')
-    .map((text) => text.trim())
-    .filter((text) => Boolean(text) && isActionLikeText(text));
-  return actions.join(' | ');
+const rawDomIndex = computed<RawDomIndex | null>(() => {
+  const root = rawDomRoot.value;
+  if (!root) return null;
+
+  const byBackendId: Record<string, RawDomNodeLike> = {};
+  const parentByBackendId: Record<string, string> = {};
+  const stylesheetHrefs: string[] = [];
+  const seenStyles = new Set<string>();
+  const stack: Array<{ node: RawDomNodeLike; parentId: string }> = [{ node: root, parentId: '' }];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) break;
+    const backendId = getRawBackendDomId(current.node);
+    if (backendId) {
+      byBackendId[backendId] = current.node;
+      parentByBackendId[backendId] = current.parentId;
+    }
+
+    const tag = normalizeRole(current.node.tag);
+    if (tag === 'link') {
+      const href = getRawAttrText(current.node, 'href');
+      const lower = href.toLowerCase();
+      if (href && !seenStyles.has(href) && /\.css($|[?#])/.test(lower)) {
+        seenStyles.add(href);
+        stylesheetHrefs.push(href);
+      }
+    }
+
+    const nextParentId = backendId || current.parentId;
+    for (let i = current.node.children.length - 1; i >= 0; i -= 1) {
+      const child = current.node.children[i];
+      if (!child) continue;
+      stack.push({ node: child, parentId: nextParentId });
+    }
+  }
+
+  return {
+    byBackendId,
+    parentByBackendId,
+    stylesheetHrefs,
+  };
+});
+
+const collectSemanticSubtreeNodeIds = (snapshot: SnapshotGraphLike, rootId: string, out: Set<string>) => {
+  const root = snapshot.nodeIndex?.[rootId];
+  if (!root) return;
+  const stack: TreeNodeLike[] = [root];
+  while (stack.length > 0 && out.size < 6000) {
+    const current = stack.pop();
+    if (!current) break;
+    if (out.has(current.id)) continue;
+    out.add(current.id);
+    for (let i = current.children.length - 1; i >= 0; i -= 1) {
+      const child = current.children[i];
+      if (child) stack.push(child);
+    }
+  }
 };
+
+const collectEntitySemanticNodeIds = (entity: EntityRecordLike, snapshot: SnapshotGraphLike): Set<string> => {
+  const out = new Set<string>();
+  if (entity.type === 'group') {
+    collectSemanticSubtreeNodeIds(snapshot, entity.containerId, out);
+    for (const itemId of entity.itemIds) {
+      collectSemanticSubtreeNodeIds(snapshot, itemId, out);
+    }
+  } else {
+    collectSemanticSubtreeNodeIds(snapshot, entity.nodeId, out);
+  }
+  return out;
+};
+
+const collectMappedDomIds = (
+  snapshot: SnapshotGraphLike,
+  semanticNodeIds: Set<string>,
+  rawIndex: RawDomIndex,
+): Set<string> => {
+  const out = new Set<string>();
+  for (const nodeId of semanticNodeIds) {
+    const origin = snapshot.locatorIndex?.[nodeId]?.origin;
+    if (!origin) continue;
+    if (origin.primaryDomId !== undefined && origin.primaryDomId !== null) {
+      const primary = String(origin.primaryDomId);
+      if (rawIndex.byBackendId[primary]) out.add(primary);
+    }
+    for (const sourceId of origin.sourceDomIds || []) {
+      const source = String(sourceId);
+      if (rawIndex.byBackendId[source]) out.add(source);
+    }
+  }
+  return out;
+};
+
+const ancestorPath = (start: string, parentByBackendId: Record<string, string>): string[] => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let current = start;
+  while (current && !seen.has(current)) {
+    out.push(current);
+    seen.add(current);
+    current = parentByBackendId[current] || '';
+  }
+  return out;
+};
+
+const findLcaBackendId = (domIds: string[], parentByBackendId: Record<string, string>): string => {
+  if (domIds.length === 0) return '';
+  let lca = domIds[0] || '';
+  for (let i = 1; i < domIds.length && lca; i += 1) {
+    const pathSet = new Set(ancestorPath(domIds[i] || '', parentByBackendId));
+    while (lca && !pathSet.has(lca)) {
+      lca = parentByBackendId[lca] || '';
+    }
+  }
+  return lca;
+};
+
+const subtreeSelectedCount = (root: RawDomNodeLike, selectedDomIds: Set<string>): number => {
+  let count = 0;
+  const stack: RawDomNodeLike[] = [root];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) break;
+    const backendId = getRawBackendDomId(current);
+    if (backendId && selectedDomIds.has(backendId)) count += 1;
+    for (let i = current.children.length - 1; i >= 0; i -= 1) {
+      const child = current.children[i];
+      if (child) stack.push(child);
+    }
+  }
+  return count;
+};
+
+const shrinkWrapperDomRoot = (candidateId: string, selectedDomIds: Set<string>, rawIndex: RawDomIndex): string => {
+  let currentId = candidateId;
+  for (let guard = 0; guard < 8; guard += 1) {
+    const currentNode = rawIndex.byBackendId[currentId];
+    if (!currentNode) break;
+    const tag = normalizeRole(currentNode.tag);
+    const ownText = normalizeText(currentNode.text);
+    if (!WRAPPER_DOM_TAGS.has(tag) || ownText) break;
+
+    let onlyChildId = '';
+    let childHitCount = 0;
+    for (const child of currentNode.children) {
+      const childId = getRawBackendDomId(child);
+      if (!childId || !rawIndex.byBackendId[childId]) continue;
+      const hits = subtreeSelectedCount(child, selectedDomIds);
+      if (hits <= 0) continue;
+      childHitCount += 1;
+      onlyChildId = childId;
+      if (childHitCount > 1) break;
+    }
+
+    if (childHitCount !== 1 || !onlyChildId) break;
+    currentId = onlyChildId;
+  }
+  return currentId;
+};
+
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const sanitizeRawTag = (value: string): string => {
+  const normalized = normalizeRole(value);
+  if (/^[a-z][a-z0-9:-]*$/.test(normalized)) return normalized;
+  return 'div';
+};
+
+const serializeRawDomNode = (
+  node: RawDomNodeLike,
+  state: { count: number },
+  focusRootId: string,
+): string => {
+  if (state.count >= RAW_PREVIEW_NODE_LIMIT) return '';
+  state.count += 1;
+
+  const tag = sanitizeRawTag(node.tag);
+  if (RAW_PREVIEW_BLOCKED_TAGS.has(tag)) return '';
+
+  const attrs: string[] = [];
+  const backendId = getRawBackendDomId(node);
+  if (backendId) attrs.push(`data-backend-id="${escapeHtml(backendId)}"`);
+  if (backendId && backendId === focusRootId) attrs.push('data-focus-root="1"');
+
+  const nodeAttrs = node.attrs || {};
+  for (const [key, rawValue] of Object.entries(nodeAttrs)) {
+    const attr = key.toLowerCase();
+    if (!attr || attr === 'backenddomnodeid' || attr.startsWith('on')) continue;
+    const allow = RAW_PREVIEW_SAFE_ATTRS.has(attr) || attr.startsWith('aria-') || attr.startsWith('data-');
+    if (!allow) continue;
+    if (typeof rawValue === 'boolean') {
+      if (rawValue) attrs.push(attr);
+      continue;
+    }
+    if (typeof rawValue === 'string' || typeof rawValue === 'number') {
+      const value = String(rawValue).trim();
+      if (!value) continue;
+      attrs.push(`${attr}="${escapeHtml(value)}"`);
+    }
+  }
+
+  const attrText = attrs.length > 0 ? ` ${attrs.join(' ')}` : '';
+  if (RAW_PREVIEW_VOID_TAGS.has(tag)) {
+    return `<${tag}${attrText}>`;
+  }
+
+  const text = typeof node.text === 'string' ? escapeHtml(node.text) : '';
+  let children = '';
+  for (const child of node.children) {
+    children += serializeRawDomNode(child, state, focusRootId);
+    if (state.count >= RAW_PREVIEW_NODE_LIMIT) break;
+  }
+
+  return `<${tag}${attrText}>${text}${children}</${tag}>`;
+};
+
+const buildDomPreviewSrcdoc = (
+  root: RawDomNodeLike,
+  focusRootId: string,
+  stylesheetHrefs: string[],
+  baseUrl: string,
+): string => {
+  const state = { count: 0 };
+  const bodyHtml = serializeRawDomNode(root, state, focusRootId);
+  const links = stylesheetHrefs
+    .slice(0, 16)
+    .map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`)
+    .join('');
+  let base = '';
+  try {
+    const url = new URL(baseUrl);
+    base = `<base href="${escapeHtml(url.href)}">`;
+  } catch {
+    base = '';
+  }
+
+  return `<!doctype html><html><head><meta charset="utf-8">${base}${links}<style>
+html, body { margin: 0; padding: 0; background: #fff; }
+body { padding: 12px; overflow: auto; }
+[data-focus-root="1"] { outline: 2px solid #3b82f6; outline-offset: 2px; }
+</style></head><body>${bodyHtml}</body></html>`;
+};
+
+const selectedEntityDomPreview = computed<EntityDomPreview | null>(() => {
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  const rawIndex = rawDomIndex.value;
+  if (!snapshot || !entity || !rawIndex) return null;
+
+  const semanticNodeIds = collectEntitySemanticNodeIds(entity, snapshot);
+  if (semanticNodeIds.size === 0) return null;
+  const domIds = collectMappedDomIds(snapshot, semanticNodeIds, rawIndex);
+  if (domIds.size === 0) return null;
+
+  const domIdList = Array.from(domIds);
+  const lcaId = findLcaBackendId(domIdList, rawIndex.parentByBackendId);
+  if (!lcaId) return null;
+  const rootId = shrinkWrapperDomRoot(lcaId, domIds, rawIndex);
+  const root = rawIndex.byBackendId[rootId];
+  if (!root) return null;
+
+  return {
+    rootDomId: rootId,
+    mappedDomCount: domIds.size,
+    srcdoc: buildDomPreviewSrcdoc(root, rootId, rawIndex.stylesheetHrefs, resolvedUrl.value),
+  };
+});
 
 const contentRefOf = (node: TreeNodeLike | null): string => {
   if (!node || typeof node.content === 'string') return '';
@@ -901,7 +1527,11 @@ const selectEntityById = (entityId: string) => {
   selectedEntityId.value = entityId;
 };
 
-const applySnapshotPayload = (payload: SnapshotApiResponse, fallbackUrl: string) => {
+const applySnapshotPayload = (
+  payload: SnapshotApiResponse,
+  fallbackUrl: string,
+  rawDomTree?: RawDomNodeLike | null,
+) => {
   if (!payload.ok || !payload.data) {
     throw new Error(payload.error || 'invalid snapshot payload');
   }
@@ -911,8 +1541,12 @@ const applySnapshotPayload = (payload: SnapshotApiResponse, fallbackUrl: string)
     throw new Error('snapshot payload has no valid root');
   }
 
+  const payloadRawDomTree = normalizeRawDomTree(payload.data.raw?.domTree);
+  const resolvedRawDomTree = rawDomTree === undefined ? payloadRawDomTree : rawDomTree;
+
   dataPack.value = {
     snapshot,
+    rawDomTree: resolvedRawDomTree || null,
   };
   resolvedUrl.value = payload.data.url || fallbackUrl;
   selectedNode.value = null;
@@ -966,6 +1600,7 @@ const fetchCaptureList = async () => {
 };
 
 const applyCaptureEnvelope = async (envelope: CaptureEnvelope) => {
+  const rawDomTree = normalizeRawDomTree(envelope.raw?.domTree);
   if (envelope.snapshot) {
     applySnapshotPayload(
       {
@@ -976,6 +1611,7 @@ const applyCaptureEnvelope = async (envelope: CaptureEnvelope) => {
         },
       },
       envelope.finalUrl || envelope.sourceUrl || `capture://${envelope.label}`,
+      rawDomTree,
     );
     return;
   }
@@ -994,7 +1630,11 @@ const applyCaptureEnvelope = async (envelope: CaptureEnvelope) => {
     if (!response.ok) {
       throw new Error(payload.error || `request failed (${response.status})`);
     }
-    applySnapshotPayload(payload, envelope.finalUrl || envelope.sourceUrl || `capture://${envelope.label}`);
+    applySnapshotPayload(
+      payload,
+      envelope.finalUrl || envelope.sourceUrl || `capture://${envelope.label}`,
+      rawDomTree,
+    );
     return;
   }
 
@@ -1225,12 +1865,19 @@ onBeforeUnmount(() => {
 
     <template v-if="centerMode === 'entities'">
       <div class="section">
-        <h2>Entity View</h2>
-      </div>
-
-      <div class="section">
         <h2>Structure Preview</h2>
         <div v-if="!selectedEntity" class="muted">click one entity in list below</div>
+
+        <template v-else-if="selectedEntityDomPreview">
+          <div class="kv"><span class="k">render</span><span>raw-dom</span></div>
+          <div class="kv"><span class="k">domRoot</span><span>{{ selectedEntityDomPreview.rootDomId }}</span></div>
+          <div class="kv"><span class="k">mapped</span><span>{{ selectedEntityDomPreview.mappedDomCount }}</span></div>
+          <iframe
+            class="entity-dom-frame"
+            :srcdoc="selectedEntityDomPreview.srcdoc"
+            sandbox="allow-same-origin"
+          />
+        </template>
 
         <template v-else-if="selectedEntity.type === 'group' && selectedGroupPreview">
           <div class="kv"><span class="k">kind</span><span>{{ selectedEntity.kind }}</span></div>
@@ -1242,13 +1889,13 @@ onBeforeUnmount(() => {
               <tr>
                 <th>#</th>
                 <th v-for="slot in selectedGroupPreview.slots" :key="slot" :class="{ key: slot === selectedEntity.keySlot }">
-                  slot {{ slot }}
+                  {{ selectedGroupColumnHeaders[slot] || `col ${slot + 1}` }}
                 </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in selectedGroupPreview.rows" :key="row.itemId">
-                <td class="mono">{{ row.itemId }}</td>
+              <tr v-for="(row, rowIndex) in selectedGroupPreview.rows" :key="row.itemId">
+                <td class="mono">{{ rowIndex + 1 }}</td>
                 <td
                   v-for="slot in selectedGroupPreview.slots"
                   :key="`${row.itemId}_${slot}`"
@@ -1261,11 +1908,37 @@ onBeforeUnmount(() => {
           </table>
 
           <div v-else class="form-preview">
-            <div v-for="row in selectedGroupPreview.rows" :key="row.itemId" class="form-row">
-              <div class="form-field">{{ row.slots[selectedEntity.keySlot] || '(key empty)' }}</div>
-              <div class="form-value">{{ resolveGroupFormValue(row, selectedEntity.keySlot) || '-' }}</div>
-              <div v-if="resolveGroupFormActions(row, selectedEntity.keySlot)" class="form-actions">
-                {{ resolveGroupFormActions(row, selectedEntity.keySlot) }}
+            <div v-for="row in selectedGroupFormRows" :key="row.id" class="form-row">
+              <div class="form-field">{{ row.label || '(field)' }}</div>
+              <div class="form-value">
+                <div v-if="row.controls.length === 0">-</div>
+                <div v-else class="form-controls">
+                  <template v-for="(control, controlIndex) in row.controls" :key="`${row.id}_${controlIndex}_${control.kind}`">
+                    <button
+                      v-if="control.kind === 'button'"
+                      class="preview-button"
+                      :class="{ primary: control.primary }"
+                    >
+                      {{ control.text || 'Button' }}
+                    </button>
+                    <label v-else-if="control.kind === 'checkbox' || control.kind === 'radio'" class="preview-choice">
+                      <span class="choice-icon" :class="control.kind"></span>
+                      <span>{{ control.text || (control.kind === 'checkbox' ? 'Option' : 'Choice') }}</span>
+                    </label>
+                    <span v-else-if="control.kind === 'switch'" class="preview-switch">
+                      <span class="switch-dot"></span>
+                    </span>
+                    <span v-else-if="control.kind === 'select'" class="preview-input select">
+                      <span>{{ control.text || 'Please select' }}</span>
+                      <span class="select-arrow">▾</span>
+                    </span>
+                    <span v-else-if="control.kind === 'textarea'" class="preview-input textarea">
+                      {{ control.text || 'Please input' }}
+                    </span>
+                    <span v-else-if="control.kind === 'text'" class="preview-inline">{{ control.text }}</span>
+                    <span v-else class="preview-input">{{ control.text || 'Please input' }}</span>
+                  </template>
+                </div>
               </div>
             </div>
           </div>

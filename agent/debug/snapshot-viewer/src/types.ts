@@ -91,8 +91,18 @@ export type SnapshotGraphLike = {
   };
 };
 
+export type RawDomNodeLike = {
+  id: string;
+  tag: string;
+  text?: string;
+  backendDOMNodeId?: string | number;
+  attrs?: Record<string, unknown>;
+  children: RawDomNodeLike[];
+};
+
 export type DataPack = {
   snapshot: SnapshotGraphLike | null;
+  rawDomTree?: RawDomNodeLike | null;
 };
 
 export type SnapshotApiResponse = {
@@ -100,6 +110,10 @@ export type SnapshotApiResponse = {
   data?: {
     url: string;
     unifiedGraph: SnapshotGraphLike | TreeNodeLike | unknown;
+    raw?: {
+      domTree?: unknown;
+      a11yTree?: unknown;
+    };
   };
   error?: string;
 };
