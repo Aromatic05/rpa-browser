@@ -9,10 +9,12 @@ const props = withDefaults(
     node: TreeNodeLike;
     depth?: number;
     selectedId?: string;
+    highlightIdMap?: Record<string, boolean>;
   }>(),
   {
     depth: 0,
     selectedId: '',
+    highlightIdMap: () => ({}),
   },
 );
 
@@ -25,6 +27,7 @@ const open = ref(props.depth < 2);
 
 const hasChildren = computed(() => props.node.children.length > 0);
 const isSelected = computed(() => props.selectedId === props.node.id);
+const isHighlighted = computed(() => Boolean(props.highlightIdMap?.[props.node.id]));
 const roleLabel = computed(() => props.node.role || 'node');
 const nodeLabel = computed(() => {
   if (props.node.name) return props.node.name;
@@ -57,7 +60,7 @@ const openContextMenu = (event: MouseEvent) => {
 
 <template>
   <div class="tree-node">
-    <div class="tree-line" :class="{ selected: isSelected }" @click="selectNode" @contextmenu="openContextMenu">
+    <div class="tree-line" :class="{ selected: isSelected, highlighted: isHighlighted }" @click="selectNode" @contextmenu="openContextMenu">
       <span class="badge" @click="toggle">{{ hasChildren ? (open ? '-' : '+') : '·' }}</span>
       <span>{{ roleLabel }}</span>
       <span v-if="nodeLabel" class="muted">[{{ nodeLabel }}]</span>
@@ -70,6 +73,7 @@ const openContextMenu = (event: MouseEvent) => {
         :node="child"
         :depth="depth + 1"
         :selected-id="selectedId"
+        :highlight-id-map="highlightIdMap"
         @select="emit('select', $event)"
         @contextmenu-node="emit('contextmenu-node', $event)"
       />

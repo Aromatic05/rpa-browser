@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import TreeNode from './components/TreeNode.vue';
 import type {
   CaptureEnvelope,
@@ -8,8 +8,12 @@ import type {
   CaptureListItem,
   Content,
   DataPack,
-  EntityLike,
+  EntityIndexLike,
+  EntityRecordLike,
+  GroupEntityLike,
   LocatorLike,
+  NodeEntityRefLike,
+  RegionEntityLike,
   SnapshotApiResponse,
   SnapshotGraphLike,
   TreeNodeLike,
@@ -28,6 +32,10 @@ const captureLoading = ref(false);
 const selectedCaptureId = ref('');
 let capturePollTimer: number | null = null;
 
+const selectedEntityId = ref('');
+const focusEntityTree = ref(true);
+const centerMode = ref<'entities' | 'tree'>('entities');
+
 const contextMenu = ref<{
   visible: boolean;
   x: number;
@@ -43,6 +51,48 @@ const contextMenu = ref<{
 const dataPack = ref<DataPack>({
   snapshot: null,
 });
+
+type GroupAssessment = {
+  id: string;
+  kind: string;
+  containerId: string;
+  keySlot: number;
+  itemCount: number;
+  coverage: number;
+  uniqueness: number;
+  score: number;
+  sampleKeys: string[];
+};
+
+type EntityTableRow = {
+  id: string;
+  type: 'region' | 'group';
+  kind: string;
+  label: string;
+  anchorId: string;
+  itemCount: number;
+  keySlot?: number;
+  score?: number;
+  size: number;
+};
+
+type GroupPreviewRow = {
+  itemId: string;
+  slots: Record<number, string>;
+  summary: string;
+};
+
+type GroupPreview = {
+  group: GroupEntityLike;
+  slots: number[];
+  rows: GroupPreviewRow[];
+};
+
+type FormPreviewRow = {
+  nodeId: string;
+  field: string;
+  value: string;
+};
 
 const normalizeContent = (
   maybe: Record<string, unknown>,
@@ -114,6 +164,122 @@ const buildNodeIndexFromTree = (root: TreeNodeLike): Record<string, TreeNodeLike
   return out;
 };
 
+const createEmptyEntityIndex = (): EntityIndexLike => ({
+  entities: {},
+  byNodeId: {},
+});
+
+const asRegionEntity = (value: Record<string, unknown>, fallbackId: string): RegionEntityLike | null => {
+  const nodeId = typeof value.nodeId === 'string' ? value.nodeId : '';
+  if (!nodeId) return null;
+  const id = typeof value.id === 'string' ? value.id : fallbackId;
+  const kind = typeof value.kind === 'string' ? value.kind : 'panel';
+  return {
+    id,
+    type: 'region',
+    kind,
+    nodeId,
+    name: typeof value.name === 'string' ? value.name : undefined,
+    bbox:
+      value.bbox && typeof value.bbox === 'object'
+        ? (value.bbox as { x: number; y: number; width: number; height: number })
+        : undefined,
+  };
+};
+
+const asGroupEntity = (value: Record<string, unknown>, fallbackId: string): GroupEntityLike | null => {
+  const containerId = typeof value.containerId === 'string' ? value.containerId : '';
+  if (!containerId) return null;
+  const id = typeof value.id === 'string' ? value.id : fallbackId;
+  const kind = typeof value.kind === 'string' ? value.kind : 'list';
+  const itemIds = Array.isArray(value.itemIds)
+    ? value.itemIds.filter((item): item is string => typeof item === 'string')
+    : [];
+  const keySlot = typeof value.keySlot === 'number' ? value.keySlot : 0;
+  return {
+    id,
+    type: 'group',
+    kind,
+    containerId,
+    itemIds,
+    keySlot,
+  };
+};
+
+const asNodeEntityRef = (value: unknown): NodeEntityRefLike | null => {
+  if (!value || typeof value !== 'object') return null;
+  const maybe = value as Record<string, unknown>;
+  const type = maybe.type === 'region' || maybe.type === 'group' ? maybe.type : null;
+  const entityId = typeof maybe.entityId === 'string' ? maybe.entityId : '';
+  const role =
+    maybe.role === 'container' || maybe.role === 'item' || maybe.role === 'descendant'
+      ? maybe.role
+      : null;
+  if (!type || !entityId || !role) return null;
+  return {
+    type,
+    entityId,
+    role,
+    itemId: typeof maybe.itemId === 'string' ? maybe.itemId : undefined,
+    slotIndex: typeof maybe.slotIndex === 'number' ? maybe.slotIndex : undefined,
+  };
+};
+
+const normalizeEntityIndex = (value: unknown): EntityIndexLike => {
+  const normalized = createEmptyEntityIndex();
+  if (!value || typeof value !== 'object') return normalized;
+  const maybe = value as Record<string, unknown>;
+
+  if (maybe.entities && typeof maybe.entities === 'object') {
+    for (const [entityId, rawEntity] of Object.entries(maybe.entities as Record<string, unknown>)) {
+      if (!rawEntity || typeof rawEntity !== 'object') continue;
+      const entityObject = rawEntity as Record<string, unknown>;
+      const type = entityObject.type;
+      if (type === 'group') {
+        const group = asGroupEntity(entityObject, entityId);
+        if (group) normalized.entities[group.id] = group;
+        continue;
+      }
+      const region = asRegionEntity(entityObject, entityId);
+      if (region) normalized.entities[region.id] = region;
+    }
+  } else {
+    for (const [entityId, rawEntity] of Object.entries(maybe)) {
+      if (!rawEntity || typeof rawEntity !== 'object') continue;
+      const region = asRegionEntity(rawEntity as Record<string, unknown>, entityId);
+      if (region) normalized.entities[region.id] = region;
+    }
+  }
+
+  if (maybe.byNodeId && typeof maybe.byNodeId === 'object') {
+    for (const [nodeId, refs] of Object.entries(maybe.byNodeId as Record<string, unknown>)) {
+      if (!Array.isArray(refs)) continue;
+      const normalizedRefs = refs
+        .map((item) => asNodeEntityRef(item))
+        .filter((item): item is NodeEntityRefLike => Boolean(item));
+      if (normalizedRefs.length > 0) {
+        normalized.byNodeId[nodeId] = normalizedRefs;
+      }
+    }
+  }
+
+  for (const entity of Object.values(normalized.entities)) {
+    if (entity.type !== 'region') continue;
+    const refs = normalized.byNodeId[entity.nodeId] || [];
+    const hasContainerRef = refs.some((ref) => ref.type === 'region' && ref.entityId === entity.id && ref.role === 'container');
+    if (!hasContainerRef) {
+      refs.push({
+        type: 'region',
+        entityId: entity.id,
+        role: 'container',
+      });
+      normalized.byNodeId[entity.nodeId] = refs;
+    }
+  }
+
+  return normalized;
+};
+
 const normalizeSnapshot = (value: unknown): SnapshotGraphLike | null => {
   if (!value || typeof value !== 'object') return null;
 
@@ -138,10 +304,7 @@ const normalizeSnapshot = (value: unknown): SnapshotGraphLike | null => {
   return {
     root,
     nodeIndex,
-    entityIndex:
-      maybe.entityIndex && typeof maybe.entityIndex === 'object'
-        ? (maybe.entityIndex as Record<string, EntityLike>)
-        : {},
+    entityIndex: normalizeEntityIndex(maybe.entityIndex),
     locatorIndex:
       maybe.locatorIndex && typeof maybe.locatorIndex === 'object'
         ? (maybe.locatorIndex as Record<string, LocatorLike>)
@@ -162,17 +325,511 @@ const normalizeSnapshot = (value: unknown): SnapshotGraphLike | null => {
   };
 };
 
+const isRegionEntity = (entity: EntityRecordLike): entity is RegionEntityLike => entity.type === 'region';
+const isGroupEntity = (entity: EntityRecordLike): entity is GroupEntityLike => entity.type === 'group';
+
 const activeSnapshot = computed(() => dataPack.value.snapshot);
-const activeRoot = computed(() => dataPack.value.snapshot?.root || null);
-const entityItems = computed(() => Object.values(activeSnapshot.value?.entityIndex || {}));
-const locatorItems = computed(() =>
-  Object.entries(activeSnapshot.value?.locatorIndex || {}).map(([nodeId, locator]) => ({ nodeId, locator })),
+const activeRoot = computed(() => activeSnapshot.value?.root || null);
+const activeEntityIndex = computed(() => activeSnapshot.value?.entityIndex || createEmptyEntityIndex());
+
+const regionItems = computed(() =>
+  Object.values(activeEntityIndex.value.entities)
+    .filter((entity): entity is RegionEntityLike => isRegionEntity(entity))
+    .sort((a, b) => `${a.kind}|${a.name || ''}|${a.id}`.localeCompare(`${b.kind}|${b.name || ''}|${b.id}`)),
+);
+
+const groupItems = computed(() =>
+  Object.values(activeEntityIndex.value.entities)
+    .filter((entity): entity is GroupEntityLike => isGroupEntity(entity))
+    .sort((a, b) => (b.itemIds.length - a.itemIds.length) || `${a.kind}|${a.id}`.localeCompare(`${b.kind}|${b.id}`)),
 );
 
 const resolveNodeContent = (node: TreeNodeLike, snapshot: SnapshotGraphLike): string => {
   if (typeof node.content === 'string') return node.content;
   if (node.content?.ref) return snapshot.contentStore?.[node.content.ref] || '';
   return '';
+};
+
+const normalizeText = (value: string | undefined): string => (value || '').replace(/\s+/g, ' ').trim();
+
+const resolveNodeText = (nodeId: string, snapshot: SnapshotGraphLike): string => {
+  const node = snapshot.nodeIndex?.[nodeId];
+  if (!node) return '';
+  const attrs = snapshot.attrIndex?.[nodeId] || {};
+  const content = resolveNodeContent(node, snapshot);
+  const candidates = [
+    node.name,
+    content,
+    typeof attrs['aria-label'] === 'string' ? attrs['aria-label'] : undefined,
+    typeof attrs.title === 'string' ? attrs.title : undefined,
+    typeof attrs.placeholder === 'string' ? attrs.placeholder : undefined,
+    typeof attrs.value === 'string' ? attrs.value : undefined,
+  ];
+  for (const candidate of candidates) {
+    const text = normalizeText(candidate);
+    if (!text || text.length > 120) continue;
+    return text;
+  }
+  return '';
+};
+
+const firstReadableDescendantText = (nodeId: string, snapshot: SnapshotGraphLike, depthLimit: number): string => {
+  const root = snapshot.nodeIndex?.[nodeId];
+  if (!root) return '';
+  const queue: Array<{ node: TreeNodeLike; depth: number }> = [{ node: root, depth: 0 }];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) break;
+    const own = resolveNodeText(current.node.id, snapshot);
+    if (own) return own;
+    if (current.depth >= depthLimit) continue;
+    for (const child of current.node.children) {
+      queue.push({ node: child, depth: current.depth + 1 });
+    }
+  }
+  return '';
+};
+
+const collectReadableTexts = (
+  nodeId: string,
+  snapshot: SnapshotGraphLike,
+  limit: number,
+  depthLimit: number,
+): string[] => {
+  const root = snapshot.nodeIndex?.[nodeId];
+  if (!root) return [];
+  const out: string[] = [];
+  const dedupe = new Set<string>();
+  const queue: Array<{ node: TreeNodeLike; depth: number }> = [{ node: root, depth: 0 }];
+  while (queue.length > 0 && out.length < limit) {
+    const current = queue.shift();
+    if (!current) break;
+    const text = resolveNodeText(current.node.id, snapshot);
+    if (text) {
+      const key = text.toLowerCase();
+      if (!dedupe.has(key)) {
+        dedupe.add(key);
+        out.push(text);
+        if (out.length >= limit) break;
+      }
+    }
+    if (current.depth >= depthLimit) continue;
+    for (const child of current.node.children) {
+      queue.push({ node: child, depth: current.depth + 1 });
+    }
+  }
+  return out;
+};
+
+const collectSubtreeIds = (snapshot: SnapshotGraphLike, nodeId: string, out: Set<string>) => {
+  const root = snapshot.nodeIndex?.[nodeId];
+  if (!root) return;
+  walk(root, (node) => {
+    out.add(node.id);
+  });
+};
+
+const buildGroupSlotMap = (entityIndex: EntityIndexLike): Map<string, Map<string, Map<number, string[]>>> => {
+  const map = new Map<string, Map<string, Map<number, string[]>>>();
+  for (const [nodeId, refs] of Object.entries(entityIndex.byNodeId || {})) {
+    if (!refs || refs.length === 0) continue;
+    for (const ref of refs) {
+      if (ref.type !== 'group') continue;
+      if (ref.slotIndex === undefined || !ref.itemId) continue;
+
+      const byItem = map.get(ref.entityId) || new Map<string, Map<number, string[]>>();
+      const bySlot = byItem.get(ref.itemId) || new Map<number, string[]>();
+      const nodeIds = bySlot.get(ref.slotIndex) || [];
+      nodeIds.push(nodeId);
+      bySlot.set(ref.slotIndex, nodeIds);
+      byItem.set(ref.itemId, bySlot);
+      map.set(ref.entityId, byItem);
+    }
+  }
+  return map;
+};
+
+const resolveGroupKeyText = (
+  snapshot: SnapshotGraphLike,
+  slotMap: Map<string, Map<string, Map<number, string[]>>>,
+  group: GroupEntityLike,
+  itemId: string,
+): string => {
+  const candidateNodeIds = slotMap.get(group.id)?.get(itemId)?.get(group.keySlot) || [];
+  for (const nodeId of candidateNodeIds) {
+    const text = resolveNodeText(nodeId, snapshot);
+    if (text) return text;
+  }
+  return firstReadableDescendantText(itemId, snapshot, 2);
+};
+
+const groupAssessments = computed<GroupAssessment[]>(() => {
+  const snapshot = activeSnapshot.value;
+  if (!snapshot) return [];
+  const slotMap = buildGroupSlotMap(activeEntityIndex.value);
+
+  return groupItems.value.map((group) => {
+    const keys = group.itemIds.map((itemId) => resolveGroupKeyText(snapshot, slotMap, group, itemId));
+    const nonEmpty = keys.filter((text) => text.length > 0);
+    const coverage = group.itemIds.length > 0 ? nonEmpty.length / group.itemIds.length : 0;
+    const unique = new Set(nonEmpty.map((text) => text.toLowerCase()));
+    const uniqueness = nonEmpty.length > 0 ? unique.size / nonEmpty.length : 0;
+    const score = 0.6 * uniqueness + 0.4 * coverage;
+
+    return {
+      id: group.id,
+      kind: group.kind,
+      containerId: group.containerId,
+      keySlot: group.keySlot,
+      itemCount: group.itemIds.length,
+      coverage,
+      uniqueness,
+      score,
+      sampleKeys: nonEmpty.slice(0, 6),
+    };
+  });
+});
+
+const groupAssessmentMap = computed(() => {
+  const map = new Map<string, GroupAssessment>();
+  for (const item of groupAssessments.value) {
+    map.set(item.id, item);
+  }
+  return map;
+});
+
+const regionNodeSizeMap = computed(() => {
+  const root = activeRoot.value;
+  const out: Record<string, number> = {};
+  if (!root) return out;
+
+  const count = (node: TreeNodeLike): number => {
+    let size = 1;
+    for (const child of node.children) {
+      size += count(child);
+    }
+    out[node.id] = size;
+    return size;
+  };
+
+  count(root);
+  return out;
+});
+
+const entityRows = computed<EntityTableRow[]>(() => {
+  const snapshot = activeSnapshot.value;
+  if (!snapshot) return [];
+
+  const rows: EntityTableRow[] = [];
+
+  for (const region of regionItems.value) {
+    rows.push({
+      id: region.id,
+      type: 'region',
+      kind: region.kind,
+      label: region.name || resolveNodeText(region.nodeId, snapshot) || '-',
+      anchorId: region.nodeId,
+      itemCount: 0,
+      size: regionNodeSizeMap.value[region.nodeId] || 1,
+    });
+  }
+
+  for (const group of groupItems.value) {
+    const assessment = groupAssessmentMap.value.get(group.id);
+    rows.push({
+      id: group.id,
+      type: 'group',
+      kind: group.kind,
+      label: assessment?.sampleKeys[0] || resolveNodeText(group.containerId, snapshot) || '-',
+      anchorId: group.containerId,
+      itemCount: group.itemIds.length,
+      keySlot: group.keySlot,
+      score: assessment?.score || 0,
+      size: group.itemIds.length,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'group' ? -1 : 1;
+    if (a.type === 'group' && b.type === 'group') {
+      return (b.itemCount - a.itemCount) || `${a.kind}|${a.id}`.localeCompare(`${b.kind}|${b.id}`);
+    }
+    return (b.size - a.size) || `${a.kind}|${a.id}`.localeCompare(`${b.kind}|${b.id}`);
+  });
+
+  return rows;
+});
+
+const majorEntityRows = computed<EntityTableRow[]>(() => {
+  const rows = entityRows.value.filter((row) => {
+    if (row.type === 'group') return row.itemCount >= 2;
+    if (row.size >= 10) return true;
+    return ['form', 'table', 'dialog', 'list', 'toolbar', 'panel'].includes(row.kind);
+  });
+  return rows.length > 0 ? rows : entityRows.value;
+});
+
+watch(majorEntityRows, (rows) => {
+  if (rows.length === 0) {
+    selectedEntityId.value = '';
+    return;
+  }
+  if (!rows.some((row) => row.id === selectedEntityId.value)) {
+    selectedEntityId.value = rows[0].id;
+  }
+}, { immediate: true });
+
+const selectedEntity = computed<EntityRecordLike | null>(() => {
+  const id = selectedEntityId.value;
+  if (!id) return null;
+  return activeEntityIndex.value.entities[id] || null;
+});
+
+const selectedEntityRow = computed<EntityTableRow | null>(() => {
+  const id = selectedEntityId.value;
+  if (!id) return null;
+  return majorEntityRows.value.find((row) => row.id === id) || null;
+});
+
+const highlightIdMap = computed<Record<string, boolean>>(() => {
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  if (!snapshot || !entity) return {};
+
+  const ids = new Set<string>();
+
+  for (const [nodeId, refs] of Object.entries(activeEntityIndex.value.byNodeId || {})) {
+    if (!refs || refs.length === 0) continue;
+    if (refs.some((ref) => ref.entityId === entity.id && ref.type === entity.type)) {
+      ids.add(nodeId);
+    }
+  }
+
+  if (entity.type === 'region') {
+    collectSubtreeIds(snapshot, entity.nodeId, ids);
+  } else {
+    collectSubtreeIds(snapshot, entity.containerId, ids);
+    for (const itemId of entity.itemIds) {
+      collectSubtreeIds(snapshot, itemId, ids);
+    }
+  }
+
+  const map: Record<string, boolean> = {};
+  for (const id of ids) {
+    map[id] = true;
+  }
+  return map;
+});
+
+const activeTreeRoot = computed<TreeNodeLike | null>(() => {
+  const root = activeRoot.value;
+  if (!root) return null;
+  if (!focusEntityTree.value) return root;
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  if (!snapshot || !entity) return root;
+  const anchorId = entity.type === 'group' ? entity.containerId : entity.nodeId;
+  return snapshot.nodeIndex?.[anchorId] || root;
+});
+
+const groupSlotMap = computed(() => buildGroupSlotMap(activeEntityIndex.value));
+
+const selectedGroupPreview = computed<GroupPreview | null>(() => {
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  if (!snapshot || !entity || entity.type !== 'group') return null;
+
+  const byItem = groupSlotMap.value.get(entity.id) || new Map<string, Map<number, string[]>>();
+  const slotSet = new Set<number>();
+  const rows: GroupPreviewRow[] = [];
+
+  for (const itemId of entity.itemIds.slice(0, 50)) {
+    const bySlot = byItem.get(itemId) || new Map<number, string[]>();
+    const slots: Record<number, string> = {};
+
+    for (const [slotIndex, nodeIds] of bySlot.entries()) {
+      slotSet.add(slotIndex);
+      let text = '';
+      for (const nodeId of nodeIds) {
+        text = resolveNodeText(nodeId, snapshot);
+        if (text) break;
+      }
+      slots[slotIndex] = text;
+    }
+
+    if (Object.keys(slots).length === 0) {
+      slotSet.add(entity.keySlot);
+      slots[entity.keySlot] = '';
+    }
+
+    rows.push({
+      itemId,
+      slots,
+      summary: firstReadableDescendantText(itemId, snapshot, 2),
+    });
+  }
+
+  const slots = Array.from(slotSet).sort((a, b) => a - b);
+  for (const row of rows) {
+    for (const slot of slots) {
+      const existing = row.slots[slot];
+      if (existing && existing.trim()) continue;
+      if (slot === entity.keySlot) {
+        row.slots[slot] = row.summary;
+      } else {
+        row.slots[slot] = row.slots[slot] || '';
+      }
+    }
+  }
+
+  return {
+    group: entity,
+    slots,
+    rows,
+  };
+});
+
+const selectedFormPreview = computed<FormPreviewRow[]>(() => {
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  if (!snapshot || !entity || entity.type !== 'region') return [];
+  if (!['form', 'dialog', 'panel'].includes(entity.kind)) return [];
+
+  const container = snapshot.nodeIndex?.[entity.nodeId];
+  if (!container) return [];
+
+  const rows: FormPreviewRow[] = [];
+  for (const child of container.children.slice(0, 60)) {
+    const texts = collectReadableTexts(child.id, snapshot, 3, 2);
+    if (texts.length === 0) continue;
+    rows.push({
+      nodeId: child.id,
+      field: texts[0],
+      value: texts[1] || '',
+    });
+  }
+
+  return rows;
+});
+
+const selectedGroupAssessment = computed(() => {
+  const entity = selectedEntity.value;
+  if (!entity || entity.type !== 'group') return null;
+  return groupAssessmentMap.value.get(entity.id) || null;
+});
+
+const isActionLikeText = (value: string): boolean => {
+  const lower = value.toLowerCase();
+  return [
+    'edit',
+    'delete',
+    'remove',
+    'more',
+    'view',
+    'detail',
+    'submit',
+    'save',
+    'open',
+    'reset',
+    'add',
+    'new',
+    '修改',
+    '删除',
+    '更多',
+    '详情',
+    '查看',
+    '编辑',
+    '提交',
+    '重置',
+    '新增',
+  ].some((token) => lower.includes(token));
+};
+
+const isLikelyFormLabel = (value: string): boolean => {
+  const text = value.trim();
+  if (!text) return false;
+  if (text.length > 40) return false;
+  if (isActionLikeText(text)) return false;
+  if (text.includes(':') || text.includes('：')) return true;
+  if (!/[A-Za-z\u4E00-\u9FFF]/.test(text)) return false;
+  return true;
+};
+
+const selectedGroupRenderMode = computed<'table' | 'form'>(() => {
+  const entity = selectedEntity.value;
+  const preview = selectedGroupPreview.value;
+  if (!entity || entity.type !== 'group' || !preview) return 'table';
+  if (entity.kind === 'table') return 'table';
+  if (entity.kind === 'kv') return 'form';
+
+  const slots = preview.slots;
+  if (slots.length < 2) return 'table';
+  if (slots.length > 3) return 'table';
+
+  let sampled = 0;
+  let labelHit = 0;
+  let valueHit = 0;
+  let actionHit = 0;
+  for (const row of preview.rows.slice(0, 20)) {
+    const labelText = (row.slots[entity.keySlot] || '').trim();
+    const restTexts = slots
+      .filter((slot) => slot !== entity.keySlot)
+      .map((slot) => (row.slots[slot] || '').trim())
+      .filter((text) => Boolean(text));
+    if (!labelText && restTexts.length === 0) continue;
+    sampled += 1;
+    if (labelText && isLikelyFormLabel(labelText)) labelHit += 1;
+    if (restTexts.length > 0) valueHit += 1;
+    if (restTexts.some((text) => isActionLikeText(text))) actionHit += 1;
+  }
+
+  if (sampled === 0) return 'table';
+  const labelRate = labelHit / sampled;
+  const valueRate = valueHit / sampled;
+  const actionRate = actionHit / sampled;
+  if (labelRate >= 0.45 && valueRate >= 0.45) return 'form';
+  if (actionRate >= 0.35 && valueRate >= 0.5) return 'form';
+  return 'table';
+});
+
+const resolveKvValue = (row: GroupPreviewRow, keySlot: number): string => {
+  const keys = Object.keys(row.slots)
+    .map((slot) => Number(slot))
+    .filter((slot) => !Number.isNaN(slot))
+    .sort((a, b) => a - b);
+  for (const slot of keys) {
+    if (slot === keySlot) continue;
+    const text = row.slots[slot] || '';
+    if (text.trim()) return text;
+  }
+  return row.summary;
+};
+
+const resolveGroupFormValue = (row: GroupPreviewRow, keySlot: number): string => {
+  const keys = Object.keys(row.slots)
+    .map((slot) => Number(slot))
+    .filter((slot) => !Number.isNaN(slot))
+    .sort((a, b) => a - b);
+  const values = keys
+    .filter((slot) => slot !== keySlot)
+    .map((slot) => row.slots[slot] || '')
+    .map((text) => text.trim())
+    .filter((text) => Boolean(text) && !isActionLikeText(text));
+  if (values.length > 0) return values.join(' | ');
+  return resolveKvValue(row, keySlot);
+};
+
+const resolveGroupFormActions = (row: GroupPreviewRow, keySlot: number): string => {
+  const keys = Object.keys(row.slots)
+    .map((slot) => Number(slot))
+    .filter((slot) => !Number.isNaN(slot))
+    .sort((a, b) => a - b);
+  const actions = keys
+    .filter((slot) => slot !== keySlot)
+    .map((slot) => row.slots[slot] || '')
+    .map((text) => text.trim())
+    .filter((text) => Boolean(text) && isActionLikeText(text));
+  return actions.join(' | ');
 };
 
 const contentRefOf = (node: TreeNodeLike | null): string => {
@@ -201,41 +858,24 @@ const selectedBbox = computed(() => {
   return snapshot.bboxIndex?.[node.id] || {};
 });
 
-const selectedLocator = computed(() => {
-  const node = selectedNode.value;
-  const snapshot = activeSnapshot.value;
-  if (!node || !snapshot) return {};
-  return snapshot.locatorIndex?.[node.id] || {};
-});
-
-const selectedEntity = computed(() => {
-  const node = selectedNode.value;
-  const snapshot = activeSnapshot.value;
-  if (!node || !snapshot) return null;
-  return (
-    Object.values(snapshot.entityIndex || {}).find((entity) => entity.nodeId === node.id) ||
-    null
-  );
-});
-
 const summaryRows = computed(() => {
   const snapshot = activeSnapshot.value;
-  if (!snapshot) return [];
+  if (!snapshot) return [] as Array<[string, number]>;
   return [
     ['nodes', Object.keys(snapshot.nodeIndex || {}).length],
-    ['entities', Object.keys(snapshot.entityIndex || {}).length],
-    ['locators', Object.keys(snapshot.locatorIndex || {}).length],
+    ['regions', regionItems.value.length],
+    ['groups', groupItems.value.length],
+    ['majorEntities', majorEntityRows.value.length],
     ['bbox', Object.keys(snapshot.bboxIndex || {}).length],
     ['attrs', Object.keys(snapshot.attrIndex || {}).length],
     ['content', Object.keys(snapshot.contentStore || {}).length],
-  ];
+  ] as Array<[string, number]>;
 });
 
 const selectedTarget = computed(() => JSON.stringify(selectedNode.value?.target || {}, null, 2));
 const selectedAttrsJson = computed(() => JSON.stringify(selectedAttrs.value, null, 2));
 const selectedBboxJson = computed(() => JSON.stringify(selectedBbox.value, null, 2));
-const selectedLocatorJson = computed(() => JSON.stringify(selectedLocator.value, null, 2));
-const selectedEntityJson = computed(() => JSON.stringify(selectedEntity.value || {}, null, 2));
+const toPercent = (value: number): string => `${(value * 100).toFixed(1)}%`;
 
 const findNodeById = (root: TreeNodeLike, id: string): TreeNodeLike | null => {
   if (root.id === id) return root;
@@ -244,6 +884,21 @@ const findNodeById = (root: TreeNodeLike, id: string): TreeNodeLike | null => {
     if (matched) return matched;
   }
   return null;
+};
+
+const selectNodeById = (nodeId: string) => {
+  const snapshot = activeSnapshot.value;
+  if (!snapshot) return;
+  const node = snapshot.nodeIndex?.[nodeId] || (activeRoot.value ? findNodeById(activeRoot.value, nodeId) : null);
+  if (!node) return;
+  selectedNode.value = node;
+};
+
+const selectEntityById = (entityId: string) => {
+  if (!entityId) return;
+  const entity = activeEntityIndex.value.entities[entityId];
+  if (!entity) return;
+  selectedEntityId.value = entityId;
 };
 
 const applySnapshotPayload = (payload: SnapshotApiResponse, fallbackUrl: string) => {
@@ -261,6 +916,7 @@ const applySnapshotPayload = (payload: SnapshotApiResponse, fallbackUrl: string)
   };
   resolvedUrl.value = payload.data.url || fallbackUrl;
   selectedNode.value = null;
+  selectedEntityId.value = '';
 };
 
 const fetchSnapshot = async () => {
@@ -375,20 +1031,6 @@ const loadLatestCapture = async () => {
 };
 
 const onSelect = (node: TreeNodeLike) => {
-  selectedNode.value = node;
-};
-
-const selectEntity = (entity: EntityLike) => {
-  if (!activeRoot.value) return;
-  const node = findNodeById(activeRoot.value, entity.nodeId);
-  if (!node) return;
-  selectedNode.value = node;
-};
-
-const selectLocatorNode = (nodeId: string) => {
-  if (!activeRoot.value) return;
-  const node = findNodeById(activeRoot.value, nodeId);
-  if (!node) return;
   selectedNode.value = node;
 };
 
@@ -568,21 +1210,127 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <div class="panel">
+  <div class="panel middle-panel">
     <div class="section">
-      <h2>Tree</h2>
+      <h2>Center View</h2>
+      <div class="mode-switch">
+        <button class="secondary mode-btn" :class="{ active: centerMode === 'entities' }" @click="centerMode = 'entities'">
+          Entities
+        </button>
+        <button class="secondary mode-btn" :class="{ active: centerMode === 'tree' }" @click="centerMode = 'tree'">
+          Tree
+        </button>
+      </div>
     </div>
 
-    <div class="tree-wrap" @contextmenu="onTreeContextMenu">
-      <TreeNode
-        v-if="activeRoot"
-        :node="activeRoot"
-        :selected-id="selectedNode?.id || ''"
-        @select="onSelect"
-        @contextmenu-node="onNodeContextMenu"
-      />
-      <div v-else class="muted">no tree data</div>
-    </div>
+    <template v-if="centerMode === 'entities'">
+      <div class="section">
+        <h2>Entity View</h2>
+      </div>
+
+      <div class="section">
+        <h2>Structure Preview</h2>
+        <div v-if="!selectedEntity" class="muted">click one entity in list below</div>
+
+        <template v-else-if="selectedEntity.type === 'group' && selectedGroupPreview">
+          <div class="kv"><span class="k">kind</span><span>{{ selectedEntity.kind }}</span></div>
+          <div class="kv"><span class="k">keySlot</span><span>slot {{ selectedEntity.keySlot }}</span></div>
+          <div class="kv"><span class="k">items</span><span>{{ selectedEntity.itemIds.length }}</span></div>
+
+          <table v-if="selectedGroupRenderMode === 'table'" class="preview-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th v-for="slot in selectedGroupPreview.slots" :key="slot" :class="{ key: slot === selectedEntity.keySlot }">
+                  slot {{ slot }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in selectedGroupPreview.rows" :key="row.itemId">
+                <td class="mono">{{ row.itemId }}</td>
+                <td
+                  v-for="slot in selectedGroupPreview.slots"
+                  :key="`${row.itemId}_${slot}`"
+                  :class="{ key: slot === selectedEntity.keySlot }"
+                >
+                  {{ row.slots[slot] || '-' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div v-else class="form-preview">
+            <div v-for="row in selectedGroupPreview.rows" :key="row.itemId" class="form-row">
+              <div class="form-field">{{ row.slots[selectedEntity.keySlot] || '(key empty)' }}</div>
+              <div class="form-value">{{ resolveGroupFormValue(row, selectedEntity.keySlot) || '-' }}</div>
+              <div v-if="resolveGroupFormActions(row, selectedEntity.keySlot)" class="form-actions">
+                {{ resolveGroupFormActions(row, selectedEntity.keySlot) }}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="selectedEntity.type === 'region'">
+          <div class="kv"><span class="k">kind</span><span>{{ selectedEntity.kind }}</span></div>
+          <div class="kv"><span class="k">node</span><span>{{ selectedEntity.nodeId }}</span></div>
+          <div v-if="selectedFormPreview.length > 0" class="form-preview">
+            <div v-for="row in selectedFormPreview" :key="row.nodeId" class="form-row">
+              <div class="form-field">{{ row.field }}</div>
+              <div class="form-value">{{ row.value || '-' }}</div>
+            </div>
+          </div>
+          <div v-else class="muted">当前 region 无法稳定渲染为表单，回退为 Tree 高亮查看</div>
+        </template>
+      </div>
+
+      <div class="section">
+        <h2>Entity List</h2>
+        <div v-if="majorEntityRows.length === 0" class="muted">no entities</div>
+        <div v-else class="entity-scroll-list">
+          <button
+            v-for="row in majorEntityRows"
+            :key="row.id"
+            class="entity-item"
+            :class="{ selected: row.id === selectedEntityId }"
+            @click="selectEntityById(row.id)"
+          >
+            <div class="entity-top">
+              <span class="badge">{{ row.type }}/{{ row.kind }}</span>
+              <span class="entity-id">{{ row.id }}</span>
+            </div>
+            <div class="entity-label">{{ row.label }}</div>
+            <div class="entity-metrics">
+              count={{ row.type === 'group' ? row.itemCount : row.size }}
+              <span v-if="row.type === 'group'"> keySlot={{ row.keySlot ?? 0 }} score={{ toPercent(row.score || 0) }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
+      <div class="section">
+        <h2>Tree</h2>
+        <div v-if="selectedEntity" class="muted">entity={{ selectedEntity.id }} ({{ selectedEntity.type }}/{{ selectedEntity.kind }})</div>
+        <label class="toggle-line">
+          <input v-model="focusEntityTree" type="checkbox" />
+          <span>树仅显示当前实体子树</span>
+        </label>
+      </div>
+
+      <div class="tree-wrap" @contextmenu="onTreeContextMenu">
+        <TreeNode
+          v-if="activeTreeRoot"
+          :node="activeTreeRoot"
+          :selected-id="selectedNode?.id || ''"
+          :highlight-id-map="highlightIdMap"
+          @select="onSelect"
+          @contextmenu-node="onNodeContextMenu"
+        />
+        <div v-else class="muted">no tree data</div>
+      </div>
+    </template>
   </div>
 
   <div class="panel">
@@ -600,6 +1348,23 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <div class="section">
+      <h2>Entity Detail</h2>
+      <div v-if="!selectedEntity" class="muted">click one entity in Entity View</div>
+      <template v-else>
+        <div class="kv"><span class="k">id</span><span>{{ selectedEntity.id }}</span></div>
+        <div class="kv"><span class="k">type</span><span>{{ selectedEntity.type }}</span></div>
+        <div class="kv"><span class="k">kind</span><span>{{ selectedEntity.kind }}</span></div>
+        <div v-if="selectedEntity.type === 'group'" class="kv"><span class="k">keySlot</span><span>{{ selectedEntity.keySlot }}</span></div>
+        <div v-if="selectedEntity.type === 'group'" class="kv"><span class="k">items</span><span>{{ selectedEntity.itemIds.length }}</span></div>
+        <div v-if="selectedEntity.type === 'group' && selectedGroupAssessment" class="kv"><span class="k">score</span><span>{{ toPercent(selectedGroupAssessment.score) }}</span></div>
+        <div v-if="selectedEntity.type === 'group' && selectedGroupAssessment && selectedGroupAssessment.sampleKeys.length > 0" class="kv">
+          <span class="k">sampleKeys</span><span>{{ selectedGroupAssessment.sampleKeys.join(' | ') }}</span>
+        </div>
+        <div v-if="selectedEntityRow" class="kv"><span class="k">label</span><span>{{ selectedEntityRow.label }}</span></div>
+      </template>
+    </div>
+
     <div v-if="selectedNode" class="section">
       <h2>Node Detail</h2>
       <div class="kv"><span class="k">id</span><span>{{ selectedNode.id }}</span></div>
@@ -614,54 +1379,10 @@ onBeforeUnmount(() => {
       <pre>{{ selectedBboxJson }}</pre>
       <div class="kv"><span class="k">attrIndex</span></div>
       <pre>{{ selectedAttrsJson }}</pre>
-      <div class="kv"><span class="k">locatorIndex</span></div>
-      <pre>{{ selectedLocatorJson }}</pre>
-      <div class="kv"><span class="k">entity</span></div>
-      <pre>{{ selectedEntityJson }}</pre>
     </div>
     <div v-else class="section">
       <h2>Node Detail</h2>
       <div class="muted">click one node in tree</div>
-    </div>
-
-    <div class="section">
-      <h2>Entity Index</h2>
-      <div v-if="entityItems.length === 0" class="muted">no entity index</div>
-      <div v-else class="entity-list">
-        <button
-          v-for="entity in entityItems"
-          :key="entity.id"
-          class="entity-item"
-          @click="selectEntity(entity)"
-        >
-          <div class="entity-top">
-            <span class="badge">{{ entity.kind }}</span>
-            <span class="entity-id">{{ entity.id }}</span>
-          </div>
-          <div class="entity-label">{{ entity.name || '(unnamed)' }}</div>
-          <div class="entity-metrics">node={{ entity.nodeId }}</div>
-        </button>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Locator Index</h2>
-      <div v-if="locatorItems.length === 0" class="muted">no locator index</div>
-      <div v-else class="entity-list">
-        <button
-          v-for="item in locatorItems.slice(0, 120)"
-          :key="item.nodeId"
-          class="entity-item"
-          @click="selectLocatorNode(item.nodeId)"
-        >
-          <div class="entity-top">
-            <span class="badge">{{ item.locator.direct?.kind || 'origin' }}</span>
-            <span class="entity-id">{{ item.nodeId }}</span>
-          </div>
-          <div class="entity-label">{{ item.locator.direct?.query || item.locator.origin.primaryDomId }}</div>
-          <div class="entity-metrics">scope={{ item.locator.scope?.id || '-' }}</div>
-        </button>
-      </div>
     </div>
   </div>
 

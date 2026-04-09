@@ -31,6 +31,9 @@ export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
     const dedup = new Set<string>();
 
     walk(root, (parent) => {
+        if (parent.children.length < 2) return;
+        if (isTooNoisyGroupContainer(parent)) return;
+
         const buckets = detectSiblingBuckets(parent);
         if (buckets.length === 0) return;
 
@@ -46,6 +49,8 @@ export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
 
             const kind = classifyGroupKind(shrunk.container, shrunk.items, slotMap, parentById);
             const keySlot = kind === 'kv' ? 0 : selectKeySlot(kind, shrunk.items, slotMap);
+            if (!passesGroupGate(kind, shrunk.container, shrunk.items, slotMap, keySlot, parentById)) continue;
+
             const slotByItemId: Record<string, string[]> = {};
             for (const [itemId, slots] of slotMap) {
                 slotByItemId[itemId] = slots.map((slot) => slot.id);
@@ -61,7 +66,135 @@ export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
         }
     });
 
-    return groups;
+    return pruneGroups(groups, parentById);
+};
+
+const passesGroupGate = (
+    kind: GroupKind,
+    container: UnifiedNode,
+    items: UnifiedNode[],
+    slotMap: Map<string, UnifiedNode[]>,
+    keySlot: number,
+    parentById: Map<string, UnifiedNode | null>,
+): boolean => {
+    const itemCount = items.length;
+    if (itemCount < 2) return false;
+
+    const slotCount = estimateSlotCount(items, slotMap);
+    const hasTable = hasTableSemantic(container, parentById);
+    const hasList = hasListSemantic(container);
+
+    if (kind === 'table') {
+        if (!hasTable && itemCount < 4) return false;
+        if (hasTable && itemCount < 3) return false;
+        if (slotCount < 2) return false;
+        const stableRate = calcStableMultiSlotRate(items, slotMap, slotCount);
+        if (!hasTable && stableRate < 0.55) return false;
+        return passesKeyQuality(kind, items, slotMap, keySlot);
+    }
+
+    if (kind === 'kv') {
+        if (itemCount < 3) return false;
+        if (slotCount !== 2) return false;
+        if (!looksLikeKv(items, slotMap)) return false;
+        return passesKeyQuality(kind, items, slotMap, 0);
+    }
+
+    if (hasList) {
+        if (itemCount < 3) return false;
+    } else {
+        if (itemCount < 5) return false;
+    }
+    if (slotCount <= 1 && itemCount < 6) return false;
+    return passesKeyQuality(kind, items, slotMap, keySlot);
+};
+
+const passesKeyQuality = (
+    kind: GroupKind,
+    items: UnifiedNode[],
+    slotMap: Map<string, UnifiedNode[]>,
+    keySlot: number,
+): boolean => {
+    const keyTexts: string[] = [];
+    for (const item of items) {
+        const slot = (slotMap.get(item.id) || [])[keySlot];
+        const text = slot ? readSlotText(slot) : undefined;
+        if (text) {
+            keyTexts.push(text);
+            continue;
+        }
+        const fallback = firstReadableText(item, 1);
+        if (fallback) keyTexts.push(fallback);
+    }
+
+    const nonEmpty = keyTexts.filter((text) => text.trim().length > 0);
+    const coverage = items.length > 0 ? nonEmpty.length / items.length : 0;
+    const uniqueness = uniqueRatio(nonEmpty);
+
+    if (kind === 'table') {
+        return coverage >= 0.45 && uniqueness >= 0.35;
+    }
+    if (kind === 'kv') {
+        return coverage >= 0.5;
+    }
+    return coverage >= 0.55 && uniqueness >= 0.45;
+};
+
+const pruneGroups = (groups: GroupDetection[], parentById: Map<string, UnifiedNode | null>): GroupDetection[] => {
+    const bestByContainer = new Map<string, GroupDetection>();
+    for (const group of groups) {
+        const current = bestByContainer.get(group.containerId);
+        if (!current || groupScore(group) > groupScore(current)) {
+            bestByContainer.set(group.containerId, group);
+        }
+    }
+
+    const sorted = [...bestByContainer.values()].sort((a, b) => groupScore(b) - groupScore(a));
+    const kept: GroupDetection[] = [];
+    for (const candidate of sorted) {
+        let blocked = false;
+        for (const existing of kept) {
+            if (isAncestorNode(existing.containerId, candidate.containerId, parentById)) {
+                if (overlapRatio(candidate.itemIds, existing.itemIds) >= 0.75) {
+                    blocked = true;
+                    break;
+                }
+            }
+        }
+        if (!blocked) {
+            kept.push(candidate);
+        }
+    }
+
+    return kept;
+};
+
+const groupScore = (group: GroupDetection): number => {
+    const kindWeight = group.kind === 'table' ? 6 : group.kind === 'kv' ? 4 : 2;
+    return group.itemIds.length * 3 + kindWeight;
+};
+
+const overlapRatio = (left: string[], right: string[]): number => {
+    if (left.length === 0 || right.length === 0) return 0;
+    const rightSet = new Set(right);
+    let intersect = 0;
+    for (const id of left) {
+        if (rightSet.has(id)) intersect += 1;
+    }
+    return intersect / Math.min(left.length, right.length);
+};
+
+const isAncestorNode = (
+    ancestorId: string,
+    nodeId: string,
+    parentById: Map<string, UnifiedNode | null>,
+): boolean => {
+    let cursor = parentById.get(nodeId) || null;
+    while (cursor) {
+        if (cursor.id === ancestorId) return true;
+        cursor = parentById.get(cursor.id) || null;
+    }
+    return false;
 };
 
 const detectSiblingBuckets = (parent: UnifiedNode): SignatureBucket[] => {
@@ -534,6 +667,15 @@ const hasTableSemantic = (node: UnifiedNode, parentById: Map<string, UnifiedNode
     return false;
 };
 
+const hasListSemantic = (node: UnifiedNode): boolean => {
+    const role = normalizeLower(node.role);
+    const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    const cls = normalizeLower(getNodeAttr(node, 'class'));
+    if (LIST_ROLES.has(role) || LIST_TAGS.has(tag)) return true;
+    if (cls.includes('list') || cls.includes('menu')) return true;
+    return false;
+};
+
 const isRowLikeNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
@@ -596,6 +738,13 @@ const isWrapperItem = (node: UnifiedNode): boolean => {
     if (normalizeText(node.name || getNodeContent(node))) return false;
     if (hasInteractiveSignal(node, 0)) return false;
     return WRAPPER_ROLES.has(normalizeLower(node.role));
+};
+
+const isTooNoisyGroupContainer = (node: UnifiedNode): boolean => {
+    const role = normalizeLower(node.role);
+    if (role === 'none' || role === 'presentation') return true;
+    if (node.children.length < 2) return true;
+    return false;
 };
 
 const isGroupCandidateChild = (node: UnifiedNode): boolean => {
@@ -670,6 +819,8 @@ const NOISE_ROLES = new Set(['none', 'presentation', 'separator']);
 const NOISE_TAGS = new Set(['script', 'style', 'path']);
 const TABLE_ROLES = new Set(['table', 'grid', 'treegrid', 'rowgroup']);
 const TABLE_TAGS = new Set(['table', 'tbody', 'thead', 'tr']);
+const LIST_ROLES = new Set(['list', 'listbox', 'menu', 'tablist']);
+const LIST_TAGS = new Set(['ul', 'ol', 'menu']);
 const ACTION_ROLES = new Set(['button', 'link', 'menuitem', 'tab']);
 const ACTION_TAGS = new Set(['button', 'a']);
 const INTERACTIVE_ROLES = new Set([

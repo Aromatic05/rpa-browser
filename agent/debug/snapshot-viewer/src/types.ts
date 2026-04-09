@@ -14,8 +14,9 @@ export type TreeNodeLike = {
   children: TreeNodeLike[];
 };
 
-export type EntityLike = {
+export type RegionEntityLike = {
   id: string;
+  type: 'region';
   kind: string;
   nodeId: string;
   name?: string;
@@ -25,7 +26,30 @@ export type EntityLike = {
     width: number;
     height: number;
   };
-  childNodeIds?: string[];
+};
+
+export type GroupEntityLike = {
+  id: string;
+  type: 'group';
+  kind: string;
+  containerId: string;
+  itemIds: string[];
+  keySlot: number;
+};
+
+export type EntityRecordLike = RegionEntityLike | GroupEntityLike;
+
+export type NodeEntityRefLike = {
+  type: 'region' | 'group';
+  entityId: string;
+  role: 'container' | 'item' | 'descendant';
+  itemId?: string;
+  slotIndex?: number;
+};
+
+export type EntityIndexLike = {
+  entities: Record<string, EntityRecordLike>;
+  byNodeId: Record<string, NodeEntityRefLike[] | undefined>;
 };
 
 export type LocatorLike = {
@@ -55,7 +79,7 @@ export type LocatorLike = {
 export type SnapshotGraphLike = {
   root: TreeNodeLike;
   nodeIndex?: Record<string, TreeNodeLike>;
-  entityIndex?: Record<string, EntityLike>;
+  entityIndex?: EntityIndexLike;
   locatorIndex?: Record<string, LocatorLike>;
   bboxIndex?: Record<string, { x: number; y: number; width: number; height: number }>;
   attrIndex?: Record<string, Record<string, unknown>>;
