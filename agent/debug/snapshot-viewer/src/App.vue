@@ -1260,18 +1260,40 @@ const collectMappedDomIds = (
   snapshot: SnapshotGraphLike,
   semanticNodeIds: Set<string>,
   rawIndex: RawDomIndex,
+  parentByNodeId: Record<string, string>,
 ): Set<string> => {
   const out = new Set<string>();
+  const readBackendDomIdFromAttr = (nodeId: string): string => {
+    const attrs = snapshot.attrIndex?.[nodeId] || {};
+    const raw = attrs.backendDOMNodeId;
+    if (typeof raw === 'string' || typeof raw === 'number') {
+      const value = String(raw).trim();
+      return value;
+    }
+    return '';
+  };
+
   for (const nodeId of semanticNodeIds) {
     const origin = snapshot.locatorIndex?.[nodeId]?.origin;
-    if (!origin) continue;
-    if (origin.primaryDomId !== undefined && origin.primaryDomId !== null) {
-      const primary = String(origin.primaryDomId);
-      if (rawIndex.byBackendId[primary]) out.add(primary);
+    if (origin) {
+      if (origin.primaryDomId !== undefined && origin.primaryDomId !== null) {
+        const primary = String(origin.primaryDomId);
+        if (rawIndex.byBackendId[primary]) out.add(primary);
+      }
+      for (const sourceId of origin.sourceDomIds || []) {
+        const source = String(sourceId);
+        if (rawIndex.byBackendId[source]) out.add(source);
+      }
     }
-    for (const sourceId of origin.sourceDomIds || []) {
-      const source = String(sourceId);
-      if (rawIndex.byBackendId[source]) out.add(source);
+
+    let cursor = nodeId;
+    for (let depth = 0; cursor && depth < 8; depth += 1) {
+      const backendId = readBackendDomIdFromAttr(cursor);
+      if (backendId && rawIndex.byBackendId[backendId]) {
+        out.add(backendId);
+        break;
+      }
+      cursor = parentByNodeId[cursor] || '';
     }
   }
   return out;
@@ -1299,6 +1321,66 @@ const findLcaBackendId = (domIds: string[], parentByBackendId: Record<string, st
     }
   }
   return lca;
+};
+
+const TABLE_PREVIEW_ROOT_TAGS = new Set(['table', 'tbody', 'thead', 'tfoot', 'tr']);
+const LIST_PREVIEW_ROOT_TAGS = new Set(['ul', 'ol', 'dl']);
+const INLINE_PREVIEW_ROOT_TAGS = new Set(['a', 'button', 'span', 'strong', 'em', 'b', 'i', 'small', 'label']);
+
+const findAncestorPreviewRoot = (
+  startId: string,
+  rawIndex: RawDomIndex,
+  match: (tag: string, className: string) => boolean,
+): string => {
+  let cursor = startId;
+  for (let depth = 0; cursor && depth < 16; depth += 1) {
+    const node = rawIndex.byBackendId[cursor];
+    if (node) {
+      const tag = normalizeRole(node.tag);
+      const className = normalizeRole(getRawAttrText(node, 'class'));
+      if (match(tag, className)) {
+        return cursor;
+      }
+    }
+    cursor = rawIndex.parentByBackendId[cursor] || '';
+  }
+  return '';
+};
+
+const adjustPreviewRootByEntityKind = (
+  entity: EntityRecordLike,
+  rootId: string,
+  rawIndex: RawDomIndex,
+): string => {
+  const root = rawIndex.byBackendId[rootId];
+  if (!root) return rootId;
+  const rootTag = normalizeRole(root.tag);
+  const rootClass = normalizeRole(getRawAttrText(root, 'class'));
+  const rootIsInline = INLINE_PREVIEW_ROOT_TAGS.has(rootTag);
+
+  if (entity.kind === 'table') {
+    const isTableLike = TABLE_PREVIEW_ROOT_TAGS.has(rootTag) || rootClass.includes('table');
+    if (!isTableLike || rootIsInline) {
+      const ancestor = findAncestorPreviewRoot(rootId, rawIndex, (tag, className) =>
+        TABLE_PREVIEW_ROOT_TAGS.has(tag) || className.includes('table'),
+      );
+      if (ancestor) return ancestor;
+    }
+    return rootId;
+  }
+
+  if (entity.kind === 'list') {
+    const isListLike = LIST_PREVIEW_ROOT_TAGS.has(rootTag) || rootClass.includes('list') || rootClass.includes('pagination');
+    if (!isListLike || rootIsInline) {
+      const ancestor = findAncestorPreviewRoot(rootId, rawIndex, (tag, className) =>
+        LIST_PREVIEW_ROOT_TAGS.has(tag) || className.includes('list') || className.includes('pagination'),
+      );
+      if (ancestor) return ancestor;
+    }
+    return rootId;
+  }
+
+  return rootId;
 };
 
 const subtreeSelectedCount = (root: RawDomNodeLike, selectedDomIds: Set<string>): number => {
@@ -1468,13 +1550,14 @@ const selectedEntityDomPreview = computed<EntityDomPreview | null>(() => {
 
   const semanticNodeIds = collectEntitySemanticNodeIds(entity, snapshot);
   if (semanticNodeIds.size === 0) return null;
-  const domIds = collectMappedDomIds(snapshot, semanticNodeIds, rawIndex);
+  const domIds = collectMappedDomIds(snapshot, semanticNodeIds, rawIndex, parentNodeIdMap.value);
   if (domIds.size === 0) return null;
 
   const domIdList = Array.from(domIds);
   const lcaId = findLcaBackendId(domIdList, rawIndex.parentByBackendId);
   if (!lcaId) return null;
-  const rootId = shrinkWrapperDomRoot(lcaId, domIds, rawIndex);
+  const shrunkRootId = shrinkWrapperDomRoot(lcaId, domIds, rawIndex);
+  const rootId = adjustPreviewRootByEntityKind(entity, shrunkRootId, rawIndex);
   const root = rawIndex.byBackendId[rootId];
   if (!root) return null;
   const html = buildDomPreviewHtml(root, rootId);
