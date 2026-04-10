@@ -69,6 +69,7 @@ const detectRegionKind = (node: UnifiedNode, signal: NodeSignal): RegionKind | u
 
     if (isCodeLikeNode(role, tag, cls)) return undefined;
     if (isTableAtomicNode(role, tag)) return undefined;
+    if (isPaginationLikeNode(role, tag, cls)) return undefined;
 
     if ((role === 'form' || tag === 'form') && signal.field >= 1) return 'form';
     const explicitList = role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol';
@@ -231,6 +232,13 @@ const isTableAtomicNode = (role: string, tag: string): boolean => {
     return false;
 };
 
+const isPaginationLikeNode = (role: string, tag: string, cls: string): boolean => {
+    if (!PAGINATION_CLASS_HINTS.some((hint) => cls.includes(hint))) return false;
+    if (PAGINATION_TAGS.has(tag)) return true;
+    if (PAGINATION_ROLES.has(role)) return true;
+    return false;
+};
+
 const hasDenseRowChildren = (node: UnifiedNode): boolean => {
     if (node.children.length < 2) return false;
     let rowLikeCount = 0;
@@ -264,6 +272,9 @@ const SHELL_ROLES = new Set(['root', 'main', 'body', 'document', 'application', 
 const TABLE_KEYWORDS = ['table', 'grid', 'datatable', 'data-table'];
 const TABLE_ATOMIC_ROLES = new Set(['row', 'cell', 'gridcell', 'rowheader', 'columnheader']);
 const TABLE_ATOMIC_TAGS = new Set(['tr', 'td', 'th']);
+const PAGINATION_CLASS_HINTS = ['pagination', 'pager'];
+const PAGINATION_TAGS = new Set(['ul', 'ol', 'nav']);
+const PAGINATION_ROLES = new Set(['list', 'navigation']);
 const CODE_ROLES = new Set(['code']);
 const CODE_TAGS = new Set(['code', 'pre']);
 const CODE_CLASS_HINTS = ['language-', 'code-block', 'highlight', 'hljs', 'shiki', 'vp-code'];

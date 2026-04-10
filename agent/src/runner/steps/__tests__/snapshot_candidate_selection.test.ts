@@ -170,6 +170,40 @@ test('candidate selection should not infer list entity from listitem count alone
     assert.equal(listAnchors.includes('weak-list-shell'), false);
 });
 
+test('candidate selection should suppress table pagination list entity', () => {
+    const table = node(
+        'table-node',
+        'table',
+        [
+            node('table-row-1', 'row', [node('table-cell-1', 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+            node('table-row-2', 'row', [node('table-cell-2', 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+        ],
+        { tag: 'table', class: 'ant-table' },
+    );
+
+    const pagination = node(
+        'pagination-list',
+        'list',
+        [
+            node('page-item-prev', 'listitem', [node('page-prev-btn', 'button', [], { tag: 'button' })], { tag: 'li' }),
+            node('page-item-1', 'listitem', [node('page-link-1', 'link', [], { tag: 'a', href: '#1' })], { tag: 'li' }),
+            node('page-item-next', 'listitem', [node('page-next-btn', 'button', [], { tag: 'button' })], { tag: 'li' }),
+        ],
+        { tag: 'ul', class: 'ant-pagination ant-table-pagination ant-table-pagination-end' },
+    );
+
+    const wrapper = node('table-wrapper', 'generic', [table, pagination], { tag: 'div', class: 'ant-table-wrapper' });
+    const root = node('root', 'root', [wrapper], { tag: 'main' });
+
+    const entityIndex = buildStructureEntityIndex(root);
+    const entities = Object.values(entityIndex.entities);
+    const listAnchors = listEntityAnchors(entities);
+    const tableAnchors = tableEntityAnchors(entities);
+
+    assert.equal(listAnchors.includes('pagination-list'), false);
+    assert.equal(tableAnchors.includes('table-node') || tableAnchors.includes('table-wrapper'), true);
+});
+
 test('candidate selection should keep one table candidate per strong table family when page has many tables', () => {
     const wrappers: UnifiedNode[] = [];
     for (let i = 0; i < 24; i += 1) {

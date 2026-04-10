@@ -70,6 +70,7 @@ export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
         for (const bucket of buckets) {
             const shrunk = shrinkGroupContainer(parent, bucket.nodes, parentById);
             if (shrunk.items.length < 2) continue;
+            if (isPaginationLikeContainer(shrunk.container)) continue;
 
             const slotMap = buildItemSlotMap(shrunk.items);
             const itemIds = shrunk.items.map((item) => item.id);
@@ -859,6 +860,16 @@ const isShellLikeNode = (node: UnifiedNode): boolean => {
     return SHELL_ROLES.has(role);
 };
 
+const isPaginationLikeContainer = (node: UnifiedNode): boolean => {
+    const role = normalizeLower(node.role);
+    const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    const cls = normalizeLower(getNodeAttr(node, 'class'));
+    if (!PAGINATION_CLASS_HINTS.some((hint) => cls.includes(hint))) return false;
+    if (PAGINATION_TAGS.has(tag)) return true;
+    if (PAGINATION_ROLES.has(role)) return true;
+    return false;
+};
+
 const isCodeTokenText = (text: string): boolean => {
     const value = text.trim();
     if (!value) return true;
@@ -891,6 +902,9 @@ const ACTION_WORDS = [
     '查看',
     '编辑',
 ];
+const PAGINATION_CLASS_HINTS = ['pagination', 'pager'];
+const PAGINATION_TAGS = new Set(['ul', 'ol', 'nav']);
+const PAGINATION_ROLES = new Set(['list', 'navigation']);
 const WRAPPER_ROLES = new Set(['generic', 'group', 'presentation', 'none', 'paragraph', 'text', 'div', 'span']);
 const SHELL_ROLES = new Set(['root', 'main', 'body', 'document', 'application', 'webarea']);
 const CODE_ROLES = new Set(['code']);

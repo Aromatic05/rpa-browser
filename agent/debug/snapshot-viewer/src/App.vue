@@ -1406,16 +1406,21 @@ const serializeRawDomNode = (
   return `<${tag}${attrText}>${text}${children}</${tag}>`;
 };
 
-const buildDomPreviewSrcdoc = (
+const buildDomPreviewHtml = (
   root: RawDomNodeLike,
   focusRootId: string,
-  stylesheetHrefs: string[],
-  baseUrl: string,
 ): string => {
   const state = { count: 0 };
   const bodyHtml = serializeRawDomNode(root, state, focusRootId);
   const rootTag = sanitizeRawTag(root.tag);
-  const wrappedBodyHtml = wrapDomPreviewRoot(rootTag, bodyHtml);
+  return wrapDomPreviewRoot(rootTag, bodyHtml);
+};
+
+const buildDomPreviewSrcdoc = (
+  wrappedBodyHtml: string,
+  stylesheetHrefs: string[],
+  baseUrl: string,
+): string => {
   const links = stylesheetHrefs
     .slice(0, 16)
     .map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`)
@@ -1472,11 +1477,12 @@ const selectedEntityDomPreview = computed<EntityDomPreview | null>(() => {
   const rootId = shrinkWrapperDomRoot(lcaId, domIds, rawIndex);
   const root = rawIndex.byBackendId[rootId];
   if (!root) return null;
+  const html = buildDomPreviewHtml(root, rootId);
 
   return {
     rootDomId: rootId,
     mappedDomCount: domIds.size,
-    srcdoc: buildDomPreviewSrcdoc(root, rootId, rawIndex.stylesheetHrefs, resolvedUrl.value),
+    srcdoc: buildDomPreviewSrcdoc(html, rawIndex.stylesheetHrefs, resolvedUrl.value),
   };
 });
 
@@ -1901,81 +1907,8 @@ onBeforeUnmount(() => {
           />
         </template>
 
-        <template v-else-if="selectedEntity.type === 'group' && selectedGroupPreview">
-          <div class="kv"><span class="k">kind</span><span>{{ selectedEntity.kind }}</span></div>
-          <div class="kv"><span class="k">keySlot</span><span>slot {{ selectedEntity.keySlot }}</span></div>
-          <div class="kv"><span class="k">items</span><span>{{ selectedEntity.itemIds.length }}</span></div>
-
-          <table v-if="selectedGroupRenderMode === 'table'" class="preview-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th v-for="slot in selectedGroupPreview.slots" :key="slot" :class="{ key: slot === selectedEntity.keySlot }">
-                  {{ selectedGroupColumnHeaders[slot] || `col ${slot + 1}` }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(row, rowIndex) in selectedGroupPreview.rows" :key="row.itemId">
-                <td class="mono">{{ rowIndex + 1 }}</td>
-                <td
-                  v-for="slot in selectedGroupPreview.slots"
-                  :key="`${row.itemId}_${slot}`"
-                  :class="{ key: slot === selectedEntity.keySlot }"
-                >
-                  {{ row.slots[slot] || '-' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div v-else class="form-preview">
-            <div v-for="row in selectedGroupFormRows" :key="row.id" class="form-row">
-              <div class="form-field">{{ row.label || '(field)' }}</div>
-              <div class="form-value">
-                <div v-if="row.controls.length === 0">-</div>
-                <div v-else class="form-controls">
-                  <template v-for="(control, controlIndex) in row.controls" :key="`${row.id}_${controlIndex}_${control.kind}`">
-                    <button
-                      v-if="control.kind === 'button'"
-                      class="preview-button"
-                      :class="{ primary: control.primary }"
-                    >
-                      {{ control.text || 'Button' }}
-                    </button>
-                    <label v-else-if="control.kind === 'checkbox' || control.kind === 'radio'" class="preview-choice">
-                      <span class="choice-icon" :class="control.kind"></span>
-                      <span>{{ control.text || (control.kind === 'checkbox' ? 'Option' : 'Choice') }}</span>
-                    </label>
-                    <span v-else-if="control.kind === 'switch'" class="preview-switch">
-                      <span class="switch-dot"></span>
-                    </span>
-                    <span v-else-if="control.kind === 'select'" class="preview-input select">
-                      <span>{{ control.text || 'Please select' }}</span>
-                      <span class="select-arrow">▾</span>
-                    </span>
-                    <span v-else-if="control.kind === 'textarea'" class="preview-input textarea">
-                      {{ control.text || 'Please input' }}
-                    </span>
-                    <span v-else-if="control.kind === 'text'" class="preview-inline">{{ control.text }}</span>
-                    <span v-else class="preview-input">{{ control.text || 'Please input' }}</span>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <template v-else-if="selectedEntity.type === 'region'">
-          <div class="kv"><span class="k">kind</span><span>{{ selectedEntity.kind }}</span></div>
-          <div class="kv"><span class="k">node</span><span>{{ selectedEntity.nodeId }}</span></div>
-          <div v-if="selectedFormPreview.length > 0" class="form-preview">
-            <div v-for="row in selectedFormPreview" :key="row.nodeId" class="form-row">
-              <div class="form-field">{{ row.field }}</div>
-              <div class="form-value">{{ row.value || '-' }}</div>
-            </div>
-          </div>
-          <div v-else class="muted">当前 region 无法稳定渲染为表单，回退为 Tree 高亮查看</div>
+        <template v-else>
+          <div class="muted">当前实体没有可用 DOM 映射，无法渲染 HTML 预览</div>
         </template>
       </div>
 
