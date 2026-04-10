@@ -26,6 +26,16 @@ const listEntityAnchors = (entities: EntityRecord[]): string[] => {
     return anchors;
 };
 
+const tableEntityAnchors = (entities: EntityRecord[]): string[] => {
+    const anchors: string[] = [];
+    for (const entity of entities) {
+        if (entity.kind !== 'table') continue;
+        if (entity.type === 'region') anchors.push(entity.nodeId);
+        if (entity.type === 'group') anchors.push(entity.containerId);
+    }
+    return anchors;
+};
+
 test('candidate selection should not keep complementary->navigation->list ancestor chain as entities', () => {
     const list = node(
         'list-node',
@@ -215,4 +225,36 @@ test('candidate selection should keep one table candidate per strong table famil
             `expected table entity under ${wrapperId}`,
         );
     }
+});
+
+test('candidate selection should not promote table row nodes to table entities', () => {
+    const row1 = node(
+        'row-1',
+        'row',
+        [
+            node('cell-1-1', 'cell', [], { tag: 'td' }),
+            node('cell-1-2', 'cell', [], { tag: 'td' }),
+        ],
+        { tag: 'tr', class: 'ant-table-row ant-table-row-level-0' },
+    );
+    const row2 = node(
+        'row-2',
+        'row',
+        [
+            node('cell-2-1', 'cell', [], { tag: 'td' }),
+            node('cell-2-2', 'cell', [], { tag: 'td' }),
+        ],
+        { tag: 'tr', class: 'ant-table-row ant-table-row-level-0 editable-row' },
+    );
+    const tbody = node('tbody', 'rowgroup', [row1, row2], { tag: 'tbody', class: 'ant-table-tbody' });
+    const table = node('table', 'table', [tbody], { tag: 'table', class: 'ant-table' });
+    const root = node('root', 'root', [table], { tag: 'main' });
+
+    const entityIndex = buildStructureEntityIndex(root);
+    const entities = Object.values(entityIndex.entities);
+    const tableAnchors = tableEntityAnchors(entities);
+
+    assert.equal(tableAnchors.includes('row-1'), false);
+    assert.equal(tableAnchors.includes('row-2'), false);
+    assert.equal(tableAnchors.includes('table') || tableAnchors.includes('tbody'), true);
 });

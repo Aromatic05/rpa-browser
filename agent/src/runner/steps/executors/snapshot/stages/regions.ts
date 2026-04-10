@@ -68,6 +68,7 @@ const detectRegionKind = (node: UnifiedNode, signal: NodeSignal): RegionKind | u
     const cls = normalizeLower(getNodeAttr(node, 'class'));
 
     if (isCodeLikeNode(role, tag, cls)) return undefined;
+    if (isTableAtomicNode(role, tag)) return undefined;
 
     if ((role === 'form' || tag === 'form') && signal.field >= 1) return 'form';
     const explicitList = role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol';
@@ -224,6 +225,12 @@ const isTableLikeNode = (role: string, tag: string, cls: string): boolean => {
     return false;
 };
 
+const isTableAtomicNode = (role: string, tag: string): boolean => {
+    if (TABLE_ATOMIC_ROLES.has(role)) return true;
+    if (TABLE_ATOMIC_TAGS.has(tag)) return true;
+    return false;
+};
+
 const hasDenseRowChildren = (node: UnifiedNode): boolean => {
     if (node.children.length < 2) return false;
     let rowLikeCount = 0;
@@ -255,6 +262,8 @@ const normalizeLower = (value: string | undefined): string => (value || '').trim
 const PANEL_ROLES = new Set(['region', 'complementary', 'contentinfo']);
 const SHELL_ROLES = new Set(['root', 'main', 'body', 'document', 'application', 'webarea']);
 const TABLE_KEYWORDS = ['table', 'grid', 'datatable', 'data-table'];
+const TABLE_ATOMIC_ROLES = new Set(['row', 'cell', 'gridcell', 'rowheader', 'columnheader']);
+const TABLE_ATOMIC_TAGS = new Set(['tr', 'td', 'th']);
 const CODE_ROLES = new Set(['code']);
 const CODE_TAGS = new Set(['code', 'pre']);
 const CODE_CLASS_HINTS = ['language-', 'code-block', 'highlight', 'hljs', 'shiki', 'vp-code'];
