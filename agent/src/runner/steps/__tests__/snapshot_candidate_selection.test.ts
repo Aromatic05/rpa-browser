@@ -159,3 +159,60 @@ test('candidate selection should not infer list entity from listitem count alone
 
     assert.equal(listAnchors.includes('weak-list-shell'), false);
 });
+
+test('candidate selection should keep one table candidate per strong table family when page has many tables', () => {
+    const wrappers: UnifiedNode[] = [];
+    for (let i = 0; i < 24; i += 1) {
+        const table = node(
+            `table-${i}`,
+            'table',
+            [
+                node(`table-${i}-row-1`, 'row', [node(`table-${i}-cell-1a`, 'cell', [], { tag: 'td' }), node(`table-${i}-cell-1b`, 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+                node(`table-${i}-row-2`, 'row', [node(`table-${i}-cell-2a`, 'cell', [], { tag: 'td' }), node(`table-${i}-cell-2b`, 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+                node(`table-${i}-row-3`, 'row', [node(`table-${i}-cell-3a`, 'cell', [], { tag: 'td' }), node(`table-${i}-cell-3b`, 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+            ],
+            { tag: 'table' },
+        );
+        wrappers.push(
+            node(
+                `wrapper-${i}`,
+                'generic',
+                [table],
+                { tag: 'div', class: 'example-table-wrapper' },
+            ),
+        );
+    }
+    const root = node('root', 'root', wrappers, { tag: 'main' });
+
+    const entityIndex = buildStructureEntityIndex(root);
+    const tableAnchors = Object.values(entityIndex.entities)
+        .filter((entity) => entity.kind === 'table')
+        .map((entity) => (entity.type === 'region' ? entity.nodeId : entity.containerId));
+
+    const parentById = new Map<string, string | undefined>();
+    const indexParents = (current: UnifiedNode, parentId: string | undefined) => {
+        parentById.set(current.id, parentId);
+        for (const child of current.children) {
+            indexParents(child, current.id);
+        }
+    };
+    indexParents(root, undefined);
+
+    const isInSubtree = (ancestorId: string, nodeId: string): boolean => {
+        let cursor: string | undefined = nodeId;
+        while (cursor) {
+            if (cursor === ancestorId) return true;
+            cursor = parentById.get(cursor);
+        }
+        return false;
+    };
+
+    for (let i = 0; i < 24; i += 1) {
+        const wrapperId = `wrapper-${i}`;
+        assert.equal(
+            tableAnchors.some((anchor) => isInSubtree(wrapperId, anchor)),
+            true,
+            `expected table entity under ${wrapperId}`,
+        );
+    }
+});

@@ -65,6 +65,21 @@ export type CandidateSelectionResult = {
     regions: RegionDetection[];
 };
 
+export type CandidateDropReason = 'threshold' | 'conflict' | 'penalty_threshold' | 'cap';
+
+export type CandidateDecision = {
+    key: string;
+    selected: boolean;
+    reason?: CandidateDropReason;
+    blockedByKey?: string;
+    note?: string;
+};
+
+export type CandidateSelectionDebugResult = CandidateSelectionResult & {
+    decisions: CandidateDecision[];
+    decisionByKey: Record<string, CandidateDecision | undefined>;
+};
+
 type CandidateSourceInput = {
     groups: GroupDetection[];
     regions: RegionDetection[];
@@ -74,6 +89,7 @@ type TreeSignal = NodeSignal;
 
 type TreeContext = {
     nodeById: Map<string, UnifiedNode>;
+    parentById: Map<string, UnifiedNode | null>;
     depthById: Map<string, number>;
     signalById: Map<string, TreeSignal>;
     enterById: Map<string, number>;
@@ -85,6 +101,7 @@ type ConflictDecision = {
     dropExisting?: boolean;
     candidateRedundancyPenalty?: number;
     candidateNestedPenalty?: number;
+    note?: string;
 };
 
 export const buildStructureCandidates = (
@@ -158,22 +175,65 @@ export const selectStructureCandidates = (
     root: UnifiedNode,
     candidates: StructureCandidate[],
 ): CandidateSelectionResult => {
+    return runSelection(root, candidates, false);
+};
+
+export const selectStructureCandidatesWithDebug = (
+    root: UnifiedNode,
+    candidates: StructureCandidate[],
+): CandidateSelectionDebugResult => {
+    return runSelection(root, candidates, true) as CandidateSelectionDebugResult;
+};
+
+const runSelection = (
+    root: UnifiedNode,
+    candidates: StructureCandidate[],
+    withDebug: boolean,
+): CandidateSelectionResult | CandidateSelectionDebugResult => {
     const context = buildTreeContext(root);
     const sorted = [...candidates].sort(compareCandidatePriority);
     const kept: StructureCandidate[] = [];
+    const decisionByKey = new Map<string, CandidateDecision>();
+
+    const setDecision = (decision: CandidateDecision) => {
+        if (!withDebug) return;
+        decisionByKey.set(decision.key, decision);
+    };
 
     for (const candidate of sorted) {
-        if (!passesScoreThreshold(candidate)) continue;
+        const candidateKey = toCandidateKey(candidate);
+        if (!passesScoreThreshold(candidate)) {
+            setDecision({
+                key: candidateKey,
+                selected: false,
+                reason: 'threshold',
+            });
+            continue;
+        }
         let dropped = false;
 
         for (let index = 0; index < kept.length; index += 1) {
             const existing = kept[index];
             const decision = resolveConflict(candidate, existing, context);
             if (decision.dropCandidate) {
+                setDecision({
+                    key: candidateKey,
+                    selected: false,
+                    reason: 'conflict',
+                    blockedByKey: toCandidateKey(existing),
+                    note: decision.note,
+                });
                 dropped = true;
                 break;
             }
             if (decision.dropExisting) {
+                setDecision({
+                    key: toCandidateKey(existing),
+                    selected: false,
+                    reason: 'conflict',
+                    blockedByKey: candidateKey,
+                    note: decision.note,
+                });
                 kept.splice(index, 1);
                 index -= 1;
                 continue;
@@ -181,6 +241,13 @@ export const selectStructureCandidates = (
             if (decision.candidateRedundancyPenalty || decision.candidateNestedPenalty) {
                 applyPenalty(candidate, decision.candidateRedundancyPenalty || 0, decision.candidateNestedPenalty || 0);
                 if (!passesScoreThreshold(candidate)) {
+                    setDecision({
+                        key: candidateKey,
+                        selected: false,
+                        reason: 'penalty_threshold',
+                        blockedByKey: toCandidateKey(existing),
+                        note: decision.note,
+                    });
                     dropped = true;
                     break;
                 }
@@ -188,10 +255,28 @@ export const selectStructureCandidates = (
         }
 
         if (dropped) continue;
+        setDecision({
+            key: candidateKey,
+            selected: true,
+        });
         kept.push(candidate);
     }
 
-    const capped = capCandidates(kept.sort(compareCandidatePriority));
+    const { kept: capped, dropped: capDropped } = capCandidates(kept.sort(compareCandidatePriority), context);
+    for (const dropped of capDropped) {
+        setDecision({
+            key: toCandidateKey(dropped),
+            selected: false,
+            reason: 'cap',
+        });
+    }
+    for (const keptCandidate of capped) {
+        setDecision({
+            key: toCandidateKey(keptCandidate),
+            selected: true,
+        });
+    }
+
     const regions: RegionDetection[] = [];
     const groups: GroupDetection[] = [];
     for (const candidate of capped) {
@@ -204,19 +289,46 @@ export const selectStructureCandidates = (
         }
     }
 
-    return { candidates: capped, groups, regions };
+    if (!withDebug) {
+        return { candidates: capped, groups, regions };
+    }
+
+    const decisions = sorted.map((candidate) => {
+        const key = toCandidateKey(candidate);
+        const fallback: CandidateDecision = {
+            key,
+            selected: false,
+            reason: 'threshold',
+        };
+        return (
+            decisionByKey.get(key) || fallback
+        );
+    });
+    const decisionObject: Record<string, CandidateDecision | undefined> = {};
+    for (const decision of decisions) {
+        decisionObject[decision.key] = decision;
+    }
+    return {
+        candidates: capped,
+        groups,
+        regions,
+        decisions,
+        decisionByKey: decisionObject,
+    };
 };
 
 const buildTreeContext = (root: UnifiedNode): TreeContext => {
     const nodeById = new Map<string, UnifiedNode>();
+    const parentById = new Map<string, UnifiedNode | null>();
     const depthById = new Map<string, number>();
     const signalById = new Map<string, TreeSignal>();
     const enterById = new Map<string, number>();
     const exitById = new Map<string, number>();
     let clock = 0;
 
-    const visit = (node: UnifiedNode, depth: number): TreeSignal => {
+    const visit = (node: UnifiedNode, depth: number, parent: UnifiedNode | null): TreeSignal => {
         nodeById.set(node.id, node);
+        parentById.set(node.id, parent);
         depthById.set(node.id, depth);
         enterById.set(node.id, clock);
         clock += 1;
@@ -232,7 +344,7 @@ const buildTreeContext = (root: UnifiedNode): TreeContext => {
         };
 
         for (const child of node.children) {
-            const childSignal = visit(child, depth + 1);
+            const childSignal = visit(child, depth + 1, node);
             self.size += childSignal.size;
             self.interactive += childSignal.interactive;
             self.field += childSignal.field;
@@ -248,9 +360,10 @@ const buildTreeContext = (root: UnifiedNode): TreeContext => {
         return self;
     };
 
-    visit(root, 0);
+    visit(root, 0, null);
     return {
         nodeById,
+        parentById,
         depthById,
         signalById,
         enterById,
@@ -488,26 +601,28 @@ const resolveConflict = (
 ): ConflictDecision => {
     if (candidate.nodeId === existing.nodeId) {
         if (candidate.kind === 'panel' && existing.kind !== 'panel') {
-            return { dropCandidate: true };
+            return { dropCandidate: true, note: 'same-node-panel-weaker' };
         }
         if (existing.kind === 'panel' && candidate.kind !== 'panel') {
-            return { dropExisting: true };
+            return { dropExisting: true, note: 'same-node-non-panel-preferred' };
         }
         if (candidate.kind === 'table' && candidate.source !== existing.source) {
             const region = candidate.source === 'region' ? candidate : existing.source === 'region' ? existing : undefined;
             const group = candidate.source === 'group' ? candidate : existing.source === 'group' ? existing : undefined;
             if (region && group && region.evidence.explicitness >= group.evidence.explicitness - 0.05) {
-                if (candidate === region) return { dropExisting: true };
-                return { dropCandidate: true };
+                if (candidate === region) return { dropExisting: true, note: 'same-node-table-region-over-group' };
+                return { dropCandidate: true, note: 'same-node-table-group-under-region' };
             }
         }
         if (candidate.source === 'group' && existing.source === 'region' && candidate.kind === existing.kind) {
-            if (candidate.score >= existing.score - 0.15) return { dropExisting: true };
+            if (candidate.score >= existing.score - 0.15) return { dropExisting: true, note: 'same-node-group-over-region-score' };
         }
         if (existing.source === 'group' && candidate.source === 'region' && candidate.kind === existing.kind) {
-            if (existing.score >= candidate.score - 0.15) return { dropCandidate: true };
+            if (existing.score >= candidate.score - 0.15) return { dropCandidate: true, note: 'same-node-region-under-group-score' };
         }
-        return candidate.score >= existing.score ? { dropExisting: true } : { dropCandidate: true };
+        return candidate.score >= existing.score
+            ? { dropExisting: true, note: 'same-node-higher-score-kept' }
+            : { dropCandidate: true, note: 'same-node-lower-score-dropped' };
     }
 
     const candidateAncestor = isAncestorNode(candidate.nodeId, existing.nodeId, context);
@@ -528,55 +643,56 @@ const resolveConflict = (
 
     if (outer.kind === inner.kind) {
         if (outer.kind === 'table' && isTableSectionCandidate(inner, context) && !isTableSectionCandidate(outer, context)) {
-            if (outer === candidate) return { dropExisting: true };
-            return { dropCandidate: true };
+            if (outer === candidate) return { dropExisting: true, note: 'table-section-under-table' };
+            return { dropCandidate: true, note: 'table-section-preferred-over-ancestor-section' };
         }
         if (SAME_KIND_NEST_DROP.has(outer.kind)) {
-            if (outer === candidate) return { dropCandidate: true };
-            return { dropExisting: true };
+            if (outer === candidate) return { dropCandidate: true, note: 'same-kind-nested-drop-ancestor' };
+            return { dropExisting: true, note: 'same-kind-nested-drop-existing-ancestor' };
         }
         if (outer === candidate) {
             return {
                 candidateRedundancyPenalty: 0.2,
                 candidateNestedPenalty: 0.22,
                 dropCandidate: candidate.score <= inner.score + 0.1,
+                note: 'same-kind-nested-penalty',
             };
         }
-        return { dropExisting: true };
+        return { dropExisting: true, note: 'same-kind-nested-descendant-preferred' };
     }
 
     if (outer.kind === 'panel' && inner.kind !== 'panel') {
-        if (outer === candidate) return { dropCandidate: true };
-        return { dropExisting: true };
+        if (outer === candidate) return { dropCandidate: true, note: 'panel-vs-structured-drop-panel' };
+        return { dropExisting: true, note: 'panel-vs-structured-drop-existing-panel' };
     }
 
     if (outer.kind === 'list' && (inner.kind === 'table' || inner.kind === 'kv')) {
-        if (outer === candidate) return { dropCandidate: true };
-        return { dropExisting: true };
+        if (outer === candidate) return { dropCandidate: true, note: 'list-vs-table-drop-list' };
+        return { dropExisting: true, note: 'list-vs-table-drop-existing-list' };
     }
 
     if (outer.kind === 'table' && inner.kind === 'list' && outer.features.docNoisePenalty >= 0.4) {
-        if (outer === candidate) return { dropCandidate: true };
-        return { dropExisting: true };
+        if (outer === candidate) return { dropCandidate: true, note: 'noisy-table-vs-list-drop-table' };
+        return { dropExisting: true, note: 'noisy-table-vs-list-drop-existing-table' };
     }
 
     if (outer.source === 'group' && inner.source === 'group' && isDocumentCandidate(outer) && inner.features.dominantStructureScore >= 0.35) {
-        if (outer === candidate) return { dropCandidate: true };
-        return { dropExisting: true };
+        if (outer === candidate) return { dropCandidate: true, note: 'group-doc-vs-structured-drop-doc-group' };
+        return { dropExisting: true, note: 'group-doc-vs-structured-drop-existing-doc-group' };
     }
 
     if (outer.kind === 'table' && inner.kind === 'table') {
-        if (outer === candidate) return { dropCandidate: true };
-        return { dropExisting: true };
+        if (outer === candidate) return { dropCandidate: true, note: 'table-vs-table-descendant-preferred' };
+        return { dropExisting: true, note: 'table-vs-table-drop-existing-ancestor' };
     }
 
     if (isDocumentCandidate(outer) && inner.score >= outer.score - 0.4) {
-        if (outer === candidate) return { dropCandidate: true };
-        return { dropExisting: true };
+        if (outer === candidate) return { dropCandidate: true, note: 'doc-noise-under-inner' };
+        return { dropExisting: true, note: 'doc-noise-existing-under-candidate' };
     }
 
     if (outer === candidate) {
-        return { candidateRedundancyPenalty: 0.14 };
+        return { candidateRedundancyPenalty: 0.14, note: 'ancestor-redundancy-penalty' };
     }
     return {};
 };
@@ -590,7 +706,11 @@ const pickByKindPriority = (candidate: StructureCandidate, existing: StructureCa
     return { dropCandidate: true };
 };
 
-const capCandidates = (candidates: StructureCandidate[]): StructureCandidate[] => {
+const capCandidates = (
+    candidates: StructureCandidate[],
+    context: TreeContext,
+): { kept: StructureCandidate[]; dropped: StructureCandidate[] } => {
+    const limits = resolveAdaptiveLimits(candidates, context);
     const used: Record<EntityKind, number> = {
         panel: 0,
         form: 0,
@@ -600,16 +720,86 @@ const capCandidates = (candidates: StructureCandidate[]): StructureCandidate[] =
         toolbar: 0,
         kv: 0,
     };
-    const out: StructureCandidate[] = [];
+    const kept: StructureCandidate[] = [];
+    const dropped: StructureCandidate[] = [];
+    const usedTableFamily = new Map<string, number>();
 
     for (const candidate of candidates) {
-        const limit = LIMIT_BY_KIND[candidate.kind] || 8;
-        if (used[candidate.kind] >= limit) continue;
+        if (candidate.kind === 'table') {
+            const familyKey = resolveTableFamilyKey(candidate, context);
+            const usedCount = usedTableFamily.get(familyKey) || 0;
+            if (usedCount >= TABLE_PER_FAMILY_LIMIT) {
+                dropped.push(candidate);
+                continue;
+            }
+            usedTableFamily.set(familyKey, usedCount + 1);
+        }
+
+        const limit = limits[candidate.kind] || 8;
+        if (used[candidate.kind] >= limit) {
+            dropped.push(candidate);
+            continue;
+        }
         used[candidate.kind] += 1;
-        out.push(candidate);
+        kept.push(candidate);
     }
 
-    return out;
+    return { kept, dropped };
+};
+
+const resolveAdaptiveLimits = (
+    candidates: StructureCandidate[],
+    context: TreeContext,
+): Record<EntityKind, number> => {
+    const limits: Record<EntityKind, number> = {
+        ...BASE_LIMIT_BY_KIND,
+    };
+
+    const strongTableCandidates = candidates.filter((candidate) => {
+        if (candidate.kind !== 'table') return false;
+        if (candidate.features.docNoisePenalty >= 0.68) return false;
+        if (candidate.features.dominantStructureScore < 0.28) return false;
+        if (candidate.features.confidence < 0.42) return false;
+        if (candidate.evidence.explicitRole || candidate.evidence.explicitTag) return true;
+        if ((candidate.signal.row || 0) >= 2) return true;
+        if ((candidate.signal.itemCount || 0) >= 3 && (candidate.signal.slotCount || 0) >= 2) return true;
+        return false;
+    });
+
+    if (strongTableCandidates.length > limits.table) {
+        const strongFamilies = new Set(
+            strongTableCandidates.map((candidate) => resolveTableFamilyKey(candidate, context)),
+        ).size;
+        const familyDrivenLimit = Math.max(
+            limits.table,
+            strongFamilies + TABLE_LIMIT_BUFFER,
+            Math.ceil(strongFamilies * TABLE_LIMIT_MULTIPLIER),
+        );
+        limits.table = clampRange(familyDrivenLimit, limits.table, MAX_TABLE_LIMIT);
+    }
+
+    return limits;
+};
+
+const resolveTableFamilyKey = (candidate: StructureCandidate, context: TreeContext): string => {
+    let cursor = context.nodeById.get(candidate.nodeId) || null;
+    let wrapperAnchor: string | undefined;
+    let semanticAnchor: string | undefined;
+
+    while (cursor) {
+        const role = normalizeLower(cursor.role);
+        const tag = normalizeLower(getNodeAttr(cursor, 'tag') || getNodeAttr(cursor, 'tagName'));
+        const cls = normalizeLower(getNodeAttr(cursor, 'class'));
+        if (!wrapperAnchor && TABLE_WRAPPER_CLASS_HINTS.some((hint) => cls.includes(hint))) {
+            wrapperAnchor = cursor.id;
+        }
+        if (!semanticAnchor && (role === 'table' || role === 'grid' || role === 'treegrid' || tag === 'table')) {
+            semanticAnchor = cursor.id;
+        }
+        cursor = context.parentById.get(cursor.id) || null;
+    }
+
+    return wrapperAnchor || semanticAnchor || candidate.nodeId;
 };
 
 const scoreCandidate = (features: CandidateFeatures): number => {
@@ -735,6 +925,10 @@ const safeRatio = (numerator: number, denominator: number): number => {
 
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
 
+const toCandidateKey = (candidate: StructureCandidate): string => {
+    return `${candidate.source}:${candidate.kind}:${candidate.nodeId}`;
+};
+
 const isDocumentContainer = (role: string, tag: string): boolean => {
     if (DOC_CONTAINER_ROLES.has(role)) return true;
     if (DOC_CONTAINER_TAGS.has(tag)) return true;
@@ -802,7 +996,13 @@ const MIN_SCORE_BY_KIND: Record<EntityKind, number> = {
     toolbar: 1.1,
     panel: 1.9,
 };
-const LIMIT_BY_KIND: Record<EntityKind, number> = {
+const clampRange = (value: number, min: number, max: number): number => {
+    if (value <= min) return min;
+    if (value >= max) return max;
+    return value;
+};
+
+const BASE_LIMIT_BY_KIND: Record<EntityKind, number> = {
     panel: 10,
     form: 10,
     table: 10,
@@ -811,6 +1011,11 @@ const LIMIT_BY_KIND: Record<EntityKind, number> = {
     toolbar: 4,
     kv: 8,
 };
+const MAX_TABLE_LIMIT = 96;
+const TABLE_PER_FAMILY_LIMIT = 1;
+const TABLE_WRAPPER_CLASS_HINTS = ['table-wrapper', 'datatable', 'data-table', 'grid-wrapper'];
+const TABLE_LIMIT_BUFFER = 12;
+const TABLE_LIMIT_MULTIPLIER = 1.5;
 
 const PANEL_ROLES = new Set(['region', 'complementary', 'contentinfo']);
 const PANEL_TAGS = new Set(['section', 'article', 'aside', 'nav']);
