@@ -153,13 +153,24 @@ const pruneGroups = (groups: GroupDetection[], parentById: Map<string, UnifiedNo
         }
     }
 
-    const sorted = [...bestByContainer.values()].sort((a, b) => groupScore(b) - groupScore(a));
+    const depthById = new Map<string, number>();
+    const sorted = [...bestByContainer.values()].sort((a, b) => {
+        const depthDiff = getNodeDepth(b.containerId, parentById, depthById) - getNodeDepth(a.containerId, parentById, depthById);
+        if (depthDiff !== 0) return depthDiff;
+        return groupScore(b) - groupScore(a);
+    });
     const kept: GroupDetection[] = [];
     for (const candidate of sorted) {
         let blocked = false;
         for (const existing of kept) {
+            if (isAncestorNode(candidate.containerId, existing.containerId, parentById)) {
+                if (shouldDropAncestorGroup(candidate, existing, parentById)) {
+                    blocked = true;
+                    break;
+                }
+            }
             if (isAncestorNode(existing.containerId, candidate.containerId, parentById)) {
-                if (overlapRatio(candidate.itemIds, existing.itemIds) >= 0.75) {
+                if (shouldDropDescendantGroup(candidate, existing, parentById)) {
                     blocked = true;
                     break;
                 }
@@ -176,6 +187,69 @@ const pruneGroups = (groups: GroupDetection[], parentById: Map<string, UnifiedNo
 const groupScore = (group: GroupDetection): number => {
     const kindWeight = group.kind === 'table' ? 6 : group.kind === 'kv' ? 4 : 2;
     return group.itemIds.length * 3 + kindWeight;
+};
+
+const shouldDropAncestorGroup = (
+    ancestor: GroupDetection,
+    descendant: GroupDetection,
+    parentById: Map<string, UnifiedNode | null>,
+): boolean => {
+    const overlap = overlapRatio(ancestor.itemIds, descendant.itemIds);
+    const wrappedCoverage = wrappedItemCoverage(descendant.itemIds, ancestor.itemIds, parentById);
+
+    if (ancestor.kind === descendant.kind) {
+        if (overlap >= 0.65) return true;
+        if (wrappedCoverage >= 0.75) return true;
+    }
+
+    if (wrappedCoverage >= 0.9 && descendant.itemIds.length >= 3) {
+        return true;
+    }
+
+    return false;
+};
+
+const shouldDropDescendantGroup = (
+    candidate: GroupDetection,
+    ancestor: GroupDetection,
+    parentById: Map<string, UnifiedNode | null>,
+): boolean => {
+    const overlap = overlapRatio(candidate.itemIds, ancestor.itemIds);
+    const wrappedCoverage = wrappedItemCoverage(candidate.itemIds, ancestor.itemIds, parentById);
+    if (overlap >= 0.9 && wrappedCoverage >= 0.95) {
+        return groupScore(ancestor) >= groupScore(candidate);
+    }
+    return false;
+};
+
+const wrappedItemCoverage = (
+    descendantItemIds: string[],
+    ancestorItemIds: string[],
+    parentById: Map<string, UnifiedNode | null>,
+): number => {
+    if (descendantItemIds.length === 0 || ancestorItemIds.length === 0) return 0;
+    const ancestorItemSet = new Set(ancestorItemIds);
+    let covered = 0;
+    for (const itemId of descendantItemIds) {
+        if (isSelfOrAncestorInSet(itemId, ancestorItemSet, parentById)) {
+            covered += 1;
+        }
+    }
+    return covered / descendantItemIds.length;
+};
+
+const isSelfOrAncestorInSet = (
+    nodeId: string,
+    ancestorItemSet: Set<string>,
+    parentById: Map<string, UnifiedNode | null>,
+): boolean => {
+    let cursorId: string | undefined = nodeId;
+    while (cursorId) {
+        if (ancestorItemSet.has(cursorId)) return true;
+        const parent: UnifiedNode | null = parentById.get(cursorId) || null;
+        cursorId = parent ? parent.id : undefined;
+    }
+    return false;
 };
 
 const overlapRatio = (left: string[], right: string[]): number => {
@@ -199,6 +273,23 @@ const isAncestorNode = (
         cursor = parentById.get(cursor.id) || null;
     }
     return false;
+};
+
+const getNodeDepth = (
+    nodeId: string,
+    parentById: Map<string, UnifiedNode | null>,
+    cache: Map<string, number>,
+): number => {
+    const cached = cache.get(nodeId);
+    if (cached !== undefined) return cached;
+    const parent = parentById.get(nodeId) || null;
+    if (!parent) {
+        cache.set(nodeId, 0);
+        return 0;
+    }
+    const depth = getNodeDepth(parent.id, parentById, cache) + 1;
+    cache.set(nodeId, depth);
+    return depth;
 };
 
 const detectSiblingBuckets = (parent: UnifiedNode): SignatureBucket[] => {

@@ -64,11 +64,54 @@ export const detectRegionEntities = (root: UnifiedNode): RegionDetection[] => {
         kept.push(candidate);
     }
 
-    return capRegions(kept).map((item) => ({
+    const minimal = pruneNestedRegions(kept, parentById);
+    return capRegions(minimal).map((item) => ({
         nodeId: item.nodeId,
         kind: item.kind,
         name: item.name,
     }));
+};
+
+const pruneNestedRegions = (
+    regions: RegionCandidate[],
+    parentById: Map<string, UnifiedNode | null>,
+): RegionCandidate[] => {
+    if (regions.length <= 1) return regions;
+
+    const depthById = new Map<string, number>();
+    const sorted = [...regions].sort((a, b) => {
+        const depthDiff = getNodeDepth(b.nodeId, parentById, depthById) - getNodeDepth(a.nodeId, parentById, depthById);
+        if (depthDiff !== 0) return depthDiff;
+        return a.signal.size - b.signal.size;
+    });
+
+    const kept: RegionCandidate[] = [];
+    for (const candidate of sorted) {
+        if (isRegionShadowedByDescendant(candidate, kept, parentById)) continue;
+        kept.push(candidate);
+    }
+    return kept;
+};
+
+const isRegionShadowedByDescendant = (
+    candidate: RegionCandidate,
+    descendants: RegionCandidate[],
+    parentById: Map<string, UnifiedNode | null>,
+): boolean => {
+    for (const descendant of descendants) {
+        if (!isAncestorNode(candidate.nodeId, descendant.nodeId, parentById)) continue;
+        if (descendant.kind === candidate.kind) {
+            if (descendant.signal.size >= Math.max(6, Math.floor(candidate.signal.size * 0.18))) {
+                return true;
+            }
+        }
+        if (candidate.kind === 'panel' && descendant.kind !== 'panel') {
+            if (descendant.signal.size >= Math.max(8, Math.floor(candidate.signal.size * 0.2))) {
+                return true;
+            }
+        }
+    }
+    return false;
 };
 
 const detectRegionKind = (node: UnifiedNode, signal: NodeSignal): RegionKind | undefined => {
@@ -174,6 +217,36 @@ const findNearestKeptAncestor = (
         cursor = parentById.get(cursor.id) || null;
     }
     return undefined;
+};
+
+const isAncestorNode = (
+    ancestorId: string,
+    nodeId: string,
+    parentById: Map<string, UnifiedNode | null>,
+): boolean => {
+    let cursor = parentById.get(nodeId) || null;
+    while (cursor) {
+        if (cursor.id === ancestorId) return true;
+        cursor = parentById.get(cursor.id) || null;
+    }
+    return false;
+};
+
+const getNodeDepth = (
+    nodeId: string,
+    parentById: Map<string, UnifiedNode | null>,
+    cache: Map<string, number>,
+): number => {
+    const cached = cache.get(nodeId);
+    if (cached !== undefined) return cached;
+    const parent = parentById.get(nodeId) || null;
+    if (!parent) {
+        cache.set(nodeId, 0);
+        return 0;
+    }
+    const depth = getNodeDepth(parent.id, parentById, cache) + 1;
+    cache.set(nodeId, depth);
+    return depth;
 };
 
 const capRegions = (items: RegionCandidate[]): RegionCandidate[] => {
