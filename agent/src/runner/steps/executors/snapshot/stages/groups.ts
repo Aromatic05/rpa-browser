@@ -87,6 +87,7 @@ const passesGroupGate = (
     const slotCount = estimateSlotCount(items, slotMap);
     const hasTable = hasTableSemantic(container, parentById);
     const hasList = hasListSemantic(container);
+    const headingRate = headingLikeRate(items);
 
     if (kind === 'table') {
         if (!hasTable && itemCount < 4) return false;
@@ -109,6 +110,8 @@ const passesGroupGate = (
     } else {
         if (itemCount < 5) return false;
     }
+    if (headingRate >= 0.8) return false;
+    if (!hasList && headingRate >= 0.55) return false;
     if (slotCount <= 1 && itemCount < 6) return false;
     return passesKeyQuality(kind, items, slotMap, keySlot);
 };
@@ -776,6 +779,25 @@ const isRowLikeNode = (node: UnifiedNode): boolean => {
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     if (role === 'row' || role === 'listitem') return true;
     if (tag === 'tr' || tag === 'li') return true;
+    return false;
+};
+
+const headingLikeRate = (items: UnifiedNode[]): number => {
+    if (items.length === 0) return 0;
+    let hits = 0;
+    for (const item of items) {
+        if (isHeadingLikeNode(item)) hits += 1;
+    }
+    return hits / items.length;
+};
+
+const isHeadingLikeNode = (node: UnifiedNode): boolean => {
+    const role = normalizeLower(node.role);
+    if (role === 'heading') return true;
+    const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') {
+        return true;
+    }
     return false;
 };
 

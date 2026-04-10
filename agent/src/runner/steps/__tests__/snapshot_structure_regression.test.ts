@@ -16,6 +16,11 @@ const FIXTURE_FILE = path.resolve(
 );
 
 const hasFixture = fs.existsSync(FIXTURE_FILE);
+const ANT_GRID_FIXTURE_FILE = path.resolve(
+    process.cwd(),
+    'tests/fixtures/snapshot/web_docs/001_ant_components_grid_w1366_seed.raw.json',
+);
+const hasAntGridFixture = fs.existsSync(ANT_GRID_FIXTURE_FILE);
 
 test('snapshot structure detection should avoid shell and code-like entities on element-plus form page', { skip: !hasFixture }, () => {
     const raw = JSON.parse(fs.readFileSync(FIXTURE_FILE, 'utf8')) as RawFixture;
@@ -79,6 +84,40 @@ test('snapshot structure detection should avoid ancestor-duplicated groups on el
             );
         }
     }
+});
+
+test('snapshot structure detection should not promote article wrapper group on ant grid page', { skip: !hasAntGridFixture }, () => {
+    const raw = JSON.parse(fs.readFileSync(ANT_GRID_FIXTURE_FILE, 'utf8')) as RawFixture;
+    const snapshot = generateSemanticSnapshotFromRaw({
+        domTree: raw.domTree,
+        a11yTree: raw.a11yTree,
+    });
+
+    const entities = Object.values(snapshot.entityIndex.entities);
+    const regions = entities.filter((entity) => entity.type === 'region');
+    const groups = entities.filter((entity) => entity.type === 'group');
+
+    assert.equal(
+        regions.some((entity) => entity.nodeId === 'article_4920d8595d'),
+        false,
+        'article wrapper should not be promoted to region',
+    );
+    assert.equal(
+        groups.some((entity) => entity.containerId === 'article_4920d8595d'),
+        false,
+        'article wrapper should not be promoted to group',
+    );
+
+    assert.equal(
+        regions.some((entity) => entity.nodeId === 'list_1e01abc2ed'),
+        true,
+        'list should stay as region entity',
+    );
+    assert.equal(
+        regions.some((entity) => entity.nodeId === 'table_d485660244_2'),
+        true,
+        'table should stay as region entity',
+    );
 });
 
 const walkTree = (node: UnifiedNode, parentId: string | null, parentById: Map<string, string | null>) => {
