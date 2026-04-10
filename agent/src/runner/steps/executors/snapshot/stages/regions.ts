@@ -122,7 +122,9 @@ const detectRegionKind = (node: UnifiedNode, signal: NodeSignal): RegionKind | u
     if (isCodeLikeNode(role, tag, cls)) return undefined;
 
     if ((role === 'form' || tag === 'form') && signal.field >= 1) return 'form';
-    if (role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol' || signal.listItem >= 3) return 'list';
+    const explicitList = role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol';
+    if (explicitList) return 'list';
+    if (signal.listItem >= 3 && hasListSemantic(node)) return 'list';
     if (isTableLikeNode(role, tag, cls) || hasDenseRowChildren(node)) return 'table';
     if (role === 'dialog' || role === 'alertdialog') return 'dialog';
     if (role === 'toolbar' || cls.includes('toolbar')) return 'toolbar';
@@ -378,7 +380,7 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
 
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
 
-const PANEL_ROLES = new Set(['section', 'article', 'region', 'complementary', 'contentinfo']);
+const PANEL_ROLES = new Set(['region', 'complementary', 'contentinfo']);
 const SHELL_ROLES = new Set(['root', 'main', 'body', 'document', 'application', 'webarea']);
 const TABLE_KEYWORDS = ['table', 'grid', 'datatable', 'data-table'];
 const CODE_ROLES = new Set(['code']);
