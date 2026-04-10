@@ -7,6 +7,33 @@ export type GroupDetection = {
     itemIds: string[];
     keySlot: number;
     slotByItemId: Record<string, string[]>;
+    name?: string;
+    signal: GroupSignal;
+    evidence: GroupEvidence;
+};
+
+export type GroupSignal = {
+    itemCount: number;
+    slotCount: number;
+    stableRate: number;
+    headingRate: number;
+    interactiveItemRate: number;
+    keyCoverage: number;
+    keyUniqueness: number;
+    hasTableSemantic: boolean;
+    hasListSemantic: boolean;
+    wrapperDepth: number;
+};
+
+export type GroupEvidence = {
+    explicitRole: boolean;
+    explicitTag: boolean;
+    explicitClass: boolean;
+    explicitListSemantic: boolean;
+    explicitTableSemantic: boolean;
+    hasName: boolean;
+    shellLike: boolean;
+    codeLike: boolean;
 };
 
 type NodeShape = {
@@ -52,7 +79,9 @@ export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
 
             const kind = classifyGroupKind(shrunk.container, shrunk.items, slotMap, parentById);
             const keySlot = kind === 'kv' ? 0 : selectKeySlot(kind, shrunk.items, slotMap);
-            if (!passesGroupGate(kind, shrunk.container, shrunk.items, slotMap, keySlot, parentById)) continue;
+            const signal = buildGroupSignal(kind, shrunk.container, shrunk.items, slotMap, keySlot, parentById, shrunk.wrapperDepth);
+            const evidence = buildGroupEvidence(shrunk.container);
+            if (!passesGroupDetectionFloor(kind, signal, evidence)) continue;
 
             const slotByItemId: Record<string, string[]> = {};
             for (const [itemId, slots] of slotMap) {
@@ -65,63 +94,98 @@ export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
                 itemIds,
                 keySlot,
                 slotByItemId,
+                name: normalizeText(shrunk.container.name || getNodeContent(shrunk.container)),
+                signal,
+                evidence,
             });
         }
     });
 
-    return pruneGroups(groups, parentById);
+    return groups;
 };
 
-const passesGroupGate = (
+const buildGroupSignal = (
     kind: GroupKind,
     container: UnifiedNode,
     items: UnifiedNode[],
     slotMap: Map<string, UnifiedNode[]>,
     keySlot: number,
     parentById: Map<string, UnifiedNode | null>,
-): boolean => {
+    wrapperDepth: number,
+): GroupSignal => {
     const itemCount = items.length;
-    if (itemCount < 2) return false;
-    if (isShellLikeNode(container)) return false;
-
     const slotCount = estimateSlotCount(items, slotMap);
     const hasTable = hasTableSemantic(container, parentById);
     const hasList = hasListSemantic(container);
     const headingRate = headingLikeRate(items);
-
-    if (kind === 'table') {
-        if (!hasTable && itemCount < 4) return false;
-        if (hasTable && itemCount < 3) return false;
-        if (slotCount < 2) return false;
-        const stableRate = calcStableMultiSlotRate(items, slotMap, slotCount);
-        if (!hasTable && stableRate < 0.55) return false;
-        return passesKeyQuality(kind, items, slotMap, keySlot);
-    }
-
-    if (kind === 'kv') {
-        if (itemCount < 3) return false;
-        if (slotCount !== 2) return false;
-        if (!looksLikeKv(items, slotMap)) return false;
-        return passesKeyQuality(kind, items, slotMap, 0);
-    }
-
-    if (hasList) {
-        if (itemCount < 3) return false;
-    } else {
-        if (itemCount < 5) return false;
-    }
-    if (headingRate >= 0.8) return false;
-    if (!hasList && headingRate >= 0.55) return false;
-    if (slotCount <= 1 && itemCount < 6) return false;
-    return passesKeyQuality(kind, items, slotMap, keySlot);
+    const stableRate = calcStableMultiSlotRate(items, slotMap, slotCount);
+    const interactiveItems = items.filter((item) => hasInteractiveSignal(item, 1)).length;
+    const keyQuality = evaluateKeyQuality(items, slotMap, keySlot);
+    return {
+        itemCount,
+        slotCount,
+        stableRate,
+        headingRate,
+        interactiveItemRate: itemCount > 0 ? interactiveItems / itemCount : 0,
+        keyCoverage: keyQuality.coverage,
+        keyUniqueness: keyQuality.uniqueness,
+        hasTableSemantic: hasTable || kind === 'table',
+        hasListSemantic: hasList || kind === 'list',
+        wrapperDepth,
+    };
 };
 
-const passesKeyQuality = (
+const buildGroupEvidence = (container: UnifiedNode): GroupEvidence => {
+    const role = normalizeLower(container.role);
+    const tag = normalizeLower(getNodeAttr(container, 'tag') || getNodeAttr(container, 'tagName'));
+    const cls = normalizeLower(getNodeAttr(container, 'class'));
+    return {
+        explicitRole: role.length > 0 && role !== 'generic' && role !== 'group' && role !== 'none' && role !== 'presentation',
+        explicitTag: tag.length > 0 && tag !== 'div' && tag !== 'span' && tag !== 'p',
+        explicitClass: LIST_TITLE_KEYWORDS.some((keyword) => cls.includes(keyword)) || TABLE_KEYWORDS.some((keyword) => cls.includes(keyword)),
+        explicitListSemantic: LIST_ROLES.has(role) || LIST_TAGS.has(tag),
+        explicitTableSemantic: TABLE_ROLES.has(role) || TABLE_TAGS.has(tag),
+        hasName: Boolean(normalizeText(container.name || getNodeContent(container))),
+        shellLike: isShellLikeNode(container),
+        codeLike: isCodeLikeNode(container),
+    };
+};
+
+const passesGroupDetectionFloor = (
     kind: GroupKind,
+    signal: GroupSignal,
+    evidence: GroupEvidence,
+): boolean => {
+    if (signal.itemCount < 2) return false;
+    if (evidence.shellLike || evidence.codeLike) return false;
+    if (kind === 'table') {
+        if (signal.itemCount < 3) return false;
+        if (signal.slotCount < 2) return false;
+        if (!signal.hasTableSemantic && signal.stableRate < 0.5) return false;
+        if (!signal.hasTableSemantic && signal.keyCoverage < 0.5) return false;
+        return true;
+    }
+    if (kind === 'kv') {
+        if (signal.itemCount < 3) return false;
+        if (signal.slotCount !== 2) return false;
+        if (signal.keyCoverage < 0.5) return false;
+        return true;
+    }
+    if (signal.itemCount < 3) return false;
+    if (signal.headingRate >= 0.82) return false;
+    if (!evidence.explicitListSemantic && !signal.hasListSemantic) {
+        if (signal.stableRate < 0.58) return false;
+        if (signal.keyCoverage < 0.55) return false;
+        if (signal.interactiveItemRate < 0.2) return false;
+    }
+    return signal.keyCoverage >= 0.4;
+};
+
+const evaluateKeyQuality = (
     items: UnifiedNode[],
     slotMap: Map<string, UnifiedNode[]>,
     keySlot: number,
-): boolean => {
+): { coverage: number; uniqueness: number } => {
     const keyTexts: string[] = [];
     for (const item of items) {
         const slot = (slotMap.get(item.id) || [])[keySlot];
@@ -137,162 +201,7 @@ const passesKeyQuality = (
     const nonEmpty = keyTexts.filter((text) => text.trim().length > 0);
     const coverage = items.length > 0 ? nonEmpty.length / items.length : 0;
     const uniqueness = uniqueRatio(nonEmpty);
-
-    if (kind === 'table') {
-        return coverage >= 0.45 && uniqueness >= 0.35;
-    }
-    if (kind === 'kv') {
-        return coverage >= 0.5;
-    }
-    return coverage >= 0.55 && uniqueness >= 0.45;
-};
-
-const pruneGroups = (groups: GroupDetection[], parentById: Map<string, UnifiedNode | null>): GroupDetection[] => {
-    const bestByContainer = new Map<string, GroupDetection>();
-    for (const group of groups) {
-        const current = bestByContainer.get(group.containerId);
-        if (!current || groupScore(group) > groupScore(current)) {
-            bestByContainer.set(group.containerId, group);
-        }
-    }
-
-    const depthById = new Map<string, number>();
-    const sorted = [...bestByContainer.values()].sort((a, b) => {
-        const depthDiff = getNodeDepth(b.containerId, parentById, depthById) - getNodeDepth(a.containerId, parentById, depthById);
-        if (depthDiff !== 0) return depthDiff;
-        return groupScore(b) - groupScore(a);
-    });
-    const kept: GroupDetection[] = [];
-    for (const candidate of sorted) {
-        let blocked = false;
-        for (const existing of kept) {
-            if (isAncestorNode(candidate.containerId, existing.containerId, parentById)) {
-                if (shouldDropAncestorGroup(candidate, existing, parentById)) {
-                    blocked = true;
-                    break;
-                }
-            }
-            if (isAncestorNode(existing.containerId, candidate.containerId, parentById)) {
-                if (shouldDropDescendantGroup(candidate, existing, parentById)) {
-                    blocked = true;
-                    break;
-                }
-            }
-        }
-        if (!blocked) {
-            kept.push(candidate);
-        }
-    }
-
-    return kept;
-};
-
-const groupScore = (group: GroupDetection): number => {
-    const kindWeight = group.kind === 'table' ? 6 : group.kind === 'kv' ? 4 : 2;
-    return group.itemIds.length * 3 + kindWeight;
-};
-
-const shouldDropAncestorGroup = (
-    ancestor: GroupDetection,
-    descendant: GroupDetection,
-    parentById: Map<string, UnifiedNode | null>,
-): boolean => {
-    const overlap = overlapRatio(ancestor.itemIds, descendant.itemIds);
-    const wrappedCoverage = wrappedItemCoverage(descendant.itemIds, ancestor.itemIds, parentById);
-
-    if (ancestor.kind === descendant.kind) {
-        if (overlap >= 0.65) return true;
-        if (wrappedCoverage >= 0.75) return true;
-    }
-
-    if (wrappedCoverage >= 0.9 && descendant.itemIds.length >= 3) {
-        return true;
-    }
-
-    return false;
-};
-
-const shouldDropDescendantGroup = (
-    candidate: GroupDetection,
-    ancestor: GroupDetection,
-    parentById: Map<string, UnifiedNode | null>,
-): boolean => {
-    const overlap = overlapRatio(candidate.itemIds, ancestor.itemIds);
-    const wrappedCoverage = wrappedItemCoverage(candidate.itemIds, ancestor.itemIds, parentById);
-    if (overlap >= 0.9 && wrappedCoverage >= 0.95) {
-        return groupScore(ancestor) >= groupScore(candidate);
-    }
-    return false;
-};
-
-const wrappedItemCoverage = (
-    descendantItemIds: string[],
-    ancestorItemIds: string[],
-    parentById: Map<string, UnifiedNode | null>,
-): number => {
-    if (descendantItemIds.length === 0 || ancestorItemIds.length === 0) return 0;
-    const ancestorItemSet = new Set(ancestorItemIds);
-    let covered = 0;
-    for (const itemId of descendantItemIds) {
-        if (isSelfOrAncestorInSet(itemId, ancestorItemSet, parentById)) {
-            covered += 1;
-        }
-    }
-    return covered / descendantItemIds.length;
-};
-
-const isSelfOrAncestorInSet = (
-    nodeId: string,
-    ancestorItemSet: Set<string>,
-    parentById: Map<string, UnifiedNode | null>,
-): boolean => {
-    let cursorId: string | undefined = nodeId;
-    while (cursorId) {
-        if (ancestorItemSet.has(cursorId)) return true;
-        const parent: UnifiedNode | null = parentById.get(cursorId) || null;
-        cursorId = parent ? parent.id : undefined;
-    }
-    return false;
-};
-
-const overlapRatio = (left: string[], right: string[]): number => {
-    if (left.length === 0 || right.length === 0) return 0;
-    const rightSet = new Set(right);
-    let intersect = 0;
-    for (const id of left) {
-        if (rightSet.has(id)) intersect += 1;
-    }
-    return intersect / Math.min(left.length, right.length);
-};
-
-const isAncestorNode = (
-    ancestorId: string,
-    nodeId: string,
-    parentById: Map<string, UnifiedNode | null>,
-): boolean => {
-    let cursor = parentById.get(nodeId) || null;
-    while (cursor) {
-        if (cursor.id === ancestorId) return true;
-        cursor = parentById.get(cursor.id) || null;
-    }
-    return false;
-};
-
-const getNodeDepth = (
-    nodeId: string,
-    parentById: Map<string, UnifiedNode | null>,
-    cache: Map<string, number>,
-): number => {
-    const cached = cache.get(nodeId);
-    if (cached !== undefined) return cached;
-    const parent = parentById.get(nodeId) || null;
-    if (!parent) {
-        cache.set(nodeId, 0);
-        return 0;
-    }
-    const depth = getNodeDepth(parent.id, parentById, cache) + 1;
-    cache.set(nodeId, depth);
-    return depth;
+    return { coverage, uniqueness };
 };
 
 const detectSiblingBuckets = (parent: UnifiedNode): SignatureBucket[] => {
@@ -347,9 +256,10 @@ const shrinkGroupContainer = (
     initialContainer: UnifiedNode,
     initialItems: UnifiedNode[],
     parentById: Map<string, UnifiedNode | null>,
-): { container: UnifiedNode; items: UnifiedNode[] } => {
+): { container: UnifiedNode; items: UnifiedNode[]; wrapperDepth: number } => {
     let container = initialContainer;
     let items = initialItems;
+    let wrapperDepth = 0;
 
     for (let i = 0; i < 2; i += 1) {
         if (!isWrapperContainer(container)) break;
@@ -362,9 +272,10 @@ const shrinkGroupContainer = (
 
         container = dominantChild;
         items = largest.nodes;
+        wrapperDepth += 1;
     }
 
-    return { container, items };
+    return { container, items, wrapperDepth };
 };
 
 const pickDominantChild = (

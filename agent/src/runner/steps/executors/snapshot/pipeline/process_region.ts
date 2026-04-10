@@ -1,12 +1,14 @@
 import { applyLCA } from '../stages/lca';
 import { compress } from '../stages/compress';
 import { finalizeLabel } from '../stages/finalize_label';
-import { buildStructureEntityIndex, detectStructure } from '../stages/entity_index';
+import { selectStructureCandidates } from '../stages/candidates';
+import { buildStructureEntityIndex, detectStructureCandidates } from '../stages/entity_index';
 import type { NodeTier, UnifiedNode } from '../core/types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
     const tree = buildTree(node);
-    const structure = detectStructure(tree);
+    const detected = detectStructureCandidates(tree);
+    const structure = selectStructureCandidates(tree, detected.candidates);
     const entityIndex = buildStructureEntityIndex(tree, structure, { includeDescendants: false });
 
     markStrongSemantics(tree);

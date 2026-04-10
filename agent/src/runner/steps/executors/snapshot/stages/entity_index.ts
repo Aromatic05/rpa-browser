@@ -7,22 +7,44 @@ import type {
     RegionEntity,
     UnifiedNode,
 } from '../core/types';
+import { buildStructureCandidates, selectStructureCandidates, type StructureCandidate } from './candidates';
 import { detectGroups, type GroupDetection } from './groups';
 import { detectRegionEntities, type RegionDetection } from './regions';
 
 export type StructureDetection = {
     regions: RegionDetection[];
     groups: GroupDetection[];
+    candidates: StructureCandidate[];
 };
 
 export type BuildEntityIndexOptions = {
     includeDescendants?: boolean;
 };
 
-export const detectStructure = (root: UnifiedNode): StructureDetection => {
+export type StructureCandidateDetection = {
+    regions: RegionDetection[];
+    groups: GroupDetection[];
+    candidates: StructureCandidate[];
+};
+
+export const detectStructureCandidates = (root: UnifiedNode): StructureCandidateDetection => {
+    const regions = detectRegionEntities(root);
+    const groups = detectGroups(root);
+    const candidates = buildStructureCandidates(root, { regions, groups });
     return {
-        regions: detectRegionEntities(root),
-        groups: detectGroups(root),
+        regions,
+        groups,
+        candidates,
+    };
+};
+
+export const detectStructure = (root: UnifiedNode): StructureDetection => {
+    const detected = detectStructureCandidates(root);
+    const selected = selectStructureCandidates(root, detected.candidates);
+    return {
+        regions: selected.regions,
+        groups: selected.groups,
+        candidates: selected.candidates,
     };
 };
 
