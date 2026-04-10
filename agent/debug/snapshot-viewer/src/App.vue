@@ -385,7 +385,12 @@ const resolveNodeContent = (node: TreeNodeLike, snapshot: SnapshotGraphLike): st
 
 const normalizeText = (value: string | undefined): string => (value || '').replace(/\s+/g, ' ').trim();
 
-const resolveNodeText = (nodeId: string, snapshot: SnapshotGraphLike): string => {
+const resolveNodeText = (
+  nodeId: string,
+  snapshot: SnapshotGraphLike,
+  options?: { maxLength?: number },
+): string => {
+  const maxLength = options?.maxLength ?? 120;
   const node = snapshot.nodeIndex?.[nodeId];
   if (!node) return '';
   const attrs = snapshot.attrIndex?.[nodeId] || {};
@@ -400,20 +405,26 @@ const resolveNodeText = (nodeId: string, snapshot: SnapshotGraphLike): string =>
   ];
   for (const candidate of candidates) {
     const text = normalizeText(candidate);
-    if (!text || text.length > 120) continue;
+    if (!text) continue;
+    if (maxLength > 0 && text.length > maxLength) continue;
     return text;
   }
   return '';
 };
 
-const firstReadableDescendantText = (nodeId: string, snapshot: SnapshotGraphLike, depthLimit: number): string => {
+const firstReadableDescendantText = (
+  nodeId: string,
+  snapshot: SnapshotGraphLike,
+  depthLimit: number,
+  maxLength = 120,
+): string => {
   const root = snapshot.nodeIndex?.[nodeId];
   if (!root) return '';
   const queue: Array<{ node: TreeNodeLike; depth: number }> = [{ node: root, depth: 0 }];
   while (queue.length > 0) {
     const current = queue.shift();
     if (!current) break;
-    const own = resolveNodeText(current.node.id, snapshot);
+    const own = resolveNodeText(current.node.id, snapshot, { maxLength });
     if (own) return own;
     if (current.depth >= depthLimit) continue;
     for (const child of current.node.children) {
@@ -686,16 +697,80 @@ const parentNodeIdMap = computed<Record<string, string>>(() => {
   return map;
 });
 
-const selectedGroupPreview = computed<GroupPreview | null>(() => {
+const depthOfNode = (nodeId: string, parentByNodeId: Record<string, string>): number => {
+  let depth = 0;
+  let cursor = nodeId;
+  while (cursor) {
+    const parent = parentByNodeId[cursor] || '';
+    if (!parent) break;
+    depth += 1;
+    cursor = parent;
+  }
+  return depth;
+};
+
+const findBestTableGroupUnderRegion = (
+  snapshot: SnapshotGraphLike,
+  regionNodeId: string,
+  entityIndex: EntityIndexLike,
+  parentByNodeId: Record<string, string>,
+): GroupEntityLike | null => {
+  const subtreeNodeIds = new Set<string>();
+  collectSubtreeIds(snapshot, regionNodeId, subtreeNodeIds);
+
+  const visitedGroupIds = new Set<string>();
+  let best: GroupEntityLike | null = null;
+  let bestDepth = -1;
+  let bestItemCount = -1;
+
+  for (const nodeId of subtreeNodeIds) {
+    const refs = entityIndex.byNodeId[nodeId] || [];
+    for (const ref of refs) {
+      if (ref.type !== 'group' || ref.role !== 'container') continue;
+      if (visitedGroupIds.has(ref.entityId)) continue;
+      visitedGroupIds.add(ref.entityId);
+      const entity = entityIndex.entities[ref.entityId];
+      if (!entity || entity.type !== 'group' || entity.kind !== 'table') continue;
+
+      const depth = depthOfNode(entity.containerId, parentByNodeId);
+      const itemCount = entity.itemIds.length;
+      if (
+        depth > bestDepth ||
+        (depth === bestDepth && itemCount > bestItemCount)
+      ) {
+        best = entity;
+        bestDepth = depth;
+        bestItemCount = itemCount;
+      }
+    }
+  }
+  return best;
+};
+
+const selectedTableGroup = computed<GroupEntityLike | null>(() => {
   const snapshot = activeSnapshot.value;
   const entity = selectedEntity.value;
-  if (!snapshot || !entity || entity.type !== 'group') return null;
+  if (!snapshot || !entity) return null;
 
-  const byItem = groupSlotMap.value.get(entity.id) || new Map<string, Map<number, string[]>>();
+  if (entity.type === 'group' && entity.kind === 'table') {
+    return entity;
+  }
+  if (entity.type === 'region' && entity.kind === 'table') {
+    return findBestTableGroupUnderRegion(snapshot, entity.nodeId, activeEntityIndex.value, parentNodeIdMap.value);
+  }
+  return null;
+});
+
+const buildGroupPreview = (
+  snapshot: SnapshotGraphLike,
+  group: GroupEntityLike,
+  slotMap: Map<string, Map<string, Map<number, string[]>>>,
+): GroupPreview => {
+  const byItem = slotMap.get(group.id) || new Map<string, Map<number, string[]>>();
   const slotSet = new Set<number>();
   const rows: GroupPreviewRow[] = [];
 
-  for (const itemId of entity.itemIds.slice(0, 50)) {
+  for (const itemId of group.itemIds.slice(0, 50)) {
     const bySlot = byItem.get(itemId) || new Map<number, string[]>();
     const slots: Record<number, string> = {};
 
@@ -710,8 +785,8 @@ const selectedGroupPreview = computed<GroupPreview | null>(() => {
     }
 
     if (Object.keys(slots).length === 0) {
-      slotSet.add(entity.keySlot);
-      slots[entity.keySlot] = '';
+      slotSet.add(group.keySlot);
+      slots[group.keySlot] = '';
     }
 
     rows.push({
@@ -726,7 +801,7 @@ const selectedGroupPreview = computed<GroupPreview | null>(() => {
     for (const slot of slots) {
       const existing = row.slots[slot];
       if (existing && existing.trim()) continue;
-      if (slot === entity.keySlot) {
+      if (slot === group.keySlot) {
         row.slots[slot] = row.summary;
       } else {
         row.slots[slot] = row.slots[slot] || '';
@@ -735,10 +810,24 @@ const selectedGroupPreview = computed<GroupPreview | null>(() => {
   }
 
   return {
-    group: entity,
+    group,
     slots,
     rows,
   };
+};
+
+const selectedGroupPreview = computed<GroupPreview | null>(() => {
+  const snapshot = activeSnapshot.value;
+  const entity = selectedEntity.value;
+  if (!snapshot || !entity || entity.type !== 'group') return null;
+  return buildGroupPreview(snapshot, entity, groupSlotMap.value);
+});
+
+const selectedTableGroupPreview = computed<GroupPreview | null>(() => {
+  const snapshot = activeSnapshot.value;
+  const tableGroup = selectedTableGroup.value;
+  if (!snapshot || !tableGroup) return null;
+  return buildGroupPreview(snapshot, tableGroup, groupSlotMap.value);
 });
 
 const nodeTag = (snapshot: SnapshotGraphLike, nodeId: string): string => {
@@ -817,22 +906,22 @@ const extractTheadHeaders = (snapshot: SnapshotGraphLike, tableNode: TreeNodeLik
 
 const selectedGroupColumnHeaders = computed<Record<number, string>>(() => {
   const snapshot = activeSnapshot.value;
-  const entity = selectedEntity.value;
-  const preview = selectedGroupPreview.value;
-  if (!snapshot || !entity || entity.type !== 'group' || entity.kind !== 'table' || !preview) return {};
+  const tableGroup = selectedTableGroup.value;
+  const preview = selectedTableGroupPreview.value;
+  if (!snapshot || !tableGroup || !preview) return {};
 
   const headers: Record<number, string> = {};
-  const byItem = groupSlotMap.value.get(entity.id) || new Map<string, Map<number, string[]>>();
+  const byItem = groupSlotMap.value.get(tableGroup.id) || new Map<string, Map<number, string[]>>();
 
   for (const slot of preview.slots) {
     const texts: string[] = [];
-    for (const itemId of entity.itemIds.slice(0, 8)) {
+    for (const itemId of tableGroup.itemIds.slice(0, 8)) {
       const bySlot = byItem.get(itemId);
       if (!bySlot) continue;
       const nodeIds = bySlot.get(slot) || [];
       for (const nodeId of nodeIds) {
         if (!isHeaderLikeNode(snapshot, nodeId)) continue;
-        const text = resolveNodeText(nodeId, snapshot);
+        const text = resolveNodeText(nodeId, snapshot, { maxLength: 320 });
         if (text) texts.push(text);
       }
     }
@@ -842,12 +931,12 @@ const selectedGroupColumnHeaders = computed<Record<number, string>>(() => {
 
   if (Object.keys(headers).length > 0) return headers;
 
-  const containerNode = snapshot.nodeIndex?.[entity.containerId];
-  const containerTag = nodeTag(snapshot, entity.containerId);
+  const containerNode = snapshot.nodeIndex?.[tableGroup.containerId];
+  const containerTag = nodeTag(snapshot, tableGroup.containerId);
   const isBodyLike = containerTag === 'tbody' || normalizeText(containerNode?.role)?.toLowerCase() === 'tbody';
   if (!isBodyLike) return headers;
 
-  const parentId = parentNodeIdMap.value[entity.containerId] || '';
+  const parentId = parentNodeIdMap.value[tableGroup.containerId] || '';
   if (!parentId) return headers;
   const tableNode = snapshot.nodeIndex?.[parentId];
   if (!tableNode) return headers;
@@ -894,6 +983,198 @@ const selectedGroupAssessment = computed(() => {
   const entity = selectedEntity.value;
   if (!entity || entity.type !== 'group') return null;
   return groupAssessmentMap.value.get(entity.id) || null;
+});
+
+const TABLE_KEY_ICON_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+){0,3}$/;
+const TABLE_KEY_ICON_TERMS = new Set([
+  'icon',
+  'caret',
+  'arrow',
+  'up',
+  'down',
+  'left',
+  'right',
+  'circle',
+  'square',
+  'pushpin',
+  'pin',
+  'close',
+  'check',
+  'plus',
+  'minus',
+  'search',
+  'info',
+]);
+
+const isTableRowNode = (snapshot: SnapshotGraphLike, node: TreeNodeLike): boolean => {
+  const role = normalizeText(node.role)?.toLowerCase() || '';
+  const tag = nodeTag(snapshot, node.id);
+  return role === 'row' || tag === 'tr';
+};
+
+const isTableCellNode = (snapshot: SnapshotGraphLike, node: TreeNodeLike): boolean => {
+  const role = normalizeText(node.role)?.toLowerCase() || '';
+  const tag = nodeTag(snapshot, node.id);
+  return role === 'cell' || role === 'gridcell' || role === 'columnheader' || role === 'rowheader' || tag === 'td' || tag === 'th';
+};
+
+const isIconLikeTableKeyText = (text: string): boolean => {
+  const value = normalizeText(text).toLowerCase();
+  if (!value) return false;
+  if (TABLE_KEY_ICON_TERMS.has(value)) return true;
+  if (!TABLE_KEY_ICON_PATTERN.test(value)) return false;
+  const parts = value.split(/[-_]/).filter((part) => part.length > 0);
+  if (parts.length === 0 || parts.length > 4) return false;
+  return parts.some((part) => TABLE_KEY_ICON_TERMS.has(part));
+};
+
+const isNumericLikeTableKeyText = (text: string): boolean => {
+  return /^[\d\s\-:/.%]+$/.test(normalizeText(text));
+};
+
+const findNearestTableNode = (
+  snapshot: SnapshotGraphLike,
+  startNodeId: string,
+  parentByNodeId: Record<string, string>,
+): TreeNodeLike | null => {
+  let cursor = startNodeId;
+  for (let depth = 0; cursor && depth < 8; depth += 1) {
+    const node = snapshot.nodeIndex?.[cursor];
+    if (node) {
+      const role = normalizeText(node.role)?.toLowerCase() || '';
+      const tag = nodeTag(snapshot, node.id);
+      if (role === 'table' || role === 'grid' || role === 'treegrid' || tag === 'table') {
+        return node;
+      }
+    }
+    cursor = parentByNodeId[cursor] || '';
+  }
+  return null;
+};
+
+const collectTableRowsFromRegion = (snapshot: SnapshotGraphLike, regionNodeId: string): TreeNodeLike[] => {
+  const regionNode = snapshot.nodeIndex?.[regionNodeId];
+  if (!regionNode) return [];
+
+  const out: TreeNodeLike[] = [];
+  const queue: TreeNodeLike[] = [regionNode];
+  while (queue.length > 0 && out.length < 120) {
+    const current = queue.shift();
+    if (!current) break;
+    if (isTableRowNode(snapshot, current)) {
+      out.push(current);
+      continue;
+    }
+    for (const child of current.children) {
+      queue.push(child);
+    }
+  }
+  return out.filter((row) => row.children.some((child) => isTableCellNode(snapshot, child)));
+};
+
+const deriveRegionTableKeyInfo = (
+  snapshot: SnapshotGraphLike,
+  regionNodeId: string,
+  parentByNodeId: Record<string, string>,
+): { keySlot: number; keyName: string; keySamples: string[] } | null => {
+  const rows = collectTableRowsFromRegion(snapshot, regionNodeId);
+  if (rows.length < 2) return null;
+
+  const rowCells = rows.map((row) => row.children.filter((child) => isTableCellNode(snapshot, child)));
+  const maxSlot = Math.max(...rowCells.map((cells) => cells.length), 0) - 1;
+  if (maxSlot < 0) return null;
+
+  let bestSlot = 0;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  const samplesBySlot = new Map<number, string[]>();
+
+  for (let slot = 0; slot <= maxSlot; slot += 1) {
+    const values: string[] = [];
+    for (const cells of rowCells) {
+      const cell = cells[slot];
+      if (!cell) continue;
+      const text = resolveNodeText(cell.id, snapshot, { maxLength: 320 }) || firstReadableDescendantText(cell.id, snapshot, 2, 320);
+      values.push(normalizeText(text));
+    }
+    const nonEmpty = values.filter((value) => value.length > 0);
+    const coverage = rowCells.length > 0 ? nonEmpty.length / rowCells.length : 0;
+    if (coverage <= 0) continue;
+    const uniq = nonEmpty.length > 0 ? new Set(nonEmpty.map((value) => value.toLowerCase())).size / nonEmpty.length : 0;
+    const iconRate = nonEmpty.length > 0 ? nonEmpty.filter((value) => isIconLikeTableKeyText(value)).length / nonEmpty.length : 0;
+    const numericRate = nonEmpty.length > 0 ? nonEmpty.filter((value) => isNumericLikeTableKeyText(value)).length / nonEmpty.length : 0;
+    const score = coverage * 0.45 + uniq * 0.55 - iconRate * 0.85 - numericRate * 0.25;
+    if (score > bestScore) {
+      bestScore = score;
+      bestSlot = slot;
+    }
+
+    const sampleDedupe = new Set<string>();
+    const samples: string[] = [];
+    for (const value of nonEmpty) {
+      const key = value.toLowerCase();
+      if (sampleDedupe.has(key)) continue;
+      sampleDedupe.add(key);
+      samples.push(value);
+      if (samples.length >= 8) break;
+    }
+    samplesBySlot.set(slot, samples);
+  }
+
+  if (bestScore === Number.NEGATIVE_INFINITY) return null;
+  const tableNode = findNearestTableNode(snapshot, regionNodeId, parentByNodeId);
+  const headers = tableNode ? extractTheadHeaders(snapshot, tableNode, maxSlot + 1) : [];
+  const keyName = normalizeText(headers[bestSlot]) || '';
+  return {
+    keySlot: bestSlot,
+    keyName,
+    keySamples: samplesBySlot.get(bestSlot) || [],
+  };
+};
+
+const selectedTableKeyInfo = computed<{
+  groupId?: string;
+  keySlot: number;
+  keyName: string;
+  keySamples: string[];
+  fromRegion: boolean;
+} | null>(() => {
+  const snapshot = activeSnapshot.value;
+  const selected = selectedEntity.value;
+  const group = selectedTableGroup.value;
+  if (!snapshot || !selected) return null;
+
+  if (group) {
+    const keySlot = group.keySlot;
+    const keyName = normalizeText(selectedGroupColumnHeaders.value[keySlot]) || '';
+    const samples: string[] = [];
+    const dedupe = new Set<string>();
+    for (const itemId of group.itemIds) {
+      const text = normalizeText(resolveGroupKeyText(snapshot, groupSlotMap.value, group, itemId));
+      if (!text) continue;
+      const key = text.toLowerCase();
+      if (dedupe.has(key)) continue;
+      dedupe.add(key);
+      samples.push(text);
+      if (samples.length >= 8) break;
+    }
+    return {
+      groupId: group.id,
+      keySlot,
+      keyName,
+      keySamples: samples,
+      fromRegion: selected.type === 'region',
+    };
+  }
+
+  if (selected.type !== 'region' || selected.kind !== 'table') return null;
+  const derived = deriveRegionTableKeyInfo(snapshot, selected.nodeId, parentNodeIdMap.value);
+  if (!derived) return null;
+  return {
+    keySlot: derived.keySlot,
+    keyName: derived.keyName,
+    keySamples: derived.keySamples,
+    fromRegion: true,
+  };
 });
 
 const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();
@@ -2071,6 +2352,22 @@ onBeforeUnmount(() => {
         <div v-if="selectedEntity.type === 'group' && selectedGroupAssessment" class="kv"><span class="k">score</span><span>{{ toPercent(selectedGroupAssessment.score) }}</span></div>
         <div v-if="selectedEntity.type === 'group' && selectedGroupAssessment && selectedGroupAssessment.sampleKeys.length > 0" class="kv">
           <span class="k">sampleKeys</span><span>{{ selectedGroupAssessment.sampleKeys.join(' | ') }}</span>
+        </div>
+        <div v-if="selectedTableKeyInfo && selectedTableKeyInfo.groupId" class="kv">
+          <span class="k">tableKeyGroup</span>
+          <span>{{ selectedTableKeyInfo.groupId }}</span>
+        </div>
+        <div v-if="selectedTableKeyInfo" class="kv">
+          <span class="k">tableKeySlot</span>
+          <span>{{ selectedTableKeyInfo.keySlot }}<template v-if="selectedTableKeyInfo.fromRegion"> (linked)</template></span>
+        </div>
+        <div v-if="selectedTableKeyInfo && selectedTableKeyInfo.keyName" class="kv">
+          <span class="k">tableKeyName</span>
+          <span class="detail-wrap">{{ selectedTableKeyInfo.keyName }}</span>
+        </div>
+        <div v-if="selectedTableKeyInfo && selectedTableKeyInfo.keySamples.length > 0" class="kv">
+          <span class="k">tableKeySamples</span>
+          <span class="detail-wrap">{{ selectedTableKeyInfo.keySamples.join(' | ') }}</span>
         </div>
         <div v-if="selectedEntityRow" class="kv"><span class="k">label</span><span>{{ selectedEntityRow.label }}</span></div>
       </template>

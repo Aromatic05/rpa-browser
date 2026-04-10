@@ -150,6 +150,11 @@ button:disabled {
   display: inline-block;
 }
 
+.detail-wrap {
+  white-space: normal;
+  word-break: break-word;
+}
+
 pre {
   margin: 0;
   font-size: 12px;
