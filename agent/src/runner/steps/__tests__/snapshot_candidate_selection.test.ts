@@ -198,10 +198,20 @@ test('candidate selection should suppress table pagination list entity', () => {
     const entityIndex = buildStructureEntityIndex(root);
     const entities = Object.values(entityIndex.entities);
     const listAnchors = listEntityAnchors(entities);
-    const tableAnchors = tableEntityAnchors(entities);
+    const tableEntityIds = entities.filter((entity) => entity.kind === 'table').map((entity) => entity.id);
+    const prevRefs = entityIndex.byNodeId['page-prev-btn'] || [];
+    const nextRefs = entityIndex.byNodeId['page-next-btn'] || [];
 
     assert.equal(listAnchors.includes('pagination-list'), false);
-    assert.equal(tableAnchors.includes('table-node') || tableAnchors.includes('table-wrapper'), true);
+    assert.equal(tableEntityIds.length > 0, true);
+    assert.equal(
+        prevRefs.some((ref) => ref.type === 'region' && tableEntityIds.includes(ref.entityId) && ref.role === 'descendant'),
+        true,
+    );
+    assert.equal(
+        nextRefs.some((ref) => ref.type === 'region' && tableEntityIds.includes(ref.entityId) && ref.role === 'descendant'),
+        true,
+    );
 });
 
 test('candidate selection should keep one table candidate per strong table family when page has many tables', () => {

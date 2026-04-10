@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { getNodeBbox, getNodeContent, normalizeText } from '../core/runtime_store';
+import { getNodeAttr, getNodeBbox, getNodeContent, normalizeText } from '../core/runtime_store';
 import type {
     EntityIndex,
     GroupEntity,
@@ -117,6 +117,10 @@ export const buildStructureEntityIndex = (
             entityId: region.id,
             role: 'container',
         });
+    }
+
+    if (includeDescendants) {
+        attachTablePaginationRefs(entityIndex, regionEntities, nodeById, parentById);
     }
 
     for (const groupBundle of groupEntities) {
@@ -241,3 +245,123 @@ const walkDescendants = (node: UnifiedNode, visitor: (node: UnifiedNode) => void
         walkDescendants(child, visitor);
     }
 };
+
+const attachTablePaginationRefs = (
+    entityIndex: EntityIndex,
+    regions: RegionEntity[],
+    nodeById: Map<string, UnifiedNode>,
+    parentById: Map<string, UnifiedNode | null>,
+) => {
+    const tableRegions = regions.filter((region) => region.kind === 'table');
+    if (tableRegions.length === 0) return;
+
+    const paginationNodeAssignment = new Map<string, PaginationAssignment>();
+    const regionsByContainerId = new Map<string, RegionEntity[]>();
+    for (const region of tableRegions) {
+        const container = findTablePaginationContainer(region.nodeId, nodeById, parentById);
+        if (!container) continue;
+        const bucket = regionsByContainerId.get(container.id) || [];
+        bucket.push(region);
+        regionsByContainerId.set(container.id, bucket);
+    }
+
+    for (const [containerId, containerRegions] of regionsByContainerId.entries()) {
+        const container = nodeById.get(containerId);
+        if (!container || containerRegions.length === 0) continue;
+        const paginationNodeIds = collectPaginationNodeIds(container);
+        if (paginationNodeIds.length === 0) continue;
+
+        const primaryRegion = [...containerRegions].sort(
+            (left, right) => depthOfNode(right.nodeId, parentById) - depthOfNode(left.nodeId, parentById),
+        )[0];
+        if (!primaryRegion) continue;
+        const regionDepth = depthOfNode(primaryRegion.nodeId, parentById);
+
+        for (const nodeId of paginationNodeIds) {
+            const current = paginationNodeAssignment.get(nodeId);
+            if (!current || regionDepth > current.depth) {
+                paginationNodeAssignment.set(nodeId, {
+                    entityId: primaryRegion.id,
+                    depth: regionDepth,
+                });
+            }
+        }
+    }
+
+    for (const [nodeId, assignment] of paginationNodeAssignment.entries()) {
+        pushNodeRef(entityIndex.byNodeId, nodeId, {
+            type: 'region',
+            entityId: assignment.entityId,
+            role: 'descendant',
+        });
+    }
+};
+
+type PaginationAssignment = {
+    entityId: string;
+    depth: number;
+};
+
+const findTablePaginationContainer = (
+    nodeId: string,
+    nodeById: Map<string, UnifiedNode>,
+    parentById: Map<string, UnifiedNode | null>,
+): UnifiedNode | null => {
+    let cursor = nodeById.get(nodeId) || null;
+    for (let depth = 0; cursor && depth < 7; depth += 1) {
+        const paginationNodeIds = collectPaginationNodeIds(cursor);
+        if (paginationNodeIds.length > 0) {
+            return cursor;
+        }
+        cursor = parentById.get(cursor.id) || null;
+    }
+    return null;
+};
+
+const collectPaginationNodeIds = (root: UnifiedNode): string[] => {
+    const ids = new Set<string>();
+    const paginationRoots: UnifiedNode[] = [];
+    walkDescendants(root, (node) => {
+        if (!isPaginationLikeNode(node)) return;
+        paginationRoots.push(node);
+    });
+    for (const paginationRoot of paginationRoots) {
+        walkDescendants(paginationRoot, (node) => {
+            ids.add(node.id);
+        });
+    }
+    return Array.from(ids);
+};
+
+const depthOfNode = (
+    nodeId: string,
+    parentById: Map<string, UnifiedNode | null>,
+): number => {
+    let depth = 0;
+    let cursor: string | undefined = nodeId;
+    while (cursor) {
+        const parent: UnifiedNode | null = parentById.get(cursor) || null;
+        if (!parent) break;
+        depth += 1;
+        cursor = parent.id;
+    }
+    return depth;
+};
+
+const isPaginationLikeNode = (node: UnifiedNode): boolean => {
+    const cls = normalizeLower(getNodeAttr(node, 'class'));
+    if (!cls) return false;
+    if (!PAGINATION_CLASS_HINTS.some((hint) => cls.includes(hint))) return false;
+
+    const role = normalizeLower(node.role);
+    const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    if (PAGINATION_ROLES.has(role)) return true;
+    if (PAGINATION_TAGS.has(tag)) return true;
+    return role === 'button' || role === 'link' || tag === 'button' || tag === 'a';
+};
+
+const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
+
+const PAGINATION_CLASS_HINTS = ['pagination', 'pager'];
+const PAGINATION_ROLES = new Set(['list', 'navigation', 'button', 'link']);
+const PAGINATION_TAGS = new Set(['ul', 'ol', 'nav', 'li', 'button', 'a']);
