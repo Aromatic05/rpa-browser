@@ -122,9 +122,9 @@ const detectRegionKind = (node: UnifiedNode, signal: NodeSignal): RegionKind | u
     if (isCodeLikeNode(role, tag, cls)) return undefined;
 
     if ((role === 'form' || tag === 'form') && signal.field >= 1) return 'form';
+    if (role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol' || signal.listItem >= 3) return 'list';
     if (isTableLikeNode(role, tag, cls) || hasDenseRowChildren(node)) return 'table';
     if (role === 'dialog' || role === 'alertdialog') return 'dialog';
-    if (role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol' || signal.listItem >= 3) return 'list';
     if (role === 'toolbar' || cls.includes('toolbar')) return 'toolbar';
 
     const isPanelRole = PANEL_ROLES.has(role) || cls.includes('panel') || cls.includes('card');
