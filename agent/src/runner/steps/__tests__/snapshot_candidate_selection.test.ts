@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { setNodeAttrs } from '../executors/snapshot/core/runtime_store';
 import type { EntityRecord, UnifiedNode } from '../executors/snapshot/core/types';
 import { buildStructureEntityIndex } from '../executors/snapshot/stages/entity_index';
+import { detectGroups } from '../executors/snapshot/stages/groups';
 
 const node = (id: string, role: string, children: UnifiedNode[] = [], attrs: Record<string, string> = {}): UnifiedNode => {
     const next: UnifiedNode = {
@@ -301,4 +302,44 @@ test('candidate selection should not promote table row nodes to table entities',
     assert.equal(tableAnchors.includes('row-1'), false);
     assert.equal(tableAnchors.includes('row-2'), false);
     assert.equal(tableAnchors.includes('table') || tableAnchors.includes('tbody'), true);
+});
+
+test('table keySlot should avoid icon-like column when text column exists', () => {
+    const makeTextNode = (id: string, text: string): UnifiedNode => ({
+        id,
+        role: 'text',
+        name: text,
+        children: [],
+    });
+    const makeRow = (index: number, iconText: string, nameText: string): UnifiedNode => {
+        return node(
+            `row-${index}`,
+            'row',
+            [
+                node(`cell-icon-${index}`, 'cell', [makeTextNode(`icon-${index}`, iconText)], { tag: 'td' }),
+                node(`cell-name-${index}`, 'cell', [makeTextNode(`name-${index}`, nameText)], { tag: 'td' }),
+                node(`cell-num-${index}`, 'cell', [makeTextNode(`num-${index}`, `${100 + index}`)], { tag: 'td' }),
+            ],
+            { tag: 'tr' },
+        );
+    };
+
+    const tbody = node(
+        'tbody',
+        'rowgroup',
+        [
+            makeRow(1, 'caret-up', 'Item A'),
+            makeRow(2, 'caret-down', 'Item A'),
+            makeRow(3, 'info-circle', 'Item B'),
+            makeRow(4, 'pushpin', 'Item B'),
+            makeRow(5, 'arrow-left', 'Item C'),
+            makeRow(6, 'arrow-right', 'Item C'),
+        ],
+        { tag: 'tbody', class: 'ant-table-tbody' },
+    );
+    const root = node('root', 'root', [tbody], { tag: 'main' });
+    const groups = detectGroups(root);
+    const tableGroup = groups.find((group) => group.kind === 'table' && group.containerId === 'tbody');
+    assert.ok(tableGroup, 'expected table group on tbody');
+    assert.equal(tableGroup.keySlot, 1);
 });

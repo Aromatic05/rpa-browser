@@ -414,6 +414,7 @@ const selectKeySlot = (kind: 'table' | 'list', items: UnifiedNode[], slotMap: Ma
             averageTextQuality(sampleTexts) +
             semanticBonus(kind, sampleNodes, sampleTexts) -
             actionPenalty(sampleNodes, sampleTexts) * 1.4 -
+            iconLikePenalty(sampleTexts) * (kind === 'table' ? 2.2 : 1.0) -
             volatilityPenalty(sampleTexts) * 1.1 -
             sparsePenalty(sampleNodes.length, items.length);
 
@@ -424,6 +425,28 @@ const selectKeySlot = (kind: 'table' | 'list', items: UnifiedNode[], slotMap: Ma
     }
 
     return bestIndex;
+};
+
+const iconLikePenalty = (texts: string[]): number => {
+    if (texts.length === 0) return 0;
+    let hits = 0;
+    for (const text of texts) {
+        if (isIconLikeText(text)) hits += 1;
+    }
+    return hits / texts.length;
+};
+
+const isIconLikeText = (text: string): boolean => {
+    const value = text.trim().toLowerCase();
+    if (!value) return false;
+    if (ICON_TEXT_PATTERN.test(value)) {
+        const parts = value.split(/[-_]/).filter((part) => part.length > 0);
+        if (parts.length <= 4 && parts.some((part) => ICON_TEXT_TERMS.has(part))) {
+            return true;
+        }
+    }
+    if (ICON_TEXT_TERMS.has(value)) return true;
+    return false;
 };
 
 const uniqueRatio = (texts: string[]): number => {
@@ -881,6 +904,7 @@ const isCodeTokenText = (text: string): boolean => {
 const HAS_TEXT_PATTERN = /[A-Za-z0-9\u4E00-\u9FFF]/;
 const CODE_TOKEN_PATTERN = /^(<|>|\/>|<\/|=>|=|{|}|\(|\)|\[|\]|:|,|;|\"|'|`)+$/;
 const VOLATILE_PATTERN = /(^\d+$)|(\d{4}[-/]\d{1,2}[-/]\d{1,2})|(\d{1,2}:\d{2})|(%$)|(^[#№]?\d+)/;
+const ICON_TEXT_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+){0,3}$/;
 const VOLATILE_KEYWORDS = ['today', 'yesterday', 'now', 'pending', 'failed', 'success', '状态', '时间', '数量', '总数', 'percent'];
 const TABLE_KEYWORDS = ['table', 'grid', 'datatable', 'data-table'];
 const SEMANTIC_KEYWORDS = ['name', 'title', '编号', '名称', 'id', 'code'];
@@ -902,6 +926,31 @@ const ACTION_WORDS = [
     '查看',
     '编辑',
 ];
+const ICON_TEXT_TERMS = new Set([
+    'icon',
+    'caret',
+    'arrow',
+    'up',
+    'down',
+    'left',
+    'right',
+    'circle',
+    'square',
+    'outlined',
+    'filled',
+    'twotone',
+    'pushpin',
+    'pin',
+    'close',
+    'check',
+    'plus',
+    'minus',
+    'search',
+    'info',
+    'menu',
+    'home',
+    'user',
+]);
 const PAGINATION_CLASS_HINTS = ['pagination', 'pager'];
 const PAGINATION_TAGS = new Set(['ul', 'ol', 'nav']);
 const PAGINATION_ROLES = new Set(['list', 'navigation']);
