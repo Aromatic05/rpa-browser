@@ -72,6 +72,9 @@ const mapTraceError = (error: unknown): ToolError => {
         if (error.name === 'TimeoutError' || /timeout/i.test(error.message)) {
             return { code: 'ERR_TIMEOUT', message: 'timeout', phase: 'trace' };
         }
+        if (isBadArgsError(error.message)) {
+            return { code: 'ERR_BAD_ARGS', message: error.message || 'bad args', phase: 'trace' };
+        }
         if (isAmbiguousError(error.message)) {
             return { code: 'ERR_AMBIGUOUS', message: 'ambiguous', phase: 'trace' };
         }
@@ -88,3 +91,6 @@ const isToolErrorLike = (error: unknown): error is ToolError => {
 
 const isAmbiguousError = (message: string) =>
     /strict mode|multiple elements|ambiguous|matches\\s+\\d+\\s+elements/i.test(message);
+
+const isBadArgsError = (message: string) =>
+    /cannot be filled|not editable|not an? (input|textarea|select)|missing required/i.test(message);

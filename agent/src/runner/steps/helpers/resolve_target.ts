@@ -104,27 +104,31 @@ const resolveBySnapshotNodeId = (
 
     const direct = locator.direct;
     if (direct?.kind === 'css' && direct.query) {
-        if (shouldPreferStructuralFallback(locator, direct.source)) {
-            const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId, locator.scope?.id);
-            if (structuralSelector) {
-                return { ok: true, target: { selector: structuralSelector } };
-            }
-        }
-        return { ok: true, target: { selector: direct.query } };
+        return { ok: true, target: { selector: withVisibilityConstraint(direct.query, locator.policy?.requireVisible) } };
     }
     if (direct?.kind === 'role' && direct.query) {
-        if (direct.fallback) {
-            return { ok: true, target: { selector: direct.fallback } };
-        }
         const parsed = parseRoleQuery(direct.query);
-        if (parsed) return { ok: true, target: parsed };
+        if (parsed) {
+            return {
+                ok: true,
+                target: {
+                    ...parsed,
+                    selector: direct.fallback
+                        ? withVisibilityConstraint(direct.fallback, locator.policy?.requireVisible)
+                        : undefined,
+                },
+            };
+        }
+        if (direct.fallback) {
+            return { ok: true, target: { selector: withVisibilityConstraint(direct.fallback, locator.policy?.requireVisible) } };
+        }
     }
     if (direct?.fallback) {
-        return { ok: true, target: { selector: direct.fallback } };
+        return { ok: true, target: { selector: withVisibilityConstraint(direct.fallback, locator.policy?.requireVisible) } };
     }
-    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId, locator.scope?.id);
+    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
     if (structuralSelector) {
-        return { ok: true, target: { selector: structuralSelector } };
+        return { ok: true, target: { selector: withVisibilityConstraint(structuralSelector, locator.policy?.requireVisible) } };
     }
 
     return {
@@ -149,7 +153,6 @@ const parseRoleQuery = (query: string): ResolvedLocatorTarget | null => {
 const buildStructuralSelectorFallback = (
     snapshot: SnapshotResult,
     nodeId: string,
-    scopeEntityId?: string,
 ): string | undefined => {
     const targetNode = snapshot.nodeIndex?.[nodeId];
     if (!targetNode || !snapshot.root) return undefined;
@@ -157,13 +160,7 @@ const buildStructuralSelectorFallback = (
     const parentById = new Map<string, string | null>();
     buildParentById(snapshot.root, null, parentById);
 
-    let startNodeId = snapshot.root.id;
-    if (scopeEntityId) {
-        const scopeNodeId = resolveScopeNodeId(snapshot, scopeEntityId);
-        if (scopeNodeId && isAncestorOf(parentById, scopeNodeId, nodeId)) {
-            startNodeId = scopeNodeId;
-        }
-    }
+    const startNodeId = snapshot.root.id;
 
     const chain = buildIdChain(parentById, startNodeId, nodeId);
     if (chain.length === 0) return undefined;
@@ -201,21 +198,6 @@ const buildParentById = (node: SnapshotResult['root'], parentId: string | null, 
     for (const child of node.children) {
         buildParentById(child, node.id, parentById);
     }
-};
-
-const resolveScopeNodeId = (snapshot: SnapshotResult, scopeEntityId: string): string | undefined => {
-    const entity = snapshot.entityIndex?.entities?.[scopeEntityId];
-    if (!entity) return undefined;
-    return entity.type === 'group' ? entity.containerId : entity.nodeId;
-};
-
-const isAncestorOf = (parentById: Map<string, string | null>, ancestorId: string, nodeId: string): boolean => {
-    let cursor = nodeId;
-    while (cursor) {
-        if (cursor === ancestorId) return true;
-        cursor = parentById.get(cursor) || '';
-    }
-    return false;
 };
 
 const buildIdChain = (parentById: Map<string, string | null>, startId: string, targetId: string): string[] => {
@@ -285,11 +267,9 @@ const normalizeTag = (value: string | undefined): string => (value || '').trim()
 const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
 const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
 
-const shouldPreferStructuralFallback = (
-    locator: NonNullable<SnapshotResult['locatorIndex'][string]>,
-    source: string | undefined,
-): boolean => {
-    if (!locator.scope) return false;
-    const normalizedSource = String(source || '').trim().toLowerCase();
-    return normalizedSource === 'placeholder' || normalizedSource === 'aria-label' || normalizedSource === 'name';
+const withVisibilityConstraint = (selector: string, requireVisible: boolean | undefined): string => {
+    if (!requireVisible) return selector;
+    const trimmed = selector.trim();
+    if (!trimmed || trimmed.includes(':visible')) return selector;
+    return `${trimmed}:visible`;
 };

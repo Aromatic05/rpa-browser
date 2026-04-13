@@ -41,6 +41,7 @@ export type ToolErrorCode =
     | 'ERR_TIMEOUT'
     | 'ERR_NOT_FOUND'
     | 'ERR_AMBIGUOUS'
+    | 'ERR_BAD_ARGS'
     | 'ERR_NOT_INTERACTABLE'
     | 'ERR_UNKNOWN';
 

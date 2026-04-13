@@ -168,11 +168,18 @@ const resolveLocator = async (
     base: ToolsBuildContext,
     args: LocatorTarget,
 ): Promise<Locator> => {
+    if (args.role) {
+        try {
+            return await resolveRoleLocator(base, args.role, args.name);
+        } catch (error) {
+            if (args.selector) {
+                return base.resolveSelectorLocator(args.selector);
+            }
+            throw error;
+        }
+    }
     if (args.selector) {
         return base.resolveSelectorLocator(args.selector);
-    }
-    if (args.role) {
-        return resolveRoleLocator(base, args.role, args.name);
     }
     if (!args.a11yNodeId) {
         throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };

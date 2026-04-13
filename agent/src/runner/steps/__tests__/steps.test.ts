@@ -197,8 +197,8 @@ test('click(id) falls back to structural selector when direct locator is missing
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.equal(calls.length, 3);
-    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) input:nth-of-type(1)');
-    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) input:nth-of-type(1)');
+    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) input:nth-of-type(1):visible');
+    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) input:nth-of-type(1):visible');
 });
 
 test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async () => {

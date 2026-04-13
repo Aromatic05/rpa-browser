@@ -169,7 +169,7 @@ const buildDirectLocator = (
         };
     }
 
-    const label = normalizeText(node.name);
+    const label = resolveNodeLabel(node, parentById);
     if (label) {
         const scopedCss = buildScopedTextSelector(node, parentById, label);
         return {
@@ -227,6 +227,10 @@ const buildScopedTextSelector = (
 
     const nodeTag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const leafSelector = nodeTag || roleToTagSelector(node.role);
+    const useLeafText = supportsLeafTextSelector(node);
+    const leafTarget = useLeafText ? `${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")` : leafSelector;
+    const labelWrapped = buildLabelWrappedSelector(node, parentById, normalizedLabel, leafSelector);
+    if (labelWrapped) return labelWrapped;
 
     let cursor = parentById.get(node.id) || null;
     while (cursor) {
@@ -234,22 +238,71 @@ const buildScopedTextSelector = (
         if (cursorTag === 'tr') {
             const rowKey = pickRowKeyText(cursor);
             if (rowKey) {
-                return `tr:has-text("${escapeSelectorText(rowKey)}") ${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")`;
+                return `tr:has-text("${escapeSelectorText(rowKey)}") ${leafTarget}`;
             }
         }
         if (cursorTag === 'li') {
             const listKey = normalizeText(cursor.name || getNodeContent(cursor));
             if (listKey) {
-                return `li:has-text("${escapeSelectorText(listKey)}") ${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")`;
+                return `li:has-text("${escapeSelectorText(listKey)}") ${leafTarget}`;
             }
         }
         cursor = parentById.get(cursor.id) || null;
     }
 
     if (leafSelector) {
-        return `${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")`;
+        return leafTarget;
     }
     return undefined;
+};
+
+const supportsLeafTextSelector = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return false;
+    if (role === 'textbox' || role === 'combobox' || role === 'checkbox' || role === 'radio' || role === 'spinbutton') return false;
+    return true;
+};
+
+const resolveNodeLabel = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>): string => {
+    const own = normalizeText(node.name);
+    if (own) return own;
+    return deriveLabelFromAncestor(node, parentById) || '';
+};
+
+const deriveLabelFromAncestor = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>): string | undefined => {
+    let cursor = parentById.get(node.id) || null;
+    while (cursor) {
+        const role = normalizeRole(cursor.role);
+        const tag = normalizeRole(getNodeAttr(cursor, 'tag') || getNodeAttr(cursor, 'tagName'));
+        if (role === 'label' || tag === 'label') {
+            const fromName = normalizeText(cursor.name || getNodeContent(cursor));
+            if (fromName) return fromName;
+            for (const child of cursor.children) {
+                if (child.id === node.id) continue;
+                const text = normalizeText(child.name || getNodeContent(child));
+                if (text) return text;
+            }
+            return undefined;
+        }
+        cursor = parentById.get(cursor.id) || null;
+    }
+    return undefined;
+};
+
+const buildLabelWrappedSelector = (
+    node: UnifiedNode,
+    parentById: Map<string, UnifiedNode | null>,
+    label: string,
+    leafSelector: string,
+): string | undefined => {
+    if (supportsLeafTextSelector(node)) return undefined;
+    const parent = parentById.get(node.id);
+    if (!parent) return undefined;
+    const role = normalizeRole(parent.role);
+    const tag = normalizeRole(getNodeAttr(parent, 'tag') || getNodeAttr(parent, 'tagName'));
+    if (role !== 'label' && tag !== 'label') return undefined;
+    return `label:has-text("${escapeSelectorText(label)}") ${leafSelector}`;
 };
 
 const roleToTagSelector = (role: string): string => {
