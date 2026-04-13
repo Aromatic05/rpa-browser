@@ -32,6 +32,21 @@ export type RegionKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolb
 export type GroupKind = 'table' | 'kv' | 'list';
 export type EntityKind = RegionKind | GroupKind;
 
+export type EntityKeyHintSource =
+    | 'group_header'
+    | 'group_slot'
+    | 'region_header'
+    | 'region_structure';
+
+export type EntityKeyHint = {
+    slot: number;
+    name?: string;
+    source: EntityKeyHintSource;
+    confidence: number;
+    headerNodeId?: string;
+    sampleValues?: string[];
+};
+
 export type RegionEntity = {
     id: string;
     type: 'region';
@@ -39,6 +54,7 @@ export type RegionEntity = {
     nodeId: string;
     name?: string;
     bbox?: BBox;
+    keyHint?: EntityKeyHint;
 };
 
 export type GroupEntity = {
@@ -48,6 +64,7 @@ export type GroupEntity = {
     containerId: string;
     itemIds: string[];
     keySlot: number;
+    keyHint?: EntityKeyHint;
 };
 
 export type EntityRecord = RegionEntity | GroupEntity;

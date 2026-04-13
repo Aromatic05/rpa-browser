@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { getNodeAttr, getNodeBbox, getNodeContent, normalizeText } from '../core/runtime_store';
 import type {
+    EntityKeyHint,
     EntityIndex,
     GroupEntity,
     NodeEntityRef,
@@ -10,6 +11,7 @@ import type {
 import { buildStructureCandidates, selectStructureCandidates, type StructureCandidate } from './candidates';
 import { detectGroups, type GroupDetection } from './groups';
 import { detectRegionEntities, type RegionDetection } from './regions';
+import { deriveGroupTableKeyHint, deriveRegionTableKeyHint } from './table_key';
 
 export type StructureDetection = {
     regions: RegionDetection[];
@@ -66,6 +68,14 @@ export const buildStructureEntityIndex = (
     const usedEntityIds = new Set<string>();
     const regionEntities: RegionEntity[] = [];
     const groupEntities: Array<{ entity: GroupEntity; slotByItemId: Record<string, string[]> }> = [];
+    const groupKeyHintByContainerId = new Map<string, EntityKeyHint>();
+
+    for (const group of nextStructure.groups) {
+        if (group.kind !== 'table') continue;
+        const keyHint = deriveGroupTableKeyHint(group, nodeById, parentById);
+        if (!keyHint) continue;
+        groupKeyHintByContainerId.set(group.containerId, keyHint);
+    }
 
     for (const region of nextStructure.regions) {
         const node = nodeById.get(region.nodeId);
@@ -82,6 +92,16 @@ export const buildStructureEntityIndex = (
             nodeId: region.nodeId,
             name: region.name || normalizeText(node.name || getNodeContent(node)),
             bbox: getNodeBbox(node),
+            keyHint:
+                region.kind === 'table'
+                    ? deriveRegionTableKeyHint(
+                        region.nodeId,
+                        nextStructure.groups,
+                        groupKeyHintByContainerId,
+                        nodeById,
+                        parentById,
+                    )
+                    : undefined,
         };
         regionEntities.push(regionEntity);
         entityIndex.entities[id] = regionEntity;
@@ -103,6 +123,7 @@ export const buildStructureEntityIndex = (
             containerId: group.containerId,
             itemIds,
             keySlot: group.keySlot,
+            keyHint: group.kind === 'table' ? groupKeyHintByContainerId.get(group.containerId) : undefined,
         };
         groupEntities.push({
             entity,

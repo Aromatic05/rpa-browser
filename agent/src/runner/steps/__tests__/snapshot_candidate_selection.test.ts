@@ -4,6 +4,7 @@ import { setNodeAttrs } from '../executors/snapshot/core/runtime_store';
 import type { EntityRecord, UnifiedNode } from '../executors/snapshot/core/types';
 import { buildStructureEntityIndex } from '../executors/snapshot/stages/entity_index';
 import { detectGroups } from '../executors/snapshot/stages/groups';
+import { deriveGroupTableKeyHint } from '../executors/snapshot/stages/table_key';
 
 const node = (id: string, role: string, children: UnifiedNode[] = [], attrs: Record<string, string> = {}): UnifiedNode => {
     const next: UnifiedNode = {
@@ -342,4 +343,115 @@ test('table keySlot should avoid icon-like column when text column exists', () =
     const tableGroup = groups.find((group) => group.kind === 'table' && group.containerId === 'tbody');
     assert.ok(tableGroup, 'expected table group on tbody');
     assert.equal(tableGroup.keySlot, 1);
+});
+
+test('table group key hint derivation should include header name', () => {
+    const thead = node(
+        'thead',
+        'thead',
+        [
+            node(
+                'header-row',
+                'row',
+                [
+                    node('header-name', 'columnheader', [], { tag: 'th' }),
+                    node('header-age', 'columnheader', [], { tag: 'th' }),
+                ],
+                { tag: 'tr' },
+            ),
+        ],
+        { tag: 'thead' },
+    );
+    thead.children[0]!.children[0]!.name = 'Name';
+    thead.children[0]!.children[1]!.name = 'Age';
+
+    const tbody = node(
+        'tbody',
+        'rowgroup',
+        [
+            node('row-1', 'row', [node('name-1', 'cell', [], { tag: 'td' }), node('age-1', 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+            node('row-2', 'row', [node('name-2', 'cell', [], { tag: 'td' }), node('age-2', 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+            node('row-3', 'row', [node('name-3', 'cell', [], { tag: 'td' }), node('age-3', 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+        ],
+        { tag: 'tbody' },
+    );
+    tbody.children[0]!.children[0]!.name = 'Alice';
+    tbody.children[0]!.children[1]!.name = '20';
+    tbody.children[1]!.children[0]!.name = 'Bob';
+    tbody.children[1]!.children[1]!.name = '22';
+    tbody.children[2]!.children[0]!.name = 'Carol';
+    tbody.children[2]!.children[1]!.name = '24';
+
+    const table = node('table', 'table', [thead, tbody], { tag: 'table', class: 'ant-table' });
+    const root = node('root', 'root', [table], { tag: 'main' });
+    const parentById = new Map<string, UnifiedNode | null>();
+    const nodeById = new Map<string, UnifiedNode>();
+    const indexTree = (current: UnifiedNode, parent: UnifiedNode | null) => {
+        parentById.set(current.id, parent);
+        nodeById.set(current.id, current);
+        for (const child of current.children) {
+            indexTree(child, current);
+        }
+    };
+    indexTree(root, null);
+
+    const tableGroup = detectGroups(root).find(
+        (group) => group.kind === 'table' && group.containerId === 'tbody',
+    );
+    assert.ok(tableGroup, 'expected table group detection on tbody');
+    if (!tableGroup) return;
+    const keyHint = deriveGroupTableKeyHint(tableGroup, nodeById, parentById);
+    assert.ok(keyHint, 'expected key hint from table group');
+    assert.equal(keyHint?.name, 'Name');
+});
+
+test('table region entity should derive key hint when no table group survives', () => {
+    const thead = node(
+        'thead',
+        'thead',
+        [
+            node(
+                'header-row',
+                'row',
+                [
+                    node('header-name', 'columnheader', [], { tag: 'th' }),
+                    node('header-age', 'columnheader', [], { tag: 'th' }),
+                ],
+                { tag: 'tr' },
+            ),
+        ],
+        { tag: 'thead' },
+    );
+    thead.children[0]!.children[0]!.name = 'Name';
+    thead.children[0]!.children[1]!.name = 'Age';
+
+    const tbody = node(
+        'tbody',
+        'rowgroup',
+        [
+            node('row-1', 'row', [node('name-1', 'cell', [], { tag: 'td' }), node('age-1', 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+            node('row-2', 'row', [node('name-2', 'cell', [], { tag: 'td' }), node('age-2', 'cell', [], { tag: 'td' })], { tag: 'tr' }),
+        ],
+        { tag: 'tbody' },
+    );
+    tbody.children[0]!.children[0]!.name = 'Alice';
+    tbody.children[0]!.children[1]!.name = '20';
+    tbody.children[1]!.children[0]!.name = 'Bob';
+    tbody.children[1]!.children[1]!.name = '22';
+
+    const table = node('table', 'table', [thead, tbody], { tag: 'table' });
+    const root = node('root', 'root', [table], { tag: 'main' });
+    const entityIndex = buildStructureEntityIndex(root);
+
+    const tableGroup = Object.values(entityIndex.entities).find(
+        (entity) => entity.type === 'group' && entity.kind === 'table' && entity.containerId === 'tbody',
+    );
+    assert.equal(Boolean(tableGroup), false);
+
+    const tableRegion = Object.values(entityIndex.entities).find(
+        (entity) => entity.type === 'region' && entity.kind === 'table' && entity.nodeId === 'table',
+    );
+    assert.ok(tableRegion, 'expected table region entity');
+    assert.ok(tableRegion.keyHint, 'expected region key hint fallback');
+    assert.equal(tableRegion.keyHint?.name, 'Name');
 });

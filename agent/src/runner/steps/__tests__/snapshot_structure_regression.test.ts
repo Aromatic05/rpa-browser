@@ -96,25 +96,43 @@ test('snapshot structure detection should not promote article wrapper group on a
     const entities = Object.values(snapshot.entityIndex.entities);
     const regions = entities.filter((entity) => entity.type === 'region');
     const groups = entities.filter((entity) => entity.type === 'group');
+    const isArticleLike = (nodeId: string): boolean => {
+        const node = snapshot.nodeIndex[nodeId];
+        const role = (node?.role || '').trim().toLowerCase();
+        const tag = (snapshot.attrIndex[nodeId]?.tag || '').trim().toLowerCase();
+        return role === 'article' || tag === 'article';
+    };
+    const isListLike = (nodeId: string): boolean => {
+        const node = snapshot.nodeIndex[nodeId];
+        const role = (node?.role || '').trim().toLowerCase();
+        const tag = (snapshot.attrIndex[nodeId]?.tag || '').trim().toLowerCase();
+        return role === 'list' || tag === 'ul' || tag === 'ol';
+    };
+    const isTableLike = (nodeId: string): boolean => {
+        const node = snapshot.nodeIndex[nodeId];
+        const role = (node?.role || '').trim().toLowerCase();
+        const tag = (snapshot.attrIndex[nodeId]?.tag || '').trim().toLowerCase();
+        return role === 'table' || tag === 'table';
+    };
 
     assert.equal(
-        regions.some((entity) => entity.nodeId === 'article_4920d8595d'),
+        regions.some((entity) => isArticleLike(entity.nodeId)),
         false,
         'article wrapper should not be promoted to region',
     );
     assert.equal(
-        groups.some((entity) => entity.containerId === 'article_4920d8595d'),
+        groups.some((entity) => isArticleLike(entity.containerId)),
         false,
         'article wrapper should not be promoted to group',
     );
 
     assert.equal(
-        regions.some((entity) => entity.nodeId === 'list_1e01abc2ed'),
+        regions.some((entity) => entity.kind === 'list' && isListLike(entity.nodeId)),
         true,
         'list should stay as region entity',
     );
     assert.equal(
-        regions.some((entity) => entity.nodeId === 'table_d485660244_2'),
+        regions.some((entity) => entity.kind === 'table' && isTableLike(entity.nodeId)),
         true,
         'table should stay as region entity',
     );
