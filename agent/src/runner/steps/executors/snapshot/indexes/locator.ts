@@ -1,4 +1,4 @@
-import { getNodeAttr, normalizeText } from '../core/runtime_store';
+import { getNodeAttr, getNodeContent, normalizeText } from '../core/runtime_store';
 import type { EntityIndex, EntityRecord, Locator, LocatorIndex, NodeEntityRef, UnifiedNode } from '../core/types';
 
 type BuildLocatorIndexInput = {
@@ -18,7 +18,7 @@ export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex =
         if (!primaryDomId) return;
 
         const scopeEntity = resolveScopeEntity(node, parentById, entityIndex);
-        const direct = buildDirectLocator(node);
+        const direct = buildDirectLocator(node, parentById);
 
         const locator: Locator = {
             origin: {
@@ -110,7 +110,10 @@ const scoreScopeRef = (ref: NodeEntityRef, entity: EntityRecord): number => {
     return score;
 };
 
-const buildDirectLocator = (node: UnifiedNode): Locator['direct'] | undefined => {
+const buildDirectLocator = (
+    node: UnifiedNode,
+    parentById: Map<string, UnifiedNode | null>,
+): Locator['direct'] | undefined => {
     const testId = normalizeText(getNodeAttr(node, 'data-testid') || getNodeAttr(node, 'data-test-id'));
     if (testId) {
         return {
@@ -150,10 +153,12 @@ const buildDirectLocator = (node: UnifiedNode): Locator['direct'] | undefined =>
 
     const label = normalizeText(node.name);
     if (label) {
+        const scopedCss = buildScopedTextSelector(node, parentById, label);
         return {
             kind: 'role',
             query: `${normalizeRole(node.role)}:${label}`,
             source: 'role+name',
+            fallback: scopedCss,
         };
     }
 
@@ -185,12 +190,75 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
 const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const escapeQuote = (value: string): string => value.replace(/"/g, '\\"');
 const escapeCssId = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
+const escapeSelectorText = (value: string): string => value.replace(/"/g, '\\"');
 const isNavigableHref = (href: string): boolean => {
     const normalized = href.trim().toLowerCase();
     if (!normalized) return false;
     if (normalized === '#') return false;
     if (normalized.startsWith('javascript:')) return false;
     return true;
+};
+
+const buildScopedTextSelector = (
+    node: UnifiedNode,
+    parentById: Map<string, UnifiedNode | null>,
+    label: string,
+): string | undefined => {
+    const normalizedLabel = normalizeText(label);
+    if (!normalizedLabel) return undefined;
+
+    const nodeTag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    const leafSelector = nodeTag || roleToTagSelector(node.role);
+
+    let cursor = parentById.get(node.id) || null;
+    while (cursor) {
+        const cursorTag = normalizeRole(getNodeAttr(cursor, 'tag') || getNodeAttr(cursor, 'tagName'));
+        if (cursorTag === 'tr') {
+            const rowKey = pickRowKeyText(cursor);
+            if (rowKey) {
+                return `tr:has-text("${escapeSelectorText(rowKey)}") ${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")`;
+            }
+        }
+        if (cursorTag === 'li') {
+            const listKey = normalizeText(cursor.name || getNodeContent(cursor));
+            if (listKey) {
+                return `li:has-text("${escapeSelectorText(listKey)}") ${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")`;
+            }
+        }
+        cursor = parentById.get(cursor.id) || null;
+    }
+
+    if (leafSelector) {
+        return `${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")`;
+    }
+    return undefined;
+};
+
+const roleToTagSelector = (role: string): string => {
+    const normalized = normalizeRole(role);
+    if (normalized === 'link') return 'a';
+    if (normalized === 'button') return 'button';
+    if (normalized === 'textbox') return 'input,textarea';
+    return '*';
+};
+
+const pickRowKeyText = (rowNode: UnifiedNode): string | undefined => {
+    let matchedOrderNo: string | undefined;
+    let firstCellText: string | undefined;
+
+    walk(rowNode, (node) => {
+        if (matchedOrderNo) return;
+        const role = normalizeRole(node.role);
+        if (role !== 'cell' && role !== 'gridcell') return;
+        const text = normalizeText(node.name || getNodeContent(node));
+        if (!text) return;
+        if (!firstCellText) firstCellText = text;
+        if (/^U\\d{6,}$/.test(text)) {
+            matchedOrderNo = text;
+        }
+    });
+
+    return matchedOrderNo || firstCellText;
 };
 
 const LOCATOR_TARGET_ROLES = new Set([

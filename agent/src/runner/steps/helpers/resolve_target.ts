@@ -106,6 +106,9 @@ const resolveBySnapshotNodeId = (
         return { ok: true, target: { selector: direct.query } };
     }
     if (direct?.kind === 'role' && direct.query) {
+        if (direct.fallback) {
+            return { ok: true, target: { selector: direct.fallback } };
+        }
         const parsed = parseRoleQuery(direct.query);
         if (parsed) return { ok: true, target: parsed };
     }
