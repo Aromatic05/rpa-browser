@@ -1,7 +1,7 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { generateSemanticSnapshot } from './snapshot';
-import { buildNodeSummary, toEntityOutputRecord } from './snapshot/core/entity_output';
+import { buildNodeSummary, buildTableMeta, toEntityOutputRecord } from './snapshot/core/entity_output';
 import { ensureFreshSnapshot } from './snapshot/core/session_store';
 import { normalizeText } from './snapshot/core/runtime_store';
 
@@ -49,6 +49,7 @@ export const executeBrowserGetEntity = async (
             node,
             entities: entities.map((entity) => toEntityOutputRecord(entity)),
             total: entities.length,
+            table_meta: buildTableMeta(ensured.snapshot, nodeId) || undefined,
         },
     };
 };
