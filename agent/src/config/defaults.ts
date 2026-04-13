@@ -7,6 +7,7 @@ import type { RunnerConfig } from './config_schema';
 export const defaultRunnerConfig: RunnerConfig = {
     waitPolicy: {
         defaultTimeoutMs: 5000,
+        interactionTimeoutMs: 12000,
         navigationTimeoutMs: 15000,
         a11ySnapshotTimeoutMs: 5000,
         visibleTimeoutMs: 5000,

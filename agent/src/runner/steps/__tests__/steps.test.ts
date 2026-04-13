@@ -201,6 +201,31 @@ test('click(id) falls back to structural selector when direct locator is missing
     assert.equal(calls[2].args.selector, 'form:nth-of-type(1) input:nth-of-type(1)');
 });
 
+test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async () => {
+    const traceTools = {
+        'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [{ nodeId: 'n1' }] }),
+        'trace.locator.scrollIntoView': async () => ({ ok: true }),
+        'trace.locator.waitForVisible': async () => ({ ok: true }),
+        'trace.locator.click': async () => new Promise(() => {}),
+    };
+    const deps = createDeps(traceTools);
+    const step: Step<'browser.click'> = {
+        id: 's2d',
+        name: 'browser.click',
+        args: { target: { a11yHint: { role: 'button', name: 'Save' } }, timeout: 30 },
+    };
+
+    const startedAt = Date.now();
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+        assert.equal(result.error.code, 'ERR_TIMEOUT');
+    }
+    assert.ok(elapsedMs < 500, `expected timeout fallback quickly, got ${elapsedMs}ms`);
+});
+
 test('fill uses trace.locator.fill', async () => {
     const calls: string[] = [];
     const traceTools = {

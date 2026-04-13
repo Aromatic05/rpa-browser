@@ -10,6 +10,8 @@
 export type WaitPolicy = {
     /** 默认操作超时（用于 click/fill 等通用操作） */
     defaultTimeoutMs: number;
+    /** 交互步骤硬超时（用于防止步骤整体卡死） */
+    interactionTimeoutMs: number;
     /** 导航超时（goto 等） */
     navigationTimeoutMs: number;
     /** A11y 快照超时（可用于 snapshot） */

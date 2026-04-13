@@ -104,6 +104,12 @@ const resolveBySnapshotNodeId = (
 
     const direct = locator.direct;
     if (direct?.kind === 'css' && direct.query) {
+        if (shouldPreferStructuralFallback(locator, direct.source)) {
+            const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId, locator.scope?.id);
+            if (structuralSelector) {
+                return { ok: true, target: { selector: structuralSelector } };
+            }
+        }
         return { ok: true, target: { selector: direct.query } };
     }
     if (direct?.kind === 'role' && direct.query) {
@@ -278,3 +284,12 @@ const nthOfTypeIndex = (
 const normalizeTag = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
 const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
+
+const shouldPreferStructuralFallback = (
+    locator: NonNullable<SnapshotResult['locatorIndex'][string]>,
+    source: string | undefined,
+): boolean => {
+    if (!locator.scope) return false;
+    const normalizedSource = String(source || '').trim().toLowerCase();
+    return normalizedSource === 'placeholder' || normalizedSource === 'aria-label' || normalizedSource === 'name';
+};

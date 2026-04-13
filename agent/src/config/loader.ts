@@ -58,6 +58,7 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     };
 
     set(['waitPolicy', 'defaultTimeoutMs'], envNumber('RUNNER_DEFAULT_TIMEOUT_MS'));
+    set(['waitPolicy', 'interactionTimeoutMs'], envNumber('RUNNER_INTERACTION_TIMEOUT_MS'));
     set(['waitPolicy', 'navigationTimeoutMs'], envNumber('RUNNER_NAVIGATION_TIMEOUT_MS'));
     set(['waitPolicy', 'a11ySnapshotTimeoutMs'], envNumber('RUNNER_A11Y_SNAPSHOT_TIMEOUT_MS'));
     set(['waitPolicy', 'visibleTimeoutMs'], envNumber('RUNNER_VISIBLE_TIMEOUT_MS'));
