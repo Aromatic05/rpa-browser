@@ -6,6 +6,7 @@ import type { PageBinding } from '../../../runtime/runtime_registry';
 import type { A11yHint, Target } from '../types';
 import type { StepResult } from '../types';
 import type { SnapshotResult } from '../executors/snapshot/core/types';
+import { getNodeAttr } from '../executors/snapshot/core/runtime_store';
 import { mapTraceError } from './target';
 
 export type ResolvedLocatorTarget = {
@@ -115,6 +116,10 @@ const resolveBySnapshotNodeId = (
     if (direct?.fallback) {
         return { ok: true, target: { selector: direct.fallback } };
     }
+    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId, locator.scope?.id);
+    if (structuralSelector) {
+        return { ok: true, target: { selector: structuralSelector } };
+    }
 
     return {
         ok: false,
@@ -134,3 +139,142 @@ const parseRoleQuery = (query: string): ResolvedLocatorTarget | null => {
     if (!role) return null;
     return { role, name: name || undefined };
 };
+
+const buildStructuralSelectorFallback = (
+    snapshot: SnapshotResult,
+    nodeId: string,
+    scopeEntityId?: string,
+): string | undefined => {
+    const targetNode = snapshot.nodeIndex?.[nodeId];
+    if (!targetNode || !snapshot.root) return undefined;
+
+    const parentById = new Map<string, string | null>();
+    buildParentById(snapshot.root, null, parentById);
+
+    let startNodeId = snapshot.root.id;
+    if (scopeEntityId) {
+        const scopeNodeId = resolveScopeNodeId(snapshot, scopeEntityId);
+        if (scopeNodeId && isAncestorOf(parentById, scopeNodeId, nodeId)) {
+            startNodeId = scopeNodeId;
+        }
+    }
+
+    const chain = buildIdChain(parentById, startNodeId, nodeId);
+    if (chain.length === 0) return undefined;
+
+    const segments: string[] = [];
+    for (const currentId of chain) {
+        const node = snapshot.nodeIndex[currentId];
+        if (!node) continue;
+
+        const stable = buildStableSegment(node);
+        if (stable) {
+            segments.push(stable);
+            continue;
+        }
+
+        const parentId = parentById.get(currentId);
+        if (!parentId) continue;
+        const parent = snapshot.nodeIndex[parentId];
+        if (!parent) continue;
+
+        const tag = resolveElementTag(node);
+        if (!tag) continue;
+
+        const index = nthOfTypeIndex(parent.children, currentId, tag, snapshot);
+        if (!index) continue;
+        segments.push(`${tag}:nth-of-type(${index})`);
+    }
+
+    if (segments.length === 0) return undefined;
+    return segments.join(' ');
+};
+
+const buildParentById = (node: SnapshotResult['root'], parentId: string | null, parentById: Map<string, string | null>) => {
+    parentById.set(node.id, parentId);
+    for (const child of node.children) {
+        buildParentById(child, node.id, parentById);
+    }
+};
+
+const resolveScopeNodeId = (snapshot: SnapshotResult, scopeEntityId: string): string | undefined => {
+    const entity = snapshot.entityIndex?.entities?.[scopeEntityId];
+    if (!entity) return undefined;
+    return entity.type === 'group' ? entity.containerId : entity.nodeId;
+};
+
+const isAncestorOf = (parentById: Map<string, string | null>, ancestorId: string, nodeId: string): boolean => {
+    let cursor = nodeId;
+    while (cursor) {
+        if (cursor === ancestorId) return true;
+        cursor = parentById.get(cursor) || '';
+    }
+    return false;
+};
+
+const buildIdChain = (parentById: Map<string, string | null>, startId: string, targetId: string): string[] => {
+    if (startId === targetId) return [targetId];
+    const reversed: string[] = [];
+    let cursor = targetId;
+    while (cursor) {
+        reversed.push(cursor);
+        if (cursor === startId) break;
+        cursor = parentById.get(cursor) || '';
+    }
+    if (reversed[reversed.length - 1] !== startId) return [];
+    return reversed.reverse();
+};
+
+const buildStableSegment = (node: SnapshotResult['root']): string | undefined => {
+    const testId = getNodeAttr(node, 'data-testid') || getNodeAttr(node, 'data-test-id');
+    if (testId) return `[data-testid="${escapeCssText(testId)}"]`;
+
+    const id = getNodeAttr(node, 'id');
+    if (id) return `#${escapeCssIdentifier(id)}`;
+
+    const tag = resolveElementTag(node);
+    if (tag) {
+        const name = getNodeAttr(node, 'name');
+        if (name) return `${tag}[name="${escapeCssText(name)}"]`;
+
+        const placeholder = getNodeAttr(node, 'placeholder');
+        if (placeholder) return `${tag}[placeholder="${escapeCssText(placeholder)}"]`;
+
+        const ariaLabel = getNodeAttr(node, 'aria-label');
+        if (ariaLabel) return `${tag}[aria-label="${escapeCssText(ariaLabel)}"]`;
+    }
+    return undefined;
+};
+
+const resolveElementTag = (node: SnapshotResult['root']): string | undefined => {
+    const rawTag = normalizeTag(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    if (rawTag && !rawTag.startsWith('::')) return rawTag;
+
+    const role = normalizeTag(node.role);
+    if (role === 'textbox') return 'input';
+    if (role === 'button') return 'button';
+    if (role === 'link') return 'a';
+    if (role === 'select' || role === 'combobox') return 'select';
+    return undefined;
+};
+
+const nthOfTypeIndex = (
+    siblings: SnapshotResult['root']['children'],
+    currentId: string,
+    tag: string,
+    snapshot: SnapshotResult,
+): number | undefined => {
+    let index = 0;
+    for (const sibling of siblings) {
+        const siblingNode = snapshot.nodeIndex[sibling.id];
+        if (!siblingNode) continue;
+        if (resolveElementTag(siblingNode) !== tag) continue;
+        index += 1;
+        if (sibling.id === currentId) return index;
+    }
+    return undefined;
+};
+
+const normalizeTag = (value: string | undefined): string => (value || '').trim().toLowerCase();
+const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
+const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');

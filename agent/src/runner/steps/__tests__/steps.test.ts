@@ -11,6 +11,7 @@ import { executeBrowserSnapshot } from '../executors/snapshot';
 import { executeBrowserMouse } from '../executors/mouse';
 import { executeBrowserGetContent } from '../executors/get_content';
 import { RunnerPluginHost } from '../../hotreload/plugin_host';
+import { setNodeAttr } from '../executors/snapshot/core/runtime_store';
 
 const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unknown> = {}): RunStepsDeps => {
     const binding = {
@@ -126,6 +127,78 @@ test('click(id) resolves via snapshot locator index and uses selector path', asy
     assert.equal(calls.length, 3);
     assert.equal(calls[0].args.selector, '#submit-btn');
     assert.equal(calls[2].args.selector, '#submit-btn');
+});
+
+test('click(id) falls back to structural selector when direct locator is missing', async () => {
+    const calls: Array<{ name: string; args: any }> = [];
+    const traceTools = {
+        'trace.locator.scrollIntoView': async (args: any) => {
+            calls.push({ name: 'trace.locator.scrollIntoView', args });
+            return { ok: true };
+        },
+        'trace.locator.waitForVisible': async (args: any) => {
+            calls.push({ name: 'trace.locator.waitForVisible', args });
+            return { ok: true };
+        },
+        'trace.locator.click': async (args: any) => {
+            calls.push({ name: 'trace.locator.click', args });
+            return { ok: true };
+        },
+    };
+
+    const root = { id: 'root', role: 'root', children: [] as any[] };
+    const form = { id: 'form_1', role: 'form', children: [] as any[] };
+    const textbox = { id: 'textbox_1', role: 'textbox', children: [] as any[] };
+    root.children.push(form);
+    form.children.push(textbox);
+    setNodeAttr(form as any, 'tag', 'form');
+    setNodeAttr(textbox as any, 'tag', 'input');
+
+    const deps = createDeps(traceTools, {}, {
+        latestSnapshot: {
+            root,
+            nodeIndex: {
+                root,
+                form_1: form,
+                textbox_1: textbox,
+            },
+            entityIndex: {
+                entities: {
+                    ent_region_form_1: {
+                        id: 'ent_region_form_1',
+                        type: 'region',
+                        kind: 'form',
+                        nodeId: 'form_1',
+                    },
+                },
+                byNodeId: {},
+            },
+            locatorIndex: {
+                textbox_1: {
+                    origin: { primaryDomId: '222' },
+                    scope: { id: 'ent_region_form_1', kind: 'form' },
+                    policy: {
+                        preferDirect: false,
+                        preferScopedSearch: true,
+                        requireVisible: true,
+                        allowIndexDrift: true,
+                        allowFuzzy: true,
+                    },
+                },
+            },
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 's2c',
+        name: 'browser.click',
+        args: { id: 'textbox_1' },
+    };
+
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) input:nth-of-type(1)');
+    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) input:nth-of-type(1)');
 });
 
 test('fill uses trace.locator.fill', async () => {

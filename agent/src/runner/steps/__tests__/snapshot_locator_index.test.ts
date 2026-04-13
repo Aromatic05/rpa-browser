@@ -92,3 +92,32 @@ test('tab nodes are indexed for id-based click', () => {
     assert.equal(locatorIndex.tab_test.direct?.kind, 'role');
     assert.equal(locatorIndex.tab_test.direct?.query, 'tab:剪切板');
 });
+
+test('textbox with placeholder uses css direct locator', () => {
+    const root: UnifiedNode = {
+        id: 'root_test4',
+        role: 'root',
+        children: [
+            {
+                id: 'textbox_test',
+                role: 'textbox',
+                children: [],
+            },
+        ],
+    };
+    setNodeAttr(root.children[0], 'backendDOMNodeId', '4001');
+    setNodeAttr(root.children[0], 'tag', 'input');
+    setNodeAttr(root.children[0], 'placeholder', '商品名称');
+
+    const locatorIndex = buildLocatorIndex({
+        root,
+        entityIndex: {
+            entities: {},
+            byNodeId: {},
+        },
+    });
+
+    assert.ok(locatorIndex.textbox_test, 'textbox should be indexed');
+    assert.equal(locatorIndex.textbox_test.direct?.kind, 'css');
+    assert.equal(locatorIndex.textbox_test.direct?.query, 'input[placeholder="商品名称"]');
+});

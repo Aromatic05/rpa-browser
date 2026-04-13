@@ -151,6 +151,24 @@ const buildDirectLocator = (
         };
     }
 
+    const placeholder = normalizeText(getNodeAttr(node, 'placeholder'));
+    if (tag && placeholder) {
+        return {
+            kind: 'css',
+            query: `${tag}[placeholder="${escapeQuote(placeholder)}"]`,
+            source: 'placeholder',
+        };
+    }
+
+    const ariaLabel = normalizeText(getNodeAttr(node, 'aria-label'));
+    if (tag && ariaLabel) {
+        return {
+            kind: 'css',
+            query: `${tag}[aria-label="${escapeQuote(ariaLabel)}"]`,
+            source: 'aria-label',
+        };
+    }
+
     const label = normalizeText(node.name);
     if (label) {
         const scopedCss = buildScopedTextSelector(node, parentById, label);
