@@ -22,6 +22,12 @@ import { executeBrowserScroll } from './scroll';
 import { executeBrowserPressKey } from './press_key';
 import { executeBrowserDragAndDrop } from './drag_and_drop';
 import { executeBrowserMouse } from './mouse';
+import { executeBrowserListEntities } from './list_entities';
+import { executeBrowserGetEntity } from './get_entity';
+import { executeBrowserFindEntities } from './find_entities';
+import { executeBrowserAddEntity } from './add_entity';
+import { executeBrowserDeleteEntity } from './delete_entity';
+import { executeBrowserRenameEntity } from './rename_entity';
 
 export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceId: string) => Promise<StepResult>;
 
@@ -48,4 +54,10 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.press_key': executeBrowserPressKey as ExecutorFn,
     'browser.drag_and_drop': executeBrowserDragAndDrop as ExecutorFn,
     'browser.mouse': executeBrowserMouse as ExecutorFn,
+    'browser.list_entities': executeBrowserListEntities as ExecutorFn,
+    'browser.get_entity': executeBrowserGetEntity as ExecutorFn,
+    'browser.find_entities': executeBrowserFindEntities as ExecutorFn,
+    'browser.add_entity': executeBrowserAddEntity as ExecutorFn,
+    'browser.delete_entity': executeBrowserDeleteEntity as ExecutorFn,
+    'browser.rename_entity': executeBrowserRenameEntity as ExecutorFn,
 };
