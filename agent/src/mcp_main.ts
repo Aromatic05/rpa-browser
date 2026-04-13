@@ -41,16 +41,25 @@ const traceSinks = config.observability.traceFileEnabled
     : [];
 const sourcePluginEntry = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
 const bundledPluginEntry = path.resolve(process.cwd(), '.runner-dist/plugin.mjs');
+const hasSourcePluginEntry = fs.existsSync(sourcePluginEntry);
 const pluginEntry = process.env.RUNNER_PLUGIN_ENTRY
     ? path.resolve(process.cwd(), process.env.RUNNER_PLUGIN_ENTRY)
-    : sourcePluginEntry;
+    : hasSourcePluginEntry
+      ? sourcePluginEntry
+      : bundledPluginEntry;
+const hotReloadDisabled = /^(0|false|off)$/i.test(String(process.env.RUNNER_HOT_RELOAD || '').trim());
+const hotReloadEnabled = !hotReloadDisabled;
 const runnerPluginHost = new RunnerPluginHost(pluginEntry);
 await runnerPluginHost.load();
-if (process.env.NODE_ENV !== 'production') {
-    const watchTarget = fs.existsSync(pluginEntry) && pluginEntry === sourcePluginEntry
-        ? path.resolve(process.cwd(), 'src/runner')
-        : path.resolve(process.cwd(), '.runner-dist');
+if (hotReloadEnabled) {
+    const watchTarget =
+        hasSourcePluginEntry && pluginEntry === sourcePluginEntry
+            ? path.resolve(process.cwd(), 'src/runner')
+            : path.resolve(process.cwd(), '.runner-dist');
     runnerPluginHost.watchDev(watchTarget);
+    log('Runner plugin hot reload enabled.', { pluginEntry, watchTarget });
+} else {
+    log('Runner plugin hot reload disabled by RUNNER_HOT_RELOAD.', { pluginEntry });
 }
 
 const pageRegistry = createPageRegistry({
