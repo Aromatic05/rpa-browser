@@ -14,66 +14,66 @@ const entityKindOrArraySchema = z.union([entityKindSchema, z.array(entityKindSch
 const textOrArraySchema = z.union([z.string(), z.array(z.string()).nonempty()]);
 
 export const browserGotoInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     url: z.string(),
     timeout: z.number().int().positive().optional(),
 });
 
 export const browserGoBackInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     timeout: z.number().int().positive().optional(),
 });
 
 export const browserReloadInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     timeout: z.number().int().positive().optional(),
 });
 
 export const browserCreateTabInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     url: z.string().optional(),
 });
 
 export const browserSwitchTabInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     tab_id: z.string(),
 });
 
 export const browserCloseTabInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     tab_id: z.string().optional(),
 });
 
 export const browserGetPageInfoInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
 });
 
 export const browserSnapshotInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     refresh: z.boolean().optional(),
 });
 
 export const browserListEntitiesInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     kind: entityKindOrArraySchema.optional(),
     businessTag: textOrArraySchema.optional(),
     query: z.string().optional(),
 });
 
 export const browserGetEntityInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     nodeId: z.string(),
 });
 
 export const browserFindEntitiesInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     query: z.string(),
     kind: entityKindOrArraySchema.optional(),
     businessTag: textOrArraySchema.optional(),
 });
 
 export const browserAddEntityInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     nodeId: z.string(),
     kind: entityKindSchema,
     name: z.string().optional(),
@@ -81,41 +81,41 @@ export const browserAddEntityInputSchema = z.object({
 });
 
 export const browserDeleteEntityInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     nodeId: z.string(),
     kind: entityKindSchema.optional(),
     businessTag: z.string().optional(),
 });
 
 export const browserRenameEntityInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     nodeId: z.string(),
     name: z.string(),
 });
 
 export const browserGetContentInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     ref: z.string(),
 });
 
 export const browserReadConsoleInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     limit: z.number().int().min(1).max(500).optional(),
 });
 
 export const browserReadNetworkInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     limit: z.number().int().min(1).max(500).optional(),
 });
 
 export const browserEvaluateInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     expression: z.string(),
     arg: z.unknown().optional(),
 });
 
 export const browserTakeScreenshotInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     id: z.string().optional(),
     selector: z.string().optional(),
     full_page: z.boolean().optional(),
@@ -123,7 +123,7 @@ export const browserTakeScreenshotInputSchema = z.object({
 
 export const browserClickInputSchema = z
     .object({
-        tabToken: z.string(),
+        tabToken: z.string().optional(),
         id: z.string().optional(),
         selector: z.string().optional(),
         coord: coordSchema.optional(),
@@ -141,7 +141,7 @@ export const browserClickInputSchema = z
 
 export const browserFillInputSchema = z
     .object({
-        tabToken: z.string(),
+        tabToken: z.string().optional(),
         id: z.string().optional(),
         selector: z.string().optional(),
         value: z.string(),
@@ -153,7 +153,7 @@ export const browserFillInputSchema = z
 
 export const browserTypeInputSchema = z
     .object({
-        tabToken: z.string(),
+        tabToken: z.string().optional(),
         id: z.string().optional(),
         selector: z.string().optional(),
         text: z.string(),
@@ -166,7 +166,7 @@ export const browserTypeInputSchema = z
 
 export const browserSelectOptionInputSchema = z
     .object({
-        tabToken: z.string(),
+        tabToken: z.string().optional(),
         id: z.string().optional(),
         selector: z.string().optional(),
         values: z.array(z.string()),
@@ -178,7 +178,7 @@ export const browserSelectOptionInputSchema = z
 
 export const browserHoverInputSchema = z
     .object({
-        tabToken: z.string(),
+        tabToken: z.string().optional(),
         id: z.string().optional(),
         selector: z.string().optional(),
         timeout: z.number().int().positive().optional(),
@@ -188,7 +188,7 @@ export const browserHoverInputSchema = z
     });
 
 export const browserScrollInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     id: z.string().optional(),
     selector: z.string().optional(),
     direction: z.enum(['up', 'down']).optional(),
@@ -197,7 +197,7 @@ export const browserScrollInputSchema = z.object({
 });
 
 export const browserPressKeyInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     key: z.string(),
     id: z.string().optional(),
     selector: z.string().optional(),
@@ -206,7 +206,7 @@ export const browserPressKeyInputSchema = z.object({
 
 export const browserDragAndDropInputSchema = z
     .object({
-        tabToken: z.string(),
+        tabToken: z.string().optional(),
         source_id: z.string().optional(),
         source_selector: z.string().optional(),
         dest_id: z.string().optional(),
@@ -222,7 +222,7 @@ export const browserDragAndDropInputSchema = z
     });
 
 export const browserMouseInputSchema = z.object({
-    tabToken: z.string(),
+    tabToken: z.string().optional(),
     action: z.enum(['move', 'down', 'up', 'wheel', 'click', 'dblclick']),
     x: z.number(),
     y: z.number(),
@@ -262,7 +262,7 @@ export type BrowserRenameEntityInput = z.infer<typeof browserRenameEntityInputSc
 export const toolInputJsonSchemas = {
     'browser.goto': {
         type: 'object',
-        required: ['tabToken', 'url'],
+        required: ['url'],
         properties: {
             tabToken: { type: 'string' },
             url: { type: 'string' },
@@ -272,7 +272,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.go_back': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             timeout: { type: 'integer', minimum: 1 },
@@ -281,7 +281,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.reload': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             timeout: { type: 'integer', minimum: 1 },
@@ -290,7 +290,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.create_tab': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             url: { type: 'string' },
@@ -299,7 +299,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.switch_tab': {
         type: 'object',
-        required: ['tabToken', 'tab_id'],
+        required: ['tab_id'],
         properties: {
             tabToken: { type: 'string' },
             tab_id: { type: 'string' },
@@ -308,7 +308,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.close_tab': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             tab_id: { type: 'string' },
@@ -317,7 +317,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.get_page_info': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
         },
@@ -325,7 +325,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.snapshot': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             refresh: { type: 'boolean' },
@@ -334,7 +334,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.list_entities': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             kind: {
@@ -355,7 +355,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.get_entity': {
         type: 'object',
-        required: ['tabToken', 'nodeId'],
+        required: ['nodeId'],
         properties: {
             tabToken: { type: 'string' },
             nodeId: { type: 'string' },
@@ -364,7 +364,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.find_entities': {
         type: 'object',
-        required: ['tabToken', 'query'],
+        required: ['query'],
         properties: {
             tabToken: { type: 'string' },
             query: { type: 'string' },
@@ -385,7 +385,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.add_entity': {
         type: 'object',
-        required: ['tabToken', 'nodeId', 'kind'],
+        required: ['nodeId', 'kind'],
         properties: {
             tabToken: { type: 'string' },
             nodeId: { type: 'string' },
@@ -397,7 +397,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.delete_entity': {
         type: 'object',
-        required: ['tabToken', 'nodeId'],
+        required: ['nodeId'],
         properties: {
             tabToken: { type: 'string' },
             nodeId: { type: 'string' },
@@ -408,7 +408,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.rename_entity': {
         type: 'object',
-        required: ['tabToken', 'nodeId', 'name'],
+        required: ['nodeId', 'name'],
         properties: {
             tabToken: { type: 'string' },
             nodeId: { type: 'string' },
@@ -418,7 +418,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.get_content': {
         type: 'object',
-        required: ['tabToken', 'ref'],
+        required: ['ref'],
         properties: {
             tabToken: { type: 'string' },
             ref: { type: 'string' },
@@ -427,7 +427,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.read_console': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             limit: { type: 'integer', minimum: 1, maximum: 500 },
@@ -436,7 +436,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.read_network': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             limit: { type: 'integer', minimum: 1, maximum: 500 },
@@ -445,7 +445,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.evaluate': {
         type: 'object',
-        required: ['tabToken', 'expression'],
+        required: ['expression'],
         properties: {
             tabToken: { type: 'string' },
             expression: { type: 'string' },
@@ -455,7 +455,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.take_screenshot': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             id: { type: 'string' },
@@ -466,7 +466,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.click': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             id: { type: 'string' },
@@ -494,7 +494,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.fill': {
         type: 'object',
-        required: ['tabToken', 'value'],
+        required: ['value'],
         properties: {
             tabToken: { type: 'string' },
             id: { type: 'string' },
@@ -506,7 +506,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.type': {
         type: 'object',
-        required: ['tabToken', 'text'],
+        required: ['text'],
         properties: {
             tabToken: { type: 'string' },
             id: { type: 'string' },
@@ -519,7 +519,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.select_option': {
         type: 'object',
-        required: ['tabToken', 'values'],
+        required: ['values'],
         properties: {
             tabToken: { type: 'string' },
             id: { type: 'string' },
@@ -531,7 +531,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.hover': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             id: { type: 'string' },
@@ -542,7 +542,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.scroll': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             id: { type: 'string' },
@@ -555,7 +555,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.press_key': {
         type: 'object',
-        required: ['tabToken', 'key'],
+        required: ['key'],
         properties: {
             tabToken: { type: 'string' },
             key: { type: 'string' },
@@ -567,7 +567,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.drag_and_drop': {
         type: 'object',
-        required: ['tabToken'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
             source_id: { type: 'string' },
@@ -589,7 +589,7 @@ export const toolInputJsonSchemas = {
     },
     'browser.mouse': {
         type: 'object',
-        required: ['tabToken', 'action', 'x', 'y'],
+        required: ['action', 'x', 'y'],
         properties: {
             tabToken: { type: 'string' },
             action: { type: 'string', enum: ['move', 'down', 'up', 'wheel', 'click', 'dblclick'] },

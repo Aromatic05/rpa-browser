@@ -86,8 +86,13 @@ const buildParseErrorResult = (error: unknown) => ({
     error,
 });
 
-const runSingleStep = async (deps: McpToolDeps, tabToken: string, step: StepUnion) => {
-    const scope = await resolveOrBootstrapScope(deps, tabToken);
+const runSingleStep = async (
+    deps: McpToolDeps,
+    tabToken: string | undefined,
+    step: StepUnion,
+    options?: { allowBootstrap?: boolean },
+) => {
+    const scope = await resolveOrBootstrapScope(deps, tabToken, options);
     deps.pageRegistry.setActiveWorkspace(scope.workspaceId);
     deps.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
     const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], undefined, { stopOnError: true });
@@ -105,19 +110,36 @@ const runSingleStep = async (deps: McpToolDeps, tabToken: string, step: StepUnio
 
 const resolveOrBootstrapScope = async (
     deps: McpToolDeps,
-    tabToken: string,
+    tabToken: string | undefined,
+    options?: { allowBootstrap?: boolean },
 ): Promise<{ workspaceId: string; tabId: string }> => {
+    const allowBootstrap = options?.allowBootstrap !== false;
+    const resolvedTabToken = resolveTabTokenOrActive(deps, tabToken);
     try {
-        return deps.pageRegistry.resolveScopeFromToken(tabToken);
+        return deps.pageRegistry.resolveScopeFromToken(resolvedTabToken);
     } catch {
+        if (!allowBootstrap) {
+            throw new Error('tab token not found');
+        }
         const shell = deps.pageRegistry.createWorkspaceShell();
         deps.pageRegistry.setActiveWorkspace(shell.workspaceId);
-        await deps.pageRegistry.getPage(tabToken);
-        const bound = deps.pageRegistry.bindTokenToWorkspace(tabToken, shell.workspaceId);
+        await deps.pageRegistry.getPage(resolvedTabToken);
+        const bound = deps.pageRegistry.bindTokenToWorkspace(resolvedTabToken, shell.workspaceId);
         if (bound) {
             return bound;
         }
-        return deps.pageRegistry.resolveScopeFromToken(tabToken);
+        return deps.pageRegistry.resolveScopeFromToken(resolvedTabToken);
+    }
+};
+
+const resolveTabTokenOrActive = (deps: McpToolDeps, tabToken?: string): string => {
+    if (typeof tabToken === 'string' && tabToken.trim().length > 0) {
+        return tabToken;
+    }
+    try {
+        return deps.pageRegistry.resolveTabToken();
+    } catch {
+        throw new Error('active tab not found');
     }
 };
 
@@ -161,7 +183,8 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    const result = await runSingleStep(deps, input.tabToken, {
+    const sourceTabToken = resolveTabTokenOrActive(deps, input.tabToken);
+    const result = await runSingleStep(deps, sourceTabToken, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
         args: { url: input.url },
@@ -171,8 +194,8 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
 
     const createdTabId = result.results.find((item) => item.ok)?.data as { tab_id?: unknown } | undefined;
     if (typeof createdTabId?.tab_id === 'string') {
-        const scope = deps.pageRegistry.resolveScopeFromToken(input.tabToken);
-        deps.pageRegistry.rebindTokenToTab(input.tabToken, scope.workspaceId, createdTabId.tab_id);
+        const scope = deps.pageRegistry.resolveScopeFromToken(sourceTabToken);
+        deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, createdTabId.tab_id);
     }
     return result;
 };
@@ -181,7 +204,8 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserSwitchTabInput>(browserSwitchTabInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    const result = await runSingleStep(deps, input.tabToken, {
+    const sourceTabToken = resolveTabTokenOrActive(deps, input.tabToken);
+    const result = await runSingleStep(deps, sourceTabToken, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
         args: { tab_id: input.tab_id },
@@ -189,8 +213,8 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     });
     if (!result.ok) return result;
 
-    const scope = deps.pageRegistry.resolveScopeFromToken(input.tabToken);
-    deps.pageRegistry.rebindTokenToTab(input.tabToken, scope.workspaceId, input.tab_id);
+    const scope = deps.pageRegistry.resolveScopeFromToken(sourceTabToken);
+    deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, input.tab_id);
     return result;
 };
 
@@ -210,12 +234,37 @@ const handleGetPageInfo = (deps: McpToolDeps): McpToolHandler => async (args: un
     const parsed = parseInput<BrowserGetPageInfoInput>(browserGetPageInfoInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    return runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.get_page_info',
-        args: {},
-        meta: { source: 'mcp' },
-    });
+    try {
+        return await runSingleStep(
+            deps,
+            input.tabToken,
+            {
+                id: crypto.randomUUID(),
+                name: 'browser.get_page_info',
+                args: {},
+                meta: { source: 'mcp' },
+            },
+            { allowBootstrap: false },
+        );
+    } catch {
+        return {
+            ok: false,
+            results: [
+                {
+                    stepId: 'invalid',
+                    ok: false,
+                    error: {
+                        code: 'ERR_NOT_FOUND',
+                        message: 'tab token not found',
+                    },
+                },
+            ],
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'tab token not found',
+            },
+        };
+    }
 };
 
 const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
