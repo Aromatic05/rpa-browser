@@ -53,6 +53,8 @@ export type RegionEntity = {
     kind: RegionKind;
     nodeId: string;
     name?: string;
+    businessTag?: string;
+    source?: 'auto' | 'overlay_add';
     bbox?: BBox;
     keyHint?: EntityKeyHint;
 };
@@ -62,6 +64,9 @@ export type GroupEntity = {
     type: 'group';
     kind: GroupKind;
     containerId: string;
+    name?: string;
+    businessTag?: string;
+    source?: 'auto' | 'overlay_add';
     itemIds: string[];
     keySlot: number;
     keyHint?: EntityKeyHint;
@@ -135,4 +140,67 @@ export type SnapshotResult = {
     attrIndex: AttrIndex;
     contentStore: ContentStore;
     cacheStats?: SnapshotCacheStats;
+};
+
+export type SnapshotOverlayAddEntity = {
+    nodeId: string;
+    kind: EntityKind;
+    name?: string;
+    businessTag?: string;
+};
+
+export type SnapshotOverlayDeleteEntity = {
+    nodeId: string;
+    kind?: EntityKind;
+    businessTag?: string;
+};
+
+export type SnapshotOverlays = {
+    renamedNodes: Record<string, string>;
+    addedEntities: SnapshotOverlayAddEntity[];
+    deletedEntities: SnapshotOverlayDeleteEntity[];
+};
+
+export type FinalEntityRecord = {
+    id: string;
+    entityId?: string;
+    nodeId: string;
+    kind: EntityKind;
+    type: 'region' | 'group';
+    name?: string;
+    businessTag?: string;
+    source: 'auto' | 'overlay_add';
+    itemIds?: string[];
+    keySlot?: number;
+};
+
+export type FinalEntityView = {
+    entities: FinalEntityRecord[];
+    byNodeId: Record<string, FinalEntityRecord[] | undefined>;
+};
+
+export type SnapshotPageIdentity = {
+    workspaceId: string;
+    tabId: string;
+    tabToken: string;
+    url: string;
+};
+
+export type SnapshotSessionEntry = {
+    pageIdentity: SnapshotPageIdentity;
+    baseSnapshot?: SnapshotResult;
+    finalSnapshot?: SnapshotResult;
+    finalEntityView?: FinalEntityView;
+    overlays: SnapshotOverlays;
+    lastRefreshAt?: number;
+    lastDirtyAt?: number;
+    dirty: boolean;
+    staleReason?: string;
+    version?: number;
+    refreshInFlight?: Promise<SnapshotResult>;
+};
+
+export type SnapshotSessionStore = {
+    version: number;
+    entries: Record<string, SnapshotSessionEntry>;
 };
