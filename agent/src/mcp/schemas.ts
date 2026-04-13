@@ -9,6 +9,10 @@ const ensureIdOrSelector = <T extends { id?: string; selector?: string }>(value:
     return Boolean(value.id || value.selector);
 };
 
+const entityKindSchema = z.enum(['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv']);
+const entityKindOrArraySchema = z.union([entityKindSchema, z.array(entityKindSchema).nonempty()]);
+const textOrArraySchema = z.union([z.string(), z.array(z.string()).nonempty()]);
+
 export const browserGotoInputSchema = z.object({
     tabToken: z.string(),
     url: z.string(),
@@ -46,6 +50,47 @@ export const browserGetPageInfoInputSchema = z.object({
 
 export const browserSnapshotInputSchema = z.object({
     tabToken: z.string(),
+    refresh: z.boolean().optional(),
+});
+
+export const browserListEntitiesInputSchema = z.object({
+    tabToken: z.string(),
+    kind: entityKindOrArraySchema.optional(),
+    businessTag: textOrArraySchema.optional(),
+    query: z.string().optional(),
+});
+
+export const browserGetEntityInputSchema = z.object({
+    tabToken: z.string(),
+    nodeId: z.string(),
+});
+
+export const browserFindEntitiesInputSchema = z.object({
+    tabToken: z.string(),
+    query: z.string(),
+    kind: entityKindOrArraySchema.optional(),
+    businessTag: textOrArraySchema.optional(),
+});
+
+export const browserAddEntityInputSchema = z.object({
+    tabToken: z.string(),
+    nodeId: z.string(),
+    kind: entityKindSchema,
+    name: z.string().optional(),
+    businessTag: z.string().optional(),
+});
+
+export const browserDeleteEntityInputSchema = z.object({
+    tabToken: z.string(),
+    nodeId: z.string(),
+    kind: entityKindSchema.optional(),
+    businessTag: z.string().optional(),
+});
+
+export const browserRenameEntityInputSchema = z.object({
+    tabToken: z.string(),
+    nodeId: z.string(),
+    name: z.string(),
 });
 
 export const browserGetContentInputSchema = z.object({
@@ -207,6 +252,12 @@ export type BrowserScrollInput = z.infer<typeof browserScrollInputSchema>;
 export type BrowserPressKeyInput = z.infer<typeof browserPressKeyInputSchema>;
 export type BrowserDragAndDropInput = z.infer<typeof browserDragAndDropInputSchema>;
 export type BrowserMouseInput = z.infer<typeof browserMouseInputSchema>;
+export type BrowserListEntitiesInput = z.infer<typeof browserListEntitiesInputSchema>;
+export type BrowserGetEntityInput = z.infer<typeof browserGetEntityInputSchema>;
+export type BrowserFindEntitiesInput = z.infer<typeof browserFindEntitiesInputSchema>;
+export type BrowserAddEntityInput = z.infer<typeof browserAddEntityInputSchema>;
+export type BrowserDeleteEntityInput = z.infer<typeof browserDeleteEntityInputSchema>;
+export type BrowserRenameEntityInput = z.infer<typeof browserRenameEntityInputSchema>;
 
 export const toolInputJsonSchemas = {
     'browser.goto': {
@@ -277,6 +328,91 @@ export const toolInputJsonSchemas = {
         required: ['tabToken'],
         properties: {
             tabToken: { type: 'string' },
+            refresh: { type: 'boolean' },
+        },
+        additionalProperties: false,
+    },
+    'browser.list_entities': {
+        type: 'object',
+        required: ['tabToken'],
+        properties: {
+            tabToken: { type: 'string' },
+            kind: {
+                anyOf: [
+                    { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+                    { type: 'array', items: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] } },
+                ],
+            },
+            businessTag: {
+                anyOf: [
+                    { type: 'string' },
+                    { type: 'array', items: { type: 'string' } },
+                ],
+            },
+            query: { type: 'string' },
+        },
+        additionalProperties: false,
+    },
+    'browser.get_entity': {
+        type: 'object',
+        required: ['tabToken', 'nodeId'],
+        properties: {
+            tabToken: { type: 'string' },
+            nodeId: { type: 'string' },
+        },
+        additionalProperties: false,
+    },
+    'browser.find_entities': {
+        type: 'object',
+        required: ['tabToken', 'query'],
+        properties: {
+            tabToken: { type: 'string' },
+            query: { type: 'string' },
+            kind: {
+                anyOf: [
+                    { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+                    { type: 'array', items: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] } },
+                ],
+            },
+            businessTag: {
+                anyOf: [
+                    { type: 'string' },
+                    { type: 'array', items: { type: 'string' } },
+                ],
+            },
+        },
+        additionalProperties: false,
+    },
+    'browser.add_entity': {
+        type: 'object',
+        required: ['tabToken', 'nodeId', 'kind'],
+        properties: {
+            tabToken: { type: 'string' },
+            nodeId: { type: 'string' },
+            kind: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+            name: { type: 'string' },
+            businessTag: { type: 'string' },
+        },
+        additionalProperties: false,
+    },
+    'browser.delete_entity': {
+        type: 'object',
+        required: ['tabToken', 'nodeId'],
+        properties: {
+            tabToken: { type: 'string' },
+            nodeId: { type: 'string' },
+            kind: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+            businessTag: { type: 'string' },
+        },
+        additionalProperties: false,
+    },
+    'browser.rename_entity': {
+        type: 'object',
+        required: ['tabToken', 'nodeId', 'name'],
+        properties: {
+            tabToken: { type: 'string' },
+            nodeId: { type: 'string' },
+            name: { type: 'string' },
         },
         additionalProperties: false,
     },

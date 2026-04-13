@@ -68,6 +68,36 @@ export const createMcpServer = (deps: McpToolDeps) => {
                 inputSchema: toolInputJsonSchemas['browser.snapshot'],
             },
             {
+                name: 'browser.list_entities',
+                description: 'List entities from the final snapshot entity view.',
+                inputSchema: toolInputJsonSchemas['browser.list_entities'],
+            },
+            {
+                name: 'browser.get_entity',
+                description: 'Get entity information by snapshot nodeId.',
+                inputSchema: toolInputJsonSchemas['browser.get_entity'],
+            },
+            {
+                name: 'browser.find_entities',
+                description: 'Find entities by query, kind, and business tag.',
+                inputSchema: toolInputJsonSchemas['browser.find_entities'],
+            },
+            {
+                name: 'browser.add_entity',
+                description: 'Add an overlay entity on a snapshot node.',
+                inputSchema: toolInputJsonSchemas['browser.add_entity'],
+            },
+            {
+                name: 'browser.delete_entity',
+                description: 'Suppress entity interpretation on a snapshot node.',
+                inputSchema: toolInputJsonSchemas['browser.delete_entity'],
+            },
+            {
+                name: 'browser.rename_entity',
+                description: 'Rename a snapshot node by nodeId.',
+                inputSchema: toolInputJsonSchemas['browser.rename_entity'],
+            },
+            {
                 name: 'browser.get_content',
                 description: 'Resolve snapshot content by content ref.',
                 inputSchema: toolInputJsonSchemas['browser.get_content'],
