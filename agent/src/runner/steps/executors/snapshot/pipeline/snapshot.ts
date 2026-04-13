@@ -20,6 +20,7 @@ import {
 } from '../core/cache';
 import { buildSnapshot } from './build_snapshot';
 import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from '../core/debug';
+import { ensureFreshSnapshot } from '../core/session_store';
 import { getNodeAttr } from '../core/runtime_store';
 import type { RawData, SnapshotResult, UnifiedNode } from '../core/types';
 
@@ -29,14 +30,16 @@ export const executeBrowserSnapshot = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const snapshot = await generateSemanticSnapshot(binding.page);
-    (binding.traceCtx.cache as Record<string, unknown>).latestSnapshot = snapshot;
-    (binding.traceCtx.cache as Record<string, unknown>).latestSnapshotAt = Date.now();
+    const ensured = await ensureFreshSnapshot(binding, {
+        forceRefresh: step.args.refresh === true,
+        refreshReason: 'browser.snapshot',
+        collectBaseSnapshot: async () => generateSemanticSnapshot(binding.page),
+    });
 
     return {
         stepId: step.id,
         ok: true,
-        data: snapshot.root,
+        data: ensured.snapshot.root,
     };
 };
 

@@ -90,6 +90,7 @@ export type TraceCache = {
     a11yCacheGen?: number;
     latestSnapshot?: unknown;
     latestSnapshotAt?: number;
+    snapshotSessionStore?: unknown;
     consoleEntries?: ConsoleEntry[];
     networkEntries?: NetworkEntry[];
 };
