@@ -21,8 +21,8 @@ const GROUP_ONLY_KINDS = new Set<EntityKind>(['kv']);
 export const applySnapshotOverlay = (baseSnapshot: SnapshotResult, overlays: SnapshotOverlays): SnapshotResult => {
     const snapshot = cloneSnapshot(baseSnapshot);
     const renamedCount = applyRenameOverlay(snapshot, overlays.renamedNodes);
-    const deletedCount = applyDeleteEntityOverlay(snapshot, overlays.deletedEntities);
     const addResult = applyAddEntityOverlay(snapshot, overlays.addedEntities);
+    const deletedCount = applyDeleteEntityOverlay(snapshot, overlays.deletedEntities);
 
     snapshotDebugLog('overlay-apply', {
         baseEntityCount: Object.keys(baseSnapshot.entityIndex.entities).length,
