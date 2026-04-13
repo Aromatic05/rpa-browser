@@ -3,32 +3,31 @@ import { compress } from '../stages/compress';
 import { finalizeLabel } from '../stages/finalize_label';
 import { selectStructureCandidates } from '../stages/candidates';
 import { buildStructureEntityIndex, detectStructureCandidates } from '../stages/entity_index';
-import type { NodeTier, UnifiedNode } from '../core/types';
+import type { EntityIndex, NodeTier, UnifiedNode } from '../core/types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
-    const tree = buildTree(node);
+    const tree = stageBuildTree(node);
+    const structure = stageSelectCandidates(tree);
+    const entityIndex = stageBuildEntityIndex(tree, structure);
+
+    stageMarkStrongSemantics(tree);
+    stageApplyLCA(tree, entityIndex);
+    stageRankTiers(tree);
+
+    return stageCompressAndFinalize(tree);
+};
+
+const stageBuildTree = (node: UnifiedNode): UnifiedNode => node;
+
+const stageSelectCandidates = (tree: UnifiedNode) => {
     const detected = detectStructureCandidates(tree);
-    const structure = selectStructureCandidates(tree, detected.candidates);
-    const entityIndex = buildStructureEntityIndex(tree, structure, { includeDescendants: false });
-
-    markStrongSemantics(tree);
-    applyLCA(tree, entityIndex);
-    rankTiers(tree);
-
-    return runCompressStage(tree);
+    return selectStructureCandidates(tree, detected.candidates);
 };
 
-const runCompressStage = (tree: UnifiedNode): UnifiedNode | null => {
-    const compressed = compress(tree);
-    if (!compressed) return null;
-    return finalizeLabel(compressed);
-};
+const stageBuildEntityIndex = (tree: UnifiedNode, structure: ReturnType<typeof stageSelectCandidates>) =>
+    buildStructureEntityIndex(tree, structure, { includeDescendants: false });
 
-const buildTree = (node: UnifiedNode): UnifiedNode => {
-    return node;
-};
-
-const markStrongSemantics = (tree: UnifiedNode) => {
+const stageMarkStrongSemantics = (tree: UnifiedNode) => {
     walk(tree, (node) => {
         if (STRONG_ROLES.has(normalizeRole(node.role))) {
             node.tier = 'A';
@@ -36,11 +35,21 @@ const markStrongSemantics = (tree: UnifiedNode) => {
     });
 };
 
-const rankTiers = (tree: UnifiedNode) => {
+const stageApplyLCA = (tree: UnifiedNode, entityIndex: EntityIndex) => {
+    applyLCA(tree, entityIndex);
+};
+
+const stageRankTiers = (tree: UnifiedNode) => {
     walk(tree, (node) => {
         if (node.tier) return;
         node.tier = defaultTier(node);
     });
+};
+
+const stageCompressAndFinalize = (tree: UnifiedNode): UnifiedNode | null => {
+    const compressed = compress(tree);
+    if (!compressed) return null;
+    return finalizeLabel(compressed);
 };
 
 const defaultTier = (node: UnifiedNode): NodeTier => {

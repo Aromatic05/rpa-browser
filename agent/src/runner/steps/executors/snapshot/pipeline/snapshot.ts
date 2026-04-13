@@ -58,22 +58,38 @@ export const generateSemanticSnapshot = async (page: Page): Promise<SnapshotResu
 
 export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult => {
     const cacheStats = createCacheStats();
+    const graph = stageFuseGraph(raw);
+    const layeredGraph = stageBuildSpatialGraph(graph);
+    const root = stageAttachLayers(layeredGraph);
 
-    // 2) DOM + A11y 融合为统一节点图。
+    stageProcessLayerRegions(root, cacheStats);
+    stageLinkGlobalRelations(root);
+    stageAssignStableIds(root);
+
+    return stageBuildSnapshot(root, cacheStats);
+};
+
+type CacheStats = ReturnType<typeof createCacheStats>;
+
+const stageFuseGraph = (raw: RawData) => {
     const graph = fuseDomAndA11y(raw.domTree, raw.a11yTree);
     snapshotDebugLog('fuse', {
         unifiedCount: countTreeNodes(graph.root),
         topNodes: summarizeTopNodes(graph.root),
     });
+    return graph;
+};
 
-    // 3) 对顶层子树做空间重排。
+const stageBuildSpatialGraph = (graph: ReturnType<typeof stageFuseGraph>) => {
     const layeredGraph = buildSpatialLayers(graph);
     snapshotDebugLog('spatial', {
         layeredCount: countTreeNodes(layeredGraph.root),
         topNodes: summarizeTopNodes(layeredGraph.root),
     });
+    return layeredGraph;
+};
 
-    // 4) 创建虚拟根，先挂主内容。
+const stageAttachLayers = (layeredGraph: ReturnType<typeof stageBuildSpatialGraph>): UnifiedNode => {
     const root = createVirtualRoot();
     const [mainBody, ...overlays] = layeredGraph.root.children;
     if (mainBody) {
@@ -82,70 +98,75 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
         root.children.push(layeredGraph.root);
     }
 
-    // 5) 过滤明显噪声后挂 overlay。
     for (const overlay of overlays) {
         if (isNoiseLayer(overlay)) continue;
         root.children.push(overlay);
     }
+
     root.children = root.children.filter((layer) => !isNonPerceivableLayer(layer));
     snapshotDebugLog('attach-layers', {
         virtualRootChildren: root.children.length,
         topNodes: summarizeTopNodes(root),
     });
+    return root;
+};
 
-    // 6) 每层做区域处理与语义处理（含 applyLCA 后的 compress）。
+const stageProcessLayerRegions = (root: UnifiedNode, cacheStats: CacheStats) => {
     for (const layer of root.children) {
-        const regions = [...detectRegions(layer)];
-        snapshotDebugLog('regions', {
-            layerId: layer.id,
-            layerRole: layer.role,
-            regionCount: regions.length,
-        });
-        for (const region of regions) {
-            cacheStats.bucketTotal += 1;
-            const bucketKey = computeBucketKey(region);
-            const bucketHash = computeBucketHash(region);
-            const cached = readBucketCache(bucketKey, bucketHash);
-            if (cached) {
-                cacheStats.bucketHit += 1;
-                replaceRegion(layer, region, cached);
-                continue;
-            }
-
-            cacheStats.bucketMiss += 1;
-            const processed = processRegion(region);
-            if (!processed) {
-                removeRegion(layer, region);
-                continue;
-            }
-            writeBucketCache(bucketKey, bucketHash, processed);
-            replaceRegion(layer, region, processed);
-        }
+        processLayerRegions(layer, cacheStats);
     }
+};
 
-    // 7) 处理跨层/跨区域关系。
+const processLayerRegions = (layer: UnifiedNode, cacheStats: CacheStats) => {
+    const regions = [...detectRegions(layer)];
+    snapshotDebugLog('regions', {
+        layerId: layer.id,
+        layerRole: layer.role,
+        regionCount: regions.length,
+    });
+
+    for (const region of regions) {
+        cacheStats.bucketTotal += 1;
+        const bucketKey = computeBucketKey(region);
+        const bucketHash = computeBucketHash(region);
+        const cached = readBucketCache(bucketKey, bucketHash);
+        if (cached) {
+            cacheStats.bucketHit += 1;
+            replaceRegion(layer, region, cached);
+            continue;
+        }
+
+        cacheStats.bucketMiss += 1;
+        const processed = processRegion(region);
+        if (!processed) {
+            removeRegion(layer, region);
+            continue;
+        }
+
+        writeBucketCache(bucketKey, bucketHash, processed);
+        replaceRegion(layer, region, processed);
+    }
+};
+
+const stageLinkGlobalRelations = (root: UnifiedNode) => {
     linkGlobalRelations(root);
+};
 
-    // 8) 压缩后生成稳定 ID。
+const stageAssignStableIds = (root: UnifiedNode) => {
     assignStableIds(root);
     snapshotDebugLog('stable-id', {
         snapshotCount: countTreeNodes(root),
         topNodes: summarizeTopNodes(root),
     });
+};
 
-    // 9) 构建树外统一实体索引（region + group）。
+const stageBuildSnapshot = (root: UnifiedNode, cacheStats: CacheStats): SnapshotResult => {
     const entityIndex = buildEntityIndex(root);
-
-    // 10) 构建树外 locator 索引。
     const locatorIndex = buildLocatorIndex({
         root,
         entityIndex,
     });
-
-    // 11) 构建树外字段索引。
     const { nodeIndex, bboxIndex, attrIndex, contentStore } = buildExternalIndexes(root);
-
-    // 12) 输出 snapshot。
     const snapshot = buildSnapshot({
         root,
         nodeIndex,
