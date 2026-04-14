@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fuseDomAndA11y } from '../executors/snapshot/stages/fusion';
+import { getNodeAttr } from '../executors/snapshot/core/runtime_store';
+import type { RuntimeStateMap } from '../executors/snapshot/core/types';
 
 type DomNode = {
     id: string;
@@ -14,6 +16,15 @@ type DomNode = {
 type A11yNode = {
     role?: string;
     name?: string;
+    value?: string;
+    checked?: string;
+    selected?: string;
+    expanded?: string;
+    pressed?: string;
+    focused?: string;
+    disabled?: string;
+    readonly?: string;
+    invalid?: string;
     backendDOMNodeId?: string;
     children?: A11yNode[];
 };
@@ -318,4 +329,98 @@ test('fuseDomAndA11y should not fallback to unrelated a11y nodes without backend
     assert.equal(node?.role, 'span');
     assert.equal(node?.name, undefined);
     assert.equal(node?.content, undefined);
+});
+
+test('fuseDomAndA11y should merge interaction states from matched a11y node attrs', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'input',
+        backendDOMNodeId: '8801',
+        attrs: {
+            backendDOMNodeId: '8801',
+            type: 'checkbox',
+        },
+        children: [],
+    };
+    const a11yTree: A11yNode = {
+        role: 'checkbox',
+        backendDOMNodeId: '8801',
+        checked: 'true',
+        expanded: 'false',
+        pressed: 'false',
+        focused: 'true',
+        disabled: 'false',
+        readonly: 'false',
+    };
+
+    const graph = fuseDomAndA11y(domTree, a11yTree);
+    assert.equal(getNodeAttr(graph.root, 'checked'), 'true');
+    assert.equal(getNodeAttr(graph.root, 'aria-checked'), 'true');
+    assert.equal(getNodeAttr(graph.root, 'aria-expanded'), 'false');
+    assert.equal(getNodeAttr(graph.root, 'aria-pressed'), 'false');
+    assert.equal(getNodeAttr(graph.root, 'focused'), 'true');
+});
+
+test('fuseDomAndA11y should accept runtime state on path keys with sparse sibling index', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'body',
+        children: [
+            {
+                id: 'n0.3',
+                tag: 'input',
+                attrs: {
+                    type: 'text',
+                    id: 'username',
+                },
+                children: [],
+            },
+        ],
+    };
+    const runtimeStateMap: RuntimeStateMap = {
+        'n0.3': {
+            pathKey: 'n0.3',
+            parentKey: 'n0',
+            tag: 'input',
+            type: 'text',
+            idAttr: 'username',
+            value: 'alice',
+        },
+    };
+
+    const graph = fuseDomAndA11y(domTree, null, runtimeStateMap);
+    const field = findNode(graph.root, 'n0.3');
+    assert.equal(getNodeAttr(field, 'value'), 'alice');
+});
+
+test('fuseDomAndA11y should drop runtime state when fingerprint validation fails', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'body',
+        children: [
+            {
+                id: 'n0.3',
+                tag: 'input',
+                attrs: {
+                    type: 'text',
+                    id: 'username',
+                },
+                children: [],
+            },
+        ],
+    };
+    const runtimeStateMap: RuntimeStateMap = {
+        'n0.3': {
+            pathKey: 'n0.3',
+            parentKey: 'n0',
+            tag: 'input',
+            type: 'text',
+            idAttr: 'other-id',
+            value: 'alice',
+        },
+    };
+
+    const graph = fuseDomAndA11y(domTree, null, runtimeStateMap);
+    const field = findNode(graph.root, 'n0.3');
+    assert.equal(getNodeAttr(field, 'value'), undefined);
 });

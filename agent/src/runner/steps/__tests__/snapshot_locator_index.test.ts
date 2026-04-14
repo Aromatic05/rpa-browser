@@ -121,3 +121,34 @@ test('textbox with placeholder uses css direct locator', () => {
     assert.equal(locatorIndex.textbox_test.direct?.kind, 'css');
     assert.equal(locatorIndex.textbox_test.direct?.query, 'input[placeholder="商品名称"]');
 });
+
+test('checkbox uses input type+value css locator to avoid label text mismatch', () => {
+    const root: UnifiedNode = {
+        id: 'root_test5',
+        role: 'root',
+        children: [
+            {
+                id: 'checkbox_test',
+                role: 'checkbox',
+                name: 'red',
+                children: [],
+            },
+        ],
+    };
+    setNodeAttr(root.children[0], 'backendDOMNodeId', '5001');
+    setNodeAttr(root.children[0], 'tag', 'input');
+    setNodeAttr(root.children[0], 'type', 'checkbox');
+    setNodeAttr(root.children[0], 'value', 'red');
+
+    const locatorIndex = buildLocatorIndex({
+        root,
+        entityIndex: {
+            entities: {},
+            byNodeId: {},
+        },
+    });
+
+    assert.ok(locatorIndex.checkbox_test, 'checkbox should be indexed');
+    assert.equal(locatorIndex.checkbox_test.direct?.kind, 'css');
+    assert.equal(locatorIndex.checkbox_test.direct?.query, 'input[type="checkbox"][value="red"]');
+});

@@ -2,17 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { UnifiedNode } from '../executors/snapshot/core/types';
 import {
+    ensureFreshSnapshot,
     ensureSnapshotSessionEntry,
+    markSnapshotSessionDirty,
     readSnapshotDiffBaseline,
+    shouldMarkSnapshotDirtyByStep,
     writeSnapshotDiffBaseline,
 } from '../executors/snapshot/core/session_store';
 import { buildSnapshotDiffBaselineKey } from '../executors/snapshot/pipeline/scoped_diff';
+import { buildSnapshotFromViewRoot } from '../executors/snapshot/pipeline/scoped_diff';
 
 const createBaselineRoot = (id: string): UnifiedNode => ({
     id,
     role: 'root',
     children: [],
 });
+
+const createSnapshot = (id: string) => buildSnapshotFromViewRoot(createBaselineRoot(id), undefined);
 
 const createBinding = (urlRef: { current: string }) => {
     return {
@@ -100,4 +106,49 @@ test('diff baseline is invalidated when page identity changes', () => {
     const afterNavigation = readSnapshotDiffBaseline(refreshedEntry, key);
 
     assert.equal(afterNavigation, undefined);
+});
+
+test('dirty interaction forces snapshot refresh instead of stale cache reuse', async () => {
+    const url = { current: 'https://example.test/a' };
+    const binding = createBinding(url);
+    let collectCount = 0;
+
+    const collectBaseSnapshot = async () => {
+        collectCount += 1;
+        return createSnapshot(`root-${collectCount}`);
+    };
+
+    const first = await ensureFreshSnapshot(binding, {
+        collectBaseSnapshot,
+    });
+    assert.equal(first.refreshed, true);
+    assert.equal(first.snapshot.root.id, 'root-1');
+
+    const second = await ensureFreshSnapshot(binding, {
+        collectBaseSnapshot,
+    });
+    assert.equal(second.refreshed, false);
+    assert.equal(second.snapshot.root.id, 'root-1');
+    assert.equal(collectCount, 1);
+
+    markSnapshotSessionDirty(binding, 'step:browser.click');
+
+    const third = await ensureFreshSnapshot(binding, {
+        collectBaseSnapshot,
+    });
+    assert.equal(third.refreshed, true);
+    assert.equal(third.snapshot.root.id, 'root-2');
+    assert.equal(collectCount, 2);
+});
+
+test('dirty step policy skips high-frequency read operations and requires explicit evaluate mutation flag', () => {
+    assert.equal(shouldMarkSnapshotDirtyByStep('browser.hover', {}), false);
+    assert.equal(shouldMarkSnapshotDirtyByStep('browser.scroll', {}), false);
+    assert.equal(shouldMarkSnapshotDirtyByStep('browser.mouse', { action: 'move' }), false);
+
+    assert.equal(shouldMarkSnapshotDirtyByStep('browser.evaluate', { expression: '1+1' }), false);
+    assert.equal(shouldMarkSnapshotDirtyByStep('browser.evaluate', { expression: 'x=1', mutatesPage: true }), true);
+
+    assert.equal(shouldMarkSnapshotDirtyByStep('browser.click', {}), true);
+    assert.equal(shouldMarkSnapshotDirtyByStep('browser.fill', {}), true);
 });

@@ -156,6 +156,8 @@ test('diff detects checkbox checked change through projected content', () => {
 
     const baselineView = toViewRoot(createNode('root', 'root', [baseline]));
     const currentView = toViewRoot(createNode('root', 'root', [current]));
+    assert.equal(firstChild(baselineView).content, 'unchecked');
+    assert.equal(firstChild(currentView).content, 'checked');
 
     const diff = computeMinimalChangedSubtree(currentView, baselineView);
     assert.equal(diff.mode, 'diff');
@@ -170,6 +172,8 @@ test('diff detects combobox selected change through projected content', () => {
 
     const baselineView = toViewRoot(createNode('root', 'root', [baseline]));
     const currentView = toViewRoot(createNode('root', 'root', [current]));
+    assert.equal(firstChild(baselineView).content, 'empty');
+    assert.equal(firstChild(currentView).content, 'selected="北京"');
 
     const diff = computeMinimalChangedSubtree(currentView, baselineView);
     assert.equal(diff.mode, 'diff');
