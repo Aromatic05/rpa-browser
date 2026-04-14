@@ -131,6 +131,32 @@ export type SnapshotCacheStats = {
     bucketMiss: number;
 };
 
+export type SnapshotFilter = {
+    role?: string | string[];
+    text?: string;
+    interactive?: boolean;
+};
+
+export type SnapshotDiffSkippedReason =
+    | 'navigation'
+    | 'no_baseline'
+    | 'contain_unavailable'
+    | 'too_broad';
+
+export type SnapshotMeta = {
+    mode: 'full' | 'diff';
+    snapshotId: string;
+    pageIdentity: SnapshotPageIdentity;
+    contain?: string;
+    depth?: number;
+    filterSignature?: string;
+    truncated?: boolean;
+    baseSnapshotId?: string;
+    diffRootId?: string;
+    changedNodeCount?: number;
+    diffSkipped?: SnapshotDiffSkippedReason;
+};
+
 export type SnapshotResult = {
     root: UnifiedNode;
     nodeIndex: NodeIndex;
@@ -140,6 +166,20 @@ export type SnapshotResult = {
     attrIndex: AttrIndex;
     contentStore: ContentStore;
     cacheStats?: SnapshotCacheStats;
+    snapshotMeta?: SnapshotMeta;
+};
+
+export type SnapshotDiffBaselineKey = {
+    contain: string;
+    depth: number;
+    filterSignature: string;
+};
+
+export type SnapshotDiffBaselineEntry = {
+    snapshotId: string;
+    root: UnifiedNode;
+    createdAt: number;
+    pageIdentity: SnapshotPageIdentity;
 };
 
 export type SnapshotOverlayAddEntity = {
@@ -191,6 +231,7 @@ export type SnapshotSessionEntry = {
     baseSnapshot?: SnapshotResult;
     finalSnapshot?: SnapshotResult;
     finalEntityView?: FinalEntityView;
+    diffBaselines?: Record<string, SnapshotDiffBaselineEntry>;
     overlays: SnapshotOverlays;
     lastRefreshAt?: number;
     lastDirtyAt?: number;

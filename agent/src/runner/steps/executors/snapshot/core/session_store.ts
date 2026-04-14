@@ -1,8 +1,9 @@
 import type { PageBinding } from '../../../../../runtime/runtime_registry';
 import { snapshotDebugLog } from './debug';
 import { applySnapshotOverlay, buildFinalEntityViewFromSnapshot } from './overlay';
-import { normalizeText } from './runtime_store';
+import { cloneTreeWithRuntime, normalizeText } from './runtime_store';
 import type {
+    SnapshotDiffBaselineEntry,
     SnapshotOverlayAddEntity,
     SnapshotOverlayDeleteEntity,
     SnapshotOverlays,
@@ -15,6 +16,7 @@ import type {
 const STORE_KEY = 'snapshotSessionStore';
 const DEFAULT_STORE_VERSION = 1;
 const DEFAULT_SNAPSHOT_TTL_MS = 20_000;
+const MAX_DIFF_BASELINE_COUNT = 64;
 const DIRTY_STEP_NAMES = new Set<string>([
     'browser.goto',
     'browser.reload',
@@ -282,9 +284,49 @@ export const setRenameOverlay = (entry: SnapshotSessionEntry, nodeId: string, na
     entry.overlays.renamedNodes[normalizedNodeId] = normalizedName;
 };
 
+export const readSnapshotDiffBaseline = (
+    entry: SnapshotSessionEntry,
+    key: string,
+): SnapshotDiffBaselineEntry | undefined => {
+    const baseline = ensureDiffBaselineMap(entry)[key];
+    if (!baseline) return undefined;
+    return {
+        snapshotId: baseline.snapshotId,
+        root: cloneTreeWithRuntime(baseline.root),
+        createdAt: baseline.createdAt,
+        pageIdentity: {
+            workspaceId: baseline.pageIdentity.workspaceId,
+            tabId: baseline.pageIdentity.tabId,
+            tabToken: baseline.pageIdentity.tabToken,
+            url: baseline.pageIdentity.url,
+        },
+    };
+};
+
+export const writeSnapshotDiffBaseline = (
+    entry: SnapshotSessionEntry,
+    key: string,
+    baseline: SnapshotDiffBaselineEntry,
+) => {
+    const map = ensureDiffBaselineMap(entry);
+    map[key] = {
+        snapshotId: baseline.snapshotId,
+        root: cloneTreeWithRuntime(baseline.root),
+        createdAt: baseline.createdAt,
+        pageIdentity: {
+            workspaceId: baseline.pageIdentity.workspaceId,
+            tabId: baseline.pageIdentity.tabId,
+            tabToken: baseline.pageIdentity.tabToken,
+            url: baseline.pageIdentity.url,
+        },
+    };
+    trimDiffBaselineMap(map, MAX_DIFF_BASELINE_COUNT);
+};
+
 const createSnapshotSessionEntry = (pageIdentity: SnapshotPageIdentity): SnapshotSessionEntry => ({
     pageIdentity,
     overlays: createEmptyOverlays(),
+    diffBaselines: {},
     dirty: false,
     version: 1,
 });
@@ -311,6 +353,7 @@ const syncPageIdentity = (entry: SnapshotSessionEntry, nextIdentity: SnapshotPag
     entry.baseSnapshot = undefined;
     entry.finalSnapshot = undefined;
     entry.finalEntityView = undefined;
+    entry.diffBaselines = {};
     entry.overlays = createEmptyOverlays();
     entry.dirty = true;
     entry.lastDirtyAt = Date.now();
@@ -403,6 +446,28 @@ const isSamePageIdentity = (left: SnapshotPageIdentity, right: SnapshotPageIdent
         left.tabToken === right.tabToken &&
         left.url === right.url
     );
+};
+
+const ensureDiffBaselineMap = (entry: SnapshotSessionEntry): Record<string, SnapshotDiffBaselineEntry> => {
+    if (!entry.diffBaselines || typeof entry.diffBaselines !== 'object') {
+        entry.diffBaselines = {};
+    }
+    return entry.diffBaselines;
+};
+
+const trimDiffBaselineMap = (map: Record<string, SnapshotDiffBaselineEntry>, maxCount: number) => {
+    const keys = Object.keys(map);
+    if (keys.length <= maxCount) return;
+
+    const sorted = keys.sort((left, right) => {
+        const leftAt = map[left]?.createdAt || 0;
+        const rightAt = map[right]?.createdAt || 0;
+        return leftAt - rightAt;
+    });
+    const overflow = sorted.length - maxCount;
+    for (let index = 0; index < overflow; index += 1) {
+        delete map[sorted[index]];
+    }
 };
 
 const isSnapshotSessionStore = (value: unknown): value is SnapshotSessionStore => {
