@@ -1,7 +1,34 @@
 export type RawData = {
     domTree: unknown;
     a11yTree: unknown;
+    runtimeStateMap?: RuntimeStateMap;
 };
+
+export type RuntimeState = {
+    pathKey: string;
+    parentKey?: string;
+    tag?: string;
+    type?: string;
+    role?: string;
+    idAttr?: string;
+    nameAttr?: string;
+    placeholder?: string;
+    ariaLabel?: string;
+    dataTestId?: string;
+    value?: string;
+    checked?: string;
+    selected?: string;
+    ariaChecked?: string;
+    ariaSelected?: string;
+    ariaExpanded?: string;
+    ariaPressed?: string;
+    disabled?: string;
+    readonly?: string;
+    invalid?: string;
+    focused?: string;
+};
+
+export type RuntimeStateMap = Record<string, RuntimeState | undefined>;
 
 export type BBox = { x: number; y: number; width: number; height: number };
 

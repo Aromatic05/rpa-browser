@@ -48,12 +48,12 @@ export const writeBucketCache = (bucketKey: string, hash: string, processed: Uni
 const collectRegionSignature = (root: UnifiedNode): string => {
     const chunks: string[] = [];
     walk(root, (node, depth) => {
-        if (depth > 3) return;
+        const state = collectInteractiveStateSignature(node);
+        if (depth > 3 && !isStatefulNode(node, state)) return;
         const role = normalizeRole(node.role);
         const name = normalizeName(node.name || getNodeContent(node));
         const domId = normalizeText(getNodeAttr(node, 'backendDOMNodeId')) || '';
         const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-        const state = collectInteractiveStateSignature(node);
         const childCount = node.children.length;
         chunks.push(`${depth}:${role}:${name}:${tag}:${domId}:${state}:${childCount}`);
     });
@@ -70,6 +70,9 @@ const collectInteractiveStateSignature = (node: UnifiedNode): string => {
         normalizeStateText(getNodeAttr(node, 'aria-expanded')),
         normalizeStateText(getNodeAttr(node, 'aria-pressed')),
         normalizeStateText(getNodeAttr(node, 'aria-invalid')),
+        normalizeStateText(getNodeAttr(node, 'focused')),
+        normalizeStateText(getNodeAttr(node, 'disabled')),
+        normalizeStateText(getNodeAttr(node, 'readonly')),
     ];
     return raw.join('~');
 };
@@ -78,6 +81,15 @@ const normalizeStateText = (value: string | undefined): string => {
     const normalized = normalizeText(value);
     if (!normalized) return '';
     return normalized.toLowerCase().replace(/;/g, ',').slice(0, 48);
+};
+
+const isStatefulNode = (node: UnifiedNode, stateSignature: string): boolean => {
+    if (stateSignature && stateSignature !== EMPTY_STATE_SIGNATURE) return true;
+    const role = normalizeRole(node.role);
+    if (STATEFUL_ROLES.has(role)) return true;
+    const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    if (STATEFUL_TAGS.has(tag)) return true;
+    return false;
 };
 
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode, depth: number) => void, depth = 0) => {
@@ -89,3 +101,6 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode, depth: number) => 
 
 const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const normalizeName = (value: string | undefined): string => (normalizeText(value) || '').toLowerCase().slice(0, 64);
+const STATEFUL_ROLES = new Set(['checkbox', 'radio', 'switch', 'textbox', 'searchbox', 'combobox', 'listbox', 'spinbutton']);
+const STATEFUL_TAGS = new Set(['input', 'textarea', 'select', 'option']);
+const EMPTY_STATE_SIGNATURE = Array.from({ length: 11 }, () => '').join('~');

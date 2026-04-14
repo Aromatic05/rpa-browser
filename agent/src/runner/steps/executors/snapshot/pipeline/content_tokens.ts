@@ -54,9 +54,7 @@ export const buildInteractionContentTokens = (node: UnifiedNode): string[] => {
 
     if (isCheckableNode(role, tag, inputType)) {
         const checkState = resolveCheckedState(attrs);
-        if (checkState === 'indeterminate') {
-            check.push('indeterminate');
-        } else if (checkState === true) {
+        if (checkState) {
             check.push('checked');
         } else {
             check.push('unchecked');
@@ -160,6 +158,11 @@ const isSelectLikeNode = (role: string, tag: string): boolean => {
 
 const resolveSelectedValues = (node: UnifiedNode): string[] => {
     const attrs = getNodeAttrs(node) || {};
+    const selectedValue = readAttrValue(attrs, 'selected');
+    if (selectedValue) {
+        return [selectedValue];
+    }
+
     const directValue = readAttrValue(attrs, 'value');
     if (directValue) {
         return [directValue];
@@ -191,20 +194,18 @@ const resolveSelectedValues = (node: UnifiedNode): string[] => {
     return [...new Set(selected)];
 };
 
-const resolveCheckedState = (attrs: Record<string, string>): true | false | 'indeterminate' => {
+const resolveCheckedState = (attrs: Record<string, string>): boolean => {
     const ariaChecked = readRawAttr(attrs, 'aria-checked');
     if (ariaChecked.found) {
         const normalized = normalizeRole(ariaChecked.value);
-        if (normalized === 'mixed') return 'indeterminate';
+        if (normalized === 'mixed') return true;
         const parsed = parseBooleanAttr(ariaChecked.value, ariaChecked.found);
         if (parsed !== undefined) return parsed;
     }
 
     const checked = readRawAttr(attrs, 'checked');
     const parsedChecked = parseBooleanAttr(checked.value, checked.found);
-    if (parsedChecked !== undefined) return parsedChecked;
-
-    return false;
+    return parsedChecked === true;
 };
 
 const resolveBooleanState = (attrs: Record<string, string>, keys: string[]): boolean | undefined => {

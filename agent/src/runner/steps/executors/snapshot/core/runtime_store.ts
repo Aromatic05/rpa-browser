@@ -32,8 +32,15 @@ export const getNodeAttr = (node: UnifiedNode, key: string): string | undefined 
 
 export const setNodeAttr = (node: UnifiedNode, key: string, value: string | undefined) => {
     const normalized = normalizeText(value);
-    if (!normalized) return;
     const data = ensureRuntimeData(node);
+    if (!normalized) {
+        if (!data.attrs) return;
+        delete data.attrs[key];
+        if (Object.keys(data.attrs).length === 0) {
+            data.attrs = undefined;
+        }
+        return;
+    }
     data.attrs = {
         ...(data.attrs || {}),
         [key]: normalized,

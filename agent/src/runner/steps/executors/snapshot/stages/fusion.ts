@@ -1,8 +1,12 @@
-import type { NodeGraph, UnifiedNode } from '../core/types';
+import type { NodeGraph, RuntimeStateMap, UnifiedNode } from '../core/types';
 import { snapshotDebugLog } from '../core/debug';
 import { setNodeAttrs, setNodeBbox, setNodeContent } from '../core/runtime_store';
 
-export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph => {
+export const fuseDomAndA11y = (
+    domTree: unknown,
+    a11yTree: unknown,
+    runtimeStateMap: RuntimeStateMap | undefined = undefined,
+): NodeGraph => {
     const domRoot = asDomNode(domTree);
     if (!domRoot) {
         return {
@@ -25,7 +29,7 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
     let keptDomRole = 0;
     let linkTargetExtracted = 0;
 
-    const build = (node: DomNodeInput): UnifiedNode => {
+    const build = (node: DomNodeInput, parentPathKey?: string): UnifiedNode => {
         const matchResult = matchByBackendDomId(node, a11yByBackendDomId);
         if (matchResult.type === 'matched') {
             matchedByBackendId += 1;
@@ -37,6 +41,7 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
             unmatchedNoA11y += 1;
         }
 
+        const pathKey = node.id || 'dom';
         const matched = matchResult.type === 'matched' ? matchResult.node : undefined;
         const domBaseRole = pickDomBaseRole(node);
         const role = pickRole(node, matched);
@@ -54,19 +59,27 @@ export const fuseDomAndA11y = (domTree: unknown, a11yTree: unknown): NodeGraph =
         }
 
         const unified: UnifiedNode = {
-            id: node.id || 'dom',
+            id: pathKey,
             role,
             name,
+            content,
             target,
-            children: (node.children || []).map((child) => build(child)),
+            children: (node.children || []).map((child) => build(child, pathKey)),
         };
-        setNodeAttrs(unified, mergeDomAttrs(node));
+        setNodeAttrs(
+            unified,
+            mergeDomAttrs(
+                node,
+                validateRuntimeState(runtimeStateMap?.[pathKey], node, parentPathKey),
+                matched,
+            ),
+        );
         setNodeBbox(unified, node.bbox);
         setNodeContent(unified, content);
         return unified;
     };
 
-    const graph = { root: build(domRoot) };
+    const graph = { root: build(domRoot, undefined) };
     snapshotDebugLog('fuse-map', {
         domRootId: domRoot.id || 'n0',
         a11yNodeCount,
@@ -101,6 +114,15 @@ type A11yNodeInput = {
     id?: string;
     role?: string;
     name?: string;
+    value?: string;
+    checked?: string;
+    selected?: string;
+    expanded?: string;
+    pressed?: string;
+    disabled?: string;
+    readonly?: string;
+    invalid?: string;
+    focused?: string;
     backendDOMNodeId?: string;
     children?: A11yNodeInput[];
 };
@@ -277,7 +299,11 @@ const isWeakA11yRole = (role: string | undefined): boolean => {
     return WEAK_A11Y_ROLES.has(normalized);
 };
 
-const mergeDomAttrs = (node: DomNodeInput): Record<string, string> | undefined => {
+const mergeDomAttrs = (
+    node: DomNodeInput,
+    runtimeState: RuntimeStateMap[string] | undefined,
+    matched: A11yNodeInput | undefined,
+): Record<string, string> | undefined => {
     const next: Record<string, string> = {
         ...(node.attrs || {}),
     };
@@ -296,9 +322,94 @@ const mergeDomAttrs = (node: DomNodeInput): Record<string, string> | undefined =
     setAttr('placeholder', node.placeholder);
     setAttr('type', node.type);
     setAttr('backendDOMNodeId', node.backendDOMNodeId);
+    setAttr('value', resolveDynamicState(runtimeState?.value, matched?.value, node.attrs?.value));
+    setAttr('checked', resolveDynamicState(runtimeState?.checked, normalizeA11yStateValue(matched?.checked), node.attrs?.checked));
+    setAttr('selected', resolveDynamicState(runtimeState?.selected, normalizeA11yStateValue(matched?.selected), node.attrs?.selected));
+    setAttr(
+        'aria-checked',
+        resolveDynamicState(runtimeState?.ariaChecked, normalizeA11yStateValue(matched?.checked), node.attrs?.['aria-checked']),
+    );
+    setAttr(
+        'aria-selected',
+        resolveDynamicState(runtimeState?.ariaSelected, normalizeA11yStateValue(matched?.selected), node.attrs?.['aria-selected']),
+    );
+    setAttr(
+        'aria-expanded',
+        resolveDynamicState(runtimeState?.ariaExpanded, normalizeA11yStateValue(matched?.expanded), node.attrs?.['aria-expanded']),
+    );
+    setAttr(
+        'aria-pressed',
+        resolveDynamicState(runtimeState?.ariaPressed, normalizeA11yStateValue(matched?.pressed), node.attrs?.['aria-pressed']),
+    );
+    setAttr('disabled', resolveDynamicState(runtimeState?.disabled, normalizeA11yStateValue(matched?.disabled), node.attrs?.disabled));
+    setAttr('readonly', resolveDynamicState(runtimeState?.readonly, normalizeA11yStateValue(matched?.readonly), node.attrs?.readonly));
+    setAttr(
+        'aria-invalid',
+        resolveDynamicState(runtimeState?.invalid, normalizeA11yStateValue(matched?.invalid), node.attrs?.['aria-invalid']),
+    );
+    setAttr('focused', resolveDynamicState(runtimeState?.focused, normalizeA11yStateValue(matched?.focused), node.attrs?.focused));
 
     if (Object.keys(next).length === 0) return undefined;
     return next;
+};
+
+const validateRuntimeState = (
+    runtimeState: RuntimeStateMap[string] | undefined,
+    node: DomNodeInput,
+    parentPathKey: string | undefined,
+): RuntimeStateMap[string] | undefined => {
+    if (!runtimeState) return undefined;
+
+    const runtimeTag = normalizeRole(runtimeState.tag).toLowerCase();
+    const domTag = normalizeRole(node.tag).toLowerCase();
+    if (runtimeTag && domTag && runtimeTag !== domTag) return undefined;
+
+    if (!isFingerprintCompatible(runtimeState.parentKey, parentPathKey)) return undefined;
+    if (!isFingerprintCompatible(runtimeState.type, normalizeText(node.attrs?.type || node.type))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.role, normalizeText(node.attrs?.role))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) return undefined;
+    if (
+        !isFingerprintCompatible(
+            runtimeState.dataTestId,
+            normalizeText(node.attrs?.['data-testid'] || node.attrs?.['data-test-id']),
+        )
+    ) {
+        return undefined;
+    }
+
+    return runtimeState;
+};
+
+const isFingerprintCompatible = (runtimeValue: string | undefined, domValue: string | undefined): boolean => {
+    const runtimeText = normalizeText(runtimeValue);
+    if (!runtimeText) return true;
+    const domText = normalizeText(domValue);
+    if (!domText) return false;
+    return runtimeText === domText;
+};
+
+const resolveDynamicState = (
+    runtimeValue: string | undefined,
+    a11yValue: string | undefined,
+    domValue: string | undefined,
+): string | undefined => {
+    const normalizedRuntime = normalizeText(runtimeValue);
+    if (normalizedRuntime) return normalizedRuntime;
+    const normalizedA11y = normalizeText(a11yValue);
+    if (normalizedA11y) return normalizedA11y;
+    return normalizeText(domValue);
+};
+
+const normalizeA11yStateValue = (value: string | undefined): string | undefined => {
+    const normalized = normalizeRole(value).toLowerCase();
+    if (!normalized) return undefined;
+    if (normalized === 'mixed') return 'mixed';
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') return 'true';
+    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') return 'false';
+    return normalized;
 };
 
 const splitA11yName = (value: string | undefined): { name?: string; content?: string } => {
