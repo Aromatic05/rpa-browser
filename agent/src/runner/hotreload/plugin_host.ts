@@ -4,7 +4,7 @@ import { getLogger } from '../../logging/logger';
 import type { RunnerPlugin, CreateTraceToolsFn } from '../plugin_entry';
 import type { ExecutorFn } from '../steps/executors';
 
-const log = getLogger('step');
+const log = getLogger('action');
 
 export class RunnerPluginHost {
     private entryFile: string;
@@ -41,7 +41,8 @@ export class RunnerPluginHost {
         try {
             const plugin = await this.importPlugin();
             this.plugin = plugin;
-            log.info('[runner] hot reload OK');
+            // Use warning level so it is visible under default actionLogLevel=warning.
+            log.warning('[runner] hot reload OK');
             this.emitReload(plugin);
             return plugin;
         } catch (error) {

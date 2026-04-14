@@ -19,6 +19,7 @@ if (!process.env.RPA_USER_DATA_DIR) {
 
 const actionLog = getLogger('action');
 const log = (...args: unknown[]) => actionLog.info('[RPA:mcp]', ...args);
+const logNotice = (...args: unknown[]) => actionLog.warning('[RPA:mcp]', ...args);
 const logError = (...args: unknown[]) => actionLog.error('[RPA:mcp]', ...args);
 
 const paths = resolvePaths();
@@ -57,9 +58,9 @@ if (hotReloadEnabled) {
             ? path.resolve(process.cwd(), 'src/runner')
             : path.resolve(process.cwd(), '.runner-dist');
     runnerPluginHost.watchDev(watchTarget);
-    log('Runner plugin hot reload enabled.', { pluginEntry, watchTarget });
+    logNotice('Runner plugin hot reload enabled.', { pluginEntry, watchTarget });
 } else {
-    log('Runner plugin hot reload disabled by RUNNER_HOT_RELOAD.', { pluginEntry });
+    logNotice('Runner plugin hot reload disabled by RUNNER_HOT_RELOAD.', { pluginEntry });
 }
 
 const pageRegistry = createPageRegistry({
@@ -93,7 +94,7 @@ setRunStepsDeps({
 (async () => {
     try {
         await contextManager.getContext();
-        log('Playwright Chromium launched with extension.');
+        logNotice('Playwright Chromium launched with extension.');
         await startMcpServer({
             pageRegistry,
             log,

@@ -102,9 +102,14 @@ const resolveBySnapshotNodeId = (
         };
     }
 
+    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
     const direct = locator.direct;
     if (direct?.kind === 'css' && direct.query) {
-        return { ok: true, target: { selector: withVisibilityConstraint(direct.query, locator.policy?.requireVisible) } };
+        const directSelector = applyScopeConstraint(snapshot, locator, direct.query);
+        if (structuralSelector && shouldPreferStructuralSelector(direct.source, structuralSelector)) {
+            return { ok: true, target: { selector: withVisibilityConstraint(structuralSelector, locator.policy?.requireVisible) } };
+        }
+        return { ok: true, target: { selector: withVisibilityConstraint(directSelector, locator.policy?.requireVisible) } };
     }
     if (direct?.kind === 'role' && direct.query) {
         const parsed = parseRoleQuery(direct.query);
@@ -114,19 +119,37 @@ const resolveBySnapshotNodeId = (
                 target: {
                     ...parsed,
                     selector: direct.fallback
-                        ? withVisibilityConstraint(direct.fallback, locator.policy?.requireVisible)
+                        ? withVisibilityConstraint(
+                              applyScopeConstraint(snapshot, locator, direct.fallback),
+                              locator.policy?.requireVisible,
+                          )
                         : undefined,
                 },
             };
         }
         if (direct.fallback) {
-            return { ok: true, target: { selector: withVisibilityConstraint(direct.fallback, locator.policy?.requireVisible) } };
+            return {
+                ok: true,
+                target: {
+                    selector: withVisibilityConstraint(
+                        applyScopeConstraint(snapshot, locator, direct.fallback),
+                        locator.policy?.requireVisible,
+                    ),
+                },
+            };
         }
     }
     if (direct?.fallback) {
-        return { ok: true, target: { selector: withVisibilityConstraint(direct.fallback, locator.policy?.requireVisible) } };
+        return {
+            ok: true,
+            target: {
+                selector: withVisibilityConstraint(
+                    applyScopeConstraint(snapshot, locator, direct.fallback),
+                    locator.policy?.requireVisible,
+                ),
+            },
+        };
     }
-    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
     if (structuralSelector) {
         return { ok: true, target: { selector: withVisibilityConstraint(structuralSelector, locator.policy?.requireVisible) } };
     }
@@ -139,6 +162,36 @@ const resolveBySnapshotNodeId = (
             details: { id: nodeId, locator },
         },
     };
+};
+
+const shouldPreferStructuralSelector = (directSource: string | undefined, structuralSelector: string | undefined): boolean => {
+    if (!structuralSelector) return false;
+    return directSource === 'aria-label';
+};
+
+const applyScopeConstraint = (snapshot: SnapshotResult, locator: SnapshotResult['locatorIndex'][string], selector: string): string => {
+    if (!selector) return selector;
+    if (!locator.policy?.preferScopedSearch || !locator.scope?.id) return selector;
+
+    const scopeNodeId = resolveScopeNodeId(snapshot, locator.scope.id);
+    if (!scopeNodeId) return selector;
+
+    const scopeSelector = buildStructuralSelectorFallback(snapshot, scopeNodeId);
+    if (!scopeSelector) return selector;
+
+    const trimmed = selector.trim();
+    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) return selector;
+
+    return `${scopeSelector} ${trimmed}`;
+};
+
+const resolveScopeNodeId = (snapshot: SnapshotResult, scopeId: string): string | undefined => {
+    if (snapshot.nodeIndex?.[scopeId]) return scopeId;
+
+    const entity = snapshot.entityIndex?.entities?.[scopeId];
+    if (!entity) return undefined;
+    if (entity.type === 'region') return entity.nodeId;
+    return entity.containerId;
 };
 
 const parseRoleQuery = (query: string): ResolvedLocatorTarget | null => {
@@ -227,9 +280,6 @@ const buildStableSegment = (node: SnapshotResult['root']): string | undefined =>
 
         const placeholder = getNodeAttr(node, 'placeholder');
         if (placeholder) return `${tag}[placeholder="${escapeCssText(placeholder)}"]`;
-
-        const ariaLabel = getNodeAttr(node, 'aria-label');
-        if (ariaLabel) return `${tag}[aria-label="${escapeCssText(ariaLabel)}"]`;
     }
     return undefined;
 };

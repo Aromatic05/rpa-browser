@@ -262,6 +262,75 @@ test('click(id) falls back to structural selector when direct locator is missing
     assert.equal(calls[2].args.selector, 'form:nth-of-type(1) input:nth-of-type(1):visible');
 });
 
+test('click(id) prefers structural selector for weak aria-label direct locator', async () => {
+    const calls: Array<{ name: string; args: any }> = [];
+    const traceTools = {
+        'trace.locator.scrollIntoView': async (args: any) => {
+            calls.push({ name: 'trace.locator.scrollIntoView', args });
+            return { ok: true };
+        },
+        'trace.locator.waitForVisible': async (args: any) => {
+            calls.push({ name: 'trace.locator.waitForVisible', args });
+            return { ok: true };
+        },
+        'trace.locator.click': async (args: any) => {
+            calls.push({ name: 'trace.locator.click', args });
+            return { ok: true };
+        },
+    };
+
+    const root = { id: 'root', role: 'root', children: [] as any[] };
+    const form = { id: 'form_1', role: 'form', children: [] as any[] };
+    const minus = { id: 'spin_minus', role: 'button', children: [] as any[] };
+    const plus = { id: 'spin_plus', role: 'button', children: [] as any[] };
+    root.children.push(form);
+    form.children.push(minus, plus);
+
+    setNodeAttr(form as any, 'tag', 'form');
+    setNodeAttr(minus as any, 'tag', 'span');
+    setNodeAttr(plus as any, 'tag', 'span');
+    setNodeAttr(minus as any, 'aria-label', 'Increase Value');
+    setNodeAttr(plus as any, 'aria-label', 'Increase Value');
+
+    const deps = createDeps(traceTools, {}, {
+        latestSnapshot: {
+            root,
+            nodeIndex: {
+                root,
+                form_1: form,
+                spin_minus: minus,
+                spin_plus: plus,
+            },
+            entityIndex: {
+                entities: {},
+                byNodeId: {},
+            },
+            locatorIndex: {
+                spin_plus: {
+                    origin: { primaryDomId: '333' },
+                    direct: { kind: 'css', query: 'span[aria-label="Increase Value"]', source: 'aria-label' },
+                    policy: {
+                        preferDirect: true,
+                        preferScopedSearch: false,
+                        requireVisible: true,
+                    },
+                },
+            },
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 's2c_aria',
+        name: 'browser.click',
+        args: { id: 'spin_plus' },
+    };
+
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) span:nth-of-type(2):visible');
+    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) span:nth-of-type(2):visible');
+});
+
 test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async () => {
     const traceTools = {
         'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [{ nodeId: 'n1' }] }),
