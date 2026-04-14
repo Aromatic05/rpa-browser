@@ -261,6 +261,12 @@ const pickDomBaseRole = (node: DomNodeInput): string => {
     const tag = normalizeRole(node.tag).toLowerCase();
     if (!tag) return 'generic';
 
+    if (tag === 'input') {
+        const inputType = normalizeRole(node.attrs?.type || node.type).toLowerCase();
+        const mappedInputRole = DOM_SEMANTIC_ROLE_BY_INPUT_TYPE.get(inputType);
+        if (mappedInputRole) return mappedInputRole;
+    }
+
     const mapped = DOM_SEMANTIC_ROLE_BY_TAG.get(tag);
     if (mapped) return mapped;
     return tag;
@@ -468,4 +474,14 @@ const DOM_SEMANTIC_ROLE_BY_TAG = new Map<string, string>([
     ['h5', 'heading'],
     ['h6', 'heading'],
     ['img', 'image'],
+]);
+
+const DOM_SEMANTIC_ROLE_BY_INPUT_TYPE = new Map<string, string>([
+    ['checkbox', 'checkbox'],
+    ['radio', 'radio'],
+    ['search', 'searchbox'],
+    ['number', 'spinbutton'],
+    ['button', 'button'],
+    ['submit', 'button'],
+    ['reset', 'button'],
 ]);

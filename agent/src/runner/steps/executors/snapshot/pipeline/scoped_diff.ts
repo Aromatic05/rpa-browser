@@ -11,6 +11,7 @@ import { buildEntityIndex } from '../indexes/entity';
 import { buildExternalIndexes } from '../indexes/external_indexes';
 import { buildLocatorIndex } from '../indexes/locator';
 import { buildSnapshot } from './build_snapshot';
+import { projectInteractionStateContent } from './content_tokens';
 
 const DEFAULT_MAX_VIEW_NODE_COUNT = 1200;
 const DIFF_CHANGED_NODE_BROAD_LIMIT = 200;
@@ -18,6 +19,7 @@ const DIFF_ABSOLUTE_NODE_BROAD_LIMIT = 1000;
 const DIFF_COVERAGE_BROAD_LIMIT = 0.9;
 const DIFF_ROOT_COVERAGE_BROAD_LIMIT = 0.65;
 const DIFF_BROAD_MIN_TOTAL_NODES = 24;
+const POPUP_LIKE_ROLES = new Set(['dialog', 'menu', 'listbox', 'panel']);
 
 type SnapshotViewError = {
     code: string;
@@ -101,6 +103,7 @@ export const buildSnapshotView = (
         resolvedDepth.value,
         resolveMaxViewNodeCount(options?.maxViewNodes),
     );
+    projectInteractionStateContent(scopedRoot);
     if (hasActiveFilter(normalizedFilter)) {
         applyFilterPrune(scopedRoot, normalizedFilter);
     }
@@ -142,7 +145,8 @@ export const computeMinimalChangedSubtree = (
         };
     }
 
-    const diffRootId = computeLowestCommonAncestorId([...changedNodeIds], current);
+    const promotedPopupRootId = pickPopupLikeDiffRootId(changedNodeIds, current, baseline);
+    const diffRootId = promotedPopupRootId || computeLowestCommonAncestorId([...changedNodeIds], current);
     const diffRoot = current.byId.get(diffRootId);
     if (!diffRoot) {
         return { mode: 'full', reason: 'contain_unavailable' };
@@ -446,6 +450,48 @@ const mapRemovedNodeToCurrentAncestor = (
         cursor = baseline.parentById.get(cursor) || null;
     }
     return null;
+};
+
+const pickPopupLikeDiffRootId = (
+    changedNodeIds: Set<string>,
+    current: TreeIndex,
+    baseline: TreeIndex,
+): string | undefined => {
+    const candidates: Array<{ id: string; priority: number; depth: number; span: number }> = [];
+
+    for (const nodeId of changedNodeIds) {
+        if (nodeId === current.rootId) continue;
+        const node = current.byId.get(nodeId);
+        if (!node) continue;
+        const role = normalizeRole(node.role);
+        if (!POPUP_LIKE_ROLES.has(role)) continue;
+
+        candidates.push({
+            id: nodeId,
+            priority: baseline.byId.has(nodeId) ? 1 : 0,
+            depth: computeNodeDepth(nodeId, current.parentById),
+            span: countSubtreeNodes(node),
+        });
+    }
+
+    if (candidates.length === 0) return undefined;
+    candidates.sort((left, right) => {
+        if (left.priority !== right.priority) return left.priority - right.priority;
+        if (left.depth !== right.depth) return left.depth - right.depth;
+        if (left.span !== right.span) return left.span - right.span;
+        return left.id.localeCompare(right.id);
+    });
+    return candidates[0]?.id;
+};
+
+const computeNodeDepth = (nodeId: string, parentById: Map<string, string | null>): number => {
+    let depth = 0;
+    let cursor = parentById.get(nodeId) || null;
+    while (cursor) {
+        depth += 1;
+        cursor = parentById.get(cursor) || null;
+    }
+    return depth;
 };
 
 const isNodeChanged = (current: UnifiedNode, baseline: UnifiedNode): boolean => {
