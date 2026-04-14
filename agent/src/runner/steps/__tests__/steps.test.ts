@@ -31,6 +31,67 @@ const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unkno
     };
 };
 
+const createSemanticSnapshotPage = (initialUrl = 'https://example.test') => {
+    const urlState = { current: initialUrl };
+    const fakeCdp = {
+        send: async (method: string) => {
+            if (method === 'DOMSnapshot.captureSnapshot') {
+                return {
+                    documents: [
+                        {
+                            nodes: {
+                                parentIndex: [-1, 0, 1, 2, 3],
+                                nodeType: [9, 1, 1, 1, 3],
+                                nodeName: [0, 1, 2, 3, 0],
+                                nodeValue: [0, 0, 0, 0, 4],
+                                backendNodeId: [0, 11, 12, 13, 0],
+                                attributes: [[], [], [], [5, 6], []],
+                            },
+                            layout: {
+                                nodeIndex: [1, 2, 3],
+                                bounds: [
+                                    [0, 0, 1280, 800],
+                                    [0, 0, 1280, 800],
+                                    [24, 40, 120, 30],
+                                ],
+                            },
+                        },
+                    ],
+                    strings: ['#document', 'HTML', 'BODY', 'BUTTON', 'Click me', 'id', 'submit-btn'],
+                };
+            }
+            if (method === 'Accessibility.enable') {
+                return {};
+            }
+            if (method === 'Accessibility.getFullAXTree') {
+                return {
+                    nodes: [
+                        { nodeId: 'ax0', role: { value: 'WebArea' }, backendDOMNodeId: 11, childIds: ['ax1'] },
+                        { nodeId: 'ax1', role: { value: 'generic' }, backendDOMNodeId: 12, childIds: ['ax2'] },
+                        { nodeId: 'ax2', role: { value: 'button' }, name: { value: 'Click me' }, backendDOMNodeId: 13 },
+                    ],
+                };
+            }
+            return {};
+        },
+        detach: async () => {},
+    };
+
+    const page = {
+        url: () => urlState.current,
+        context: () => ({
+            newCDPSession: async () => fakeCdp,
+        }),
+    };
+
+    return {
+        page,
+        setUrl: (nextUrl: string) => {
+            urlState.current = nextUrl;
+        },
+    };
+};
+
 test('click(coord) uses trace.mouse.action', async () => {
     const calls: Array<{ name: string; args: any }> = [];
     const traceTools = {
@@ -221,7 +282,7 @@ test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async 
 
     assert.equal(result.ok, false);
     if (!result.ok) {
-        assert.equal(result.error.code, 'ERR_TIMEOUT');
+        assert.equal(result.error?.code, 'ERR_TIMEOUT');
     }
     assert.ok(elapsedMs < 500, `expected timeout fallback quickly, got ${elapsedMs}ms`);
 });
@@ -285,56 +346,8 @@ test('press_key normalizes primary shortcut by platform', () => {
 });
 
 test('snapshot returns UnifiedNode root and keeps latest snapshot in trace cache', async () => {
-    const fakeCdp = {
-        send: async (method: string) => {
-            if (method === 'DOMSnapshot.captureSnapshot') {
-                return {
-                    documents: [
-                        {
-                            nodes: {
-                                parentIndex: [-1, 0, 1, 2, 3],
-                                nodeType: [9, 1, 1, 1, 3],
-                                nodeName: [0, 1, 2, 3, 0],
-                                nodeValue: [0, 0, 0, 0, 4],
-                                backendNodeId: [0, 11, 12, 13, 0],
-                                attributes: [[], [], [], [5, 6], []],
-                            },
-                            layout: {
-                                nodeIndex: [1, 2, 3],
-                                bounds: [
-                                    [0, 0, 1280, 800],
-                                    [0, 0, 1280, 800],
-                                    [24, 40, 120, 30],
-                                ],
-                            },
-                        },
-                    ],
-                    strings: ['#document', 'HTML', 'BODY', 'BUTTON', 'Click me', 'id', 'submit-btn'],
-                };
-            }
-            if (method === 'Accessibility.enable') {
-                return {};
-            }
-            if (method === 'Accessibility.getFullAXTree') {
-                return {
-                    nodes: [
-                        { nodeId: 'ax0', role: { value: 'WebArea' }, backendDOMNodeId: 11, childIds: ['ax1'] },
-                        { nodeId: 'ax1', role: { value: 'generic' }, backendDOMNodeId: 12, childIds: ['ax2'] },
-                        { nodeId: 'ax2', role: { value: 'button' }, name: { value: 'Click me' }, backendDOMNodeId: 13 },
-                    ],
-                };
-            }
-            return {};
-        },
-        detach: async () => {},
-    };
-    const fakePage = {
-        url: () => 'https://example.test',
-        context: () => ({
-            newCDPSession: async () => fakeCdp,
-        }),
-    };
-    const deps = createDeps({}, fakePage);
+    const fake = createSemanticSnapshotPage('https://example.test');
+    const deps = createDeps({}, fake.page);
     const step: Step<'browser.snapshot'> = {
         id: 's5',
         name: 'browser.snapshot',
@@ -347,6 +360,73 @@ test('snapshot returns UnifiedNode root and keeps latest snapshot in trace cache
     assert.ok(Array.isArray((result.data as any)?.children));
     assert.equal((result.data as any)?.snapshot_id, undefined);
     assert.equal((result.data as any)?.a11y, undefined);
+});
+
+test('snapshot with invalid contain returns explicit not found error', async () => {
+    const fake = createSemanticSnapshotPage('https://example.test');
+    const deps = createDeps({}, fake.page);
+    const step: Step<'browser.snapshot'> = {
+        id: 's5b',
+        name: 'browser.snapshot',
+        args: { contain: 'missing-node-id' },
+    };
+
+    const result = await executeBrowserSnapshot(step, deps, 'ws1');
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+});
+
+test('snapshot diff falls back to no_baseline then hits session baseline on next call', async () => {
+    const fake = createSemanticSnapshotPage('https://example.test');
+    const deps = createDeps({}, fake.page);
+
+    const first: Step<'browser.snapshot'> = {
+        id: 's5c-1',
+        name: 'browser.snapshot',
+        args: { diff: true },
+    };
+    const firstResult = await executeBrowserSnapshot(first, deps, 'ws1');
+    assert.equal(firstResult.ok, true);
+    const firstMeta = (firstResult.data as any)?.snapshotMeta;
+    assert.equal(firstMeta?.mode, 'full');
+    assert.equal(firstMeta?.diffSkipped, 'no_baseline');
+
+    const second: Step<'browser.snapshot'> = {
+        id: 's5c-2',
+        name: 'browser.snapshot',
+        args: { diff: true },
+    };
+    const secondResult = await executeBrowserSnapshot(second, deps, 'ws1');
+    assert.equal(secondResult.ok, true);
+    const secondMeta = (secondResult.data as any)?.snapshotMeta;
+    assert.equal(secondMeta?.mode, 'diff');
+    assert.equal(typeof secondMeta?.baseSnapshotId, 'string');
+});
+
+test('snapshot diff falls back with navigation when page identity changes', async () => {
+    const fake = createSemanticSnapshotPage('https://example.test/a');
+    const deps = createDeps({}, fake.page);
+
+    const first: Step<'browser.snapshot'> = {
+        id: 's5d-1',
+        name: 'browser.snapshot',
+        args: {},
+    };
+    const firstResult = await executeBrowserSnapshot(first, deps, 'ws1');
+    assert.equal(firstResult.ok, true);
+
+    fake.setUrl('https://example.test/b');
+
+    const second: Step<'browser.snapshot'> = {
+        id: 's5d-2',
+        name: 'browser.snapshot',
+        args: { diff: true },
+    };
+    const secondResult = await executeBrowserSnapshot(second, deps, 'ws1');
+    assert.equal(secondResult.ok, true);
+    const secondMeta = (secondResult.data as any)?.snapshotMeta;
+    assert.equal(secondMeta?.mode, 'full');
+    assert.equal(secondMeta?.diffSkipped, 'navigation');
 });
 
 test('not found returns error code and message', async () => {

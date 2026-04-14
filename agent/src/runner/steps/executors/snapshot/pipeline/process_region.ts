@@ -3,6 +3,7 @@ import { compress } from '../stages/compress';
 import { finalizeLabel } from '../stages/finalize_label';
 import { selectStructureCandidates } from '../stages/candidates';
 import { buildStructureEntityIndex, detectStructureCandidates } from '../stages/entity_index';
+import { isStrongSemanticRole } from '../core/interactive';
 import type { EntityIndex, NodeTier, UnifiedNode } from '../core/types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
@@ -29,7 +30,7 @@ const stageBuildEntityIndex = (tree: UnifiedNode, structure: ReturnType<typeof s
 
 const stageMarkStrongSemantics = (tree: UnifiedNode) => {
     walk(tree, (node) => {
-        if (STRONG_ROLES.has(normalizeRole(node.role))) {
+        if (isStrongSemanticRole(node.role)) {
             node.tier = 'A';
         }
     });
@@ -71,18 +72,6 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
 };
 
 const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();
-
-const STRONG_ROLES = new Set([
-    'button',
-    'link',
-    'textbox',
-    'input',
-    'textarea',
-    'select',
-    'checkbox',
-    'radio',
-    'combobox',
-]);
 
 const WRAPPER_ROLES = new Set(['generic', 'group', 'none', 'presentation', 'paragraph', 'text', 'div', 'span']);
 const NOISE_ROLES = new Set(['none', 'presentation']);

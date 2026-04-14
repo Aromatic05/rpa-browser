@@ -9,6 +9,7 @@ type BuildSnapshotInput = {
     attrIndex?: SnapshotResult['attrIndex'];
     contentStore?: SnapshotResult['contentStore'];
     cacheStats?: SnapshotResult['cacheStats'];
+    snapshotMeta?: SnapshotResult['snapshotMeta'];
 };
 
 export const buildSnapshot = (input: UnifiedNode | BuildSnapshotInput): SnapshotResult => {
@@ -22,6 +23,7 @@ export const buildSnapshot = (input: UnifiedNode | BuildSnapshotInput): Snapshot
         attrIndex: payload.attrIndex || {},
         contentStore: payload.contentStore || {},
         cacheStats: payload.cacheStats,
+        snapshotMeta: payload.snapshotMeta,
     };
 };
 

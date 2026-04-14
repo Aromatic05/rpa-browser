@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import crypto from 'node:crypto';
 import type { Step, StepResult } from '../../../types';
 import type { RunStepsDeps } from '../../../../run_steps';
 import { collectRawData } from '../stages/collect';
@@ -20,9 +21,27 @@ import {
 } from '../core/cache';
 import { buildSnapshot } from './build_snapshot';
 import { countTreeNodes, snapshotDebugLog, summarizeTopNodes } from '../core/debug';
-import { ensureFreshSnapshot } from '../core/session_store';
+import {
+    ensureFreshSnapshot,
+    getSnapshotSessionEntry,
+    readSnapshotDiffBaseline,
+    writeSnapshotDiffBaseline,
+} from '../core/session_store';
 import { getNodeAttr } from '../core/runtime_store';
-import type { RawData, SnapshotResult, UnifiedNode } from '../core/types';
+import {
+    buildSnapshotDiffBaselineKey,
+    buildSnapshotFromViewRoot,
+    buildSnapshotView,
+    computeMinimalChangedSubtree,
+} from './scoped_diff';
+import type {
+    RawData,
+    SnapshotDiffSkippedReason,
+    SnapshotMeta,
+    SnapshotPageIdentity,
+    SnapshotResult,
+    UnifiedNode,
+} from '../core/types';
 
 export const executeBrowserSnapshot = async (
     step: Step<'browser.snapshot'>,
@@ -30,16 +49,93 @@ export const executeBrowserSnapshot = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const previousIdentity = clonePageIdentity(getSnapshotSessionEntry(binding)?.pageIdentity);
     const ensured = await ensureFreshSnapshot(binding, {
         forceRefresh: step.args.refresh === true,
         refreshReason: 'browser.snapshot',
         collectBaseSnapshot: async () => generateSemanticSnapshot(binding.page),
     });
 
+    const view = buildSnapshotView(ensured.snapshot, {
+        contain: step.args.contain,
+        depth: step.args.depth,
+        filter: step.args.filter,
+    });
+    if (!view.ok) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: view.error,
+        };
+    }
+
+    const snapshotId = crypto.randomUUID();
+    const baselineKey = buildSnapshotDiffBaselineKey({
+        contain: view.resolvedContainId,
+        depth: view.resolvedDepth,
+        filterSignature: view.filterSignature,
+    });
+    const currentPageIdentity = clonePageIdentity(ensured.entry.pageIdentity)!;
+    const navigationDetected = hasPageIdentityChanged(previousIdentity, currentPageIdentity);
+
+    let outputSnapshot = view.snapshot;
+    let mode: SnapshotMeta['mode'] = 'full';
+    let baseSnapshotId: string | undefined;
+    let diffRootId: string | undefined;
+    let changedNodeCount: number | undefined;
+    let diffSkipped: SnapshotDiffSkippedReason | undefined;
+
+    if (step.args.diff === true) {
+        if (navigationDetected) {
+            diffSkipped = 'navigation';
+        } else {
+            const baseline = readSnapshotDiffBaseline(ensured.entry, baselineKey);
+            if (!baseline) {
+                diffSkipped = 'no_baseline';
+            } else {
+                const diffResult = computeMinimalChangedSubtree(view.snapshot.root, baseline.root);
+                if (diffResult.mode === 'diff') {
+                    mode = 'diff';
+                    baseSnapshotId = baseline.snapshotId;
+                    diffRootId = diffResult.diffRootId;
+                    changedNodeCount = diffResult.changedNodeCount;
+                    outputSnapshot = buildSnapshotFromViewRoot(diffResult.root, view.snapshot.cacheStats);
+                } else {
+                    diffSkipped = diffResult.reason;
+                }
+            }
+        }
+    }
+
+    const snapshotMeta: SnapshotMeta = {
+        mode,
+        snapshotId,
+        pageIdentity: currentPageIdentity,
+        contain: view.resolvedContainId,
+        depth: view.resolvedDepth,
+        filterSignature: view.filterSignature,
+        truncated: view.truncated || undefined,
+        baseSnapshotId,
+        diffRootId,
+        changedNodeCount,
+        diffSkipped,
+    };
+    outputSnapshot.snapshotMeta = snapshotMeta;
+
+    writeSnapshotDiffBaseline(ensured.entry, baselineKey, {
+        snapshotId,
+        root: view.snapshot.root,
+        createdAt: Date.now(),
+        pageIdentity: currentPageIdentity,
+    });
+
     return {
         stepId: step.id,
         ok: true,
-        data: ensured.snapshot.root,
+        data: {
+            ...outputSnapshot.root,
+            snapshotMeta,
+        },
     };
 };
 
@@ -227,3 +323,26 @@ const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const NON_PERCEIVABLE_LAYER_ROLES = new Set(['head', 'meta', 'link', 'style', 'script', 'title']);
 const NON_PERCEIVABLE_LAYER_TAGS = new Set(['head', 'meta', 'link', 'style', 'script', 'title']);
+
+const hasPageIdentityChanged = (
+    previousIdentity: SnapshotPageIdentity | undefined,
+    nextIdentity: SnapshotPageIdentity,
+): boolean => {
+    if (!previousIdentity) return false;
+    return !(
+        previousIdentity.workspaceId === nextIdentity.workspaceId &&
+        previousIdentity.tabId === nextIdentity.tabId &&
+        previousIdentity.tabToken === nextIdentity.tabToken &&
+        previousIdentity.url === nextIdentity.url
+    );
+};
+
+const clonePageIdentity = (identity: SnapshotPageIdentity | undefined): SnapshotPageIdentity | undefined => {
+    if (!identity) return undefined;
+    return {
+        workspaceId: identity.workspaceId,
+        tabId: identity.tabId,
+        tabToken: identity.tabToken,
+        url: identity.url,
+    };
+};
