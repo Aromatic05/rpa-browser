@@ -258,8 +258,8 @@ test('click(id) falls back to structural selector when direct locator is missing
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.equal(calls.length, 3);
-    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) input:nth-of-type(1):visible');
-    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) input:nth-of-type(1):visible');
+    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) > input:nth-of-type(1):visible');
+    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) > input:nth-of-type(1):visible');
 });
 
 test('click(id) prefers structural selector for weak aria-label direct locator', async () => {
@@ -327,8 +327,99 @@ test('click(id) prefers structural selector for weak aria-label direct locator',
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.equal(calls.length, 3);
-    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) span:nth-of-type(2):visible');
-    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) span:nth-of-type(2):visible');
+    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) > span:nth-of-type(2):visible');
+    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) > span:nth-of-type(2):visible');
+});
+
+test('click(id) structural selector keeps unknown ancestors via nth-child segments', async () => {
+    const calls: Array<{ name: string; args: any }> = [];
+    const traceTools = {
+        'trace.locator.scrollIntoView': async (args: any) => {
+            calls.push({ name: 'trace.locator.scrollIntoView', args });
+            return { ok: true };
+        },
+        'trace.locator.waitForVisible': async (args: any) => {
+            calls.push({ name: 'trace.locator.waitForVisible', args });
+            return { ok: true };
+        },
+        'trace.locator.click': async (args: any) => {
+            calls.push({ name: 'trace.locator.click', args });
+            return { ok: true };
+        },
+    };
+
+    const root = { id: 'root', role: 'root', children: [] as any[] };
+    const body = { id: 'body', role: 'body', children: [] as any[] };
+    const sectionA = { id: 'section_a', role: 'region', children: [] as any[] };
+    const sectionB = { id: 'section_b', role: 'region', children: [] as any[] };
+    const wrap1 = { id: 'wrap_1', role: 'region', children: [] as any[] };
+    const wrap2 = { id: 'wrap_2', role: 'region', children: [] as any[] };
+    const wrap3 = { id: 'wrap_3', role: 'region', children: [] as any[] };
+    const sel1 = { id: 'select_1', role: 'combobox', children: [] as any[] };
+    const sel2 = { id: 'select_2', role: 'combobox', children: [] as any[] };
+    const sel3 = { id: 'select_3', role: 'combobox', children: [] as any[] };
+
+    root.children.push(body);
+    body.children.push(sectionA);
+    sectionA.children.push(sectionB);
+    sectionB.children.push(wrap1, wrap2, wrap3);
+    wrap1.children.push(sel1);
+    wrap2.children.push(sel2);
+    wrap3.children.push(sel3);
+
+    setNodeAttr(body as any, 'tag', 'body');
+    setNodeAttr(sectionA as any, 'tag', 'section');
+    setNodeAttr(sectionB as any, 'tag', 'section');
+    setNodeAttr(sel1 as any, 'tag', 'select');
+    setNodeAttr(sel2 as any, 'tag', 'select');
+    setNodeAttr(sel3 as any, 'tag', 'select');
+
+    const deps = createDeps(traceTools, {}, {
+        latestSnapshot: {
+            root,
+            nodeIndex: {
+                root,
+                body,
+                section_a: sectionA,
+                section_b: sectionB,
+                wrap_1: wrap1,
+                wrap_2: wrap2,
+                wrap_3: wrap3,
+                select_1: sel1,
+                select_2: sel2,
+                select_3: sel3,
+            },
+            entityIndex: {
+                entities: {},
+                byNodeId: {},
+            },
+            locatorIndex: {
+                select_2: {
+                    origin: { primaryDomId: 'sel2' },
+                    policy: {
+                        preferDirect: false,
+                        preferScopedSearch: false,
+                        requireVisible: true,
+                        allowIndexDrift: true,
+                        allowFuzzy: true,
+                    },
+                },
+            },
+        },
+    });
+
+    const step: Step<'browser.click'> = {
+        id: 's2c_struct',
+        name: 'browser.click',
+        args: { id: 'select_2' },
+    };
+
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal(calls.length, 3);
+    const selector = calls[0].args.selector;
+    assert.equal(selector, 'body:nth-of-type(1) > section:nth-of-type(1) > section:nth-of-type(1) > *:nth-child(2) > select:nth-of-type(1):visible');
+    assert.equal(calls[2].args.selector, selector);
 });
 
 test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async () => {

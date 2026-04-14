@@ -235,15 +235,22 @@ const buildStructuralSelectorFallback = (
         if (!parent) continue;
 
         const tag = resolveElementTag(node);
-        if (!tag) continue;
-
-        const index = nthOfTypeIndex(parent.children, currentId, tag, snapshot);
-        if (!index) continue;
-        segments.push(`${tag}:nth-of-type(${index})`);
+        if (tag) {
+            const index = nthOfTypeIndex(parent.children, currentId, tag, snapshot);
+            if (index) {
+                segments.push(`${tag}:nth-of-type(${index})`);
+                continue;
+            }
+        }
+        const nthChild = nthChildIndex(parent.children, currentId);
+        if (!nthChild) continue;
+        segments.push(`*:nth-child(${nthChild})`);
     }
 
     if (segments.length === 0) return undefined;
-    return segments.join(' ');
+    // Use strict parent-child chain so dynamic pages do not collapse different controls
+    // into one broad descendant selector (a common source of ERR_AMBIGUOUS).
+    return segments.join(' > ');
 };
 
 const buildParentById = (node: SnapshotResult['root'], parentId: string | null, parentById: Map<string, string | null>) => {
@@ -311,6 +318,12 @@ const nthOfTypeIndex = (
         if (sibling.id === currentId) return index;
     }
     return undefined;
+};
+
+const nthChildIndex = (siblings: SnapshotResult['root']['children'], currentId: string): number | undefined => {
+    const idx = siblings.findIndex((sibling) => sibling.id === currentId);
+    if (idx < 0) return undefined;
+    return idx + 1;
 };
 
 const normalizeTag = (value: string | undefined): string => (value || '').trim().toLowerCase();
