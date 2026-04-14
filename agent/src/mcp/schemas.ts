@@ -126,6 +126,7 @@ export const browserEvaluateInputSchema = z.object({
     tabToken: z.string().optional(),
     expression: z.string(),
     arg: z.unknown().optional(),
+    mutatesPage: z.boolean().optional(),
 });
 
 export const browserTakeScreenshotInputSchema = z.object({
@@ -484,6 +485,7 @@ export const toolInputJsonSchemas = {
             tabToken: { type: 'string' },
             expression: { type: 'string' },
             arg: {},
+            mutatesPage: { type: 'boolean' },
         },
         additionalProperties: false,
     },

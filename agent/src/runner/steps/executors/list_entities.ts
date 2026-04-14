@@ -13,7 +13,8 @@ export const executeBrowserListEntities = async (
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'browser.list_entities',
-        collectBaseSnapshot: async () => generateSemanticSnapshot(binding.page),
+        collectBaseSnapshot: async (context) =>
+            generateSemanticSnapshot(binding.page, { captureRuntimeState: context.fromDirty }),
     });
 
     const finalEntities = ensured.entry.finalEntityView?.entities || [];

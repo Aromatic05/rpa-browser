@@ -27,11 +27,9 @@ const DIRTY_STEP_NAMES = new Set<string>([
     'browser.select_option',
     'browser.press_key',
     'browser.drag_and_drop',
-    'browser.evaluate',
-    'browser.scroll',
-    'browser.hover',
-    'browser.mouse',
 ]);
+
+const CONDITIONAL_DIRTY_STEP_NAMES = new Set<string>(['browser.evaluate']);
 
 type TraceSnapshotCache = Record<string, unknown> & {
     latestSnapshot?: unknown;
@@ -43,7 +41,11 @@ export type EnsureFreshSnapshotOptions = {
     forceRefresh?: boolean;
     ttlMs?: number;
     refreshReason?: string;
-    collectBaseSnapshot: () => Promise<SnapshotResult>;
+    collectBaseSnapshot: (context: {
+        reason: string;
+        fromDirty: boolean;
+        staleReason?: string;
+    }) => Promise<SnapshotResult>;
 };
 
 export type EnsureFreshSnapshotResult = {
@@ -118,8 +120,15 @@ export const markSnapshotSessionDirty = (binding: PageBinding, source: string) =
     });
 };
 
-export const shouldMarkSnapshotDirtyByStepName = (stepName: string): boolean => {
-    return DIRTY_STEP_NAMES.has(stepName);
+export const shouldMarkSnapshotDirtyByStep = (
+    stepName: string,
+    stepArgs: Record<string, unknown> | undefined,
+): boolean => {
+    if (DIRTY_STEP_NAMES.has(stepName)) return true;
+    if (CONDITIONAL_DIRTY_STEP_NAMES.has(stepName)) {
+        return stepArgs?.mutatesPage === true;
+    }
+    return false;
 };
 
 export const shouldRefreshSnapshot = (
@@ -204,7 +213,12 @@ export const ensureFreshSnapshot = async (
         overlaySummary: summarizeOverlays(entry.overlays),
     });
 
-    entry.refreshInFlight = options.collectBaseSnapshot();
+    const fromDirty = entry.dirty;
+    entry.refreshInFlight = options.collectBaseSnapshot({
+        reason: refreshReason,
+        fromDirty,
+        staleReason: entry.staleReason,
+    });
     try {
         const baseSnapshot = await entry.refreshInFlight;
         entry.baseSnapshot = baseSnapshot;

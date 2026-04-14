@@ -593,7 +593,11 @@ const handleEvaluate = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.evaluate',
-        args: { expression: input.expression, arg: input.arg },
+        args: {
+            expression: input.expression,
+            arg: input.arg,
+            mutatesPage: input.mutatesPage,
+        },
         meta: { source: 'mcp' },
     });
 };

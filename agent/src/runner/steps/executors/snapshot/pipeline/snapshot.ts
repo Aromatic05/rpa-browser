@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import type { Step, StepResult } from '../../../types';
 import type { RunStepsDeps } from '../../../../run_steps';
 import { collectRawData } from '../stages/collect';
+import type { SnapshotWaitMode } from '../stages/collect';
 import { fuseDomAndA11y } from '../stages/fusion';
 import { buildSpatialLayers, isNoiseLayer } from '../stages/spatial';
 import { detectRegions } from '../stages/regions';
@@ -53,7 +54,11 @@ export const executeBrowserSnapshot = async (
     const ensured = await ensureFreshSnapshot(binding, {
         forceRefresh: step.args.refresh === true,
         refreshReason: 'browser.snapshot',
-        collectBaseSnapshot: async () => generateSemanticSnapshot(binding.page),
+        collectBaseSnapshot: async (context) =>
+            generateSemanticSnapshot(binding.page, {
+                captureRuntimeState: context.fromDirty,
+                waitMode: resolveSnapshotWaitMode(context.fromDirty, context.staleReason),
+            }),
     });
 
     const view = buildSnapshotView(ensured.snapshot, {
@@ -139,14 +144,25 @@ export const executeBrowserSnapshot = async (
     };
 };
 
-export const generateSemanticSnapshot = async (page: Page): Promise<SnapshotResult> => {
+type GenerateSemanticSnapshotOptions = {
+    captureRuntimeState?: boolean;
+    waitMode?: SnapshotWaitMode;
+};
+
+export const generateSemanticSnapshot = async (
+    page: Page,
+    options: GenerateSemanticSnapshotOptions = {},
+): Promise<SnapshotResult> => {
     const currentUrl = typeof (page as { url?: unknown }).url === 'function' ? page.url() : '';
     snapshotDebugLog('start', {
         url: currentUrl,
     });
 
     // 1) 采集原始观察：DOM、A11y 等基础数据。
-    const raw = await collectRawData(page);
+    const raw = await collectRawData(page, {
+        captureRuntimeState: options.captureRuntimeState,
+        waitMode: options.waitMode,
+    });
     snapshotDebugLog('collect', {
         domCount: countTreeNodes(raw.domTree),
         a11yCount: countTreeNodes(raw.a11yTree),
@@ -171,7 +187,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
 type CacheStats = ReturnType<typeof createCacheStats>;
 
 const stageFuseGraph = (raw: RawData) => {
-    const graph = fuseDomAndA11y(raw.domTree, raw.a11yTree);
+    const graph = fuseDomAndA11y(raw.domTree, raw.a11yTree, raw.runtimeStateMap);
     snapshotDebugLog('fuse', {
         unifiedCount: countTreeNodes(graph.root),
         topNodes: summarizeTopNodes(graph.root),
@@ -226,12 +242,25 @@ const processLayerRegions = (layer: UnifiedNode, cacheStats: CacheStats) => {
 
     for (const region of regions) {
         cacheStats.bucketTotal += 1;
-        const bucketKey = computeBucketKey(region);
-        const bucketHash = computeBucketHash(region);
-        const cached = readBucketCache(bucketKey, bucketHash);
-        if (cached) {
-            cacheStats.bucketHit += 1;
-            replaceRegion(layer, region, cached);
+        if (ENABLE_REGION_BUCKET_CACHE) {
+            const bucketKey = computeBucketKey(region);
+            const bucketHash = computeBucketHash(region);
+            const cached = readBucketCache(bucketKey, bucketHash);
+            if (cached) {
+                cacheStats.bucketHit += 1;
+                replaceRegion(layer, region, cached);
+                continue;
+            }
+
+            cacheStats.bucketMiss += 1;
+            const processed = processRegion(region);
+            if (!processed) {
+                removeRegion(layer, region);
+                continue;
+            }
+
+            writeBucketCache(bucketKey, bucketHash, processed);
+            replaceRegion(layer, region, processed);
             continue;
         }
 
@@ -241,8 +270,6 @@ const processLayerRegions = (layer: UnifiedNode, cacheStats: CacheStats) => {
             removeRegion(layer, region);
             continue;
         }
-
-        writeBucketCache(bucketKey, bucketHash, processed);
         replaceRegion(layer, region, processed);
     }
 };
@@ -320,9 +347,20 @@ const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
     return false;
 };
 
+const resolveSnapshotWaitMode = (fromDirty: boolean, staleReason: string | undefined): SnapshotWaitMode => {
+    if (!fromDirty) return 'interaction';
+    const reason = normalizeLower(staleReason);
+    if (reason.includes('browser.goto') || reason.includes('browser.reload') || reason.includes('browser.go_back')) {
+        return 'navigation';
+    }
+    if (reason.includes('page-identity-changed')) return 'navigation';
+    return 'interaction';
+};
+
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const NON_PERCEIVABLE_LAYER_ROLES = new Set(['head', 'meta', 'link', 'style', 'script', 'title']);
 const NON_PERCEIVABLE_LAYER_TAGS = new Set(['head', 'meta', 'link', 'style', 'script', 'title']);
+const ENABLE_REGION_BUCKET_CACHE = false;
 
 const hasPageIdentityChanged = (
     previousIdentity: SnapshotPageIdentity | undefined,

@@ -72,7 +72,7 @@ export type StepArgsMap = {
     'browser.get_content': { ref: string };
     'browser.read_console': { limit?: number };
     'browser.read_network': { limit?: number };
-    'browser.evaluate': { expression: string; arg?: unknown };
+    'browser.evaluate': { expression: string; arg?: unknown; mutatesPage?: boolean };
     'browser.take_screenshot': {
         id?: string;
         selector?: string;

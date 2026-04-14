@@ -16,7 +16,8 @@ export const executeBrowserAddEntity = async (
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'browser.add_entity',
-        collectBaseSnapshot: async () => generateSemanticSnapshot(binding.page),
+        collectBaseSnapshot: async (context) =>
+            generateSemanticSnapshot(binding.page, { captureRuntimeState: context.fromDirty }),
     });
 
     const nodeId = normalizeText(step.args.nodeId);
