@@ -443,7 +443,15 @@ const handleSnapshot = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.snapshot',
-        args: { refresh: input.refresh },
+        args: {
+            includeA11y: input.includeA11y,
+            focus_only: input.focus_only,
+            refresh: input.refresh,
+            contain: input.contain,
+            depth: input.depth,
+            filter: input.filter,
+            diff: input.diff,
+        },
         meta: { source: 'mcp' },
     });
 };

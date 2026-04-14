@@ -64,7 +64,7 @@ export const createMcpServer = (deps: McpToolDeps) => {
             },
             {
                 name: 'browser.snapshot',
-                description: 'Return the latest structured UnifiedNode snapshot tree.',
+                description: 'Return a structured UnifiedNode snapshot tree, with optional contain/depth/filter/diff view.',
                 inputSchema: toolInputJsonSchemas['browser.snapshot'],
             },
             {

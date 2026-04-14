@@ -16,7 +16,7 @@ const toolDescriptions: Array<{ name: string; description: string }> = [
     { name: 'browser.switch_tab', description: 'Switch to a tab by id.' },
     { name: 'browser.close_tab', description: 'Close a tab by id or the current tab.' },
     { name: 'browser.get_page_info', description: 'Return page metadata and tab list.' },
-    { name: 'browser.snapshot', description: 'Return the latest structured UnifiedNode snapshot tree.' },
+    { name: 'browser.snapshot', description: 'Return a structured UnifiedNode snapshot tree, with optional contain/depth/filter/diff view.' },
     { name: 'browser.list_entities', description: 'List entities from the final snapshot entity view.' },
     { name: 'browser.get_entity', description: 'Get entity information by snapshot nodeId.' },
     { name: 'browser.find_entities', description: 'Find entities by query, kind, and business tag.' },

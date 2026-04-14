@@ -12,6 +12,14 @@ const ensureIdOrSelector = <T extends { id?: string; selector?: string }>(value:
 const entityKindSchema = z.enum(['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv']);
 const entityKindOrArraySchema = z.union([entityKindSchema, z.array(entityKindSchema).nonempty()]);
 const textOrArraySchema = z.union([z.string(), z.array(z.string()).nonempty()]);
+const snapshotRoleFilterSchema = z.union([z.string(), z.array(z.string()).nonempty()]);
+const snapshotFilterInputSchema = z
+    .object({
+        role: snapshotRoleFilterSchema.optional(),
+        text: z.string().optional(),
+        interactive: z.boolean().optional(),
+    })
+    .strict();
 
 export const browserGotoInputSchema = z.object({
     tabToken: z.string().optional(),
@@ -50,7 +58,13 @@ export const browserGetPageInfoInputSchema = z.object({
 
 export const browserSnapshotInputSchema = z.object({
     tabToken: z.string().optional(),
+    includeA11y: z.boolean().optional(),
+    focus_only: z.boolean().optional(),
     refresh: z.boolean().optional(),
+    contain: z.string().optional(),
+    depth: z.number().int().min(-1).optional(),
+    filter: snapshotFilterInputSchema.optional(),
+    diff: z.boolean().optional(),
 });
 
 export const browserListEntitiesInputSchema = z.object({
@@ -328,7 +342,27 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
+            includeA11y: { type: 'boolean' },
+            focus_only: { type: 'boolean' },
             refresh: { type: 'boolean' },
+            contain: { type: 'string' },
+            depth: { type: 'integer', minimum: -1 },
+            filter: {
+                type: 'object',
+                required: [],
+                properties: {
+                    role: {
+                        anyOf: [
+                            { type: 'string' },
+                            { type: 'array', items: { type: 'string' }, minItems: 1 },
+                        ],
+                    },
+                    text: { type: 'string' },
+                    interactive: { type: 'boolean' },
+                },
+                additionalProperties: false,
+            },
+            diff: { type: 'boolean' },
         },
         additionalProperties: false,
     },
