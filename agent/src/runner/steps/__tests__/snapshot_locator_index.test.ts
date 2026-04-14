@@ -187,3 +187,39 @@ test('combobox prefers ancestor label for role locator name', () => {
     assert.equal(locatorIndex.combo_1.direct?.kind, 'role');
     assert.equal(locatorIndex.combo_1.direct?.query, 'combobox:报销类型');
 });
+
+test('locator index prefers backend selector when provided', () => {
+    const root: UnifiedNode = {
+        id: 'root_test7',
+        role: 'root',
+        children: [
+            {
+                id: 'combo_2',
+                role: 'combobox',
+                name: '交通费',
+                children: [],
+            },
+        ],
+    };
+    setNodeAttr(root.children[0], 'backendDOMNodeId', '7001');
+    setNodeAttr(root.children[0], 'tag', 'select');
+
+    const locatorIndex = buildLocatorIndex({
+        root,
+        entityIndex: {
+            entities: {},
+            byNodeId: {},
+        },
+        backendSelectorByDomId: {
+            '7001': 'html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1) > select:nth-of-type(3)',
+        },
+    });
+
+    assert.ok(locatorIndex.combo_2, 'combobox should be indexed');
+    assert.equal(locatorIndex.combo_2.direct?.kind, 'css');
+    assert.equal(
+        locatorIndex.combo_2.direct?.query,
+        'html:nth-of-type(1) > body:nth-of-type(1) > main:nth-of-type(1) > select:nth-of-type(3)',
+    );
+    assert.equal(locatorIndex.combo_2.direct?.source, 'backend-path');
+});

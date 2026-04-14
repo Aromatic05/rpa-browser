@@ -367,7 +367,6 @@ test('click(id) structural selector keeps unknown ancestors via nth-child segmen
     wrap2.children.push(sel2);
     wrap3.children.push(sel3);
 
-    setNodeAttr(body as any, 'tag', 'body');
     setNodeAttr(sectionA as any, 'tag', 'section');
     setNodeAttr(sectionB as any, 'tag', 'section');
     setNodeAttr(sel1 as any, 'tag', 'select');
@@ -418,7 +417,7 @@ test('click(id) structural selector keeps unknown ancestors via nth-child segmen
     assert.equal(result.ok, true);
     assert.equal(calls.length, 3);
     const selector = calls[0].args.selector;
-    assert.equal(selector, 'body:nth-of-type(1) > section:nth-of-type(1) > section:nth-of-type(1) > *:nth-child(2) > select:nth-of-type(1):visible');
+    assert.equal(selector, 'body:nth-of-type(1) > section:nth-of-type(1) > section:nth-of-type(1) > select:nth-of-type(1):visible');
     assert.equal(calls[2].args.selector, selector);
 });
 

@@ -11,6 +11,7 @@ import { processRegion } from './process_region';
 import { linkGlobalRelations } from '../stages/relations';
 import { assignStableIds } from '../core/stable_id';
 import { buildEntityIndex } from '../indexes/entity';
+import { buildBackendDomSelectorMap } from '../indexes/dom_backend_selector';
 import { buildLocatorIndex } from '../indexes/locator';
 import { buildExternalIndexes } from '../indexes/external_indexes';
 import {
@@ -173,6 +174,7 @@ export const generateSemanticSnapshot = async (
 
 export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult => {
     const cacheStats = createCacheStats();
+    const backendSelectorByDomId = buildBackendDomSelectorMap(raw.domTree);
     const graph = stageFuseGraph(raw);
     const layeredGraph = stageBuildSpatialGraph(graph);
     const root = stageAttachLayers(layeredGraph);
@@ -181,7 +183,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
     stageLinkGlobalRelations(root);
     stageAssignStableIds(root);
 
-    return stageBuildSnapshot(root, cacheStats);
+    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId);
 };
 
 type CacheStats = ReturnType<typeof createCacheStats>;
@@ -286,11 +288,16 @@ const stageAssignStableIds = (root: UnifiedNode) => {
     });
 };
 
-const stageBuildSnapshot = (root: UnifiedNode, cacheStats: CacheStats): SnapshotResult => {
+const stageBuildSnapshot = (
+    root: UnifiedNode,
+    cacheStats: CacheStats,
+    backendSelectorByDomId?: Record<string, string>,
+): SnapshotResult => {
     const entityIndex = buildEntityIndex(root);
     const locatorIndex = buildLocatorIndex({
         root,
         entityIndex,
+        backendSelectorByDomId,
     });
     const { nodeIndex, bboxIndex, attrIndex, contentStore } = buildExternalIndexes(root);
     const snapshot = buildSnapshot({

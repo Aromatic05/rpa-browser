@@ -181,6 +181,7 @@ const applyScopeConstraint = (snapshot: SnapshotResult, locator: SnapshotResult[
 
     const trimmed = selector.trim();
     if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) return selector;
+    if (isAbsoluteDomSelector(trimmed)) return selector;
 
     return `${scopeSelector} ${trimmed}`;
 };
@@ -222,6 +223,7 @@ const buildStructuralSelectorFallback = (
     for (const currentId of chain) {
         const node = snapshot.nodeIndex[currentId];
         if (!node) continue;
+        if (!isStructuralDomNode(node)) continue;
 
         const stable = buildStableSegment(node);
         if (stable) {
@@ -250,7 +252,7 @@ const buildStructuralSelectorFallback = (
     if (segments.length === 0) return undefined;
     // Use strict parent-child chain so dynamic pages do not collapse different controls
     // into one broad descendant selector (a common source of ERR_AMBIGUOUS).
-    return segments.join(' > ');
+    return trimLeadingWildcardSegments(segments).join(' > ');
 };
 
 const buildParentById = (node: SnapshotResult['root'], parentId: string | null, parentById: Map<string, string | null>) => {
@@ -296,6 +298,12 @@ const resolveElementTag = (node: SnapshotResult['root']): string | undefined => 
     if (rawTag && !rawTag.startsWith('::')) return rawTag;
 
     const role = normalizeTag(node.role);
+    if (role === 'body') return 'body';
+    if (role === 'main') return 'main';
+    if (role === 'banner') return 'header';
+    if (role === 'contentinfo') return 'footer';
+    if (role === 'complementary') return 'aside';
+    if (role === 'region') return 'section';
     if (role === 'textbox') return 'input';
     if (role === 'button') return 'button';
     if (role === 'link') return 'a';
@@ -326,6 +334,23 @@ const nthChildIndex = (siblings: SnapshotResult['root']['children'], currentId: 
     return idx + 1;
 };
 
+const trimLeadingWildcardSegments = (segments: string[]): string[] => {
+    let start = 0;
+    while (start < segments.length - 1 && /^\*:nth-child\(\d+\)$/.test(segments[start] || '')) {
+        start += 1;
+    }
+    return segments.slice(start);
+};
+
+const isStructuralDomNode = (node: SnapshotResult['root']): boolean => {
+    const tag = normalizeTag(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    if (tag && !tag.startsWith('::')) return true;
+    const domId = (getNodeAttr(node, 'backendDOMNodeId') || '').trim();
+    if (domId) return true;
+    const role = normalizeTag(node.role);
+    return role === 'body';
+};
+
 const normalizeTag = (value: string | undefined): string => (value || '').trim().toLowerCase();
 const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
 const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
@@ -335,4 +360,9 @@ const withVisibilityConstraint = (selector: string, requireVisible: boolean | un
     const trimmed = selector.trim();
     if (!trimmed || trimmed.includes(':visible')) return selector;
     return `${trimmed}:visible`;
+};
+
+const isAbsoluteDomSelector = (selector: string): boolean => {
+    const normalized = selector.trim().toLowerCase();
+    return normalized.startsWith('html') || normalized.startsWith('body') || normalized.startsWith(':root');
 };

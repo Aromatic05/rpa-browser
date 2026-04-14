@@ -4,10 +4,11 @@ import type { EntityIndex, EntityRecord, Locator, LocatorIndex, NodeEntityRef, U
 type BuildLocatorIndexInput = {
     root: UnifiedNode;
     entityIndex: EntityIndex;
+    backendSelectorByDomId?: Record<string, string>;
 };
 
 export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex => {
-    const { root, entityIndex } = input;
+    const { root, entityIndex, backendSelectorByDomId } = input;
     const parentById = new Map<string, UnifiedNode | null>();
     buildParentIndex(root, null, parentById);
 
@@ -19,6 +20,7 @@ export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex =
 
         const scopeEntity = resolveScopeEntity(node, parentById, entityIndex);
         const direct = buildDirectLocator(node, parentById);
+        const backendSelector = backendSelectorByDomId?.[primaryDomId];
 
         const locator: Locator = {
             origin: {
@@ -33,7 +35,13 @@ export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex =
             },
         };
 
-        if (direct) {
+        if (backendSelector) {
+            locator.direct = {
+                kind: 'css',
+                query: backendSelector,
+                source: 'backend-path',
+            };
+        } else if (direct) {
             locator.direct = direct;
         }
         if (scopeEntity) {
