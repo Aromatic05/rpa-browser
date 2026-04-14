@@ -53,10 +53,31 @@ const collectRegionSignature = (root: UnifiedNode): string => {
         const name = normalizeName(node.name || getNodeContent(node));
         const domId = normalizeText(getNodeAttr(node, 'backendDOMNodeId')) || '';
         const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+        const state = collectInteractiveStateSignature(node);
         const childCount = node.children.length;
-        chunks.push(`${depth}:${role}:${name}:${tag}:${domId}:${childCount}`);
+        chunks.push(`${depth}:${role}:${name}:${tag}:${domId}:${state}:${childCount}`);
     });
     return chunks.join('|');
+};
+
+const collectInteractiveStateSignature = (node: UnifiedNode): string => {
+    const raw = [
+        normalizeStateText(getNodeAttr(node, 'value')),
+        normalizeStateText(getNodeAttr(node, 'checked')),
+        normalizeStateText(getNodeAttr(node, 'selected')),
+        normalizeStateText(getNodeAttr(node, 'aria-checked')),
+        normalizeStateText(getNodeAttr(node, 'aria-selected')),
+        normalizeStateText(getNodeAttr(node, 'aria-expanded')),
+        normalizeStateText(getNodeAttr(node, 'aria-pressed')),
+        normalizeStateText(getNodeAttr(node, 'aria-invalid')),
+    ];
+    return raw.join('~');
+};
+
+const normalizeStateText = (value: string | undefined): string => {
+    const normalized = normalizeText(value);
+    if (!normalized) return '';
+    return normalized.toLowerCase().replace(/;/g, ',').slice(0, 48);
 };
 
 const walk = (node: UnifiedNode, visitor: (node: UnifiedNode, depth: number) => void, depth = 0) => {
