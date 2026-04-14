@@ -152,3 +152,38 @@ test('checkbox uses input type+value css locator to avoid label text mismatch', 
     assert.equal(locatorIndex.checkbox_test.direct?.kind, 'css');
     assert.equal(locatorIndex.checkbox_test.direct?.query, 'input[type="checkbox"][value="red"]');
 });
+
+test('combobox prefers ancestor label for role locator name', () => {
+    const combobox: UnifiedNode = {
+        id: 'combo_1',
+        role: 'combobox',
+        name: '交通费',
+        children: [],
+    };
+    setNodeAttr(combobox, 'backendDOMNodeId', '6001');
+
+    const root: UnifiedNode = {
+        id: 'root_test6',
+        role: 'root',
+        children: [
+            {
+                id: 'label_wrap',
+                role: 'label',
+                name: '报销类型',
+                children: [combobox],
+            },
+        ],
+    };
+
+    const locatorIndex = buildLocatorIndex({
+        root,
+        entityIndex: {
+            entities: {},
+            byNodeId: {},
+        },
+    });
+
+    assert.ok(locatorIndex.combo_1, 'combobox should be indexed');
+    assert.equal(locatorIndex.combo_1.direct?.kind, 'role');
+    assert.equal(locatorIndex.combo_1.direct?.query, 'combobox:报销类型');
+});

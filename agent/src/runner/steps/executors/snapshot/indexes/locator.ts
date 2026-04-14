@@ -275,9 +275,18 @@ const supportsLeafTextSelector = (node: UnifiedNode): boolean => {
 };
 
 const resolveNodeLabel = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>): string => {
+    const fromAncestor = deriveLabelFromAncestor(node, parentById);
+    if (shouldPreferAncestorLabel(node) && fromAncestor) return fromAncestor;
     const own = normalizeText(node.name);
     if (own) return own;
-    return deriveLabelFromAncestor(node, parentById) || '';
+    return fromAncestor || '';
+};
+
+const shouldPreferAncestorLabel = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    if (FORM_FIELD_ROLES.has(role)) return true;
+    const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
 };
 
 const deriveLabelFromAncestor = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>): string | undefined => {
@@ -322,6 +331,17 @@ const roleToTagSelector = (role: string): string => {
     if (normalized === 'textbox') return 'input,textarea';
     return '*';
 };
+
+const FORM_FIELD_ROLES = new Set([
+    'textbox',
+    'combobox',
+    'checkbox',
+    'radio',
+    'switch',
+    'spinbutton',
+    'listbox',
+    'option',
+]);
 
 const pickRowKeyText = (rowNode: UnifiedNode): string | undefined => {
     let matchedOrderNo: string | undefined;
