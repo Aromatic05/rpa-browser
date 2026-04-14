@@ -113,16 +113,26 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(() => {
     return (el.getAttribute('id') || '').trim().toLowerCase() === 'rpa-floating-panel';
   };
 
+  const isIgnoredInAncestorChain = (el) => {
+    let cursor = el;
+    while (cursor) {
+      if (isIgnoredByMarker(cursor)) return true;
+      cursor = cursor.parentElement;
+    }
+    return false;
+  };
+
   const isEligibleElement = (el) => {
     const tag = (el.tagName || '').toLowerCase();
     if (tag === 'script' || tag === 'style') return false;
-    if (isIgnoredByMarker(el)) return false;
+    if (isIgnoredInAncestorChain(el)) return false;
     return true;
   };
 
   const collectFromDocument = (doc, prefix) => {
     const root = doc.documentElement;
     if (!root) return;
+    if (isIgnoredInAncestorChain(root)) return;
 
     const elements = Array.from(doc.querySelectorAll(SELECTOR));
     for (const el of elements) {
@@ -191,6 +201,7 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(() => {
 
     const iframes = Array.from(doc.querySelectorAll('iframe'));
     for (const iframe of iframes) {
+      if (!isEligibleElement(iframe)) continue;
       const iframeKey = buildPathKey(iframe, root, prefix);
       if (!iframeKey) continue;
       let childDoc = null;
