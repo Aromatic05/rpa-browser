@@ -72,12 +72,40 @@ test('checkbox and radio states map to checked/unchecked tokens', () => {
     assert.equal(joinContentTokens(buildInteractionContentTokens(checkboxUnchecked)), 'unchecked');
 });
 
+test('checkbox state can fall back to class and data-state markers', () => {
+    const byClass = createNode('checkbox-class', 'checkbox');
+    setNodeAttrs(byClass, {
+        class: 'ant-checkbox ant-checkbox-checked',
+    });
+    assert.equal(joinContentTokens(buildInteractionContentTokens(byClass)), 'checked');
+
+    const byDataState = createNode('radio-state', 'radio');
+    setNodeAttrs(byDataState, {
+        'data-state': 'checked',
+    });
+    assert.equal(joinContentTokens(buildInteractionContentTokens(byDataState)), 'checked');
+});
+
 test('combobox selected value maps to selected token', () => {
     const combobox = createNode('combobox-1', 'combobox');
     setNodeAttr(combobox, 'value', '北京');
 
     const content = joinContentTokens(buildInteractionContentTokens(combobox));
     assert.equal(content, 'selected="北京"');
+});
+
+test('combobox can fall back to visible content/name when selected attrs are absent', () => {
+    const fromContent = createNode('combobox-content', 'combobox');
+    setNodeContent(fromContent, '香蕉');
+    assert.equal(joinContentTokens(buildInteractionContentTokens(fromContent)), 'selected="香蕉"');
+
+    const fromName = createNode('combobox-name', 'combobox');
+    fromName.name = '苹果';
+    assert.equal(joinContentTokens(buildInteractionContentTokens(fromName)), 'selected="苹果"');
+
+    const placeholderLike = createNode('combobox-placeholder', 'combobox');
+    placeholderLike.name = '你喜欢什么样的工作方式？';
+    assert.equal(joinContentTokens(buildInteractionContentTokens(placeholderLike)), 'empty');
 });
 
 test('expanded and collapsed states map to stable tokens', () => {

@@ -28,6 +28,7 @@ export const fuseDomAndA11y = (
     let annotatedByA11yRole = 0;
     let keptDomRole = 0;
     let linkTargetExtracted = 0;
+    const consumedRuntimePathKeys = new Set<string>();
 
     const build = (node: DomNodeInput, parentPathKey?: string): UnifiedNode => {
         const matchResult = matchByBackendDomId(node, a11yByBackendDomId);
@@ -42,6 +43,13 @@ export const fuseDomAndA11y = (
         }
 
         const pathKey = node.id || 'dom';
+        const runtimeState = resolveRuntimeStateForNode(
+            pathKey,
+            node,
+            parentPathKey,
+            runtimeStateMap,
+            consumedRuntimePathKeys,
+        );
         const matched = matchResult.type === 'matched' ? matchResult.node : undefined;
         const domBaseRole = pickDomBaseRole(node);
         const role = pickRole(node, matched);
@@ -70,7 +78,7 @@ export const fuseDomAndA11y = (
             unified,
             mergeDomAttrs(
                 node,
-                validateRuntimeState(runtimeStateMap?.[pathKey], node, parentPathKey),
+                validateRuntimeState(runtimeState, node, parentPathKey),
                 matched,
             ),
         );
@@ -356,7 +364,7 @@ const mergeDomAttrs = (
 const validateRuntimeState = (
     runtimeState: RuntimeStateMap[string] | undefined,
     node: DomNodeInput,
-    parentPathKey: string | undefined,
+    _parentPathKey: string | undefined,
 ): RuntimeStateMap[string] | undefined => {
     if (!runtimeState) return undefined;
 
@@ -364,23 +372,112 @@ const validateRuntimeState = (
     const domTag = normalizeRole(node.tag).toLowerCase();
     if (runtimeTag && domTag && runtimeTag !== domTag) return undefined;
 
-    if (!isFingerprintCompatible(runtimeState.parentKey, parentPathKey)) return undefined;
+    // Runtime state is indexed by the same DOM path key as fusion traversal.
+    // For dynamic form controls (checkbox/radio/select), strict fingerprint checks
+    // can reject true-positive matches when frameworks mutate wrappers/attrs.
     if (!isFingerprintCompatible(runtimeState.type, normalizeText(node.attrs?.type || node.type))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.role, normalizeText(node.attrs?.role))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) return undefined;
+
+    return runtimeState;
+};
+
+const resolveRuntimeStateForNode = (
+    pathKey: string,
+    node: DomNodeInput,
+    parentPathKey: string | undefined,
+    runtimeStateMap: RuntimeStateMap | undefined,
+    consumedPathKeys: Set<string>,
+): RuntimeStateMap[string] | undefined => {
+    if (!runtimeStateMap) return undefined;
+
+    const exact = runtimeStateMap[pathKey];
+    if (exact && validateRuntimeState(exact, node, parentPathKey)) {
+        consumedPathKeys.add(pathKey);
+        return exact;
+    }
+
+    let bestKey: string | undefined;
+    let bestRow: RuntimeStateMap[string] | undefined;
+    let bestScore = -1;
+    let tie = false;
+
+    for (const [candidateKey, row] of Object.entries(runtimeStateMap)) {
+        if (consumedPathKeys.has(candidateKey)) continue;
+        const score = scoreRuntimeCandidate(node, row, parentPathKey);
+        if (score <= 0) continue;
+        if (score > bestScore) {
+            bestScore = score;
+            bestKey = candidateKey;
+            bestRow = row;
+            tie = false;
+            continue;
+        }
+        if (score === bestScore) {
+            tie = true;
+        }
+    }
+
+    if (!bestKey || !bestRow || tie) return undefined;
+    if (!validateRuntimeState(bestRow, node, parentPathKey)) return undefined;
+    consumedPathKeys.add(bestKey);
+    return bestRow;
+};
+
+const scoreRuntimeCandidate = (
+    node: DomNodeInput,
+    runtimeState: RuntimeStateMap[string] | undefined,
+    parentPathKey: string | undefined,
+): number => {
+    if (!runtimeState) return 0;
+    let score = 0;
+    const nodeTag = normalizeRole(node.tag).toLowerCase();
+    const rowTag = normalizeRole(runtimeState.tag).toLowerCase();
+    if (nodeTag && rowTag && nodeTag !== rowTag) return 0;
+    if (nodeTag && rowTag && nodeTag === rowTag) score += 4;
+
+    const nodeType = normalizeText(node.attrs?.type || node.type);
+    const rowType = normalizeText(runtimeState.type);
+    if (nodeType && rowType) {
+        if (nodeType !== rowType) return 0;
+        score += 4;
+    }
+
+    if (isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) score += normalizeText(runtimeState.idAttr) ? 3 : 0;
+    if (isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) {
+        score += normalizeText(runtimeState.nameAttr) ? 3 : 0;
+    }
+    if (isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) {
+        score += normalizeText(runtimeState.placeholder) ? 2 : 0;
+    }
+    if (isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) {
+        score += normalizeText(runtimeState.ariaLabel) ? 2 : 0;
+    }
     if (
-        !isFingerprintCompatible(
+        isFingerprintCompatible(
             runtimeState.dataTestId,
             normalizeText(node.attrs?.['data-testid'] || node.attrs?.['data-test-id']),
         )
     ) {
-        return undefined;
+        score += normalizeText(runtimeState.dataTestId) ? 2 : 0;
+    }
+    if (isFingerprintCompatible(runtimeState.parentKey, parentPathKey)) {
+        score += normalizeText(runtimeState.parentKey) ? 1 : 0;
     }
 
-    return runtimeState;
+    const rowValue = normalizeText(runtimeState.value);
+    const nodeValue = normalizeText(node.attrs?.value);
+    if (rowValue && nodeValue) {
+        if (rowValue !== nodeValue) return 0;
+        score += 3;
+    }
+
+    const rowRole = normalizeText(runtimeState.role);
+    const nodeRole = normalizeText(node.attrs?.role);
+    if (rowRole && nodeRole) {
+        if (rowRole !== nodeRole) return 0;
+        score += 1;
+    }
+
+    return score;
 };
 
 const isFingerprintCompatible = (runtimeValue: string | undefined, domValue: string | undefined): boolean => {

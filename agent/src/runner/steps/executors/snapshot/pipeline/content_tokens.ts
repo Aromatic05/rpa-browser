@@ -189,7 +189,8 @@ const resolveSelectedValues = (node: UnifiedNode): string[] => {
     });
 
     if (selected.length === 0) {
-        return [];
+        const fallback = resolveSelectDisplayFallback(node, attrs);
+        return fallback ? [fallback] : [];
     }
     return [...new Set(selected)];
 };
@@ -205,7 +206,46 @@ const resolveCheckedState = (attrs: Record<string, string>): boolean => {
 
     const checked = readRawAttr(attrs, 'checked');
     const parsedChecked = parseBooleanAttr(checked.value, checked.found);
-    return parsedChecked === true;
+    if (parsedChecked !== undefined) {
+        return parsedChecked;
+    }
+
+    const state = normalizeRole(readRawAttr(attrs, 'data-state').value);
+    if (state === 'checked' || state === 'on' || state === 'selected') return true;
+    if (state === 'unchecked' || state === 'off' || state === 'unselected') return false;
+
+    const className = normalizeRole(readRawAttr(attrs, 'class').value);
+    if (className) {
+        if (CHECKED_CLASS_PATTERN.test(className) || SELECTED_CLASS_PATTERN.test(className)) {
+            if (!UNCHECKED_CLASS_PATTERN.test(className) && !UNSELECTED_CLASS_PATTERN.test(className)) {
+                return true;
+            }
+        }
+        if (UNCHECKED_CLASS_PATTERN.test(className) || UNSELECTED_CLASS_PATTERN.test(className)) {
+            return false;
+        }
+    }
+
+    return false;
+};
+
+const resolveSelectDisplayFallback = (node: UnifiedNode, attrs: Record<string, string>): string | undefined => {
+    const content = normalizeText(getNodeContent(node)) || (typeof node.content === 'string' ? normalizeText(node.content) : undefined);
+    if (content && !looksLikePlaceholderText(content)) {
+        return content;
+    }
+
+    const name = normalizeText(node.name);
+    if (!name || looksLikePlaceholderText(name)) return undefined;
+    if (hasOwn(attrs, 'placeholder') || hasOwn(attrs, 'aria-placeholder')) return undefined;
+    return name;
+};
+
+const looksLikePlaceholderText = (value: string): boolean => {
+    const normalized = normalizeRole(value);
+    if (!normalized) return true;
+    if (normalized.endsWith('?') || normalized.endsWith('？')) return true;
+    return PLACEHOLDER_TEXT_PATTERN.test(normalized);
 };
 
 const resolveBooleanState = (attrs: Record<string, string>, keys: string[]): boolean | undefined => {
@@ -335,3 +375,9 @@ const FALSE_SET = new Set([
     'collapsed',
     'unpressed',
 ]);
+
+const CHECKED_CLASS_PATTERN = /\b(checked|is-checked|ant-checkbox-checked|ant-radio-checked)\b/;
+const UNCHECKED_CLASS_PATTERN = /\b(unchecked|is-unchecked)\b/;
+const SELECTED_CLASS_PATTERN = /\b(selected|is-selected|active)\b/;
+const UNSELECTED_CLASS_PATTERN = /\b(unselected|is-unselected)\b/;
+const PLACEHOLDER_TEXT_PATTERN = /(placeholder|select|choose|请选择|选择|请输入)/;
