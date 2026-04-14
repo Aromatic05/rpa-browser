@@ -169,6 +169,16 @@ const buildDirectLocator = (
         };
     }
 
+    const inputType = normalizeText(getNodeAttr(node, 'type'));
+    const inputValue = normalizeText(getNodeAttr(node, 'value'));
+    if (tag === 'input' && (inputType === 'checkbox' || inputType === 'radio') && inputValue) {
+        return {
+            kind: 'css',
+            query: `input[type="${escapeQuote(inputType)}"][value="${escapeQuote(inputValue)}"]`,
+            source: 'input-type+value',
+        };
+    }
+
     const label = resolveNodeLabel(node, parentById);
     if (label) {
         const scopedCss = buildScopedTextSelector(node, parentById, label);
