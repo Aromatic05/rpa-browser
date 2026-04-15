@@ -21,6 +21,48 @@ const snapshotFilterInputSchema = z
     })
     .strict();
 
+const batchFillActionSchema = z.object({
+    op: z.literal('fill'),
+    id: z.string().optional(),
+    selector: z.string().optional(),
+    label: z.string().optional(),
+    role: z.string().optional(),
+    value: z.string(),
+    timeout: z.number().int().positive().optional(),
+});
+
+const batchSelectOptionActionSchema = z.object({
+    op: z.literal('select_option'),
+    id: z.string().optional(),
+    selector: z.string().optional(),
+    label: z.string().optional(),
+    role: z.string().optional(),
+    values: z.array(z.string()).nonempty(),
+    timeout: z.number().int().positive().optional(),
+});
+
+const batchClickActionSchema = z.object({
+    op: z.literal('click'),
+    id: z.string().optional(),
+    selector: z.string().optional(),
+    label: z.string().optional(),
+    role: z.string().optional(),
+    coord: coordSchema.optional(),
+    options: z
+        .object({
+            button: z.enum(['left', 'right', 'middle']).optional(),
+            double: z.boolean().optional(),
+        })
+        .optional(),
+    timeout: z.number().int().positive().optional(),
+});
+
+const batchActionSchema = z.discriminatedUnion('op', [
+    batchFillActionSchema,
+    batchSelectOptionActionSchema,
+    batchClickActionSchema,
+]);
+
 export const browserGotoInputSchema = z.object({
     tabToken: z.string().optional(),
     url: z.string(),
@@ -245,6 +287,29 @@ export const browserMouseInputSchema = z.object({
     button: z.enum(['left', 'right', 'middle']).optional(),
 });
 
+export const browserBatchInputSchema = z
+    .object({
+        tabToken: z.string().optional(),
+        actions: z.array(batchActionSchema).nonempty(),
+        stopOnError: z.boolean().optional(),
+        contain: z.string().optional(),
+        depth: z.number().int().min(-1).optional(),
+    })
+    .superRefine((value, ctx) => {
+        value.actions.forEach((action, index) => {
+            const hasTarget = Boolean(action.id || action.selector || action.label || action.op === 'click' && action.coord);
+            if (hasTarget) return;
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message:
+                    action.op === 'click'
+                        ? 'batch click action requires coord, id, selector, or label'
+                        : `batch ${action.op} action requires id, selector, or label`,
+                path: ['actions', index],
+            });
+        });
+    });
+
 export type BrowserGotoInput = z.infer<typeof browserGotoInputSchema>;
 export type BrowserGoBackInput = z.infer<typeof browserGoBackInputSchema>;
 export type BrowserReloadInput = z.infer<typeof browserReloadInputSchema>;
@@ -273,6 +338,7 @@ export type BrowserFindEntitiesInput = z.infer<typeof browserFindEntitiesInputSc
 export type BrowserAddEntityInput = z.infer<typeof browserAddEntityInputSchema>;
 export type BrowserDeleteEntityInput = z.infer<typeof browserDeleteEntityInputSchema>;
 export type BrowserRenameEntityInput = z.infer<typeof browserRenameEntityInputSchema>;
+export type BrowserBatchInput = z.infer<typeof browserBatchInputSchema>;
 
 export const toolInputJsonSchemas = {
     'browser.goto': {
@@ -633,6 +699,83 @@ export const toolInputJsonSchemas = {
             y: { type: 'number' },
             deltaY: { type: 'number' },
             button: { type: 'string', enum: ['left', 'right', 'middle'] },
+        },
+        additionalProperties: false,
+    },
+    'browser.batch': {
+        type: 'object',
+        required: ['actions'],
+        properties: {
+            tabToken: { type: 'string' },
+            stopOnError: { type: 'boolean' },
+            contain: { type: 'string' },
+            depth: { type: 'integer', minimum: -1 },
+            actions: {
+                type: 'array',
+                minItems: 1,
+                items: {
+                    oneOf: [
+                        {
+                            type: 'object',
+                            required: ['op', 'value'],
+                            properties: {
+                                op: { type: 'string', const: 'fill' },
+                                id: { type: 'string' },
+                                selector: { type: 'string' },
+                                label: { type: 'string' },
+                                role: { type: 'string' },
+                                value: { type: 'string' },
+                                timeout: { type: 'integer', minimum: 1 },
+                            },
+                            additionalProperties: false,
+                        },
+                        {
+                            type: 'object',
+                            required: ['op', 'values'],
+                            properties: {
+                                op: { type: 'string', const: 'select_option' },
+                                id: { type: 'string' },
+                                selector: { type: 'string' },
+                                label: { type: 'string' },
+                                role: { type: 'string' },
+                                values: { type: 'array', items: { type: 'string' }, minItems: 1 },
+                                timeout: { type: 'integer', minimum: 1 },
+                            },
+                            additionalProperties: false,
+                        },
+                        {
+                            type: 'object',
+                            required: ['op'],
+                            properties: {
+                                op: { type: 'string', const: 'click' },
+                                id: { type: 'string' },
+                                selector: { type: 'string' },
+                                label: { type: 'string' },
+                                role: { type: 'string' },
+                                coord: {
+                                    type: 'object',
+                                    required: ['x', 'y'],
+                                    properties: {
+                                        x: { type: 'number' },
+                                        y: { type: 'number' },
+                                    },
+                                    additionalProperties: false,
+                                },
+                                options: {
+                                    type: 'object',
+                                    properties: {
+                                        button: { type: 'string', enum: ['left', 'right', 'middle'] },
+                                        double: { type: 'boolean' },
+                                    },
+                                    additionalProperties: false,
+                                },
+                                timeout: { type: 'integer', minimum: 1 },
+                            },
+                            additionalProperties: false,
+                        },
+                    ],
+                },
+            },
         },
         additionalProperties: false,
     },

@@ -60,6 +60,8 @@ import {
     type BrowserDeleteEntityInput,
     browserRenameEntityInputSchema,
     type BrowserRenameEntityInput,
+    browserBatchInputSchema,
+    type BrowserBatchInput,
 } from './schemas';
 
 export type McpToolDeps = {
@@ -618,6 +620,179 @@ const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args:
     });
 };
 
+type SnapshotLikeNode = {
+    id?: string;
+    role?: string;
+    name?: string;
+    children?: SnapshotLikeNode[];
+};
+
+const normalizeText = (value: string | undefined): string => (value || '').trim().toLowerCase();
+
+const walkSnapshotNodes = (node: SnapshotLikeNode | undefined, out: SnapshotLikeNode[]) => {
+    if (!node) return;
+    out.push(node);
+    for (const child of node.children || []) {
+        walkSnapshotNodes(child, out);
+    }
+};
+
+const defaultRoleByBatchOp = (op: BrowserBatchInput['actions'][number]['op']): string => {
+    if (op === 'fill') return 'textbox';
+    if (op === 'select_option') return 'combobox';
+    return 'button';
+};
+
+const resolveBatchActionTargetsByLabel = async (
+    deps: McpToolDeps,
+    tabToken: string | undefined,
+    input: BrowserBatchInput,
+): Promise<{ ok: true; actions: BrowserBatchInput['actions'] } | { ok: false; error: unknown }> => {
+    const unresolved = input.actions.filter((action) => !action.id && !action.selector && action.label);
+    if (unresolved.length === 0) {
+        return { ok: true, actions: input.actions };
+    }
+
+    const snap = await runSingleStep(deps, tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.snapshot',
+        args: {
+            contain: input.contain,
+            depth: input.depth,
+            filter: { interactive: true },
+        },
+        meta: { source: 'mcp' },
+    });
+    if (!snap.ok) {
+        return { ok: false, error: snap.error || { code: 'ERR_INTERNAL', message: 'batch pre-snapshot failed' } };
+    }
+
+    const root = (snap.results.find((item) => item.ok)?.data || null) as SnapshotLikeNode | null;
+    const nodes: SnapshotLikeNode[] = [];
+    walkSnapshotNodes(root || undefined, nodes);
+
+    const resolved = input.actions.map((action) => ({ ...action }));
+    for (let idx = 0; idx < resolved.length; idx += 1) {
+        const action = resolved[idx];
+        if (action.id || action.selector || !action.label) continue;
+        const wantedRole = normalizeText(action.role || defaultRoleByBatchOp(action.op));
+        const wantedLabel = normalizeText(action.label);
+        const candidates = nodes.filter((node) => {
+            const role = normalizeText(node.role);
+            const name = normalizeText(node.name);
+            return role === wantedRole && name === wantedLabel && typeof node.id === 'string' && node.id.length > 0;
+        });
+        if (candidates.length === 0) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'batch label target not found',
+                    details: { actionIndex: idx, label: action.label, role: wantedRole },
+                },
+            };
+        }
+        if (candidates.length > 1) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_AMBIGUOUS',
+                    message: 'batch label target is ambiguous',
+                    details: {
+                        actionIndex: idx,
+                        label: action.label,
+                        role: wantedRole,
+                        candidateIds: candidates.map((item) => item.id),
+                    },
+                },
+            };
+        }
+        action.id = candidates[0].id!;
+    }
+
+    return { ok: true, actions: resolved as BrowserBatchInput['actions'] };
+};
+
+const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion => {
+    const stepId = crypto.randomUUID();
+    if (action.op === 'fill') {
+        return {
+            id: stepId,
+            name: 'browser.fill',
+            args: {
+                id: action.id,
+                selector: action.selector,
+                value: action.value,
+                timeout: action.timeout,
+            },
+            meta: { source: 'mcp' },
+        };
+    }
+    if (action.op === 'select_option') {
+        return {
+            id: stepId,
+            name: 'browser.select_option',
+            args: {
+                id: action.id,
+                selector: action.selector,
+                values: action.values,
+                timeout: action.timeout,
+            },
+            meta: { source: 'mcp' },
+        };
+    }
+    return {
+        id: stepId,
+        name: 'browser.click',
+        args: {
+            id: action.id,
+            selector: action.selector,
+            coord: action.coord,
+            options: action.options,
+            timeout: action.timeout,
+        },
+        meta: { source: 'mcp' },
+    };
+};
+
+const handleBatch = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserBatchInput>(browserBatchInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    const stopOnError = input.stopOnError !== false;
+
+    const resolved = await resolveBatchActionTargetsByLabel(deps, input.tabToken, input);
+    if (!resolved.ok) {
+        return buildParseErrorResult(resolved.error);
+    }
+
+    const finalResults: Array<Record<string, unknown>> = [];
+    for (let idx = 0; idx < resolved.actions.length; idx += 1) {
+        const action = resolved.actions[idx];
+        const step = toBatchStep(action);
+        const stepResult = await runSingleStep(deps, input.tabToken, step);
+        const first = stepResult.results[0] as Record<string, unknown> | undefined;
+        finalResults.push({
+            actionIndex: idx,
+            op: action.op,
+            ...first,
+        });
+        if (!stepResult.ok && stopOnError) {
+            return {
+                ok: false,
+                results: finalResults,
+                error: stepResult.error || first?.error,
+            };
+        }
+    }
+
+    return {
+        ok: finalResults.every((item) => item.ok === true),
+        results: finalResults,
+        error: finalResults.find((item) => item.ok !== true)?.error,
+    };
+};
+
 export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHandler> => ({
     'browser.goto': handleGoto(deps),
     'browser.go_back': handleGoBack(deps),
@@ -647,4 +822,5 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.press_key': handlePressKey(deps),
     'browser.drag_and_drop': handleDragAndDrop(deps),
     'browser.mouse': handleMouse(deps),
+    'browser.batch': handleBatch(deps),
 });

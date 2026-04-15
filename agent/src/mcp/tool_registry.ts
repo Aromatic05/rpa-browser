@@ -37,6 +37,7 @@ const toolDescriptions: Array<{ name: string; description: string }> = [
     { name: 'browser.press_key', description: 'Press a keyboard key with optional target focus.' },
     { name: 'browser.drag_and_drop', description: 'Drag a source element to a destination.' },
     { name: 'browser.mouse', description: 'Perform a low-level mouse action.' },
+    { name: 'browser.batch', description: 'Execute multiple actions sequentially in one call, optionally resolving targets by label.' },
 ];
 
 export type ToolRegistryDeps = {

@@ -167,6 +167,11 @@ export const createMcpServer = (deps: McpToolDeps) => {
                 description: 'Perform a low-level mouse action.',
                 inputSchema: toolInputJsonSchemas['browser.mouse'],
             },
+            {
+                name: 'browser.batch',
+                description: 'Execute multiple actions sequentially in one call, optionally resolving targets by label.',
+                inputSchema: toolInputJsonSchemas['browser.batch'],
+            },
         ],
     }));
 
