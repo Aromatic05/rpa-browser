@@ -7,47 +7,22 @@ import { isStrongSemanticRole } from '../core/interactive';
 import type { EntityIndex, NodeTier, UnifiedNode } from '../core/types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
-    const tree = stageBuildTree(node);
-    const structure = stageSelectCandidates(tree);
-    const entityIndex = stageBuildEntityIndex(tree, structure);
-
-    stageMarkStrongSemantics(tree);
-    stageApplyLCA(tree, entityIndex);
-    stageRankTiers(tree);
-
-    return stageCompressAndFinalize(tree);
-};
-
-const stageBuildTree = (node: UnifiedNode): UnifiedNode => node;
-
-const stageSelectCandidates = (tree: UnifiedNode) => {
+    const tree = node;
     const detected = detectStructureCandidates(tree);
-    return selectStructureCandidates(tree, detected.candidates);
-};
+    const structure = selectStructureCandidates(tree, detected.candidates);
+    const entityIndex = buildStructureEntityIndex(tree, structure, { includeDescendants: false });
 
-const stageBuildEntityIndex = (tree: UnifiedNode, structure: ReturnType<typeof stageSelectCandidates>) =>
-    buildStructureEntityIndex(tree, structure, { includeDescendants: false });
-
-const stageMarkStrongSemantics = (tree: UnifiedNode) => {
-    walk(tree, (node) => {
-        if (isStrongSemanticRole(node.role)) {
-            node.tier = 'A';
-        }
-    });
-};
-
-const stageApplyLCA = (tree: UnifiedNode, entityIndex: EntityIndex) => {
     applyLCA(tree, entityIndex);
-};
 
-const stageRankTiers = (tree: UnifiedNode) => {
     walk(tree, (node) => {
         if (node.tier) return;
+        if (isStrongSemanticRole(node.role)) {
+            node.tier = 'A';
+            return;
+        }
         node.tier = defaultTier(node);
     });
-};
 
-const stageCompressAndFinalize = (tree: UnifiedNode): UnifiedNode | null => {
     const compressed = compress(tree);
     if (!compressed) return null;
     return finalizeLabel(compressed);

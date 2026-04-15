@@ -235,12 +235,14 @@ const stageProcessLayerRegions = (root: UnifiedNode, cacheStats: CacheStats) => 
 };
 
 const processLayerRegions = (layer: UnifiedNode, cacheStats: CacheStats) => {
-    const regions = [...detectRegions(layer)];
+    const regions = detectRegions(layer);
     snapshotDebugLog('regions', {
         layerId: layer.id,
         layerRole: layer.role,
         regionCount: regions.length,
     });
+
+    const nextChildren: UnifiedNode[] = [];
 
     for (const region of regions) {
         cacheStats.bucketTotal += 1;
@@ -250,30 +252,30 @@ const processLayerRegions = (layer: UnifiedNode, cacheStats: CacheStats) => {
             const cached = readBucketCache(bucketKey, bucketHash);
             if (cached) {
                 cacheStats.bucketHit += 1;
-                replaceRegion(layer, region, cached);
+                nextChildren.push(cached);
                 continue;
             }
 
             cacheStats.bucketMiss += 1;
             const processed = processRegion(region);
             if (!processed) {
-                removeRegion(layer, region);
                 continue;
             }
 
             writeBucketCache(bucketKey, bucketHash, processed);
-            replaceRegion(layer, region, processed);
+            nextChildren.push(processed);
             continue;
         }
 
         cacheStats.bucketMiss += 1;
         const processed = processRegion(region);
         if (!processed) {
-            removeRegion(layer, region);
             continue;
         }
-        replaceRegion(layer, region, processed);
+        nextChildren.push(processed);
     }
+
+    layer.children = nextChildren;
 };
 
 const stageLinkGlobalRelations = (root: UnifiedNode) => {
@@ -322,29 +324,6 @@ const createVirtualRoot = (): UnifiedNode => ({
     role: 'root',
     children: [],
 });
-
-const replaceRegion = (layer: UnifiedNode, target: UnifiedNode, next: UnifiedNode) => {
-    const index = layer.children.findIndex((child) => child === target || child.id === target.id);
-    if (index >= 0) {
-        layer.children[index] = next;
-        return;
-    }
-    for (const child of layer.children) {
-        replaceRegion(child, target, next);
-    }
-};
-
-const removeRegion = (layer: UnifiedNode, target: UnifiedNode): boolean => {
-    const index = layer.children.findIndex((child) => child === target || child.id === target.id);
-    if (index >= 0) {
-        layer.children.splice(index, 1);
-        return true;
-    }
-    for (const child of layer.children) {
-        if (removeRegion(child, target)) return true;
-    }
-    return false;
-};
 
 const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);

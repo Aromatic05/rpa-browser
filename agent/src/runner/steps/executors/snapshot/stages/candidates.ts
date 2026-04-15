@@ -65,21 +65,6 @@ export type CandidateSelectionResult = {
     regions: RegionDetection[];
 };
 
-export type CandidateDropReason = 'threshold' | 'conflict' | 'penalty_threshold' | 'cap';
-
-export type CandidateDecision = {
-    key: string;
-    selected: boolean;
-    reason?: CandidateDropReason;
-    blockedByKey?: string;
-    note?: string;
-};
-
-export type CandidateSelectionDebugResult = CandidateSelectionResult & {
-    decisions: CandidateDecision[];
-    decisionByKey: Record<string, CandidateDecision | undefined>;
-};
-
 type CandidateSourceInput = {
     groups: GroupDetection[];
     regions: RegionDetection[];
@@ -175,39 +160,19 @@ export const selectStructureCandidates = (
     root: UnifiedNode,
     candidates: StructureCandidate[],
 ): CandidateSelectionResult => {
-    return runSelection(root, candidates, false);
-};
-
-export const selectStructureCandidatesWithDebug = (
-    root: UnifiedNode,
-    candidates: StructureCandidate[],
-): CandidateSelectionDebugResult => {
-    return runSelection(root, candidates, true) as CandidateSelectionDebugResult;
+    return runSelection(root, candidates);
 };
 
 const runSelection = (
     root: UnifiedNode,
     candidates: StructureCandidate[],
-    withDebug: boolean,
-): CandidateSelectionResult | CandidateSelectionDebugResult => {
+): CandidateSelectionResult => {
     const context = buildTreeContext(root);
     const sorted = [...candidates].sort(compareCandidatePriority);
     const kept: StructureCandidate[] = [];
-    const decisionByKey = new Map<string, CandidateDecision>();
-
-    const setDecision = (decision: CandidateDecision) => {
-        if (!withDebug) return;
-        decisionByKey.set(decision.key, decision);
-    };
 
     for (const candidate of sorted) {
-        const candidateKey = toCandidateKey(candidate);
         if (!passesScoreThreshold(candidate)) {
-            setDecision({
-                key: candidateKey,
-                selected: false,
-                reason: 'threshold',
-            });
             continue;
         }
         let dropped = false;
@@ -216,24 +181,10 @@ const runSelection = (
             const existing = kept[index];
             const decision = resolveConflict(candidate, existing, context);
             if (decision.dropCandidate) {
-                setDecision({
-                    key: candidateKey,
-                    selected: false,
-                    reason: 'conflict',
-                    blockedByKey: toCandidateKey(existing),
-                    note: decision.note,
-                });
                 dropped = true;
                 break;
             }
             if (decision.dropExisting) {
-                setDecision({
-                    key: toCandidateKey(existing),
-                    selected: false,
-                    reason: 'conflict',
-                    blockedByKey: candidateKey,
-                    note: decision.note,
-                });
                 kept.splice(index, 1);
                 index -= 1;
                 continue;
@@ -241,13 +192,6 @@ const runSelection = (
             if (decision.candidateRedundancyPenalty || decision.candidateNestedPenalty) {
                 applyPenalty(candidate, decision.candidateRedundancyPenalty || 0, decision.candidateNestedPenalty || 0);
                 if (!passesScoreThreshold(candidate)) {
-                    setDecision({
-                        key: candidateKey,
-                        selected: false,
-                        reason: 'penalty_threshold',
-                        blockedByKey: toCandidateKey(existing),
-                        note: decision.note,
-                    });
                     dropped = true;
                     break;
                 }
@@ -255,27 +199,10 @@ const runSelection = (
         }
 
         if (dropped) continue;
-        setDecision({
-            key: candidateKey,
-            selected: true,
-        });
         kept.push(candidate);
     }
 
-    const { kept: capped, dropped: capDropped } = capCandidates(kept.sort(compareCandidatePriority), context);
-    for (const dropped of capDropped) {
-        setDecision({
-            key: toCandidateKey(dropped),
-            selected: false,
-            reason: 'cap',
-        });
-    }
-    for (const keptCandidate of capped) {
-        setDecision({
-            key: toCandidateKey(keptCandidate),
-            selected: true,
-        });
-    }
+    const { kept: capped } = capCandidates(kept.sort(compareCandidatePriority), context);
 
     const regions: RegionDetection[] = [];
     const groups: GroupDetection[] = [];
@@ -289,32 +216,7 @@ const runSelection = (
         }
     }
 
-    if (!withDebug) {
-        return { candidates: capped, groups, regions };
-    }
-
-    const decisions = sorted.map((candidate) => {
-        const key = toCandidateKey(candidate);
-        const fallback: CandidateDecision = {
-            key,
-            selected: false,
-            reason: 'threshold',
-        };
-        return (
-            decisionByKey.get(key) || fallback
-        );
-    });
-    const decisionObject: Record<string, CandidateDecision | undefined> = {};
-    for (const decision of decisions) {
-        decisionObject[decision.key] = decision;
-    }
-    return {
-        candidates: capped,
-        groups,
-        regions,
-        decisions,
-        decisionByKey: decisionObject,
-    };
+    return { candidates: capped, groups, regions };
 };
 
 const buildTreeContext = (root: UnifiedNode): TreeContext => {
@@ -924,10 +826,6 @@ const safeRatio = (numerator: number, denominator: number): number => {
 };
 
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
-
-const toCandidateKey = (candidate: StructureCandidate): string => {
-    return `${candidate.source}:${candidate.kind}:${candidate.nodeId}`;
-};
 
 const isDocumentContainer = (role: string, tag: string): boolean => {
     if (DOC_CONTAINER_ROLES.has(role)) return true;
