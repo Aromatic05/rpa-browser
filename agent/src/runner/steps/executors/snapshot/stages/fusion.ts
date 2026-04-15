@@ -376,6 +376,20 @@ const validateRuntimeState = (
     // For dynamic form controls (checkbox/radio/select), strict fingerprint checks
     // can reject true-positive matches when frameworks mutate wrappers/attrs.
     if (!isFingerprintCompatible(runtimeState.type, normalizeText(node.attrs?.type || node.type))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) return undefined;
+    if (!isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) {
+        return undefined;
+    }
+    if (!isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) return undefined;
+    if (
+        !isFingerprintCompatible(
+            runtimeState.dataTestId,
+            normalizeText(node.attrs?.['data-testid'] || node.attrs?.['data-test-id']),
+        )
+    ) {
+        return undefined;
+    }
 
     return runtimeState;
 };
@@ -402,7 +416,7 @@ const resolveRuntimeStateForNode = (
 
     for (const [candidateKey, row] of Object.entries(runtimeStateMap)) {
         if (consumedPathKeys.has(candidateKey)) continue;
-        const score = scoreRuntimeCandidate(node, row, parentPathKey);
+        const score = scoreRuntimeCandidate(pathKey, candidateKey, node, row, parentPathKey);
         if (score <= 0) continue;
         if (score > bestScore) {
             bestScore = score;
@@ -423,12 +437,27 @@ const resolveRuntimeStateForNode = (
 };
 
 const scoreRuntimeCandidate = (
+    pathKey: string,
+    candidatePathKey: string,
     node: DomNodeInput,
     runtimeState: RuntimeStateMap[string] | undefined,
     parentPathKey: string | undefined,
 ): number => {
     if (!runtimeState) return 0;
     let score = 0;
+    if (!isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) return 0;
+    if (!isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) return 0;
+    if (!isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) return 0;
+    if (!isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) return 0;
+    if (
+        !isFingerprintCompatible(
+            runtimeState.dataTestId,
+            normalizeText(node.attrs?.['data-testid'] || node.attrs?.['data-test-id']),
+        )
+    ) {
+        return 0;
+    }
+
     const nodeTag = normalizeRole(node.tag).toLowerCase();
     const rowTag = normalizeRole(runtimeState.tag).toLowerCase();
     if (nodeTag && rowTag && nodeTag !== rowTag) return 0;
@@ -441,24 +470,11 @@ const scoreRuntimeCandidate = (
         score += 4;
     }
 
-    if (isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) score += normalizeText(runtimeState.idAttr) ? 3 : 0;
-    if (isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) {
-        score += normalizeText(runtimeState.nameAttr) ? 3 : 0;
-    }
-    if (isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) {
-        score += normalizeText(runtimeState.placeholder) ? 2 : 0;
-    }
-    if (isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) {
-        score += normalizeText(runtimeState.ariaLabel) ? 2 : 0;
-    }
-    if (
-        isFingerprintCompatible(
-            runtimeState.dataTestId,
-            normalizeText(node.attrs?.['data-testid'] || node.attrs?.['data-test-id']),
-        )
-    ) {
-        score += normalizeText(runtimeState.dataTestId) ? 2 : 0;
-    }
+    score += normalizeText(runtimeState.idAttr) ? 3 : 0;
+    score += normalizeText(runtimeState.nameAttr) ? 3 : 0;
+    score += normalizeText(runtimeState.placeholder) ? 2 : 0;
+    score += normalizeText(runtimeState.ariaLabel) ? 2 : 0;
+    score += normalizeText(runtimeState.dataTestId) ? 2 : 0;
     if (isFingerprintCompatible(runtimeState.parentKey, parentPathKey)) {
         score += normalizeText(runtimeState.parentKey) ? 1 : 0;
     }
@@ -477,7 +493,51 @@ const scoreRuntimeCandidate = (
         score += 1;
     }
 
+    score += scoreRuntimePathAffinity(pathKey, candidatePathKey);
+
     return score;
+};
+
+const scoreRuntimePathAffinity = (pathKey: string, candidatePathKey: string): number => {
+    const a = splitPathKey(pathKey);
+    const b = splitPathKey(candidatePathKey);
+    if (a.length === 0 || b.length === 0) return 0;
+
+    const shared = sharedPrefixLength(a, b);
+    if (shared === 0) return 0;
+
+    const sameParent = a.length > 1 && b.length > 1 && shared === a.length - 1 && shared === b.length - 1;
+    if (sameParent) {
+        const distance = Math.abs(readLastPathIndex(a) - readLastPathIndex(b));
+        return Math.max(0, 6 - distance);
+    }
+
+    const depthGap = Math.abs(a.length - b.length);
+    return Math.max(0, Math.min(4, shared) - depthGap);
+};
+
+const splitPathKey = (pathKey: string): string[] => {
+    return pathKey
+        .split('.')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+};
+
+const sharedPrefixLength = (left: string[], right: string[]): number => {
+    const len = Math.min(left.length, right.length);
+    let matched = 0;
+    for (let i = 0; i < len; i += 1) {
+        if (left[i] !== right[i]) break;
+        matched += 1;
+    }
+    return matched;
+};
+
+const readLastPathIndex = (parts: string[]): number => {
+    const raw = parts[parts.length - 1] || '';
+    const num = Number(raw);
+    if (Number.isFinite(num)) return num;
+    return Number.MAX_SAFE_INTEGER;
 };
 
 const isFingerprintCompatible = (runtimeValue: string | undefined, domValue: string | undefined): boolean => {

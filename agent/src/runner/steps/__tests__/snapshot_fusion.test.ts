@@ -424,3 +424,38 @@ test('fuseDomAndA11y should drop runtime state when fingerprint validation fails
     const field = findNode(graph.root, 'n0.3');
     assert.equal(getNodeAttr(field, 'value'), undefined);
 });
+
+test('fuseDomAndA11y should recover runtime state from nearest sibling path when exact path is missing', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'body',
+        children: [
+            { id: 'n0.0', tag: 'div', children: [] },
+            { id: 'n0.1', tag: 'div', children: [] },
+            {
+                id: 'n0.2',
+                tag: 'select',
+                attrs: {
+                    id: 'invoiceType',
+                },
+                children: [],
+            },
+            { id: 'n0.3', tag: 'div', children: [] },
+        ],
+    };
+    const runtimeStateMap: RuntimeStateMap = {
+        'n0.4': {
+            pathKey: 'n0.4',
+            parentKey: 'n0',
+            tag: 'select',
+            idAttr: 'invoiceType',
+            selected: 'PDF文件',
+            value: 'PDF文件',
+        },
+    };
+
+    const graph = fuseDomAndA11y(domTree, null, runtimeStateMap);
+    const field = findNode(graph.root, 'n0.2');
+    assert.equal(getNodeAttr(field, 'selected'), 'PDF文件');
+    assert.equal(getNodeAttr(field, 'value'), 'PDF文件');
+});

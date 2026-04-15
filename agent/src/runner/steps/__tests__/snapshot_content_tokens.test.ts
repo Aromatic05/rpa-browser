@@ -94,14 +94,14 @@ test('combobox selected value maps to selected token', () => {
     assert.equal(content, 'selected="北京"');
 });
 
-test('combobox can fall back to visible content/name when selected attrs are absent', () => {
+test('combobox should stay empty when selected attrs are absent', () => {
     const fromContent = createNode('combobox-content', 'combobox');
     setNodeContent(fromContent, '香蕉');
-    assert.equal(joinContentTokens(buildInteractionContentTokens(fromContent)), 'selected="香蕉"');
+    assert.equal(joinContentTokens(buildInteractionContentTokens(fromContent)), 'empty');
 
     const fromName = createNode('combobox-name', 'combobox');
     fromName.name = '苹果';
-    assert.equal(joinContentTokens(buildInteractionContentTokens(fromName)), 'selected="苹果"');
+    assert.equal(joinContentTokens(buildInteractionContentTokens(fromName)), 'empty');
 
     const placeholderLike = createNode('combobox-placeholder', 'combobox');
     placeholderLike.name = '你喜欢什么样的工作方式？';

@@ -188,10 +188,6 @@ const resolveSelectedValues = (node: UnifiedNode): string[] => {
         selected.push(label);
     });
 
-    if (selected.length === 0) {
-        const fallback = resolveSelectDisplayFallback(node, attrs);
-        return fallback ? [fallback] : [];
-    }
     return [...new Set(selected)];
 };
 
@@ -227,25 +223,6 @@ const resolveCheckedState = (attrs: Record<string, string>): boolean => {
     }
 
     return false;
-};
-
-const resolveSelectDisplayFallback = (node: UnifiedNode, attrs: Record<string, string>): string | undefined => {
-    const content = normalizeText(getNodeContent(node)) || (typeof node.content === 'string' ? normalizeText(node.content) : undefined);
-    if (content && !looksLikePlaceholderText(content)) {
-        return content;
-    }
-
-    const name = normalizeText(node.name);
-    if (!name || looksLikePlaceholderText(name)) return undefined;
-    if (hasOwn(attrs, 'placeholder') || hasOwn(attrs, 'aria-placeholder')) return undefined;
-    return name;
-};
-
-const looksLikePlaceholderText = (value: string): boolean => {
-    const normalized = normalizeRole(value);
-    if (!normalized) return true;
-    if (normalized.endsWith('?') || normalized.endsWith('？')) return true;
-    return PLACEHOLDER_TEXT_PATTERN.test(normalized);
 };
 
 const resolveBooleanState = (attrs: Record<string, string>, keys: string[]): boolean | undefined => {
@@ -380,4 +357,3 @@ const CHECKED_CLASS_PATTERN = /\b(checked|is-checked|ant-checkbox-checked|ant-ra
 const UNCHECKED_CLASS_PATTERN = /\b(unchecked|is-unchecked)\b/;
 const SELECTED_CLASS_PATTERN = /\b(selected|is-selected|active)\b/;
 const UNSELECTED_CLASS_PATTERN = /\b(unselected|is-unselected)\b/;
-const PLACEHOLDER_TEXT_PATTERN = /(placeholder|select|choose|请选择|选择|请输入)/;

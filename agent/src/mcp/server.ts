@@ -9,15 +9,37 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ERROR_CODES } from '../actions/error_codes';
 import { errorResult } from '../actions/results';
-import { createToolHandlers, type McpToolDeps } from './tool_handlers';
-import { toolInputJsonSchemas } from './schemas';
+import { createToolHandlers, type McpToolDeps, type McpToolHandler } from './tool_handlers';
+import { getToolSpecs, type ToolSpec } from './tool_registry';
 
-export const createMcpServer = (deps: McpToolDeps) => {
+export type McpToolRuntime = {
+    handlers: Record<string, McpToolHandler>;
+    tools: ToolSpec[];
+};
+
+export type McpServerDeps = McpToolDeps & {
+    resolveToolRuntime?: () => McpToolRuntime;
+};
+
+const createDefaultRuntime = (deps: McpToolDeps): McpToolRuntime => ({
+    handlers: createToolHandlers(deps),
+    tools: getToolSpecs(),
+});
+
+export const createMcpServer = (deps: McpServerDeps) => {
     const server = new Server(
         { name: 'rpa-agent', version: '0.1.0' },
         { capabilities: { tools: {} } },
     );
-    const handlers = createToolHandlers(deps);
+    const fallbackRuntime = createDefaultRuntime(deps);
+    const resolveRuntime = (): McpToolRuntime => {
+        try {
+            return deps.resolveToolRuntime?.() || fallbackRuntime;
+        } catch (error) {
+            deps.log?.('mcp resolve tool runtime failed; fallback to static runtime', error);
+            return fallbackRuntime;
+        }
+    };
 
     server.setRequestHandler(InitializeRequestSchema, async (request: any) => ({
         protocolVersion: request.params.protocolVersion,
@@ -26,159 +48,13 @@ export const createMcpServer = (deps: McpToolDeps) => {
     }));
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: [
-            {
-                name: 'browser.goto',
-                description: 'Navigate the current tab to a URL.',
-                inputSchema: toolInputJsonSchemas['browser.goto'],
-            },
-            {
-                name: 'browser.go_back',
-                description: 'Go back in history for the current tab.',
-                inputSchema: toolInputJsonSchemas['browser.go_back'],
-            },
-            {
-                name: 'browser.reload',
-                description: 'Reload the current tab.',
-                inputSchema: toolInputJsonSchemas['browser.reload'],
-            },
-            {
-                name: 'browser.create_tab',
-                description: 'Create a new tab in the current workspace.',
-                inputSchema: toolInputJsonSchemas['browser.create_tab'],
-            },
-            {
-                name: 'browser.switch_tab',
-                description: 'Switch to a tab by id.',
-                inputSchema: toolInputJsonSchemas['browser.switch_tab'],
-            },
-            {
-                name: 'browser.close_tab',
-                description: 'Close a tab by id or the current tab.',
-                inputSchema: toolInputJsonSchemas['browser.close_tab'],
-            },
-            {
-                name: 'browser.get_page_info',
-                description: 'Return page metadata and tab list.',
-                inputSchema: toolInputJsonSchemas['browser.get_page_info'],
-            },
-            {
-                name: 'browser.snapshot',
-                description: 'Return a structured UnifiedNode snapshot tree, with optional contain/depth/filter/diff view.',
-                inputSchema: toolInputJsonSchemas['browser.snapshot'],
-            },
-            {
-                name: 'browser.list_entities',
-                description: 'List entities from the final snapshot entity view.',
-                inputSchema: toolInputJsonSchemas['browser.list_entities'],
-            },
-            {
-                name: 'browser.get_entity',
-                description: 'Get entity information by snapshot nodeId.',
-                inputSchema: toolInputJsonSchemas['browser.get_entity'],
-            },
-            {
-                name: 'browser.find_entities',
-                description: 'Find entities by query, kind, and business tag.',
-                inputSchema: toolInputJsonSchemas['browser.find_entities'],
-            },
-            {
-                name: 'browser.add_entity',
-                description: 'Add an overlay entity on a snapshot node.',
-                inputSchema: toolInputJsonSchemas['browser.add_entity'],
-            },
-            {
-                name: 'browser.delete_entity',
-                description: 'Suppress entity interpretation on a snapshot node.',
-                inputSchema: toolInputJsonSchemas['browser.delete_entity'],
-            },
-            {
-                name: 'browser.rename_entity',
-                description: 'Rename a snapshot node by nodeId.',
-                inputSchema: toolInputJsonSchemas['browser.rename_entity'],
-            },
-            {
-                name: 'browser.get_content',
-                description: 'Resolve snapshot content by content ref.',
-                inputSchema: toolInputJsonSchemas['browser.get_content'],
-            },
-            {
-                name: 'browser.read_console',
-                description: 'Read recent console entries from the active tab.',
-                inputSchema: toolInputJsonSchemas['browser.read_console'],
-            },
-            {
-                name: 'browser.read_network',
-                description: 'Read recent network entries from the active tab.',
-                inputSchema: toolInputJsonSchemas['browser.read_network'],
-            },
-            {
-                name: 'browser.evaluate',
-                description: 'Evaluate JavaScript expression in the page context.',
-                inputSchema: toolInputJsonSchemas['browser.evaluate'],
-            },
-            {
-                name: 'browser.take_screenshot',
-                description: 'Capture a screenshot for the page or target.',
-                inputSchema: toolInputJsonSchemas['browser.take_screenshot'],
-            },
-            {
-                name: 'browser.click',
-                description: 'Click an element by id or selector.',
-                inputSchema: toolInputJsonSchemas['browser.click'],
-            },
-            {
-                name: 'browser.fill',
-                description: 'Fill an element by id or selector.',
-                inputSchema: toolInputJsonSchemas['browser.fill'],
-            },
-            {
-                name: 'browser.type',
-                description: 'Type text into a target element.',
-                inputSchema: toolInputJsonSchemas['browser.type'],
-            },
-            {
-                name: 'browser.select_option',
-                description: 'Select option values from a target element.',
-                inputSchema: toolInputJsonSchemas['browser.select_option'],
-            },
-            {
-                name: 'browser.hover',
-                description: 'Hover over a target element.',
-                inputSchema: toolInputJsonSchemas['browser.hover'],
-            },
-            {
-                name: 'browser.scroll',
-                description: 'Scroll the page or a target element into view.',
-                inputSchema: toolInputJsonSchemas['browser.scroll'],
-            },
-            {
-                name: 'browser.press_key',
-                description: 'Press a keyboard key with optional target focus.',
-                inputSchema: toolInputJsonSchemas['browser.press_key'],
-            },
-            {
-                name: 'browser.drag_and_drop',
-                description: 'Drag a source element to a destination.',
-                inputSchema: toolInputJsonSchemas['browser.drag_and_drop'],
-            },
-            {
-                name: 'browser.mouse',
-                description: 'Perform a low-level mouse action.',
-                inputSchema: toolInputJsonSchemas['browser.mouse'],
-            },
-            {
-                name: 'browser.batch',
-                description: 'Execute multiple actions sequentially in one call, optionally resolving targets by label.',
-                inputSchema: toolInputJsonSchemas['browser.batch'],
-            },
-        ],
+        tools: resolveRuntime().tools,
     }));
 
     server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const name = request.params.name;
         const args = request.params.arguments ?? {};
-        const handler = handlers[name];
+        const handler = resolveRuntime().handlers[name];
         if (!handler) {
             const error = errorResult('', ERROR_CODES.ERR_UNSUPPORTED, `unknown tool: ${name}`);
             return {
@@ -305,7 +181,7 @@ class HttpPostServerTransport implements Transport {
     }
 }
 
-export const startMcpServer = async (deps: McpToolDeps, options: McpHttpOptions = {}) => {
+export const startMcpServer = async (deps: McpServerDeps, options: McpHttpOptions = {}) => {
     const host = options.host || process.env.RPA_MCP_HOST || '127.0.0.1';
     const port = options.port ?? Number(process.env.RPA_MCP_PORT || 17654);
     const mcpPath = normalizePath(options.mcpPath || process.env.RPA_MCP_PATH || '/mcp');

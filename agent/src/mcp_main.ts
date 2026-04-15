@@ -10,6 +10,7 @@ import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
+import { McpToolHost } from './mcp/hotreload/tool_host';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -62,6 +63,8 @@ if (hotReloadEnabled) {
 } else {
     logNotice('Runner plugin hot reload disabled by RUNNER_HOT_RELOAD.', { pluginEntry });
 }
+const sourceMcpHotEntry = path.resolve(process.cwd(), 'src/mcp/hot_entry.ts');
+const mcpToolHost = new McpToolHost(sourceMcpHotEntry);
 
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
@@ -90,6 +93,15 @@ setRunStepsDeps({
     config,
     pluginHost: runnerPluginHost,
 });
+await mcpToolHost.load({
+    pageRegistry,
+    log,
+});
+if (hotReloadEnabled) {
+    const watchTarget = path.resolve(process.cwd(), 'src/mcp');
+    mcpToolHost.watchDev(watchTarget, { pageRegistry, log });
+    logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
+}
 
 (async () => {
     try {
@@ -98,6 +110,11 @@ setRunStepsDeps({
         await startMcpServer({
             pageRegistry,
             log,
+            resolveToolRuntime: () =>
+                mcpToolHost.getRuntime() || {
+                    handlers: {},
+                    tools: [],
+                },
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
