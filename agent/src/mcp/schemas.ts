@@ -28,7 +28,6 @@ const batchFillActionSchema = z.object({
     label: z.string().optional(),
     role: z.string().optional(),
     value: z.string(),
-    timeout: z.number().int().positive().optional(),
 });
 
 const batchSelectOptionActionSchema = z.object({
@@ -38,7 +37,6 @@ const batchSelectOptionActionSchema = z.object({
     label: z.string().optional(),
     role: z.string().optional(),
     values: z.array(z.string()).nonempty(),
-    timeout: z.number().int().positive().optional(),
 });
 
 const batchClickActionSchema = z.object({
@@ -54,7 +52,6 @@ const batchClickActionSchema = z.object({
             double: z.boolean().optional(),
         })
         .optional(),
-    timeout: z.number().int().positive().optional(),
 });
 
 const batchActionSchema = z.discriminatedUnion('op', [
@@ -66,17 +63,14 @@ const batchActionSchema = z.discriminatedUnion('op', [
 export const browserGotoInputSchema = z.object({
     tabToken: z.string().optional(),
     url: z.string(),
-    timeout: z.number().int().positive().optional(),
 });
 
 export const browserGoBackInputSchema = z.object({
     tabToken: z.string().optional(),
-    timeout: z.number().int().positive().optional(),
 });
 
 export const browserReloadInputSchema = z.object({
     tabToken: z.string().optional(),
-    timeout: z.number().int().positive().optional(),
 });
 
 export const browserCreateTabInputSchema = z.object({
@@ -95,6 +89,10 @@ export const browserCloseTabInputSchema = z.object({
 });
 
 export const browserGetPageInfoInputSchema = z.object({
+    tabToken: z.string().optional(),
+});
+
+export const browserListTabsInputSchema = z.object({
     tabToken: z.string().optional(),
 });
 
@@ -176,6 +174,7 @@ export const browserTakeScreenshotInputSchema = z.object({
     id: z.string().optional(),
     selector: z.string().optional(),
     full_page: z.boolean().optional(),
+    inline: z.boolean().optional(),
 });
 
 export const browserClickInputSchema = z
@@ -190,7 +189,6 @@ export const browserClickInputSchema = z
                 double: z.boolean().optional(),
             })
             .optional(),
-        timeout: z.number().int().positive().optional(),
     })
     .refine((value) => Boolean(value.coord) || ensureIdOrSelector(value), {
         message: 'click requires coord or id/selector',
@@ -202,7 +200,6 @@ export const browserFillInputSchema = z
         id: z.string().optional(),
         selector: z.string().optional(),
         value: z.string(),
-        timeout: z.number().int().positive().optional(),
     })
     .refine(ensureIdOrSelector, {
         message: 'fill requires id or selector',
@@ -215,7 +212,6 @@ export const browserTypeInputSchema = z
         selector: z.string().optional(),
         text: z.string(),
         delay_ms: z.number().int().min(0).optional(),
-        timeout: z.number().int().positive().optional(),
     })
     .refine(ensureIdOrSelector, {
         message: 'type requires id or selector',
@@ -227,7 +223,6 @@ export const browserSelectOptionInputSchema = z
         id: z.string().optional(),
         selector: z.string().optional(),
         values: z.array(z.string()),
-        timeout: z.number().int().positive().optional(),
     })
     .refine(ensureIdOrSelector, {
         message: 'select_option requires id or selector',
@@ -238,7 +233,6 @@ export const browserHoverInputSchema = z
         tabToken: z.string().optional(),
         id: z.string().optional(),
         selector: z.string().optional(),
-        timeout: z.number().int().positive().optional(),
     })
     .refine(ensureIdOrSelector, {
         message: 'hover requires id or selector',
@@ -250,7 +244,6 @@ export const browserScrollInputSchema = z.object({
     selector: z.string().optional(),
     direction: z.enum(['up', 'down']).optional(),
     amount: z.number().int().positive().optional(),
-    timeout: z.number().int().positive().optional(),
 });
 
 export const browserPressKeyInputSchema = z.object({
@@ -258,7 +251,6 @@ export const browserPressKeyInputSchema = z.object({
     key: z.string(),
     id: z.string().optional(),
     selector: z.string().optional(),
-    timeout: z.number().int().positive().optional(),
 });
 
 export const browserDragAndDropInputSchema = z
@@ -269,7 +261,6 @@ export const browserDragAndDropInputSchema = z
         dest_id: z.string().optional(),
         dest_selector: z.string().optional(),
         dest_coord: coordSchema.optional(),
-        timeout: z.number().int().positive().optional(),
     })
     .refine((value) => Boolean(value.source_id || value.source_selector), {
         message: 'drag_and_drop requires source_id or source_selector',
@@ -317,6 +308,7 @@ export type BrowserCreateTabInput = z.infer<typeof browserCreateTabInputSchema>;
 export type BrowserSwitchTabInput = z.infer<typeof browserSwitchTabInputSchema>;
 export type BrowserCloseTabInput = z.infer<typeof browserCloseTabInputSchema>;
 export type BrowserGetPageInfoInput = z.infer<typeof browserGetPageInfoInputSchema>;
+export type BrowserListTabsInput = z.infer<typeof browserListTabsInputSchema>;
 export type BrowserSnapshotInput = z.infer<typeof browserSnapshotInputSchema>;
 export type BrowserGetContentInput = z.infer<typeof browserGetContentInputSchema>;
 export type BrowserReadConsoleInput = z.infer<typeof browserReadConsoleInputSchema>;
@@ -347,7 +339,6 @@ export const toolInputJsonSchemas = {
         properties: {
             tabToken: { type: 'string' },
             url: { type: 'string' },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -356,7 +347,6 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -365,7 +355,6 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -397,6 +386,14 @@ export const toolInputJsonSchemas = {
         additionalProperties: false,
     },
     'browser.get_page_info': {
+        type: 'object',
+        required: [],
+        properties: {
+            tabToken: { type: 'string' },
+        },
+        additionalProperties: false,
+    },
+    'browser.list_tabs': {
         type: 'object',
         required: [],
         properties: {
@@ -563,6 +560,7 @@ export const toolInputJsonSchemas = {
             id: { type: 'string' },
             selector: { type: 'string' },
             full_page: { type: 'boolean' },
+            inline: { type: 'boolean' },
         },
         additionalProperties: false,
     },
@@ -590,7 +588,6 @@ export const toolInputJsonSchemas = {
                 },
                 additionalProperties: false,
             },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -602,7 +599,6 @@ export const toolInputJsonSchemas = {
             id: { type: 'string' },
             selector: { type: 'string' },
             value: { type: 'string' },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -615,7 +611,6 @@ export const toolInputJsonSchemas = {
             selector: { type: 'string' },
             text: { type: 'string' },
             delay_ms: { type: 'integer', minimum: 0 },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -627,7 +622,6 @@ export const toolInputJsonSchemas = {
             id: { type: 'string' },
             selector: { type: 'string' },
             values: { type: 'array', items: { type: 'string' } },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -638,7 +632,6 @@ export const toolInputJsonSchemas = {
             tabToken: { type: 'string' },
             id: { type: 'string' },
             selector: { type: 'string' },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -651,7 +644,6 @@ export const toolInputJsonSchemas = {
             selector: { type: 'string' },
             direction: { type: 'string', enum: ['up', 'down'] },
             amount: { type: 'integer', minimum: 1 },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -663,7 +655,6 @@ export const toolInputJsonSchemas = {
             key: { type: 'string' },
             id: { type: 'string' },
             selector: { type: 'string' },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -685,7 +676,6 @@ export const toolInputJsonSchemas = {
                 required: ['x', 'y'],
                 additionalProperties: false,
             },
-            timeout: { type: 'integer', minimum: 1 },
         },
         additionalProperties: false,
     },
@@ -725,7 +715,6 @@ export const toolInputJsonSchemas = {
                                 label: { type: 'string' },
                                 role: { type: 'string' },
                                 value: { type: 'string' },
-                                timeout: { type: 'integer', minimum: 1 },
                             },
                             additionalProperties: false,
                         },
@@ -739,7 +728,6 @@ export const toolInputJsonSchemas = {
                                 label: { type: 'string' },
                                 role: { type: 'string' },
                                 values: { type: 'array', items: { type: 'string' }, minItems: 1 },
-                                timeout: { type: 'integer', minimum: 1 },
                             },
                             additionalProperties: false,
                         },
@@ -769,7 +757,6 @@ export const toolInputJsonSchemas = {
                                     },
                                     additionalProperties: false,
                                 },
-                                timeout: { type: 'integer', minimum: 1 },
                             },
                             additionalProperties: false,
                         },

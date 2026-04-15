@@ -32,6 +32,8 @@ import {
     type BrowserCloseTabInput,
     browserGetPageInfoInputSchema,
     type BrowserGetPageInfoInput,
+    browserListTabsInputSchema,
+    type BrowserListTabsInput,
     browserTakeScreenshotInputSchema,
     type BrowserTakeScreenshotInput,
     browserTypeInputSchema,
@@ -152,7 +154,7 @@ const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.goto',
-        args: { url: input.url, timeout: input.timeout },
+        args: { url: input.url },
         meta: { source: 'mcp' },
     });
 };
@@ -164,7 +166,7 @@ const handleGoBack = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.go_back',
-        args: { timeout: input.timeout },
+        args: {},
         meta: { source: 'mcp' },
     });
 };
@@ -176,7 +178,7 @@ const handleReload = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.reload',
-        args: { timeout: input.timeout },
+        args: {},
         meta: { source: 'mcp' },
     });
 };
@@ -269,6 +271,43 @@ const handleGetPageInfo = (deps: McpToolDeps): McpToolHandler => async (args: un
     }
 };
 
+const handleListTabs = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserListTabsInput>(browserListTabsInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    try {
+        return await runSingleStep(
+            deps,
+            input.tabToken,
+            {
+                id: crypto.randomUUID(),
+                name: 'browser.list_tabs',
+                args: {},
+                meta: { source: 'mcp' },
+            },
+            { allowBootstrap: false },
+        );
+    } catch {
+        return {
+            ok: false,
+            results: [
+                {
+                    stepId: 'invalid',
+                    ok: false,
+                    error: {
+                        code: 'ERR_NOT_FOUND',
+                        message: 'tab token not found',
+                    },
+                },
+            ],
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'tab token not found',
+            },
+        };
+    }
+};
+
 const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserClickInput>(browserClickInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
@@ -285,7 +324,6 @@ const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
             selector: input.selector,
             coord: input.coord,
             options,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -302,7 +340,6 @@ const handleFill = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
             id: input.id,
             selector: input.selector,
             value: input.value,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -320,7 +357,6 @@ const handleType = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
             selector: input.selector,
             text: input.text,
             delay_ms: input.delay_ms ?? 0,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -337,7 +373,6 @@ const handleSelectOption = (deps: McpToolDeps): McpToolHandler => async (args: u
             id: input.id,
             selector: input.selector,
             values: input.values,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -353,7 +388,6 @@ const handleHover = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         args: {
             id: input.id,
             selector: input.selector,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -371,7 +405,6 @@ const handleScroll = (deps: McpToolDeps): McpToolHandler => async (args: unknown
             selector: input.selector,
             direction: input.direction,
             amount: input.amount ?? 600,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -388,7 +421,6 @@ const handlePressKey = (deps: McpToolDeps): McpToolHandler => async (args: unkno
             key: input.key,
             id: input.id,
             selector: input.selector,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -414,7 +446,6 @@ const handleDragAndDrop = (deps: McpToolDeps): McpToolHandler => async (args: un
                       }
                     : undefined,
             dest_coord: input.dest_coord,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -615,6 +646,7 @@ const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args:
             id: input.id,
             selector: input.selector,
             full_page: input.full_page,
+            inline: input.inline,
         },
         meta: { source: 'mcp' },
     });
@@ -723,7 +755,6 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
                 id: action.id,
                 selector: action.selector,
                 value: action.value,
-                timeout: action.timeout,
             },
             meta: { source: 'mcp' },
         };
@@ -736,7 +767,6 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
                 id: action.id,
                 selector: action.selector,
                 values: action.values,
-                timeout: action.timeout,
             },
             meta: { source: 'mcp' },
         };
@@ -749,7 +779,6 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
             selector: action.selector,
             coord: action.coord,
             options: action.options,
-            timeout: action.timeout,
         },
         meta: { source: 'mcp' },
     };
@@ -801,6 +830,7 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.switch_tab': handleSwitchTab(deps),
     'browser.close_tab': handleCloseTab(deps),
     'browser.get_page_info': handleGetPageInfo(deps),
+    'browser.list_tabs': handleListTabs(deps),
     'browser.click': handleClick(deps),
     'browser.snapshot': handleSnapshot(deps),
     'browser.list_entities': handleListEntities(deps),
