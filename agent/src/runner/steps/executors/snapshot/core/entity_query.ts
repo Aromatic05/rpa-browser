@@ -1,7 +1,7 @@
 import { normalizeText } from './runtime_store';
 import type { EntityKind, FinalEntityRecord } from './types';
 
-export type EntityQueryFilters = {
+type EntityQueryFilters = {
     kind?: EntityKind | EntityKind[];
     businessTag?: string | string[];
     query?: string;

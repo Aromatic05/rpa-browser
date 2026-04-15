@@ -4,8 +4,6 @@ import { applySnapshotOverlay, buildFinalEntityViewFromSnapshot } from './overla
 import { cloneTreeWithRuntime, normalizeText } from './runtime_store';
 import type {
     SnapshotDiffBaselineEntry,
-    SnapshotOverlayAddEntity,
-    SnapshotOverlayDeleteEntity,
     SnapshotOverlays,
     SnapshotPageIdentity,
     SnapshotResult,
@@ -37,7 +35,7 @@ type TraceSnapshotCache = Record<string, unknown> & {
     snapshotSessionStore?: unknown;
 };
 
-export type EnsureFreshSnapshotOptions = {
+type EnsureFreshSnapshotOptions = {
     forceRefresh?: boolean;
     ttlMs?: number;
     refreshReason?: string;
@@ -48,25 +46,25 @@ export type EnsureFreshSnapshotOptions = {
     }) => Promise<SnapshotResult>;
 };
 
-export type EnsureFreshSnapshotResult = {
+type EnsureFreshSnapshotResult = {
     entry: SnapshotSessionEntry;
     snapshot: SnapshotResult;
     refreshed: boolean;
     refreshReason?: string;
 };
 
-export type ShouldRefreshSnapshotOptions = {
+type ShouldRefreshSnapshotOptions = {
     forceRefresh?: boolean;
     ttlMs?: number;
     pageIdentityChanged?: boolean;
 };
 
-export type ShouldRefreshSnapshotResult = {
+type ShouldRefreshSnapshotResult = {
     refresh: boolean;
     reason?: string;
 };
 
-export const getSnapshotSessionStore = (binding: PageBinding): SnapshotSessionStore => {
+const getSnapshotSessionStore = (binding: PageBinding): SnapshotSessionStore => {
     const cache = binding.traceCtx.cache as TraceSnapshotCache;
     const raw = cache[STORE_KEY];
     if (isSnapshotSessionStore(raw)) {
@@ -83,7 +81,7 @@ export const getSnapshotSessionStore = (binding: PageBinding): SnapshotSessionSt
     return store;
 };
 
-export const getSnapshotSessionEntryKey = (binding: PageBinding): string => {
+const getSnapshotSessionEntryKey = (binding: PageBinding): string => {
     return `${binding.workspaceId}:${binding.tabToken}`;
 };
 
@@ -131,7 +129,7 @@ export const shouldMarkSnapshotDirtyByStep = (
     return false;
 };
 
-export const shouldRefreshSnapshot = (
+const shouldRefreshSnapshot = (
     entry: SnapshotSessionEntry,
     options: ShouldRefreshSnapshotOptions,
 ): ShouldRefreshSnapshotResult => {
@@ -272,30 +270,6 @@ export const updateSnapshotOverlays = (
     });
 
     return entry;
-};
-
-export const appendAddOverlay = (entry: SnapshotSessionEntry, added: SnapshotOverlayAddEntity) => {
-    entry.overlays.addedEntities.push({
-        nodeId: normalizeText(added.nodeId) || added.nodeId,
-        kind: added.kind,
-        name: normalizeText(added.name),
-        businessTag: normalizeText(added.businessTag),
-    });
-};
-
-export const appendDeleteOverlay = (entry: SnapshotSessionEntry, deleted: SnapshotOverlayDeleteEntity) => {
-    entry.overlays.deletedEntities.push({
-        nodeId: normalizeText(deleted.nodeId) || deleted.nodeId,
-        kind: deleted.kind,
-        businessTag: normalizeText(deleted.businessTag),
-    });
-};
-
-export const setRenameOverlay = (entry: SnapshotSessionEntry, nodeId: string, name: string) => {
-    const normalizedNodeId = normalizeText(nodeId);
-    const normalizedName = normalizeText(name);
-    if (!normalizedNodeId || !normalizedName) return;
-    entry.overlays.renamedNodes[normalizedNodeId] = normalizedName;
 };
 
 export const readSnapshotDiffBaseline = (

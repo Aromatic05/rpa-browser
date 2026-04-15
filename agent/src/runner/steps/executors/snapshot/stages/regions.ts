@@ -25,7 +25,7 @@ export type NodeSignal = {
     prose: number;
 };
 
-export type RegionEvidence = {
+type RegionEvidence = {
     explicitRole: boolean;
     explicitTag: boolean;
     explicitClass: boolean;

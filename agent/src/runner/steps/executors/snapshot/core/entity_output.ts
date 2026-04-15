@@ -1,7 +1,7 @@
 import { getNodeAttrs, normalizeText } from './runtime_store';
 import type { FinalEntityRecord, SnapshotResult } from './types';
 
-export type EntityOutputRecord = {
+type EntityOutputRecord = {
     id: string;
     entity_id?: string;
     node_id: string;
@@ -41,7 +41,7 @@ export const buildNodeSummary = (snapshot: SnapshotResult, nodeId: string) => {
     };
 };
 
-export type TableMeta = {
+type TableMeta = {
     row_count: number;
     column_count: number;
     headers: string[];

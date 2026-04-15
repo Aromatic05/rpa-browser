@@ -3,9 +3,9 @@ import type { EntityKind, UnifiedNode } from '../core/types';
 import type { GroupDetection } from './groups';
 import type { NodeSignal, RegionDetection } from './regions';
 
-export type CandidateSource = 'group' | 'region';
+type CandidateSource = 'group' | 'region';
 
-export type CandidateFeatures = {
+type CandidateFeatures = {
     semanticScore: number;
     dominantStructureScore: number;
     interactionScore: number;
@@ -18,7 +18,7 @@ export type CandidateFeatures = {
     confidence: number;
 };
 
-export type CandidateEvidence = {
+type CandidateEvidence = {
     explicitRole: boolean;
     explicitTag: boolean;
     explicitClass: boolean;
@@ -29,7 +29,7 @@ export type CandidateEvidence = {
     explicitness: number;
 };
 
-export type CandidateSignal = {
+type CandidateSignal = {
     size: number;
     interactive: number;
     field: number;
@@ -59,7 +59,7 @@ export type StructureCandidate = {
     region?: RegionDetection;
 };
 
-export type CandidateSelectionResult = {
+type CandidateSelectionResult = {
     candidates: StructureCandidate[];
     groups: GroupDetection[];
     regions: RegionDetection[];

@@ -9,7 +9,9 @@ import {
 import type { UnifiedNode } from '../core/types';
 
 export const compress = (node: UnifiedNode): UnifiedNode | null => {
+    activeNodeProfileCache = new WeakMap<UnifiedNode, NodeStaticProfile>();
     const result = compressNode(node, true, null);
+    activeNodeProfileCache = null;
     if (result.nodes.length === 0) return null;
     return result.nodes[0] || null;
 };
@@ -18,6 +20,17 @@ type CompressResult = {
     nodes: UnifiedNode[];
     liftedTexts: string[];
 };
+
+type NodeStaticProfile = {
+    role: string;
+    tag: string;
+    className: string;
+    hasOnclickAttr: boolean;
+    hasHrefAttr: boolean;
+    hasTabindexAttr: boolean;
+};
+
+let activeNodeProfileCache: WeakMap<UnifiedNode, NodeStaticProfile> | null = null;
 
 const compressNode = (node: UnifiedNode, isRoot: boolean, parent: UnifiedNode | null): CompressResult => {
     const nextChildren: UnifiedNode[] = [];
@@ -69,8 +82,8 @@ const compressNode = (node: UnifiedNode, isRoot: boolean, parent: UnifiedNode | 
 };
 
 const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
-    const tag = inferTag(node);
-    const role = normalizeRole(node.role);
+    const tag = nodeTag(node);
+    const role = nodeRole(node);
     // head 分支必须强制裁掉，即使它正好是当前 region 根。
     if (FORCE_DROP_SUBTREE_TAGS.has(tag) || FORCE_DROP_SUBTREE_ROLES.has(role)) return true;
 
@@ -88,7 +101,7 @@ const isDeleteNode = (node: UnifiedNode, isRoot: boolean): boolean => {
     if (node.tier === 'D') return true;
     if (isPseudoNode(node)) return true;
 
-    const tag = inferTag(node);
+    const tag = nodeTag(node);
     if (DELETE_TAGS.has(tag)) return true;
     if (isDecorativeNoise(node)) return true;
     if (isMeaninglessEmptyShell(node)) return true;
@@ -106,21 +119,21 @@ const isCollapsibleShell = (node: UnifiedNode, parent: UnifiedNode | null): bool
 };
 
 const isAtomicSemanticNode = (node: UnifiedNode): boolean => {
-    const role = normalizeRole(node.role);
-    const tag = inferTag(node);
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
     if (!ATOMIC_ROLES.has(role) && !ATOMIC_TAGS.has(tag)) return false;
     if (node.name || getNodeContent(node) || node.target) return true;
     return isInteractiveNode(node);
 };
 
 const truncateAtomicNode = (node: UnifiedNode) => {
-    const droppedTexts: string[] = [];
+    const droppedTexts: Array<string | undefined> = [];
     for (const child of node.children) {
-        droppedTexts.push(...collectDescendantLiftableTexts(child));
+        collectDescendantLiftableTexts(child, droppedTexts);
     }
     node.children = [];
     if (droppedTexts.length > 0 && canReceiveLiftedText(node)) {
-        applyLiftedText(node, droppedTexts);
+        applyLiftedText(node, compactLiftTexts(droppedTexts));
     }
 };
 
@@ -163,13 +176,13 @@ const applyLiftedText = (node: UnifiedNode, rawTexts: string[]) => {
 
 const shouldAttachName = (node: UnifiedNode): boolean => {
     if (isInteractiveNode(node)) return true;
-    return NAME_RECEIVER_ROLES.has(normalizeRole(node.role));
+    return NAME_RECEIVER_ROLES.has(nodeRole(node));
 };
 
 const canReceiveLiftedText = (node: UnifiedNode): boolean => {
     if (isInteractiveNode(node)) return true;
     if (hasSemanticPayload(node)) return true;
-    return TEXT_RECEIVER_ROLES.has(normalizeRole(node.role));
+    return TEXT_RECEIVER_ROLES.has(nodeRole(node));
 };
 
 const hasSemanticPayload = (node: UnifiedNode): boolean => {
@@ -182,23 +195,24 @@ const isProtectedNode = (node: UnifiedNode): boolean => {
     if (isInteractiveNode(node)) return true;
     if (node.target) return true;
     if (hasSemanticPayload(node)) return true;
-    if (PRESERVE_ROLES.has(normalizeRole(node.role))) return true;
+    if (PRESERVE_ROLES.has(nodeRole(node))) return true;
     if (isMeaningfulImageNode(node)) return true;
     return false;
 };
 
 const isInteractiveNode = (node: UnifiedNode): boolean => {
-    const role = normalizeRole(node.role);
-    const tag = inferTag(node);
+    const profile = getNodeStaticProfile(node);
+    const role = profile.role;
+    const tag = profile.tag;
     if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) return true;
     if (node.target) return true;
-    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) return true;
+    if (profile.hasOnclickAttr || profile.hasHrefAttr || profile.hasTabindexAttr) return true;
     return false;
 };
 
 const isMeaningfulImageNode = (node: UnifiedNode): boolean => {
-    const role = normalizeRole(node.role);
-    const tag = inferTag(node);
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
     if (role !== 'image' && role !== 'img' && tag !== 'img') return false;
     if (normalizeText(node.name) || normalizeText(getNodeContent(node))) return true;
     if (normalizeText(getNodeAttr(node, 'alt')) || normalizeText(getNodeAttr(node, 'src'))) return true;
@@ -210,9 +224,9 @@ const isDecorativeNoise = (node: UnifiedNode): boolean => {
     if (node.name || getNodeContent(node)) return false;
     if (node.target) return false;
 
-    const role = normalizeRole(node.role);
-    const tag = inferTag(node);
-    const cls = normalizeRole(getNodeAttr(node, 'class'));
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
+    const cls = nodeClassName(node);
     if (DECORATIVE_ROLES.has(role) || DECORATIVE_TAGS.has(tag)) return true;
     if (cls && DECORATIVE_CLASS_PATTERN.test(cls)) return true;
     return false;
@@ -226,20 +240,20 @@ const isMeaninglessEmptyShell = (node: UnifiedNode): boolean => {
 };
 
 const isPseudoNode = (node: UnifiedNode): boolean => {
-    const role = normalizeRole(node.role);
-    const tag = inferTag(node);
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
     return PSEUDO_ROLES.has(role) || PSEUDO_TAGS.has(tag);
 };
 
 const isInlineTextShell = (node: UnifiedNode): boolean => {
-    const role = normalizeRole(node.role);
-    const tag = inferTag(node);
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
     return INLINE_TEXT_SHELL_ROLES.has(role) || INLINE_TEXT_SHELL_TAGS.has(tag);
 };
 
 const isWrapperRoleOrTag = (node: UnifiedNode): boolean => {
-    const role = normalizeRole(node.role);
-    const tag = inferTag(node);
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
     return WRAPPER_ROLES.has(role) || WRAPPER_TAGS.has(tag);
 };
 
@@ -247,12 +261,11 @@ const collectOwnLiftableTexts = (node: UnifiedNode): string[] => {
     return compactLiftTexts([node.name, getNodeContent(node)]);
 };
 
-const collectDescendantLiftableTexts = (node: UnifiedNode): string[] => {
-    const texts: string[] = [...collectOwnLiftableTexts(node)];
+const collectDescendantLiftableTexts = (node: UnifiedNode, sink: Array<string | undefined>) => {
+    sink.push(node.name, getNodeContent(node));
     for (const child of node.children) {
-        texts.push(...collectDescendantLiftableTexts(child));
+        collectDescendantLiftableTexts(child, sink);
     }
-    return compactLiftTexts(texts);
 };
 
 const compactLiftTexts = (values: Array<string | undefined>): string[] => {
@@ -274,9 +287,30 @@ const isLightweightText = (value: string): boolean => {
     return true;
 };
 
-const inferTag = (node: UnifiedNode): string => {
-    const raw = getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName') || getNodeAttr(node, 'nodeName') || '';
-    return normalizeRole(raw);
+const nodeRole = (node: UnifiedNode): string => getNodeStaticProfile(node).role;
+
+const nodeTag = (node: UnifiedNode): string => getNodeStaticProfile(node).tag;
+
+const nodeClassName = (node: UnifiedNode): string => getNodeStaticProfile(node).className;
+
+const getNodeStaticProfile = (node: UnifiedNode): NodeStaticProfile => {
+    if (!activeNodeProfileCache) {
+        activeNodeProfileCache = new WeakMap<UnifiedNode, NodeStaticProfile>();
+    }
+
+    const cached = activeNodeProfileCache.get(node);
+    if (cached) return cached;
+
+    const profile: NodeStaticProfile = {
+        role: normalizeRole(node.role),
+        tag: normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName') || getNodeAttr(node, 'nodeName')),
+        className: normalizeRole(getNodeAttr(node, 'class')),
+        hasOnclickAttr: Boolean(getNodeAttr(node, 'onclick')),
+        hasHrefAttr: Boolean(getNodeAttr(node, 'href')),
+        hasTabindexAttr: Boolean(getNodeAttr(node, 'tabindex')),
+    };
+    activeNodeProfileCache.set(node, profile);
+    return profile;
 };
 
 const normalizeRole = (value: string | undefined): string => (value || '').trim().toLowerCase();

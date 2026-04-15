@@ -36,11 +36,6 @@ export const applySnapshotOverlay = (baseSnapshot: SnapshotResult, overlays: Sna
     return snapshot;
 };
 
-export const buildFinalEntityView = (snapshot: SnapshotResult, overlays: SnapshotOverlays): FinalEntityView => {
-    const finalSnapshot = applySnapshotOverlay(snapshot, overlays);
-    return buildFinalEntityViewFromSnapshot(finalSnapshot, overlays, true);
-};
-
 export const buildFinalEntityViewFromSnapshot = (
     finalSnapshot: SnapshotResult,
     overlays: SnapshotOverlays,

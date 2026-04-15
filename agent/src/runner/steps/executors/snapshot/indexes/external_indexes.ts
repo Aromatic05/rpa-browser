@@ -1,7 +1,7 @@
 import { getNodeAttrs, getNodeBbox, getNodeContent, normalizeText } from '../core/runtime_store';
 import type { AttrIndex, BBoxIndex, ContentStore, NodeIndex, UnifiedNode } from '../core/types';
 
-export type ExternalIndexes = {
+type ExternalIndexes = {
     nodeIndex: NodeIndex;
     bboxIndex: BBoxIndex;
     attrIndex: AttrIndex;

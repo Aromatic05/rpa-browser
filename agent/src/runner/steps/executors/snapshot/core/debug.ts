@@ -3,7 +3,7 @@ import type { UnifiedNode } from './types';
 
 const traceLogger = getLogger('trace');
 
-export const isSnapshotDebugEnabled = (): boolean => {
+const isSnapshotDebugEnabled = (): boolean => {
     const DEBUG_FLAG = process.env.RPA_SNAPSHOT_DEBUG;
     return DEBUG_FLAG === '1' || DEBUG_FLAG === 'true';
 };

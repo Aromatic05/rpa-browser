@@ -29,6 +29,7 @@
         "test:trace": "node --import tsx --test tests/trace/*.test.ts",
         "test:smoke:mcp": "tsx scripts/mcp_smoke_client.ts",
         "test:unit:keyslot": "SNAPSHOT_KEYSLOT_DATASET=1 node --import tsx --test src/runner/steps/__tests__/snapshot_keyslot_dataset.test.ts",
+        "test:unit:snapshot:perf": "SNAPSHOT_PERF_BASELINE=1 node --import tsx --test src/runner/steps/__tests__/snapshot_performance_baseline.test.ts",
         "snapshot:bulk:collect": "tsx scripts/snapshot_bulk_collect.ts",
         "snapshot:keyslot:eval": "tsx scripts/snapshot_eval_keyslot.ts",
         "snapshot:accept:ant-table": "tsx scripts/snapshot_accept_ant_table.ts",

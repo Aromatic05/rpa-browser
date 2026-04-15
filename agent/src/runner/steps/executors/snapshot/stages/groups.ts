@@ -12,7 +12,7 @@ export type GroupDetection = {
     evidence: GroupEvidence;
 };
 
-export type GroupSignal = {
+type GroupSignal = {
     itemCount: number;
     slotCount: number;
     stableRate: number;
@@ -25,7 +25,7 @@ export type GroupSignal = {
     wrapperDepth: number;
 };
 
-export type GroupEvidence = {
+type GroupEvidence = {
     explicitRole: boolean;
     explicitTag: boolean;
     explicitClass: boolean;

@@ -13,17 +13,17 @@ import { detectGroups, type GroupDetection } from './groups';
 import { detectRegionEntities, type RegionDetection } from './regions';
 import { deriveGroupTableKeyHint, deriveRegionTableKeyHint } from './table_key';
 
-export type StructureDetection = {
+type StructureDetection = {
     regions: RegionDetection[];
     groups: GroupDetection[];
     candidates: StructureCandidate[];
 };
 
-export type BuildEntityIndexOptions = {
+type BuildEntityIndexOptions = {
     includeDescendants?: boolean;
 };
 
-export type StructureCandidateDetection = {
+type StructureCandidateDetection = {
     regions: RegionDetection[];
     groups: GroupDetection[];
     candidates: StructureCandidate[];
@@ -40,7 +40,7 @@ export const detectStructureCandidates = (root: UnifiedNode): StructureCandidate
     };
 };
 
-export const detectStructure = (root: UnifiedNode): StructureDetection => {
+const detectStructure = (root: UnifiedNode): StructureDetection => {
     const detected = detectStructureCandidates(root);
     const selected = selectStructureCandidates(root, detected.candidates);
     return {
@@ -164,44 +164,65 @@ export const buildStructureEntityIndex = (
             });
 
             if (!includeDescendants) continue;
-            const slotByNodeId = new Map<string, number>();
-            const slotNodeIds = groupBundle.slotByItemId[itemId] || [];
-            for (let slotIndex = 0; slotIndex < slotNodeIds.length; slotIndex += 1) {
-                const slotNodeId = slotNodeIds[slotIndex];
-                if (!slotNodeId) continue;
-                slotByNodeId.set(slotNodeId, slotIndex);
-            }
-
-            walkDescendants(itemNode, (descendant) => {
-                if (descendant.id === itemId) return;
-                pushNodeRef(entityIndex.byNodeId, descendant.id, {
-                    type: 'group',
-                    entityId: group.id,
-                    role: 'descendant',
-                    itemId,
-                    slotIndex: resolveSlotIndex(descendant.id, itemId, slotByNodeId, parentById),
-                });
-            });
+            const slotByNodeId = buildSlotIndexByNodeId(groupBundle.slotByItemId[itemId] || []);
+            attachGroupItemDescendantRefs(entityIndex.byNodeId, group.id, itemId, itemNode, slotByNodeId);
         }
     }
 
     return entityIndex;
 };
 
-const resolveSlotIndex = (
-    nodeId: string,
-    itemId: string,
-    slotByNodeId: Map<string, number>,
-    parentById: Map<string, UnifiedNode | null>,
-): number | undefined => {
-    let cursorId: string | undefined = nodeId;
-    while (cursorId && cursorId !== itemId) {
-        const slotIndex = slotByNodeId.get(cursorId);
-        if (slotIndex !== undefined) return slotIndex;
-        const parentNode: UnifiedNode | null = parentById.get(cursorId) || null;
-        cursorId = parentNode ? parentNode.id : undefined;
+const buildSlotIndexByNodeId = (slotNodeIds: string[]): Map<string, number> => {
+    const slotByNodeId = new Map<string, number>();
+    for (let slotIndex = 0; slotIndex < slotNodeIds.length; slotIndex += 1) {
+        const slotNodeId = slotNodeIds[slotIndex];
+        if (!slotNodeId) continue;
+        slotByNodeId.set(slotNodeId, slotIndex);
     }
-    return undefined;
+    return slotByNodeId;
+};
+
+const attachGroupItemDescendantRefs = (
+    byNodeId: EntityIndex['byNodeId'],
+    entityId: string,
+    itemId: string,
+    itemNode: UnifiedNode,
+    slotByNodeId: Map<string, number>,
+) => {
+    const stack: Array<{ node: UnifiedNode; inheritedSlotIndex: number | undefined; isRoot: boolean }> = [
+        {
+            node: itemNode,
+            inheritedSlotIndex: slotByNodeId.get(itemNode.id),
+            isRoot: true,
+        },
+    ];
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
+
+        const ownSlotIndex = slotByNodeId.get(current.node.id);
+        const nextSlotIndex = ownSlotIndex === undefined ? current.inheritedSlotIndex : ownSlotIndex;
+
+        if (!current.isRoot) {
+            pushNodeRef(byNodeId, current.node.id, {
+                type: 'group',
+                entityId,
+                role: 'descendant',
+                itemId,
+                slotIndex: nextSlotIndex,
+            });
+        }
+
+        for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
+            const child = current.node.children[index];
+            stack.push({
+                node: child,
+                inheritedSlotIndex: nextSlotIndex,
+                isRoot: false,
+            });
+        }
+    }
 };
 
 const pushNodeRef = (
@@ -253,17 +274,18 @@ const indexTree = (
     nodeById: Map<string, UnifiedNode>,
     parentById: Map<string, UnifiedNode | null>,
 ) => {
-    nodeById.set(node.id, node);
-    parentById.set(node.id, parent);
-    for (const child of node.children) {
-        indexTree(child, node, nodeById, parentById);
-    }
-};
+    const stack: Array<{ node: UnifiedNode; parent: UnifiedNode | null }> = [{ node, parent }];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
 
-const walkDescendants = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
-    visitor(node);
-    for (const child of node.children) {
-        walkDescendants(child, visitor);
+        nodeById.set(current.node.id, current.node);
+        parentById.set(current.node.id, current.parent);
+
+        for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
+            const child = current.node.children[index];
+            stack.push({ node: child, parent: current.node });
+        }
     }
 };
 
@@ -276,10 +298,12 @@ const attachTablePaginationRefs = (
     const tableRegions = regions.filter((region) => region.kind === 'table');
     if (tableRegions.length === 0) return;
 
+    const paginationNodeIdsCache = new Map<string, string[]>();
+    const depthCache = new Map<string, number>();
     const paginationNodeAssignment = new Map<string, PaginationAssignment>();
     const regionsByContainerId = new Map<string, RegionEntity[]>();
     for (const region of tableRegions) {
-        const container = findTablePaginationContainer(region.nodeId, nodeById, parentById);
+        const container = findTablePaginationContainer(region.nodeId, nodeById, parentById, paginationNodeIdsCache);
         if (!container) continue;
         const bucket = regionsByContainerId.get(container.id) || [];
         bucket.push(region);
@@ -289,14 +313,20 @@ const attachTablePaginationRefs = (
     for (const [containerId, containerRegions] of regionsByContainerId.entries()) {
         const container = nodeById.get(containerId);
         if (!container || containerRegions.length === 0) continue;
-        const paginationNodeIds = collectPaginationNodeIds(container);
+        const paginationNodeIds = collectPaginationNodeIds(container, paginationNodeIdsCache);
         if (paginationNodeIds.length === 0) continue;
 
-        const primaryRegion = [...containerRegions].sort(
-            (left, right) => depthOfNode(right.nodeId, parentById) - depthOfNode(left.nodeId, parentById),
-        )[0];
+        let primaryRegion: RegionEntity | undefined;
+        let primaryRegionDepth = Number.NEGATIVE_INFINITY;
+        for (const region of containerRegions) {
+            const depth = depthOfNode(region.nodeId, parentById, depthCache);
+            if (depth > primaryRegionDepth) {
+                primaryRegionDepth = depth;
+                primaryRegion = region;
+            }
+        }
         if (!primaryRegion) continue;
-        const regionDepth = depthOfNode(primaryRegion.nodeId, parentById);
+        const regionDepth = primaryRegionDepth;
 
         for (const nodeId of paginationNodeIds) {
             const current = paginationNodeAssignment.get(nodeId);
@@ -327,10 +357,11 @@ const findTablePaginationContainer = (
     nodeId: string,
     nodeById: Map<string, UnifiedNode>,
     parentById: Map<string, UnifiedNode | null>,
+    paginationNodeIdsCache: Map<string, string[]>,
 ): UnifiedNode | null => {
     let cursor = nodeById.get(nodeId) || null;
     for (let depth = 0; cursor && depth < 7; depth += 1) {
-        const paginationNodeIds = collectPaginationNodeIds(cursor);
+        const paginationNodeIds = collectPaginationNodeIds(cursor, paginationNodeIdsCache);
         if (paginationNodeIds.length > 0) {
             return cursor;
         }
@@ -339,34 +370,76 @@ const findTablePaginationContainer = (
     return null;
 };
 
-const collectPaginationNodeIds = (root: UnifiedNode): string[] => {
+const collectPaginationNodeIds = (root: UnifiedNode, cache: Map<string, string[]>): string[] => {
+    const cached = cache.get(root.id);
+    if (cached) return cached;
+
     const ids = new Set<string>();
-    const paginationRoots: UnifiedNode[] = [];
-    walkDescendants(root, (node) => {
-        if (!isPaginationLikeNode(node)) return;
-        paginationRoots.push(node);
-    });
-    for (const paginationRoot of paginationRoots) {
-        walkDescendants(paginationRoot, (node) => {
-            ids.add(node.id);
-        });
+    const stack: Array<{ node: UnifiedNode; inPaginationSubtree: boolean }> = [
+        {
+            node: root,
+            inPaginationSubtree: false,
+        },
+    ];
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
+
+        const nextInPaginationSubtree = current.inPaginationSubtree || isPaginationLikeNode(current.node);
+        if (nextInPaginationSubtree) {
+            ids.add(current.node.id);
+        }
+
+        for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
+            stack.push({
+                node: current.node.children[index],
+                inPaginationSubtree: nextInPaginationSubtree,
+            });
+        }
     }
-    return Array.from(ids);
+
+    const result = Array.from(ids);
+    cache.set(root.id, result);
+    return result;
 };
 
 const depthOfNode = (
     nodeId: string,
     parentById: Map<string, UnifiedNode | null>,
+    depthCache: Map<string, number>,
 ): number => {
-    let depth = 0;
+    const cached = depthCache.get(nodeId);
+    if (cached !== undefined) return cached;
+
+    const chain: string[] = [];
     let cursor: string | undefined = nodeId;
+
     while (cursor) {
+        const hit = depthCache.get(cursor);
+        if (hit !== undefined) {
+            let depth = hit;
+            for (let index = chain.length - 1; index >= 0; index -= 1) {
+                depth += 1;
+                depthCache.set(chain[index], depth);
+            }
+            return depthCache.get(nodeId) || 0;
+        }
+
+        chain.push(cursor);
         const parent: UnifiedNode | null = parentById.get(cursor) || null;
-        if (!parent) break;
-        depth += 1;
+        if (!parent) {
+            let depth = 0;
+            for (let index = chain.length - 1; index >= 0; index -= 1) {
+                depthCache.set(chain[index], depth);
+                depth += 1;
+            }
+            return depthCache.get(nodeId) || 0;
+        }
         cursor = parent.id;
     }
-    return depth;
+
+    return 0;
 };
 
 const isPaginationLikeNode = (node: UnifiedNode): boolean => {
