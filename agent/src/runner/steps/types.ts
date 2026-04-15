@@ -17,6 +17,7 @@ export type StepName =
     | 'browser.switch_tab'
     | 'browser.close_tab'
     | 'browser.get_page_info'
+    | 'browser.list_tabs'
     | 'browser.snapshot'
     | 'browser.get_content'
     | 'browser.read_console'
@@ -60,6 +61,7 @@ export type StepArgsMap = {
     'browser.switch_tab': { tab_id: string; tab_url?: string; tab_ref?: string };
     'browser.close_tab': { tab_id?: string };
     'browser.get_page_info': Record<string, never>;
+    'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
         includeA11y?: boolean;
         focus_only?: boolean;
@@ -78,6 +80,7 @@ export type StepArgsMap = {
         selector?: string;
         target?: Target;
         full_page?: boolean;
+        inline?: boolean;
         a11yNodeId?: string;
         a11yHint?: A11yHint;
     };

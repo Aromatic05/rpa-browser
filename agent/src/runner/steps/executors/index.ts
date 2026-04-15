@@ -10,6 +10,7 @@ import { executeBrowserCreateTab } from './create_tab';
 import { executeBrowserSwitchTab } from './switch_tab';
 import { executeBrowserCloseTab } from './close_tab';
 import { executeBrowserGetPageInfo } from './get_page_info';
+import { executeBrowserListTabs } from './list_tabs';
 import { executeBrowserGetContent } from './get_content';
 import { executeBrowserReadConsole } from './read_console';
 import { executeBrowserReadNetwork } from './read_network';
@@ -39,6 +40,7 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.switch_tab': executeBrowserSwitchTab as ExecutorFn,
     'browser.close_tab': executeBrowserCloseTab as ExecutorFn,
     'browser.get_page_info': executeBrowserGetPageInfo as ExecutorFn,
+    'browser.list_tabs': executeBrowserListTabs as ExecutorFn,
     'browser.snapshot': executeBrowserSnapshot as ExecutorFn,
     'browser.get_content': executeBrowserGetContent as ExecutorFn,
     'browser.read_console': executeBrowserReadConsole as ExecutorFn,
