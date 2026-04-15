@@ -19,7 +19,25 @@ const DIFF_ABSOLUTE_NODE_BROAD_LIMIT = 1000;
 const DIFF_COVERAGE_BROAD_LIMIT = 0.9;
 const DIFF_ROOT_COVERAGE_BROAD_LIMIT = 0.65;
 const DIFF_BROAD_MIN_TOTAL_NODES = 24;
+const DIFF_CONTEXT_RADIUS_MAX_HOPS = 2;
+const DIFF_CONTEXT_MIN_SUBTREE_NODES = 8;
+const DIFF_CONTEXT_MAX_EXPANDED_SUBTREE_NODES = 180;
 const POPUP_LIKE_ROLES = new Set(['dialog', 'menu', 'listbox', 'panel']);
+const CONTEXT_INTERACTIVE_ROLES = new Set([
+    'button',
+    'link',
+    'textbox',
+    'input',
+    'textarea',
+    'select',
+    'checkbox',
+    'radio',
+    'switch',
+    'combobox',
+    'menuitem',
+    'option',
+    'tab',
+]);
 
 type SnapshotViewError = {
     code: string;
@@ -146,7 +164,10 @@ export const computeMinimalChangedSubtree = (
     }
 
     const promotedPopupRootId = pickPopupLikeDiffRootId(changedNodeIds, current, baseline);
-    const diffRootId = promotedPopupRootId || computeLowestCommonAncestorId([...changedNodeIds], current);
+    const rawDiffRootId = promotedPopupRootId || computeLowestCommonAncestorId([...changedNodeIds], current);
+    const diffRootId = promotedPopupRootId
+        ? rawDiffRootId
+        : expandDiffRootByChangeRadius(rawDiffRootId, changedNodeIds, current);
     const diffRoot = current.byId.get(diffRootId);
     if (!diffRoot) {
         return { mode: 'full', reason: 'contain_unavailable' };
@@ -164,6 +185,67 @@ export const computeMinimalChangedSubtree = (
         diffRootId,
         changedNodeCount,
     };
+};
+
+const expandDiffRootByChangeRadius = (
+    rawDiffRootId: string,
+    changedNodeIds: Set<string>,
+    current: TreeIndex,
+): string => {
+    let diffRootId = rawDiffRootId;
+    let promotedHops = 0;
+
+    while (promotedHops < DIFF_CONTEXT_RADIUS_MAX_HOPS) {
+        const currentRoot = current.byId.get(diffRootId);
+        if (!currentRoot) break;
+
+        const currentSpan = countSubtreeNodes(currentRoot);
+        if (currentSpan >= DIFF_CONTEXT_MIN_SUBTREE_NODES) break;
+
+        const parentId = current.parentById.get(diffRootId) || null;
+        if (!parentId) break;
+        const parent = current.byId.get(parentId);
+        if (!parent) break;
+
+        const parentSpan = countSubtreeNodes(parent);
+        if (parentSpan > DIFF_CONTEXT_MAX_EXPANDED_SUBTREE_NODES) break;
+        if (!shouldPromoteForContext(diffRootId, parent, changedNodeIds)) break;
+
+        diffRootId = parentId;
+        promotedHops += 1;
+    }
+
+    return diffRootId;
+};
+
+const shouldPromoteForContext = (
+    currentRootId: string,
+    parent: UnifiedNode,
+    changedNodeIds: Set<string>,
+): boolean => {
+    if (parent.children.length <= 1) {
+        return false;
+    }
+
+    const siblings = parent.children.filter((child) => child.id !== currentRootId);
+    if (siblings.length === 0) {
+        return false;
+    }
+
+    if (siblings.some((sibling) => isContextualSiblingNode(sibling))) {
+        return true;
+    }
+
+    return changedNodeIds.has(currentRootId);
+};
+
+const isContextualSiblingNode = (node: UnifiedNode): boolean => {
+    const role = normalizeRole(node.role);
+    if (POPUP_LIKE_ROLES.has(role)) return true;
+    if (CONTEXT_INTERACTIVE_ROLES.has(role)) return true;
+    if (normalizeText(node.name)) return true;
+    if (readComparableContent(node)) return true;
+    return node.children.length > 0;
 };
 
 export const buildSnapshotDiffBaselineKey = (key: SnapshotDiffBaselineKey): string => {

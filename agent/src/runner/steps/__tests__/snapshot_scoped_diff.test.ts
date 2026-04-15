@@ -180,7 +180,7 @@ test('snapshot filter signature is stable across role array order', () => {
     assert.equal(leftKey, rightKey);
 });
 
-test('minimal diff returns smallest changed subtree', () => {
+test('minimal diff keeps local context around changed node', () => {
     const baseline: UnifiedNode = {
         id: 'root',
         role: 'root',
@@ -214,9 +214,54 @@ test('minimal diff returns smallest changed subtree', () => {
     const result = computeMinimalChangedSubtree(current, baseline);
     assert.equal(result.mode, 'diff');
     if (result.mode !== 'diff') return;
-    assert.equal(result.diffRootId, 'item-a');
+    assert.equal(result.diffRootId, 'container');
     assert.equal(result.changedNodeCount, 1);
-    assert.equal(result.root.id, 'item-a');
+    assert.equal(result.root.id, 'container');
+});
+
+test('minimal diff does not over-promote context when parent subtree is too large', () => {
+    const baselineChildren: UnifiedNode[] = [];
+    const currentChildren: UnifiedNode[] = [];
+
+    for (let index = 0; index < 300; index += 1) {
+        baselineChildren.push({ id: `item-${index}`, role: 'text', name: `before-${index}`, children: [] });
+        currentChildren.push({
+            id: `item-${index}`,
+            role: 'text',
+            name: index === 0 ? 'after-0' : `before-${index}`,
+            children: [],
+        });
+    }
+
+    const baseline: UnifiedNode = {
+        id: 'root',
+        role: 'root',
+        children: [
+            {
+                id: 'container-large',
+                role: 'group',
+                children: baselineChildren,
+            },
+        ],
+    };
+
+    const current: UnifiedNode = {
+        id: 'root',
+        role: 'root',
+        children: [
+            {
+                id: 'container-large',
+                role: 'group',
+                children: currentChildren,
+            },
+        ],
+    };
+
+    const result = computeMinimalChangedSubtree(current, baseline);
+    assert.equal(result.mode, 'diff');
+    if (result.mode !== 'diff') return;
+    assert.equal(result.diffRootId, 'item-0');
+    assert.equal(result.root.id, 'item-0');
 });
 
 test('minimal diff falls back to full when changes are too broad', () => {

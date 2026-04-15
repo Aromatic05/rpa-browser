@@ -1,5 +1,6 @@
 import {
     getNodeAttr,
+    getNodeBbox,
     getNodeContent,
     getNodeSemanticHints,
     mergeNodeSemanticHints,
@@ -11,9 +12,20 @@ import type { UnifiedNode } from '../core/types';
 export const compress = (node: UnifiedNode): UnifiedNode | null => {
     activeNodeProfileCache = new WeakMap<UnifiedNode, NodeStaticProfile>();
     const result = compressNode(node, true, null);
+    if (result.nodes.length === 0) {
+        activeNodeProfileCache = null;
+        return null;
+    }
+
+    const root = result.nodes[0] || null;
+    if (!root) {
+        activeNodeProfileCache = null;
+        return null;
+    }
+
+    applyBudgetAwarePrune(root);
     activeNodeProfileCache = null;
-    if (result.nodes.length === 0) return null;
-    return result.nodes[0] || null;
+    return root;
 };
 
 type CompressResult = {
@@ -28,6 +40,30 @@ type NodeStaticProfile = {
     hasOnclickAttr: boolean;
     hasHrefAttr: boolean;
     hasTabindexAttr: boolean;
+};
+
+type RegionBudgetKind = 'table' | 'list' | 'form' | 'dialog' | 'toolbar' | 'panel' | 'generic';
+
+type RegionBudgetProfile = {
+    activationNodes: number;
+    baseMaxNodes: number;
+    growthFactor: number;
+    siblingTemplateCap: number;
+    minTemplateRun: number;
+};
+
+type ResolvedRegionBudget = {
+    kind: RegionBudgetKind;
+    maxNodes: number;
+    siblingTemplateCap: number;
+    minTemplateRun: number;
+};
+
+type NodeBudgetCandidate = {
+    node: UnifiedNode;
+    parent: UnifiedNode | null;
+    depth: number;
+    score: number;
 };
 
 let activeNodeProfileCache: WeakMap<UnifiedNode, NodeStaticProfile> | null = null;
@@ -81,6 +117,409 @@ const compressNode = (node: UnifiedNode, isRoot: boolean, parent: UnifiedNode | 
     };
 };
 
+const applyBudgetAwarePrune = (root: UnifiedNode) => {
+    const initialCount = countNodes(root);
+    const budget = resolveRegionBudget(root, initialCount);
+    if (budget.siblingTemplateCap > 0 && budget.minTemplateRun > 0) {
+        collapseRepeatedTemplates(root, budget);
+    }
+    enforceInformationBudget(root, budget.maxNodes);
+};
+
+const countNodes = (root: UnifiedNode): number => {
+    let count = 0;
+    const stack: UnifiedNode[] = [root];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
+        count += 1;
+        for (let index = current.children.length - 1; index >= 0; index -= 1) {
+            stack.push(current.children[index]);
+        }
+    }
+    return count;
+};
+
+const resolveRegionBudget = (root: UnifiedNode, totalNodes: number): ResolvedRegionBudget => {
+    const kind = classifyRegionBudgetKind(root);
+    const profile = REGION_BUDGET_PROFILE[kind];
+    if (!profile || totalNodes <= profile.activationNodes) {
+        return {
+            kind,
+            maxNodes: totalNodes,
+            siblingTemplateCap: 0,
+            minTemplateRun: 0,
+        };
+    }
+
+    const scaled = profile.baseMaxNodes + Math.floor((totalNodes - profile.activationNodes) * profile.growthFactor);
+    const maxNodes = Math.max(profile.baseMaxNodes, Math.min(totalNodes, scaled));
+    return {
+        kind,
+        maxNodes,
+        siblingTemplateCap: profile.siblingTemplateCap,
+        minTemplateRun: profile.minTemplateRun,
+    };
+};
+
+const classifyRegionBudgetKind = (root: UnifiedNode): RegionBudgetKind => {
+    const role = nodeRole(root);
+    const tag = nodeTag(root);
+    const cls = nodeClassName(root);
+
+    if (TABLE_BUDGET_ROLES.has(role) || TABLE_BUDGET_TAGS.has(tag) || TABLE_BUDGET_CLASS_HINTS.some((hint) => cls.includes(hint))) {
+        return 'table';
+    }
+    if (LIST_BUDGET_ROLES.has(role) || LIST_BUDGET_TAGS.has(tag)) {
+        return 'list';
+    }
+    if (FORM_BUDGET_ROLES.has(role) || FORM_BUDGET_TAGS.has(tag)) {
+        return 'form';
+    }
+    if (DIALOG_BUDGET_ROLES.has(role)) {
+        return 'dialog';
+    }
+    if (TOOLBAR_BUDGET_ROLES.has(role) || cls.includes('toolbar')) {
+        return 'toolbar';
+    }
+    if (PANEL_BUDGET_ROLES.has(role) || PANEL_BUDGET_CLASS_HINTS.some((hint) => cls.includes(hint))) {
+        return 'panel';
+    }
+    return 'generic';
+};
+
+const collapseRepeatedTemplates = (root: UnifiedNode, budget: ResolvedRegionBudget) => {
+    const stack: UnifiedNode[] = [root];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
+
+        collapseRepeatedTemplateChildren(current, budget);
+        for (let index = current.children.length - 1; index >= 0; index -= 1) {
+            stack.push(current.children[index]);
+        }
+    }
+};
+
+const collapseRepeatedTemplateChildren = (node: UnifiedNode, budget: ResolvedRegionBudget) => {
+    if (node.children.length < budget.minTemplateRun) return;
+
+    const indexesBySignature = new Map<string, number[]>();
+    for (let index = 0; index < node.children.length; index += 1) {
+        const child = node.children[index];
+        const signature = buildTemplateSignature(child);
+        const bucket = indexesBySignature.get(signature) || [];
+        bucket.push(index);
+        indexesBySignature.set(signature, bucket);
+    }
+
+    const removeIndexes = new Set<number>();
+    for (const indexes of indexesBySignature.values()) {
+        if (indexes.length <= budget.siblingTemplateCap) continue;
+        const keepIndexes = pickTemplateSampleIndexes(node.children, indexes, budget.siblingTemplateCap);
+        for (const index of indexes) {
+            if (!keepIndexes.has(index)) {
+                removeIndexes.add(index);
+            }
+        }
+    }
+
+    if (removeIndexes.size === 0) return;
+    node.children = node.children.filter((_, index) => !removeIndexes.has(index));
+};
+
+const buildTemplateSignature = (node: UnifiedNode): string => {
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
+    const cls = normalizeTemplateClass(nodeClassName(node));
+    const textFlag = normalizeText(node.name || getNodeContent(node)) ? 't' : '-';
+    const childShape = node.children
+        .slice(0, 6)
+        .map((child) => `${nodeRole(child)}:${nodeTag(child)}`)
+        .join('|');
+    const interactiveChildCount = node.children.reduce((count, child) => count + (isInteractiveNode(child) ? 1 : 0), 0);
+    return `${role}|${tag}|${cls}|${node.children.length}|${interactiveChildCount}|${textFlag}|${childShape}`;
+};
+
+const normalizeTemplateClass = (className: string): string => {
+    if (!className) return '';
+    return className
+        .split(/\s+/)
+        .filter((token) => token.length > 0)
+        .slice(0, 4)
+        .map((token) => token.replace(/\d+/g, '#').replace(/[_-][a-z0-9]{5,}$/i, ''))
+        .join('.');
+};
+
+const pickTemplateSampleIndexes = (
+    children: UnifiedNode[],
+    indexes: number[],
+    cap: number,
+): Set<number> => {
+    if (indexes.length <= cap) {
+        return new Set(indexes);
+    }
+
+    const first = indexes[0];
+    const last = indexes[indexes.length - 1];
+    const keep = new Set<number>([first, last]);
+
+    for (const index of indexes) {
+        if (isTemplateAnchorNode(children[index])) {
+            keep.add(index);
+        }
+    }
+
+    if (keep.size > cap) {
+        const ranked = [...keep]
+            .filter((index) => index !== first && index !== last)
+            .sort((left, right) => scoreNodeImportance(children[right], 1) - scoreNodeImportance(children[left], 1));
+        const bounded = new Set<number>([first, last]);
+        for (const index of ranked) {
+            if (bounded.size >= cap) break;
+            bounded.add(index);
+        }
+        return bounded;
+    }
+
+    if (keep.size < cap) {
+        const needed = cap - keep.size;
+        const sampled = sampleIndexesEvenly(indexes, needed, keep);
+        for (const index of sampled) {
+            keep.add(index);
+        }
+    }
+
+    return keep;
+};
+
+const sampleIndexesEvenly = (indexes: number[], count: number, exclude: Set<number>): number[] => {
+    if (count <= 0) return [];
+
+    const available = indexes.filter((index) => !exclude.has(index));
+    if (available.length <= count) return available;
+
+    const sampled: number[] = [];
+    const sampledSet = new Set<number>();
+    for (let step = 1; step <= count; step += 1) {
+        const ratio = step / (count + 1);
+        const pick = available[Math.round((available.length - 1) * ratio)];
+        if (pick === undefined || sampledSet.has(pick)) continue;
+        sampled.push(pick);
+        sampledSet.add(pick);
+    }
+
+    if (sampled.length >= count) {
+        return sampled.slice(0, count);
+    }
+
+    for (const index of available) {
+        if (sampledSet.has(index)) continue;
+        sampled.push(index);
+        sampledSet.add(index);
+        if (sampled.length >= count) break;
+    }
+    return sampled;
+};
+
+const isTemplateAnchorNode = (node: UnifiedNode): boolean => {
+    if (isInteractiveNode(node)) return true;
+    if (node.target) return true;
+    if (hasSemanticPayload(node)) return true;
+    if (hasInteractiveDescendant(node, 2)) return true;
+    if (isTruthyAttr(getNodeAttr(node, 'aria-current'))) return true;
+    if (isTruthyAttr(getNodeAttr(node, 'aria-selected'))) return true;
+    if (isTruthyAttr(getNodeAttr(node, 'data-active'))) return true;
+    if (isTruthyAttr(getNodeAttr(node, 'active'))) return true;
+    return false;
+};
+
+const hasInteractiveDescendant = (node: UnifiedNode, maxDepth: number): boolean => {
+    if (maxDepth <= 0) return false;
+    const stack: Array<{ node: UnifiedNode; depth: number }> = [];
+    for (const child of node.children) {
+        stack.push({ node: child, depth: 1 });
+    }
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
+        if (isInteractiveNode(current.node)) return true;
+        if (current.depth >= maxDepth) continue;
+        for (const child of current.node.children) {
+            stack.push({
+                node: child,
+                depth: current.depth + 1,
+            });
+        }
+    }
+
+    return false;
+};
+
+const enforceInformationBudget = (root: UnifiedNode, maxNodes: number) => {
+    const candidatesById = new Map<string, NodeBudgetCandidate>();
+    let totalNodes = 0;
+
+    const stack: Array<{ node: UnifiedNode; parent: UnifiedNode | null; depth: number }> = [
+        {
+            node: root,
+            parent: null,
+            depth: 0,
+        },
+    ];
+
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
+        totalNodes += 1;
+        candidatesById.set(current.node.id, {
+            node: current.node,
+            parent: current.parent,
+            depth: current.depth,
+            score: scoreNodeImportance(current.node, current.depth),
+        });
+        for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
+            stack.push({
+                node: current.node.children[index],
+                parent: current.node,
+                depth: current.depth + 1,
+            });
+        }
+    }
+
+    if (totalNodes <= maxNodes) return;
+
+    const alwaysKeepIds = new Set<string>();
+    for (const candidate of candidatesById.values()) {
+        if (shouldAlwaysKeepForBudget(candidate)) {
+            alwaysKeepIds.add(candidate.node.id);
+        }
+    }
+
+    const heap: NodeBudgetCandidate[] = [];
+    for (const candidate of candidatesById.values()) {
+        if (alwaysKeepIds.has(candidate.node.id)) continue;
+        if (candidate.node.children.length > 0) continue;
+        pushBudgetHeap(heap, candidate);
+    }
+
+    const removed = new Set<string>();
+    while (totalNodes > maxNodes) {
+        const next = popBudgetHeap(heap);
+        if (!next) break;
+        if (removed.has(next.node.id)) continue;
+        if (alwaysKeepIds.has(next.node.id)) continue;
+        if (next.node.children.length > 0) continue;
+        if (!next.parent) continue;
+
+        const childIndex = next.parent.children.findIndex((child) => child.id === next.node.id);
+        if (childIndex < 0) continue;
+
+        next.parent.children.splice(childIndex, 1);
+        removed.add(next.node.id);
+        totalNodes -= 1;
+
+        const parentCandidate = candidatesById.get(next.parent.id);
+        if (!parentCandidate) continue;
+        if (alwaysKeepIds.has(parentCandidate.node.id)) continue;
+        if (parentCandidate.node.children.length !== 0) continue;
+        pushBudgetHeap(heap, parentCandidate);
+    }
+};
+
+const shouldAlwaysKeepForBudget = (candidate: NodeBudgetCandidate): boolean => {
+    if (candidate.depth <= 1) return true;
+    if (candidate.score >= IMPORTANCE_HARD_KEEP_SCORE) return true;
+
+    const role = nodeRole(candidate.node);
+    if (BUDGET_CRITICAL_ROLES.has(role)) return true;
+    if (isInteractiveNode(candidate.node)) return true;
+    if (candidate.node.target) return true;
+    if (hasSemanticPayload(candidate.node)) return true;
+    if (isTemplateAnchorNode(candidate.node) && candidate.depth <= 3) return true;
+    return false;
+};
+
+const scoreNodeImportance = (node: UnifiedNode, depth: number): number => {
+    let score = 0;
+    if (isInteractiveNode(node)) score += 3;
+    if (node.target) score += 2;
+    if (hasSemanticPayload(node)) score += 2.6;
+    if (PRESERVE_ROLES.has(nodeRole(node))) score += 1.4;
+    if (BUDGET_CRITICAL_ROLES.has(nodeRole(node))) score += 1.1;
+
+    const name = normalizeText(node.name);
+    const content = normalizeText(getNodeContent(node));
+    if (name) score += 1.2;
+    if (content) score += Math.min(1.2, content.length / 48);
+
+    if (node.tier === 'A') score += 1.8;
+    else if (node.tier === 'B') score += 1;
+    else if (node.tier === 'C') score += 0.35;
+    else if (node.tier === 'D') score -= 1;
+
+    if (isNodeHiddenFromView(node)) score -= 4;
+    if (isPseudoNode(node)) score -= 2;
+    if (isDecorativeNoise(node)) score -= 1.8;
+    if (isWrapperRoleOrTag(node) && !hasVisibleSemanticPayload(node)) score -= 1;
+
+    const depthPenalty = Math.max(0, depth - 8) * 0.18;
+    score -= depthPenalty;
+    return score;
+};
+
+const pushBudgetHeap = (heap: NodeBudgetCandidate[], candidate: NodeBudgetCandidate) => {
+    heap.push(candidate);
+    let index = heap.length - 1;
+    while (index > 0) {
+        const parentIndex = Math.floor((index - 1) / 2);
+        if (!isHigherPrunePriority(heap[index], heap[parentIndex])) break;
+        const tmp = heap[index];
+        heap[index] = heap[parentIndex];
+        heap[parentIndex] = tmp;
+        index = parentIndex;
+    }
+};
+
+const popBudgetHeap = (heap: NodeBudgetCandidate[]): NodeBudgetCandidate | undefined => {
+    if (heap.length === 0) return undefined;
+    const top = heap[0];
+    const last = heap.pop();
+    if (heap.length === 0 || !last) {
+        return top;
+    }
+
+    heap[0] = last;
+    let index = 0;
+    while (true) {
+        const left = index * 2 + 1;
+        const right = left + 1;
+        let smallest = index;
+
+        if (left < heap.length && isHigherPrunePriority(heap[left], heap[smallest])) {
+            smallest = left;
+        }
+        if (right < heap.length && isHigherPrunePriority(heap[right], heap[smallest])) {
+            smallest = right;
+        }
+        if (smallest === index) break;
+
+        const tmp = heap[index];
+        heap[index] = heap[smallest];
+        heap[smallest] = tmp;
+        index = smallest;
+    }
+
+    return top;
+};
+
+const isHigherPrunePriority = (left: NodeBudgetCandidate, right: NodeBudgetCandidate): boolean => {
+    if (left.score !== right.score) return left.score < right.score;
+    if (left.depth !== right.depth) return left.depth > right.depth;
+    return left.node.id < right.node.id;
+};
+
 const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
     const tag = nodeTag(node);
     const role = nodeRole(node);
@@ -88,6 +527,7 @@ const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
     if (FORCE_DROP_SUBTREE_TAGS.has(tag) || FORCE_DROP_SUBTREE_ROLES.has(role)) return true;
 
     if (isRoot) return false;
+    if (isNodeHiddenFromView(node)) return true;
     if (isProtectedNode(node)) return false;
 
     if (DROP_SUBTREE_TAGS.has(tag) || DROP_SUBTREE_ROLES.has(role)) return true;
@@ -97,6 +537,7 @@ const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
 
 const isDeleteNode = (node: UnifiedNode, isRoot: boolean): boolean => {
     if (isRoot) return false;
+    if (isNodeHiddenFromView(node)) return true;
     if (isProtectedNode(node)) return false;
     if (node.tier === 'D') return true;
     if (isPseudoNode(node)) return true;
@@ -146,7 +587,7 @@ const removeRedundantTextChildren = (node: UnifiedNode) => {
             nextChildren.push(child);
             continue;
         }
-        if (parentText && parentText === childText && isInlineTextShell(child)) {
+        if (parentText && isInlineTextShell(child) && isNearDuplicateText(parentText, childText)) {
             continue;
         }
         nextChildren.push(child);
@@ -157,21 +598,30 @@ const removeRedundantTextChildren = (node: UnifiedNode) => {
 const applyLiftedText = (node: UnifiedNode, rawTexts: string[]) => {
     const candidates = compactLiftTexts(rawTexts);
     if (candidates.length === 0) return;
-    const picked = candidates[0];
-    if (!picked) return;
 
     if (!node.name && shouldAttachName(node)) {
-        node.name = picked;
-        return;
+        const primary = candidates[0];
+        if (primary) {
+            node.name = primary;
+        }
     }
 
-    const current = normalizeText(getNodeContent(node));
-    if (!current) {
-        setNodeContent(node, picked);
-        return;
+    let mergedContent = normalizeText(getNodeContent(node));
+    for (const picked of candidates) {
+        if (!picked) continue;
+        if (!mergedContent) {
+            mergedContent = picked;
+            continue;
+        }
+        if (mergedContent.includes(picked) || isNearDuplicateText(mergedContent, picked)) {
+            continue;
+        }
+        mergedContent = `${mergedContent} ${picked}`.trim();
     }
-    if (current.includes(picked)) return;
-    setNodeContent(node, `${current} ${picked}`.trim());
+
+    if (mergedContent) {
+        setNodeContent(node, mergedContent);
+    }
 };
 
 const shouldAttachName = (node: UnifiedNode): boolean => {
@@ -217,6 +667,40 @@ const isMeaningfulImageNode = (node: UnifiedNode): boolean => {
     if (normalizeText(node.name) || normalizeText(getNodeContent(node))) return true;
     if (normalizeText(getNodeAttr(node, 'alt')) || normalizeText(getNodeAttr(node, 'src'))) return true;
     return false;
+};
+
+const isNodeHiddenFromView = (node: UnifiedNode): boolean => {
+    if (isTruthyAttr(getNodeAttr(node, 'hidden'))) return true;
+    if (isTruthyAttr(getNodeAttr(node, 'inert'))) return true;
+    if (isTruthyAttr(getNodeAttr(node, 'aria-hidden'))) return true;
+
+    const style = normalizeText(getNodeAttr(node, 'style'))?.toLowerCase() || '';
+    if (HIDDEN_STYLE_PATTERN.test(style)) return true;
+
+    const cls = nodeClassName(node);
+    if (cls && HIDDEN_CLASS_PATTERN.test(cls)) return true;
+
+    const bbox = getNodeBbox(node);
+    if (bbox && (bbox.width <= 0 || bbox.height <= 0) && !hasVisibleSemanticPayload(node)) {
+        return true;
+    }
+
+    return false;
+};
+
+const hasVisibleSemanticPayload = (node: UnifiedNode): boolean => {
+    if (normalizeText(node.name) || normalizeText(getNodeContent(node))) return true;
+    if (node.target) return true;
+    if (hasSemanticPayload(node)) return true;
+    if (isInteractiveNode(node)) return true;
+    if (isMeaningfulImageNode(node)) return true;
+    return false;
+};
+
+const isTruthyAttr = (raw: string | undefined): boolean => {
+    const value = normalizeText(raw)?.toLowerCase();
+    if (!value) return false;
+    return value === 'true' || value === '1' || value === 'yes' || value === 'hidden';
 };
 
 const isDecorativeNoise = (node: UnifiedNode): boolean => {
@@ -269,14 +753,41 @@ const collectDescendantLiftableTexts = (node: UnifiedNode, sink: Array<string | 
 };
 
 const compactLiftTexts = (values: Array<string | undefined>): string[] => {
-    const dedup = new Set<string>();
+    const dedup: string[] = [];
     for (const value of values) {
         const normalized = normalizeText(value);
         if (!normalized) continue;
         if (!isLightweightText(normalized)) continue;
-        dedup.add(normalized);
+        if (dedup.some((item) => isNearDuplicateText(item, normalized))) continue;
+        dedup.push(normalized);
     }
-    return [...dedup];
+    return dedup;
+};
+
+const isNearDuplicateText = (leftRaw: string | undefined, rightRaw: string | undefined): boolean => {
+    const left = normalizeText(leftRaw);
+    const right = normalizeText(rightRaw);
+    if (!left || !right) return false;
+    if (left === right) return true;
+
+    const leftCanonical = canonicalizeText(left);
+    const rightCanonical = canonicalizeText(right);
+    if (!leftCanonical || !rightCanonical) return false;
+    if (leftCanonical === rightCanonical) return true;
+
+    const shorter = leftCanonical.length <= rightCanonical.length ? leftCanonical : rightCanonical;
+    const longer = shorter === leftCanonical ? rightCanonical : leftCanonical;
+    if (shorter.length < 4) return false;
+    if (!longer.includes(shorter)) return false;
+    const ratio = shorter.length / longer.length;
+    return ratio >= 0.78;
+};
+
+const canonicalizeText = (value: string): string => {
+    return value
+        .toLowerCase()
+        .replace(/[\s\p{P}\p{S}]+/gu, '')
+        .trim();
 };
 
 const isLightweightText = (value: string): boolean => {
@@ -388,5 +899,83 @@ const DROP_SUBTREE_ROLES = new Set(['doc-subtitle', 'doc-tip', 'doc-endnote']);
 const PSEUDO_ROLES = new Set(['::before', '::after', 'before', 'after']);
 const PSEUDO_TAGS = new Set(['::before', '::after']);
 const VECTOR_SUBTREE_TAGS = new Set(['svg', 'path', 'g', 'defs', 'symbol', 'use', 'clippath']);
+const TABLE_BUDGET_ROLES = new Set(['table', 'grid', 'treegrid', 'rowgroup']);
+const TABLE_BUDGET_TAGS = new Set(['table', 'tbody', 'thead']);
+const TABLE_BUDGET_CLASS_HINTS = ['table', 'grid', 'datatable', 'data-table'];
+const LIST_BUDGET_ROLES = new Set(['list', 'listbox', 'menu', 'tablist']);
+const LIST_BUDGET_TAGS = new Set(['ul', 'ol', 'menu']);
+const FORM_BUDGET_ROLES = new Set(['form']);
+const FORM_BUDGET_TAGS = new Set(['form']);
+const DIALOG_BUDGET_ROLES = new Set(['dialog', 'alertdialog']);
+const TOOLBAR_BUDGET_ROLES = new Set(['toolbar']);
+const PANEL_BUDGET_ROLES = new Set(['region', 'complementary', 'contentinfo', 'main']);
+const PANEL_BUDGET_CLASS_HINTS = ['panel', 'card', 'layout'];
+const BUDGET_CRITICAL_ROLES = new Set([
+    'table',
+    'list',
+    'row',
+    'columnheader',
+    'rowheader',
+    'form',
+    'dialog',
+    'toolbar',
+    'heading',
+    'label',
+]);
+const REGION_BUDGET_PROFILE: Record<RegionBudgetKind, RegionBudgetProfile> = {
+    table: {
+        activationNodes: 150,
+        baseMaxNodes: 320,
+        growthFactor: 0.11,
+        siblingTemplateCap: 12,
+        minTemplateRun: 16,
+    },
+    list: {
+        activationNodes: 120,
+        baseMaxNodes: 220,
+        growthFactor: 0.09,
+        siblingTemplateCap: 10,
+        minTemplateRun: 14,
+    },
+    form: {
+        activationNodes: 130,
+        baseMaxNodes: 280,
+        growthFactor: 0.09,
+        siblingTemplateCap: 10,
+        minTemplateRun: 14,
+    },
+    dialog: {
+        activationNodes: 100,
+        baseMaxNodes: 200,
+        growthFactor: 0.07,
+        siblingTemplateCap: 10,
+        minTemplateRun: 12,
+    },
+    toolbar: {
+        activationNodes: 70,
+        baseMaxNodes: 100,
+        growthFactor: 0.04,
+        siblingTemplateCap: 8,
+        minTemplateRun: 10,
+    },
+    panel: {
+        activationNodes: 120,
+        baseMaxNodes: 240,
+        growthFactor: 0.08,
+        siblingTemplateCap: 10,
+        minTemplateRun: 14,
+    },
+    generic: {
+        activationNodes: 150,
+        baseMaxNodes: 220,
+        growthFactor: 0.07,
+        siblingTemplateCap: 10,
+        minTemplateRun: 14,
+    },
+};
+const IMPORTANCE_HARD_KEEP_SCORE = 6.6;
 const DECORATIVE_CLASS_PATTERN = /\b(icon|spinner|loading|skeleton|divider)\b/i;
+const HIDDEN_CLASS_PATTERN = /\b(hidden|is-hidden|u-hidden|visually-hidden|sr-only|d-none)\b/i;
+const HIDDEN_STYLE_PATTERN =
+    /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?|content-visibility\s*:\s*hidden)\b/i;
 const HAS_TEXT_CHAR_PATTERN = /[\p{L}\p{N}]/u;
