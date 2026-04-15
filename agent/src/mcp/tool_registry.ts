@@ -1,6 +1,7 @@
 import { createToolHandlers } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
 import type { PageRegistry } from '../runtime/page_registry';
+import type { McpToolHandler } from './tool_handlers';
 
 export type ToolSpec = {
     name: string;
@@ -8,36 +9,45 @@ export type ToolSpec = {
     inputSchema: Record<string, unknown>;
 };
 
-const toolDescriptions: Array<{ name: string; description: string }> = [
-    { name: 'browser.goto', description: 'Navigate the current tab to a URL.' },
-    { name: 'browser.go_back', description: 'Go back in history for the current tab.' },
-    { name: 'browser.reload', description: 'Reload the current tab.' },
-    { name: 'browser.create_tab', description: 'Create a new tab in the current workspace.' },
-    { name: 'browser.switch_tab', description: 'Switch to a tab by id.' },
-    { name: 'browser.close_tab', description: 'Close a tab by id or the current tab.' },
-    { name: 'browser.get_page_info', description: 'Return page metadata and tab list.' },
-    { name: 'browser.snapshot', description: 'Return a structured UnifiedNode snapshot tree, with optional contain/depth/filter/diff view.' },
-    { name: 'browser.list_entities', description: 'List entities from the final snapshot entity view.' },
-    { name: 'browser.get_entity', description: 'Get entity information by snapshot nodeId.' },
-    { name: 'browser.find_entities', description: 'Find entities by query, kind, and business tag.' },
-    { name: 'browser.add_entity', description: 'Add an overlay entity on a snapshot node.' },
-    { name: 'browser.delete_entity', description: 'Suppress entity interpretation on a snapshot node.' },
-    { name: 'browser.rename_entity', description: 'Rename a snapshot node by nodeId.' },
-    { name: 'browser.get_content', description: 'Resolve snapshot content by content ref.' },
-    { name: 'browser.read_console', description: 'Read recent console entries from the active tab.' },
-    { name: 'browser.read_network', description: 'Read recent network entries from the active tab.' },
-    { name: 'browser.evaluate', description: 'Evaluate JavaScript expression in the page context.' },
-    { name: 'browser.take_screenshot', description: 'Capture a screenshot for the page or target.' },
-    { name: 'browser.click', description: 'Click an element by id or selector.' },
-    { name: 'browser.fill', description: 'Fill an element by id or selector.' },
-    { name: 'browser.type', description: 'Type text into a target element.' },
-    { name: 'browser.select_option', description: 'Select option values from a target element.' },
-    { name: 'browser.hover', description: 'Hover over a target element.' },
-    { name: 'browser.scroll', description: 'Scroll the page or a target element into view.' },
-    { name: 'browser.press_key', description: 'Press a keyboard key with optional target focus.' },
-    { name: 'browser.drag_and_drop', description: 'Drag a source element to a destination.' },
-    { name: 'browser.mouse', description: 'Perform a low-level mouse action.' },
-    { name: 'browser.batch', description: 'Execute multiple actions sequentially in one call, optionally resolving targets by label.' },
+export type ToolGroup = 'tab_navigation' | 'structured_inspection' | 'business_entities' | 'actions' | 'debugging';
+
+type ToolDefinition = {
+    name: string;
+    description: string;
+    group: ToolGroup;
+};
+
+const toolDefinitions: ToolDefinition[] = [
+    { name: 'browser.create_tab', description: 'Create tab.', group: 'tab_navigation' },
+    { name: 'browser.list_tabs', description: 'List tabs.', group: 'tab_navigation' },
+    { name: 'browser.switch_tab', description: 'Switch tab.', group: 'tab_navigation' },
+    { name: 'browser.close_tab', description: 'Close tab.', group: 'tab_navigation' },
+    { name: 'browser.goto', description: 'Navigate URL.', group: 'tab_navigation' },
+    { name: 'browser.go_back', description: 'Go back.', group: 'tab_navigation' },
+    { name: 'browser.reload', description: 'Reload page.', group: 'tab_navigation' },
+    { name: 'browser.get_page_info', description: 'Page info.', group: 'tab_navigation' },
+    { name: 'browser.snapshot', description: 'Snapshot view.', group: 'structured_inspection' },
+    { name: 'browser.get_content', description: 'Resolve content ref.', group: 'structured_inspection' },
+    { name: 'browser.list_entities', description: 'List entities.', group: 'business_entities' },
+    { name: 'browser.get_entity', description: 'Get entity.', group: 'business_entities' },
+    { name: 'browser.find_entities', description: 'Find entities.', group: 'business_entities' },
+    { name: 'browser.add_entity', description: 'Add entity overlay.', group: 'business_entities' },
+    { name: 'browser.delete_entity', description: 'Delete entity overlay.', group: 'business_entities' },
+    { name: 'browser.rename_entity', description: 'Rename entity.', group: 'business_entities' },
+    { name: 'browser.click', description: 'Click target.', group: 'actions' },
+    { name: 'browser.fill', description: 'Fill input.', group: 'actions' },
+    { name: 'browser.type', description: 'Type text.', group: 'actions' },
+    { name: 'browser.select_option', description: 'Select option.', group: 'actions' },
+    { name: 'browser.batch', description: 'Batch actions.', group: 'actions' },
+    { name: 'browser.hover', description: 'Hover target.', group: 'actions' },
+    { name: 'browser.scroll', description: 'Scroll page/element.', group: 'actions' },
+    { name: 'browser.press_key', description: 'Press key.', group: 'actions' },
+    { name: 'browser.drag_and_drop', description: 'Drag and drop.', group: 'actions' },
+    { name: 'browser.read_console', description: 'Read console.', group: 'debugging' },
+    { name: 'browser.read_network', description: 'Read network.', group: 'debugging' },
+    { name: 'browser.evaluate', description: 'Evaluate JS.', group: 'debugging' },
+    { name: 'browser.take_screenshot', description: 'Take screenshot.', group: 'debugging' },
+    { name: 'browser.mouse', description: 'Low-level mouse.', group: 'debugging' },
 ];
 
 export type ToolRegistryDeps = {
@@ -70,6 +80,35 @@ const stripTabTokenSchema = (schema: Record<string, unknown>): Record<string, un
     };
 };
 
+const pruneSchema = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+        const next = value.map((item) => pruneSchema(item)).filter((item) => item !== undefined);
+        return next.length > 0 ? next : undefined;
+    }
+    if (!value || typeof value !== 'object') {
+        return value;
+    }
+
+    const obj = value as Record<string, unknown>;
+    const next: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(obj)) {
+        if (key === 'additionalProperties' && child === false) continue;
+        const pruned = pruneSchema(child);
+        if (pruned === undefined) continue;
+        if (key === 'required' && Array.isArray(pruned) && pruned.length === 0) continue;
+        if (key === 'properties' && pruned && typeof pruned === 'object' && !Array.isArray(pruned) && Object.keys(pruned).length === 0)
+            continue;
+        next[key] = pruned;
+    }
+    return Object.keys(next).length > 0 ? next : undefined;
+};
+
+const compactInputSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
+    const stripped = stripTabTokenSchema(schema);
+    const compacted = pruneSchema(stripped);
+    return (compacted && typeof compacted === 'object' ? compacted : { type: 'object' }) as Record<string, unknown>;
+};
+
 const withTabToken = (args: unknown, tabToken: string): unknown => {
     if (!args || typeof args !== 'object' || Array.isArray(args)) {
         return { tabToken };
@@ -81,12 +120,70 @@ const withTabToken = (args: unknown, tabToken: string): unknown => {
     return { ...rec, tabToken };
 };
 
-export const getToolSpecs = (): ToolSpec[] =>
-    toolDescriptions.map((tool) => ({
+const DEFAULT_DISABLED_TOOLS = new Set([
+    'browser.read_console',
+    'browser.read_network',
+    'browser.evaluate',
+    'browser.take_screenshot',
+    'browser.mouse',
+]);
+
+const parseCsv = (value: string | undefined): string[] =>
+    (value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
+const isKnownTool = (name: string): boolean => toolDefinitions.some((tool) => tool.name === name);
+
+const isKnownGroup = (group: string): group is ToolGroup =>
+    group === 'tab_navigation' ||
+    group === 'structured_inspection' ||
+    group === 'business_entities' ||
+    group === 'actions' ||
+    group === 'debugging';
+
+export const resolveEnabledToolNames = (env: NodeJS.ProcessEnv = process.env): Set<string> => {
+    const groups = parseCsv(env.RPA_MCP_TOOL_GROUPS).filter(isKnownGroup);
+    const enableTools = parseCsv(env.RPA_MCP_ENABLE_TOOLS).filter(isKnownTool);
+    const disableTools = parseCsv(env.RPA_MCP_DISABLE_TOOLS).filter(isKnownTool);
+
+    let selected = new Set(toolDefinitions.map((tool) => tool.name));
+    for (const name of DEFAULT_DISABLED_TOOLS) {
+        selected.delete(name);
+    }
+
+    if (groups.length > 0) {
+        selected = new Set(toolDefinitions.filter((tool) => groups.includes(tool.group)).map((tool) => tool.name));
+    }
+
+    for (const name of enableTools) {
+        selected.add(name);
+    }
+    for (const name of disableTools) {
+        selected.delete(name);
+    }
+    return selected;
+};
+
+const selectToolDefinitions = (enabledTools?: Set<string>): ToolDefinition[] =>
+    toolDefinitions.filter((tool) => !enabledTools || enabledTools.has(tool.name));
+
+export const getToolSpecs = (options?: { enabledTools?: Set<string> }): ToolSpec[] =>
+    selectToolDefinitions(options?.enabledTools).map((tool) => ({
         name: tool.name,
         description: tool.description,
-        inputSchema: stripTabTokenSchema(toolInputJsonSchemas[tool.name as keyof typeof toolInputJsonSchemas]),
+        inputSchema: compactInputSchema(toolInputJsonSchemas[tool.name as keyof typeof toolInputJsonSchemas]),
     }));
+
+export const getToolHandlers = (
+    deps: { pageRegistry: PageRegistry },
+    options?: { enabledTools?: Set<string> },
+): Record<string, McpToolHandler> => {
+    const handlers = createToolHandlers({ pageRegistry: deps.pageRegistry });
+    if (!options?.enabledTools) return handlers;
+    return Object.fromEntries(Object.entries(handlers).filter(([name]) => options.enabledTools!.has(name)));
+};
 
 export const executeTool = async (
     deps: ToolRegistryDeps,
@@ -94,7 +191,8 @@ export const executeTool = async (
     args: unknown,
     options?: ExecuteToolOptions,
 ): Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }> => {
-    const handlers = createToolHandlers({ pageRegistry: deps.pageRegistry });
+    const enabledTools = resolveEnabledToolNames();
+    const handlers = getToolHandlers({ pageRegistry: deps.pageRegistry }, { enabledTools });
     const handler = handlers[name];
     if (!handler) {
         return {
