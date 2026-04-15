@@ -89,6 +89,26 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
         return result;
     },
 
+    'trace.locator.readSelectState': async (args: LocatorTarget) =>
+        base.run('trace.locator.readSelectState', args, async () => {
+            const locator = await resolveLocator(base, args);
+            const state = await locator.evaluate((node) => {
+                const select = node as HTMLSelectElement | null;
+                if (!select || !('selectedOptions' in select)) {
+                    return { selectedValues: [] as string[], selectedLabels: [] as string[] };
+                }
+                const selectedOptions = Array.from(select.selectedOptions || []);
+                return {
+                    selectedValues: selectedOptions.map((opt) => (opt.value || '').trim()).filter(Boolean),
+                    selectedLabels: selectedOptions.map((opt) => (opt.textContent || '').trim()).filter(Boolean),
+                };
+            });
+            return {
+                selectedValues: Array.isArray(state?.selectedValues) ? state.selectedValues : [],
+                selectedLabels: Array.isArray(state?.selectedLabels) ? state.selectedLabels : [],
+            };
+        }),
+
     'trace.locator.hover': async (args: LocatorTarget) =>
         base.run('trace.locator.hover', args, async () => {
             const locator = await resolveLocator(base, args);

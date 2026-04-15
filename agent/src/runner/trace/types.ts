@@ -32,6 +32,7 @@ export type TraceOpName =
     | 'trace.locator.fill'
     | 'trace.locator.type'
     | 'trace.locator.selectOption'
+    | 'trace.locator.readSelectState'
     | 'trace.locator.hover'
     | 'trace.locator.dragDrop'
     | 'trace.keyboard.press'

@@ -32,9 +32,18 @@ export const executeBrowserSelectOption = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const ensureSelected = (selected: string[] | undefined, expected: string[], details: Record<string, unknown>) => {
-        const actual = Array.isArray(selected) ? selected : [];
-        const missing = expected.filter((value) => !actual.includes(value));
+    const ensureSelected = (
+        selectedValues: string[] | undefined,
+        selectedLabels: string[] | undefined,
+        expected: string[],
+        details: Record<string, unknown>,
+    ) => {
+        const valueSet = new Set((selectedValues || []).map((item) => item.trim()));
+        const labelSet = new Set((selectedLabels || []).map((item) => item.trim()));
+        const missing = expected.filter((value) => {
+            const normalized = value.trim();
+            return !valueSet.has(normalized) && !labelSet.has(normalized);
+        });
         if (missing.length === 0) return null;
         return {
             stepId: step.id,
@@ -45,7 +54,8 @@ export const executeBrowserSelectOption = async (
                 details: {
                     ...details,
                     expected,
-                    selected: actual,
+                    selectedValues: [...valueSet],
+                    selectedLabels: [...labelSet],
                     missing,
                 },
             },
@@ -96,7 +106,15 @@ export const executeBrowserSelectOption = async (
         if (!select.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
         }
-        const mismatch = ensureSelected(select.data?.selected, step.args.values, {
+        const state = await binding.traceTools['trace.locator.readSelectState']({
+            selector: resolved.target.selector,
+            role: resolved.target.role,
+            name: resolved.target.name,
+        });
+        if (!state.ok) {
+            return { stepId: step.id, ok: false, error: mapTraceError(state.error) };
+        }
+        const mismatch = ensureSelected(select.data?.selected, state.data?.selectedLabels, step.args.values, {
             selector: resolved.target.selector,
             a11yHint: target.a11yHint,
         });
@@ -127,7 +145,16 @@ export const executeBrowserSelectOption = async (
     if (!select.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
     }
-    const mismatch = ensureSelected(select.data?.selected, step.args.values, {
+    const state = await binding.traceTools['trace.locator.readSelectState']({
+        a11yNodeId: resolved.target.a11yNodeId,
+        selector: resolved.target.selector,
+        role: resolved.target.role,
+        name: resolved.target.name,
+    });
+    if (!state.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(state.error) };
+    }
+    const mismatch = ensureSelected(select.data?.selected, state.data?.selectedLabels, step.args.values, {
         target: resolved.target,
         a11yHint: target?.a11yHint,
     });

@@ -6,6 +6,7 @@ import type { RunStepsDeps } from '../../run_steps';
 import { getRunnerConfig } from '../../../config';
 import { executeBrowserClick } from '../executors/click';
 import { executeBrowserFill } from '../executors/fill';
+import { executeBrowserSelectOption } from '../executors/select_option';
 import { executeBrowserPressKey, normalizeBrowserPressKey } from '../executors/press_key';
 import { executeBrowserSnapshot } from '../executors/snapshot';
 import { executeBrowserMouse } from '../executors/mouse';
@@ -468,6 +469,34 @@ test('fill uses trace.locator.fill', async () => {
     const result = await executeBrowserFill(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.deepEqual(calls, ['trace.locator.fill']);
+});
+
+test('select_option validates against selected labels after action', async () => {
+    const calls: string[] = [];
+    const traceTools = {
+        'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [{ nodeId: 'n3' }] }),
+        'trace.locator.scrollIntoView': async () => ({ ok: true }),
+        'trace.locator.waitForVisible': async () => ({ ok: true }),
+        'trace.locator.selectOption': async () => {
+            calls.push('trace.locator.selectOption');
+            // Simulate UI library returning option values, not labels.
+            return { ok: true, data: { selected: ['v-approve'] } };
+        },
+        'trace.locator.readSelectState': async () => ({
+            ok: true,
+            data: { selectedValues: ['v-approve'], selectedLabels: ['审批中'] },
+        }),
+    };
+    const deps = createDeps(traceTools);
+    const step: Step<'browser.select_option'> = {
+        id: 's3-select',
+        name: 'browser.select_option',
+        args: { target: { a11yHint: { role: 'combobox', name: '报销状态' } }, values: ['审批中'] },
+    };
+
+    const result = await executeBrowserSelectOption(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls, ['trace.locator.selectOption']);
 });
 
 test('press_key(target) focuses before keyboard.press', async () => {

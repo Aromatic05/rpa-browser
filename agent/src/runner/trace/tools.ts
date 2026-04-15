@@ -61,6 +61,9 @@ export type BrowserAutomationTools = {
     'trace.locator.selectOption': (
         args: TraceLocatorTarget & { values: string[]; timeout?: number },
     ) => Promise<ToolResult<{ selected: string[] }>>;
+    'trace.locator.readSelectState': (
+        args: TraceLocatorTarget,
+    ) => Promise<ToolResult<{ selectedValues: string[]; selectedLabels: string[] }>>;
     'trace.locator.hover': (args: TraceLocatorTarget) => Promise<ToolResult<void>>;
     'trace.locator.dragDrop': (args: { source: TraceLocatorTarget; dest?: TraceLocatorTarget; destCoord?: { x: number; y: number } }) => Promise<ToolResult<void>>;
     'trace.page.scrollTo': (args: { x: number; y: number }) => Promise<ToolResult<void>>;
