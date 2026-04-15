@@ -13,9 +13,9 @@ test('resolveEnabledToolNames excludes debug tools by default', () => {
 
 test('resolveEnabledToolNames honors group and explicit enable/disable', () => {
     const enabled = resolveEnabledToolNames({
-        RPA_MCP_TOOL_GROUPS: 'tab_navigation',
-        RPA_MCP_ENABLE_TOOLS: 'browser.evaluate',
-        RPA_MCP_DISABLE_TOOLS: 'browser.goto',
+        enabledToolGroups: ['tab_navigation'],
+        enableTools: ['browser.evaluate'],
+        disableTools: ['browser.goto'],
     });
     assert.equal(enabled.has('browser.list_tabs'), true);
     assert.equal(enabled.has('browser.get_content'), false);

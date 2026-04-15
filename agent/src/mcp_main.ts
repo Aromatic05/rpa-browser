@@ -95,11 +95,12 @@ setRunStepsDeps({
 });
 await mcpToolHost.load({
     pageRegistry,
+    config,
     log,
 });
 if (hotReloadEnabled) {
     const watchTarget = path.resolve(process.cwd(), 'src/mcp');
-    mcpToolHost.watchDev(watchTarget, { pageRegistry, log });
+    mcpToolHost.watchDev(watchTarget, { pageRegistry, config, log });
     logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
 }
 
@@ -109,6 +110,7 @@ if (hotReloadEnabled) {
         logNotice('Playwright Chromium launched with extension.');
         await startMcpServer({
             pageRegistry,
+            config,
             log,
             resolveToolRuntime: () =>
                 mcpToolHost.getRuntime() || {

@@ -2,6 +2,8 @@ import { createToolHandlers } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { McpToolHandler } from './tool_handlers';
+import type { RunnerConfig, McpToolGroup } from '../config';
+import { defaultRunnerConfig } from '../config/defaults';
 
 export type ToolSpec = {
     name: string;
@@ -9,7 +11,7 @@ export type ToolSpec = {
     inputSchema: Record<string, unknown>;
 };
 
-export type ToolGroup = 'tab_navigation' | 'structured_inspection' | 'business_entities' | 'actions' | 'debugging';
+export type ToolGroup = McpToolGroup;
 
 type ToolDefinition = {
     name: string;
@@ -120,20 +122,6 @@ const withTabToken = (args: unknown, tabToken: string): unknown => {
     return { ...rec, tabToken };
 };
 
-const DEFAULT_DISABLED_TOOLS = new Set([
-    'browser.read_console',
-    'browser.read_network',
-    'browser.evaluate',
-    'browser.take_screenshot',
-    'browser.mouse',
-]);
-
-const parseCsv = (value: string | undefined): string[] =>
-    (value || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter((item) => item.length > 0);
-
 const isKnownTool = (name: string): boolean => toolDefinitions.some((tool) => tool.name === name);
 
 const isKnownGroup = (group: string): group is ToolGroup =>
@@ -143,15 +131,16 @@ const isKnownGroup = (group: string): group is ToolGroup =>
     group === 'actions' ||
     group === 'debugging';
 
-export const resolveEnabledToolNames = (env: NodeJS.ProcessEnv = process.env): Set<string> => {
-    const groups = parseCsv(env.RPA_MCP_TOOL_GROUPS).filter(isKnownGroup);
-    const enableTools = parseCsv(env.RPA_MCP_ENABLE_TOOLS).filter(isKnownTool);
-    const disableTools = parseCsv(env.RPA_MCP_DISABLE_TOOLS).filter(isKnownTool);
+export const resolveEnabledToolNames = (policy?: Partial<RunnerConfig['mcpPolicy']>): Set<string> => {
+    const resolved = {
+        ...defaultRunnerConfig.mcpPolicy,
+        ...(policy || {}),
+    };
+    const groups = (resolved.enabledToolGroups || []).filter(isKnownGroup);
+    const enableTools = (resolved.enableTools || []).filter(isKnownTool);
+    const disableTools = (resolved.disableTools || []).filter(isKnownTool);
 
     let selected = new Set(toolDefinitions.map((tool) => tool.name));
-    for (const name of DEFAULT_DISABLED_TOOLS) {
-        selected.delete(name);
-    }
 
     if (groups.length > 0) {
         selected = new Set(toolDefinitions.filter((tool) => groups.includes(tool.group)).map((tool) => tool.name));
@@ -186,12 +175,12 @@ export const getToolHandlers = (
 };
 
 export const executeTool = async (
-    deps: ToolRegistryDeps,
+    deps: ToolRegistryDeps & { config?: RunnerConfig },
     name: string,
     args: unknown,
     options?: ExecuteToolOptions,
 ): Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }> => {
-    const enabledTools = resolveEnabledToolNames();
+    const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
     const handlers = getToolHandlers({ pageRegistry: deps.pageRegistry }, { enabledTools });
     const handler = handlers[name];
     if (!handler) {

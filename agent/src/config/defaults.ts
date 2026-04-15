@@ -58,4 +58,15 @@ export const defaultRunnerConfig: RunnerConfig = {
         filePath: '.artifacts/checkpoints/task_runs.json',
         flushIntervalMs: 1200,
     },
+    mcpPolicy: {
+        enabledToolGroups: [],
+        enableTools: [],
+        disableTools: [
+            'browser.read_console',
+            'browser.read_network',
+            'browser.evaluate',
+            'browser.take_screenshot',
+            'browser.mouse',
+        ],
+    },
 };

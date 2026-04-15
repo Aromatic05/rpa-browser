@@ -22,7 +22,7 @@ export type McpServerDeps = McpToolDeps & {
 };
 
 const createDefaultRuntime = (deps: McpToolDeps): McpToolRuntime => {
-    const enabledTools = resolveEnabledToolNames();
+    const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
     return {
         handlers: getToolHandlers(deps, { enabledTools }),
         tools: getToolSpecs({ enabledTools }),

@@ -107,6 +107,17 @@ export type CheckpointPolicy = {
     flushIntervalMs: number;
 };
 
+export type McpToolGroup = 'tab_navigation' | 'structured_inspection' | 'business_entities' | 'actions' | 'debugging';
+
+export type McpPolicy = {
+    /** 启用的工具分组（空数组表示不过滤分组） */
+    enabledToolGroups: McpToolGroup[];
+    /** 额外强制启用的工具名 */
+    enableTools: string[];
+    /** 强制禁用的工具名 */
+    disableTools: string[];
+};
+
 export type RunnerConfig = {
     waitPolicy: WaitPolicy;
     retryPolicy: RetryPolicy;
@@ -114,4 +125,5 @@ export type RunnerConfig = {
     observability: Observability;
     confidencePolicy: ConfidencePolicy;
     checkpointPolicy: CheckpointPolicy;
+    mcpPolicy: McpPolicy;
 };

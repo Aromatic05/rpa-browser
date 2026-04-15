@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import crypto from 'crypto';
 import type { PageRegistry } from '../runtime/page_registry';
+import type { RunnerConfig } from '../config';
 import { runStepList } from '../runner/run_steps';
 import type { StepUnion } from '../runner/steps/types';
 import {
@@ -68,6 +69,7 @@ import {
 
 export type McpToolDeps = {
     pageRegistry: PageRegistry;
+    config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
 };
 
