@@ -103,6 +103,7 @@ Normal interaction tools:
 - `browser.fill`
 - `browser.type`
 - `browser.select_option`
+- `browser.batch`
 - `browser.hover`
 - `browser.scroll`
 - `browser.press_key`
@@ -140,6 +141,7 @@ Interaction preferences:
 - prefer `fill` over `type` when direct assignment is enough
 - use `type` only when key-by-key typing matters
 - prefer `select_option` for native selects
+- when applying many form actions in one view, prefer `browser.batch` to reduce round trips
 - use `hover` only when hover state is required
 - use `scroll` only to reveal relevant content
 - use `press_key` for Enter, Tab, Escape, shortcuts, or focused control interaction
@@ -336,6 +338,17 @@ Heuristics:
 - avoid broad selectors like global `select`, `input`, `button`
 - if multiple similar controls exist, prefer selectors constrained by nearby label text or container scope
 - keep one stable `contain` root for the whole mini-workflow to reduce index drift
+
+## Low-token mode
+
+When the goal is throughput and low token usage:
+
+1. one shallow snapshot
+2. one focused snapshot with `contain` and `filter.interactive=true`
+3. one `browser.batch` call for all fill/select/click actions in that view
+4. one verification snapshot (or `diff` if local)
+
+Avoid per-field snapshot loops unless there is a failure.
 
 ## Anti-patterns
 
