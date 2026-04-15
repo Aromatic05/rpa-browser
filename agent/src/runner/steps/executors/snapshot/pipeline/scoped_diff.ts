@@ -34,13 +34,13 @@ type NormalizedSnapshotFilter = {
     interactiveOnly: boolean;
 };
 
-export type BuildSnapshotViewInput = {
+type BuildSnapshotViewInput = {
     contain?: string;
     depth?: number;
     filter?: SnapshotFilter;
 };
 
-export type BuildSnapshotViewResult =
+type BuildSnapshotViewResult =
     | {
           ok: true;
           snapshot: SnapshotResult;
@@ -54,7 +54,7 @@ export type BuildSnapshotViewResult =
           error: SnapshotViewError;
       };
 
-export type ComputeMinimalDiffResult =
+type ComputeMinimalDiffResult =
     | {
           mode: 'diff';
           root: UnifiedNode;

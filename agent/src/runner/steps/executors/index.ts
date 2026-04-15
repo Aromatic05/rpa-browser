@@ -3,7 +3,7 @@ import type { RunStepsDeps } from '../../run_steps';
 import { executeBrowserClick } from './click';
 import { executeBrowserFill } from './fill';
 import { executeBrowserGoto } from './goto';
-import { executeBrowserSnapshot } from './snapshot';
+import { executeBrowserSnapshot } from './snapshot/pipeline/snapshot';
 import { executeBrowserGoBack } from './go_back';
 import { executeBrowserReload } from './reload';
 import { executeBrowserCreateTab } from './create_tab';

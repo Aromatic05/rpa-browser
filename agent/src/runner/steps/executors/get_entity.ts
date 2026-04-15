@@ -1,6 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { generateSemanticSnapshot } from './snapshot';
+import { generateSemanticSnapshot } from './snapshot/pipeline/snapshot';
 import { buildNodeSummary, buildTableMeta, toEntityOutputRecord } from './snapshot/core/entity_output';
 import { ensureFreshSnapshot } from './snapshot/core/session_store';
 import { normalizeText } from './snapshot/core/runtime_store';

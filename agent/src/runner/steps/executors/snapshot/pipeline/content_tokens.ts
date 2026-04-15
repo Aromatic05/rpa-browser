@@ -13,7 +13,7 @@ export const projectInteractionStateContent = (root: UnifiedNode) => {
     });
 };
 
-export const buildInteractionContentTokens = (node: UnifiedNode): string[] => {
+const buildInteractionContentTokens = (node: UnifiedNode): string[] => {
     const attrs = getNodeAttrs(node) || {};
     const role = normalizeRole(node.role);
     const tag = normalizeRole(attrs.tag || attrs.tagName);
@@ -95,11 +95,11 @@ export const buildInteractionContentTokens = (node: UnifiedNode): string[] => {
     return dedupeTokens(ordered);
 };
 
-export const joinContentTokens = (tokens: string[]): string => {
+const joinContentTokens = (tokens: string[]): string => {
     return tokens.join(TOKEN_JOINER);
 };
 
-export const normalizeContentTokenValue = (value: string): string => {
+const normalizeContentTokenValue = (value: string): string => {
     const normalized = normalizeText(value) || '';
     if (!normalized) return '';
     return normalized

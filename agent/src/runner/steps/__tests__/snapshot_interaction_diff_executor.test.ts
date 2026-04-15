@@ -5,7 +5,7 @@ import type { Step } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { getRunnerConfig } from '../../../config';
 import { RunnerPluginHost } from '../../hotreload/plugin_host';
-import { executeBrowserSnapshot } from '../executors/snapshot';
+import { executeBrowserSnapshot } from '../executors/snapshot/pipeline/snapshot';
 import { markSnapshotSessionDirty } from '../executors/snapshot/core/session_store';
 
 const createDeps = (page: any, cache: Record<string, unknown> = {}): RunStepsDeps => {

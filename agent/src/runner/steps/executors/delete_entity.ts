@@ -1,6 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { generateSemanticSnapshot } from './snapshot';
+import { generateSemanticSnapshot } from './snapshot/pipeline/snapshot';
 import {
     ensureFreshSnapshot,
     updateSnapshotOverlays,

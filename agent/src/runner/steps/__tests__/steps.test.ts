@@ -8,7 +8,7 @@ import { executeBrowserClick } from '../executors/click';
 import { executeBrowserFill } from '../executors/fill';
 import { executeBrowserSelectOption } from '../executors/select_option';
 import { executeBrowserPressKey, normalizeBrowserPressKey } from '../executors/press_key';
-import { executeBrowserSnapshot } from '../executors/snapshot';
+import { executeBrowserSnapshot } from '../executors/snapshot/pipeline/snapshot';
 import { executeBrowserMouse } from '../executors/mouse';
 import { executeBrowserGetContent } from '../executors/get_content';
 import { RunnerPluginHost } from '../../hotreload/plugin_host';

@@ -71,7 +71,7 @@ export const buildFinalEntityViewFromSnapshot = (
     };
 };
 
-export const applyRenameOverlay = (
+const applyRenameOverlay = (
     snapshot: SnapshotResult,
     renamedNodes: Record<string, string>,
 ): number => {
@@ -100,7 +100,7 @@ export const applyRenameOverlay = (
     return applied;
 };
 
-export const applyDeleteEntityOverlay = (
+const applyDeleteEntityOverlay = (
     snapshot: SnapshotResult,
     deletedEntities: SnapshotOverlayDeleteEntity[],
 ): number => {
@@ -137,7 +137,7 @@ export const applyDeleteEntityOverlay = (
     return toDeleteEntityIds.size;
 };
 
-export const applyAddEntityOverlay = (
+const applyAddEntityOverlay = (
     snapshot: SnapshotResult,
     addedEntities: SnapshotOverlayAddEntity[],
 ): { applied: number; skipped: number } => {
