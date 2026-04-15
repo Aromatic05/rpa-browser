@@ -9,8 +9,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ERROR_CODES } from '../actions/error_codes';
 import { errorResult } from '../actions/results';
-import { createToolHandlers, type McpToolDeps, type McpToolHandler } from './tool_handlers';
-import { getToolSpecs, type ToolSpec } from './tool_registry';
+import type { McpToolDeps, McpToolHandler } from './tool_handlers';
+import { getToolHandlers, getToolSpecs, resolveEnabledToolNames, type ToolSpec } from './tool_registry';
 
 export type McpToolRuntime = {
     handlers: Record<string, McpToolHandler>;
@@ -21,10 +21,47 @@ export type McpServerDeps = McpToolDeps & {
     resolveToolRuntime?: () => McpToolRuntime;
 };
 
-const createDefaultRuntime = (deps: McpToolDeps): McpToolRuntime => ({
-    handlers: createToolHandlers(deps),
-    tools: getToolSpecs(),
-});
+const createDefaultRuntime = (deps: McpToolDeps): McpToolRuntime => {
+    const enabledTools = resolveEnabledToolNames();
+    return {
+        handlers: getToolHandlers(deps, { enabledTools }),
+        tools: getToolSpecs({ enabledTools }),
+    };
+};
+
+const isDebugMode = (): boolean => /^(1|true|on)$/i.test(String(process.env.RPA_MCP_DEBUG || '').trim());
+
+const compactError = (raw: unknown): { code: string; message: string; details?: unknown } => {
+    const value = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const code = typeof value.code === 'string' && value.code.length > 0 ? value.code : ERROR_CODES.ERR_BAD_ARGS;
+    const message = typeof value.message === 'string' && value.message.length > 0 ? value.message : 'tool execution failed';
+    if (isDebugMode() && value.details !== undefined) {
+        return { code, message, details: value.details };
+    }
+    return { code, message };
+};
+
+const compactToolResult = (
+    name: string,
+    result: { ok: boolean; results: unknown[]; error?: unknown },
+): { ok: boolean; data?: unknown; error?: { code: string; message: string; details?: unknown } } => {
+    if (!result.ok) {
+        const failed = (result.results || []).find((item) => (item as { ok?: boolean })?.ok === false) as
+            | { error?: unknown }
+            | undefined;
+        return { ok: false, error: compactError(result.error || failed?.error) };
+    }
+
+    if (name === 'browser.batch') {
+        return { ok: true, data: result.results };
+    }
+
+    const first = (result.results || [])[0] as { data?: unknown } | undefined;
+    if (!first || first.data === undefined) {
+        return { ok: true };
+    }
+    return { ok: true, data: first.data };
+};
 
 export const createMcpServer = (deps: McpServerDeps) => {
     const server = new Server(
@@ -57,22 +94,25 @@ export const createMcpServer = (deps: McpServerDeps) => {
         const handler = resolveRuntime().handlers[name];
         if (!handler) {
             const error = errorResult('', ERROR_CODES.ERR_UNSUPPORTED, `unknown tool: ${name}`);
+            const compact = { ok: false, error: compactError(error.error) };
             return {
-                content: [{ type: 'text', text: JSON.stringify(error) }],
+                content: [{ type: 'text', text: JSON.stringify(compact) }],
                 isError: true,
             };
         }
         try {
             const result = await handler(args);
+            const compact = compactToolResult(name, result);
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
-                isError: !result.ok,
+                content: [{ type: 'text', text: JSON.stringify(compact) }],
+                isError: !compact.ok,
             };
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const result = errorResult('', ERROR_CODES.ERR_BAD_ARGS, message);
+            const compact = { ok: false, error: compactError(result.error) };
             return {
-                content: [{ type: 'text', text: JSON.stringify(result) }],
+                content: [{ type: 'text', text: JSON.stringify(compact) }],
                 isError: true,
             };
         }
