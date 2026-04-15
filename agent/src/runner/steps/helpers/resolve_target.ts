@@ -102,10 +102,13 @@ const resolveBySnapshotNodeId = (
         };
     }
 
-    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
     const direct = locator.direct;
     if (direct?.kind === 'css' && direct.query) {
         const directSelector = applyScopeConstraint(snapshot, locator, direct.query);
+        if (direct.source === 'backend-path') {
+            return { ok: true, target: { selector: withVisibilityConstraint(directSelector, locator.policy?.requireVisible) } };
+        }
+        const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
         if (structuralSelector && shouldPreferStructuralSelector(direct.source, structuralSelector)) {
             return { ok: true, target: { selector: withVisibilityConstraint(structuralSelector, locator.policy?.requireVisible) } };
         }
@@ -150,6 +153,7 @@ const resolveBySnapshotNodeId = (
             },
         };
     }
+    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
     if (structuralSelector) {
         return { ok: true, target: { selector: withVisibilityConstraint(structuralSelector, locator.policy?.requireVisible) } };
     }
