@@ -1,7 +1,11 @@
 import type { Page } from 'playwright';
 import { getA11yTree } from '../../../../trace/a11y/getA11yTree';
 import { getDomTree } from '../../../../trace/dom/getDomTree';
-import { getRuntimeStateMap } from '../../../../trace/runtime/getRuntimeStateMap';
+import {
+    cleanupTaggedRuntimeState,
+    collectTaggedRuntimeState,
+    createRuntimeStateEpoch,
+} from '../../../../trace/runtime/getRuntimeStateMap';
 import type { RawData } from '../core/types';
 
 type CollectRawDataOptions = {
@@ -14,17 +18,25 @@ export type SnapshotWaitMode = 'navigation' | 'interaction';
 export const collectRawData = async (page: Page, options: CollectRawDataOptions = {}): Promise<RawData> => {
     await waitForSnapshotReady(page, options.waitMode || 'navigation');
 
-    // 采集入口只拼装原始数据，不在这里做复杂语义处理。
-    const [domTree, a11yTree, runtimeStateMap] = await Promise.all([
-        getDomTree(page),
-        getA11yTree(page),
-        options.captureRuntimeState ? getRuntimeStateMap(page) : Promise.resolve(undefined),
-    ]);
+    let runtimeStateMap: RawData['runtimeStateMap'];
+    let runtimeStateCleanup: RawData['runtimeStateCleanup'];
+
+    if (options.captureRuntimeState) {
+        runtimeStateCleanup = async () => {
+            await cleanupTaggedRuntimeState(page).catch(() => undefined);
+        };
+        runtimeStateMap = await collectTaggedRuntimeState(page, createRuntimeStateEpoch()).catch(() => undefined);
+    }
+
+    // 顺序约束：runtime(打标+采集) -> DOMSnapshot -> A11y。
+    const domTree = await getDomTree(page);
+    const a11yTree = await getA11yTree(page);
 
     return {
         domTree,
         a11yTree,
         runtimeStateMap,
+        runtimeStateCleanup,
     };
 };
 

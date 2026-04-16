@@ -354,6 +354,7 @@ const ATTR_WHITELIST = new Set([
     'multiple',
     'data-rpa-panel',
     'data-rpa-snapshot-ignore',
+    'data-rpa-state-id',
 ]);
 
 const hydrateIframeSubtrees = async (page: Page, root: DomTreeNode): Promise<void> => {
@@ -442,6 +443,7 @@ const extractFrameSubtree = async (frame: Frame, idPrefix: string): Promise<DomT
                     'multiple',
                     'data-rpa-panel',
                     'data-rpa-snapshot-ignore',
+                    'data-rpa-state-id',
                 ]);
                 const blacklistTags = new Set(['script', 'style']);
 

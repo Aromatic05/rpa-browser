@@ -159,17 +159,23 @@ export const generateSemanticSnapshot = async (
         url: currentUrl,
     });
 
-    // 1) 采集原始观察：DOM、A11y 等基础数据。
+    // 1) 采集原始观察：runtime(打标+采集)、DOM、A11y。
     const raw = await collectRawData(page, {
         captureRuntimeState: options.captureRuntimeState,
         waitMode: options.waitMode,
     });
-    snapshotDebugLog('collect', {
-        domCount: countTreeNodes(raw.domTree),
-        a11yCount: countTreeNodes(raw.a11yTree),
-    });
+    try {
+        snapshotDebugLog('collect', {
+            domCount: countTreeNodes(raw.domTree),
+            a11yCount: countTreeNodes(raw.a11yTree),
+        });
 
-    return generateSemanticSnapshotFromRaw(raw);
+        // 2) 融合构建 unified graph。
+        return generateSemanticSnapshotFromRaw(raw);
+    } finally {
+        // 3) 无论成功失败都清理页面临时 state-id，清理失败不阻塞主流程。
+        await raw.runtimeStateCleanup?.().catch(() => undefined);
+    }
 };
 
 export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult => {

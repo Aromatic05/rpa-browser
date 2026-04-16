@@ -30,16 +30,18 @@ const createDeps = (page: any, cache: Record<string, unknown> = {}): RunStepsDep
 const createDynamicSnapshotPage = (initialValue = '') => {
     const state = {
         value: initialValue,
+        stateId: 'rpa-state-test-textbox-f0-1',
     };
     const calls = {
         runtimeEvaluate: 0,
+        runtimeCleanupEvaluate: 0,
         loadStates: [] as Array<'domcontentloaded' | 'networkidle'>,
     };
 
     const fakeCdp = {
         send: async (method: string) => {
             if (method === 'DOMSnapshot.captureSnapshot') {
-                return buildDomSnapshot(state.value);
+                return buildDomSnapshot(state.value, state.stateId);
             }
             if (method === 'Accessibility.enable') {
                 return {};
@@ -66,17 +68,25 @@ const createDynamicSnapshotPage = (initialValue = '') => {
         context: () => ({
             newCDPSession: async () => fakeCdp,
         }),
-        evaluate: async (fn: unknown) => {
+        evaluate: async (fn: unknown, arg?: unknown) => {
             const marker = typeof fn === 'function' ? String(fn) : '';
-            if (!marker.includes('[contenteditable]')) return undefined;
-            calls.runtimeEvaluate += 1;
-            return [
-                {
-                    pathKey: 'n0.0.0',
-                    value: state.value,
-                    focused: 'false',
-                },
-            ];
+            if (marker.includes('[contenteditable]')) {
+                calls.runtimeEvaluate += 1;
+                return [
+                    {
+                        stateId: state.stateId,
+                        tag: 'input',
+                        type: 'text',
+                        value: state.value,
+                        focused: 'false',
+                    },
+                ];
+            }
+            if (typeof arg === 'string' && arg.includes('data-rpa-state-id')) {
+                calls.runtimeCleanupEvaluate += 1;
+                return true;
+            }
+            return undefined;
         },
     };
 
@@ -92,16 +102,18 @@ const createDynamicSnapshotPage = (initialValue = '') => {
 const createDynamicSelectPage = (initialSelected = '') => {
     const state = {
         selected: initialSelected,
+        stateId: 'rpa-state-test-select-f0-1',
     };
     const calls = {
         runtimeEvaluate: 0,
+        runtimeCleanupEvaluate: 0,
         loadStates: [] as Array<'domcontentloaded' | 'networkidle'>,
     };
 
     const fakeCdp = {
         send: async (method: string) => {
             if (method === 'DOMSnapshot.captureSnapshot') {
-                return buildSelectDomSnapshot();
+                return buildSelectDomSnapshot(state.stateId);
             }
             if (method === 'Accessibility.enable') {
                 return {};
@@ -134,18 +146,25 @@ const createDynamicSelectPage = (initialSelected = '') => {
         context: () => ({
             newCDPSession: async () => fakeCdp,
         }),
-        evaluate: async (fn: unknown) => {
+        evaluate: async (fn: unknown, arg?: unknown) => {
             const marker = typeof fn === 'function' ? String(fn) : '';
-            if (!marker.includes('[contenteditable]')) return undefined;
-            calls.runtimeEvaluate += 1;
-            return [
-                {
-                    pathKey: 'n0.0.0',
-                    value: state.selected,
-                    selected: state.selected,
-                    focused: 'false',
-                },
-            ];
+            if (marker.includes('[contenteditable]')) {
+                calls.runtimeEvaluate += 1;
+                return [
+                    {
+                        stateId: state.stateId,
+                        tag: 'select',
+                        value: state.selected,
+                        selected: state.selected,
+                        focused: 'false',
+                    },
+                ];
+            }
+            if (typeof arg === 'string' && arg.includes('data-rpa-state-id')) {
+                calls.runtimeCleanupEvaluate += 1;
+                return true;
+            }
+            return undefined;
         },
     };
 
@@ -158,7 +177,7 @@ const createDynamicSelectPage = (initialSelected = '') => {
     };
 };
 
-const buildDomSnapshot = (value: string) => {
+const buildDomSnapshot = (value: string, stateId: string) => {
     return {
         documents: [
             {
@@ -168,7 +187,7 @@ const buildDomSnapshot = (value: string) => {
                     nodeName: [0, 1, 2, 3],
                     nodeValue: [0, 0, 0, 0],
                     backendNodeId: [0, 11, 12, 13],
-                    attributes: [[], [], [], [4, 5, 6, 7, 8, 9, 10, 11]],
+                    attributes: [[], [], [], [4, 5, 6, 7, 8, 9, 10, 11, 12, 13]],
                 },
                 layout: {
                     nodeIndex: [1, 2, 3],
@@ -193,11 +212,13 @@ const buildDomSnapshot = (value: string) => {
             value,
             'placeholder',
             '请输入用户名',
+            'data-rpa-state-id',
+            stateId,
         ],
     };
 };
 
-const buildSelectDomSnapshot = () => {
+const buildSelectDomSnapshot = (stateId: string) => {
     return {
         documents: [
             {
@@ -207,7 +228,7 @@ const buildSelectDomSnapshot = () => {
                     nodeName: [0, 1, 2, 3],
                     nodeValue: [0, 0, 0, 0],
                     backendNodeId: [0, 31, 32, 33],
-                    attributes: [[], [], [], [4, 5]],
+                    attributes: [[], [], [], [4, 5, 6, 7]],
                 },
                 layout: {
                     nodeIndex: [1, 2, 3],
@@ -219,7 +240,7 @@ const buildSelectDomSnapshot = () => {
                 },
             },
         ],
-        strings: ['#document', 'HTML', 'BODY', 'SELECT', 'id', 'city-select'],
+        strings: ['#document', 'HTML', 'BODY', 'SELECT', 'id', 'city-select', 'data-rpa-state-id', stateId],
     };
 };
 
@@ -261,6 +282,7 @@ test('executeBrowserSnapshot diff surfaces textbox interaction as content token 
     assert.ok((meta?.changedNodeCount || 0) > 0);
     assert.equal(hasProjectedContent(data, 'value="alice,bob"'), true);
     assert.equal(fake.calls.runtimeEvaluate, 1);
+    assert.equal(fake.calls.runtimeCleanupEvaluate, 1);
 });
 
 test('executeBrowserSnapshot diff surfaces select interaction as content token change', async () => {
@@ -294,6 +316,7 @@ test('executeBrowserSnapshot diff surfaces select interaction as content token c
     assert.ok((meta?.changedNodeCount || 0) > 0);
     assert.equal(hasProjectedContent(data, 'selected="北京"'), true);
     assert.equal(fake.calls.runtimeEvaluate, 1);
+    assert.equal(fake.calls.runtimeCleanupEvaluate, 1);
 });
 
 test('runtime state sampling is skipped on non-dirty forced refresh', async () => {
@@ -317,6 +340,7 @@ test('runtime state sampling is skipped on non-dirty forced refresh', async () =
     const secondResult = await executeBrowserSnapshot(second, deps, 'ws-token');
     assert.equal(secondResult.ok, true);
     assert.equal(fake.calls.runtimeEvaluate, 0);
+    assert.equal(fake.calls.runtimeCleanupEvaluate, 0);
 });
 
 test('interaction dirty refresh should not wait for networkidle', async () => {
@@ -343,6 +367,7 @@ test('interaction dirty refresh should not wait for networkidle', async () => {
     const secondResult = await executeBrowserSnapshot(second, deps, 'ws-token');
     assert.equal(secondResult.ok, true);
     assert.deepEqual(fake.calls.loadStates, []);
+    assert.equal(fake.calls.runtimeCleanupEvaluate, 1);
 });
 
 test('navigation dirty refresh should keep domcontentloaded and networkidle waits', async () => {

@@ -361,7 +361,7 @@ test('fuseDomAndA11y should merge interaction states from matched a11y node attr
     assert.equal(getNodeAttr(graph.root, 'focused'), 'true');
 });
 
-test('fuseDomAndA11y should accept runtime state on path keys with sparse sibling index', () => {
+test('fuseDomAndA11y should apply runtime state by exact data-rpa-state-id', () => {
     const domTree: DomNode = {
         id: 'n0',
         tag: 'body',
@@ -372,18 +372,17 @@ test('fuseDomAndA11y should accept runtime state on path keys with sparse siblin
                 attrs: {
                     type: 'text',
                     id: 'username',
+                    'data-rpa-state-id': 'sid-1',
                 },
                 children: [],
             },
         ],
     };
     const runtimeStateMap: RuntimeStateMap = {
-        'n0.3': {
-            pathKey: 'n0.3',
-            parentKey: 'n0',
+        'sid-1': {
+            stateId: 'sid-1',
             tag: 'input',
             type: 'text',
-            idAttr: 'username',
             value: 'alice',
         },
     };
@@ -391,9 +390,10 @@ test('fuseDomAndA11y should accept runtime state on path keys with sparse siblin
     const graph = fuseDomAndA11y(domTree, null, runtimeStateMap);
     const field = findNode(graph.root, 'n0.3');
     assert.equal(getNodeAttr(field, 'value'), 'alice');
+    assert.equal(getNodeAttr(field, 'data-rpa-state-id'), undefined);
 });
 
-test('fuseDomAndA11y should drop runtime state when fingerprint validation fails', () => {
+test('fuseDomAndA11y should ignore orphan runtime rows when dom node is missing', () => {
     const domTree: DomNode = {
         id: 'n0',
         tag: 'body',
@@ -404,18 +404,17 @@ test('fuseDomAndA11y should drop runtime state when fingerprint validation fails
                 attrs: {
                     type: 'text',
                     id: 'username',
+                    'data-rpa-state-id': 'sid-2',
                 },
                 children: [],
             },
         ],
     };
     const runtimeStateMap: RuntimeStateMap = {
-        'n0.3': {
-            pathKey: 'n0.3',
-            parentKey: 'n0',
+        'sid-orphan': {
+            stateId: 'sid-orphan',
             tag: 'input',
             type: 'text',
-            idAttr: 'other-id',
             value: 'alice',
         },
     };
@@ -425,39 +424,33 @@ test('fuseDomAndA11y should drop runtime state when fingerprint validation fails
     assert.equal(getNodeAttr(field, 'value'), undefined);
 });
 
-test('fuseDomAndA11y should recover runtime state from nearest sibling path when exact path is missing', () => {
+test('fuseDomAndA11y should keep untagged new node without runtime patch', () => {
     const domTree: DomNode = {
         id: 'n0',
         tag: 'body',
         children: [
-            { id: 'n0.0', tag: 'div', children: [] },
-            { id: 'n0.1', tag: 'div', children: [] },
             {
-                id: 'n0.2',
-                tag: 'select',
+                id: 'n0.0',
+                tag: 'input',
                 attrs: {
-                    id: 'invoiceType',
+                    type: 'text',
                 },
                 children: [],
             },
-            { id: 'n0.3', tag: 'div', children: [] },
         ],
     };
     const runtimeStateMap: RuntimeStateMap = {
-        'n0.4': {
-            pathKey: 'n0.4',
-            parentKey: 'n0',
-            tag: 'select',
-            idAttr: 'invoiceType',
-            selected: 'PDF文件',
-            value: 'PDF文件',
+        'sid-other': {
+            stateId: 'sid-other',
+            tag: 'input',
+            type: 'text',
+            value: 'from-runtime',
         },
     };
 
     const graph = fuseDomAndA11y(domTree, null, runtimeStateMap);
-    const field = findNode(graph.root, 'n0.2');
-    assert.equal(getNodeAttr(field, 'selected'), 'PDF文件');
-    assert.equal(getNodeAttr(field, 'value'), 'PDF文件');
+    const field = findNode(graph.root, 'n0.0');
+    assert.equal(getNodeAttr(field, 'value'), undefined);
 });
 
 test('fuseDomAndA11y should apply runtime combobox selected/value state on non-select control', () => {
@@ -471,6 +464,7 @@ test('fuseDomAndA11y should apply runtime combobox selected/value state on non-s
                 attrs: {
                     role: 'combobox',
                     id: 'expenseType',
+                    'data-rpa-state-id': 'sid-combo',
                 },
                 children: [],
             },
@@ -478,12 +472,11 @@ test('fuseDomAndA11y should apply runtime combobox selected/value state on non-s
     };
 
     const runtimeStateMap: RuntimeStateMap = {
-        'n0.0': {
-            pathKey: 'n0.0',
-            parentKey: 'n0',
+        'sid-combo': {
+            stateId: 'sid-combo',
             tag: 'div',
             role: 'combobox',
-            idAttr: 'expenseType',
+            popupSelectedText: '办公用品',
             selected: '办公用品',
             value: '办公用品',
         },

@@ -28,9 +28,8 @@ export const fuseDomAndA11y = (
     let annotatedByA11yRole = 0;
     let keptDomRole = 0;
     let linkTargetExtracted = 0;
-    const consumedRuntimePathKeys = new Set<string>();
 
-    const build = (node: DomNodeInput, parentPathKey?: string): UnifiedNode => {
+    const build = (node: DomNodeInput): UnifiedNode => {
         const matchResult = matchByBackendDomId(node, a11yByBackendDomId);
         if (matchResult.type === 'matched') {
             matchedByBackendId += 1;
@@ -42,14 +41,8 @@ export const fuseDomAndA11y = (
             unmatchedNoA11y += 1;
         }
 
-        const pathKey = node.id || 'dom';
-        const runtimeState = resolveRuntimeStateForNode(
-            pathKey,
-            node,
-            parentPathKey,
-            runtimeStateMap,
-            consumedRuntimePathKeys,
-        );
+        const nodeId = node.id || 'dom';
+        const runtimeState = resolveRuntimeStateByStateId(node, runtimeStateMap);
         const matched = matchResult.type === 'matched' ? matchResult.node : undefined;
         const domBaseRole = pickDomBaseRole(node);
         const role = pickRole(node, matched);
@@ -67,18 +60,18 @@ export const fuseDomAndA11y = (
         }
 
         const unified: UnifiedNode = {
-            id: pathKey,
+            id: nodeId,
             role,
             name,
             content,
             target,
-            children: (node.children || []).map((child) => build(child, pathKey)),
+            children: (node.children || []).map((child) => build(child)),
         };
         setNodeAttrs(
             unified,
             mergeDomAttrs(
                 node,
-                validateRuntimeState(runtimeState, node, parentPathKey),
+                runtimeState,
                 matched,
             ),
         );
@@ -87,7 +80,7 @@ export const fuseDomAndA11y = (
         return unified;
     };
 
-    const graph = { root: build(domRoot, undefined) };
+    const graph = { root: build(domRoot) };
     snapshotDebugLog('fuse-map', {
         domRootId: domRoot.id || 'n0',
         a11yNodeCount,
@@ -312,9 +305,11 @@ const mergeDomAttrs = (
     runtimeState: RuntimeStateMap[string] | undefined,
     matched: A11yNodeInput | undefined,
 ): Record<string, string> | undefined => {
-    const next: Record<string, string> = {
-        ...(node.attrs || {}),
-    };
+    const next: Record<string, string> = {};
+    for (const [key, value] of Object.entries(node.attrs || {})) {
+        if (key === RUNTIME_STATE_ID_ATTR) continue;
+        next[key] = value;
+    }
 
     const setAttr = (key: string, value: string | undefined) => {
         const normalized = normalizeText(value);
@@ -361,191 +356,14 @@ const mergeDomAttrs = (
     return next;
 };
 
-const validateRuntimeState = (
-    runtimeState: RuntimeStateMap[string] | undefined,
+const resolveRuntimeStateByStateId = (
     node: DomNodeInput,
-    _parentPathKey: string | undefined,
-): RuntimeStateMap[string] | undefined => {
-    if (!runtimeState) return undefined;
-
-    const runtimeTag = normalizeRole(runtimeState.tag).toLowerCase();
-    const domTag = normalizeRole(node.tag).toLowerCase();
-    if (runtimeTag && domTag && runtimeTag !== domTag) return undefined;
-
-    // Runtime state is indexed by the same DOM path key as fusion traversal.
-    // For dynamic form controls (checkbox/radio/select), strict fingerprint checks
-    // can reject true-positive matches when frameworks mutate wrappers/attrs.
-    if (!isFingerprintCompatible(runtimeState.type, normalizeText(node.attrs?.type || node.type))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) return undefined;
-    if (!isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) {
-        return undefined;
-    }
-    if (!isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) return undefined;
-    if (
-        !isFingerprintCompatible(
-            runtimeState.dataTestId,
-            normalizeText(node.attrs?.['data-testid'] || node.attrs?.['data-test-id']),
-        )
-    ) {
-        return undefined;
-    }
-
-    return runtimeState;
-};
-
-const resolveRuntimeStateForNode = (
-    pathKey: string,
-    node: DomNodeInput,
-    parentPathKey: string | undefined,
     runtimeStateMap: RuntimeStateMap | undefined,
-    consumedPathKeys: Set<string>,
 ): RuntimeStateMap[string] | undefined => {
     if (!runtimeStateMap) return undefined;
-
-    const exact = runtimeStateMap[pathKey];
-    if (exact && validateRuntimeState(exact, node, parentPathKey)) {
-        consumedPathKeys.add(pathKey);
-        return exact;
-    }
-
-    let bestKey: string | undefined;
-    let bestRow: RuntimeStateMap[string] | undefined;
-    let bestScore = -1;
-    let tie = false;
-
-    for (const [candidateKey, row] of Object.entries(runtimeStateMap)) {
-        if (consumedPathKeys.has(candidateKey)) continue;
-        const score = scoreRuntimeCandidate(pathKey, candidateKey, node, row, parentPathKey);
-        if (score <= 0) continue;
-        if (score > bestScore) {
-            bestScore = score;
-            bestKey = candidateKey;
-            bestRow = row;
-            tie = false;
-            continue;
-        }
-        if (score === bestScore) {
-            tie = true;
-        }
-    }
-
-    if (!bestKey || !bestRow || tie) return undefined;
-    if (!validateRuntimeState(bestRow, node, parentPathKey)) return undefined;
-    consumedPathKeys.add(bestKey);
-    return bestRow;
-};
-
-const scoreRuntimeCandidate = (
-    pathKey: string,
-    candidatePathKey: string,
-    node: DomNodeInput,
-    runtimeState: RuntimeStateMap[string] | undefined,
-    parentPathKey: string | undefined,
-): number => {
-    if (!runtimeState) return 0;
-    let score = 0;
-    if (!isFingerprintCompatible(runtimeState.idAttr, normalizeText(node.attrs?.id))) return 0;
-    if (!isFingerprintCompatible(runtimeState.nameAttr, normalizeText(node.attrs?.name))) return 0;
-    if (!isFingerprintCompatible(runtimeState.placeholder, normalizeText(node.attrs?.placeholder || node.placeholder))) return 0;
-    if (!isFingerprintCompatible(runtimeState.ariaLabel, normalizeText(node.attrs?.['aria-label']))) return 0;
-    if (
-        !isFingerprintCompatible(
-            runtimeState.dataTestId,
-            normalizeText(node.attrs?.['data-testid'] || node.attrs?.['data-test-id']),
-        )
-    ) {
-        return 0;
-    }
-
-    const nodeTag = normalizeRole(node.tag).toLowerCase();
-    const rowTag = normalizeRole(runtimeState.tag).toLowerCase();
-    if (nodeTag && rowTag && nodeTag !== rowTag) return 0;
-    if (nodeTag && rowTag && nodeTag === rowTag) score += 4;
-
-    const nodeType = normalizeText(node.attrs?.type || node.type);
-    const rowType = normalizeText(runtimeState.type);
-    if (nodeType && rowType) {
-        if (nodeType !== rowType) return 0;
-        score += 4;
-    }
-
-    score += normalizeText(runtimeState.idAttr) ? 3 : 0;
-    score += normalizeText(runtimeState.nameAttr) ? 3 : 0;
-    score += normalizeText(runtimeState.placeholder) ? 2 : 0;
-    score += normalizeText(runtimeState.ariaLabel) ? 2 : 0;
-    score += normalizeText(runtimeState.dataTestId) ? 2 : 0;
-    if (isFingerprintCompatible(runtimeState.parentKey, parentPathKey)) {
-        score += normalizeText(runtimeState.parentKey) ? 1 : 0;
-    }
-
-    const rowValue = normalizeText(runtimeState.value);
-    const nodeValue = normalizeText(node.attrs?.value);
-    if (rowValue && nodeValue) {
-        if (rowValue !== nodeValue) return 0;
-        score += 3;
-    }
-
-    const rowRole = normalizeText(runtimeState.role);
-    const nodeRole = normalizeText(node.attrs?.role);
-    if (rowRole && nodeRole) {
-        if (rowRole !== nodeRole) return 0;
-        score += 1;
-    }
-
-    score += scoreRuntimePathAffinity(pathKey, candidatePathKey);
-
-    return score;
-};
-
-const scoreRuntimePathAffinity = (pathKey: string, candidatePathKey: string): number => {
-    const a = splitPathKey(pathKey);
-    const b = splitPathKey(candidatePathKey);
-    if (a.length === 0 || b.length === 0) return 0;
-
-    const shared = sharedPrefixLength(a, b);
-    if (shared === 0) return 0;
-
-    const sameParent = a.length > 1 && b.length > 1 && shared === a.length - 1 && shared === b.length - 1;
-    if (sameParent) {
-        const distance = Math.abs(readLastPathIndex(a) - readLastPathIndex(b));
-        return Math.max(0, 6 - distance);
-    }
-
-    const depthGap = Math.abs(a.length - b.length);
-    return Math.max(0, Math.min(4, shared) - depthGap);
-};
-
-const splitPathKey = (pathKey: string): string[] => {
-    return pathKey
-        .split('.')
-        .map((part) => part.trim())
-        .filter((part) => part.length > 0);
-};
-
-const sharedPrefixLength = (left: string[], right: string[]): number => {
-    const len = Math.min(left.length, right.length);
-    let matched = 0;
-    for (let i = 0; i < len; i += 1) {
-        if (left[i] !== right[i]) break;
-        matched += 1;
-    }
-    return matched;
-};
-
-const readLastPathIndex = (parts: string[]): number => {
-    const raw = parts[parts.length - 1] || '';
-    const num = Number(raw);
-    if (Number.isFinite(num)) return num;
-    return Number.MAX_SAFE_INTEGER;
-};
-
-const isFingerprintCompatible = (runtimeValue: string | undefined, domValue: string | undefined): boolean => {
-    const runtimeText = normalizeText(runtimeValue);
-    if (!runtimeText) return true;
-    const domText = normalizeText(domValue);
-    if (!domText) return false;
-    return runtimeText === domText;
+    const stateId = normalizeText(node.attrs?.[RUNTIME_STATE_ID_ATTR]);
+    if (!stateId) return undefined;
+    return runtimeStateMap[stateId];
 };
 
 const resolveDynamicState = (
@@ -624,6 +442,7 @@ const normalizeBackendDomId = (value: string | undefined): string | undefined =>
     return /^\d+$/.test(normalized) ? normalized : undefined;
 };
 
+const RUNTIME_STATE_ID_ATTR = 'data-rpa-state-id';
 const STRUCTURAL_TAGS = new Set(['html', 'head', 'body']);
 const DOM_STABLE_ROLE_TAGS = new Set([
     'a',

@@ -2,19 +2,14 @@ export type RawData = {
     domTree: unknown;
     a11yTree: unknown;
     runtimeStateMap?: RuntimeStateMap;
+    runtimeStateCleanup?: (() => Promise<void>) | undefined;
 };
 
 export type RuntimeState = {
-    pathKey: string;
-    parentKey?: string;
+    stateId: string;
     tag?: string;
     type?: string;
     role?: string;
-    idAttr?: string;
-    nameAttr?: string;
-    placeholder?: string;
-    ariaLabel?: string;
-    dataTestId?: string;
     value?: string;
     checked?: string;
     selected?: string;
@@ -26,6 +21,11 @@ export type RuntimeState = {
     readonly?: string;
     invalid?: string;
     focused?: string;
+    popupSelectedText?: string;
+    ariaValueText?: string;
+    ariaLabelledBy?: string;
+    ariaDescribedBy?: string;
+    contentEditableText?: string;
 };
 
 export type RuntimeStateMap = Record<string, RuntimeState | undefined>;
