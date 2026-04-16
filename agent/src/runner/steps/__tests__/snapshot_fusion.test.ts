@@ -459,3 +459,38 @@ test('fuseDomAndA11y should recover runtime state from nearest sibling path when
     assert.equal(getNodeAttr(field, 'selected'), 'PDF文件');
     assert.equal(getNodeAttr(field, 'value'), 'PDF文件');
 });
+
+test('fuseDomAndA11y should apply runtime combobox selected/value state on non-select control', () => {
+    const domTree: DomNode = {
+        id: 'n0',
+        tag: 'body',
+        children: [
+            {
+                id: 'n0.0',
+                tag: 'div',
+                attrs: {
+                    role: 'combobox',
+                    id: 'expenseType',
+                },
+                children: [],
+            },
+        ],
+    };
+
+    const runtimeStateMap: RuntimeStateMap = {
+        'n0.0': {
+            pathKey: 'n0.0',
+            parentKey: 'n0',
+            tag: 'div',
+            role: 'combobox',
+            idAttr: 'expenseType',
+            selected: '办公用品',
+            value: '办公用品',
+        },
+    };
+
+    const graph = fuseDomAndA11y(domTree, null, runtimeStateMap);
+    const field = findNode(graph.root, 'n0.0');
+    assert.equal(getNodeAttr(field, 'selected'), '办公用品');
+    assert.equal(getNodeAttr(field, 'value'), '办公用品');
+});

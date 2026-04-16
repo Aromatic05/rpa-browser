@@ -1,7 +1,7 @@
 import { createToolHandlers } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
 import type { PageRegistry } from '../runtime/page_registry';
-import type { McpToolHandler } from './tool_handlers';
+import type { McpToolDeps, McpToolHandler } from './tool_handlers';
 import type { RunnerConfig, McpToolGroup } from '../config';
 import { defaultRunnerConfig } from '../config/defaults';
 
@@ -166,10 +166,10 @@ export const getToolSpecs = (options?: { enabledTools?: Set<string> }): ToolSpec
     }));
 
 export const getToolHandlers = (
-    deps: { pageRegistry: PageRegistry },
+    deps: McpToolDeps,
     options?: { enabledTools?: Set<string> },
 ): Record<string, McpToolHandler> => {
-    const handlers = createToolHandlers({ pageRegistry: deps.pageRegistry });
+    const handlers = createToolHandlers(deps);
     if (!options?.enabledTools) return handlers;
     return Object.fromEntries(Object.entries(handlers).filter(([name]) => options.enabledTools!.has(name)));
 };

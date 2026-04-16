@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RunnerConfig } from '../config';
 import { runStepList } from '../runner/run_steps';
+import type { RunStepsDeps } from '../runner/run_steps_types';
 import type { StepUnion } from '../runner/steps/types';
 import {
     browserClickInputSchema,
@@ -71,6 +72,7 @@ export type McpToolDeps = {
     pageRegistry: PageRegistry;
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
+    runStepsDeps?: RunStepsDeps;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
@@ -101,7 +103,9 @@ const runSingleStep = async (
     const scope = await resolveOrBootstrapScope(deps, tabToken, options);
     deps.pageRegistry.setActiveWorkspace(scope.workspaceId);
     deps.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
-    const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], undefined, { stopOnError: true });
+    const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], deps.runStepsDeps, {
+        stopOnError: true,
+    });
     const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown; error?: unknown }>;
     const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
     if (checkpoint.status === 'failed') {
@@ -149,6 +153,17 @@ const resolveTabTokenOrActive = (deps: McpToolDeps, tabToken?: string): string =
     }
 };
 
+const resolveOrCreateTabToken = (deps: McpToolDeps, tabToken?: string): string => {
+    if (typeof tabToken === 'string' && tabToken.trim().length > 0) {
+        return tabToken;
+    }
+    try {
+        return deps.pageRegistry.resolveTabToken();
+    } catch {
+        return crypto.randomUUID();
+    }
+};
+
 const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserGotoInput>(browserGotoInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
@@ -189,7 +204,7 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    const sourceTabToken = resolveTabTokenOrActive(deps, input.tabToken);
+    const sourceTabToken = resolveOrCreateTabToken(deps, input.tabToken);
     const result = await runSingleStep(deps, sourceTabToken, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',

@@ -311,7 +311,7 @@ const resolveElementTag = (node: SnapshotResult['root']): string | undefined => 
     if (role === 'textbox') return 'input';
     if (role === 'button') return 'button';
     if (role === 'link') return 'a';
-    if (role === 'select' || role === 'combobox') return 'select';
+    if (role === 'select') return 'select';
     return undefined;
 };
 

@@ -64,7 +64,6 @@ export const defaultRunnerConfig: RunnerConfig = {
         disableTools: [
             'browser.read_console',
             'browser.read_network',
-            'browser.evaluate',
             'browser.take_screenshot',
             'browser.mouse',
         ],

@@ -93,3 +93,22 @@ test('runtime collector keeps element when ancestor chain is not ignored', async
     assert.equal(values.length, 1);
     assert.equal(values[0]?.checked, 'true');
 });
+
+test('runtime collector captures combobox value/selected from text when non-native control', async () => {
+    const root = createElement('HTML');
+    const container = createElement('DIV', {}, root);
+    const combo = createElement('DIV', { role: 'combobox', id: 'expenseType' }, container);
+    combo.textContent = '办公用品';
+
+    const page = {
+        evaluate: async <T, A>(fn: (arg: A) => T | Promise<T>, arg: A) =>
+            withFakeDocument([combo], async () => fn(arg)),
+    };
+
+    const map = await getRuntimeStateMap(page as never);
+    const values = Object.values(map);
+    assert.equal(values.length, 1);
+    assert.equal(values[0]?.role, 'combobox');
+    assert.equal(values[0]?.value, '办公用品');
+    assert.equal(values[0]?.selected, '办公用品');
+});

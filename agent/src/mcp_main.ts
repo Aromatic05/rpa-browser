@@ -87,20 +87,22 @@ runtimeRegistry = createRuntimeRegistry({
         : createNoopHooks(),
     pluginHost: runnerPluginHost,
 });
-setRunStepsDeps({
+const runStepsDeps = {
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
-});
+};
+setRunStepsDeps(runStepsDeps);
 await mcpToolHost.load({
     pageRegistry,
     config,
     log,
+    runStepsDeps,
 });
 if (hotReloadEnabled) {
     const watchTarget = path.resolve(process.cwd(), 'src/mcp');
-    mcpToolHost.watchDev(watchTarget, { pageRegistry, config, log });
+    mcpToolHost.watchDev(watchTarget, { pageRegistry, config, log, runStepsDeps });
     logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
 }
 
@@ -112,6 +114,7 @@ if (hotReloadEnabled) {
             pageRegistry,
             config,
             log,
+            runStepsDeps,
             resolveToolRuntime: () =>
                 mcpToolHost.getRuntime() || {
                     handlers: {},

@@ -150,6 +150,8 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(() => {
       const tag = (el.tagName || '').toLowerCase();
       const isContentEditable = !!html.isContentEditable;
 
+      const role = normalize(el.getAttribute('role') || '');
+
       const selectedText =
         tag === 'select'
           ? normalize(
@@ -160,12 +162,21 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(() => {
             )
           : undefined;
 
+      const isComboLike = role === 'combobox' || role === 'listbox';
+      const ariaValueText = normalize(el.getAttribute('aria-valuetext') || '');
+      const ownValueAttr = normalize(el.getAttribute('value') || el.getAttribute('data-value') || '');
+      const ownText = normalize(el.textContent || '');
+      const comboValue = isComboLike ? (ariaValueText || ownValueAttr || ownText) : undefined;
+      const optionSelected = tag === 'option' ? bool(!!option.selected) : undefined;
+      const ariaSelected = pickAria(el, 'ariaSelected', 'aria-selected');
+      const selectedState = optionSelected || (isComboLike ? comboValue : undefined);
+
       rows.push({
         pathKey,
         parentKey: parent,
         tag,
         type: tag === 'input' ? normalize(input.type) : undefined,
-        role: normalize(el.getAttribute('role') || ''),
+        role,
         idAttr: normalize(el.getAttribute('id') || ''),
         nameAttr: normalize(el.getAttribute('name') || ''),
         placeholder:
@@ -183,13 +194,15 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(() => {
               ? normalize(textarea.value)
               : tag === 'select'
                 ? normalize(select.value)
+                : isComboLike
+                  ? comboValue
                 : isContentEditable
                   ? normalize(html.textContent || '')
                   : undefined,
         checked: tag === 'input' ? bool(!!input.checked) : undefined,
-        selected: tag === 'option' ? bool(!!option.selected) : selectedText,
+        selected: selectedState || selectedText,
         ariaChecked: pickAria(el, 'ariaChecked', 'aria-checked'),
-        ariaSelected: pickAria(el, 'ariaSelected', 'aria-selected'),
+        ariaSelected,
         ariaExpanded: pickAria(el, 'ariaExpanded', 'aria-expanded'),
         ariaPressed: pickAria(el, 'ariaPressed', 'aria-pressed'),
         disabled: bool(!!html.disabled),
