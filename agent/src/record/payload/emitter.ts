@@ -39,6 +39,11 @@ export const createEmitter = (bindingName: string, version: string) => {
             tabToken,
             ts: Date.now(),
             url: location.href,
+            pageTitle: document.title,
+            viewport: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+            },
             ...payload,
         });
     };

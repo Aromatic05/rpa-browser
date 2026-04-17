@@ -134,6 +134,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             recordingToken,
             steps: bundle.steps,
             manifest: bundle.manifest,
+            enrichments: bundle.enrichments,
         });
         ctx.log('workspace.save.end', {
             workspaceId,
@@ -219,6 +220,9 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         if (sourceSteps.length > 0) {
             recordingToken = crypto.randomUUID();
             ctx.recordingState.recordings.set(recordingToken, [...(sourceSteps as StepUnion[])]);
+            ctx.recordingState.recordingEnhancements.set(recordingToken, {
+                ...(snapshot.recording.enrichments || {}),
+            });
         }
 
         if (recordingToken) {
@@ -253,6 +257,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             recordingToken: recordingToken || null,
             steps: sourceSteps as StepUnion[],
             manifest: recordingToken ? ctx.recordingState.recordingManifests.get(recordingToken) : undefined,
+            enrichments: snapshot.recording.enrichments || undefined,
         });
 
         ctx.log('workspace.restore.end', {

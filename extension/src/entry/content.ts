@@ -155,6 +155,17 @@ const loadFloatingUI = (() => {
                 const { send } = await loadSend();
                 const hasExplicitScope = !!((scope as any)?.workspaceId || (scope as any)?.tabId);
                 const scopedTabToken = (scope as any)?.tabToken || tabToken;
+                const normalizedPayload =
+                    type === 'record.event'
+                        ? {
+                              ...(payload || {}),
+                              __clientContext: {
+                                  url: location.href,
+                                  title: document.title,
+                                  ts: Date.now(),
+                              },
+                          }
+                        : payload || {};
                 const normalizedScope = hasExplicitScope
                     ? {
                           ...((scope as any)?.workspaceId ? { workspaceId: (scope as any).workspaceId } : {}),
@@ -167,7 +178,7 @@ const loadFloatingUI = (() => {
                     type,
                     tabToken: hasExplicitScope ? undefined : scopedTabToken,
                     scope: normalizedScope,
-                    payload: payload || {},
+                    payload: normalizedPayload,
                 };
                 const result = await send.action(action);
                 return result.ok ? result.data : result;

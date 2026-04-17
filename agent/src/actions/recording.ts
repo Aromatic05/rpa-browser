@@ -15,10 +15,12 @@ import {
     endReplay,
     cancelReplay,
     recordStep,
+    recordEvent,
     listWorkspaceRecordings,
 } from '../record/recording';
 import { ERROR_CODES } from './error_codes';
 import type { StepUnion } from '../runner/steps/types';
+import type { RecorderEvent } from '../record/recorder';
 import { replayRecording } from '../play/replay';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
@@ -39,7 +41,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     'record.get': async (ctx, _action) => {
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
-        return makeOk({ steps: bundle.steps, manifest: bundle.manifest });
+        return makeOk({ steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
     'record.clear': async (ctx, _action) => {
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
@@ -132,10 +134,17 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         }
     },
     'record.event': async (ctx, action) => {
-        const step = action.payload as StepUnion | undefined;
-        if (!step) {
+        const payload = action.payload as StepUnion | RecorderEvent | undefined;
+        if (!payload) {
             return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
         }
+
+        if (isRawRecorderEventPayload(payload)) {
+            await recordEvent(ctx.recordingState, payload, ctx.navDedupeWindowMs, ctx.page);
+            return makeOk({ accepted: true, mode: 'raw-event' });
+        }
+
+        const step = payload;
         const token = action.scope?.tabToken || action.tabToken || ctx.tabToken;
         const scope = ctx.pageRegistry.resolveScopeFromToken(token);
         let currentUrl = '';
@@ -161,4 +170,9 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         recordStep(ctx.recordingState, token, normalizedStep, ctx.navDedupeWindowMs);
         return makeOk({ accepted: true });
     },
+};
+
+const isRawRecorderEventPayload = (payload: StepUnion | RecorderEvent): payload is RecorderEvent => {
+    const maybe = payload as Partial<RecorderEvent>;
+    return typeof maybe.type === 'string' && typeof maybe.tabToken === 'string' && typeof maybe.ts === 'number';
 };
