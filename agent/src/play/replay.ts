@@ -11,6 +11,8 @@ import type { StepUnion } from '../runner/steps/types';
 import type { RunStepsDeps } from '../runner/run_steps';
 import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from '../record/recording';
+import type { RecordingEnhancementMap } from '../record/types';
+import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../runner/steps/helpers/replay_enhancement_context';
 
 export type ReplayOptions = {
     clickDelayMs: number;
@@ -23,6 +25,7 @@ type ReplayRequest = {
     initialTabId: string;
     initialTabToken: string;
     steps: StepUnion[];
+    enrichments?: RecordingEnhancementMap;
     recordingManifest?: RecordingManifest;
     stopOnError: boolean;
     pageRegistry: {
@@ -83,6 +86,13 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     let currentToken = req.initialTabToken;
     const stepResults: RunStepsResult['results'] = [];
 
+    const replayEnhancements = req.enrichments || {};
+    const hasReplayEnhancements = Object.keys(replayEnhancements).length > 0;
+    if (hasReplayEnhancements) {
+        setReplayEnhancementContext(req.workspaceId, replayEnhancements);
+    }
+
+    try {
     for (const originalStep of req.steps) {
         if (req.isCanceled?.()) {
             return { ok: false, results: stepResults, error: { code: 'ERR_CANCELED', message: 'replay canceled' } };
@@ -189,4 +199,9 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         ok: stepResults.every((item) => item.ok),
         results: stepResults,
     };
+    } finally {
+        if (hasReplayEnhancements) {
+            clearReplayEnhancementContext(req.workspaceId);
+        }
+    }
 };

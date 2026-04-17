@@ -99,6 +99,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 initialTabId,
                 initialTabToken,
                 steps,
+                enrichments: bundle.enrichments,
                 recordingManifest: bundle.manifest,
                 stopOnError,
                 replayOptions: ctx.replayOptions,

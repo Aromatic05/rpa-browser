@@ -408,7 +408,7 @@ export const executeBrowserSelectOption = async (
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const target = normalizeTarget(step.args);
-    const resolved = await resolveTargetNodeId(binding, target);
+    const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
     if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
 
     if (resolved.target.selector && target?.a11yHint) {

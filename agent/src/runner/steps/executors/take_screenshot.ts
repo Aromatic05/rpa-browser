@@ -22,7 +22,7 @@ export const executeBrowserTakeScreenshot = async (
           }
         | undefined;
     if (target) {
-        const resolved = await resolveTargetNodeId(binding, target);
+        const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
         if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
         resolvedTarget = resolved.target;
     }

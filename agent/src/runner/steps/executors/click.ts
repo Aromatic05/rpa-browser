@@ -102,7 +102,7 @@ export const executeBrowserClick = async (
         }
 
         const target = normalizeTarget(step.args);
-        const resolved = await resolveTargetNodeId(binding, target);
+        const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
         if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
 
         if (resolved.target.selector && target?.a11yHint) {

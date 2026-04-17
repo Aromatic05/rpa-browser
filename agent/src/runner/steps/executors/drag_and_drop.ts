@@ -11,12 +11,12 @@ export const executeBrowserDragAndDrop = async (
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const sourceTarget = normalizeTarget({ target: step.args.source });
-    const source = await resolveTargetNodeId(binding, sourceTarget);
+    const source = await resolveTargetNodeId(binding, sourceTarget, { stepId: step.id });
     if (!source.ok) return { stepId: step.id, ok: false, error: source.error };
 
     if (step.args.dest_target) {
         const destTarget = normalizeTarget({ target: step.args.dest_target });
-        const dest = await resolveTargetNodeId(binding, destTarget);
+        const dest = await resolveTargetNodeId(binding, destTarget, { stepId: step.id });
         if (!dest.ok) return { stepId: step.id, ok: false, error: dest.error };
         const result = await binding.traceTools['trace.locator.dragDrop']({
             source: source.target,
