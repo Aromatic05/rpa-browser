@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>drift ambiguous v2</title>
+</head>
+<body data-deleted="">
+    <section>
+        <h2>订单 A</h2>
+        <button id="delete-a" aria-label="删除">删除</button>
+    </section>
+    <section>
+        <h2>订单 B</h2>
+        <button id="delete-b" aria-label="删除">删除</button>
+    </section>
+    <script>
+        document.querySelector('#delete-a').addEventListener('click', () => {
+            document.body.setAttribute('data-deleted', 'A');
+        });
+        document.querySelector('#delete-b').addEventListener('click', () => {
+            document.body.setAttribute('data-deleted', 'B');
+        });
+    </script>
+</body>
+</html>

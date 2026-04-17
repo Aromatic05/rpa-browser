@@ -12,7 +12,7 @@ import type { RunStepsDeps } from '../runner/run_steps';
 import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from '../record/recording';
 import type { RecordingEnhancementMap } from '../record/types';
-import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../runner/steps/helpers/replay_enhancement_context';
+import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../runner/steps/helpers/replay_ctx';
 
 export type ReplayOptions = {
     clickDelayMs: number;

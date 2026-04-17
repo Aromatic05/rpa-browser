@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>drift fill v2</title>
+</head>
+<body data-filled="">
+    <section>
+        <div class="field-wrapper changed-layout">
+            <label for="profile-name">姓名（新版）</label>
+            <input id="profile-name" data-testid="name-input" type="text" />
+        </div>
+    </section>
+    <div id="value"></div>
+    <script>
+        const input = document.querySelector('#profile-name');
+        input.addEventListener('input', () => {
+            document.body.setAttribute('data-filled', input.value);
+            document.querySelector('#value').textContent = input.value;
+        });
+    </script>
+</body>
+</html>

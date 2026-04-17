@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>drift fill v1</title>
+</head>
+<body data-filled="">
+    <label for="name-input">姓名</label>
+    <input id="name-input" data-testid="name-input" type="text" />
+    <div id="value"></div>
+    <script>
+        const input = document.querySelector('#name-input');
+        input.addEventListener('input', () => {
+            document.body.setAttribute('data-filled', input.value);
+            document.querySelector('#value').textContent = input.value;
+        });
+    </script>
+</body>
+</html>

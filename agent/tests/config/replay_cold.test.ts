@@ -4,7 +4,7 @@ import { replayRecording } from '../../src/play/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
-import { getReplayEnhancementForStep } from '../../src/runner/steps/helpers/replay_enhancement_context';
+import { getReplayEnhancementForStep } from '../../src/runner/steps/helpers/replay_ctx';
 
 test('replayRecording creates and switches tab when recorded tabToken is missing (cold replay)', async () => {
     const executed: StepUnion[] = [];

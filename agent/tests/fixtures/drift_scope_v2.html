@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>drift scope v2</title>
+</head>
+<body data-clicked="">
+    <main>
+        <form id="main-form" data-region="main">
+            <h2>主表单</h2>
+            <button type="button" class="save-btn" aria-label="保存">保存</button>
+        </form>
+    </main>
+    <aside id="sidebar" data-region="sidebar">
+        <h2>侧栏</h2>
+        <button type="button" class="save-btn" aria-label="保存">保存</button>
+    </aside>
+    <div id="result"></div>
+    <script>
+        document.querySelector('#main-form .save-btn').addEventListener('click', () => {
+            document.body.setAttribute('data-clicked', 'main');
+            document.querySelector('#result').textContent = 'main';
+        });
+        document.querySelector('#sidebar .save-btn').addEventListener('click', () => {
+            document.body.setAttribute('data-clicked', 'sidebar');
+            document.querySelector('#result').textContent = 'sidebar';
+        });
+    </script>
+</body>
+</html>

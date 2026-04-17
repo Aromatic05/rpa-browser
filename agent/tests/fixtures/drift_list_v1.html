@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>drift list v1</title>
+</head>
+<body data-clicked="">
+    <h1>用户列表 v1</h1>
+    <table id="users">
+        <tbody>
+            <tr data-user="张三"><td>张三</td><td><button class="edit-btn" aria-label="编辑 张三">编辑</button></td></tr>
+            <tr data-user="李四"><td>李四</td><td><button class="edit-btn" aria-label="编辑 李四">编辑</button></td></tr>
+            <tr data-user="王五"><td>王五</td><td><button class="edit-btn" aria-label="编辑 王五">编辑</button></td></tr>
+        </tbody>
+    </table>
+    <div id="result"></div>
+    <script>
+        document.querySelectorAll('.edit-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const row = btn.closest('tr');
+                const user = row ? row.getAttribute('data-user') || '' : '';
+                document.body.setAttribute('data-clicked', user);
+                document.querySelector('#result').textContent = user;
+            });
+        });
+    </script>
+</body>
+</html>

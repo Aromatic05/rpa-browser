@@ -9,7 +9,7 @@ import type { SnapshotResult } from '../executors/snapshot/core/types';
 import { getNodeAttr } from '../executors/snapshot/core/runtime_store';
 import { mapTraceError } from './target';
 import type { RecordedStepEnhancement } from '../../../record/types';
-import { getReplayEnhancementForStep } from './replay_enhancement_context';
+import { getReplayEnhancementForStep } from './replay_ctx';
 
 export type ResolvedLocatorTarget = {
     selector?: string;

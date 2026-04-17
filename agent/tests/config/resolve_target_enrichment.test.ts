@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveTargetNodeId } from '../../src/runner/steps/helpers/resolve_target';
-import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../../src/runner/steps/helpers/replay_enhancement_context';
+import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../../src/runner/steps/helpers/replay_ctx';
 import { executeBrowserClick } from '../../src/runner/steps/executors/click';
 import { executeBrowserFill } from '../../src/runner/steps/executors/fill';
 import type { Step } from '../../src/runner/steps/types';
