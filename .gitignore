@@ -25,3 +25,6 @@ agent/src/record/payload.bundle.js.map
 # local snapshot harvesting datasets (too large for git)
 agent/tests/fixtures/snapshot/web_docs/
 agent/tests/fixtures/snapshot/web_docs_probe/
+
+agent/.mcp-hot
+.vscode/
