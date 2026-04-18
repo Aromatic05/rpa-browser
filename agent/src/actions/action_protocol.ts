@@ -1,5 +1,3 @@
-import type { StepUnion } from '../runner/steps/types';
-
 /**
  * Action 协议：WS 唯一协议单元。
  *
@@ -75,8 +73,3 @@ export const failedAction = (
 });
 
 export const isFailedAction = (action: Action) => action.type.endsWith('.failed');
-
-/**
- * RecordStep：外部上报的录制 Step（必须可序列化）。
- */
-export type RecordStep = StepUnion;

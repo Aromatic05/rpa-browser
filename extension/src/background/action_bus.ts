@@ -1,7 +1,7 @@
 import type { Action } from '../shared/types.js';
 
-export type ActionPattern = string;
-export type ActionSubscriber = (action: Action) => void | Promise<void>;
+type ActionPattern = string;
+type ActionSubscriber = (action: Action) => void | Promise<void>;
 
 type Subscription = {
     patterns: ActionPattern[];

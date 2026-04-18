@@ -368,20 +368,6 @@ wss.on('connection', (socket) => {
 
         (async () => {
             try {
-                if (raw?.cmd || raw?.type === 'cmd') {
-                    socket.send(
-                        JSON.stringify({
-                            v: 1,
-                            id: crypto.randomUUID(),
-                            type: 'action.dispatch.failed',
-                            replyTo: raw?.id,
-                            payload: { code: ERROR_CODES.ERR_UNSUPPORTED, message: 'legacy cmd not supported' },
-                            at: Date.now(),
-                        }),
-                    );
-                    return;
-                }
-
                 const action = parseInboundAction(raw);
                 const response = await handleAction(action);
                 if (action.type === ACTION_TYPES.TAB_REPORTED) {

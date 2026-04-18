@@ -15,7 +15,6 @@ export const REQUEST_ACTION_TYPES = {
     TAB_ACTIVATED: 'tab.activated',
     TAB_CLOSED: 'tab.closed',
     TAB_PING: 'tab.ping',
-    TAB_BOUND: 'tab.bound',
     TAB_REASSIGN: 'tab.reassign',
 
     RECORD_START: 'record.start',
@@ -65,7 +64,6 @@ const domainPrefixes = new Set<string>([
 ]);
 
 const SEGMENT_RE = /^[a-z][a-zA-Z0-9]*$/;
-const requestTypeRe = /^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+$/;
 const resultTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\.result$/;
 const eventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.(started|progress|completed|failed|canceled|event)$/;
 const stepEventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.step\.(started|finished)$/;
