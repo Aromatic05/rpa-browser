@@ -13,6 +13,30 @@ const log = async (name, fn) => {
     }
 };
 
+const toReplyAction = (request, result) => {
+    if (result?.v === 1) return result;
+    if (result?.ok === false) {
+        return {
+            v: 1,
+            id: `reply-${request.id}`,
+            type: `${request.type}.failed`,
+            replyTo: request.id,
+            payload: result.error || { code: 'ERR_UNKNOWN', message: 'unknown' },
+        };
+    }
+    return {
+        v: 1,
+        id: `reply-${request.id}`,
+        type: `${request.type}.result`,
+        replyTo: request.id,
+        payload: result?.data || {},
+    };
+};
+
+const withActionReplies = (handler) => ({
+    sendAction: async (action) => toReplyAction(action, await handler(action)),
+});
+
 const createChromeMock = () => ({
     windows: {
         WINDOW_ID_NONE: -1,
@@ -51,12 +75,10 @@ await log('workspace.list action triggers refresh dispatch', async () => {
     const sent = [];
     let refreshed = 0;
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                return { ok: true, data: {} };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            return { ok: true, data: {} };
+        }),
         onRefresh: () => {
             refreshed += 1;
         },
@@ -78,12 +100,10 @@ await log('window focus sends workspace.setActive and window.focused', async () 
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                return { ok: true, data: { workspaceId: 'ws-1', tabId: 'tab-1', tabToken: 'token-1' } };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            return { ok: true, data: { workspaceId: 'ws-1', tabId: 'tab-1', tabToken: 'token-1' } };
+        }),
         onRefresh: () => undefined,
     });
 
@@ -121,15 +141,13 @@ await log('window remove keeps router stable', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
-                    return { ok: true, data: { workspaceId: 'ws-new' } };
-                }
-                return { ok: true, data: {} };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
+                return { ok: true, data: { workspaceId: 'ws-new' } };
+            }
+            return { ok: true, data: {} };
+        }),
         onRefresh: () => undefined,
     });
 
@@ -143,15 +161,13 @@ await log('workspace.create returns workspace shell without opening window', asy
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
-                    return { ok: true, data: { workspaceId: 'ws-new' } };
-                }
-                return { ok: true, data: {} };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
+                return { ok: true, data: { workspaceId: 'ws-new' } };
+            }
+            return { ok: true, data: {} };
+        }),
         onRefresh: () => undefined,
     });
 
@@ -173,10 +189,10 @@ await log('workspace.create returns workspace shell without opening window', asy
         },
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.equal(reply?.ok, true);
-    assert.equal(typeof reply?.data?.workspaceId, 'string');
-    assert.equal(reply?.data?.windowId, undefined);
-    assert.equal(reply?.data?.pending, undefined);
+    assert.equal(reply?.type, `${ACTION_TYPES.WORKSPACE_CREATE}.result`);
+    assert.equal(typeof reply?.payload?.workspaceId, 'string');
+    assert.equal(reply?.payload?.windowId, undefined);
+    assert.equal(reply?.payload?.pending, undefined);
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), false);
 });
 
@@ -184,15 +200,13 @@ await log('tabs.onCreated binds tab to window workspace via tab.opened', async (
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                if (action.type === ACTION_TYPES.TAB_OPENED) {
-                    return { ok: true, data: { workspaceId: 'ws-1', tabId: 'tab-new', tabToken: 'token-new' } };
-                }
-                return { ok: true, data: {} };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return { ok: true, data: { workspaceId: 'ws-1', tabId: 'tab-new', tabToken: 'token-new' } };
+            }
+            return { ok: true, data: {} };
+        }),
         onRefresh: () => undefined,
     });
 
@@ -232,15 +246,13 @@ await log('tabs.onCreated binds workspace from token scope when window mapping i
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                if (action.type === ACTION_TYPES.TAB_OPENED) {
-                    return { ok: true, data: { workspaceId: 'ws-url', tabId: 'tab-new', tabToken: 'token-new' } };
-                }
-                return { ok: true, data: {} };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return { ok: true, data: { workspaceId: 'ws-url', tabId: 'tab-new', tabToken: 'token-new' } };
+            }
+            return { ok: true, data: {} };
+        }),
         onRefresh: () => undefined,
     });
 
@@ -269,18 +281,16 @@ await log('tabs.onAttached triggers tab.reassign for cross-window move', async (
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                if (action.type === ACTION_TYPES.TAB_OPENED) {
-                    return { ok: true, data: { workspaceId: 'ws-1', tabId: 'tab-new', tabToken: 'token-new' } };
-                }
-                if (action.type === ACTION_TYPES.TAB_REASSIGN) {
-                    return { ok: true, data: { workspaceId: 'ws-2', tabId: 'tab-2', tabToken: 'token-new' } };
-                }
-                return { ok: true, data: {} };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return { ok: true, data: { workspaceId: 'ws-1', tabId: 'tab-new', tabToken: 'token-new' } };
+            }
+            if (action.type === ACTION_TYPES.TAB_REASSIGN) {
+                return { ok: true, data: { workspaceId: 'ws-2', tabId: 'tab-2', tabToken: 'token-new' } };
+            }
+            return { ok: true, data: {} };
+        }),
         onRefresh: () => undefined,
     });
 
@@ -336,15 +346,13 @@ await log('workspace.list works without tab token', async () => {
     };
     const sent = [];
     const router = createCmdRouter({
-        wsClient: {
-            sendAction: async (action) => {
-                sent.push(action);
-                if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
-                    return { ok: true, data: { workspaces: [{ workspaceId: 'ws-shell', tabCount: 0 }], activeWorkspaceId: 'ws-shell' } };
-                }
-                return { ok: true, data: {} };
-            },
-        },
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
+                return { ok: true, data: { workspaces: [{ workspaceId: 'ws-shell', tabCount: 0 }], activeWorkspaceId: 'ws-shell' } };
+            }
+            return { ok: true, data: {} };
+        }),
         onRefresh: () => undefined,
     });
 
@@ -367,7 +375,7 @@ await log('workspace.list works without tab token', async () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(reply?.ok, true);
-    assert.equal(Array.isArray(reply?.data?.workspaces), true);
+    assert.equal(reply?.type, `${ACTION_TYPES.WORKSPACE_LIST}.result`);
+    assert.equal(Array.isArray(reply?.payload?.workspaces), true);
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.WORKSPACE_LIST), true);
 });
