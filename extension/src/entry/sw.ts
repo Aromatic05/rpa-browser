@@ -10,6 +10,7 @@ import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
 import { createWsClient } from '../background/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
+import { createActionBus } from '../background/action_bus.js';
 
 const log = createLogger('sw');
 const REFRESH_DEBOUNCE_MS = 120;
@@ -50,8 +51,13 @@ const scheduleRefresh = () => {
     }, REFRESH_DEBOUNCE_MS);
 };
 
+const actionBus = createActionBus();
+
 const wsClient = createWsClient({
-    onAction: (action) => router.handleInboundAction(action),
+    onAction: (action) => {
+        router.handleInboundAction(action);
+        actionBus.publish(action);
+    },
     logger: log,
 });
 
@@ -60,6 +66,23 @@ const router = createCmdRouter({
     onRefresh: scheduleRefresh,
     logger: log,
 });
+
+actionBus.subscribe(
+    [
+        'play.*',
+        'play.step.*',
+        'record.event',
+        'workspace.list',
+        'workspace.changed',
+        'workspace.sync',
+        'tab.bound',
+    ],
+    async (action) => {
+        const targetTabId = router.resolveActionTargetTabId(action);
+        if (targetTabId == null) return;
+        await send.toTab(targetTabId, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
+    },
+);
 
 void router.bootstrapState();
 

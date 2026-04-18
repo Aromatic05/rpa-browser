@@ -1,6 +1,6 @@
 import { createLogger, type Logger } from '../shared/logger.js';
-import type { Action, ActionErr, ActionOk } from '../shared/types.js';
-import { ACTION_TYPES } from '../shared/action_types.js';
+import type { Action } from '../shared/types.js';
+import { ACTION_TYPES, deriveFailedActionType } from '../shared/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
 import type { WsClient } from './ws_client.js';
@@ -42,8 +42,9 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         traceId: action.traceId,
     });
 
-    const sendAction = async (action: Action): Promise<ActionOk<any> | ActionErr> =>
-        options.wsClient.sendAction(withActionBase(action));
+    const sendAction = async (action: Action): Promise<Action> => options.wsClient.sendAction(withActionBase(action));
+    const isFailedReply = (action: Action | null | undefined) => !!action?.type?.endsWith('.failed');
+    const payloadOf = <T = Record<string, unknown>>(action: Action | null | undefined) => ((action?.payload || {}) as T);
 
     const emitLifecycleAction = async (
         type: 'tab.activated' | 'tab.closed',
@@ -146,6 +147,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         return { tabId, tabToken: tabInfo.tabToken, urlHint: tabInfo.lastUrl, windowId };
     };
 
+    const resolveActionTargetTabId = (action: Action) => {
+        const token = action.tabToken || action.scope?.tabToken;
+        const targetTabId = token ? findTabIdByToken(token) : activeTabId;
+        return typeof targetTabId === 'number' ? targetTabId : null;
+    };
+
     const handleInboundAction = (action: Action) => {
         if (action.type === ACTION_TYPES.WORKSPACE_SYNC) return;
 
@@ -191,12 +198,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             payload: {},
             scope: {},
         });
-        if (!payload?.ok) {
+        if (isFailedReply(payload)) {
+            const error = payloadOf<{ code?: string; message?: string }>(payload);
             throw new Error(
-                `bootstrap.workspace_list_failed: ${payload?.error?.code || 'UNKNOWN'}:${payload?.error?.message || 'unknown'}`,
+                `bootstrap.workspace_list_failed: ${error?.code || 'UNKNOWN'}:${error?.message || 'unknown'}`,
             );
         }
-        const data = payload.data || {};
+        const data = payloadOf(payload);
         const activeId = (data as any).activeWorkspaceId ? String((data as any).activeWorkspaceId) : null;
         if (activeId) activeWorkspaceId = activeId;
     };
@@ -302,11 +310,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     workspaceId,
                 },
             });
-            if (!result.ok) {
-                throw new Error(`tabs.onCreated tab.opened failed: ${result.error.code}:${result.error.message}`);
+            if (isFailedReply(result)) {
+                const error = payloadOf<{ code?: string; message?: string }>(result);
+                throw new Error(`tabs.onCreated tab.opened failed: ${error.code || 'ERR'}:${error.message || 'unknown'}`);
             }
-            const tabScopeWorkspaceId = String((result.data as any)?.workspaceId || workspaceId);
-            const tabScopeTabId = String((result.data as any)?.tabId || '');
+            const resultPayload = payloadOf(result);
+            const tabScopeWorkspaceId = String((resultPayload as any)?.workspaceId || workspaceId);
+            const tabScopeTabId = String((resultPayload as any)?.tabId || '');
             if (!tabScopeTabId) {
                 throw new Error(`tabs.onCreated tab.opened missing tabId (tabId=${tabId}, windowId=${windowId})`);
             }
@@ -338,9 +348,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     at: Date.now(),
                 },
             });
-            if (result.ok) {
-                const workspaceId = String((result.data as any)?.workspaceId || targetWorkspaceId);
-                const targetTabId = String((result.data as any)?.tabId || scope.tabId);
+            if (!isFailedReply(result)) {
+                const resultPayload = payloadOf(result);
+                const workspaceId = String((resultPayload as any)?.workspaceId || targetWorkspaceId);
+                const targetTabId = String((resultPayload as any)?.tabId || scope.tabId);
                 upsertTokenScope(tabInfo.tabToken, workspaceId, targetTabId);
                 windowToWorkspace.set(info.newWindowId, workspaceId);
                 if (activeWindowId === info.newWindowId) activeWorkspaceId = workspaceId;
@@ -436,7 +447,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 }
 
                 if (!tabToken && !isPagelessAction) {
-                    sendResponse({ ok: false, error: 'tab token unavailable' });
+                    sendResponse({
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: deriveFailedActionType(action.type),
+                        replyTo: action.id,
+                        payload: { code: 'ERR_BAD_ARGS', message: 'tab token unavailable' },
+                        at: Date.now(),
+                    } satisfies Action);
                     return;
                 }
 
@@ -471,13 +489,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 const payload = await sendAction(scoped);
                 sendResponse(payload);
 
-                const effectiveWorkspaceId = payload?.ok
-                    ? (payload.data as any)?.workspaceId || scope?.workspaceId || activeWorkspaceId
+                const responsePayload = payloadOf(payload);
+                const effectiveWorkspaceId = !isFailedReply(payload)
+                    ? (responsePayload as any)?.workspaceId || scope?.workspaceId || activeWorkspaceId
                     : null;
-                if (!payload?.ok || !effectiveWorkspaceId) return;
+                if (isFailedReply(payload) || !effectiveWorkspaceId) return;
 
-                const responseTabToken = (payload.data as any)?.tabToken as string | undefined;
-                const responseTabId = (payload.data as any)?.tabId as string | undefined;
+                const responseTabToken = (responsePayload as any)?.tabToken as string | undefined;
+                const responseTabId = (responsePayload as any)?.tabId as string | undefined;
                 if (responseTabToken && responseTabId) {
                     upsertTokenScope(responseTabToken, String(effectiveWorkspaceId), String(responseTabId));
                     bindWorkspaceToWindowIfKnown(responseTabToken);
@@ -500,7 +519,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 }
             })().catch((error) => {
                 const message = error instanceof Error ? error.message : String(error);
-                sendResponse({ ok: false, error: { code: 'RUNTIME_ERROR', message: `ACTION dispatch failed: ${message}` } });
+                sendResponse({
+                    v: 1,
+                    id: crypto.randomUUID(),
+                    type: 'action.dispatch.failed',
+                    payload: { code: 'RUNTIME_ERROR', message: `ACTION dispatch failed: ${message}` },
+                    at: Date.now(),
+                } satisfies Action);
             });
             return true;
         }
@@ -508,6 +533,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     return {
         handleInboundAction,
+        resolveActionTargetTabId,
         handleMessage,
         onActivated,
         onRemoved,

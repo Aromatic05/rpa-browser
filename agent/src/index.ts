@@ -4,10 +4,10 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
-import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
+import { createRecordingState, cleanupRecording, ensureRecorder, setRecorderEventSink } from './record/recording';
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { executeAction, type ActionContext } from './actions/execute';
-import { makeErr, type Action } from './actions/action_protocol';
+import { failedAction, isFailedAction, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
@@ -16,7 +16,7 @@ import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { resolveActionTarget, ActionTargetError } from './runtime/action_target';
-import { ACTION_TYPES, isActionType } from './actions/action_types';
+import { ACTION_TYPES, isRequestActionType } from './actions/action_types';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -176,6 +176,7 @@ const createActionContext = (page: any, tabToken: string): ActionContext => {
         recordingState,
         replayOptions: REPLAY_OPTIONS,
         navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+        emit: broadcast,
         execute: undefined,
     };
     ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);
@@ -228,15 +229,15 @@ const runPagelessAction = async (action: Action, tabToken = '') => {
 
 const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
     const token = String(action.scope?.tabToken || action.tabToken || '');
-    if (!token) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');
+    if (!token) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');
     const payload = (action.payload || {}) as Record<string, unknown>;
     const workspaceId =
         (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
         (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
-    if (!workspaceId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
+    if (!workspaceId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
     const scoped = await retryClaim(() => pageRegistry.bindTokenToWorkspace(token, workspaceId), 80, 50);
     if (!scoped) {
-        return makeErr(ERROR_CODES.ERR_BAD_ARGS, `failed to bind tab.opened to workspace (${workspaceId}, ${token})`);
+        return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `failed to bind tab.opened to workspace (${workspaceId}, ${token})`);
     }
     return runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
 };
@@ -267,7 +268,7 @@ const handleAction = async (action: Action) => {
         if (PAGELESS_ACTIONS.has(action.type)) {
             return runPagelessAction(action);
         }
-        return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing action target');
+        return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing action target');
     } catch (error) {
         if (!(error instanceof ActionTargetError)) throw error;
 
@@ -288,7 +289,7 @@ const handleAction = async (action: Action) => {
             return bindTabOpenedAction(action, urlHint);
         }
 
-        return makeErr(error.code, error.message);
+        return failedAction(action, error.code, error.message);
     }
 };
 
@@ -310,11 +311,35 @@ const parseInboundAction = (raw: unknown): Action => {
     if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
         throw new Error('invalid action: missing or invalid fields');
     }
-    if (!isActionType(rec.type)) {
+    if (!isRequestActionType(rec.type)) {
         throw new Error(`invalid action: unsupported type '${String(rec.type)}'`);
     }
     return rec as Action;
 };
+
+setRecorderEventSink(async (event, page, tabToken) => {
+    let scope: { workspaceId?: string; tabId?: string; tabToken?: string } | undefined;
+    try {
+        const resolved = pageRegistry.resolveScopeFromToken(tabToken);
+        scope = { workspaceId: resolved.workspaceId, tabId: resolved.tabId, tabToken };
+    } catch {
+        scope = { tabToken };
+    }
+    const action: Action = {
+        v: 1,
+        id: crypto.randomUUID(),
+        type: ACTION_TYPES.RECORD_EVENT,
+        tabToken,
+        scope,
+        payload: event,
+        at: event.ts || Date.now(),
+    };
+    broadcast(action);
+    const response = await executeAction(createActionContext(page, tabToken), action);
+    if (isFailedAction(response)) {
+        logWarning('record.event.ingest.failed', { tabToken, error: response.payload });
+    }
+});
 
 const wss = new WebSocketServer({ host: '127.0.0.1', port: WS_PORT });
 
@@ -329,7 +354,15 @@ wss.on('connection', (socket) => {
         try {
             raw = JSON.parse(data.toString());
         } catch {
-            socket.send(JSON.stringify({ type: 'error', payload: makeErr('ERR_BAD_JSON', 'invalid json') }));
+            socket.send(
+                JSON.stringify({
+                    v: 1,
+                    id: crypto.randomUUID(),
+                    type: 'action.dispatch.failed',
+                    payload: { code: 'ERR_BAD_JSON', message: 'invalid json' },
+                    at: Date.now(),
+                } satisfies Action),
+            );
             return;
         }
 
@@ -338,9 +371,12 @@ wss.on('connection', (socket) => {
                 if (raw?.cmd || raw?.type === 'cmd') {
                     socket.send(
                         JSON.stringify({
-                            type: 'error',
+                            v: 1,
+                            id: crypto.randomUUID(),
+                            type: 'action.dispatch.failed',
                             replyTo: raw?.id,
-                            payload: makeErr(ERROR_CODES.ERR_UNSUPPORTED, 'legacy cmd not supported'),
+                            payload: { code: ERROR_CODES.ERR_UNSUPPORTED, message: 'legacy cmd not supported' },
+                            at: Date.now(),
                         }),
                     );
                     return;
@@ -351,23 +387,16 @@ wss.on('connection', (socket) => {
                 if (action.type === ACTION_TYPES.TAB_REPORTED) {
                     logTabReportDebug('agent.reply', {
                         id: action.id,
-                        ok: response.ok,
-                        workspaceId: (response as any)?.data?.workspaceId || null,
-                        tabId: (response as any)?.data?.tabId || null,
-                        tabToken: (response as any)?.data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                        ok: !isFailedAction(response),
+                        workspaceId: (response.payload as any)?.workspaceId || null,
+                        tabId: (response.payload as any)?.tabId || null,
+                        tabToken: (response.payload as any)?.tabToken || action.tabToken || action.scope?.tabToken || null,
                     });
                 }
+                socket.send(JSON.stringify(response));
 
-                socket.send(
-                    JSON.stringify({
-                        type: response.ok ? `${action.type}.result` : 'error',
-                        replyTo: action.id,
-                        payload: response,
-                    }),
-                );
-
-                if (response.ok && isMutatingAction(action.type)) {
-                    const data = response.data as any;
+                if (!isFailedAction(response) && isMutatingAction(action.type)) {
+                    const data = response.payload as any;
                     broadcast({
                         v: 1,
                         id: crypto.randomUUID(),
@@ -379,8 +408,8 @@ wss.on('connection', (socket) => {
                         at: Date.now(),
                     });
                 }
-                if (response.ok && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
-                    const data = response.data as any;
+                if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
+                    const data = response.payload as any;
                     if (action.type === ACTION_TYPES.TAB_REPORTED) {
                         logTabReportDebug('agent.emit.state_sync', {
                             id: action.id,
@@ -398,7 +427,15 @@ wss.on('connection', (socket) => {
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 logError('action.dispatch.failed', { message });
-                socket.send(JSON.stringify({ type: 'error', payload: makeErr(ERROR_CODES.ERR_BAD_ARGS, message) }));
+                socket.send(
+                    JSON.stringify({
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: 'action.dispatch.failed',
+                        payload: { code: ERROR_CODES.ERR_BAD_ARGS, message },
+                        at: Date.now(),
+                    } satisfies Action),
+                );
             } finally {
                 void recordingPersistence.flush();
             }

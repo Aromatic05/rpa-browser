@@ -144,8 +144,10 @@ const loadFloatingUI = (() => {
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
+    let consumeActionEvent: ((action: any) => void) | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
+        const { MSG } = await loadProtocol();
         const tabToken = await ensureToken();
         void sendReport(tabToken);
         startHeartbeat();
@@ -180,9 +182,16 @@ const loadFloatingUI = (() => {
                     scope: normalizedScope,
                     payload: normalizedPayload,
                 };
-                const result = await send.action(action);
-                return result.ok ? result.data : result;
+                return send.action(action);
             },
+            onEvent: (handler) => {
+                consumeActionEvent = handler;
+            },
+        });
+        chrome.runtime.onMessage.addListener((message: any) => {
+            if (message?.type !== MSG.ACTION_EVENT) return;
+            if (!message?.action) return;
+            consumeActionEvent?.(message.action);
         });
     })();
 

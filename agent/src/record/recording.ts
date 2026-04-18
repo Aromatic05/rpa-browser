@@ -75,6 +75,13 @@ export type RecordingState = {
     replayCancel: Set<string>;
 };
 
+type RecorderEventSink = (event: RecorderEvent, page: Page, tabToken: string) => void | Promise<void>;
+let recorderEventSink: RecorderEventSink | null = null;
+
+export const setRecorderEventSink = (sink: RecorderEventSink | null) => {
+    recorderEventSink = sink;
+};
+
 /**
  * 创建录制状态容器，集中维护多个 tab 的录制信息。
  */
@@ -489,18 +496,18 @@ export const installNavigationRecorder = (
         if (!state.recordingEnabled.has(tabToken)) return;
         const lastClick = state.lastClickTs.get(tabToken) || 0;
         const source = Date.now() - lastClick < navDedupeWindowMs ? 'click' : 'direct';
-        void recordEvent(
-            state,
-            {
-                tabToken,
-                ts: Date.now(),
-                type: 'navigate',
-                url: frame.url(),
-                source,
-            },
-            navDedupeWindowMs,
-            page,
-        );
+        const navigateEvent: RecorderEvent = {
+            tabToken,
+            ts: Date.now(),
+            type: 'navigate',
+            url: frame.url(),
+            source,
+        };
+        if (recorderEventSink) {
+            void recorderEventSink(navigateEvent, page, tabToken);
+            return;
+        }
+        void recordEvent(state, navigateEvent, navDedupeWindowMs, page);
     });
 };
 
@@ -514,6 +521,9 @@ export const ensureRecorder = async (
     navDedupeWindowMs: number,
 ) => {
     await installRecorder(page, (event) => {
+        if (recorderEventSink) {
+            return recorderEventSink(event, page, tabToken);
+        }
         void recordEvent(state, event, navDedupeWindowMs, page);
     });
     installNavigationRecorder(state, page, tabToken, navDedupeWindowMs);

@@ -43,9 +43,8 @@ export const ensureTabTokenAsync = async () => {
     let tabToken = ensureTabToken();
     if (!tabToken) {
         const response = await send.action<{
-            ok: boolean;
-            data?: { tabToken?: string };
-            error?: { message?: string };
+            type: string;
+            payload?: { tabToken?: string };
         }>({
             v: 1,
             id: crypto.randomUUID(),
@@ -57,8 +56,8 @@ export const ensureTabTokenAsync = async () => {
             },
             scope: {},
         });
-        if (response.ok && response.data?.ok && response.data?.data?.tabToken) {
-            tabToken = String(response.data.data.tabToken);
+        if (response?.type === 'tab.init.result' && response?.payload?.tabToken) {
+            tabToken = String(response.payload.tabToken);
         }
         if (!tabToken) {
             throw new Error('tab token init failed');

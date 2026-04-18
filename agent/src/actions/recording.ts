@@ -2,9 +2,11 @@
  * recording action：record / play 相关动作。
  */
 
+import crypto from 'node:crypto';
 import type { Action } from './action_protocol';
-import { makeErr, makeOk } from './action_protocol';
+import { failedAction, replyAction } from './action_protocol';
 import type { ActionHandler } from './execute';
+import { ACTION_TYPES } from './action_types';
 import {
     startRecording,
     stopRecording,
@@ -21,10 +23,10 @@ import {
 import { ERROR_CODES } from './error_codes';
 import type { StepUnion } from '../runner/steps/types';
 import type { RecorderEvent } from '../record/recorder';
-import { replayRecording } from '../play/replay';
+import { replayRecording, type ReplayEvent } from '../play/replay';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
-    'record.start': async (ctx, _action) => {
+    'record.start': async (ctx, action) => {
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         await startRecording(ctx.recordingState, ctx.page, ctx.tabToken, ctx.navDedupeWindowMs, {
             workspaceId: scope.workspaceId,
@@ -32,29 +34,29 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             entryUrl: ctx.page.url(),
         });
         await ensureRecorder(ctx.recordingState, ctx.page, ctx.tabToken, ctx.navDedupeWindowMs);
-        return makeOk({ pageUrl: ctx.page.url() });
+        return replyAction(action, { pageUrl: ctx.page.url() });
     },
-    'record.stop': async (ctx, _action) => {
+    'record.stop': async (ctx, action) => {
         stopRecording(ctx.recordingState, ctx.tabToken);
-        return makeOk({ pageUrl: ctx.page.url() });
+        return replyAction(action, { pageUrl: ctx.page.url() });
     },
-    'record.get': async (ctx, _action) => {
+    'record.get': async (ctx, action) => {
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
-        return makeOk({ steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
+        return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
-    'record.clear': async (ctx, _action) => {
+    'record.clear': async (ctx, action) => {
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         clearRecording(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
-        return makeOk({ cleared: true });
+        return replyAction(action, { cleared: true });
     },
-    'record.list': async (ctx, _action) => {
+    'record.list': async (ctx, action) => {
         const recordings = listWorkspaceRecordings(ctx.recordingState);
-        return makeOk({ recordings });
+        return replyAction(action, { recordings });
     },
-    'play.stop': async (ctx, _action) => {
+    'play.stop': async (ctx, action) => {
         cancelReplay(ctx.recordingState, ctx.tabToken);
-        return makeOk({ stopped: true });
+        return replyAction(action, { stopped: true });
     },
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
@@ -65,7 +67,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const recordedWorkspaceId = bundle.manifest?.workspaceId;
         const existingWorkspaceIds = new Set(ctx.pageRegistry.listWorkspaces().map((ws) => ws.workspaceId));
         if (recordedWorkspaceId && !existingWorkspaceIds.has(recordedWorkspaceId)) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'recording workspace not found');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'recording workspace not found');
         }
         const replayWorkspaceId = recordedWorkspaceId || scope.workspaceId;
         // Prefer the currently targeted tab when scope is valid in the same workspace.
@@ -93,56 +95,130 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveTab(replayWorkspaceId, initialTabId);
         const initialTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId: replayWorkspaceId, tabId: initialTabId });
         beginReplay(ctx.recordingState, ctx.tabToken);
-        try {
-            const replayed = await replayRecording({
-                workspaceId: replayWorkspaceId,
-                initialTabId,
-                initialTabToken,
-                steps,
-                enrichments: bundle.enrichments,
-                recordingManifest: bundle.manifest,
-                stopOnError,
-                replayOptions: ctx.replayOptions,
-                pageRegistry: {
-                    listTabs: (workspaceId: string) => ctx.pageRegistry.listTabs(workspaceId),
-                    resolveTabIdFromToken: (tabToken: string) => {
-                        try {
-                            return ctx.pageRegistry.resolveScopeFromToken(tabToken).tabId;
-                        } catch {
-                            return undefined;
-                        }
-                    },
-                    resolveTabIdFromRef: (tabRef: string) => {
-                        return tabRef || undefined;
-                    },
-                },
-                isCanceled: () => ctx.recordingState.replayCancel.has(ctx.tabToken),
+        const emitPlayEvent = (type: string, payload: Record<string, unknown>) => {
+            ctx.emit?.({
+                v: 1,
+                id: crypto.randomUUID(),
+                type,
+                tabToken: ctx.tabToken,
+                scope: { workspaceId: replayWorkspaceId, tabId: initialTabId, tabToken: ctx.tabToken },
+                payload,
+                at: Date.now(),
+                traceId: action.traceId,
+                replyTo: action.id,
             });
-            if (replayed.error?.code === 'ERR_CANCELED') {
-                return makeOk({ stopped: true, canceled: true, results: replayed.results });
+        };
+
+        const publishReplayEvent = (event: ReplayEvent) => {
+            if (event.type === 'step.started') {
+                emitPlayEvent(ACTION_TYPES.PLAY_STEP_STARTED, {
+                    workspaceId: replayWorkspaceId,
+                    tabId: initialTabId,
+                    ...event,
+                });
+                return;
             }
-            if (!replayed.ok && stopOnError) {
-                const firstFailed = replayed.results.find((item) => !item.ok);
-                return makeErr(
-                    ERROR_CODES.ERR_ASSERTION_FAILED,
-                    firstFailed?.error?.message || replayed.error?.message || 'replay failed',
-                    { results: replayed.results, failed: firstFailed?.error || replayed.error },
-                );
+            if (event.type === 'step.finished') {
+                emitPlayEvent(ACTION_TYPES.PLAY_STEP_FINISHED, {
+                    workspaceId: replayWorkspaceId,
+                    tabId: initialTabId,
+                    ...event,
+                });
+                return;
             }
-            return makeOk({ results: replayed.results });
-        } finally {
-            endReplay(ctx.recordingState, ctx.tabToken);
-        }
+            emitPlayEvent(ACTION_TYPES.PLAY_PROGRESS, {
+                workspaceId: replayWorkspaceId,
+                tabId: initialTabId,
+                completed: event.completed,
+                total: event.total,
+            });
+        };
+
+        void (async () => {
+            try {
+                const replayed = await replayRecording({
+                    workspaceId: replayWorkspaceId,
+                    initialTabId,
+                    initialTabToken,
+                    steps,
+                    enrichments: bundle.enrichments,
+                    recordingManifest: bundle.manifest,
+                    stopOnError,
+                    replayOptions: ctx.replayOptions,
+                    pageRegistry: {
+                        listTabs: (workspaceId: string) => ctx.pageRegistry.listTabs(workspaceId),
+                        resolveTabIdFromToken: (tabToken: string) => {
+                            try {
+                                return ctx.pageRegistry.resolveScopeFromToken(tabToken).tabId;
+                            } catch {
+                                return undefined;
+                            }
+                        },
+                        resolveTabIdFromRef: (tabRef: string) => {
+                            return tabRef || undefined;
+                        },
+                    },
+                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.tabToken),
+                    onEvent: publishReplayEvent,
+                });
+                if (replayed.error?.code === 'ERR_CANCELED') {
+                    emitPlayEvent(ACTION_TYPES.PLAY_CANCELED, {
+                        workspaceId: replayWorkspaceId,
+                        tabId: initialTabId,
+                        results: replayed.results,
+                    });
+                    return;
+                }
+                if (!replayed.ok && stopOnError) {
+                    const firstFailed = replayed.results.find((item) => !item.ok);
+                    emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
+                        workspaceId: replayWorkspaceId,
+                        tabId: initialTabId,
+                        code: ERROR_CODES.ERR_ASSERTION_FAILED,
+                        message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
+                        details: { results: replayed.results, failed: firstFailed?.error || replayed.error },
+                    });
+                    return;
+                }
+                emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, {
+                    workspaceId: replayWorkspaceId,
+                    tabId: initialTabId,
+                    results: replayed.results,
+                });
+            } catch (error) {
+                emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
+                    workspaceId: replayWorkspaceId,
+                    tabId: initialTabId,
+                    code: ERROR_CODES.ERR_BAD_ARGS,
+                    message: error instanceof Error ? error.message : String(error),
+                });
+            } finally {
+                endReplay(ctx.recordingState, ctx.tabToken);
+            }
+        })();
+
+        return replyAction(
+            action,
+            {
+                started: true,
+                workspaceId: replayWorkspaceId,
+                tabId: initialTabId,
+                tabToken: initialTabToken,
+                stepCount: steps.length,
+                stopOnError,
+            },
+            ACTION_TYPES.PLAY_STARTED,
+        );
     },
     'record.event': async (ctx, action) => {
         const payload = action.payload as StepUnion | RecorderEvent | undefined;
         if (!payload) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
         }
 
         if (isRawRecorderEventPayload(payload)) {
             await recordEvent(ctx.recordingState, payload, ctx.navDedupeWindowMs, ctx.page);
-            return makeOk({ accepted: true, mode: 'raw-event' });
+            return replyAction(action, { accepted: true, mode: 'raw-event' });
         }
 
         const step = payload;
@@ -169,7 +245,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             },
         };
         recordStep(ctx.recordingState, token, normalizedStep, ctx.navDedupeWindowMs);
-        return makeOk({ accepted: true });
+        return replyAction(action, { accepted: true });
     },
 };
 

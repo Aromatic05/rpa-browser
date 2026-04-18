@@ -6,15 +6,19 @@
  * - 与 agent 侧协议兼容，字段名保持一致（如 workspaceId/tabId/tabToken）。
  */
 
-import type { ActionType } from './action_types.js';
-
 export type ActionScope = {
     workspaceId?: string;
     tabId?: string;
     tabToken?: string;
 };
 
-export type Action<T extends string = ActionType, P = unknown> = {
+/**
+ * 协议硬约束（禁止回退为 RPC）：
+ * - Action 是 extension 内部与 extension ↔ agent 的唯一业务消息单元。
+ * - 请求/回复/失败/流式事件都必须是 Action（通过 replyTo 关联）。
+ * - 不允许在 Action.payload 中重新封装 { ok, data } / { ok, error }。
+ */
+export type Action<T extends string = string, P = unknown> = {
     v: 1;
     id: string;
     type: T;
@@ -24,13 +28,4 @@ export type Action<T extends string = ActionType, P = unknown> = {
     at?: number;
     traceId?: string;
     replyTo?: string;
-};
-
-export type ActionOk<T> = { ok: true; data: T };
-export type ActionErr = { ok: false; error: { code: string; message: string; details?: any } };
-
-export type WsActionReply = {
-    type: string;
-    replyTo?: string;
-    payload?: ActionOk<unknown> | ActionErr;
 };
