@@ -105,7 +105,6 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 payload,
                 at: Date.now(),
                 traceId: action.traceId,
-                replyTo: action.id,
             });
         };
 

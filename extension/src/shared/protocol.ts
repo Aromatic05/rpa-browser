@@ -3,7 +3,7 @@
  *
  * 说明：
  * - 所有 message type 必须从这里引用，禁止散落字符串。
- * - DispatchResult/DispatchError 用于统一 send 的错误返回结构。
+ * - TransportResult/TransportError 仅用于 runtime/tabs 传输层兼容，不是业务协议。
  */
 
 export const MSG = {
@@ -22,6 +22,6 @@ export type ErrorCode =
     | 'BAD_REQUEST'
     | 'WS_DOWN';
 
-export type DispatchError = { code: ErrorCode; message: string; details?: any };
+export type TransportError = { code: ErrorCode; message: string; details?: any };
 
-export type DispatchResult<T> = { ok: true; data: T } | { ok: false; error: DispatchError };
+export type TransportResult<T> = { ok: true; data: T } | { ok: false; error: TransportError };

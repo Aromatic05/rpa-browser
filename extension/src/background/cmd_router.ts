@@ -1,6 +1,6 @@
 import { createLogger, type Logger } from '../shared/logger.js';
 import type { Action } from '../shared/types.js';
-import { ACTION_TYPES, deriveFailedActionType } from '../shared/action_types.js';
+import { ACTION_TYPES, deriveFailedActionType, isRequestActionType } from '../shared/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
 import type { WsClient } from './ws_client.js';
@@ -80,9 +80,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const requestTokenFromTab = async (tabId: number) => {
         for (let attempt = 0; attempt < 3; attempt += 1) {
-            const result = await send.toTab<{ ok: boolean; tabToken?: string; url?: string }>(tabId, MSG.GET_TOKEN, undefined, {
+            const result = await send.toTabTransport<{ ok: boolean; tabToken?: string; url?: string }>(
+                tabId,
+                MSG.GET_TOKEN,
+                undefined,
+                {
                 timeoutMs: 1500,
-            });
+                },
+            );
             if (result.ok) {
                 const data = result.data || { ok: false, error: 'no response' };
                 if (data?.ok && data.tabToken) return data;
@@ -430,6 +435,28 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (message.type === MSG.ACTION) {
             (async () => {
                 const action = (message.action || {}) as Action;
+                if (action.v !== 1 || typeof action.id !== 'string' || typeof action.type !== 'string') {
+                    sendResponse({
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: 'action.dispatch.failed',
+                        replyTo: typeof action?.id === 'string' ? action.id : undefined,
+                        payload: { code: 'ERR_BAD_ARGS', message: 'invalid action envelope' },
+                        at: Date.now(),
+                    } satisfies Action);
+                    return;
+                }
+                if (!isRequestActionType(action.type)) {
+                    sendResponse({
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: deriveFailedActionType(action.type),
+                        replyTo: action.id,
+                        payload: { code: 'ERR_BAD_ARGS', message: `unsupported command type '${action.type}'` },
+                        at: Date.now(),
+                    } satisfies Action);
+                    return;
+                }
                 const isWorkspaceAction = action.type.startsWith('workspace.');
                 const isPagelessAction = PAGELESS_ACTIONS.has(action.type) || isWorkspaceAction;
                 let tabToken = (action.tabToken || action.scope?.tabToken) as string | undefined;

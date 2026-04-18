@@ -55,6 +55,7 @@ export const ACTION_TYPES = { ...REQUEST_ACTION_TYPES, ...FIXED_EVENT_ACTION_TYP
 
 export type ActionType = (typeof ACTION_TYPES)[keyof typeof ACTION_TYPES];
 export type RequestActionType = (typeof REQUEST_ACTION_TYPES)[keyof typeof REQUEST_ACTION_TYPES];
+export type ActionMessageKind = 'command' | 'reply' | 'event' | 'invalid';
 
 const requestTypes = new Set<string>(Object.values(REQUEST_ACTION_TYPES));
 const fixedEventTypes = new Set<string>(Object.values(FIXED_EVENT_ACTION_TYPES));
@@ -64,8 +65,8 @@ const domainPrefixes = new Set<string>([
 ]);
 
 const SEGMENT_RE = /^[a-z][a-zA-Z0-9]*$/;
-const resultTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\.result$/;
-const eventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.(started|progress|completed|failed|canceled|event)$/;
+const resultOrFailureTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\.(result|failed)$/;
+const eventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.(started|progress|completed|canceled|event)$/;
 const stepEventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.step\.(started|finished)$/;
 
 const hasAllowedPrefix = (domain: string) => {
@@ -77,8 +78,8 @@ const isNamedDomain = (domain: string) => domain.split('.').every((part) => SEGM
 
 export const isRequestActionType = (value: string): value is RequestActionType => requestTypes.has(value);
 
-export const isDerivedReplyActionType = (value: string) => {
-    const match = value.match(resultTypeRe);
+export const isReplyActionType = (value: string) => {
+    const match = value.match(resultOrFailureTypeRe);
     if (!match) return false;
     return isRequestActionType(match[1]);
 };
@@ -97,7 +98,14 @@ export const isDerivedEventActionType = (value: string) => {
 };
 
 export const isDispatchActionType = (value: string): value is ActionType | string =>
-    isRequestActionType(value) || isDerivedReplyActionType(value) || isDerivedEventActionType(value);
+    isRequestActionType(value) || isReplyActionType(value) || isDerivedEventActionType(value);
+
+export const classifyActionType = (value: string): ActionMessageKind => {
+    if (isRequestActionType(value)) return 'command';
+    if (isReplyActionType(value)) return 'reply';
+    if (isDerivedEventActionType(value)) return 'event';
+    return 'invalid';
+};
 
 export const deriveFailedActionType = (requestType: string) =>
     isRequestActionType(requestType) ? `${requestType}.failed` : 'action.dispatch.failed';

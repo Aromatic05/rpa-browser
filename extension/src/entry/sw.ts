@@ -30,7 +30,7 @@ const dispatchRefresh = () => {
         .then((tabs) => {
             const active = tabs[0];
             if (!active?.id) return;
-            void send.toTab(active.id, MSG.REFRESH);
+            void send.toTabTransport(active.id, MSG.REFRESH);
         })
         .catch((error) => {
             log.debug('refresh.dispatch.failed', String(error));
@@ -68,19 +68,11 @@ const router = createCmdRouter({
 });
 
 actionBus.subscribe(
-    [
-        'play.*',
-        'play.step.*',
-        'record.event',
-        'workspace.list',
-        'workspace.changed',
-        'workspace.sync',
-        'tab.bound',
-    ],
+    ['**'],
     async (action) => {
         const targetTabId = router.resolveActionTargetTabId(action);
         if (targetTabId == null) return;
-        await send.toTab(targetTabId, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
+        await send.toTabTransport(targetTabId, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
     },
 );
 

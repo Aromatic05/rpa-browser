@@ -3,7 +3,7 @@
  */
 
 import type { Action } from '../shared/types.js';
-import { isDispatchActionType } from '../shared/action_types.js';
+import { classifyActionType, isDispatchActionType } from '../shared/action_types.js';
 import { createLogger, type Logger } from '../shared/logger.js';
 
 export type WsClient = {
@@ -76,7 +76,8 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                 return;
             }
             const action = payload as Action;
-            if (action.replyTo) {
+            const kind = classifyActionType(String(action.type || ''));
+            if (kind === 'reply' && action.replyTo) {
                 const resolver = pending.get(action.replyTo);
                 if (resolver) {
                     pending.delete(action.replyTo);
@@ -84,7 +85,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            if (isDispatchActionType(String(action.type))) {
+            if (kind !== 'reply' && isDispatchActionType(String(action.type))) {
                 options.onAction(action);
             }
         });

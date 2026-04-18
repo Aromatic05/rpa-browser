@@ -175,7 +175,7 @@ const loadFloatingUI = (() => {
                       }
                     : { ...(scope || {}), tabToken: scopedTabToken };
                 const action = {
-                    v: 1,
+                    v: 1 as const,
                     id: crypto.randomUUID(),
                     type,
                     tabToken: hasExplicitScope ? undefined : scopedTabToken,

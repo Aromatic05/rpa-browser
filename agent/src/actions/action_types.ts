@@ -54,7 +54,49 @@ const FIXED_EVENT_ACTION_TYPES = {
 export const ACTION_TYPES = { ...REQUEST_ACTION_TYPES, ...FIXED_EVENT_ACTION_TYPES } as const;
 
 export type RequestActionType = (typeof REQUEST_ACTION_TYPES)[keyof typeof REQUEST_ACTION_TYPES];
+export type ActionMessageKind = 'command' | 'reply' | 'event' | 'invalid';
 
 const requestTypes = new Set<string>(Object.values(REQUEST_ACTION_TYPES));
+const fixedEventTypes = new Set<string>(Object.values(FIXED_EVENT_ACTION_TYPES));
+const domainPrefixes = new Set<string>([
+    ...Object.values(REQUEST_ACTION_TYPES).map((type) => type.split('.')[0]),
+    'action',
+]);
+const SEGMENT_RE = /^[a-z][a-zA-Z0-9]*$/;
+const resultOrFailureTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\.(result|failed)$/;
+const eventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.(started|progress|completed|canceled|event)$/;
+const stepEventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.step\.(started|finished)$/;
+
+const hasAllowedPrefix = (domain: string) => {
+    const first = domain.split('.')[0] || '';
+    return domainPrefixes.has(first);
+};
+const isNamedDomain = (domain: string) => domain.split('.').every((part) => SEGMENT_RE.test(part));
 
 export const isRequestActionType = (value: string): value is RequestActionType => requestTypes.has(value);
+
+export const isReplyActionType = (value: string) => {
+    const match = value.match(resultOrFailureTypeRe);
+    if (!match) return false;
+    return isRequestActionType(match[1]);
+};
+
+export const isDerivedEventActionType = (value: string) => {
+    if (fixedEventTypes.has(value)) return true;
+    const eventMatch = value.match(eventTypeRe);
+    if (eventMatch) {
+        const domain = eventMatch[1];
+        return isNamedDomain(domain) && hasAllowedPrefix(domain);
+    }
+    const stepMatch = value.match(stepEventTypeRe);
+    if (!stepMatch) return false;
+    const domain = stepMatch[1];
+    return isNamedDomain(domain) && hasAllowedPrefix(domain);
+};
+
+export const classifyActionType = (value: string): ActionMessageKind => {
+    if (isRequestActionType(value)) return 'command';
+    if (isReplyActionType(value)) return 'reply';
+    if (isDerivedEventActionType(value)) return 'event';
+    return 'invalid';
+};
