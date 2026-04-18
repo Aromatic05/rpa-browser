@@ -3,14 +3,15 @@
  *
  * 设计说明：
  * - 统一处理 MV3 常见错误：lastError / port closed / 超时 / 无接收端。
- * - 对外返回 RpcResult，业务侧只需判断 ok 即可。
+ * - 对外返回 DispatchResult，业务侧只需判断 ok 即可。
  */
 
-import { MSG, type RpcError, type RpcResult } from './protocol.js';
+import { MSG, type DispatchError, type DispatchResult } from './protocol.js';
+import { deriveFailedActionType } from './action_types.js';
 
 const DEFAULT_TIMEOUT_MS = 20000;
 
-const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<RpcResult<T>> => {
+const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<DispatchResult<T>> => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     return new Promise((resolve) => {
         timer = setTimeout(() => {
@@ -25,7 +26,7 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<RpcResul
     });
 };
 
-const normalizeRuntimeError = (error: unknown): RpcError => {
+const normalizeRuntimeError = (error: unknown): DispatchError => {
     const message = error instanceof Error ? error.message : String(error || '');
     if (message.includes('message port closed') || message.includes('Message port closed')) {
         return { code: 'PORT_CLOSED', message };
@@ -36,7 +37,7 @@ const normalizeRuntimeError = (error: unknown): RpcError => {
     return { code: 'RUNTIME_ERROR', message };
 };
 
-const runtimeRequest = async <T>(req: any, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<RpcResult<T>> => {
+const runtimeRequest = async <T>(req: any, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<DispatchResult<T>> => {
     const promise = new Promise<T>((resolve, reject) => {
         chrome.runtime.sendMessage(req, (response: any) => {
             if (chrome.runtime.lastError) {
@@ -53,7 +54,7 @@ const tabRequest = async <T>(
     tabId: number,
     req: any,
     timeoutMs = DEFAULT_TIMEOUT_MS,
-): Promise<RpcResult<T>> => {
+): Promise<DispatchResult<T>> => {
     const promise = new Promise<T>((resolve, reject) => {
         chrome.tabs.sendMessage(tabId, req, (response: any) => {
             if (chrome.runtime.lastError) {
@@ -79,7 +80,18 @@ export const send = {
     /**
      * 发送 Action（content/panel -> SW）。
      */
-    action: <T = any>(action: any) => runtimeRequest<T>({ type: MSG.ACTION, action }),
+    action: async <T = any>(action: any): Promise<T> => {
+        const response = await runtimeRequest<T>({ type: MSG.ACTION, action });
+        if (response.ok) return response.data;
+        return {
+            v: 1,
+            id: crypto.randomUUID(),
+            type: deriveFailedActionType(String(action?.type || '')),
+            replyTo: String(action?.id || ''),
+            payload: { code: response.error.code, message: response.error.message, details: response.error.details },
+            at: Date.now(),
+        } as T;
+    },
 
     /**
      * 向指定 tab 发送消息（SW -> content）。
