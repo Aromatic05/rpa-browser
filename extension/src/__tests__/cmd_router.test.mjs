@@ -379,3 +379,35 @@ await log('workspace.list works without tab token', async () => {
     assert.equal(Array.isArray(reply?.payload?.workspaces), true);
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.WORKSPACE_LIST), true);
 });
+
+await log('router rejects non-request action type from panel ingress', async () => {
+    globalThis.chrome = createChromeMock();
+    const router = createCmdRouter({
+        wsClient: withActionReplies(async () => {
+            throw new Error('ws should not be called');
+        }),
+        onRefresh: () => undefined,
+    });
+
+    let reply;
+    router.handleMessage(
+        {
+            type: MSG.ACTION,
+            action: {
+                v: 1,
+                id: 'bad-evt',
+                type: 'play.step.finished',
+                payload: { stepId: 's1' },
+                scope: {},
+            },
+        },
+        { tab: { id: 11, windowId: 7, url: 'https://example.com' } },
+        (payload) => {
+            reply = payload;
+        },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(reply?.type, 'action.dispatch.failed');
+    assert.equal(reply?.payload?.code, 'ERR_BAD_ARGS');
+});
