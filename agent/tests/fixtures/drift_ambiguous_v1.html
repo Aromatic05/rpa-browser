@@ -1,0 +1,15 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>drift ambiguous v1</title>
+</head>
+<body data-deleted="">
+    <button id="delete-single" aria-label="删除">删除</button>
+    <script>
+        document.querySelector('#delete-single').addEventListener('click', () => {
+            document.body.setAttribute('data-deleted', 'single');
+        });
+    </script>
+</body>
+</html>

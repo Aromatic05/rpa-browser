@@ -28,8 +28,18 @@ export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.rand
         getContext: async () => page.context(),
     });
 
+    const shell = pageRegistry.createWorkspaceShell();
     await pageRegistry.bindPage(page, tabToken);
-    const scope = pageRegistry.resolveScopeFromToken(tabToken);
+    let scope: { workspaceId: string; tabId: string };
+    try {
+        scope = pageRegistry.resolveScopeFromToken(tabToken);
+    } catch {
+        const bound = pageRegistry.bindTokenToWorkspace(tabToken, shell.workspaceId);
+        if (!bound) {
+            throw new Error('setupStepRunner failed to bind tabToken to workspace');
+        }
+        scope = pageRegistry.resolveScopeFromToken(tabToken);
+    }
     pageRegistry.setActiveWorkspace(scope.workspaceId);
     pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
 

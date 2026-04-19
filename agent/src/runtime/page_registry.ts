@@ -59,6 +59,7 @@ export type PageRegistry = {
         workspaceId: WorkspaceId,
     ) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     moveTokenToWorkspace: (tabToken: string, workspaceId: WorkspaceId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
+    rebindTokenToTab: (tabToken: string, workspaceId: WorkspaceId, tabId: TabId) => { workspaceId: WorkspaceId; tabId: TabId } | null;
     listTimedOutTokens: (
         timeoutMs: number,
         now?: number,
@@ -512,6 +513,27 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         await page.close({ runBeforeUnload: true });
     };
 
+    const rebindTokenToTab = (tabToken: string, workspaceId: WorkspaceId, tabId: TabId) => {
+        const workspace = workspaces.get(workspaceId);
+        const tab = workspace?.tabs.get(tabId);
+        if (!workspace || !tab) return null;
+
+        const targetPrevToken = tab.tabToken;
+        if (targetPrevToken && targetPrevToken !== tabToken) {
+            tokenToTab.delete(targetPrevToken);
+            tokenToPage.delete(targetPrevToken);
+        }
+
+        tokenToTab.set(tabToken, { workspaceId, tabId });
+        tokenToPage.set(tabToken, tab.page);
+        tab.tabToken = tabToken;
+        tab.updatedAt = Date.now();
+        workspace.activeTabId = tabId;
+        touchWorkspace(workspace);
+        log('rebind_token_to_tab', { tabToken, workspaceId, tabId });
+        return { workspaceId, tabId };
+    };
+
     return {
         bindPage,
         getPage,
@@ -531,6 +553,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         touchTabToken,
         bindTokenToWorkspace,
         moveTokenToWorkspace,
+        rebindTokenToTab,
         listTimedOutTokens,
         closeTokenPage,
     };

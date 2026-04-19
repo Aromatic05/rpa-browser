@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 
 type DescribeResult =
-    | { ok: true; data: { role?: string; name?: string; text?: string } }
+    | { ok: true; data: { role?: string; name?: string; text?: string; tag?: string; inputType?: string; fillable?: boolean } }
     | {
           ok: false;
           error: { code: 'ERR_NOT_FOUND' | 'ERR_AMBIGUOUS'; message: string; details?: unknown; phase: 'trace' };
@@ -84,6 +84,15 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
                 role: getRole(el) || undefined,
                 name: getName(el) || undefined,
                 text: normalizeText((el instanceof HTMLElement ? el.innerText : el.textContent) || '') || undefined,
+                tag: el.tagName.toLowerCase(),
+                inputType: el instanceof HTMLInputElement ? (el.getAttribute('type') || 'text').toLowerCase() : undefined,
+                fillable:
+                    el instanceof HTMLTextAreaElement ||
+                    (el instanceof HTMLInputElement &&
+                        !['checkbox', 'radio', 'submit', 'button', 'reset', 'file'].includes(
+                            (el.getAttribute('type') || 'text').toLowerCase(),
+                        )) ||
+                    (el instanceof HTMLElement && el.isContentEditable),
             };
         } catch (error) {
             return { status: 'invalid', message: String(error) };
@@ -111,5 +120,15 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
             },
         };
     }
-    return { ok: true, data: { role: result.role, name: result.name, text: result.text } };
+    return {
+        ok: true,
+        data: {
+            role: result.role,
+            name: result.name,
+            text: result.text,
+            tag: result.tag,
+            inputType: result.inputType,
+            fillable: result.fillable,
+        },
+    };
 };

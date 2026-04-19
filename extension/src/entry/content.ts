@@ -144,8 +144,10 @@ const loadFloatingUI = (() => {
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
+    let consumeActionEvent: ((action: any) => void) | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
+        const { MSG } = await loadProtocol();
         const tabToken = await ensureToken();
         void sendReport(tabToken);
         startHeartbeat();
@@ -155,6 +157,17 @@ const loadFloatingUI = (() => {
                 const { send } = await loadSend();
                 const hasExplicitScope = !!((scope as any)?.workspaceId || (scope as any)?.tabId);
                 const scopedTabToken = (scope as any)?.tabToken || tabToken;
+                const normalizedPayload =
+                    type === 'record.event'
+                        ? {
+                              ...(payload || {}),
+                              __clientContext: {
+                                  url: location.href,
+                                  title: document.title,
+                                  ts: Date.now(),
+                              },
+                          }
+                        : payload || {};
                 const normalizedScope = hasExplicitScope
                     ? {
                           ...((scope as any)?.workspaceId ? { workspaceId: (scope as any).workspaceId } : {}),
@@ -162,16 +175,23 @@ const loadFloatingUI = (() => {
                       }
                     : { ...(scope || {}), tabToken: scopedTabToken };
                 const action = {
-                    v: 1,
+                    v: 1 as const,
                     id: crypto.randomUUID(),
                     type,
                     tabToken: hasExplicitScope ? undefined : scopedTabToken,
                     scope: normalizedScope,
-                    payload: payload || {},
+                    payload: normalizedPayload,
                 };
-                const result = await send.action(action);
-                return result.ok ? result.data : result;
+                return send.action(action);
             },
+            onEvent: (handler) => {
+                consumeActionEvent = handler;
+            },
+        });
+        chrome.runtime.onMessage.addListener((message: any) => {
+            if (message?.type !== MSG.ACTION_EVENT) return;
+            if (!message?.action) return;
+            consumeActionEvent?.(message.action);
         });
     })();
 

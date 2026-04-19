@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { makeErr, makeOk } from './action_protocol';
+import { failedAction, replyAction } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
 import {
@@ -76,7 +76,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
         const payload = (action.payload || {}) as { workspaceId?: string; runId?: string };
         const workspaceId = payload.workspaceId || action.scope?.workspaceId;
         if (!workspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing workspaceId');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing workspaceId');
         }
 
         const runId = payload.runId || crypto.randomUUID();
@@ -128,38 +128,38 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
                 ctx.log('task.run.error', { runId, error: error instanceof Error ? error.message : String(error) });
             });
 
-        return makeOk({ runId });
+        return replyAction(action, { runId });
     },
 
     'task.run.push': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string; steps?: StepUnion[]; close?: boolean };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         const run = getRun(payload.runId);
-        if (!run) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
         const steps = Array.isArray(payload.steps) ? payload.steps : [];
         if (steps.length > 0) enqueueSteps(run.queue, steps);
         if (payload.close === true) closeStepsQueue(run.queue);
-        return makeOk({ runId: run.runId, queued: steps.length, cursor: run.queue.cursor });
+        return replyAction(action, { runId: run.runId, queued: steps.length, cursor: run.queue.cursor });
     },
 
     'task.run.poll': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string; cursor?: number; limit?: number };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         const run = getRun(payload.runId);
-        if (!run) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
         const { items, nextCursor } = readResultPipe(run.pipe, payload.cursor, payload.limit);
         const done = run.status !== 'running' && run.status !== 'suspended' && nextCursor >= run.pipe.items.length;
-        return makeOk({ runId: run.runId, items, cursor: nextCursor, done });
+        return replyAction(action, { runId: run.runId, items, cursor: nextCursor, done });
     },
 
     'task.run.checkpoint': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         const run = getRun(payload.runId);
-        if (!run) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
         sendSignal(run.signals, 'checkpoint');
         run.checkpoint = {
             runId: run.runId,
@@ -171,15 +171,15 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
         await persistCheckpoint(
             toTaskRunCheckpoint(run.runId, run.workspaceId, run.status, run.queue.cursor),
         );
-        return makeOk({ checkpoint: run.checkpoint });
+        return replyAction(action, { checkpoint: run.checkpoint });
     },
 
     'task.run.halt': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         const run = getRun(payload.runId);
-        if (!run) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
         sendSignal(run.signals, 'halt');
         run.status = 'halted';
         runs.delete(run.runId);
@@ -191,53 +191,53 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
             updatedAt: Date.now(),
         };
         await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceId, 'halted', run.queue.cursor));
-        return makeOk({ checkpoint });
+        return replyAction(action, { checkpoint });
     },
 
     'task.run.suspend': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         const run = getRun(payload.runId);
-        if (!run) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
         sendSignal(run.signals, 'suspend');
-        return makeOk({ runId: run.runId });
+        return replyAction(action, { runId: run.runId });
     },
 
     'task.run.continue': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         const run = getRun(payload.runId);
-        if (!run) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
         sendSignal(run.signals, 'continue');
-        return makeOk({ runId: run.runId });
+        return replyAction(action, { runId: run.runId });
     },
 
     'task.run.flush': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         const run = getRun(payload.runId);
-        if (!run) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
         sendSignal(run.signals, 'flush');
-        return makeOk({ runId: run.runId, cursor: run.queue.cursor });
+        return replyAction(action, { runId: run.runId, cursor: run.queue.cursor });
     },
 
     'task.run.resume': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string; steps?: StepUnion[]; close?: boolean };
-        if (!payload.runId) return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         if (getRun(payload.runId)) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'run already active');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run already active');
         }
         const checkpoint = checkpointStore.checkpoints.get(payload.runId);
         if (!checkpoint) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint not found');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'checkpoint not found');
         }
         const steps = Array.isArray(payload.steps) ? payload.steps : [];
         if (steps.length > 0 && checkpoint.cursor > steps.length) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint cursor exceeds provided steps');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'checkpoint cursor exceeds provided steps');
         }
 
         const queue = createStepsQueue(steps, { closed: payload.close === true });
@@ -296,7 +296,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
                 });
             });
 
-        return makeOk({
+        return replyAction(action, {
             runId: checkpoint.runId,
             workspaceId: checkpoint.workspaceId,
             checkpoint: state.checkpoint,

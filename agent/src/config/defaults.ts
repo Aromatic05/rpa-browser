@@ -7,6 +7,7 @@ import type { RunnerConfig } from './config_schema';
 export const defaultRunnerConfig: RunnerConfig = {
     waitPolicy: {
         defaultTimeoutMs: 5000,
+        interactionTimeoutMs: 12000,
         navigationTimeoutMs: 15000,
         a11ySnapshotTimeoutMs: 5000,
         visibleTimeoutMs: 5000,
@@ -56,5 +57,15 @@ export const defaultRunnerConfig: RunnerConfig = {
         enabled: true,
         filePath: '.artifacts/checkpoints/task_runs.json',
         flushIntervalMs: 1200,
+    },
+    mcpPolicy: {
+        enabledToolGroups: [],
+        enableTools: [],
+        disableTools: [
+            'browser.read_console',
+            'browser.read_network',
+            'browser.take_screenshot',
+            'browser.mouse',
+        ],
     },
 };

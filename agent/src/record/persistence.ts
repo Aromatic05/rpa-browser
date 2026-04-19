@@ -2,11 +2,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { RecordingManifest, RecordingState, WorkspaceSavedSnapshot } from './recording';
 import type { StepUnion } from '../runner/steps/types';
+import type { RecordingEnhancementMap } from './types';
 
 type PersistedRecordingBundle = {
     recordingToken: string;
     steps: StepUnion[];
     manifest?: RecordingManifest;
+    enrichments?: RecordingEnhancementMap;
 };
 
 type PersistedRecordingStateV1 = {
@@ -24,6 +26,7 @@ const toPersistedState = (state: RecordingState): PersistedRecordingStateV1 => {
             recordingToken,
             steps,
             manifest: state.recordingManifests.get(recordingToken),
+            enrichments: state.recordingEnhancements.get(recordingToken) || {},
         });
     }
     return {
@@ -37,12 +40,14 @@ const toPersistedState = (state: RecordingState): PersistedRecordingStateV1 => {
 
 const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV1) => {
     state.recordings.clear();
+    state.recordingEnhancements.clear();
     state.recordingManifests.clear();
     state.workspaceLatestRecording.clear();
     state.workspaceSnapshots.clear();
 
     for (const bundle of persisted.bundles) {
         state.recordings.set(bundle.recordingToken, Array.isArray(bundle.steps) ? bundle.steps : []);
+        state.recordingEnhancements.set(bundle.recordingToken, bundle.enrichments || {});
         if (bundle.manifest) {
             state.recordingManifests.set(bundle.recordingToken, bundle.manifest);
         }

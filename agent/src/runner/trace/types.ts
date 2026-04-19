@@ -16,6 +16,10 @@ export type TraceOpName =
     | 'trace.page.reload'
     | 'trace.page.getInfo'
     | 'trace.page.snapshotA11y'
+    | 'trace.page.getContent'
+    | 'trace.page.readConsole'
+    | 'trace.page.readNetwork'
+    | 'trace.page.evaluate'
     | 'trace.page.screenshot'
     | 'trace.page.scrollTo'
     | 'trace.page.scrollBy'
@@ -28,6 +32,7 @@ export type TraceOpName =
     | 'trace.locator.fill'
     | 'trace.locator.type'
     | 'trace.locator.selectOption'
+    | 'trace.locator.readSelectState'
     | 'trace.locator.hover'
     | 'trace.locator.dragDrop'
     | 'trace.keyboard.press'
@@ -37,6 +42,7 @@ export type ToolErrorCode =
     | 'ERR_TIMEOUT'
     | 'ERR_NOT_FOUND'
     | 'ERR_AMBIGUOUS'
+    | 'ERR_BAD_ARGS'
     | 'ERR_NOT_INTERACTABLE'
     | 'ERR_UNKNOWN';
 
@@ -84,6 +90,33 @@ export type TraceCache = {
     a11yTree?: unknown;
     lastSnapshotId?: string;
     a11yCacheGen?: number;
+    latestSnapshot?: unknown;
+    latestSnapshotAt?: number;
+    snapshotSessionStore?: unknown;
+    consoleEntries?: ConsoleEntry[];
+    networkEntries?: NetworkEntry[];
+};
+
+export type ConsoleEntry = {
+    ts: number;
+    type: string;
+    text: string;
+    location?: {
+        url?: string;
+        lineNumber?: number;
+        columnNumber?: number;
+    };
+};
+
+export type NetworkEntry = {
+    ts: number;
+    type: 'response' | 'failed';
+    url: string;
+    method: string;
+    resourceType: string;
+    status?: number;
+    ok?: boolean;
+    failureText?: string;
 };
 
 export type A11yNodeInfo = {
@@ -92,6 +125,7 @@ export type A11yNodeInfo = {
     name?: string;
     description?: string;
     value?: string;
+    backendDOMNodeId?: string;
 };
 
 export type TraceSink = {

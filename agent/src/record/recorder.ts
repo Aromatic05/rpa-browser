@@ -92,6 +92,7 @@ export type RecorderEvent = {
     tabToken: string;
     ts: number;
     type: RecordedEventType;
+    recorderVersion?: string;
     url?: string;
     a11yNodeId?: string;
     a11yHint?: A11yHint;
@@ -108,12 +109,14 @@ export type RecorderEvent = {
     scrollY?: number;
     source?: 'click' | 'direct';
     pageUrl?: string | null;
+    pageTitle?: string;
+    viewport?: { width: number; height: number };
 };
 
 /**
  * 在 Page 上安装录制脚本，并通过 binding 把事件转发回 Node 侧。
  */
-export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent) => void) => {
+export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent) => void | Promise<void>) => {
     if (installedPages.has(page)) return;
     installedPages.add(page);
 

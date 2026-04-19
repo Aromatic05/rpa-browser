@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import crypto from 'crypto';
 import type { PageRegistry } from '../runtime/page_registry';
+import type { RunnerConfig } from '../config';
 import { runStepList } from '../runner/run_steps';
+import type { RunStepsDeps } from '../runner/run_steps_types';
 import type { StepUnion } from '../runner/steps/types';
 import {
     browserClickInputSchema,
@@ -10,6 +12,14 @@ import {
     type BrowserClickInput,
     type BrowserGotoInput,
     type BrowserSnapshotInput,
+    browserGetContentInputSchema,
+    type BrowserGetContentInput,
+    browserReadConsoleInputSchema,
+    type BrowserReadConsoleInput,
+    browserReadNetworkInputSchema,
+    type BrowserReadNetworkInput,
+    browserEvaluateInputSchema,
+    type BrowserEvaluateInput,
     browserFillInputSchema,
     type BrowserFillInput,
     browserGoBackInputSchema,
@@ -24,6 +34,8 @@ import {
     type BrowserCloseTabInput,
     browserGetPageInfoInputSchema,
     type BrowserGetPageInfoInput,
+    browserListTabsInputSchema,
+    type BrowserListTabsInput,
     browserTakeScreenshotInputSchema,
     type BrowserTakeScreenshotInput,
     browserTypeInputSchema,
@@ -40,11 +52,27 @@ import {
     type BrowserDragAndDropInput,
     browserMouseInputSchema,
     type BrowserMouseInput,
+    browserListEntitiesInputSchema,
+    type BrowserListEntitiesInput,
+    browserGetEntityInputSchema,
+    type BrowserGetEntityInput,
+    browserFindEntitiesInputSchema,
+    type BrowserFindEntitiesInput,
+    browserAddEntityInputSchema,
+    type BrowserAddEntityInput,
+    browserDeleteEntityInputSchema,
+    type BrowserDeleteEntityInput,
+    browserRenameEntityInputSchema,
+    type BrowserRenameEntityInput,
+    browserBatchInputSchema,
+    type BrowserBatchInput,
 } from './schemas';
 
 export type McpToolDeps = {
     pageRegistry: PageRegistry;
+    config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
+    runStepsDeps?: RunStepsDeps;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
@@ -66,11 +94,18 @@ const buildParseErrorResult = (error: unknown) => ({
     error,
 });
 
-const runSingleStep = async (deps: McpToolDeps, tabToken: string, step: StepUnion) => {
-    const scope = deps.pageRegistry.resolveScopeFromToken(tabToken);
+const runSingleStep = async (
+    deps: McpToolDeps,
+    tabToken: string | undefined,
+    step: StepUnion,
+    options?: { allowBootstrap?: boolean },
+) => {
+    const scope = await resolveOrBootstrapScope(deps, tabToken, options);
     deps.pageRegistry.setActiveWorkspace(scope.workspaceId);
     deps.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
-    const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], undefined, { stopOnError: true });
+    const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], deps.runStepsDeps, {
+        stopOnError: true,
+    });
     const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown; error?: unknown }>;
     const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
     if (checkpoint.status === 'failed') {
@@ -83,6 +118,52 @@ const runSingleStep = async (deps: McpToolDeps, tabToken: string, step: StepUnio
     return { ok: results.every((item) => item.ok), results };
 };
 
+const resolveOrBootstrapScope = async (
+    deps: McpToolDeps,
+    tabToken: string | undefined,
+    options?: { allowBootstrap?: boolean },
+): Promise<{ workspaceId: string; tabId: string }> => {
+    const allowBootstrap = options?.allowBootstrap !== false;
+    const resolvedTabToken = resolveTabTokenOrActive(deps, tabToken);
+    try {
+        return deps.pageRegistry.resolveScopeFromToken(resolvedTabToken);
+    } catch {
+        if (!allowBootstrap) {
+            throw new Error('tab token not found');
+        }
+        const shell = deps.pageRegistry.createWorkspaceShell();
+        deps.pageRegistry.setActiveWorkspace(shell.workspaceId);
+        await deps.pageRegistry.getPage(resolvedTabToken);
+        const bound = deps.pageRegistry.bindTokenToWorkspace(resolvedTabToken, shell.workspaceId);
+        if (bound) {
+            return bound;
+        }
+        return deps.pageRegistry.resolveScopeFromToken(resolvedTabToken);
+    }
+};
+
+const resolveTabTokenOrActive = (deps: McpToolDeps, tabToken?: string): string => {
+    if (typeof tabToken === 'string' && tabToken.trim().length > 0) {
+        return tabToken;
+    }
+    try {
+        return deps.pageRegistry.resolveTabToken();
+    } catch {
+        throw new Error('active tab not found');
+    }
+};
+
+const resolveOrCreateTabToken = (deps: McpToolDeps, tabToken?: string): string => {
+    if (typeof tabToken === 'string' && tabToken.trim().length > 0) {
+        return tabToken;
+    }
+    try {
+        return deps.pageRegistry.resolveTabToken();
+    } catch {
+        return crypto.randomUUID();
+    }
+};
+
 const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserGotoInput>(browserGotoInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
@@ -90,7 +171,7 @@ const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.goto',
-        args: { url: input.url, timeout: input.timeout },
+        args: { url: input.url },
         meta: { source: 'mcp' },
     });
 };
@@ -102,7 +183,7 @@ const handleGoBack = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.go_back',
-        args: { timeout: input.timeout },
+        args: {},
         meta: { source: 'mcp' },
     });
 };
@@ -114,7 +195,7 @@ const handleReload = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.reload',
-        args: { timeout: input.timeout },
+        args: {},
         meta: { source: 'mcp' },
     });
 };
@@ -123,24 +204,39 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    return runSingleStep(deps, input.tabToken, {
+    const sourceTabToken = resolveOrCreateTabToken(deps, input.tabToken);
+    const result = await runSingleStep(deps, sourceTabToken, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
         args: { url: input.url },
         meta: { source: 'mcp' },
     });
+    if (!result.ok) return result;
+
+    const createdTabId = result.results.find((item) => item.ok)?.data as { tab_id?: unknown } | undefined;
+    if (typeof createdTabId?.tab_id === 'string') {
+        const scope = deps.pageRegistry.resolveScopeFromToken(sourceTabToken);
+        deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, createdTabId.tab_id);
+    }
+    return result;
 };
 
 const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserSwitchTabInput>(browserSwitchTabInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    return runSingleStep(deps, input.tabToken, {
+    const sourceTabToken = resolveTabTokenOrActive(deps, input.tabToken);
+    const result = await runSingleStep(deps, sourceTabToken, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
         args: { tab_id: input.tab_id },
         meta: { source: 'mcp' },
     });
+    if (!result.ok) return result;
+
+    const scope = deps.pageRegistry.resolveScopeFromToken(sourceTabToken);
+    deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, input.tab_id);
+    return result;
 };
 
 const handleCloseTab = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
@@ -159,12 +255,74 @@ const handleGetPageInfo = (deps: McpToolDeps): McpToolHandler => async (args: un
     const parsed = parseInput<BrowserGetPageInfoInput>(browserGetPageInfoInputSchema, args);
     if (!parsed.ok) return buildParseErrorResult(parsed.error);
     const input = parsed.data;
-    return runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.get_page_info',
-        args: {},
-        meta: { source: 'mcp' },
-    });
+    try {
+        return await runSingleStep(
+            deps,
+            input.tabToken,
+            {
+                id: crypto.randomUUID(),
+                name: 'browser.get_page_info',
+                args: {},
+                meta: { source: 'mcp' },
+            },
+            { allowBootstrap: false },
+        );
+    } catch {
+        return {
+            ok: false,
+            results: [
+                {
+                    stepId: 'invalid',
+                    ok: false,
+                    error: {
+                        code: 'ERR_NOT_FOUND',
+                        message: 'tab token not found',
+                    },
+                },
+            ],
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'tab token not found',
+            },
+        };
+    }
+};
+
+const handleListTabs = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserListTabsInput>(browserListTabsInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    try {
+        return await runSingleStep(
+            deps,
+            input.tabToken,
+            {
+                id: crypto.randomUUID(),
+                name: 'browser.list_tabs',
+                args: {},
+                meta: { source: 'mcp' },
+            },
+            { allowBootstrap: false },
+        );
+    } catch {
+        return {
+            ok: false,
+            results: [
+                {
+                    stepId: 'invalid',
+                    ok: false,
+                    error: {
+                        code: 'ERR_NOT_FOUND',
+                        message: 'tab token not found',
+                    },
+                },
+            ],
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'tab token not found',
+            },
+        };
+    }
 };
 
 const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
@@ -179,12 +337,10 @@ const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         id: crypto.randomUUID(),
         name: 'browser.click',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             coord: input.coord,
             options,
-            timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -198,11 +354,9 @@ const handleFill = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
         id: crypto.randomUUID(),
         name: 'browser.fill',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             value: input.value,
-            timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -216,12 +370,10 @@ const handleType = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
         id: crypto.randomUUID(),
         name: 'browser.type',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             text: input.text,
             delay_ms: input.delay_ms ?? 0,
-            timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -235,11 +387,9 @@ const handleSelectOption = (deps: McpToolDeps): McpToolHandler => async (args: u
         id: crypto.randomUUID(),
         name: 'browser.select_option',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             values: input.values,
-            timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -253,10 +403,8 @@ const handleHover = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         id: crypto.randomUUID(),
         name: 'browser.hover',
         args: {
-            target: input.target,
-            timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
+            id: input.id,
+            selector: input.selector,
         },
         meta: { source: 'mcp' },
     });
@@ -270,12 +418,10 @@ const handleScroll = (deps: McpToolDeps): McpToolHandler => async (args: unknown
         id: crypto.randomUUID(),
         name: 'browser.scroll',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             direction: input.direction,
             amount: input.amount ?? 600,
-            timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
         },
         meta: { source: 'mcp' },
     });
@@ -290,10 +436,8 @@ const handlePressKey = (deps: McpToolDeps): McpToolHandler => async (args: unkno
         name: 'browser.press_key',
         args: {
             key: input.key,
-            target: input.target,
-            timeout: input.timeout,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
+            id: input.id,
+            selector: input.selector,
         },
         meta: { source: 'mcp' },
     });
@@ -307,10 +451,18 @@ const handleDragAndDrop = (deps: McpToolDeps): McpToolHandler => async (args: un
         id: crypto.randomUUID(),
         name: 'browser.drag_and_drop',
         args: {
-            source: input.source,
-            dest_target: input.dest_target,
+            source: {
+                id: input.source_id,
+                selector: input.source_selector,
+            },
+            dest_target:
+                input.dest_id || input.dest_selector
+                    ? {
+                          id: input.dest_id,
+                          selector: input.dest_selector,
+                      }
+                    : undefined,
             dest_coord: input.dest_coord,
-            timeout: input.timeout,
         },
         meta: { source: 'mcp' },
     });
@@ -341,7 +493,161 @@ const handleSnapshot = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     return runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.snapshot',
-        args: { includeA11y: input.includeA11y ?? true, focus_only: input.focus_only ?? false },
+        args: {
+            includeA11y: input.includeA11y,
+            focus_only: input.focus_only,
+            refresh: input.refresh,
+            contain: input.contain,
+            depth: input.depth,
+            filter: input.filter,
+            diff: input.diff,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleListEntities = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserListEntitiesInput>(browserListEntitiesInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.list_entities',
+        args: {
+            kind: input.kind,
+            businessTag: input.businessTag,
+            query: input.query,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleGetEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserGetEntityInput>(browserGetEntityInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.get_entity',
+        args: {
+            nodeId: input.nodeId,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleFindEntities = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserFindEntitiesInput>(browserFindEntitiesInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.find_entities',
+        args: {
+            query: input.query,
+            kind: input.kind,
+            businessTag: input.businessTag,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleAddEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserAddEntityInput>(browserAddEntityInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.add_entity',
+        args: {
+            nodeId: input.nodeId,
+            kind: input.kind,
+            name: input.name,
+            businessTag: input.businessTag,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleDeleteEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserDeleteEntityInput>(browserDeleteEntityInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.delete_entity',
+        args: {
+            nodeId: input.nodeId,
+            kind: input.kind,
+            businessTag: input.businessTag,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleRenameEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserRenameEntityInput>(browserRenameEntityInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.rename_entity',
+        args: {
+            nodeId: input.nodeId,
+            name: input.name,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleGetContent = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserGetContentInput>(browserGetContentInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.get_content',
+        args: { ref: input.ref },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleReadConsole = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserReadConsoleInput>(browserReadConsoleInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.read_console',
+        args: { limit: input.limit },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleReadNetwork = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserReadNetworkInput>(browserReadNetworkInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.read_network',
+        args: { limit: input.limit },
+        meta: { source: 'mcp' },
+    });
+};
+
+const handleEvaluate = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserEvaluateInput>(browserEvaluateInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    return runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.evaluate',
+        args: {
+            expression: input.expression,
+            arg: input.arg,
+            mutatesPage: input.mutatesPage,
+        },
         meta: { source: 'mcp' },
     });
 };
@@ -354,13 +660,183 @@ const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args:
         id: crypto.randomUUID(),
         name: 'browser.take_screenshot',
         args: {
-            target: input.target,
+            id: input.id,
+            selector: input.selector,
             full_page: input.full_page,
-            a11yNodeId: input.a11yNodeId,
-            a11yHint: input.a11yHint,
+            inline: input.inline,
         },
         meta: { source: 'mcp' },
     });
+};
+
+type SnapshotLikeNode = {
+    id?: string;
+    role?: string;
+    name?: string;
+    children?: SnapshotLikeNode[];
+};
+
+const normalizeText = (value: string | undefined): string => (value || '').trim().toLowerCase();
+
+const walkSnapshotNodes = (node: SnapshotLikeNode | undefined, out: SnapshotLikeNode[]) => {
+    if (!node) return;
+    out.push(node);
+    for (const child of node.children || []) {
+        walkSnapshotNodes(child, out);
+    }
+};
+
+const defaultRoleByBatchOp = (op: BrowserBatchInput['actions'][number]['op']): string => {
+    if (op === 'fill') return 'textbox';
+    if (op === 'select_option') return 'combobox';
+    return 'button';
+};
+
+const resolveBatchActionTargetsByLabel = async (
+    deps: McpToolDeps,
+    tabToken: string | undefined,
+    input: BrowserBatchInput,
+): Promise<{ ok: true; actions: BrowserBatchInput['actions'] } | { ok: false; error: unknown }> => {
+    const unresolved = input.actions.filter((action) => !action.id && !action.selector && action.label);
+    if (unresolved.length === 0) {
+        return { ok: true, actions: input.actions };
+    }
+
+    const snap = await runSingleStep(deps, tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.snapshot',
+        args: {
+            contain: input.contain,
+            depth: input.depth,
+            filter: { interactive: true },
+        },
+        meta: { source: 'mcp' },
+    });
+    if (!snap.ok) {
+        return { ok: false, error: snap.error || { code: 'ERR_INTERNAL', message: 'batch pre-snapshot failed' } };
+    }
+
+    const root = (snap.results.find((item) => item.ok)?.data || null) as SnapshotLikeNode | null;
+    const nodes: SnapshotLikeNode[] = [];
+    walkSnapshotNodes(root || undefined, nodes);
+
+    const resolved = input.actions.map((action) => ({ ...action }));
+    for (let idx = 0; idx < resolved.length; idx += 1) {
+        const action = resolved[idx];
+        if (action.id || action.selector || !action.label) continue;
+        const wantedRole = normalizeText(action.role || defaultRoleByBatchOp(action.op));
+        const wantedLabel = normalizeText(action.label);
+        const candidates = nodes.filter((node) => {
+            const role = normalizeText(node.role);
+            const name = normalizeText(node.name);
+            return role === wantedRole && name === wantedLabel && typeof node.id === 'string' && node.id.length > 0;
+        });
+        if (candidates.length === 0) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'batch label target not found',
+                    details: { actionIndex: idx, label: action.label, role: wantedRole },
+                },
+            };
+        }
+        if (candidates.length > 1) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_AMBIGUOUS',
+                    message: 'batch label target is ambiguous',
+                    details: {
+                        actionIndex: idx,
+                        label: action.label,
+                        role: wantedRole,
+                        candidateIds: candidates.map((item) => item.id),
+                    },
+                },
+            };
+        }
+        action.id = candidates[0].id!;
+    }
+
+    return { ok: true, actions: resolved as BrowserBatchInput['actions'] };
+};
+
+const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion => {
+    const stepId = crypto.randomUUID();
+    if (action.op === 'fill') {
+        return {
+            id: stepId,
+            name: 'browser.fill',
+            args: {
+                id: action.id,
+                selector: action.selector,
+                value: action.value,
+            },
+            meta: { source: 'mcp' },
+        };
+    }
+    if (action.op === 'select_option') {
+        return {
+            id: stepId,
+            name: 'browser.select_option',
+            args: {
+                id: action.id,
+                selector: action.selector,
+                values: action.values,
+            },
+            meta: { source: 'mcp' },
+        };
+    }
+    return {
+        id: stepId,
+        name: 'browser.click',
+        args: {
+            id: action.id,
+            selector: action.selector,
+            coord: action.coord,
+            options: action.options,
+        },
+        meta: { source: 'mcp' },
+    };
+};
+
+const handleBatch = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserBatchInput>(browserBatchInputSchema, args);
+    if (!parsed.ok) return buildParseErrorResult(parsed.error);
+    const input = parsed.data;
+    const stopOnError = input.stopOnError !== false;
+
+    const resolved = await resolveBatchActionTargetsByLabel(deps, input.tabToken, input);
+    if (!resolved.ok) {
+        return buildParseErrorResult(resolved.error);
+    }
+
+    const finalResults: Array<Record<string, unknown>> = [];
+    for (let idx = 0; idx < resolved.actions.length; idx += 1) {
+        const action = resolved.actions[idx];
+        const step = toBatchStep(action);
+        const stepResult = await runSingleStep(deps, input.tabToken, step);
+        const first = stepResult.results[0] as Record<string, unknown> | undefined;
+        finalResults.push({
+            actionIndex: idx,
+            op: action.op,
+            ...first,
+        });
+        if (!stepResult.ok && stopOnError) {
+            return {
+                ok: false,
+                results: finalResults,
+                error: stepResult.error || first?.error,
+            };
+        }
+    }
+
+    return {
+        ok: finalResults.every((item) => item.ok === true),
+        results: finalResults,
+        error: finalResults.find((item) => item.ok !== true)?.error,
+    };
 };
 
 export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHandler> => ({
@@ -371,8 +847,19 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.switch_tab': handleSwitchTab(deps),
     'browser.close_tab': handleCloseTab(deps),
     'browser.get_page_info': handleGetPageInfo(deps),
+    'browser.list_tabs': handleListTabs(deps),
     'browser.click': handleClick(deps),
     'browser.snapshot': handleSnapshot(deps),
+    'browser.list_entities': handleListEntities(deps),
+    'browser.get_entity': handleGetEntity(deps),
+    'browser.find_entities': handleFindEntities(deps),
+    'browser.add_entity': handleAddEntity(deps),
+    'browser.delete_entity': handleDeleteEntity(deps),
+    'browser.rename_entity': handleRenameEntity(deps),
+    'browser.get_content': handleGetContent(deps),
+    'browser.read_console': handleReadConsole(deps),
+    'browser.read_network': handleReadNetwork(deps),
+    'browser.evaluate': handleEvaluate(deps),
     'browser.fill': handleFill(deps),
     'browser.take_screenshot': handleTakeScreenshot(deps),
     'browser.type': handleType(deps),
@@ -382,4 +869,5 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.press_key': handlePressKey(deps),
     'browser.drag_and_drop': handleDragAndDrop(deps),
     'browser.mouse': handleMouse(deps),
+    'browser.batch': handleBatch(deps),
 });

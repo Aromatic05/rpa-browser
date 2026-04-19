@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>Trace Select Option Fixture</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                padding: 20px;
+            }
+            .row {
+                margin-bottom: 16px;
+            }
+            .trigger {
+                border: 1px solid #ccc;
+                padding: 8px 10px;
+                width: 220px;
+                cursor: pointer;
+                user-select: none;
+            }
+            .popup {
+                border: 1px solid #999;
+                width: 240px;
+                padding: 4px;
+                margin-top: 4px;
+                background: #fff;
+            }
+            .popup[hidden] {
+                display: none;
+            }
+            .opt {
+                list-style: none;
+                margin: 0;
+                padding: 6px 8px;
+                cursor: pointer;
+            }
+            .opt[aria-selected='true'] {
+                background: #e6f7ff;
+            }
+            .chip {
+                display: inline-block;
+                margin-left: 8px;
+                padding: 2px 6px;
+                border-radius: 10px;
+                border: 1px solid #91caff;
+                background: #f0f5ff;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="row">
+            <label for="native-select">Native Select</label>
+            <select id="native-select" aria-label="Native Select">
+                <option value="pending">待审批</option>
+                <option value="processing">审批中</option>
+                <option value="done">已完成</option>
+            </select>
+        </div>
+
+        <div class="row">
+            <div
+                id="combobox-trigger"
+                class="trigger"
+                role="combobox"
+                tabindex="0"
+                aria-haspopup="listbox"
+                aria-controls="combobox-popup"
+                aria-expanded="false"
+                aria-label="报销状态"
+            >
+                待审批
+            </div>
+            <input id="combobox-model" type="hidden" value="pending" />
+            <ul id="combobox-popup" class="popup" role="listbox" hidden>
+                <li class="opt" role="option" data-value="pending">待审批</li>
+                <li class="opt" role="option" data-value="processing">审批中</li>
+                <li class="opt" role="option" data-value="done">已完成</li>
+            </ul>
+        </div>
+
+        <div class="row">
+            <button
+                id="button-trigger"
+                class="trigger"
+                aria-haspopup="listbox"
+                aria-controls="button-popup"
+                aria-expanded="false"
+            >
+                交通费
+            </button>
+            <select id="hidden-native-mirror" style="display: none" aria-label="Hidden Native Mirror">
+                <option value="travel">交通费</option>
+                <option value="office">办公用品</option>
+                <option value="training">培训班</option>
+            </select>
+            <ul id="button-popup" class="popup" role="listbox" hidden>
+                <li class="opt" role="option" data-value="travel" title="交通费">交通费</li>
+                <li class="opt" role="option" data-value="office" title="办公用品">办公用品</li>
+                <li class="opt" role="option" data-value="training" title="培训班">培训班</li>
+            </ul>
+            <span id="button-chip" class="chip">交通费</span>
+        </div>
+
+        <div class="row">
+            <div
+                id="broken-trigger"
+                class="trigger"
+                role="combobox"
+                aria-haspopup="listbox"
+                aria-controls="missing-popup"
+                aria-expanded="false"
+            >
+                无弹层控件
+            </div>
+        </div>
+
+        <div class="row">
+            <div
+                id="stale-trigger"
+                class="trigger"
+                role="combobox"
+                tabindex="0"
+                aria-haspopup="listbox"
+                aria-controls="stale-popup"
+                aria-expanded="false"
+            >
+                固定值
+            </div>
+            <ul id="stale-popup" class="popup" role="listbox" hidden>
+                <li class="opt" role="option" data-value="fixed">固定值</li>
+                <li class="opt" role="option" data-value="stable">稳定值</li>
+            </ul>
+        </div>
+
+        <script>
+            const setExpanded = (trigger, popup, expanded) => {
+                trigger.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                popup.hidden = !expanded;
+            };
+
+            const bindPopup = (triggerId, popupId, onSelect) => {
+                const trigger = document.getElementById(triggerId);
+                const popup = document.getElementById(popupId);
+                trigger.addEventListener('click', () => {
+                    const expanded = trigger.getAttribute('aria-expanded') === 'true';
+                    setExpanded(trigger, popup, !expanded);
+                });
+                popup.addEventListener('click', (event) => {
+                    const option = event.target.closest('[role="option"]');
+                    if (!option) return;
+                    Array.from(popup.querySelectorAll('[role="option"]')).forEach((item) => {
+                        item.setAttribute('aria-selected', item === option ? 'true' : 'false');
+                    });
+                    onSelect(option);
+                    setExpanded(trigger, popup, false);
+                });
+            };
+
+            bindPopup('combobox-trigger', 'combobox-popup', (option) => {
+                const trigger = document.getElementById('combobox-trigger');
+                const model = document.getElementById('combobox-model');
+                trigger.textContent = option.textContent;
+                model.value = option.getAttribute('data-value') || '';
+            });
+
+            bindPopup('button-trigger', 'button-popup', (option) => {
+                const trigger = document.getElementById('button-trigger');
+                const chip = document.getElementById('button-chip');
+                trigger.textContent = option.textContent;
+                chip.textContent = option.textContent;
+            });
+
+            const staleTrigger = document.getElementById('stale-trigger');
+            const stalePopup = document.getElementById('stale-popup');
+            staleTrigger.addEventListener('click', () => {
+                const expanded = staleTrigger.getAttribute('aria-expanded') === 'true';
+                setExpanded(staleTrigger, stalePopup, !expanded);
+            });
+            stalePopup.addEventListener('click', (event) => {
+                const option = event.target.closest('[role="option"]');
+                if (!option) return;
+                // Intentionally keep display/model/selected-state unchanged.
+                setExpanded(staleTrigger, stalePopup, false);
+            });
+        </script>
+    </body>
+</html>

@@ -7,6 +7,8 @@
  * - 通过强类型映射约束 name 与 args 的对应关系
  */
 
+import type { EntityKind, SnapshotFilter } from './executors/snapshot/core/types';
+
 export type StepName =
     | 'browser.goto'
     | 'browser.go_back'
@@ -15,7 +17,12 @@ export type StepName =
     | 'browser.switch_tab'
     | 'browser.close_tab'
     | 'browser.get_page_info'
+    | 'browser.list_tabs'
     | 'browser.snapshot'
+    | 'browser.get_content'
+    | 'browser.read_console'
+    | 'browser.read_network'
+    | 'browser.evaluate'
     | 'browser.take_screenshot'
     | 'browser.click'
     | 'browser.fill'
@@ -25,7 +32,13 @@ export type StepName =
     | 'browser.scroll'
     | 'browser.press_key'
     | 'browser.drag_and_drop'
-    | 'browser.mouse';
+    | 'browser.mouse'
+    | 'browser.list_entities'
+    | 'browser.get_entity'
+    | 'browser.find_entities'
+    | 'browser.add_entity'
+    | 'browser.delete_entity'
+    | 'browser.rename_entity';
 
 export type A11yHint = {
     role?: string;
@@ -34,9 +47,10 @@ export type A11yHint = {
 };
 
 export type Target = {
+    id?: string;
+    selector?: string;
     a11yNodeId?: string;
     a11yHint?: A11yHint;
-    selector?: string;
 };
 
 export type StepArgsMap = {
@@ -47,9 +61,32 @@ export type StepArgsMap = {
     'browser.switch_tab': { tab_id: string; tab_url?: string; tab_ref?: string };
     'browser.close_tab': { tab_id?: string };
     'browser.get_page_info': Record<string, never>;
-    'browser.snapshot': { includeA11y?: boolean; focus_only?: boolean };
-    'browser.take_screenshot': { target?: Target; full_page?: boolean; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.list_tabs': Record<string, never>;
+    'browser.snapshot': {
+        includeA11y?: boolean;
+        focus_only?: boolean;
+        refresh?: boolean;
+        contain?: string;
+        depth?: number;
+        filter?: SnapshotFilter;
+        diff?: boolean;
+    };
+    'browser.get_content': { ref: string };
+    'browser.read_console': { limit?: number };
+    'browser.read_network': { limit?: number };
+    'browser.evaluate': { expression: string; arg?: unknown; mutatesPage?: boolean };
+    'browser.take_screenshot': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        full_page?: boolean;
+        inline?: boolean;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.click': {
+        id?: string;
+        selector?: string;
         target?: Target;
         coord?: { x: number; y: number };
         options?: { button?: 'left' | 'right' | 'middle'; double?: boolean };
@@ -57,8 +94,18 @@ export type StepArgsMap = {
         a11yNodeId?: string;
         a11yHint?: A11yHint;
     };
-    'browser.fill': { target?: Target; value: string; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.fill': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        value: string;
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.type': {
+        id?: string;
+        selector?: string;
         target?: Target;
         text: string;
         delay_ms?: number;
@@ -66,9 +113,26 @@ export type StepArgsMap = {
         a11yNodeId?: string;
         a11yHint?: A11yHint;
     };
-    'browser.select_option': { target?: Target; values: string[]; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
-    'browser.hover': { target?: Target; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.select_option': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        values: string[];
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
+    'browser.hover': {
+        id?: string;
+        selector?: string;
+        target?: Target;
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.scroll': {
+        id?: string;
+        selector?: string;
         target?: Target;
         direction?: 'up' | 'down';
         amount?: number;
@@ -76,7 +140,15 @@ export type StepArgsMap = {
         a11yNodeId?: string;
         a11yHint?: A11yHint;
     };
-    'browser.press_key': { key: string; target?: Target; timeout?: number; a11yNodeId?: string; a11yHint?: A11yHint };
+    'browser.press_key': {
+        key: string;
+        id?: string;
+        selector?: string;
+        target?: Target;
+        timeout?: number;
+        a11yNodeId?: string;
+        a11yHint?: A11yHint;
+    };
     'browser.drag_and_drop': {
         source: Target;
         dest_target?: Target;
@@ -84,11 +156,39 @@ export type StepArgsMap = {
         timeout?: number;
     };
     'browser.mouse': {
-        action: 'move' | 'down' | 'up' | 'wheel';
+        action: 'move' | 'down' | 'up' | 'wheel' | 'click' | 'dblclick';
         x: number;
         y: number;
         deltaY?: number;
         button?: 'left' | 'right' | 'middle';
+    };
+    'browser.list_entities': {
+        kind?: EntityKind | EntityKind[];
+        businessTag?: string | string[];
+        query?: string;
+    };
+    'browser.get_entity': {
+        nodeId: string;
+    };
+    'browser.find_entities': {
+        query: string;
+        kind?: EntityKind | EntityKind[];
+        businessTag?: string | string[];
+    };
+    'browser.add_entity': {
+        nodeId: string;
+        kind: EntityKind;
+        name?: string;
+        businessTag?: string;
+    };
+    'browser.delete_entity': {
+        nodeId: string;
+        kind?: EntityKind;
+        businessTag?: string;
+    };
+    'browser.rename_entity': {
+        nodeId: string;
+        name: string;
     };
 };
 

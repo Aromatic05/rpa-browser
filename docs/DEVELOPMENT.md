@@ -19,7 +19,7 @@
 
 1. Extension -> Agent WS（`agent/src/index.ts`）
 2. MCP 面板（HTTP UI，`agent/src/demo/server.ts`）
-3. MCP stdio（`agent/src/mcp_main.ts`）
+3. MCP HTTP（`agent/src/mcp_main.ts`）
 
 三者最终共享同一后端执行内核：
 
@@ -54,10 +54,10 @@ pnpm mock:dev
 # MCP 面板（HTTP UI）
 pnpm mcp
 
-# MCP stdio（供外部程序接入）
-pnpm mcp:stdio
+# MCP HTTP（供外部程序接入）
+pnpm mcp:http
 
-# MCP stdio + runner bundle 热重载
+# MCP HTTP + runner bundle 热重载
 pnpm mcp:hot
 ```
 

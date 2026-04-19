@@ -3,7 +3,7 @@
  *
  * 说明：
  * - 所有 message type 必须从这里引用，禁止散落字符串。
- * - RpcResult/RpcError 用于统一 send 的错误返回结构。
+ * - TransportResult/TransportError 仅用于 runtime/tabs 传输层兼容，不是业务协议。
  */
 
 export const MSG = {
@@ -11,6 +11,7 @@ export const MSG = {
     GET_TOKEN: 'RPA_GET_TOKEN',
     REFRESH: 'RPA_REFRESH',
     ACTION: 'ACTION',
+    ACTION_EVENT: 'ACTION_EVENT',
 } as const;
 
 export type ErrorCode =
@@ -21,6 +22,6 @@ export type ErrorCode =
     | 'BAD_REQUEST'
     | 'WS_DOWN';
 
-export type RpcError = { code: ErrorCode; message: string; details?: any };
+export type TransportError = { code: ErrorCode; message: string; details?: any };
 
-export type RpcResult<T> = { ok: true; data: T } | { ok: false; error: RpcError };
+export type TransportResult<T> = { ok: true; data: T } | { ok: false; error: TransportError };

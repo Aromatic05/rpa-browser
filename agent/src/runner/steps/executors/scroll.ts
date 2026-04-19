@@ -12,10 +12,13 @@ export const executeBrowserScroll = async (
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const target = normalizeTarget(step.args);
     if (target) {
-        const resolved = await resolveTargetNodeId(binding, target);
+        const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
         if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({
-            a11yNodeId: resolved.nodeId,
+            a11yNodeId: resolved.target.a11yNodeId,
+            selector: resolved.target.selector,
+            role: resolved.target.role,
+            name: resolved.target.name,
         });
         if (!scroll.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };

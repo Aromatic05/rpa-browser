@@ -2,12 +2,12 @@
  * WS 客户端封装：维护与 agent 的长连接，发送命令并接收 Action 广播。
  */
 
-import type { Action, ActionErr, ActionOk, WsActionReply } from '../shared/types.js';
-import { isActionType } from '../shared/action_types.js';
+import type { Action } from '../shared/types.js';
+import { classifyActionType, isDispatchActionType } from '../shared/action_types.js';
 import { createLogger, type Logger } from '../shared/logger.js';
 
 export type WsClient = {
-    sendAction: (action: Action) => Promise<ActionOk<any> | ActionErr>;
+    sendAction: (action: Action) => Promise<Action>;
 };
 
 export type WsClientOptions = {
@@ -19,7 +19,16 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
     const log = options.logger || createLogger('sw');
     let wsRef: WebSocket | null = null;
     let wsReady: Promise<void> | null = null;
-    const pending = new Map<string, (payload: ActionOk<any> | ActionErr) => void>();
+    const pending = new Map<string, (reply: Action) => void>();
+
+    const mkFailedReply = (requestId: string, code: string, message: string): Action => ({
+        v: 1,
+        id: crypto.randomUUID(),
+        type: 'action.transport.failed',
+        payload: { code, message },
+        at: Date.now(),
+        replyTo: requestId,
+    });
 
     const connect = () => {
         if (wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
@@ -63,21 +72,27 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            if (payload?.replyTo) {
-                const resolver = pending.get(payload.replyTo as string);
-                if (!resolver) return;
-                pending.delete(payload.replyTo as string);
-                resolver((payload as WsActionReply).payload as ActionOk<any> | ActionErr);
+            if (payload?.v !== 1 || typeof payload?.id !== 'string' || typeof payload?.type !== 'string') {
                 return;
             }
-            if (payload?.v === 1 && typeof payload?.id === 'string' && isActionType(String(payload?.type))) {
-                options.onAction(payload as Action);
+            const action = payload as Action;
+            const kind = classifyActionType(String(action.type || ''));
+            if (kind === 'reply' && action.replyTo) {
+                const resolver = pending.get(action.replyTo);
+                if (resolver) {
+                    pending.delete(action.replyTo);
+                    resolver(action);
+                    return;
+                }
+            }
+            if (kind !== 'reply' && isDispatchActionType(String(action.type))) {
+                options.onAction(action);
             }
         });
         wsRef.addEventListener('close', () => {
             wsRef = null;
             wsReady = null;
-            pending.forEach((resolver) => resolver({ ok: false, error: { code: 'ERR_CLOSED', message: 'ws closed' } }));
+            pending.forEach((resolver, requestId) => resolver(mkFailedReply(requestId, 'ERR_CLOSED', 'ws closed')));
             pending.clear();
         });
         wsRef.addEventListener('error', () => {
@@ -88,14 +103,14 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
 
     const sendAction = (action: Action) => {
         const requestId = action.id;
-        return new Promise<ActionOk<any> | ActionErr>((resolve) => {
+        return new Promise<Action>((resolve) => {
             const timeoutId = setTimeout(() => {
                 pending.delete(requestId);
-                resolve({ ok: false, error: { code: 'ERR_TIMEOUT', message: 'ws timeout' } });
+                resolve(mkFailedReply(requestId, 'ERR_TIMEOUT', 'ws timeout'));
             }, 20000);
-            pending.set(requestId, (payload) => {
+            pending.set(requestId, (reply) => {
                 clearTimeout(timeoutId);
-                resolve(payload);
+                resolve(reply);
             });
             connect()
                 .then(() => {
@@ -104,7 +119,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                 .catch(() => {
                     clearTimeout(timeoutId);
                     pending.delete(requestId);
-                    resolve({ ok: false, error: { code: 'ERR_CONNECT', message: 'ws connect failed' } });
+                    resolve(mkFailedReply(requestId, 'ERR_CONNECT', 'ws connect failed'));
                 });
         });
     };

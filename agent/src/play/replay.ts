@@ -11,6 +11,8 @@ import type { StepUnion } from '../runner/steps/types';
 import type { RunStepsDeps } from '../runner/run_steps';
 import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from '../record/recording';
+import type { RecordingEnhancementMap } from '../record/types';
+import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../runner/steps/helpers/replay_ctx';
 
 export type ReplayOptions = {
     clickDelayMs: number;
@@ -23,6 +25,7 @@ type ReplayRequest = {
     initialTabId: string;
     initialTabToken: string;
     steps: StepUnion[];
+    enrichments?: RecordingEnhancementMap;
     recordingManifest?: RecordingManifest;
     stopOnError: boolean;
     pageRegistry: {
@@ -31,11 +34,36 @@ type ReplayRequest = {
         resolveTabIdFromRef?: (tabRef: string) => string | undefined;
     };
     isCanceled?: () => boolean;
+    onEvent?: (event: ReplayEvent) => void | Promise<void>;
     deps?: RunStepsDeps;
     replayOptions?: ReplayOptions;
 };
 
 type ReplayResult = RunStepsResult & { error?: { code: string; message: string; details?: unknown } };
+
+export type ReplayEvent =
+    | {
+          type: 'step.started';
+          index: number;
+          total: number;
+          stepId: string;
+          stepName: string;
+      }
+    | {
+          type: 'step.finished';
+          index: number;
+          total: number;
+          stepId: string;
+          stepName: string;
+          ok: boolean;
+          data?: unknown;
+          error?: { code: string; message: string; details?: unknown };
+      }
+    | {
+          type: 'progress';
+          completed: number;
+          total: number;
+      };
 
 /**
  * replayRecording：执行已录制的 Step 列表。
@@ -83,10 +111,25 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     let currentToken = req.initialTabToken;
     const stepResults: RunStepsResult['results'] = [];
 
-    for (const originalStep of req.steps) {
+    const replayEnhancements = req.enrichments || {};
+    const hasReplayEnhancements = Object.keys(replayEnhancements).length > 0;
+    if (hasReplayEnhancements) {
+        setReplayEnhancementContext(req.workspaceId, replayEnhancements);
+    }
+
+    try {
+    for (let index = 0; index < req.steps.length; index += 1) {
+        const originalStep = req.steps[index];
         if (req.isCanceled?.()) {
             return { ok: false, results: stepResults, error: { code: 'ERR_CANCELED', message: 'replay canceled' } };
         }
+        await req.onEvent?.({
+            type: 'step.started',
+            index,
+            total: req.steps.length,
+            stepId: originalStep.id,
+            stepName: originalStep.name,
+        });
 
         const desiredToken = originalStep.meta?.tabToken;
         const desiredTabRef = originalStep.meta?.tabRef || originalStep.meta?.tabId;
@@ -163,6 +206,22 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
 
         const response = await runOne(remappedStep);
         stepResults.push(...response.results);
+        const primary = response.results[response.results.length - 1];
+        await req.onEvent?.({
+            type: 'step.finished',
+            index,
+            total: req.steps.length,
+            stepId: remappedStep.id,
+            stepName: remappedStep.name,
+            ok: response.ok,
+            data: primary?.data,
+            error: primary?.error,
+        });
+        await req.onEvent?.({
+            type: 'progress',
+            completed: index + 1,
+            total: req.steps.length,
+        });
         if (!response.ok && req.stopOnError) {
             return { ok: false, results: stepResults };
         }
@@ -189,4 +248,9 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         ok: stepResults.every((item) => item.ok),
         results: stepResults,
     };
+    } finally {
+        if (hasReplayEnhancements) {
+            clearReplayEnhancementContext(req.workspaceId);
+        }
+    }
 };

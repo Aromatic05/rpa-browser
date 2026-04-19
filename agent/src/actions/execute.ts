@@ -8,8 +8,8 @@
 
 import type { Page } from 'playwright';
 import { ERROR_CODES, type ErrorCode } from './error_codes';
-import type { Action, ActionErr, ActionOk } from './action_protocol';
-import { makeErr, makeOk } from './action_protocol';
+import type { Action } from './action_protocol';
+import { failedAction } from './action_protocol';
 import { actionHandlers } from './index';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
@@ -23,10 +23,11 @@ export type ActionContext = {
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
+    emit?: (action: Action) => void;
     execute?: (action: Action) => Promise<ActionHandlerResult>;
 };
 
-export type ActionHandlerResult = ActionOk<any> | ActionErr;
+export type ActionHandlerResult = Action;
 export type ActionHandler = (ctx: ActionContext, action: Action) => Promise<ActionHandlerResult>;
 
 export class ActionError extends Error {
@@ -41,19 +42,19 @@ export class ActionError extends Error {
 }
 
 /**
- * 将异常转为标准 Result，避免抛出到 WS 层。
+ * 将异常转为 failed Action，避免抛出到 WS 层。
  */
-const mapError = (error: unknown): ActionHandlerResult => {
+const mapError = (action: Action, error: unknown): ActionHandlerResult => {
     if (error instanceof ActionError) {
-        return makeErr(error.code, error.message, error.details);
+        return failedAction(action, error.code, error.message, error.details);
     }
     if (error instanceof Error) {
         if (error.name === 'TimeoutError') {
-            return makeErr(ERROR_CODES.ERR_TIMEOUT, error.message);
+            return failedAction(action, ERROR_CODES.ERR_TIMEOUT, error.message);
         }
-        return makeErr(ERROR_CODES.ERR_BAD_ARGS, error.message);
+        return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, error.message);
     }
-    return makeErr(ERROR_CODES.ERR_BAD_ARGS, String(error));
+    return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, String(error));
 };
 
 /**
@@ -62,7 +63,7 @@ const mapError = (error: unknown): ActionHandlerResult => {
 export const executeAction = async (ctx: ActionContext, action: Action): Promise<ActionHandlerResult> => {
     const handler = actionHandlers[action.type];
     if (!handler) {
-        return makeErr(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
+        return failedAction(action, ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
     }
     let pageUrl: string | null = null;
     try {
@@ -72,10 +73,8 @@ export const executeAction = async (ctx: ActionContext, action: Action): Promise
     }
     ctx.log('execute', { type: action.type, tabToken: ctx.tabToken, id: action.id, pageUrl });
     try {
-        const result = await handler(ctx, action);
-        if (result.ok) return makeOk(result.data);
-        return result;
+        return await handler(ctx, action);
     } catch (error) {
-        return mapError(error);
+        return mapError(action, error);
     }
 };

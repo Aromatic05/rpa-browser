@@ -3,13 +3,18 @@ import type { RunStepsDeps } from '../../run_steps';
 import { executeBrowserClick } from './click';
 import { executeBrowserFill } from './fill';
 import { executeBrowserGoto } from './goto';
-import { executeBrowserSnapshot } from './snapshot';
+import { executeBrowserSnapshot } from './snapshot/pipeline/snapshot';
 import { executeBrowserGoBack } from './go_back';
 import { executeBrowserReload } from './reload';
 import { executeBrowserCreateTab } from './create_tab';
 import { executeBrowserSwitchTab } from './switch_tab';
 import { executeBrowserCloseTab } from './close_tab';
 import { executeBrowserGetPageInfo } from './get_page_info';
+import { executeBrowserListTabs } from './list_tabs';
+import { executeBrowserGetContent } from './get_content';
+import { executeBrowserReadConsole } from './read_console';
+import { executeBrowserReadNetwork } from './read_network';
+import { executeBrowserEvaluate } from './evaluate';
 import { executeBrowserTakeScreenshot } from './take_screenshot';
 import { executeBrowserType } from './type';
 import { executeBrowserSelectOption } from './select_option';
@@ -18,6 +23,12 @@ import { executeBrowserScroll } from './scroll';
 import { executeBrowserPressKey } from './press_key';
 import { executeBrowserDragAndDrop } from './drag_and_drop';
 import { executeBrowserMouse } from './mouse';
+import { executeBrowserListEntities } from './list_entities';
+import { executeBrowserGetEntity } from './get_entity';
+import { executeBrowserFindEntities } from './find_entities';
+import { executeBrowserAddEntity } from './add_entity';
+import { executeBrowserDeleteEntity } from './delete_entity';
+import { executeBrowserRenameEntity } from './rename_entity';
 
 export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceId: string) => Promise<StepResult>;
 
@@ -29,7 +40,12 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.switch_tab': executeBrowserSwitchTab as ExecutorFn,
     'browser.close_tab': executeBrowserCloseTab as ExecutorFn,
     'browser.get_page_info': executeBrowserGetPageInfo as ExecutorFn,
+    'browser.list_tabs': executeBrowserListTabs as ExecutorFn,
     'browser.snapshot': executeBrowserSnapshot as ExecutorFn,
+    'browser.get_content': executeBrowserGetContent as ExecutorFn,
+    'browser.read_console': executeBrowserReadConsole as ExecutorFn,
+    'browser.read_network': executeBrowserReadNetwork as ExecutorFn,
+    'browser.evaluate': executeBrowserEvaluate as ExecutorFn,
     'browser.take_screenshot': executeBrowserTakeScreenshot as ExecutorFn,
     'browser.click': executeBrowserClick as ExecutorFn,
     'browser.fill': executeBrowserFill as ExecutorFn,
@@ -40,4 +56,10 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.press_key': executeBrowserPressKey as ExecutorFn,
     'browser.drag_and_drop': executeBrowserDragAndDrop as ExecutorFn,
     'browser.mouse': executeBrowserMouse as ExecutorFn,
+    'browser.list_entities': executeBrowserListEntities as ExecutorFn,
+    'browser.get_entity': executeBrowserGetEntity as ExecutorFn,
+    'browser.find_entities': executeBrowserFindEntities as ExecutorFn,
+    'browser.add_entity': executeBrowserAddEntity as ExecutorFn,
+    'browser.delete_entity': executeBrowserDeleteEntity as ExecutorFn,
+    'browser.rename_entity': executeBrowserRenameEntity as ExecutorFn,
 };

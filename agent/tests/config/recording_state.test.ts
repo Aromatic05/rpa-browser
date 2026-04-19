@@ -195,10 +195,35 @@ test('saveWorkspaceSnapshot strips tabToken from persisted steps', () => {
     });
     assert.equal(snapshot.recording.steps.length, 1);
     assert.equal(snapshot.recording.steps[0].meta?.tabToken, undefined);
-    assert.equal(snapshot.recording.manifest?.tabs[0].tabToken, undefined);
+    assert.equal('tabToken' in (snapshot.recording.manifest?.tabs[0] || {}), false);
     assert.equal(getWorkspaceSnapshot(state, 'ws-save')?.recording.steps[0].meta?.tabToken, undefined);
     const summaries = listWorkspaceRecordings(state);
     assert.equal(summaries.length, 1);
     assert.equal(summaries[0].workspaceId, 'ws-save');
     assert.equal(summaries[0].stepCount, 1);
+});
+
+test('recording enhancements are stored as sidecar and never mixed into step', () => {
+    const state = createRecordingState();
+    const step: StepUnion = {
+        id: 'step-sidecar-1',
+        name: 'browser.click',
+        args: { target: { selector: '#buy' } },
+        meta: { source: 'record', ts: 100, tabToken: 'token-a', workspaceId: 'ws-1' },
+    };
+    state.recordings.set('token-a', [step]);
+    state.recordingEnhancements.set('token-a', {
+        'step-sidecar-1': {
+            version: 1,
+            eventType: 'click',
+            rawContext: { selector: '#buy', pageUrl: 'https://example.com' },
+            replayHints: { allowFuzzy: true, requireVisible: true },
+            target: { nodeId: 'button_buy', role: 'button', primaryDomId: '101' },
+        },
+    });
+
+    const bundle = getRecordingBundle(state, 'token-a');
+    assert.equal((bundle.steps[0].meta as Record<string, unknown>).recording, undefined);
+    assert.equal(bundle.enrichments?.['step-sidecar-1']?.target?.nodeId, 'button_buy');
+    assert.equal(bundle.enrichments?.['step-sidecar-1']?.replayHints?.allowFuzzy, true);
 });

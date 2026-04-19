@@ -4,6 +4,7 @@ import { replayRecording } from '../../src/play/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
+import { getReplayEnhancementForStep } from '../../src/runner/steps/helpers/replay_ctx';
 
 test('replayRecording creates and switches tab when recorded tabToken is missing (cold replay)', async () => {
     const executed: StepUnion[] = [];
@@ -33,6 +34,20 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
         initialTabId: 'tab-now',
         initialTabToken: 'token-a',
         steps,
+        enrichments: {
+            s1: {
+                version: 1,
+                eventType: 'click',
+                rawContext: { selector: '#a' },
+                replayHints: { preferDirect: true },
+            },
+            s2: {
+                version: 1,
+                eventType: 'click',
+                rawContext: { selector: '#b' },
+                replayHints: { preferDirect: true },
+            },
+        },
         stopOnError: true,
         pageRegistry: {
             listTabs: async () => [{ tabId: 'tab-now' }],
@@ -44,6 +59,8 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
                 getExecutors: () =>
                     ({
                         'browser.click': async (step: StepUnion) => {
+                            const enhancement = getReplayEnhancementForStep('ws-now', step.id);
+                            assert.ok(enhancement, `missing replay enhancement for ${step.id}`);
                             executed.push(step);
                             return { stepId: step.id, ok: true };
                         },

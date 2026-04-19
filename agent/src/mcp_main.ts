@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
@@ -9,12 +10,17 @@ import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
+import { McpToolHost } from './mcp/hotreload/tool_host';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const NAV_DEDUPE_WINDOW_MS = 1200;
+if (!process.env.RPA_USER_DATA_DIR) {
+    process.env.RPA_USER_DATA_DIR = path.resolve(process.cwd(), '.user-data-mcp');
+}
 
 const actionLog = getLogger('action');
 const log = (...args: unknown[]) => actionLog.info('[RPA:mcp]', ...args);
+const logNotice = (...args: unknown[]) => actionLog.warning('[RPA:mcp]', ...args);
 const logError = (...args: unknown[]) => actionLog.error('[RPA:mcp]', ...args);
 
 const paths = resolvePaths();
@@ -35,11 +41,30 @@ initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
-const runnerPluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
+const sourcePluginEntry = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
+const bundledPluginEntry = path.resolve(process.cwd(), '.runner-dist/plugin.mjs');
+const hasSourcePluginEntry = fs.existsSync(sourcePluginEntry);
+const pluginEntry = process.env.RUNNER_PLUGIN_ENTRY
+    ? path.resolve(process.cwd(), process.env.RUNNER_PLUGIN_ENTRY)
+    : hasSourcePluginEntry
+      ? sourcePluginEntry
+      : bundledPluginEntry;
+const hotReloadDisabled = /^(0|false|off)$/i.test(String(process.env.RUNNER_HOT_RELOAD || '').trim());
+const hotReloadEnabled = !hotReloadDisabled;
+const runnerPluginHost = new RunnerPluginHost(pluginEntry);
 await runnerPluginHost.load();
-if (process.env.NODE_ENV !== 'production') {
-    runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
+if (hotReloadEnabled) {
+    const watchTarget =
+        hasSourcePluginEntry && pluginEntry === sourcePluginEntry
+            ? path.resolve(process.cwd(), 'src/runner')
+            : path.resolve(process.cwd(), '.runner-dist');
+    runnerPluginHost.watchDev(watchTarget);
+    logNotice('Runner plugin hot reload enabled.', { pluginEntry, watchTarget });
+} else {
+    logNotice('Runner plugin hot reload disabled by RUNNER_HOT_RELOAD.', { pluginEntry });
 }
+const sourceMcpHotEntry = path.resolve(process.cwd(), 'src/mcp/hot_entry.ts');
+const mcpToolHost = new McpToolHost(sourceMcpHotEntry);
 
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
@@ -62,20 +87,39 @@ runtimeRegistry = createRuntimeRegistry({
         : createNoopHooks(),
     pluginHost: runnerPluginHost,
 });
-setRunStepsDeps({
+const runStepsDeps = {
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
+};
+setRunStepsDeps(runStepsDeps);
+await mcpToolHost.load({
+    pageRegistry,
+    config,
+    log,
+    runStepsDeps,
 });
+if (hotReloadEnabled) {
+    const watchTarget = path.resolve(process.cwd(), 'src/mcp');
+    mcpToolHost.watchDev(watchTarget, { pageRegistry, config, log, runStepsDeps });
+    logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
+}
 
 (async () => {
     try {
         await contextManager.getContext();
-        log('Playwright Chromium launched with extension.');
+        logNotice('Playwright Chromium launched with extension.');
         await startMcpServer({
             pageRegistry,
+            config,
             log,
+            runStepsDeps,
+            resolveToolRuntime: () =>
+                mcpToolHost.getRuntime() || {
+                    handlers: {},
+                    tools: [],
+                },
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

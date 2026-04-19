@@ -7,6 +7,7 @@ out
 tsconfig.tsbuildinfo
 extension/dist
 agent/.user-data
+agent/.user-data-*
 agent/node_modules
 extension/node_modules
 agent/test-results
@@ -16,6 +17,14 @@ agent/playwright-report
 agent/.rpa
 agent/.artifacts
 agent/.runner-dist
+agent/.runner-hot
 agent/src/record/payload.bundle.js
 agent/src/record/payload.bundle.js.map
 .idea/
+
+# local snapshot harvesting datasets (too large for git)
+agent/tests/fixtures/snapshot/web_docs/
+agent/tests/fixtures/snapshot/web_docs_probe/
+
+agent/.mcp-hot
+.vscode/

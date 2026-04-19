@@ -5,18 +5,18 @@
 仓库由两层核心组成：
 
 - `extension/`：浏览器侧 UI 与命令发送（WS）。
-- `agent/`：后端执行层（WS server / MCP stdio / MCP 面板），统一走 `runSteps` + `trace`。
+- `agent/`：后端执行层（WS server / MCP HTTP / MCP 面板），统一走 `runSteps` + `trace`。
 
 另外：
 
 - `mock/`：本地页面夹具。
 - `agent/src/demo/*`：本地 MCP 面板服务。
-- `agent/src/mcp/*`：MCP stdio 服务。
+- `agent/src/mcp/*`：MCP HTTP(SSE) 服务。
 
 ## 三个交互入口
 
 1. Extension 入口：`agent/src/index.ts`
-2. MCP stdio 入口：`agent/src/mcp_main.ts`
+2. MCP HTTP 入口：`agent/src/mcp_main.ts`
 3. MCP 面板入口：`agent/src/demo/server.ts`
 
 这三个入口最终共享 runner/runtime/trace。
@@ -36,7 +36,7 @@
 - 广播同样使用 Action 协议（`workspace.sync/workspace.changed/tab.bound`），不再使用 `type="event"`。
 - workspace 物理承载以浏览器窗口为单位，extension 在 SW 内维护 `windowId -> workspaceId` 映射并同步焦点/关闭副作用。
 
-## MCP（stdio）
+## MCP（HTTP）
 
 - `agent/src/mcp_main.ts` 启动 MCP server
 - `agent/src/mcp/server.ts` 处理 `tools/list`、`tools/call`

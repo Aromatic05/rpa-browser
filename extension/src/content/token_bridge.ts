@@ -7,6 +7,7 @@
  */
 
 import { send } from '../shared/send.js';
+import type { Action } from '../shared/types.js';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
@@ -42,11 +43,7 @@ export const ensureTabToken = () => {
 export const ensureTabTokenAsync = async () => {
     let tabToken = ensureTabToken();
     if (!tabToken) {
-        const response = await send.action<{
-            ok: boolean;
-            data?: { tabToken?: string };
-            error?: { message?: string };
-        }>({
+        const response = await send.action({
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.init',
@@ -56,9 +53,10 @@ export const ensureTabTokenAsync = async () => {
                 at: Date.now(),
             },
             scope: {},
-        });
-        if (response.ok && response.data?.ok && response.data?.data?.tabToken) {
-            tabToken = String(response.data.data.tabToken);
+        } satisfies Action);
+        const payload = (response.payload || {}) as { tabToken?: string };
+        if (response.type === 'tab.init.result' && payload.tabToken) {
+            tabToken = String(payload.tabToken);
         }
         if (!tabToken) {
             throw new Error('tab token init failed');

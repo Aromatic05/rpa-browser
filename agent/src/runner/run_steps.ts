@@ -1,6 +1,10 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { getLogger } from '../logging/logger';
+import {
+    markSnapshotSessionDirty,
+    shouldMarkSnapshotDirtyByStep,
+} from './steps/executors/snapshot/core/session_store';
 import type {
     Checkpoint,
     ResultPipe,
@@ -216,6 +220,17 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             });
 
             const result = await executeOne(step, req.workspaceId, resolvedDeps);
+            if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args as Record<string, unknown>)) {
+                try {
+                    const binding = await resolvedDeps.runtime.ensureActivePage(req.workspaceId);
+                    markSnapshotSessionDirty(binding, `step:${step.name}`);
+                } catch (error) {
+                    stepLogger('[runner] snapshot dirty mark failed', {
+                        step: step.name,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
 
             await writeStepEvent(resolvedDeps.stepSinks, {
                 type: 'step.end',

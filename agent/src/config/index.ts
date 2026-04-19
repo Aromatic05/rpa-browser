@@ -19,4 +19,4 @@ export const resolveRunnerConfig = (overrides?: Partial<RunnerConfig>) => {
     return { ...base, ...overrides };
 };
 
-export type { RunnerConfig } from './config_schema';
+export type { RunnerConfig, McpToolGroup, McpPolicy } from './config_schema';

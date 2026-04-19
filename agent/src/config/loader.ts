@@ -44,6 +44,14 @@ const envNumber = (name: string) =>
 const envBool = (name: string) =>
     process.env[name] !== undefined ? process.env[name] === 'true' : undefined;
 
+const envCsv = (name: string) =>
+    process.env[name] !== undefined
+        ? String(process.env[name])
+              .split(',')
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0)
+        : undefined;
+
 const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     const patch: Partial<RunnerConfig> = {};
     const set = (path: string[], value: unknown) => {
@@ -58,6 +66,7 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     };
 
     set(['waitPolicy', 'defaultTimeoutMs'], envNumber('RUNNER_DEFAULT_TIMEOUT_MS'));
+    set(['waitPolicy', 'interactionTimeoutMs'], envNumber('RUNNER_INTERACTION_TIMEOUT_MS'));
     set(['waitPolicy', 'navigationTimeoutMs'], envNumber('RUNNER_NAVIGATION_TIMEOUT_MS'));
     set(['waitPolicy', 'a11ySnapshotTimeoutMs'], envNumber('RUNNER_A11Y_SNAPSHOT_TIMEOUT_MS'));
     set(['waitPolicy', 'visibleTimeoutMs'], envNumber('RUNNER_VISIBLE_TIMEOUT_MS'));
@@ -94,6 +103,9 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['checkpointPolicy', 'enabled'], envBool('RUNNER_CHECKPOINT_ENABLED'));
     set(['checkpointPolicy', 'filePath'], process.env.RUNNER_CHECKPOINT_FILE_PATH);
     set(['checkpointPolicy', 'flushIntervalMs'], envNumber('RUNNER_CHECKPOINT_FLUSH_INTERVAL_MS'));
+    set(['mcpPolicy', 'enabledToolGroups'], envCsv('RUNNER_MCP_TOOL_GROUPS'));
+    set(['mcpPolicy', 'enableTools'], envCsv('RUNNER_MCP_ENABLE_TOOLS'));
+    set(['mcpPolicy', 'disableTools'], envCsv('RUNNER_MCP_DISABLE_TOOLS'));
 
     return mergeDeep(config, patch);
 };

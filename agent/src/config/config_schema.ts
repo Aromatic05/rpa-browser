@@ -10,6 +10,8 @@
 export type WaitPolicy = {
     /** 默认操作超时（用于 click/fill 等通用操作） */
     defaultTimeoutMs: number;
+    /** 交互步骤硬超时（用于防止步骤整体卡死） */
+    interactionTimeoutMs: number;
     /** 导航超时（goto 等） */
     navigationTimeoutMs: number;
     /** A11y 快照超时（可用于 snapshot） */
@@ -105,6 +107,17 @@ export type CheckpointPolicy = {
     flushIntervalMs: number;
 };
 
+export type McpToolGroup = 'tab_navigation' | 'structured_inspection' | 'business_entities' | 'actions' | 'debugging';
+
+export type McpPolicy = {
+    /** 启用的工具分组（空数组表示不过滤分组） */
+    enabledToolGroups: McpToolGroup[];
+    /** 额外强制启用的工具名 */
+    enableTools: string[];
+    /** 强制禁用的工具名 */
+    disableTools: string[];
+};
+
 export type RunnerConfig = {
     waitPolicy: WaitPolicy;
     retryPolicy: RetryPolicy;
@@ -112,4 +125,5 @@ export type RunnerConfig = {
     observability: Observability;
     confidencePolicy: ConfidencePolicy;
     checkpointPolicy: CheckpointPolicy;
+    mcpPolicy: McpPolicy;
 };

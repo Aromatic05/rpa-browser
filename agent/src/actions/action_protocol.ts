@@ -1,6 +1,3 @@
-import type { StepUnion } from '../runner/steps/types';
-import type { ActionType } from './action_types';
-
 /**
  * Action 协议：WS 唯一协议单元。
  *
@@ -15,7 +12,13 @@ export type ActionScope = {
     tabToken?: string;
 };
 
-export type Action<T extends string = ActionType, P = unknown> = {
+/**
+ * 协议硬约束（禁止修改为 RPC）：
+ * - Action 是唯一跨进程/跨端传输单元，请求、回复、错误、流式事件都必须是 Action。
+ * - replyTo 仅用于关联 Action，不允许返回 { ok, data } / { ok, error } 包装体。
+ * - payload 只承载业务数据，协议语义由 type/replyTo/scope/tabToken/traceId/at 承担。
+ */
+export type Action<T extends string = string, P = unknown> = {
     v: 1;
     id: string;
     type: T;
@@ -27,17 +30,46 @@ export type Action<T extends string = ActionType, P = unknown> = {
     replyTo?: string;
 };
 
-export type ActionOk<T> = { ok: true; data: T };
-export type ActionErr = { ok: false; error: { code: string; message: string; details?: any } };
+export type ActionFailurePayload = {
+    code: string;
+    message: string;
+    details?: any;
+};
 
-export const makeOk = <T>(data: T): ActionOk<T> => ({ ok: true, data });
+const copyScope = (scope?: ActionScope) => (scope ? { ...scope } : undefined);
 
-export const makeErr = (code: string, message: string, details?: any): ActionErr => ({
-    ok: false,
-    error: { code, message, details },
+export const replyAction = <P>(
+    request: Action,
+    payload?: P,
+    type = `${request.type}.result`,
+): Action<string, P> => ({
+    v: 1,
+    id: crypto.randomUUID(),
+    type,
+    tabToken: request.tabToken,
+    scope: copyScope(request.scope),
+    payload,
+    at: Date.now(),
+    traceId: request.traceId,
+    replyTo: request.id,
 });
 
-/**
- * RecordStep：外部上报的录制 Step（必须可序列化）。
- */
-export type RecordStep = StepUnion;
+export const failedAction = (
+    request: Action,
+    code: string,
+    message: string,
+    details?: any,
+    type = `${request.type}.failed`,
+): Action<string, ActionFailurePayload> => ({
+    v: 1,
+    id: crypto.randomUUID(),
+    type,
+    tabToken: request.tabToken,
+    scope: copyScope(request.scope),
+    payload: { code, message, details },
+    at: Date.now(),
+    traceId: request.traceId,
+    replyTo: request.id,
+});
+
+export const isFailedAction = (action: Action) => action.type.endsWith('.failed');

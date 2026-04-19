@@ -4,7 +4,7 @@
 
 - `dev`（Extension -> Agent WS）：浏览器扩展控制后端，支持录制/回放。
 - `mcp`（Panel）：本地控制面板（HTTP UI）。
-- `mcp:stdio`（MCP）：给外部程序通过 MCP stdio 调用后端工具。
+- `mcp:http`（MCP）：给外部程序通过 MCP HTTP(SSE) 调用后端工具。
 
 后端统一由 `runner + step + trace` 执行链路提供能力。
 
@@ -39,10 +39,10 @@ pnpm mock:dev
 # 3) MCP 面板（HTTP UI）
 pnpm mcp
 
-# 4) MCP stdio（给外部程序）
-pnpm mcp:stdio
+# 4) MCP HTTP（给外部程序）
+pnpm mcp:http
 
-# 5) MCP stdio + runner bundle 热重载
+# 5) MCP HTTP + runner bundle 热重载
 pnpm mcp:hot
 ```
 
@@ -66,5 +66,5 @@ Agent 侧测试脚本采用统一前缀 `test:*`，详见 [agent/package.json](.
 
 ## 说明
 
-- `mcp_main.ts` 是 MCP stdio 服务入口，定位是供外部程序调用，不是面向用户的页面入口。
+- `mcp_main.ts` 是 MCP HTTP 服务入口，定位是供外部程序调用，不是面向用户的页面入口。
 - 开发态热重载依赖 `agent/.runner-dist/plugin.mjs`，`dev:hot`/`mcp:hot` 会自动启动 bundle watcher。

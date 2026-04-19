@@ -6,13 +6,16 @@
  * - 内部维护 workspace/tab 的轻量状态，用于渲染与联动刷新。
  */
 
+import type { Action, ActionScope } from '../shared/types.js';
+
 export type FloatingUIOptions = {
     tabToken: string;
     onAction: (
         type: string,
         payload?: Record<string, unknown>,
         scope?: { workspaceId?: string; tabId?: string },
-    ) => Promise<any>;
+    ) => Promise<Action>;
+    onEvent?: (handler: (action: Action) => void) => void;
 };
 
 export type FloatingUIHandle = {
@@ -31,6 +34,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const host = document.createElement('div');
     host.id = ROOT_ID;
+    host.setAttribute('data-rpa-panel', 'true');
+    host.setAttribute('data-rpa-snapshot-ignore', 'true');
     host.style.position = 'fixed';
     host.style.top = '16px';
     host.style.right = '16px';
@@ -171,13 +176,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const sendPanelAction = async (
         type: string,
         payload?: Record<string, unknown>,
-        scope?: { workspaceId?: string; tabId?: string },
-        onResponse?: (payload: any) => void,
-    ) => {
+        scope?: ActionScope,
+    ): Promise<Action> => {
         const response = await opts.onAction(type, payload, scope);
         render(response);
-        interceptResponse(response);
-        onResponse?.(response);
+        interceptAction(response);
+        return response;
     };
 
     startBtn.addEventListener('click', () => void sendPanelAction('record.start'));
@@ -247,66 +251,67 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     newWorkspaceBtn.addEventListener('click', () => {
-        void sendPanelAction('workspace.create', {}, undefined, (payload) => {
-            if (payload?.data?.workspaceId) {
-                activeWorkspaceId = payload.data.workspaceId;
-            }
+        void (async () => {
+            const action = await sendPanelAction('workspace.create', {});
+            const payload = (action.payload || {}) as { workspaceId?: string };
+            if (payload.workspaceId) activeWorkspaceId = payload.workspaceId;
             refreshWorkspaces();
             refreshTabs();
-        });
+        })();
     });
 
     closeTabBtn.addEventListener('click', () => {
         if (!activeTabId) return;
-        if (activeWorkspaceId) {
-            void sendPanelAction('tab.close', { workspaceId: activeWorkspaceId, tabId: activeTabId }, undefined, () => {
-                void sendPanelAction('workspace.list', {}, undefined, (payload) => {
-                    const workspaces = payload?.data?.workspaces || [];
-                    if (!workspaces.length) {
-                        void sendPanelAction('workspace.create', {}, undefined, (created) => {
-                            activeWorkspaceId = created?.data?.workspaceId || null;
-                            refreshWorkspaces();
-                            refreshTabs();
-                        });
-                        return;
-                    }
-                    activeWorkspaceId = workspaces[0].workspaceId;
-                    void sendPanelAction('workspace.setActive', { workspaceId: activeWorkspaceId });
-                    refreshTabs();
-                });
-            });
-        } else {
-            void sendPanelAction('tab.close', { tabId: activeTabId }, undefined, () => {
-                void sendPanelAction('workspace.list', {}, undefined, (payload) => {
-                    const workspaces = payload?.data?.workspaces || [];
-                    if (!workspaces.length) {
-                        void sendPanelAction('workspace.create', {}, undefined, (created) => {
-                            activeWorkspaceId = created?.data?.workspaceId || null;
-                            refreshWorkspaces();
-                            refreshTabs();
-                        });
-                        return;
-                    }
-                    activeWorkspaceId = workspaces[0].workspaceId;
-                    void sendPanelAction('workspace.setActive', { workspaceId: activeWorkspaceId });
-                    refreshTabs();
-                });
-            });
-        }
+        void (async () => {
+            if (activeWorkspaceId) {
+                await sendPanelAction('tab.close', { workspaceId: activeWorkspaceId, tabId: activeTabId });
+            } else {
+                await sendPanelAction('tab.close', { tabId: activeTabId });
+            }
+
+            const listed = await sendPanelAction('workspace.list', {});
+            const listPayload = (listed.payload || {}) as {
+                workspaces?: Array<{ workspaceId: string }>;
+            };
+            const workspaces = listPayload.workspaces || [];
+
+            if (!workspaces.length) {
+                const created = await sendPanelAction('workspace.create', {});
+                const createdPayload = (created.payload || {}) as { workspaceId?: string };
+                activeWorkspaceId = createdPayload.workspaceId || null;
+                refreshWorkspaces();
+                refreshTabs();
+                return;
+            }
+
+            activeWorkspaceId = workspaces[0].workspaceId;
+            await sendPanelAction('workspace.setActive', { workspaceId: activeWorkspaceId });
+            refreshTabs();
+        })();
     });
 
-    const interceptResponse = (payload: any) => {
-        if (!payload?.ok) return;
-        if (payload?.data?.workspaces) {
-            if (payload.data.activeWorkspaceId) {
-                activeWorkspaceId = payload.data.activeWorkspaceId;
+    const interceptAction = (action: Action) => {
+        if (!action || String(action.type || '').endsWith('.failed')) return;
+        const payload = (action.payload || {}) as {
+            activeWorkspaceId?: string;
+            workspaces?: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>;
+            tabs?: Array<{ tabId: string; url: string; title: string; active: boolean }>;
+        };
+        if (payload.workspaces) {
+            if (payload.activeWorkspaceId) {
+                activeWorkspaceId = payload.activeWorkspaceId;
             }
-            renderWorkspaces(payload.data.workspaces);
+            renderWorkspaces(payload.workspaces);
         }
-        if (payload?.data?.tabs) {
-            renderTabs(payload.data.tabs);
+        if (payload.tabs) {
+            renderTabs(payload.tabs);
         }
     };
+
+    opts.onEvent?.((action) => {
+        render(action);
+        interceptAction(action);
+    });
 
     refreshWorkspaces();
     refreshTabs();

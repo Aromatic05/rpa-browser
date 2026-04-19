@@ -4,7 +4,7 @@
 
 import crypto from 'node:crypto';
 import type { Action, ActionScope } from './action_protocol';
-import { makeErr, makeOk } from './action_protocol';
+import { failedAction, replyAction } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
 import { ACTION_TYPES } from './action_types';
@@ -89,35 +89,35 @@ const ensureRecorderForTabIfRecording = async (
 };
 
 export const workspaceHandlers: Record<string, ActionHandler> = {
-    [ACTION_TYPES.TAB_INIT]: async (_ctx, _action) => {
-        return makeOk({ tabToken: crypto.randomUUID() });
+    [ACTION_TYPES.TAB_INIT]: async (_ctx, action) => {
+        return replyAction(action, { tabToken: crypto.randomUUID() });
     },
-    'workspace.list': async (ctx, _action) => {
+    'workspace.list': async (ctx, action) => {
         const list = ctx.pageRegistry.listWorkspaces();
         const active = ctx.pageRegistry.getActiveWorkspace?.();
-        return makeOk({ workspaces: list, activeWorkspaceId: active?.workspaceId || null });
+        return replyAction(action, { workspaces: list, activeWorkspaceId: active?.workspaceId || null });
     },
     'workspace.create': async (ctx, action) => {
         const payload = (action.payload || {}) as WorkspaceCreatePayload;
         if (payload.workspaceId) {
             const created = ctx.pageRegistry.createWorkspaceShell(payload.workspaceId);
-            return makeOk({ workspaceId: created.workspaceId, tabId: null, tabToken: null });
+            return replyAction(action, { workspaceId: created.workspaceId, tabId: null, tabToken: null });
         }
         const created = await ctx.pageRegistry.createWorkspace();
         const tabToken = ctx.pageRegistry.resolveTabToken({ workspaceId: created.workspaceId, tabId: created.tabId });
-        return makeOk({ workspaceId: created.workspaceId, tabId: created.tabId, tabToken });
+        return replyAction(action, { workspaceId: created.workspaceId, tabId: created.tabId, tabToken });
     },
     'workspace.setActive': async (ctx, action) => {
         const payload = (action.payload || {}) as WorkspaceSetActivePayload;
         ctx.pageRegistry.setActiveWorkspace(payload.workspaceId);
         await bringWorkspaceTabToFront(ctx, { workspaceId: payload.workspaceId });
-        return makeOk({ workspaceId: payload.workspaceId });
+        return replyAction(action, { workspaceId: payload.workspaceId });
     },
     'workspace.save': async (ctx, action) => {
         const payload = (action.payload || {}) as WorkspaceSavePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         ctx.log('workspace.save.start', { workspaceId, tabToken: ctx.tabToken });
         const tabs = await ctx.pageRegistry.listTabs(workspaceId);
@@ -134,6 +134,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             recordingToken,
             steps: bundle.steps,
             manifest: bundle.manifest,
+            enrichments: bundle.enrichments,
         });
         ctx.log('workspace.save.end', {
             workspaceId,
@@ -149,7 +150,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             stepCount: snapshot.recording.steps.length,
             savedAt: snapshot.savedAt,
         });
-        return makeOk({
+        return replyAction(action, {
             saved: true,
             workspaceId,
             recordingToken,
@@ -162,13 +163,13 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const payload = (action.payload || {}) as WorkspaceRestorePayload;
         const sourceWorkspaceId = payload.workspaceId || action.scope?.workspaceId;
         if (!sourceWorkspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
         }
         ctx.log('workspace.restore.start', { sourceWorkspaceId, tabToken: ctx.tabToken || null });
 
         const snapshot = getWorkspaceSnapshot(ctx.recordingState, sourceWorkspaceId);
         if (!snapshot?.tabs?.length) {
-            return makeErr(ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND, 'no saved workspace snapshot to restore');
+            return failedAction(action, ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND, 'no saved workspace snapshot to restore');
         }
 
         const sourceTabs = snapshot.tabs;
@@ -219,6 +220,9 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         if (sourceSteps.length > 0) {
             recordingToken = crypto.randomUUID();
             ctx.recordingState.recordings.set(recordingToken, [...(sourceSteps as StepUnion[])]);
+            ctx.recordingState.recordingEnhancements.set(recordingToken, {
+                ...(snapshot.recording.enrichments || {}),
+            });
         }
 
         if (recordingToken) {
@@ -253,6 +257,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             recordingToken: recordingToken || null,
             steps: sourceSteps as StepUnion[],
             manifest: recordingToken ? ctx.recordingState.recordingManifests.get(recordingToken) : undefined,
+            enrichments: snapshot.recording.enrichments || undefined,
         });
 
         ctx.log('workspace.restore.end', {
@@ -272,7 +277,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             restoredAt: Date.now(),
         });
 
-        return makeOk({
+        return replyAction(action, {
             restored: true,
             sourceWorkspaceId,
             workspaceId: targetWorkspaceId,
@@ -289,16 +294,16 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const payload = (action.payload || {}) as TabListPayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         const tabs = await ctx.pageRegistry.listTabs(workspaceId);
-        return makeOk({ workspaceId, tabs });
+        return replyAction(action, { workspaceId, tabs });
     },
     'tab.create': async (ctx, action) => {
         const payload = (action.payload || {}) as TabCreatePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         const tabId = await ctx.pageRegistry.createTab(workspaceId);
         const createdTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId, tabId });
@@ -308,23 +313,23 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             await page.bringToFront();
         }
         logPageEvent('tab.create', { workspaceId, tabId, tabToken: createdTabToken, startUrl: payload.startUrl });
-        return makeOk({ workspaceId, tabId, tabToken: createdTabToken });
+        return replyAction(action, { workspaceId, tabId, tabToken: createdTabToken });
     },
     'tab.close': async (ctx, action) => {
         const payload = (action.payload || {}) as TabClosePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         await ctx.pageRegistry.closeTab(workspaceId, payload.tabId);
         logPageEvent('tab.close', { workspaceId, tabId: payload.tabId });
-        return makeOk({ workspaceId, tabId: payload.tabId });
+        return replyAction(action, { workspaceId, tabId: payload.tabId });
     },
     'tab.setActive': async (ctx, action) => {
         const payload = (action.payload || {}) as TabSetActivePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         const sourceScope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         const targetTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId, tabId: payload.tabId });
@@ -371,7 +376,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         }
         await ensureRecorderForTabIfRecording(ctx, { workspaceId, tabId: payload.tabId, tabToken: targetTabToken });
         logPageEvent('tab.setActive', { workspaceId, tabId: payload.tabId });
-        return makeOk({ workspaceId, tabId: payload.tabId });
+        return replyAction(action, { workspaceId, tabId: payload.tabId });
     },
     'tab.opened': async (ctx, action) => {
         const payload = (action.payload || {}) as TabOpenedPayload;
@@ -398,7 +403,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             reportedTitle: payload.title,
             reportedAt: payload.at,
         });
-        return makeOk({
+        return replyAction(action, {
             workspaceId: scope.workspaceId,
             tabId: scope.tabId,
             tabToken: ctx.tabToken,
@@ -421,7 +426,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 reportedAt: payload.at,
                 stale: true,
             });
-            return makeOk({
+            return replyAction(action, {
                 tabToken: ctx.tabToken,
                 source: payload.source || 'unknown',
                 reportedUrl: payload.url,
@@ -441,7 +446,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         };
         ctx.log('tab.report', output);
         logPageEvent('tab.report', output);
-        return makeOk(output);
+        return replyAction(action, output);
     },
     'tab.activated': async (ctx, action) => {
         const payload = (action.payload || {}) as TabActivatedPayload;
@@ -455,7 +460,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 reportedAt: payload.at,
                 reason: 'replay_in_progress',
             });
-            return makeOk({
+            return replyAction(action, {
                 tabToken: ctx.tabToken,
                 source: payload.source,
                 reportedUrl: payload.url,
@@ -530,7 +535,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             reportedUrl: payload.url,
             reportedAt: payload.at,
         });
-        return makeOk({
+        return replyAction(action, {
             workspaceId: scope.workspaceId,
             tabId: scope.tabId,
             tabToken: ctx.tabToken,
@@ -557,7 +562,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             source: payload.source || 'unknown',
             reportedAt: payload.at,
         });
-        return makeOk({
+        return replyAction(action, {
             workspaceId: scope.workspaceId,
             tabId: scope.tabId,
             tabToken: ctx.tabToken,
@@ -575,7 +580,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 reportedAt: payload.at,
                 stale: true,
             });
-            return makeOk({
+            return replyAction(action, {
                 tabToken: ctx.tabToken,
                 source: payload.source || 'unknown',
                 reportedAt: payload.at,
@@ -593,16 +598,16 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         };
         ctx.log('tab.ping', output);
         logPageEvent('tab.ping', output);
-        return makeOk(output);
+        return replyAction(action, output);
     },
     [ACTION_TYPES.TAB_REASSIGN]: async (ctx, action) => {
         const payload = (action.payload || {}) as TabReassignPayload;
         if (!payload.workspaceId) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
         }
         const moved = ctx.pageRegistry.moveTokenToWorkspace?.(ctx.tabToken, payload.workspaceId);
         if (!moved) {
-            return makeErr(ERROR_CODES.ERR_BAD_ARGS, 'failed to reassign tab workspace');
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'failed to reassign tab workspace');
         }
         ctx.pageRegistry.setActiveWorkspace(moved.workspaceId);
         ctx.pageRegistry.setActiveTab(moved.workspaceId, moved.tabId);
@@ -616,6 +621,6 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         };
         ctx.log('tab.reassign', output);
         logPageEvent('tab.reassign', output);
-        return makeOk(output);
+        return replyAction(action, output);
     },
 };
