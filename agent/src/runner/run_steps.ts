@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
+import { runCheckpoint } from './checkpoint';
+import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {
     markSnapshotSessionDirty,
@@ -174,6 +176,9 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     }
 
     const stopOnError = req.stopOnError ?? true;
+    const checkpointEnabled = req.checkpointEnabled ?? true;
+    const checkpointMaxAttempts = req.checkpointMaxAttempts ?? 1;
+    const checkpointAttempts = new Map<string, number>();
     let status: RunStatus = 'running';
 
     while (true) {
@@ -243,22 +248,51 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 error: result.ok ? undefined : result.error,
             });
 
+            let finalResult = result;
+            let nextStatus: RunStatus | undefined;
+            if (!result.ok) {
+                const attempt = checkpointAttempts.get(step.id) ?? 0;
+                const failedCtx = await getFailedCtx({
+                    runId: req.runId,
+                    workspaceId: req.workspaceId,
+                    stepIndex,
+                    step,
+                    rawResult: result,
+                    stopOnError,
+                    checkpointEnabled,
+                    checkpointAttempt: attempt,
+                    checkpointMaxAttempts,
+                    inCheckpointFlow: false,
+                    deps: resolvedDeps,
+                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, resolvedDeps),
+                    checkpoints: req.checkpoints,
+                });
+                const checkpointOutput = await runCheckpoint(failedCtx);
+                finalResult = checkpointOutput.finalResult;
+                nextStatus = checkpointOutput.nextStatus;
+                checkpointAttempts.set(step.id, attempt + 1);
+            }
+
             const output: StepResult = {
                 runId: req.runId,
                 cursor: stepIndex,
-                stepId: result.stepId,
-                ok: result.ok,
-                data: result.data,
-                error: result.error,
+                stepId: finalResult.stepId,
+                ok: finalResult.ok,
+                data: finalResult.data,
+                error: finalResult.error,
                 ts: Date.now(),
             };
             req.resultPipe.items.push(output);
-            await req.onCheckpoint?.(checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor));
 
-            if (!result.ok && stopOnError) {
+            if (nextStatus === 'suspended') {
+                status = 'suspended';
+            } else if (!finalResult.ok && stopOnError) {
                 status = 'failed';
-                const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
-                await req.onCheckpoint?.(checkpoint);
+            }
+
+            const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+            await req.onCheckpoint?.(checkpoint);
+            if (status === 'failed') {
                 return checkpoint;
             }
             continue;
