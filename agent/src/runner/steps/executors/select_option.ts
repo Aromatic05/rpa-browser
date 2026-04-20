@@ -1,11 +1,9 @@
 import type { Locator, Page } from 'playwright';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { normalizeTarget, mapTraceError, matchesA11yHint } from '../helpers/target';
+import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { scoreA11yConfidence } from '../helpers/confidence';
-import { describeSelector } from '../helpers/selector';
-import { resolveTargetNodeId, type ResolvedLocatorTarget } from '../helpers/resolve_target';
+import { resolveTarget } from '../helpers/resolve_target';
 
 type ChoiceControlType = 'native-select' | 'combobox' | 'popup-choice' | 'autocomplete' | 'unknown';
 
@@ -22,23 +20,12 @@ type ChoiceState = {
 
 const ensureVisible = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
-    target: ResolvedLocatorTarget,
+    selector: string,
     timeout?: number,
 ) => {
-    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-    });
+    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector });
     if (!scroll.ok) return scroll;
-    return binding.traceTools['trace.locator.waitForVisible']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-        timeout,
-    });
+    return binding.traceTools['trace.locator.waitForVisible']({ selector, timeout });
 };
 
 const canResolvePageLocator = (page: unknown): page is Page => {
@@ -242,43 +229,23 @@ const validateExpectedAndChanged = (
 
 const resolvePageLocator = async (
     page: Page,
-    resolved: ResolvedLocatorTarget,
+    selector: string,
 ): Promise<{ ok: true; locator: Locator } | { ok: false; error: StepResult['error'] }> => {
-    if (resolved.selector) {
-        const locator = page.locator(resolved.selector);
-        const count = await locator.count();
-        if (count === 0) {
-            return {
-                ok: false,
-                error: { code: 'ERR_NOT_FOUND', message: 'selector not found', details: { selector: resolved.selector } },
-            };
-        }
-        if (count > 1) {
-            return {
-                ok: false,
-                error: { code: 'ERR_AMBIGUOUS', message: 'selector matches multiple elements', details: { selector: resolved.selector, count } },
-            };
-        }
-        return { ok: true, locator: locator.first() };
+    const locator = page.locator(selector);
+    const count = await locator.count();
+    if (count === 0) {
+        return {
+            ok: false,
+            error: { code: 'ERR_NOT_FOUND', message: 'selector not found', details: { selector } },
+        };
     }
-    if (resolved.role) {
-        const locator = page.getByRole(resolved.role as any, resolved.name ? { name: resolved.name } : undefined);
-        const count = await locator.count();
-        if (count === 0) {
-            return {
-                ok: false,
-                error: { code: 'ERR_NOT_FOUND', message: 'role locator not found', details: { role: resolved.role, name: resolved.name } },
-            };
-        }
-        if (count > 1) {
-            return {
-                ok: false,
-                error: { code: 'ERR_AMBIGUOUS', message: 'role locator matches multiple elements', details: { role: resolved.role, name: resolved.name, count } },
-            };
-        }
-        return { ok: true, locator: locator.first() };
+    if (count > 1) {
+        return {
+            ok: false,
+            error: { code: 'ERR_AMBIGUOUS', message: 'selector matches multiple elements', details: { selector, count } },
+        };
     }
-    return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'missing selector/role for custom choice path' } };
+    return { ok: true, locator: locator.first() };
 };
 
 const isLocatorVisible = async (locator: Locator): Promise<boolean> => {
@@ -407,57 +374,29 @@ export const executeBrowserSelectOption = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const target = normalizeTarget(step.args);
-    const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
+    const resolved = await resolveTarget(binding, {
+        id: step.args.id || step.args.target?.id,
+        selector: step.args.selector || step.args.target?.selector,
+        hint: step.resolve?.hint,
+        policy: step.resolve?.policy,
+    });
     if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
 
-    if (resolved.target.selector && target?.a11yHint) {
-        const described = await describeSelector(binding.page, resolved.target.selector);
-        if (!described.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(described.error) };
-        }
-        if (!matchesA11yHint(described.data, target.a11yHint)) {
-            const confidence = scoreA11yConfidence(described.data, target.a11yHint, deps.config.confidencePolicy, true);
-            if (!confidence.ok) {
-                return {
-                    stepId: step.id,
-                    ok: false,
-                    error: {
-                        code: 'ERR_NOT_FOUND',
-                        message: 'selector matched element but a11y hint mismatch',
-                        details: {
-                            selector: resolved.target.selector,
-                            hint: target.a11yHint,
-                            candidate: described.data,
-                            confidence: confidence.details,
-                        },
-                    },
-                };
-            }
-        }
-    }
-
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
-    const visible = await ensureVisible(binding, resolved.target, timeout);
+    const visible = await ensureVisible(binding, resolved.target.selector, timeout);
     if (!visible.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
     }
 
     if (!canResolvePageLocator(binding.page)) {
         const select = await binding.traceTools['trace.locator.selectOption']({
-            a11yNodeId: resolved.target.a11yNodeId,
             selector: resolved.target.selector,
-            role: resolved.target.role,
-            name: resolved.target.name,
             values: step.args.values,
             timeout,
         });
         if (!select.ok) return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
         const state = await binding.traceTools['trace.locator.readSelectState']({
-            a11yNodeId: resolved.target.a11yNodeId,
             selector: resolved.target.selector,
-            role: resolved.target.role,
-            name: resolved.target.name,
         });
         if (!state.ok) return { stepId: step.id, ok: false, error: mapTraceError(state.error) };
         const result = validateExpectedAndChanged(
@@ -476,7 +415,7 @@ export const executeBrowserSelectOption = async (
         );
         if (result) return result;
     } else {
-        const pageLocatorResolved = await resolvePageLocator(binding.page, resolved.target);
+        const pageLocatorResolved = await resolvePageLocator(binding.page, resolved.target.selector);
         if (!pageLocatorResolved.ok) {
             return { stepId: step.id, ok: false, error: pageLocatorResolved.error };
         }
@@ -486,8 +425,6 @@ export const executeBrowserSelectOption = async (
         if (before.controlType === 'native-select') {
             const select = await binding.traceTools['trace.locator.selectOption']({
                 selector: resolved.target.selector,
-                role: resolved.target.role,
-                name: resolved.target.name,
                 values: step.args.values,
                 timeout,
             });

@@ -2,7 +2,7 @@
  * a11y hint 解析：从 A11y snapshot 中根据 role/name/text 查找 nodeId。
  */
 
-import type { A11yHint } from '../types';
+type ResolveTextHint = { role?: string; name?: string; text?: string };
 
 type A11ySnapshotNode = {
     id?: string;
@@ -11,7 +11,7 @@ type A11ySnapshotNode = {
     children?: A11ySnapshotNode[];
 };
 
-export const findA11yNodeId = (tree: A11ySnapshotNode, hint: A11yHint): string | null => {
+export const findA11yNodeId = (tree: A11ySnapshotNode, hint: ResolveTextHint): string | null => {
     if (!tree) return null;
     const normalize = (value?: string) => (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const hintName = normalize(hint.name);

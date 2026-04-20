@@ -1,9 +1,10 @@
 /**
- * a11y_find：根据 A11yHint 从缓存树中筛选候选节点。
+ * a11y_find：根据 role/name/text 提示从缓存树中筛选候选节点。
  */
 
-import type { A11yHint } from '../../steps/types';
 import type { A11ySnapshotNode } from './adopt';
+
+type TraceA11yHint = { role?: string; name?: string; text?: string };
 
 export type A11yCandidate = {
     nodeId: string;
@@ -29,7 +30,7 @@ const buildPreview = (node: A11ySnapshotNode) => {
     return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
 };
 
-const matchesNode = (node: A11ySnapshotNode, hint: A11yHint) => {
+const matchesNode = (node: A11ySnapshotNode, hint: TraceA11yHint) => {
     if (hint.role && normalizeRole(node.role) !== normalizeRole(hint.role)) return false;
     if (hint.name) {
         const nodeName = normalizeText(node.name);
@@ -42,7 +43,7 @@ const matchesNode = (node: A11ySnapshotNode, hint: A11yHint) => {
     return Boolean(node.id);
 };
 
-export const findA11yCandidates = (tree: A11ySnapshotNode, hint: A11yHint): A11yCandidate[] => {
+export const findA11yCandidates = (tree: A11ySnapshotNode, hint: TraceA11yHint): A11yCandidate[] => {
     const results: A11yCandidate[] = [];
     const walk = (node: A11ySnapshotNode) => {
         if (matchesNode(node, hint)) {

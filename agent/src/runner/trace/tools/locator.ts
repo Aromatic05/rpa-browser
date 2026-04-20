@@ -3,8 +3,9 @@ import { invalidateA11yCache } from '../a11y/cache';
 import { findA11yCandidates, type A11yCandidate } from '../a11y/find';
 import { getA11yTree } from '../a11y/getA11yTree';
 import type { Locator } from 'playwright';
-import type { A11yHint } from '../../steps/types';
 import type { ToolsBuildContext } from './context';
+
+type TraceA11yHint = { role?: string; name?: string; text?: string };
 
 type LocatorTarget = {
     a11yNodeId?: string;
@@ -14,7 +15,7 @@ type LocatorTarget = {
 };
 
 export const createLocatorTools = (base: ToolsBuildContext) => ({
-    'trace.a11y.findByA11yHint': async (args: { hint: A11yHint }) =>
+    'trace.a11y.findByA11yHint': async (args: { hint: TraceA11yHint }) =>
         base.run('trace.a11y.findByA11yHint', args, async (): Promise<A11yCandidate[]> => {
             const tree = await getA11yTree(base.getCurrentPage(), base.ctx.cache);
             if (!tree) return [];

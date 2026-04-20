@@ -49,3 +49,24 @@
 - 开发模式 watcher：`agent/src/runner/hotreload/plugin_host.ts`
 
 `dev:hot` 与 `mcp:hot` 会自动启动 bundle watcher。
+
+## Target 解析协议
+
+目标型 step 的协议边界固定为三层：
+
+- `args`：业务参数（`id` / `selector` / value 等）
+- `meta`：来源、时序、workspace/tab 元信息
+- `resolve`：目标解析辅助信息（`hint` + `policy`）
+
+执行链路：
+
+1. executor 收集 `args.id` / `args.selector` / `step.resolve.hint`
+2. 调用 `resolveTarget(...)` 收敛为最终 `selector`
+3. trace 仅接收 `selector` 执行，不承担 id/hint/replay 语义
+
+约束：
+
+- 不保留 `A11yHint` 作为公开 Step 协议字段
+- replay 不再通过全局 stepId sidecar 隐式读取增强信息
+- replay 必须在构造 step 时显式写入 `step.resolve`
+

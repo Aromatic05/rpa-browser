@@ -1,6 +1,5 @@
-import type { A11yHint } from '../types';
-
 type A11yLike = { role?: string; name?: string; text?: string };
+type ResolveTextHint = { role?: string; name?: string; text?: string };
 
 export type ConfidencePolicy = {
     enabled: boolean;
@@ -37,7 +36,7 @@ const includesNormalized = (value: string, needle: string) => {
 
 export const scoreA11yConfidence = (
     candidate: A11yLike,
-    hint: A11yHint | undefined,
+    hint: ResolveTextHint | undefined,
     policy: ConfidencePolicy,
     hasSelector: boolean,
 ): { ok: boolean; details: ConfidenceDetails } => {

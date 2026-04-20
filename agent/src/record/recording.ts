@@ -13,7 +13,7 @@ import type { Page } from 'playwright';
 import crypto from 'crypto';
 import { installRecorder, type RecorderEvent } from './recorder';
 import { getLogger } from '../logging/logger';
-import type { Step, StepArgsMap, StepMeta, StepName, StepUnion } from '../runner/steps/types';
+import type { ResolveHint, ResolvePolicy, Step, StepArgsMap, StepMeta, StepName, StepResolve, StepUnion } from '../runner/steps/types';
 import { enrichRecordedStepWithSnapshot, type RecordSnapshotCacheEntry } from './enrichment';
 import type { RecordedStepEnhancement, RecordingEnhancementMap } from './types';
 
@@ -159,12 +159,37 @@ const createStep = <TName extends StepName>(
     args: StepArgsMap[TName],
     ts: number,
     metaExtra?: Partial<Pick<StepMeta, 'workspaceId' | 'tabId' | 'tabToken' | 'tabRef' | 'urlAtRecord'>>,
+    resolve?: StepResolve,
 ): Step<TName> => ({
     id: crypto.randomUUID(),
     name,
     args,
     meta: { source: 'record', ts, ...metaExtra },
+    resolve,
 });
+
+const buildResolveFromEvent = (event: RecorderEvent): StepResolve | undefined => {
+    const hint: ResolveHint = {
+        target: {
+            role: event.a11yHint?.role,
+            name: event.a11yHint?.name,
+            text: event.a11yHint?.text,
+        },
+        raw: {
+            selector: event.selector,
+            locatorCandidates: event.locatorCandidates?.map((item) => ({ ...item })),
+            scopeHint: event.scopeHint || undefined,
+            targetHint: event.targetHint,
+        },
+    };
+    const policy: ResolvePolicy = {
+        requireVisible: true,
+    };
+    if (!hint.target?.role && !hint.target?.name && !hint.target?.text && !hint.raw?.selector && !(hint.raw?.locatorCandidates || []).length) {
+        return undefined;
+    }
+    return { hint, policy };
+};
 
 const toStep = (event: RecorderEvent): StepUnion | null => {
     if (event.type === 'navigate' && event.url) {
@@ -176,50 +201,56 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
     if (event.type === 'click' && (event.selector || event.a11yHint)) {
         return createStep(
             'browser.click',
-            { target: { selector: event.selector, a11yHint: event.a11yHint } },
+            { selector: event.selector },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'input' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.fill',
-            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            { selector: event.selector, value: event.value },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'change' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.fill',
-            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            { selector: event.selector, value: event.value },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'date' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.fill',
-            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            { selector: event.selector, value: event.value },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'select' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.select_option',
-            { target: { selector: event.selector, a11yHint: event.a11yHint }, values: [event.value] },
+            { selector: event.selector, values: [event.value] },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'check' && (event.selector || event.a11yHint)) {
         // TODO: ensure checked state matches (recorded checked flag is not enforced).
         return createStep(
             'browser.click',
-            { target: { selector: event.selector, a11yHint: event.a11yHint } },
+            { selector: event.selector },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'keydown' && event.key) {
@@ -227,18 +258,20 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.press_key',
             {
                 key: event.key,
-                target: event.selector ? { selector: event.selector, a11yHint: event.a11yHint } : undefined,
+                target: event.selector ? { selector: event.selector } : undefined,
             },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'paste' && event.selector && typeof event.value === 'string') {
         return createStep(
             'browser.fill',
-            { target: { selector: event.selector, a11yHint: event.a11yHint }, value: event.value },
+            { selector: event.selector, value: event.value },
             event.ts,
             { tabToken: event.tabToken },
+            buildResolveFromEvent(event),
         );
     }
     if (event.type === 'scroll' && typeof event.scrollY === 'number') {

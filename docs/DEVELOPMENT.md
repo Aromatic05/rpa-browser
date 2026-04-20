@@ -92,7 +92,11 @@ pnpm -C agent mcp:hot
 ### 5.1 增加类型契约
 
 - 在 `agent/src/runner/steps/types.ts` 更新 `StepName` 与 `StepArgsMap`
-- 如有需要补充子类型
+- 目标型 step 必须遵守三层边界：
+  - `args`：业务参数（可包含 `id` / `selector`）
+  - `meta`：来源和运行时元信息
+  - `resolve`：`{ hint?: ResolveHint; policy?: ResolvePolicy }`
+- 不允许再把解析 hint/policy 放进 `meta` 或旧兼容字段
 
 ### 5.2 实现 executor
 
@@ -369,3 +373,13 @@ PR 检查项：
 - 协议文档与代码一致
 - 相关测试已补齐或更新
 - 已删除不可信或过时文档
+
+### 8.2 Target 解析测试约束
+
+涉及 target 解析重构时，至少补齐：
+
+- `resolveTarget` 的 selector / id / hint 三路径单测
+- `ResolvePolicy`（`preferDirect`、`preferScoped`、`requireVisible`、`allowFuzzy`、`allowIndexDrift`）分支覆盖
+- `click` + 一个 `fill` 类 + 一个 `select` 类 executor 走统一解析链路
+- replay 显式写入 `step.resolve` 的回归测试（禁止全局隐式 sidecar 查询）
+

@@ -7,11 +7,10 @@
  *
  * 关键约束：
  * - 同一 Page 只安装一次，避免重复监听
- * - 事件会尽量携带 a11yHint/selector，locatorCandidates 仅作辅助信息
+ * - 事件会尽量携带 selector/语义提示，locatorCandidates 仅作辅助信息
  */
 import type { Page } from 'playwright';
 import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
-import type { A11yHint } from '../runner/steps/types';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -95,7 +94,7 @@ export type RecorderEvent = {
     recorderVersion?: string;
     url?: string;
     a11yNodeId?: string;
-    a11yHint?: A11yHint;
+    a11yHint?: { role?: string; name?: string; text?: string };
     selector?: string;
     locatorCandidates?: LocatorCandidate[];
     scopeHint?: ScopeHint;

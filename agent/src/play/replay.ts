@@ -12,7 +12,6 @@ import type { RunStepsDeps } from '../runner/run_steps';
 import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from '../record/recording';
 import type { RecordingEnhancementMap } from '../record/types';
-import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../runner/steps/helpers/replay_ctx';
 
 export type ReplayOptions = {
     clickDelayMs: number;
@@ -65,6 +64,19 @@ export type ReplayEvent =
           total: number;
       };
 
+const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnhancementMap[string]): StepUnion => {
+    if (!enhancement) return step;
+    const nextResolve = {
+        hint: enhancement.resolveHint,
+        policy: enhancement.resolvePolicy,
+    };
+    if (!nextResolve.hint && !nextResolve.policy) return step;
+    return {
+        ...step,
+        resolve: nextResolve,
+    } as StepUnion;
+};
+
 /**
  * replayRecording：执行已录制的 Step 列表。
  */
@@ -111,15 +123,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     let currentToken = req.initialTabToken;
     const stepResults: RunStepsResult['results'] = [];
 
-    const replayEnhancements = req.enrichments || {};
-    const hasReplayEnhancements = Object.keys(replayEnhancements).length > 0;
-    if (hasReplayEnhancements) {
-        setReplayEnhancementContext(req.workspaceId, replayEnhancements);
-    }
-
-    try {
     for (let index = 0; index < req.steps.length; index += 1) {
-        const originalStep = req.steps[index];
+        const originalStep = withResolveFromEnhancement(
+            req.steps[index],
+            req.enrichments?.[req.steps[index].id],
+        );
         if (req.isCanceled?.()) {
             return { ok: false, results: stepResults, error: { code: 'ERR_CANCELED', message: 'replay canceled' } };
         }
@@ -248,9 +256,4 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         ok: stepResults.every((item) => item.ok),
         results: stepResults,
     };
-    } finally {
-        if (hasReplayEnhancements) {
-            clearReplayEnhancementContext(req.workspaceId);
-        }
-    }
 };

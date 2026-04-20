@@ -1,8 +1,8 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { normalizeTarget, mapTraceError } from '../helpers/target';
+import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { resolveTargetNodeId } from '../helpers/resolve_target';
+import { resolveTarget } from '../helpers/resolve_target';
 
 export const executeBrowserDragAndDrop = async (
     step: Step<'browser.drag_and_drop'>,
@@ -10,17 +10,21 @@ export const executeBrowserDragAndDrop = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const sourceTarget = normalizeTarget({ target: step.args.source });
-    const source = await resolveTargetNodeId(binding, sourceTarget, { stepId: step.id });
+    const source = await resolveTarget(binding, {
+        id: step.args.source.id,
+        selector: step.args.source.selector,
+    });
     if (!source.ok) return { stepId: step.id, ok: false, error: source.error };
 
     if (step.args.dest_target) {
-        const destTarget = normalizeTarget({ target: step.args.dest_target });
-        const dest = await resolveTargetNodeId(binding, destTarget, { stepId: step.id });
+        const dest = await resolveTarget(binding, {
+            id: step.args.dest_target.id,
+            selector: step.args.dest_target.selector,
+        });
         if (!dest.ok) return { stepId: step.id, ok: false, error: dest.error };
         const result = await binding.traceTools['trace.locator.dragDrop']({
-            source: source.target,
-            dest: dest.target,
+            source: { selector: source.target.selector },
+            dest: { selector: dest.target.selector },
         });
         if (!result.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
@@ -39,7 +43,7 @@ export const executeBrowserDragAndDrop = async (
         return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'missing drag destination' } };
     }
     const result = await binding.traceTools['trace.locator.dragDrop']({
-        source: source.target,
+        source: { selector: source.target.selector },
         destCoord: step.args.dest_coord,
     });
     if (!result.ok) {

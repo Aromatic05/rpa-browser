@@ -414,8 +414,37 @@ handler 会返回 `runSteps` 风格结果，并序列化到 MCP `content[].text`
 - 行式 DSL：
   - `goto <url>`
   - `snapshot`
-  - `click <a11yNodeId>`
-  - `fill <a11yNodeId> <value>`
+  - `click <id>`
+  - `fill <id> <value>`
+
+Step 协议收敛（target 解析）：
+
+- `args`：业务参数（如 `id`、`selector`、`value`）
+- `meta`：来源和时序信息
+- `resolve`：解析辅助信息
+  - `resolve.hint?: ResolveHint`
+  - `resolve.policy?: ResolvePolicy`
+
+`resolve` 示例：
+
+```json
+{
+  "id": "step-1",
+  "name": "browser.click",
+  "args": {},
+  "meta": { "source": "play" },
+  "resolve": {
+    "hint": {
+      "target": { "nodeId": "node_btn_1" },
+      "raw": { "selector": "#submit" }
+    },
+    "policy": {
+      "preferDirect": true,
+      "requireVisible": true
+    }
+  }
+}
+```
 
 说明：
 

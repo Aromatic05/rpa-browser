@@ -216,8 +216,12 @@ test('recording enhancements are stored as sidecar and never mixed into step', (
         'step-sidecar-1': {
             version: 1,
             eventType: 'click',
-            rawContext: { selector: '#buy', pageUrl: 'https://example.com' },
-            replayHints: { allowFuzzy: true, requireVisible: true },
+            rawContext: { pageUrl: 'https://example.com' },
+            resolveHint: {
+                target: { nodeId: 'button_buy', role: 'button', primaryDomId: '101' },
+                raw: { selector: '#buy' },
+            },
+            resolvePolicy: { allowFuzzy: true, requireVisible: true },
             target: { nodeId: 'button_buy', role: 'button', primaryDomId: '101' },
         },
     });
@@ -225,5 +229,5 @@ test('recording enhancements are stored as sidecar and never mixed into step', (
     const bundle = getRecordingBundle(state, 'token-a');
     assert.equal((bundle.steps[0].meta as Record<string, unknown>).recording, undefined);
     assert.equal(bundle.enrichments?.['step-sidecar-1']?.target?.nodeId, 'button_buy');
-    assert.equal(bundle.enrichments?.['step-sidecar-1']?.replayHints?.allowFuzzy, true);
+    assert.equal(bundle.enrichments?.['step-sidecar-1']?.resolvePolicy?.allowFuzzy, true);
 });

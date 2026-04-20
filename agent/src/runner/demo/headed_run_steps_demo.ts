@@ -94,13 +94,15 @@ const run = async () => {
             {
                 id: 'demo-click',
                 name: 'browser.click',
-                args: { a11yNodeId: buttonId },
+                args: {},
+                resolve: { hint: { target: { nodeId: buttonId } } },
                 meta: { source: 'script' },
             },
             {
                 id: 'demo-fill',
                 name: 'browser.fill',
-                args: { a11yNodeId: inputId, value: 'headed demo' },
+                args: { value: 'headed demo' },
+                resolve: { hint: { target: { nodeId: inputId } } },
                 meta: { source: 'script' },
             },
         ],

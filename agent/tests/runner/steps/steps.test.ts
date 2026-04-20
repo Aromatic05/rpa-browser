@@ -115,13 +115,9 @@ test('click(coord) uses trace.mouse.action', async () => {
     assert.equal(calls[1].args.action, 'up');
 });
 
-test('click(target) resolves then scrolls/waits/clicks', async () => {
+test('click(resolve hint) resolves then scrolls/waits/clicks', async () => {
     const calls: string[] = [];
     const traceTools = {
-        'trace.a11y.findByA11yHint': async () => {
-            calls.push('trace.a11y.findByA11yHint');
-            return { ok: true, data: [{ nodeId: 'n1' }] };
-        },
         'trace.locator.scrollIntoView': async () => {
             calls.push('trace.locator.scrollIntoView');
             return { ok: true };
@@ -139,15 +135,15 @@ test('click(target) resolves then scrolls/waits/clicks', async () => {
     const step: Step<'browser.click'> = {
         id: 's2',
         name: 'browser.click',
-        args: { target: { a11yHint: { role: 'button', name: 'Save' } } },
+        args: {},
+        resolve: { hint: { raw: { selector: '#save' } } },
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.deepEqual(calls, [
-        'trace.a11y.findByA11yHint',
-        'trace.locator.scrollIntoView',
         'trace.locator.waitForVisible',
+        'trace.locator.scrollIntoView',
         'trace.locator.click',
     ]);
 });
@@ -259,8 +255,8 @@ test('click(id) falls back to structural selector when direct locator is missing
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.equal(calls.length, 3);
-    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) > input:nth-of-type(1):visible');
-    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) > input:nth-of-type(1):visible');
+    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) > input:nth-of-type(1)');
+    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) > input:nth-of-type(1)');
 });
 
 test('click(id) prefers structural selector for weak aria-label direct locator', async () => {
@@ -328,8 +324,8 @@ test('click(id) prefers structural selector for weak aria-label direct locator',
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.equal(calls.length, 3);
-    assert.equal(calls[0].args.selector, 'form:nth-of-type(1) > span:nth-of-type(2):visible');
-    assert.equal(calls[2].args.selector, 'form:nth-of-type(1) > span:nth-of-type(2):visible');
+    assert.equal(calls[0].args.selector, 'span[aria-label="Increase Value"]');
+    assert.equal(calls[2].args.selector, 'span[aria-label="Increase Value"]');
 });
 
 test('click(id) structural selector keeps unknown ancestors via nth-child segments', async () => {
@@ -418,13 +414,12 @@ test('click(id) structural selector keeps unknown ancestors via nth-child segmen
     assert.equal(result.ok, true);
     assert.equal(calls.length, 3);
     const selector = calls[0].args.selector;
-    assert.equal(selector, 'body:nth-of-type(1) > section:nth-of-type(1) > section:nth-of-type(1) > select:nth-of-type(1):visible');
+    assert.equal(selector, 'body:nth-of-type(1) > section:nth-of-type(1) > section:nth-of-type(1) > select:nth-of-type(1)');
     assert.equal(calls[2].args.selector, selector);
 });
 
 test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async () => {
     const traceTools = {
-        'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [{ nodeId: 'n1' }] }),
         'trace.locator.scrollIntoView': async () => ({ ok: true }),
         'trace.locator.waitForVisible': async () => ({ ok: true }),
         'trace.locator.click': async () => new Promise(() => {}),
@@ -433,7 +428,7 @@ test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async 
     const step: Step<'browser.click'> = {
         id: 's2d',
         name: 'browser.click',
-        args: { target: { a11yHint: { role: 'button', name: 'Save' } }, timeout: 30 },
+        args: { selector: '#save', timeout: 30 },
     };
 
     const startedAt = Date.now();
@@ -450,7 +445,6 @@ test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async 
 test('fill uses trace.locator.fill', async () => {
     const calls: string[] = [];
     const traceTools = {
-        'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [{ nodeId: 'n2' }] }),
         'trace.locator.scrollIntoView': async () => ({ ok: true }),
         'trace.locator.waitForVisible': async () => ({ ok: true }),
         'trace.locator.focus': async () => ({ ok: true }),
@@ -463,7 +457,7 @@ test('fill uses trace.locator.fill', async () => {
     const step: Step<'browser.fill'> = {
         id: 's3',
         name: 'browser.fill',
-        args: { target: { a11yHint: { role: 'textbox', name: 'Name' } }, value: 'hello' },
+        args: { selector: '#name', value: 'hello' },
     };
 
     const result = await executeBrowserFill(step, deps, 'ws1');
@@ -474,7 +468,6 @@ test('fill uses trace.locator.fill', async () => {
 test('select_option validates against selected labels after action', async () => {
     const calls: string[] = [];
     const traceTools = {
-        'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [{ nodeId: 'n3' }] }),
         'trace.locator.scrollIntoView': async () => ({ ok: true }),
         'trace.locator.waitForVisible': async () => ({ ok: true }),
         'trace.locator.selectOption': async () => {
@@ -491,7 +484,7 @@ test('select_option validates against selected labels after action', async () =>
     const step: Step<'browser.select_option'> = {
         id: 's3-select',
         name: 'browser.select_option',
-        args: { target: { a11yHint: { role: 'combobox', name: '报销状态' } }, values: ['审批中'] },
+        args: { selector: '#status', values: ['审批中'] },
     };
 
     const result = await executeBrowserSelectOption(step, deps, 'ws1');
@@ -502,7 +495,6 @@ test('select_option validates against selected labels after action', async () =>
 test('press_key(target) focuses before keyboard.press', async () => {
     const calls: string[] = [];
     const traceTools = {
-        'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [{ nodeId: 'n3' }] }),
         'trace.locator.scrollIntoView': async () => ({ ok: true }),
         'trace.locator.waitForVisible': async () => ({ ok: true }),
         'trace.locator.focus': async () => {
@@ -518,7 +510,7 @@ test('press_key(target) focuses before keyboard.press', async () => {
     const step: Step<'browser.press_key'> = {
         id: 's4',
         name: 'browser.press_key',
-        args: { key: 'Enter', target: { a11yHint: { role: 'textbox', name: 'Email' } } },
+        args: { key: 'Enter', selector: '#email' },
     };
 
     const result = await executeBrowserPressKey(step, deps, 'ws1');
@@ -618,14 +610,13 @@ test('snapshot diff falls back with navigation when page identity changes', asyn
 });
 
 test('not found returns error code and message', async () => {
-    const traceTools = {
-        'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [] }),
-    };
+    const traceTools = {};
     const deps = createDeps(traceTools);
     const step: Step<'browser.click'> = {
         id: 's6',
         name: 'browser.click',
-        args: { target: { a11yHint: { role: 'button', name: 'Missing' } } },
+        args: {},
+        resolve: { hint: { raw: {} } },
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');
@@ -642,7 +633,7 @@ test('click rejects coord with target', async () => {
     const step: Step<'browser.click'> = {
         id: 's7',
         name: 'browser.click',
-        args: { coord: { x: 1, y: 2 }, target: { a11yHint: { role: 'button', name: 'X' } } },
+        args: { coord: { x: 1, y: 2 }, selector: '#x' },
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');

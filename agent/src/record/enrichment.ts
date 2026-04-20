@@ -3,7 +3,7 @@ import type { RecorderEvent } from './recorder';
 import { generateSemanticSnapshot } from '../runner/steps/executors/snapshot/pipeline/snapshot';
 import { getNodeSemanticHints } from '../runner/steps/executors/snapshot/core/runtime_store';
 import type { SnapshotResult, UnifiedNode } from '../runner/steps/executors/snapshot/core/types';
-import type { A11yHint } from '../runner/steps/types';
+import type { ResolveHint } from '../runner/steps/types';
 import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from './types';
 
 export type RecordSnapshotCacheEntry = {
@@ -57,14 +57,47 @@ export const enrichRecordedStepWithSnapshot = async (input: {
         },
         target,
         entityBindings,
-        locator: locator
+        resolveHint: {
+            target: {
+                nodeId: target.nodeId,
+                primaryDomId: target.primaryDomId,
+                sourceDomIds: target.sourceDomIds,
+                role: target.role,
+                tag: target.tag,
+                name: target.name,
+                text: target.content,
+            },
+            locator: locator
+                ? {
+                      direct: locator.direct
+                          ? {
+                                kind: locator.direct.kind,
+                                query: locator.direct.query,
+                                fallback: locator.direct.fallback,
+                            }
+                          : undefined,
+                      scope: locator.scope
+                          ? {
+                                id: locator.scope.id,
+                                kind: locator.scope.kind,
+                            }
+                          : undefined,
+                      origin: {
+                          primaryDomId: locator.origin?.primaryDomId,
+                          sourceDomIds: locator.origin?.sourceDomIds,
+                      },
+                  }
+                : undefined,
+        },
+        resolvePolicy: locator?.policy
             ? {
-                  origin: locator.origin,
-                  direct: locator.direct,
-                  scope: locator.scope,
+                  preferDirect: locator.policy.preferDirect,
+                  preferScoped: locator.policy.preferScopedSearch,
+                  requireVisible: locator.policy.requireVisible,
+                  allowFuzzy: locator.policy.allowFuzzy,
+                  allowIndexDrift: locator.policy.allowIndexDrift,
               }
             : undefined,
-        replayHints: locator?.policy,
     };
 
     return withRawContext(event, enhancement);
@@ -115,17 +148,30 @@ const shouldUseSnapshotForEvent = (event: RecorderEvent): boolean => {
 };
 
 const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancement): RecordedStepEnhancement => {
+    const existingHint = enhancement?.resolveHint;
+    const mergedRaw: ResolveHint['raw'] = {
+        ...(existingHint?.raw || {}),
+        selector: event.selector,
+        locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
+        scopeHint: event.scopeHint || undefined,
+        targetHint: event.targetHint,
+    };
     const next: RecordedStepEnhancement = {
         ...(enhancement || { version: 1 }),
         version: 1,
         eventType: event.type,
+        resolveHint: {
+            ...(existingHint || {}),
+            target: {
+                ...(existingHint?.target || {}),
+                role: existingHint?.target?.role || event.a11yHint?.role,
+                name: existingHint?.target?.name || event.a11yHint?.name,
+                text: existingHint?.target?.text || event.a11yHint?.text,
+            },
+            raw: mergedRaw,
+        },
         rawContext: {
             ...(enhancement?.rawContext || {}),
-            selector: event.selector,
-            a11yHint: event.a11yHint,
-            locatorCandidates: event.locatorCandidates,
-            scopeHint: event.scopeHint || undefined,
-            targetHint: event.targetHint,
             pageUrl: event.pageUrl || event.url || undefined,
             recorderVersion: event.recorderVersion,
         },
@@ -229,7 +275,7 @@ const scoreNode = (snapshot: SnapshotResult, nodeId: string, node: UnifiedNode, 
 };
 
 const scoreByA11yHint = (
-    hint: A11yHint | undefined,
+    hint: { role?: string; name?: string; text?: string } | undefined,
     role: string | undefined,
     name: string | undefined,
     content: string | undefined,

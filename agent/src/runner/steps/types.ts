@@ -41,17 +41,64 @@ export type StepName =
     | 'browser.rename_entity'
     | 'browser.assert';
 
-export type A11yHint = {
-    role?: string;
-    name?: string;
-    text?: string;
-};
-
 export type Target = {
     id?: string;
     selector?: string;
-    a11yNodeId?: string;
-    a11yHint?: A11yHint;
+};
+
+export type ResolvePolicy = {
+    preferDirect?: boolean;
+    preferScoped?: boolean;
+    requireVisible?: boolean;
+    allowFuzzy?: boolean;
+    allowIndexDrift?: boolean;
+};
+
+export type ResolveHint = {
+    target?: {
+        nodeId?: string;
+        primaryDomId?: string;
+        sourceDomIds?: string[];
+        role?: string;
+        tag?: string;
+        name?: string;
+        text?: string;
+    };
+    locator?: {
+        direct?: {
+            kind: string;
+            query: string;
+            fallback?: string;
+        };
+        scope?: {
+            id: string;
+            kind?: string;
+        };
+        origin?: {
+            primaryDomId?: string;
+            sourceDomIds?: string[];
+        };
+    };
+    raw?: {
+        selector?: string;
+        locatorCandidates?: Array<{
+            kind: string;
+            selector?: string;
+            testId?: string;
+            role?: string;
+            name?: string;
+            text?: string;
+            exact?: boolean;
+            note?: string;
+        }>;
+        scopeHint?: string;
+        targetHint?: string;
+    };
+};
+
+export type StepResolve = {
+    hint?: ResolveHint;
+    policy?: ResolvePolicy;
 };
 
 export type StepArgsMap = {
@@ -82,8 +129,6 @@ export type StepArgsMap = {
         target?: Target;
         full_page?: boolean;
         inline?: boolean;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.click': {
         id?: string;
@@ -92,8 +137,6 @@ export type StepArgsMap = {
         coord?: { x: number; y: number };
         options?: { button?: 'left' | 'right' | 'middle'; double?: boolean };
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.fill': {
         id?: string;
@@ -101,8 +144,6 @@ export type StepArgsMap = {
         target?: Target;
         value: string;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.type': {
         id?: string;
@@ -111,8 +152,6 @@ export type StepArgsMap = {
         text: string;
         delay_ms?: number;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.select_option': {
         id?: string;
@@ -120,16 +159,12 @@ export type StepArgsMap = {
         target?: Target;
         values: string[];
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.hover': {
         id?: string;
         selector?: string;
         target?: Target;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.scroll': {
         id?: string;
@@ -138,8 +173,6 @@ export type StepArgsMap = {
         direction?: 'up' | 'down';
         amount?: number;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.press_key': {
         key: string;
@@ -147,8 +180,6 @@ export type StepArgsMap = {
         selector?: string;
         target?: Target;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.drag_and_drop': {
         source: Target;
@@ -218,6 +249,7 @@ export type Step<TName extends StepName = StepName> = {
     name: TName;
     args: StepArgsMap[TName];
     meta?: StepMeta;
+    resolve?: StepResolve;
 };
 
 export type StepUnion = {

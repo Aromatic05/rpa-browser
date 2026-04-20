@@ -19,7 +19,6 @@ import type {
     TraceTags,
 } from './types';
 import type { A11yCandidate } from './a11y/find';
-import type { A11yHint } from '../steps/types';
 import type { PageRegistry, WorkspaceId } from '../../runtime/page_registry';
 import { traceCall } from './trace_call';
 import { createLoggingHooks } from './hooks';
@@ -33,6 +32,12 @@ export type TraceLocatorTarget = {
     selector?: string;
     role?: string;
     name?: string;
+};
+
+type TraceA11yHint = {
+    role?: string;
+    name?: string;
+    text?: string;
 };
 
 export type BrowserAutomationTools = {
@@ -50,7 +55,7 @@ export type BrowserAutomationTools = {
     'trace.page.evaluate': (args: { expression: string; arg?: unknown }) => Promise<ToolResult<unknown>>;
     'trace.page.screenshot': (args: { fullPage?: boolean } & TraceLocatorTarget) => Promise<ToolResult<string>>;
     'trace.page.scrollBy': (args: { direction: 'up' | 'down'; amount: number }) => Promise<ToolResult<void>>;
-    'trace.a11y.findByA11yHint': (args: { hint: A11yHint }) => Promise<ToolResult<A11yCandidate[]>>;
+    'trace.a11y.findByA11yHint': (args: { hint: TraceA11yHint }) => Promise<ToolResult<A11yCandidate[]>>;
     'trace.a11y.resolveByNodeId': (args: { a11yNodeId: string }) => Promise<ToolResult<{ a11yNodeId: string }>>;
     'trace.locator.waitForVisible': (args: TraceLocatorTarget & { timeout?: number }) => Promise<ToolResult<void>>;
     'trace.locator.scrollIntoView': (args: TraceLocatorTarget) => Promise<ToolResult<void>>;
