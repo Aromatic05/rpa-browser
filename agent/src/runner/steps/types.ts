@@ -38,7 +38,8 @@ export type StepName =
     | 'browser.find_entities'
     | 'browser.add_entity'
     | 'browser.delete_entity'
-    | 'browser.rename_entity';
+    | 'browser.rename_entity'
+    | 'browser.assert';
 
 export type A11yHint = {
     role?: string;
@@ -189,6 +190,15 @@ export type StepArgsMap = {
     'browser.rename_entity': {
         nodeId: string;
         name: string;
+    };
+    'browser.assert': {
+        urlIncludes?: string;
+        textVisible?: string;
+        entityExists?: {
+            query: string;
+            kind?: EntityKind | EntityKind[];
+            businessTag?: string | string[];
+        };
     };
 };
 

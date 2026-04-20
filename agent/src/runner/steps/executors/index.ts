@@ -29,6 +29,7 @@ import { executeBrowserFindEntities } from './find_entities';
 import { executeBrowserAddEntity } from './add_entity';
 import { executeBrowserDeleteEntity } from './delete_entity';
 import { executeBrowserRenameEntity } from './rename_entity';
+import { executeBrowserAssert } from './assert';
 
 export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceId: string) => Promise<StepResult>;
 
@@ -62,4 +63,5 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.add_entity': executeBrowserAddEntity as ExecutorFn,
     'browser.delete_entity': executeBrowserDeleteEntity as ExecutorFn,
     'browser.rename_entity': executeBrowserRenameEntity as ExecutorFn,
+    'browser.assert': executeBrowserAssert as ExecutorFn,
 };
