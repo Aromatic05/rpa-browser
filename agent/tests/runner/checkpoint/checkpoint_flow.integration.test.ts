@@ -9,10 +9,10 @@ import {
     runSteps,
     sendSignal,
     setRunStepsDeps,
-} from '../../src/runner/run_steps';
-import { loadRunnerConfig } from '../../src/config/loader';
-import type { StepUnion } from '../../src/runner/steps/types';
-import type { Checkpoint } from '../../src/runner/checkpoint';
+} from '../../../src/runner/run_steps';
+import { loadRunnerConfig } from '../../../src/config/loader';
+import type { StepUnion } from '../../../src/runner/steps/types';
+import type { Checkpoint } from '../../../src/runner/checkpoint';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({
