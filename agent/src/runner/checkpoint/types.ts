@@ -1,11 +1,11 @@
 import type { RunStatus, RunStepsDeps } from '../run_steps_types';
 import type { FailedCtx } from '../failed_ctx';
-import type { StepUnion, StepResult } from '../steps/types';
+import type { StepName, StepUnion, StepResult } from '../steps/types';
 import type { EntityKind } from '../steps/executors/snapshot/core/types';
 
 export type MatchRule =
     | { errorCode: string }
-    | { stepName: string }
+    | { stepName: StepName }
     | { urlIncludes: string }
     | { textVisible: string }
     | { entityExists: { query: string; kind?: EntityKind | EntityKind[]; businessTag?: string | string[] } };
