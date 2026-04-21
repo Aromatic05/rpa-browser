@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
-import { runCheckpoint } from './checkpoint';
+import { runCheckpoint, setCheckpoints } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {
@@ -207,6 +207,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     const checkpointMaxAttempts = req.checkpointMaxAttempts ?? 1;
     const checkpointAttempts = new Map<string, number>();
     let status: RunStatus = 'running';
+    setCheckpoints(req.checkpoints || []);
 
     while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {

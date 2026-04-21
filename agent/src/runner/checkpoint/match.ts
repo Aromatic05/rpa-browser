@@ -19,12 +19,12 @@ export const setCheckpoints = (checkpoints: Checkpoint[]) => {
 export const listCheckpoints = (injected?: Checkpoint[]) => (injected ? [...injected] : [...checkpointStore]);
 
 const firstRuleStepName = (checkpoint: Checkpoint) => {
-    const matched = checkpoint.matchRules.find((rule) => 'stepName' in rule);
+    const matched = (checkpoint.matchRules || checkpoint.policy?.trigger?.matchRules || []).find((rule) => 'stepName' in rule);
     return matched && 'stepName' in matched ? matched.stepName : undefined;
 };
 
 const firstRuleErrorCode = (checkpoint: Checkpoint) => {
-    const matched = checkpoint.matchRules.find((rule) => 'errorCode' in rule);
+    const matched = (checkpoint.matchRules || checkpoint.policy?.trigger?.matchRules || []).find((rule) => 'errorCode' in rule);
     return matched && 'errorCode' in matched ? matched.errorCode : undefined;
 };
 
@@ -63,7 +63,8 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
 
     for (const candidate of candidates) {
         let hit = true;
-        for (const rule of candidate.matchRules) {
+        const rules = candidate.matchRules || candidate.policy?.trigger?.matchRules || [];
+        for (const rule of rules) {
             if (!(await evalMatchRule(rule, ctx))) {
                 hit = false;
                 break;

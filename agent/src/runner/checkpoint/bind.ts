@@ -51,6 +51,12 @@ const bindValue = (value: unknown, bag: Record<string, unknown>): unknown => {
 
 export const maybeBindCheckpoint = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
     if (!ctx.active || !ctx.checkpoint) return ctx;
+    if (!ctx.checkpoint.content || ctx.checkpoint.content.length === 0) return ctx;
+
+    const hasActionModel = ctx.checkpoint.content.some((item) => item && typeof item === 'object' && 'type' in item);
+    if (hasActionModel || ctx.checkpoint.prepare || ctx.checkpoint.output || ctx.checkpoint.kind === 'procedure') {
+        return ctx;
+    }
 
     const bag: Record<string, unknown> = {
         run: {
@@ -69,7 +75,7 @@ export const maybeBindCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
     try {
         const boundContent = ctx.checkpoint.content.map((item) => ({
             ...item,
-            args: bindValue(item.args, bag) as typeof item.args,
+            args: bindValue((item as StepUnion).args, bag) as StepUnion['args'],
         })) as StepUnion[];
         log.info('checkpoint.bind', { checkpointId: ctx.checkpoint.id, ok: true });
         return { ...ctx, boundContent };

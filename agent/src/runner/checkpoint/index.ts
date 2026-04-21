@@ -3,4 +3,5 @@ export { evalMatchRule, listCheckpoints, maybeEnterCheckpoint, maybePickCheckpoi
 export { maybeBindCheckpoint } from './bind';
 export { maybeRunCheckpoint } from './run';
 export { foldCheckpointResult, maybeRetryOriginalStep } from './fold';
+export { createCheckpointScope, resolveCheckpointValue, runCheckpointProcedure } from './runtime';
 export type { Checkpoint, CheckpointCtx, CheckpointMainOutput, MatchRule } from './types';

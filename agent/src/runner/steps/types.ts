@@ -41,7 +41,8 @@ export type StepName =
     | 'browser.rename_entity'
     | 'browser.assert'
     | 'browser.query'
-    | 'browser.compute';
+    | 'browser.compute'
+    | 'browser.checkpoint';
 
 export type Target = {
     id?: string;
@@ -290,6 +291,10 @@ export type StepArgsMap = {
     };
     'browser.compute': {
         expr: ComputeExpr;
+    };
+    'browser.checkpoint': {
+        checkpointId: string;
+        input?: Record<string, unknown>;
     };
 };
 

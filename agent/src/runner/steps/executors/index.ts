@@ -32,6 +32,7 @@ import { executeBrowserRenameEntity } from './rename_entity';
 import { executeBrowserAssert } from './assert';
 import { executeBrowserQuery } from './query';
 import { executeBrowserCompute } from './compute';
+import { executeBrowserCheckpoint } from './checkpoint';
 
 export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceId: string) => Promise<StepResult>;
 
@@ -68,4 +69,5 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.assert': executeBrowserAssert as ExecutorFn,
     'browser.query': executeBrowserQuery as ExecutorFn,
     'browser.compute': executeBrowserCompute as ExecutorFn,
+    'browser.checkpoint': executeBrowserCheckpoint as ExecutorFn,
 };
