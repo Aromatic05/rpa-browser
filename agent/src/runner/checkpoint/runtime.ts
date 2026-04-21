@@ -83,16 +83,6 @@ const executeAction = async (
         return { ok: true };
     }
 
-    if (action.type === 'query' || action.type === 'compute') {
-        return {
-            ok: false,
-            error: {
-                code: ACTION_UNSUPPORTED,
-                message: `checkpoint action ${action.type} is not supported yet`,
-            },
-        };
-    }
-
     const step = buildActionStep(action, scope, stepId);
     if (!step.ok) return { ok: false, error: step.error };
 
@@ -137,6 +127,30 @@ const buildActionStep = (
                 name: action.step.name,
                 args: resolved.value as never,
             } as StepUnion,
+        };
+    }
+    if (action.type === 'query') {
+        const resolved = resolveCheckpointValue(action.args, scope);
+        if (!resolved.ok) return { ok: false, error: resolved.error };
+        return {
+            ok: true,
+            value: {
+                id: stepId,
+                name: 'browser.query',
+                args: resolved.value as Step<'browser.query'>['args'],
+            },
+        };
+    }
+    if (action.type === 'compute') {
+        const resolved = resolveCheckpointValue(action.args, scope);
+        if (!resolved.ok) return { ok: false, error: resolved.error };
+        return {
+            ok: true,
+            value: {
+                id: stepId,
+                name: 'browser.compute',
+                args: resolved.value as Step<'browser.compute'>['args'],
+            },
         };
     }
     return {

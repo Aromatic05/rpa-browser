@@ -26,7 +26,13 @@
 - Step 统一入口：`agent/src/runner/run_steps.ts`
 - Step 执行器：`agent/src/runner/steps/executors/*`
 - Trace 原子层：`agent/src/runner/trace/*`
+- Checkpoint 模板运行时：`agent/src/runner/checkpoint/runtime.ts`
 - 运行时绑定：`agent/src/runtime/*`
+
+Checkpoint 在当前版本支持两种路径：
+
+- recovery：失败后匹配 `kind=recovery` checkpoint 执行恢复内容
+- procedure：通过 `browser.checkpoint` 显式调用模板，执行 `prepare/content/output` 并导出结构化 output
 
 ## WS（extension -> agent）
 
@@ -69,4 +75,3 @@
 - 不保留 `A11yHint` 作为公开 Step 协议字段
 - replay 不再通过全局 stepId sidecar 隐式读取增强信息
 - replay 必须在构造 step 时显式写入 `step.resolve`
-

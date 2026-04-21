@@ -175,6 +175,31 @@ pnpm -C agent mcp:hot
 - 不要在新层复制执行逻辑
 - 新层应是“协议翻译器”，不是“第二套执行引擎”
 
+### 7.2 Checkpoint 过程模板（最小版）
+
+checkpoint 运行时位于：`agent/src/runner/checkpoint/runtime.ts`。
+
+当前模型：
+
+- `kind`: `procedure | recovery | guard`
+- `input` / `prepare` / `content` / `output`
+- 作用域：`input`、`local`、`output`
+- ref/path：`input.xxx`、`local.xxx`、`output.xxx`
+
+动作层最小能力：
+
+- `snapshot`
+- `query`
+- `compute`
+- `act`
+- `wait`
+
+约束：
+
+- step executor 不持有变量名
+- 变量回写与导出由 checkpoint runtime 负责（`saveAs` + `output`）
+- `query` 只做查询、`compute` 只做纯计算
+
 ### 7.1 DSL 预留：流式 Step 协议（最小版）
 
 为避免在 agent 侧提前引入完整 DSL VM（循环/分支/变量），当前采用“流式 step 执行”边界：
@@ -382,4 +407,3 @@ PR 检查项：
 - `ResolvePolicy`（`preferDirect`、`preferScoped`、`requireVisible`、`allowFuzzy`、`allowIndexDrift`）分支覆盖
 - `click` + 一个 `fill` 类 + 一个 `select` 类 executor 走统一解析链路
 - replay 显式写入 `step.resolve` 的回归测试（禁止全局隐式 sidecar 查询）
-
