@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { getLogger } from '../../../../../logging/logger';
 import { defaultEntityRuleConfig, selectEntityRuleProfiles, type EntityRuleProfileMeta } from '../../../../../config/entity_rules';
@@ -10,7 +9,7 @@ import { validateEntityRules } from './validate';
 const log = getLogger('entity');
 const MATCH_FILE = 'match.yaml';
 const ANNOTATION_FILE = 'annotation.yaml';
-const BUILTIN_PROFILE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'builtin_profiles/profiles');
+const BUILTIN_PROFILE_DIR = path.resolve(process.cwd(), 'tests/entity_rules/profiles');
 
 export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntityRulesResult => {
     const config = options.config || defaultEntityRuleConfig;

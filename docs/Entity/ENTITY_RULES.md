@@ -11,7 +11,7 @@
 ## 规则文件在哪里
 
 源码（可提交）：
-- `agent/src/runner/steps/executors/snapshot/entity_rules/builtin_profiles/profiles/*`
+- `agent/tests/entity_rules/profiles/*`
 
 运行时目录（不可提交，自动生成）：
 - `agent/.artifacts/entity_rules/profiles/*`
