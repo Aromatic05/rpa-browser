@@ -15,7 +15,7 @@ const pickBenchCases = <T extends { id: string }>(cases: T[], startId: string, s
 export const getOrderListCase = (caseId: string) => orderListCases.find((item) => item.id === caseId) || orderListCases[0];
 export const getOrderFormCase = (caseId: string) => orderFormCases.find((item) => item.id === caseId) || orderFormCases[0];
 
-export const getOrderListBenchCases = (startCaseId: string, size = 10): OrderListCase[] =>
+export const getOrderListBenchCases = (startCaseId: string, size = 30): OrderListCase[] =>
     pickBenchCases(orderListCases, startCaseId, size);
 
 export const getOrderFormBenchCases = (startCaseId: string, size = 10): OrderFormCase[] =>

@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Modal, Progress, Space, Statistic, Tag, Typography, message } from 'antd';
+import { Alert, Card, List, Modal, Progress, Space, Statistic, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { BusinessForm } from '../../component/entity-rules/BusinessForm';
@@ -15,7 +15,7 @@ type Attempt = { caseId: string; ok: boolean };
 
 export const BenchOrderList = () => {
     const { caseId = '' } = useParams();
-    const benchCases = useMemo(() => getOrderListBenchCases(caseId, 10), [caseId]);
+    const benchCases = useMemo(() => getOrderListBenchCases(caseId, 30), [caseId]);
     const [index, setIndex] = useState(0);
     const [attempts, setAttempts] = useState<Attempt[]>([]);
     const [filters, setFilters] = useState({ orderNo: '', buyer: '', status: '全部' });
@@ -26,6 +26,7 @@ export const BenchOrderList = () => {
     const currentCase = benchCases[index];
 
     useEffect(() => {
+        if (!currentCase) return;
         const next = { ...currentCase.initialData.filters };
         setFilters(next);
         setAppliedFilters(next);
@@ -33,6 +34,7 @@ export const BenchOrderList = () => {
     }, [currentCase]);
 
     const filteredRows = useMemo(() => {
+        if (!currentCase) return [] as OrderRecord[];
         return currentCase.initialData.rows.filter((row) => {
             if (appliedFilters.orderNo && !row.orderNo.includes(appliedFilters.orderNo)) return false;
             if (appliedFilters.buyer && !row.buyer.includes(appliedFilters.buyer)) return false;
@@ -49,8 +51,11 @@ export const BenchOrderList = () => {
     const done = attempts.length;
     const correct = attempts.filter((item) => item.ok).length;
     const accuracy = toAccuracy(correct, Math.max(1, done));
+    const isFinished = done >= benchCases.length;
 
-    const submit = () => {
+    const submitCurrentTask = () => {
+        if (!currentCase) return;
+
         const next = { ...filters };
         setAppliedFilters(next);
         setPage(1);
@@ -62,31 +67,19 @@ export const BenchOrderList = () => {
         });
 
         if (result.ok) {
-            message.success(`第 ${index + 1} 题通过`);
-            return;
+            message.success(`任务 ${index + 1}/30 正确`);
+        } else {
+            message.error(`任务 ${index + 1}/30 错误：${result.reasons.join(' / ')}`);
         }
-        message.error(`第 ${index + 1} 题未通过：${result.reasons.join(' / ')}`);
-    };
 
-    const nextCase = () => {
-        if (index >= benchCases.length - 1) {
-            message.info('已经是最后一题');
-            return;
+        if (index < benchCases.length - 1) {
+            setIndex((current) => current + 1);
         }
-        setIndex((current) => current + 1);
-    };
-
-    const previousCase = () => {
-        if (index <= 0) {
-            message.info('已经是第一题');
-            return;
-        }
-        setIndex((current) => current - 1);
     };
 
     return (
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <TaskBanner title={`订单列表基准任务 ${index + 1} / ${benchCases.length}`} description={currentCase.description} />
+            <TaskBanner title={`订单列表 30 题联测（当前 ${Math.min(index + 1, benchCases.length)} / ${benchCases.length}）`} description="单页一次完成 30 题，不再拆分多轮。" />
 
             <Card>
                 <Space size={24}>
@@ -94,37 +87,39 @@ export const BenchOrderList = () => {
                     <Statistic title="正确数" value={correct} />
                     <Statistic title="正确率" value={`${accuracy}%`} />
                 </Space>
-                <Progress percent={Math.round((done / benchCases.length) * 100)} style={{ marginTop: 12 }} />
+                <Progress percent={Math.round((done / Math.max(1, benchCases.length)) * 100)} style={{ marginTop: 12 }} />
             </Card>
 
-            <Alert
-                type="info"
-                showIcon
-                message={`任务要求：${currentCase.title}`}
-                description={
-                    <Space direction="vertical" size={4}>
-                        <Typography.Text>{currentCase.description}</Typography.Text>
-                        <Typography.Text>
-                            目标筛选：订单编号 {currentCase.expected.filters.orderNo || '（留空）'}，采购人 {currentCase.expected.filters.buyer || '（留空）'}，状态 {currentCase.expected.filters.status}
-                        </Typography.Text>
-                        <Typography.Text>预期返回条数：{currentCase.expected.resultCount}</Typography.Text>
-                        <Typography.Text type="secondary">每题先查询再提交。完成 10 题后看正确率。</Typography.Text>
-                    </Space>
-                }
-            />
+            {currentCase ? (
+                <Alert
+                    type="info"
+                    showIcon
+                    message={`任务要求：${currentCase.title}`}
+                    description={
+                        <Space direction="vertical" size={4}>
+                            <Typography.Text>{currentCase.description}</Typography.Text>
+                            <Typography.Text>
+                                目标筛选：订单编号 {currentCase.expected.filters.orderNo || '（留空）'}，采购人 {currentCase.expected.filters.buyer || '（留空）'}，状态 {currentCase.expected.filters.status}
+                            </Typography.Text>
+                            <Typography.Text>预期返回条数：{currentCase.expected.resultCount}</Typography.Text>
+                        </Space>
+                    }
+                />
+            ) : null}
 
             <Card title="查询操作区" extra={<Tag color="blue">当前筛选 {filteredRows.length} 条</Tag>}>
                 <BusinessForm
                     mode="list"
                     values={filters}
                     onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
-                    onSubmit={submit}
+                    onSubmit={submitCurrentTask}
                     onReset={() => {
+                        if (!currentCase) return;
                         const next = { ...currentCase.initialData.filters };
                         setFilters(next);
                         setAppliedFilters(next);
                         setPage(1);
-                        message.info('已重置本题筛选条件');
+                        message.info('已重置当前任务筛选条件');
                     }}
                 />
             </Card>
@@ -143,13 +138,24 @@ export const BenchOrderList = () => {
                 <PaginationBar page={page} pageSize={PAGE_SIZE} total={filteredRows.length} onChange={(nextPage) => setPage(nextPage)} />
             </Card>
 
-            <Card>
-                <Space>
-                    <Button onClick={previousCase}>上一题</Button>
-                    <Button type="primary" onClick={nextCase}>
-                        下一题
-                    </Button>
-                </Space>
+            <Card title="任务状态">
+                <List
+                    size="small"
+                    dataSource={benchCases}
+                    renderItem={(item, itemIndex) => {
+                        const attempt = attempts.find((entry) => entry.caseId === item.id);
+                        const color = !attempt ? 'default' : attempt.ok ? 'success' : 'error';
+                        return (
+                            <List.Item>
+                                <Space>
+                                    <Tag color={itemIndex === index && !isFinished ? 'processing' : undefined}>{itemIndex + 1}</Tag>
+                                    <Typography.Text>{item.title}</Typography.Text>
+                                    <Tag color={color}>{!attempt ? '未提交' : attempt.ok ? '正确' : '错误'}</Tag>
+                                </Space>
+                            </List.Item>
+                        );
+                    }}
+                />
             </Card>
 
             <Modal
