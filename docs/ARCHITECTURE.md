@@ -50,6 +50,11 @@ Snapshot 的实体相关主链路为：
 - 业务规则产物通过 `BusinessEntityOverlay` 叠加，不污染通用 `EntityIndex`。
 - checkpoint / resolve 只消费最终视图与 overlay，不直接改动 runSteps 主循环。
 
+规则与样例沉淀目录：
+
+- 规则包：`agent/.artifacts/entity_rules/profiles/*`
+- 文档：`docs/Entity/*`
+
 ## WS（extension -> agent）
 
 - 扩展发 Action 包到 `ws://127.0.0.1:17333`

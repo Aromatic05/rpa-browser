@@ -260,10 +260,10 @@ Extension 测试：
 
 ## 9. Entity Rules（业务实体规则）
 
-规则目录（仓库根）：
+规则目录（agent 内部产物目录）：
 
-- `entity_rules/<page-id>/match.yaml`
-- `entity_rules/<page-id>/annotation.yaml`
+- `agent/.artifacts/entity_rules/profiles/<profile>/match.yaml`
+- `agent/.artifacts/entity_rules/profiles/<profile>/annotation.yaml`
 
 运行时加载链路（snapshot）：
 
@@ -281,6 +281,13 @@ Extension 测试：
 - `tests/runner/steps/snapshot_entity_rules_pipeline.test.ts`
 - `tests/config/resolve_target_enrichment.test.ts`（entity hint）
 - `tests/runner/checkpoint/checkpoint.test.ts`（businessTag entityExists）
+- `tests/entity_rules/**/*.test.ts`（golden verify）
+
+运行命令：
+
+```bash
+pnpm -C agent test:entity-rules
+```
 
 当前命令：
 
