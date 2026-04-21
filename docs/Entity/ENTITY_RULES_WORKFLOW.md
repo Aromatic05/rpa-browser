@@ -1,35 +1,46 @@
-# ENTITY_RULES_WORKFLOW
+# Entity Rules Workflow（可执行版）
 
-## 标准闭环
+## 0. 前置
 
-1. 准备真实框架页面
-- Ant 页面在 `mock/ant-app`
-- Element 页面在 `mock/element-app`
+启动 mock：
+```bash
+pnpm -C mock dev
+```
 
-2. 选择 fixture 路由
-- Ant: `/entity-rules/fixtures/order-list`、`/entity-rules/fixtures/order-form`
-- Element: `/entity-rules/fixtures/user-list`、`/entity-rules/fixtures/user-form`
+## 1. 选页面
 
-3. 生成 snapshot
-- 复用 snapshot pipeline 与通用实体索引
+固定从真实框架 fixture 路由开始，例如：
+- Ant 列表：`http://127.0.0.1:5173/entity-rules/fixtures/order-list`
+- Ant 表单：`http://127.0.0.1:5173/entity-rules/fixtures/order-form`
 
-4. AI 产出 `match.yaml`
-- 只写结构匹配
+## 2. 写规则
 
-5. 人工确认 `annotation.yaml`
-- 只写业务语义
+在 builtin profiles 新建目录，例如：
+`agent/src/runner/steps/executors/snapshot/entity_rules/builtin_profiles/profiles/oa-ant-orders`
 
-6. 执行 validate
-- 校验 schema + 跨文件一致性
+先写 `match.yaml`（结构匹配），再写 `annotation.yaml`（业务语义）。
 
-7. 执行 verify
-- 对比 `expected.final_entities.json`
-- 对比 `expected.node_hints.json`
+## 3. 校验
 
-8. 接 checkpoint / resolve
-- checkpoint 用 `entityExists.businessTag`
-- resolve 用 `resolve.hint.entity`
+运行 entity_rules 测试：
+```bash
+pnpm -C agent test:entity-rules
+```
 
-9. 回归沉淀
-- 更新 profile README（含路由映射）
-- 固化 golden expected
+失败时先看：
+- `ruleId` 是否对应
+- `within` 是否引用存在
+- `page.kind` 是否一致
+
+## 4. 生成/更新 golden
+
+golden 文件在 profile 内：
+- `expected.final_entities.json`
+- `expected.node_hints.json`
+
+当页面结构有合理变更时，同步更新 expected。
+
+## 5. 接入下游
+
+- checkpoint: 用 `businessTag` 匹配
+- resolve: 用 `hint.entity.businessTag/fieldKey/actionIntent`

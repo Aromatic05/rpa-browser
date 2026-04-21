@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { getLogger } from '../../../../../logging/logger';
 import { defaultEntityRuleConfig, selectEntityRuleProfiles, type EntityRuleProfileMeta } from '../../../../../config/entity_rules';
@@ -9,6 +10,7 @@ import { validateEntityRules } from './validate';
 const log = getLogger('entity');
 const MATCH_FILE = 'match.yaml';
 const ANNOTATION_FILE = 'annotation.yaml';
+const BUILTIN_PROFILE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'builtin_profiles/profiles');
 
 export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntityRulesResult => {
     const config = options.config || defaultEntityRuleConfig;
@@ -27,6 +29,8 @@ export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntit
         log.info('entity.rules.load.end', { selectedProfile: null, reason: 'disabled' });
         return { errors: [], warnings: [] };
     }
+
+    syncBuiltinProfilesToRuntime(config.rootDir);
 
     const profilesRootDir = path.join(config.rootDir, 'profiles');
     if (!fs.existsSync(profilesRootDir)) {
@@ -126,6 +130,22 @@ export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntit
         errors,
         warnings,
     };
+};
+
+const syncBuiltinProfilesToRuntime = (rootDir: string) => {
+    if (!fs.existsSync(BUILTIN_PROFILE_DIR)) return;
+
+    const runtimeProfilesDir = path.join(rootDir, 'profiles');
+    try {
+        fs.rmSync(runtimeProfilesDir, { recursive: true, force: true });
+        fs.mkdirSync(runtimeProfilesDir, { recursive: true });
+        fs.cpSync(BUILTIN_PROFILE_DIR, runtimeProfilesDir, { recursive: true });
+    } catch (error) {
+        log.warn('entity.rules.validate.failed', {
+            profile: '__builtin_sync__',
+            issue: error instanceof Error ? error.message : 'failed to sync builtin profiles',
+        });
+    }
 };
 
 const loadProfileBundle = (

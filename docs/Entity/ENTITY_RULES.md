@@ -1,74 +1,61 @@
-# ENTITY_RULES
+# Entity Rules 快速说明
 
-## 设计目标
+## 这是什么
 
-`entity_rules` 在通用结构识别后叠加业务语义，不重复结构识别：
+`entity_rules` 是给 snapshot 通用实体识别结果做“业务语义补丁”的系统。
 
-- 实体语义：`businessTag` / `businessName` / `primaryKey` / `columns`
-- 节点语义：`fieldKey` / `actionIntent`
-- 下游消费：checkpoint / resolve
+它不负责重新识别结构，只做两件事：
+- 给实体打业务标签（`businessTag`、`businessName`、`primaryKey`、`columns`）
+- 给节点打动作/字段提示（`fieldKey`、`actionIntent`）
 
-## 目录结构
+## 规则文件在哪里
 
-规则根目录固定为：`agent/.artifacts/entity_rules`
+源码（可提交）：
+- `agent/src/runner/steps/executors/snapshot/entity_rules/builtin_profiles/profiles/*`
 
-```text
-agent/.artifacts/entity_rules/
-  profiles/
-    <profile>/
-      match.yaml
-      annotation.yaml
-      README.md
-      expected.final_entities.json
-      expected.node_hints.json
-```
+运行时目录（不可提交，自动生成）：
+- `agent/.artifacts/entity_rules/profiles/*`
 
-mock workspace：
+说明：loader 在运行时会把 builtin profiles 同步到 `.artifacts`。
 
-```text
-mock/
-  ant-app/      # React + TS + Ant Design
-  element-app/  # Vue + TS + Element Plus
-```
+## 一个 profile 的结构
 
-## Profile 与路由映射
+每个 profile 目录必须包含：
+- `match.yaml`
+- `annotation.yaml`
+- `README.md`
+- `expected.final_entities.json`
+- `expected.node_hints.json`
 
-- `oa-ant-orders` -> `http://127.0.0.1:5173/entity-rules/fixtures/order-list`
-- `oa-ant-order-form` -> `http://127.0.0.1:5173/entity-rules/fixtures/order-form`
-- `oa-element-users` -> `http://127.0.0.1:5174/entity-rules/fixtures/user-list`
-- `oa-element-user-form` -> `http://127.0.0.1:5174/entity-rules/fixtures/user-form`
+## match.yaml 和 annotation.yaml 分工
 
-## match.yaml / annotation.yaml
+`match.yaml` 只做“结构匹配”：
+- `source`: `region | group | node`
+- `within`: 作用域约束
+- `expect`: `unique | one_or_more`
+- `match`: `kind/nameContains/...`
 
-- `match.yaml`：结构匹配
-- `annotation.yaml`：业务语义
+`annotation.yaml` 只做“业务语义”：
+- `businessTag` / `businessName`
+- `primaryKey` / `columns`
+- `fieldKey` / `actionIntent`
 
-边界：
+禁止混写：
+- annotation 里不能写结构定位字段
+- match 里不能写业务语义字段
 
-- `match` 不写业务字段
-- `annotation` 不写结构定位字段
+## 配置入口
 
-## 配置加载
-
-配置定义：`agent/src/config/entity_rules.ts`
-
+配置在 `agent/src/config/entity_rules.ts`，默认保守关闭：
 - `enabled=false`
 - `selection='explicit'`
 - `profiles=[]`
 - `strict=true`
-- `rootDir=agent/.artifacts/entity_rules`
 
-## Pipeline 接入
+## 在主流程的位置
 
 `detectStructure -> buildStructureEntityIndex -> applyBusinessEntityRules -> buildLocatorIndex -> buildFinalEntityView`
 
-## Logger
-
-`LogType='entity'`，关键事件：
-
-- `entity.rules.load.start/end`
-- `entity.rules.profile.selected/conflict`
-- `entity.rules.validate.failed`
-- `entity.rules.match.start/hit/miss`
-- `entity.rules.apply.start/end`
-- `entity.rules.verify.diff`
+下游消费：
+- checkpoint: `entityExists.businessTag`
+- resolve: `resolve.hint.entity`
