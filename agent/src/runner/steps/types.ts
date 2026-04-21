@@ -40,7 +40,8 @@ export type StepName =
     | 'browser.delete_entity'
     | 'browser.rename_entity'
     | 'browser.assert'
-    | 'browser.query';
+    | 'browser.query'
+    | 'browser.compute';
 
 export type Target = {
     id?: string;
@@ -85,6 +86,17 @@ export type QueryFromRef =
                 }
           >;
       };
+
+export type ComputeRef = {
+    path: string;
+};
+
+export type ComputeExpr = {
+    op: 'len' | 'exists' | 'first' | 'get' | 'eq' | 'not' | 'and' | 'or';
+    args: ComputeValue[];
+};
+
+export type ComputeValue = { literal: unknown } | { ref: ComputeRef } | ComputeExpr;
 
 export type ResolveHint = {
     target?: {
@@ -275,6 +287,9 @@ export type StepArgsMap = {
         };
         relation?: 'child' | 'descendant';
         limit?: number;
+    };
+    'browser.compute': {
+        expr: ComputeExpr;
     };
 };
 

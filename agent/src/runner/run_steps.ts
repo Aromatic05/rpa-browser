@@ -99,6 +99,33 @@ const executeOne = async (
     return fn(step, deps, workspaceId);
 };
 
+const writeRunnerStepResultCache = async (
+    deps: RunStepsDeps,
+    workspaceId: string,
+    runId: string,
+    result: ExecStepResult,
+) => {
+    try {
+        const binding = await deps.runtime.ensureActivePage(workspaceId);
+        const cache = (binding.traceCtx?.cache || {}) as {
+            runnerStepResults?: Record<string, unknown>;
+            runnerStepResultsRunId?: string;
+        };
+        if (cache.runnerStepResultsRunId !== runId) {
+            cache.runnerStepResultsRunId = runId;
+            cache.runnerStepResults = {};
+        }
+        cache.runnerStepResults = cache.runnerStepResults || {};
+        cache.runnerStepResults[result.stepId] = {
+            ok: result.ok,
+            data: result.data,
+            error: result.error,
+        };
+    } catch {
+        // best effort only
+    }
+};
+
 const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel) =>
     new Promise<void>((resolve) => {
         getWaiters(queueWaiters, queue).add(resolve);
@@ -282,6 +309,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 error: finalResult.error,
                 ts: Date.now(),
             };
+            await writeRunnerStepResultCache(resolvedDeps, req.workspaceId, req.runId, finalResult);
             req.resultPipe.items.push(output);
 
             if (nextStatus === 'suspended') {
