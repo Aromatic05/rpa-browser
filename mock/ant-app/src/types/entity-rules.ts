@@ -30,6 +30,7 @@ export type OrderListCase = {
     };
     expected: {
         filters: { orderNo: string; buyer: string; status: string };
+        resultCount: number;
     };
     scoreRules: Array<{ key: string; score: number }>;
 };

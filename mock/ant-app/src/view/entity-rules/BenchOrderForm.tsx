@@ -92,7 +92,15 @@ export const BenchOrderForm = () => {
                 type="info"
                 showIcon
                 message={`任务要求：${currentCase.title}`}
-                description="每题必须填写完整后提交。完成 10 题后查看正确率。"
+                description={
+                    <Space direction="vertical" size={4}>
+                        <span>{currentCase.description}</span>
+                        <span>
+                            目标输入：订单编号 {currentCase.expected.orderNo}，采购人 {currentCase.expected.buyer}，金额 {currentCase.expected.amount}，部门 {currentCase.expected.dept}
+                        </span>
+                        <span>每题必须填写完整后提交。完成 10 题后查看正确率。</span>
+                    </Space>
+                }
             />
 
             <Card title="订单维护表单">

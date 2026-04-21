@@ -101,7 +101,16 @@ export const BenchOrderList = () => {
                 type="info"
                 showIcon
                 message={`任务要求：${currentCase.title}`}
-                description="每题先查询再提交。完成 10 题后看正确率。"
+                description={
+                    <Space direction="vertical" size={4}>
+                        <Typography.Text>{currentCase.description}</Typography.Text>
+                        <Typography.Text>
+                            目标筛选：订单编号 {currentCase.expected.filters.orderNo || '（留空）'}，采购人 {currentCase.expected.filters.buyer || '（留空）'}，状态 {currentCase.expected.filters.status}
+                        </Typography.Text>
+                        <Typography.Text>预期返回条数：{currentCase.expected.resultCount}</Typography.Text>
+                        <Typography.Text type="secondary">每题先查询再提交。完成 10 题后看正确率。</Typography.Text>
+                    </Space>
+                }
             />
 
             <Card title="查询操作区" extra={<Tag color="blue">当前筛选 {filteredRows.length} 条</Tag>}>

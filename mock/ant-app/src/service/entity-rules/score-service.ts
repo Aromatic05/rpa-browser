@@ -21,6 +21,16 @@ export const evaluateOrderListCase = (
         reasons.push('状态不匹配');
     }
 
+    const matchedCount = caseData.initialData.rows.filter((row) => {
+        if (input.orderNo && !row.orderNo.includes(input.orderNo)) return false;
+        if (input.buyer && !row.buyer.includes(input.buyer)) return false;
+        if (input.status !== '全部' && row.status !== input.status) return false;
+        return true;
+    }).length;
+    if (matchedCount !== caseData.expected.resultCount) {
+        reasons.push(`结果条数不匹配（预期 ${caseData.expected.resultCount}，实际 ${matchedCount}）`);
+    }
+
     return { ok: reasons.length === 0, reasons };
 };
 
