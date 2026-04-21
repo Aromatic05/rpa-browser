@@ -1,0 +1,18 @@
+version: 1
+page:
+  kind: form
+  urlPattern: "element-user-form\\.html$"
+entities:
+  - ruleId: user_form_main
+    source: region
+    expect: unique
+    match:
+      kind: form
+
+  - ruleId: user_form_submit
+    source: node
+    expect: unique
+    within: user_form_main
+    match:
+      classContains: btn
+      textContains: 提交

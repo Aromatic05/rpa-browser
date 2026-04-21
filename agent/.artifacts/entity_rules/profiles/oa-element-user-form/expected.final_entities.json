@@ -1,0 +1,28 @@
+[
+  {
+    "kind": "form",
+    "type": "region",
+    "name": "用户信息表单",
+    "businessTag": "user.form.main",
+    "businessName": "用户主表单",
+    "columns": [
+      {
+        "fieldKey": "userNo",
+        "name": "用户编号"
+      },
+      {
+        "fieldKey": "userName",
+        "name": "用户名"
+      },
+      {
+        "fieldKey": "phone",
+        "name": "手机号"
+      },
+      {
+        "fieldKey": "role",
+        "name": "角色"
+      }
+    ],
+    "nodeDomId": "20"
+  }
+]

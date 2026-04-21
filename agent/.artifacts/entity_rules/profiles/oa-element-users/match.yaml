@@ -1,0 +1,18 @@
+version: 1
+page:
+  kind: table
+  urlPattern: "element-user-list\\.html$"
+entities:
+  - ruleId: user_list_main
+    source: region
+    expect: unique
+    match:
+      kind: table
+
+  - ruleId: user_action_edit
+    source: node
+    expect: one_or_more
+    within: user_list_main
+    match:
+      classContains: btn
+      textContains: 编辑

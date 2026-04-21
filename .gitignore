@@ -15,7 +15,10 @@ agent/playwright-report
 .artifacts
 
 agent/.rpa
-agent/.artifacts
+!agent/.artifacts/
+agent/.artifacts/*
+!agent/.artifacts/entity_rules/
+!agent/.artifacts/entity_rules/**
 agent/.runner-dist
 agent/.runner-hot
 agent/src/record/payload.bundle.js

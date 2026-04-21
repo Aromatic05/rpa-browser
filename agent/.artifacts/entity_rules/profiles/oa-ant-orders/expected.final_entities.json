@@ -1,0 +1,33 @@
+[
+  {
+    "kind": "table",
+    "type": "region",
+    "businessTag": "order.list.main",
+    "businessName": "订单主列表",
+    "primaryKey": {
+      "fieldKey": "orderNo",
+      "columns": [
+        "orderNo"
+      ]
+    },
+    "columns": [
+      {
+        "fieldKey": "orderNo",
+        "name": "订单编号"
+      },
+      {
+        "fieldKey": "buyer",
+        "name": "采购人"
+      },
+      {
+        "fieldKey": "amount",
+        "name": "金额"
+      },
+      {
+        "fieldKey": "status",
+        "name": "状态"
+      }
+    ],
+    "nodeDomId": "87"
+  }
+]

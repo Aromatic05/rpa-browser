@@ -1,0 +1,24 @@
+version: 1
+page:
+  kind: table
+annotations:
+  - ruleId: user_list_main
+    businessTag: user.list.main
+    businessName: 用户主列表
+    primaryKey:
+      fieldKey: userNo
+      columns:
+        - userNo
+    columns:
+      - fieldKey: userNo
+        name: 用户编号
+      - fieldKey: userName
+        name: 用户名
+      - fieldKey: phone
+        name: 手机号
+      - fieldKey: status
+        name: 状态
+
+  - ruleId: user_action_edit
+    fieldKey: actions
+    actionIntent: edit

@@ -1,0 +1,18 @@
+version: 1
+page:
+  kind: form
+  urlPattern: "ant-order-form\\.html$"
+entities:
+  - ruleId: order_form_main
+    source: region
+    expect: unique
+    match:
+      kind: form
+
+  - ruleId: order_form_submit
+    source: node
+    expect: unique
+    within: order_form_main
+    match:
+      classContains: btn
+      textContains: 提交

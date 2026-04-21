@@ -1,0 +1,28 @@
+[
+  {
+    "kind": "form",
+    "type": "region",
+    "name": "订单创建表单",
+    "businessTag": "order.form.main",
+    "businessName": "订单主表单",
+    "columns": [
+      {
+        "fieldKey": "orderNo",
+        "name": "订单编号"
+      },
+      {
+        "fieldKey": "buyer",
+        "name": "采购人"
+      },
+      {
+        "fieldKey": "amount",
+        "name": "订单金额"
+      },
+      {
+        "fieldKey": "dept",
+        "name": "所属部门"
+      }
+    ],
+    "nodeDomId": "20"
+  }
+]

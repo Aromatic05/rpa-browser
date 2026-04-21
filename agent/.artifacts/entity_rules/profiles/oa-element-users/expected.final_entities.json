@@ -1,0 +1,33 @@
+[
+  {
+    "kind": "table",
+    "type": "region",
+    "businessTag": "user.list.main",
+    "businessName": "用户主列表",
+    "primaryKey": {
+      "fieldKey": "userNo",
+      "columns": [
+        "userNo"
+      ]
+    },
+    "columns": [
+      {
+        "fieldKey": "userNo",
+        "name": "用户编号"
+      },
+      {
+        "fieldKey": "userName",
+        "name": "用户名"
+      },
+      {
+        "fieldKey": "phone",
+        "name": "手机号"
+      },
+      {
+        "fieldKey": "status",
+        "name": "状态"
+      }
+    ],
+    "nodeDomId": "84"
+  }
+]
