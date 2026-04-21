@@ -1,4 +1,5 @@
 import { getNodeAttr, getNodeContent, normalizeText } from '../core/runtime_store';
+import { getLogger } from '../../../../../logging/logger';
 import type { EntityKind, GroupEntity, RegionEntity, UnifiedNode } from '../core/types';
 import type {
     EntityCandidate,
@@ -9,6 +10,8 @@ import type {
     RuleBindingEntityRef,
 } from './types';
 
+const log = getLogger('entity');
+
 export const matchEntityRules = (
     bundle: NormalizedEntityRuleBundle,
     context: EntityMatchContext,
@@ -18,6 +21,10 @@ export const matchEntityRules = (
     const parentById = buildParentById(root);
 
     const ruleResults: Record<string, ResolvedRuleBinding> = {};
+    log.info('entity.rules.match.start', {
+        profile: bundle.id,
+        ruleCount: bundle.matchRules.length,
+    });
 
     for (const rule of bundle.matchRules) {
         const scopeNodeIds = resolveScopeNodeIds(rule, ruleResults);
@@ -30,6 +37,23 @@ export const matchEntityRules = (
         const count = matchedNodeIds.length;
 
         const ok = rule.expect === 'unique' ? count === 1 : count >= 1;
+        if (ok) {
+            log.info('entity.rules.match.hit', {
+                profile: bundle.id,
+                ruleId: rule.ruleId,
+                source: rule.source,
+                matchedCount: count,
+                nodeIds: matchedNodeIds.slice(0, 5),
+            });
+        } else {
+            log.info('entity.rules.match.miss', {
+                profile: bundle.id,
+                ruleId: rule.ruleId,
+                source: rule.source,
+                expect: rule.expect,
+                matchedCount: count,
+            });
+        }
         ruleResults[rule.ruleId] = {
             ruleId: rule.ruleId,
             source: rule.source,

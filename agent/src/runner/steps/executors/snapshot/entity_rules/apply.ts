@@ -1,4 +1,5 @@
 import { mergeNodeSemanticHints, setNodeAttr } from '../core/runtime_store';
+import { getLogger } from '../../../../../logging/logger';
 import type { EntityBusinessInfo, EntityIndex, EntityRecord, NodeEntityRef, UnifiedNode } from '../core/types';
 import { createEmptyBusinessEntityOverlay, mergeEntityBusinessInfo, mergeNodeBusinessHint } from './overlay';
 import { matchEntityRules } from './matcher';
@@ -10,6 +11,8 @@ import type {
     ResolvedRuleBinding,
 } from './types';
 
+const log = getLogger('entity');
+
 type ApplyBusinessEntityRulesInput = {
     root: UnifiedNode;
     entityIndex: EntityIndex;
@@ -18,11 +21,22 @@ type ApplyBusinessEntityRulesInput = {
 
 export const applyBusinessEntityRules = (input: ApplyBusinessEntityRulesInput): BusinessEntityOverlay => {
     if (!input.bundle) return createEmptyBusinessEntityOverlay();
+    log.info('entity.rules.apply.start', {
+        profile: input.bundle.id,
+        entityCount: Object.keys(input.entityIndex.entities).length,
+    });
     const bindings = matchEntityRules(input.bundle, {
         root: input.root,
         entityIndex: input.entityIndex,
     });
-    return applyEntityRuleBindings(input.bundle, input.root, input.entityIndex, bindings);
+    const overlay = applyEntityRuleBindings(input.bundle, input.root, input.entityIndex, bindings);
+    log.info('entity.rules.apply.end', {
+        profile: input.bundle.id,
+        ruleBindingCount: Object.keys(overlay.byRuleId).length,
+        entityInfoCount: Object.keys(overlay.byEntityId).length,
+        nodeHintCount: Object.keys(overlay.nodeHintsByNodeId).length,
+    });
+    return overlay;
 };
 
 export const applyEntityRuleBindings = (
