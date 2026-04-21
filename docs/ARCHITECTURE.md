@@ -34,6 +34,22 @@ Checkpoint 在当前版本支持两种路径：
 - recovery：失败后匹配 `kind=recovery` checkpoint 执行恢复内容
 - procedure：通过 `browser.checkpoint` 显式调用模板，执行 `prepare/content/output` 并导出结构化 output
 
+## Snapshot Entity Pipeline
+
+Snapshot 的实体相关主链路为：
+
+1. `detectStructure`
+2. `buildStructureEntityIndex`
+3. `applyBusinessEntityRules`
+4. `buildLocatorIndex`
+5. `buildFinalEntityView`（session compose 阶段）
+
+约束：
+
+- 通用结构识别只在 `buildStructureEntityIndex` 做一次。
+- 业务规则产物通过 `BusinessEntityOverlay` 叠加，不污染通用 `EntityIndex`。
+- checkpoint / resolve 只消费最终视图与 overlay，不直接改动 runSteps 主循环。
+
 ## WS（extension -> agent）
 
 - 扩展发 Action 包到 `ws://127.0.0.1:17333`

@@ -258,6 +258,30 @@ Extension 测试：
 
 - `extension/src/__tests__/*.test.mjs`
 
+## 9. Entity Rules（业务实体规则）
+
+规则目录（仓库根）：
+
+- `entity_rules/<page-id>/match.yaml`
+- `entity_rules/<page-id>/annotation.yaml`
+
+运行时加载链路（snapshot）：
+
+1. 解析 YAML
+2. schema 校验（单文件）
+3. cross-file 校验（`within`/`ruleId`/`page.kind` 等）
+4. 规范化为 `NormalizedEntityRuleBundle`
+5. 在 snapshot pipeline 的 `applyBusinessEntityRules` 阶段生成 `BusinessEntityOverlay`
+
+测试入口（agent）：
+
+- `tests/runner/steps/snapshot_entity_rules_schema.test.ts`
+- `tests/runner/steps/snapshot_entity_rules_validate.test.ts`
+- `tests/runner/steps/snapshot_entity_rules_matcher_apply.test.ts`
+- `tests/runner/steps/snapshot_entity_rules_pipeline.test.ts`
+- `tests/config/resolve_target_enrichment.test.ts`（entity hint）
+- `tests/runner/checkpoint/checkpoint.test.ts`（businessTag entityExists）
+
 当前命令：
 
 ```bash
