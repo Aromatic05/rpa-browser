@@ -48,8 +48,14 @@ pnpm pw:install
 # Extension + agent 热更新主链路（推荐）
 pnpm dev
 
-# 本地 mock 夹具站点
+# 本地 mock workspace（两个子应用并行）
 pnpm mock:dev
+
+# 仅启动 Ant fixture app
+pnpm mock:dev:ant
+
+# 仅启动 Element fixture app
+pnpm mock:dev:element
 
 # MCP 面板（HTTP UI）
 pnpm mcp
@@ -72,7 +78,7 @@ pnpm -C agent mcp:hot
 
 ## 4. mock 的作用
 
-`mock/` 提供可控且稳定的本地页面夹具，用于测试和人工验收。
+`mock/` 提供可控且稳定的本地 workspace 夹具（`mock/ant-app`、`mock/element-app`），用于测试和人工验收。
 
 价值：
 

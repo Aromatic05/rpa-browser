@@ -40,7 +40,7 @@ test('entity rule loader selects explicit profile under profiles dir', () => {
             strict: true,
         },
         pageKind: 'table',
-        pageUrl: 'http://localhost/pages/entity-rules/ant-order-list.html',
+        pageUrl: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list',
     });
 
     assert.equal(loaded.errors.length, 0);
@@ -62,7 +62,7 @@ test('entity rule loader strict=false returns warning when profile missing', () 
             strict: false,
         },
         pageKind: 'table',
-        pageUrl: 'http://localhost/pages/entity-rules/ant-order-list.html',
+        pageUrl: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list',
     });
 
     assert.equal(loaded.errors.length, 0);

@@ -4,16 +4,18 @@
 
 输入：
 
-- mock 页面 URL（例如 `/pages/entity-rules/ant-order-list.html`）
 - profile 名称（例如 `oa-ant-orders`）
+- 真实框架 fixture 路由
+  - Ant: `/entity-rules/fixtures/order-list|order-form`
+  - Element: `/entity-rules/fixtures/user-list|user-form`
 
 流程：
 
-1. 打开 mock 页面
-2. 生成 snapshot（启用指定 profile）
-3. 构建 finalEntityView
-4. 导出稳定化产物
-5. 与 expected json 比对
+1. 启动对应 mock 子应用（`mock/ant-app` 或 `mock/element-app`）
+2. 打开 fixture 路由并生成 snapshot
+3. 应用 entity_rules
+4. 导出稳定产物
+5. 对比 profile 下 golden
 
 输出：
 
@@ -24,28 +26,28 @@
 
 `expected.final_entities.json`
 
-- 仅保留业务相关最终实体
-- 包含：`kind/type/name/businessTag/businessName/primaryKey/columns/nodeDomId`
+- 仅保留业务语义实体
+- 字段：`kind/type/name/businessTag/businessName/primaryKey/columns/nodeDomId`
 
 `expected.node_hints.json`
 
-- 仅保留被注入的语义节点
-- 包含：`nodeDomId/fieldKey/actionIntent/entityKind/entityNodeDomId/name`
+- 仅保留语义注入节点
+- 字段：`nodeDomId/fieldKey/actionIntent/entityKind/entityNodeDomId/name`
 
 ## 失败排查
 
-1. 看 profile 是否选对
-- 关注 `entity.rules.profile.selected/conflict`
+1. profile 选择是否正确
+- 看 `entity.rules.profile.selected/conflict`
 
-2. 看匹配是否命中
-- 关注 `entity.rules.match.hit/miss`
+2. 匹配是否命中
+- 看 `entity.rules.match.hit/miss`
 
-3. 看是否注入到 overlay
-- 关注 `entity.rules.apply.start/end`
+3. overlay 是否注入
+- 看 `entity.rules.apply.start/end`
 
-4. 看 golden diff
-- 关注 `entity.rules.verify.diff`
-- `reason` 会指出 `final_entities` 或 `node_hints` 的断言差异
+4. golden diff 失败点
+- 看 `entity.rules.verify.diff`
+- `kind` 表示 `final_entities` 或 `node_hints`
 
 ## 运行入口
 

@@ -1,7 +1,7 @@
 version: 1
 page:
   kind: form
-  urlPattern: "ant-order-form\\.html$"
+  urlPattern: "/entity-rules/fixtures/order-form$"
 entities:
   - ruleId: order_form_main
     source: region
@@ -14,5 +14,5 @@ entities:
     expect: unique
     within: order_form_main
     match:
-      classContains: btn
+      classContains: ant-btn
       textContains: 提交

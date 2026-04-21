@@ -1,7 +1,7 @@
 version: 1
 page:
   kind: table
-  urlPattern: "element-user-list\\.html$"
+  urlPattern: "/entity-rules/fixtures/user-list$"
 entities:
   - ruleId: user_list_main
     source: region
@@ -14,5 +14,5 @@ entities:
     expect: one_or_more
     within: user_list_main
     match:
-      classContains: btn
+      classContains: el-button
       textContains: 编辑

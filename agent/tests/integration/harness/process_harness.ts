@@ -119,9 +119,9 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
     const verbose =
         String(process.env.RPA_INTEGRATION_VERBOSE || (opts?.headed ? 'true' : 'false')).toLowerCase() === 'true';
 
-    const mockProc = spawn('node', ['mock/server.js'], {
+    const mockProc = spawn('pnpm', ['-C', 'mock', '--filter', '@mock/ant-app', 'exec', 'vite', '--host', '127.0.0.1', '--port', String(mockPort), '--strictPort'], {
         cwd: repoRoot,
-        env: { ...process.env, MOCK_PORT: String(mockPort) },
+        env: { ...process.env },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
     pipeProcLogs(mockProc, '[integration:mock]', verbose);
@@ -132,6 +132,8 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
         RPA_HEADLESS: opts?.headed ? 'false' : 'true',
         RPA_WS_PORT: String(wsPort),
         RPA_USER_DATA_DIR: userDataDir,
+        RPA_START_URL: `http://127.0.0.1:${mockPort}/entity-rules`,
+        RPA_NEWTAB_URL: `http://127.0.0.1:${mockPort}/entity-rules`,
     } as Record<string, string>;
     if (opts?.fixtureBaseUrl) {
         env.RPA_START_URL = `${opts.fixtureBaseUrl}/run_steps_fixture_a.html`;

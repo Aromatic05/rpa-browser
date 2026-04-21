@@ -33,7 +33,7 @@
 pnpm mock:dev
 ```
 
-并确认端口与 URL 一致。
+并确认路由可访问：`/entity-rules`、`/entity-rules/fixtures/*`。
 
 ## 工件
 

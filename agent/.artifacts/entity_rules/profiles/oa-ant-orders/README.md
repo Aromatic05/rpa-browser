@@ -2,7 +2,7 @@
 
 ## 适用页面
 
-- Mock URL: `http://localhost:4173/pages/entity-rules/ant-order-list.html`
+- Mock Route: `http://127.0.0.1:5173/entity-rules/fixtures/order-list`
 
 ## 关键 ruleId
 
@@ -15,8 +15,8 @@
 
 ## 如何加载
 
-- 通过 `entityRules.selection=explicit`
-- `entityRules.profiles` 指向当前 profile 名
+- `entityRules.selection=explicit`
+- `entityRules.profiles=["oa-ant-orders"]`
 
 ## 如何验证
 
@@ -28,4 +28,4 @@
 ## 预期命中
 
 - 主实体：`order.list.main`
-- 关键动作：`order_action_delete`
+- 关键动作：`order_action_edit` / `order_action_delete`

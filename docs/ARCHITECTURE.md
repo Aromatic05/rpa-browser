@@ -9,7 +9,7 @@
 
 另外：
 
-- `mock/`：本地页面夹具。
+- `mock/`：本地 workspace 夹具（`ant-app` + `element-app`）。
 - `agent/src/demo/*`：本地 MCP 面板服务。
 - `agent/src/mcp/*`：MCP HTTP(SSE) 服务。
 

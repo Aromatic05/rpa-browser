@@ -1,7 +1,7 @@
 version: 1
 page:
   kind: table
-  urlPattern: "ant-order-list\\.html$"
+  urlPattern: "/entity-rules/fixtures/order-list$"
 entities:
   - ruleId: order_list_main
     source: region
@@ -14,7 +14,7 @@ entities:
     expect: one_or_more
     within: order_list_main
     match:
-      classContains: btn
+      classContains: ant-btn
       textContains: 编辑
 
   - ruleId: order_action_delete
@@ -22,5 +22,5 @@ entities:
     expect: one_or_more
     within: order_list_main
     match:
-      classContains: btn
+      classContains: ant-btn
       textContains: 删除

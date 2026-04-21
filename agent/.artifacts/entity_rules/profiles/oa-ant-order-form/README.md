@@ -2,7 +2,7 @@
 
 ## 适用页面
 
-- Mock URL: `http://localhost:4173/pages/entity-rules/ant-order-form.html`
+- Mock Route: `http://127.0.0.1:5173/entity-rules/fixtures/order-form`
 
 ## 关键 ruleId
 
@@ -15,8 +15,8 @@
 
 ## 如何加载
 
-- 通过 `entityRules.selection=explicit`
-- `entityRules.profiles` 指向当前 profile 名
+- `entityRules.selection=explicit`
+- `entityRules.profiles=["oa-ant-order-form"]`
 
 ## 如何验证
 

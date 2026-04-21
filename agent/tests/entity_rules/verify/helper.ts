@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { chromium } from 'playwright';
 import { getLogger, initLogger } from '../../../src/logging/logger';
 import { loadRunnerConfig } from '../../../src/config/loader';
@@ -13,64 +13,9 @@ import { normalizeText } from '../../../src/runner/steps/executors/snapshot/core
 
 const entityLog = getLogger('entity');
 
-const serveFile = async (rootDir: string, reqUrl: string): Promise<{ status: number; body: Buffer; contentType: string }> => {
-    const normalizedPath = reqUrl === '/' ? '/pages/start.html' : reqUrl;
-    const filePath = path.join(rootDir, normalizedPath);
-    if (!existsSync(filePath)) {
-        return {
-            status: 404,
-            body: Buffer.from('Not found'),
-            contentType: 'text/plain; charset=utf-8',
-        };
-    }
-
-    const body = await fs.readFile(filePath);
-    const contentType = resolveContentType(filePath);
-    return {
-        status: 200,
-        body,
-        contentType,
-    };
-};
-
-const startMockServer = async (): Promise<{ baseUrl: string; close: () => Promise<void> }> => {
-    const rootDir = path.resolve(process.cwd(), '../mock');
-    const server = http.createServer(async (req, res) => {
-        const url = new URL(req.url || '/', 'http://localhost');
-        const served = await serveFile(rootDir, url.pathname);
-        res.writeHead(served.status, { 'Content-Type': served.contentType });
-        res.end(served.body);
-    });
-
-    await new Promise<void>((resolve) => {
-        server.listen(0, '127.0.0.1', () => resolve());
-    });
-
-    const address = server.address();
-    if (!address || typeof address === 'string') {
-        throw new Error('mock server address unavailable');
-    }
-
-    return {
-        baseUrl: `http://127.0.0.1:${address.port}`,
-        close: async () => {
-            await new Promise<void>((resolve, reject) => {
-                server.close((error) => (error ? reject(error) : resolve()));
-            });
-        },
-    };
-};
-
-const resolveContentType = (filePath: string): string => {
-    if (filePath.endsWith('.html')) return 'text/html; charset=utf-8';
-    if (filePath.endsWith('.css')) return 'text/css; charset=utf-8';
-    if (filePath.endsWith('.js')) return 'text/javascript; charset=utf-8';
-    if (filePath.endsWith('.json')) return 'application/json; charset=utf-8';
-    return 'application/octet-stream';
-};
-
 export type EntityRuleVerifyCase = {
     profile: string;
+    app: 'ant' | 'element';
     pagePath: string;
 };
 
@@ -93,7 +38,7 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
     config.observability.traceFileEnabled = false;
     initLogger(config);
 
-    const mockServer = await startMockServer();
+    const mockServer = await startMockApp(testCase.app);
     const browser = await chromium.launch({ headless: true });
 
     try {
@@ -127,6 +72,97 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
     }
 };
 
+const startMockApp = async (app: 'ant' | 'element'): Promise<{ baseUrl: string; close: () => Promise<void> }> => {
+    const rootDir = path.resolve(process.cwd(), '../mock');
+    const packageName = app === 'ant' ? '@mock/ant-app' : '@mock/element-app';
+    const port = await getFreePort();
+
+    const proc = spawn(
+        'pnpm',
+        ['-C', rootDir, '--filter', packageName, 'exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+        {
+            cwd: rootDir,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: process.env,
+        },
+    );
+
+    let stderr = '';
+    let stdout = '';
+    proc.stdout?.on('data', (chunk) => {
+        stdout += chunk.toString();
+    });
+    proc.stderr?.on('data', (chunk) => {
+        stderr += chunk.toString();
+    });
+
+    try {
+        await waitForHttpReady(`http://127.0.0.1:${port}/entity-rules`, 45000);
+    } catch (error) {
+        await stopProcess(proc);
+        const reason = error instanceof Error ? error.message : 'unknown';
+        throw new Error(`failed to start ${packageName} on ${port}: ${reason}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    }
+
+    return {
+        baseUrl: `http://127.0.0.1:${port}`,
+        close: async () => stopProcess(proc),
+    };
+};
+
+const getFreePort = async (): Promise<number> =>
+    await new Promise<number>((resolve, reject) => {
+        const server = net.createServer();
+        server.on('error', reject);
+        server.listen(0, '127.0.0.1', () => {
+            const address = server.address();
+            if (!address || typeof address === 'string') {
+                server.close(() => reject(new Error('no free port')));
+                return;
+            }
+            const port = address.port;
+            server.close((error) => (error ? reject(error) : resolve(port)));
+        });
+    });
+
+const waitForHttpReady = async (url: string, timeoutMs: number) => {
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const res = await fetch(url);
+            if (res.ok || res.status === 404) {
+                return;
+            }
+        } catch {
+            // ignore
+        }
+        await sleep(200);
+    }
+
+    throw new Error(`timeout waiting for ${url}`);
+};
+
+const stopProcess = async (proc: ChildProcess): Promise<void> => {
+    if (proc.killed || proc.exitCode !== null) return;
+
+    proc.kill('SIGTERM');
+    await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+            if (!proc.killed && proc.exitCode === null) {
+                proc.kill('SIGKILL');
+            }
+            resolve();
+        }, 3000);
+        proc.once('exit', () => {
+            clearTimeout(timer);
+            resolve();
+        });
+    });
+};
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 const normalizeFinalEntities = (
     snapshot: Awaited<ReturnType<typeof generateSemanticSnapshot>>,
     entities: ReturnType<typeof buildFinalEntityViewFromSnapshot>['entities'],
@@ -147,7 +183,6 @@ const normalizeFinalEntities = (
                     }
                     : undefined,
                 columns: entity.columns?.map((column) => compactValue({ fieldKey: column.fieldKey, name: normalizeText(column.name) })),
-                nodeDomId: normalizeText(snapshot.attrIndex[entity.nodeId]?.backendDOMNodeId),
             }),
         )
         .sort((left, right) => {
@@ -159,11 +194,9 @@ const normalizeFinalEntities = (
 
 const normalizeNodeHints = (snapshot: Awaited<ReturnType<typeof generateSemanticSnapshot>>) => {
     const out: Array<{
-        nodeDomId?: string;
         fieldKey?: string;
         actionIntent?: string;
         entityKind?: string;
-        entityNodeDomId?: string;
         name?: string;
     }> = [];
 
@@ -172,24 +205,19 @@ const normalizeNodeHints = (snapshot: Awaited<ReturnType<typeof generateSemantic
         const actionIntent = normalizeText(attrs.actionIntent);
         if (!fieldKey && !actionIntent) continue;
 
-        const entityNodeId = normalizeText(attrs.entityNodeId);
-        const entityNodeDomId = entityNodeId ? normalizeText(snapshot.attrIndex[entityNodeId]?.backendDOMNodeId) : undefined;
-
         out.push(
             compactValue({
-                nodeDomId: normalizeText(attrs.backendDOMNodeId),
                 fieldKey,
                 actionIntent,
                 entityKind: normalizeText(attrs.entityKind),
-                entityNodeDomId,
                 name: normalizeText(snapshot.nodeIndex[nodeId]?.name),
             }),
         );
     }
 
     return out.sort((left, right) => {
-        const leftKey = `${left.nodeDomId || ''}:${left.fieldKey || ''}:${left.actionIntent || ''}`;
-        const rightKey = `${right.nodeDomId || ''}:${right.fieldKey || ''}:${right.actionIntent || ''}`;
+        const leftKey = `${left.fieldKey || ''}:${left.actionIntent || ''}:${left.name || ''}`;
+        const rightKey = `${right.fieldKey || ''}:${right.actionIntent || ''}:${right.name || ''}`;
         return leftKey.localeCompare(rightKey);
     });
 };

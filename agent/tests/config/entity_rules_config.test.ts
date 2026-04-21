@@ -23,10 +23,10 @@ test('entity rule selection: explicit', () => {
             strict: true,
         },
         [
-            { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'ant-order-list' },
-            { name: 'oa-element-users', pageKind: 'table', urlPattern: 'element-user-list' },
+            { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'order-list' },
+            { name: 'oa-element-users', pageKind: 'table', urlPattern: 'user-list' },
         ],
-        { kind: 'table', url: 'http://localhost/pages/entity-rules/ant-order-list.html' },
+        { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
 
     assert.deepEqual(selected.selected, ['oa-ant-orders']);
@@ -42,10 +42,10 @@ test('entity rule selection: auto', () => {
             strict: true,
         },
         [
-            { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'ant-order-list' },
-            { name: 'oa-element-users', pageKind: 'table', urlPattern: 'element-user-list' },
+            { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'order-list' },
+            { name: 'oa-element-users', pageKind: 'table', urlPattern: 'user-list' },
         ],
-        { kind: 'table', url: 'http://localhost/pages/entity-rules/element-user-list.html' },
+        { kind: 'table', url: 'http://127.0.0.1:5174/entity-rules/fixtures/user-list' },
     );
 
     assert.deepEqual(selected.selected, ['oa-element-users']);
@@ -64,7 +64,7 @@ test('entity rule selection: multi-profile conflict', () => {
             { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'order-list' },
             { name: 'oa-ant-orders-v2', pageKind: 'table', urlPattern: 'order-list' },
         ],
-        { kind: 'table', url: 'http://localhost/pages/entity-rules/ant-order-list.html' },
+        { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
 
     assert.equal(selected.selected.length, 2);
@@ -81,7 +81,7 @@ test('entity rule selection: strict/non-strict missing behavior', () => {
             strict: true,
         },
         [{ name: 'oa-ant-orders', pageKind: 'table' }],
-        { kind: 'table', url: 'http://localhost/pages/entity-rules/ant-order-list.html' },
+        { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
     assert.equal(strictResult.errors.length > 0, true);
 
@@ -94,7 +94,7 @@ test('entity rule selection: strict/non-strict missing behavior', () => {
             strict: false,
         },
         [{ name: 'oa-ant-orders', pageKind: 'table' }],
-        { kind: 'table', url: 'http://localhost/pages/entity-rules/ant-order-list.html' },
+        { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
     assert.equal(nonStrictResult.errors.length, 0);
     assert.equal(nonStrictResult.warnings.length > 0, true);

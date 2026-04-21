@@ -1,13 +1,20 @@
-# Mock Tool Sandbox
+# Mock Workspace
 
-Run a local static server for tool testing pages.
+运行 mock workspace：
 
 ```bash
-pnpm mock:dev
+pnpm -C mock install
+pnpm -C mock dev
 ```
 
-Then open:
+单独运行：
 
-- http://localhost:4173/pages/start.html
+```bash
+pnpm -C mock dev:ant
+pnpm -C mock dev:element
+```
 
-Set a custom port via `MOCK_PORT` or `PORT`.
+路由入口：
+
+- Ant app: `http://127.0.0.1:5173/entity-rules`
+- Element app: `http://127.0.0.1:5174/entity-rules`
