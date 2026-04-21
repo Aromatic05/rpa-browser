@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ant 订单列表</title>
+    <link rel="stylesheet" href="/pages/entity-rules/assets/framework.css" />
+  </head>
+  <body>
+    <main class="page-shell ant-pro-page-container">
+      <section class="page-card ant-card ant-card-bordered" role="form" aria-label="订单筛选表单">
+        <div class="card-header">订单筛选</div>
+        <div class="card-body ant-form ant-form-horizontal">
+          <div class="grid-3">
+            <div class="form-item ant-form-item">
+              <label for="orderNo">订单编号</label>
+              <input id="orderNo" class="input ant-input" placeholder="请输入订单编号" />
+            </div>
+            <div class="form-item ant-form-item">
+              <label for="buyer">采购人</label>
+              <input id="buyer" class="input ant-input" placeholder="请输入采购人" />
+            </div>
+            <div class="form-item ant-form-item">
+              <label for="status">状态</label>
+              <select id="status" class="select ant-select-selector">
+                <option>全部</option>
+                <option>待审批</option>
+                <option>已通过</option>
+                <option>已驳回</option>
+              </select>
+            </div>
+          </div>
+          <div class="actions-row">
+            <button class="btn primary ant-btn ant-btn-primary" type="button">查询</button>
+            <button class="btn ant-btn" type="button">重置</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-card ant-card ant-card-bordered" role="table" aria-label="订单主表格">
+        <div class="card-header">订单列表</div>
+        <div class="card-body ant-table-wrapper">
+          <div class="table-wrap">
+            <table class="table ant-table">
+              <thead>
+                <tr>
+                  <th>订单编号</th>
+                  <th>采购人</th>
+                  <th>金额</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>ORD-2026-001</td>
+                  <td>王明</td>
+                  <td>￥5,200</td>
+                  <td>待审批</td>
+                  <td>
+                    <button class="btn ant-btn">查看</button>
+                    <button class="btn ant-btn">编辑</button>
+                    <button class="btn ant-btn">删除</button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>ORD-2026-002</td>
+                  <td>李静</td>
+                  <td>￥1,850</td>
+                  <td>已通过</td>
+                  <td>
+                    <button class="btn ant-btn">查看</button>
+                    <button class="btn ant-btn">编辑</button>
+                    <button class="btn ant-btn">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <nav class="pagination ant-pagination" aria-label="pagination">
+            <button type="button">上一页</button>
+            <span>1 / 12</span>
+            <button type="button">下一页</button>
+          </nav>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
