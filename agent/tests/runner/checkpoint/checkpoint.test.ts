@@ -53,6 +53,80 @@ const createCtx = (overrides?: Partial<CheckpointCtx>): CheckpointCtx => {
     };
 };
 
+const createBindingWithBusinessEntity = (businessTag: string) => {
+    const workspaceId = 'ws-1';
+    const tabId = 'tab-1';
+    const tabToken = 'tab-token-1';
+    const url = 'https://example.test/orders';
+    const snapshot = {
+        root: { id: 'root', role: 'root', children: [] },
+        nodeIndex: {},
+        entityIndex: { entities: {}, byNodeId: {} },
+        locatorIndex: {},
+        bboxIndex: {},
+        attrIndex: {},
+        contentStore: {},
+    } as any;
+
+    return {
+        workspaceId,
+        tabId,
+        tabToken,
+        page: { url: () => url },
+        traceTools: {
+            'trace.page.getInfo': async () => ({ ok: true, data: { url } }),
+            'trace.page.evaluate': async () => ({ ok: true, data: true }),
+        },
+        traceCtx: {
+            cache: {
+                snapshotSessionStore: {
+                    version: 1,
+                    entries: {
+                        [`${workspaceId}:${tabToken}`]: {
+                            pageIdentity: { workspaceId, tabId, tabToken, url },
+                            baseSnapshot: snapshot,
+                            finalSnapshot: snapshot,
+                            finalEntityView: {
+                                entities: [
+                                    {
+                                        id: 'final_ent_1',
+                                        entityId: 'ent_1',
+                                        nodeId: 'node_1',
+                                        kind: 'table',
+                                        type: 'region',
+                                        name: 'Order Table',
+                                        businessTag,
+                                        source: 'auto',
+                                    },
+                                ],
+                                byNodeId: {
+                                    node_1: [
+                                        {
+                                            id: 'final_ent_1',
+                                            entityId: 'ent_1',
+                                            nodeId: 'node_1',
+                                            kind: 'table',
+                                            type: 'region',
+                                            name: 'Order Table',
+                                            businessTag,
+                                            source: 'auto',
+                                        },
+                                    ],
+                                },
+                            },
+                            overlays: { renamedNodes: {}, addedEntities: [], deletedEntities: [] },
+                            diffBaselines: {},
+                            dirty: false,
+                            lastRefreshAt: Date.now(),
+                            version: 1,
+                        },
+                    },
+                },
+            },
+        },
+    } as any;
+};
+
 test('maybeEnterCheckpoint: disabled -> not entered', async () => {
     const ctx = createCtx({ failedCtx: createFailedCtx({ checkpointEnabled: false }) });
     const result = await maybeEnterCheckpoint(ctx);
@@ -141,6 +215,41 @@ test('maybePickCheckpoint: priority wins', async () => {
     ]);
     const result = await maybePickCheckpoint(createCtx());
     assert.equal(result.checkpoint?.id, 'cp-high');
+});
+
+test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
+    setCheckpoints([
+        {
+            id: 'cp-entity-tag',
+            name: 'entity-tag',
+            matchRules: [
+                {
+                    entityExists: {
+                        query: 'Order',
+                        kind: 'table',
+                        businessTag: 'order.list.main',
+                    },
+                },
+            ],
+            content: [],
+        },
+    ]);
+    const binding = createBindingWithBusinessEntity('order.list.main');
+    const result = await maybePickCheckpoint(
+        createCtx({
+            failedCtx: createFailedCtx({
+                deps: {
+                    runtime: {
+                        ensureActivePage: async () => binding,
+                    },
+                    pluginHost: {} as any,
+                    config: {} as any,
+                } as any,
+            }),
+        }),
+    );
+    assert.equal(result.active, true);
+    assert.equal(result.checkpoint?.id, 'cp-entity-tag');
 });
 
 test('maybeBindCheckpoint: binds variables', async () => {
