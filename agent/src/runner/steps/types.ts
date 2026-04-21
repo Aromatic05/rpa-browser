@@ -100,6 +100,11 @@ export type ComputeExpr = {
 export type ComputeValue = { literal: unknown } | { ref: ComputeRef } | ComputeExpr;
 
 export type ResolveHint = {
+    entity?: {
+        businessTag?: string;
+        fieldKey?: string;
+        actionIntent?: string;
+    };
     target?: {
         nodeId?: string;
         primaryDomId?: string;

@@ -78,12 +78,20 @@ const createSnapshotForId = () => {
     const root = { id: 'root', role: 'root', children: [] as any[] };
     const form = { id: 'form_1', role: 'form', children: [] as any[] };
     const node = { id: 'node_1', role: 'button', children: [] as any[] };
+    const deleteNode = { id: 'node_delete', role: 'button', children: [] as any[] };
     root.children.push(form);
-    form.children.push(node);
+    form.children.push(node, deleteNode);
     setNodeAttr(form as any, 'tag', 'form');
     setNodeAttr(node as any, 'tag', 'button');
     setNodeAttr(node as any, 'id', 'submit-btn');
     setNodeAttr(node as any, 'backendDOMNodeId', '42');
+    setNodeAttr(deleteNode as any, 'tag', 'button');
+    setNodeAttr(deleteNode as any, 'id', 'delete-btn');
+    setNodeAttr(deleteNode as any, 'backendDOMNodeId', '43');
+    setNodeAttr(node as any, 'fieldKey', 'submit');
+    setNodeAttr(node as any, 'actionIntent', 'submit');
+    setNodeAttr(deleteNode as any, 'fieldKey', 'operation');
+    setNodeAttr(deleteNode as any, 'actionIntent', 'delete');
 
     return {
         root,
@@ -91,19 +99,64 @@ const createSnapshotForId = () => {
             root,
             form_1: form,
             node_1: node,
+            node_delete: deleteNode,
         },
         attrIndex: {
             form_1: {},
-            node_1: {},
+            node_1: { fieldKey: 'submit', actionIntent: 'submit' },
+            node_delete: { fieldKey: 'operation', actionIntent: 'delete' },
         },
         entityIndex: {
-            entities: {},
-            byNodeId: {},
+            entities: {
+                ent_form_1: {
+                    id: 'ent_form_1',
+                    type: 'region',
+                    kind: 'form',
+                    nodeId: 'form_1',
+                    name: 'Main Form',
+                },
+            },
+            byNodeId: {
+                form_1: [{ type: 'region', entityId: 'ent_form_1', role: 'container' }],
+                node_1: [{ type: 'region', entityId: 'ent_form_1', role: 'descendant' }],
+                node_delete: [{ type: 'region', entityId: 'ent_form_1', role: 'descendant' }],
+            },
         },
         locatorIndex: {
             node_1: {
                 origin: { primaryDomId: '42' },
                 direct: { kind: 'css', query: '#submit-btn', source: 'id' },
+            },
+            node_delete: {
+                origin: { primaryDomId: '43' },
+                direct: { kind: 'css', query: '#delete-btn', source: 'id' },
+            },
+            form_1: {
+                origin: { primaryDomId: '40' },
+                direct: { kind: 'css', query: '#form-main', source: 'id' },
+            },
+        },
+        businessEntityOverlay: {
+            byRuleId: {},
+            byEntityId: {
+                ent_form_1: {
+                    businessTag: 'order.form.main',
+                    businessName: 'Order Form',
+                },
+            },
+            nodeHintsByNodeId: {
+                node_1: {
+                    entityNodeId: 'form_1',
+                    entityKind: 'form',
+                    fieldKey: 'submit',
+                    actionIntent: 'submit',
+                },
+                node_delete: {
+                    entityNodeId: 'form_1',
+                    entityKind: 'form',
+                    fieldKey: 'operation',
+                    actionIntent: 'delete',
+                },
             },
         },
     };
@@ -167,6 +220,48 @@ test('resolveTarget no longer supports A11yHint-only fallback path', async () =>
     assert.equal(resolved.ok, false);
     if (resolved.ok) return;
     assert.equal(resolved.error?.code, 'ERR_NOT_FOUND');
+});
+
+test('resolveTarget resolves from resolve.hint.entity.businessTag', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            entity: {
+                businessTag: 'order.form.main',
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) return;
+    assert.equal(resolved.target.selector, '#form-main');
+});
+
+test('resolveTarget resolves from resolve.hint.entity.fieldKey', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            entity: {
+                fieldKey: 'submit',
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) return;
+    assert.equal(resolved.target.selector, '#submit-btn');
+});
+
+test('resolveTarget resolves from resolve.hint.entity.actionIntent', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            entity: {
+                actionIntent: 'delete',
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) return;
+    assert.equal(resolved.target.selector, '#delete-btn');
 });
 
 test('click executor resolves from step.resolve.hint', async () => {

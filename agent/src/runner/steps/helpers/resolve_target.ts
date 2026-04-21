@@ -1,7 +1,7 @@
 import type { PageBinding } from '../../../runtime/runtime_registry';
 import type { ResolveHint, ResolvePolicy, StepResult } from '../types';
 import type { SnapshotResult } from '../executors/snapshot/core/types';
-import { getNodeAttr } from '../executors/snapshot/core/runtime_store';
+import { getNodeAttr, getNodeSemanticHints, normalizeText } from '../executors/snapshot/core/runtime_store';
 
 export type ResolveTargetInput = {
     id?: string;
@@ -89,6 +89,9 @@ const resolveByHint = (
         if (directFirst) return { ok: true, selector: directFirst, path: 'hint.locator.direct' };
     }
 
+    const byEntity = resolveByEntityHint(binding, hint, policy);
+    if (byEntity) return { ok: true, selector: byEntity, path: 'hint.entity' };
+
     if (hint.target?.nodeId) {
         const byNode = resolveBySnapshotNodeId(binding, hint.target.nodeId, hint, policy);
         if (byNode.ok) return { ok: true, selector: byNode.selector, path: 'hint.target.nodeId' };
@@ -118,9 +121,98 @@ const resolveByHint = (
                 hasPrimaryDomId: Boolean(hint.target?.primaryDomId),
                 hasLocatorDirect: Boolean(hint.locator?.direct?.query),
                 hasRawSelector: Boolean(hint.raw?.selector),
+                hasEntityHint: Boolean(hint.entity?.businessTag || hint.entity?.fieldKey || hint.entity?.actionIntent),
             },
         },
     };
+};
+
+const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+    const entityHint = hint.entity;
+    if (!entityHint) return undefined;
+
+    const businessTag = normalizeTag(entityHint.businessTag);
+    const fieldKey = normalizeTag(entityHint.fieldKey);
+    const actionIntent = normalizeTag(entityHint.actionIntent);
+    if (!businessTag && !fieldKey && !actionIntent) return undefined;
+
+    const snapshot = getSnapshot(binding);
+    if (!snapshot) return undefined;
+
+    const parentById = buildNodeParentById(snapshot.root);
+    const scopeNodeIds = businessTag
+        ? collectEntityScopeNodeIds(snapshot, businessTag)
+        : undefined;
+
+    const matchedNodeIds: string[] = [];
+    for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
+        if (scopeNodeIds && scopeNodeIds.size > 0 && !isInAnyScope(nodeId, scopeNodeIds, parentById)) {
+            continue;
+        }
+
+        const semantic = getNodeSemanticHints(node);
+        const attr = snapshot.attrIndex[nodeId] || {};
+        const nodeFieldKey = normalizeTag(semantic?.fieldKey || attr.fieldKey);
+        const nodeActionIntent = normalizeTag(semantic?.actionIntent || attr.actionIntent);
+
+        if (fieldKey && fieldKey !== nodeFieldKey) continue;
+        if (actionIntent && actionIntent !== nodeActionIntent) continue;
+
+        matchedNodeIds.push(nodeId);
+    }
+
+    if (matchedNodeIds.length > 0) {
+        const resolved = resolveBySnapshotNodeId(binding, matchedNodeIds[0], hint, policy);
+        return resolved.ok ? resolved.selector : undefined;
+    }
+
+    if (scopeNodeIds && scopeNodeIds.size > 0) {
+        const candidate = Array.from(scopeNodeIds).sort((left, right) => left.localeCompare(right))[0];
+        if (candidate) {
+            const resolved = resolveBySnapshotNodeId(binding, candidate, hint, policy);
+            return resolved.ok ? resolved.selector : undefined;
+        }
+    }
+
+    return undefined;
+};
+
+const collectEntityScopeNodeIds = (snapshot: SnapshotResult, businessTag: string): Set<string> => {
+    const out = new Set<string>();
+    for (const entity of Object.values(snapshot.entityIndex.entities || {})) {
+        const overlayTag = normalizeTag(snapshot.businessEntityOverlay?.byEntityId?.[entity.id]?.businessTag);
+        const entityTag = normalizeTag(entity.businessTag);
+        if (businessTag !== overlayTag && businessTag !== entityTag) continue;
+        if (entity.type === 'region') {
+            out.add(entity.nodeId);
+            continue;
+        }
+        out.add(entity.containerId);
+    }
+    return out;
+};
+
+const buildNodeParentById = (root: SnapshotResult['root']): Map<string, string | null> => {
+    const parentById = new Map<string, string | null>();
+    const stack: Array<{ node: SnapshotResult['root']; parentId: string | null }> = [{ node: root, parentId: null }];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) break;
+        parentById.set(current.node.id, current.parentId);
+        for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
+            stack.push({ node: current.node.children[index], parentId: current.node.id });
+        }
+    }
+    return parentById;
+};
+
+const isInAnyScope = (nodeId: string, scopeNodeIds: Set<string>, parentById: Map<string, string | null>): boolean => {
+    let cursor: string | null = nodeId;
+    while (cursor) {
+        if (scopeNodeIds.has(cursor)) return true;
+        cursor = parentById.get(cursor) || null;
+    }
+    return false;
 };
 
 const resolveBySnapshotNodeId = (
@@ -503,6 +595,6 @@ const isAbsoluteDomSelector = (selector: string): boolean => {
     return normalized.startsWith('html') || normalized.startsWith('body') || normalized.startsWith(':root');
 };
 
-const normalizeTag = (value: string | undefined): string => (value || '').trim().toLowerCase();
+const normalizeTag = (value: string | undefined): string => normalizeText(value)?.toLowerCase() || '';
 const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
 const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
