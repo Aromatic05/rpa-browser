@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import { getOrderFormCaseOptions, getOrderListCaseOptions } from '../../service/entity-rules/case-service';
 
 export const EntityRulesHome = () => {
+    const firstListCase = getOrderListCaseOptions()[0];
+    const firstFormCase = getOrderFormCaseOptions()[0];
+
     const fixtureLinks = [
         { to: '/entity-rules/fixtures/order-list', label: 'Fixture Order List' },
         { to: '/entity-rules/fixtures/order-form', label: 'Fixture Order Form' },
     ];
     const benchLinks = [
-        ...getOrderListCaseOptions().map((item) => ({ to: `/entity-rules/bench/order-list/${item.id}`, label: `Bench Order List - ${item.title}` })),
-        ...getOrderFormCaseOptions().map((item) => ({ to: `/entity-rules/bench/order-form/${item.id}`, label: `Bench Order Form - ${item.title}` })),
+        { to: `/entity-rules/bench/order-list/${firstListCase.id}`, label: 'Bench Order List (30 tasks)' },
+        { to: `/entity-rules/bench/order-form/${firstFormCase.id}`, label: 'Bench Order Form (30 tasks)' },
     ];
 
     return (
