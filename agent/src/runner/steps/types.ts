@@ -55,6 +55,37 @@ export type ResolvePolicy = {
     allowIndexDrift?: boolean;
 };
 
+export type QueryNodeLike = {
+    id: string;
+    role?: string;
+    tag?: string;
+    text?: string;
+    attrs?: Record<string, string>;
+    children?: string[];
+    handle?: {
+        nodeId: string;
+    };
+};
+
+export type QueryFromRef =
+    | 'snapshot'
+    | 'snapshot.latest'
+    | {
+          nodeIds: string[];
+      }
+    | {
+          nodes: Array<
+              | {
+                    id: string;
+                }
+              | {
+                    handle: {
+                        nodeId: string;
+                    };
+                }
+          >;
+      };
+
 export type ResolveHint = {
     target?: {
         nodeId?: string;
@@ -233,7 +264,7 @@ export type StepArgsMap = {
         };
     };
     'browser.query': {
-        from: string;
+        from: QueryFromRef;
         where?: {
             role?: string;
             tag?: string;
