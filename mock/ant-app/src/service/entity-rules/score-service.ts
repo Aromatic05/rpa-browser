@@ -1,39 +1,52 @@
-import type { OrderFormCase, OrderListCase, ScoreItem, ScoreResult } from '../../types/entity-rules';
+import type { OrderFormCase, OrderListCase } from '../../types/entity-rules';
 
-export const scoreOrderListCase = (
-    caseData: OrderListCase,
-    input: { orderNo: string; buyer: string; status: string; submitted: boolean },
-): ScoreResult => {
-    const items: ScoreItem[] = caseData.scoreRules.map((rule) => {
-        if (rule.key === 'submit') {
-            return { key: 'submit', ok: input.submitted, score: input.submitted ? rule.score : 0, expected: true, actual: input.submitted };
-        }
-        const expectedValue = caseData.expected.filters[rule.key as keyof typeof caseData.expected.filters];
-        const actualValue = input[rule.key as keyof typeof input];
-        const ok = expectedValue === actualValue;
-        return { key: rule.key, ok, score: ok ? rule.score : 0, expected: expectedValue, actual: actualValue };
-    });
-
-    const score = items.reduce((sum, item) => sum + item.score, 0);
-    const maxScore = caseData.scoreRules.reduce((sum, item) => sum + item.score, 0);
-    return { caseId: caseData.id, score, maxScore, items };
+export type CaseEvaluateResult = {
+    ok: boolean;
+    reasons: string[];
 };
 
-export const scoreOrderFormCase = (
-    caseData: OrderFormCase,
-    input: { orderNo: string; buyer: string; amount: number; dept: string; submitted: boolean },
-): ScoreResult => {
-    const items: ScoreItem[] = caseData.scoreRules.map((rule) => {
-        if (rule.key === 'submit') {
-            return { key: 'submit', ok: input.submitted, score: input.submitted ? rule.score : 0, expected: true, actual: input.submitted };
-        }
-        const expectedValue = caseData.expected[rule.key as keyof typeof caseData.expected];
-        const actualValue = input[rule.key as keyof typeof input];
-        const ok = expectedValue === actualValue;
-        return { key: rule.key, ok, score: ok ? rule.score : 0, expected: expectedValue, actual: actualValue };
-    });
+export const evaluateOrderListCase = (
+    caseData: OrderListCase,
+    input: { orderNo: string; buyer: string; status: string },
+): CaseEvaluateResult => {
+    const reasons: string[] = [];
 
-    const score = items.reduce((sum, item) => sum + item.score, 0);
-    const maxScore = caseData.scoreRules.reduce((sum, item) => sum + item.score, 0);
-    return { caseId: caseData.id, score, maxScore, items };
+    if (input.orderNo !== caseData.expected.filters.orderNo) {
+        reasons.push('订单编号不匹配');
+    }
+    if (input.buyer !== caseData.expected.filters.buyer) {
+        reasons.push('采购人不匹配');
+    }
+    if (input.status !== caseData.expected.filters.status) {
+        reasons.push('状态不匹配');
+    }
+
+    return { ok: reasons.length === 0, reasons };
+};
+
+export const evaluateOrderFormCase = (
+    caseData: OrderFormCase,
+    input: { orderNo: string; buyer: string; amount: number; dept: string },
+): CaseEvaluateResult => {
+    const reasons: string[] = [];
+
+    if (input.orderNo !== caseData.expected.orderNo) {
+        reasons.push('订单编号不匹配');
+    }
+    if (input.buyer !== caseData.expected.buyer) {
+        reasons.push('采购人不匹配');
+    }
+    if (input.amount !== caseData.expected.amount) {
+        reasons.push('金额不匹配');
+    }
+    if (input.dept !== caseData.expected.dept) {
+        reasons.push('部门不匹配');
+    }
+
+    return { ok: reasons.length === 0, reasons };
+};
+
+export const toAccuracy = (correct: number, total: number) => {
+    if (total <= 0) return 0;
+    return Math.round((correct / total) * 100);
 };

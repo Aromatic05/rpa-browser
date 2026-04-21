@@ -17,7 +17,6 @@ type FormProps = {
     onChange: (patch: Partial<OrderFormValues>) => void;
     onSubmit?: () => void;
     onReset?: () => void;
-    onSaveDraft?: () => void;
     onCancel?: () => void;
 };
 
@@ -62,7 +61,7 @@ const OrderListFilterForm = ({ values, onChange, onSubmit, onReset }: FilterProp
     </Form>
 );
 
-const OrderCreateForm = ({ values, onChange, onSubmit, onReset, onSaveDraft, onCancel }: FormProps) => (
+const OrderCreateForm = ({ values, onChange, onSubmit, onReset, onCancel }: FormProps) => (
     <Form layout="vertical" role="form" aria-label="订单创建表单">
         <Row gutter={16}>
             <Col span={12}>
@@ -98,7 +97,6 @@ const OrderCreateForm = ({ values, onChange, onSubmit, onReset, onSaveDraft, onC
             <Button type="primary" onClick={onSubmit}>
                 提交
             </Button>
-            <Button onClick={onSaveDraft}>保存草稿</Button>
             <Button onClick={onReset}>重置</Button>
             <Button onClick={onCancel}>取消</Button>
         </Space>

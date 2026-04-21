@@ -1,65 +1,165 @@
-import { Card, Space, message } from 'antd';
+import { Alert, Button, Card, Modal, Progress, Space, Statistic, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { BusinessForm } from '../../component/entity-rules/BusinessForm';
-import { BusinessTable } from '../../component/entity-rules/BusinessTable';
-import { DebugPanel } from '../../component/entity-rules/DebugPanel';
-import { ScorePanel } from '../../component/entity-rules/ScorePanel';
+import { BusinessTable, type OrderRowAction } from '../../component/entity-rules/BusinessTable';
+import { PaginationBar } from '../../component/entity-rules/PaginationBar';
 import { TaskBanner } from '../../component/entity-rules/TaskBanner';
-import { getOrderListCase } from '../../service/entity-rules/case-service';
-import { scoreOrderListCase } from '../../service/entity-rules/score-service';
-import { setLastScore } from '../../store/entity-rules';
+import { getOrderListBenchCases } from '../../service/entity-rules/case-service';
+import { evaluateOrderListCase, toAccuracy } from '../../service/entity-rules/score-service';
+import type { OrderRecord } from '../../types/entity-rules';
+
+const PAGE_SIZE = 10;
+
+type Attempt = { caseId: string; ok: boolean };
 
 export const BenchOrderList = () => {
     const { caseId = '' } = useParams();
-    const caseData = useMemo(() => getOrderListCase(caseId), [caseId]);
-    const [formValues, setFormValues] = useState(caseData.initialData.filters);
-    const [rows, setRows] = useState(caseData.initialData.rows);
-    const [submitted, setSubmitted] = useState(false);
-    const score = scoreOrderListCase(caseData, { ...formValues, submitted });
+    const benchCases = useMemo(() => getOrderListBenchCases(caseId, 10), [caseId]);
+    const [index, setIndex] = useState(0);
+    const [attempts, setAttempts] = useState<Attempt[]>([]);
+    const [filters, setFilters] = useState({ orderNo: '', buyer: '', status: '全部' });
+    const [appliedFilters, setAppliedFilters] = useState({ orderNo: '', buyer: '', status: '全部' });
+    const [page, setPage] = useState(1);
+    const [dialog, setDialog] = useState<{ open: boolean; action?: OrderRowAction; row?: OrderRecord }>({ open: false });
+
+    const currentCase = benchCases[index];
+
     useEffect(() => {
-        setFormValues(caseData.initialData.filters);
-        setRows(caseData.initialData.rows);
-        setSubmitted(false);
-    }, [caseData]);
-    useEffect(() => {
-        setLastScore(score);
-    }, [score]);
+        const next = { ...currentCase.initialData.filters };
+        setFilters(next);
+        setAppliedFilters(next);
+        setPage(1);
+    }, [currentCase]);
+
+    const filteredRows = useMemo(() => {
+        return currentCase.initialData.rows.filter((row) => {
+            if (appliedFilters.orderNo && !row.orderNo.includes(appliedFilters.orderNo)) return false;
+            if (appliedFilters.buyer && !row.buyer.includes(appliedFilters.buyer)) return false;
+            if (appliedFilters.status !== '全部' && row.status !== appliedFilters.status) return false;
+            return true;
+        });
+    }, [appliedFilters, currentCase]);
+
+    const pageRows = useMemo(() => {
+        const start = (page - 1) * PAGE_SIZE;
+        return filteredRows.slice(start, start + PAGE_SIZE);
+    }, [filteredRows, page]);
+
+    const done = attempts.length;
+    const correct = attempts.filter((item) => item.ok).length;
+    const accuracy = toAccuracy(correct, Math.max(1, done));
+
+    const submit = () => {
+        const next = { ...filters };
+        setAppliedFilters(next);
+        setPage(1);
+
+        const result = evaluateOrderListCase(currentCase, next);
+        setAttempts((current) => {
+            const withoutCurrent = current.filter((item) => item.caseId !== currentCase.id);
+            return [...withoutCurrent, { caseId: currentCase.id, ok: result.ok }];
+        });
+
+        if (result.ok) {
+            message.success(`第 ${index + 1} 题通过`);
+            return;
+        }
+        message.error(`第 ${index + 1} 题未通过：${result.reasons.join(' / ')}`);
+    };
+
+    const nextCase = () => {
+        if (index >= benchCases.length - 1) {
+            message.info('已经是最后一题');
+            return;
+        }
+        setIndex((current) => current + 1);
+    };
+
+    const previousCase = () => {
+        if (index <= 0) {
+            message.info('已经是第一题');
+            return;
+        }
+        setIndex((current) => current - 1);
+    };
 
     return (
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <TaskBanner title={caseData.title} description={caseData.description} />
-            <Card title="操作区域">
+            <TaskBanner title={`订单列表基准任务 ${index + 1} / ${benchCases.length}`} description={currentCase.description} />
+
+            <Card>
+                <Space size={24}>
+                    <Statistic title="已完成" value={done} suffix={`/ ${benchCases.length}`} />
+                    <Statistic title="正确数" value={correct} />
+                    <Statistic title="正确率" value={`${accuracy}%`} />
+                </Space>
+                <Progress percent={Math.round((done / benchCases.length) * 100)} style={{ marginTop: 12 }} />
+            </Card>
+
+            <Alert
+                type="info"
+                showIcon
+                message={`任务要求：${currentCase.title}`}
+                description="每题先查询再提交。完成 10 题后看正确率。"
+            />
+
+            <Card title="查询操作区" extra={<Tag color="blue">当前筛选 {filteredRows.length} 条</Tag>}>
                 <BusinessForm
                     mode="list"
-                    values={formValues}
-                    onChange={(patch) => setFormValues((current) => ({ ...current, ...patch }))}
-                    onSubmit={() => {
-                        setSubmitted(true);
-                        message.success('已提交筛选条件');
-                    }}
+                    values={filters}
+                    onChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+                    onSubmit={submit}
                     onReset={() => {
-                        setFormValues(caseData.initialData.filters);
-                        setSubmitted(false);
-                        message.info('已重置筛选条件');
+                        const next = { ...currentCase.initialData.filters };
+                        setFilters(next);
+                        setAppliedFilters(next);
+                        setPage(1);
+                        message.info('已重置本题筛选条件');
                     }}
                 />
             </Card>
-            <Card title="订单列表" role="table" aria-label="订单主表格">
+
+            <Card title="订单结果列表" role="table" aria-label="订单主表格">
                 <BusinessTable
-                    rows={rows}
+                    rows={pageRows}
                     onAction={(action, row) => {
                         if (action === 'delete') {
-                            setRows((current) => current.filter((item) => item.orderNo !== row.orderNo));
-                            message.warning(`已删除 ${row.orderNo}`);
+                            message.warning(`基准场景不执行删除：${row.orderNo}`);
                             return;
                         }
-                        message.info(`${action === 'view' ? '查看' : '编辑'} ${row.orderNo}`);
+                        setDialog({ open: true, action, row });
                     }}
                 />
+                <PaginationBar page={page} pageSize={PAGE_SIZE} total={filteredRows.length} onChange={(nextPage) => setPage(nextPage)} />
             </Card>
-            <ScorePanel result={score} />
-            <DebugPanel data={score} />
+
+            <Card>
+                <Space>
+                    <Button onClick={previousCase}>上一题</Button>
+                    <Button type="primary" onClick={nextCase}>
+                        下一题
+                    </Button>
+                </Space>
+            </Card>
+
+            <Modal
+                open={dialog.open}
+                title={dialog.action === 'view' ? '订单详情' : '编辑订单'}
+                onCancel={() => setDialog({ open: false })}
+                onOk={() => setDialog({ open: false })}
+                okText="确定"
+                cancelText="关闭"
+            >
+                {dialog.row ? (
+                    <Space direction="vertical">
+                        <Typography.Text>订单编号：{dialog.row.orderNo}</Typography.Text>
+                        <Typography.Text>采购人：{dialog.row.buyer}</Typography.Text>
+                        <Typography.Text>金额：￥{dialog.row.amount.toLocaleString('zh-CN')}</Typography.Text>
+                        <Typography.Text>状态：{dialog.row.status}</Typography.Text>
+                    </Space>
+                ) : null}
+            </Modal>
         </Space>
     );
 };
