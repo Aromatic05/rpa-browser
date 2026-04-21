@@ -15,6 +15,7 @@
         "setup": "pnpm -r install && pnpm exec playwright install chromium",
         "pw:install": "pnpm --filter ./agent exec playwright install chromium",
         "test:agent": "pnpm --filter ./agent test",
+        "test:agent:entity-rules": "pnpm --filter ./agent test:entity-rules",
         "test:agent:headed": "pnpm --filter ./agent test:headed",
         "test:agent:smoke:mcp": "pnpm --filter ./agent test:smoke:mcp",
         "test:extension": "pnpm --filter ./extension test",

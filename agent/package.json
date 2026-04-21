@@ -27,6 +27,7 @@
         "test:e2e": "playwright test tests/specs",
         "test:runner": "node --import tsx --test \"tests/runner/**/*.test.ts\"",
         "test:trace": "node --import tsx --test \"tests/trace/**/*.test.ts\"",
+        "test:entity-rules": "node --import tsx --test \"tests/entity_rules/**/*.test.ts\"",
         "test:smoke:mcp": "tsx scripts/mcp_smoke_client.ts",
         "test:unit:keyslot": "SNAPSHOT_KEYSLOT_DATASET=1 node --import tsx --test tests/runner/steps/snapshot_keyslot_dataset.test.ts",
         "test:unit:snapshot:perf": "SNAPSHOT_PERF_BASELINE=1 node --import tsx --test tests/runner/steps/snapshot_performance_baseline.test.ts",
