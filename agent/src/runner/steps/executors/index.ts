@@ -30,6 +30,7 @@ import { executeBrowserAddEntity } from './add_entity';
 import { executeBrowserDeleteEntity } from './delete_entity';
 import { executeBrowserRenameEntity } from './rename_entity';
 import { executeBrowserAssert } from './assert';
+import { executeBrowserQuery } from './query';
 
 export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceId: string) => Promise<StepResult>;
 
@@ -64,4 +65,5 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.delete_entity': executeBrowserDeleteEntity as ExecutorFn,
     'browser.rename_entity': executeBrowserRenameEntity as ExecutorFn,
     'browser.assert': executeBrowserAssert as ExecutorFn,
+    'browser.query': executeBrowserQuery as ExecutorFn,
 };

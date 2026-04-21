@@ -39,7 +39,8 @@ export type StepName =
     | 'browser.add_entity'
     | 'browser.delete_entity'
     | 'browser.rename_entity'
-    | 'browser.assert';
+    | 'browser.assert'
+    | 'browser.query';
 
 export type Target = {
     id?: string;
@@ -230,6 +231,19 @@ export type StepArgsMap = {
             kind?: EntityKind | EntityKind[];
             businessTag?: string | string[];
         };
+    };
+    'browser.query': {
+        from: string;
+        where?: {
+            role?: string;
+            tag?: string;
+            text?: {
+                contains?: string;
+            };
+            attrs?: Record<string, string>;
+        };
+        relation?: 'child' | 'descendant';
+        limit?: number;
     };
 };
 
