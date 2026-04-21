@@ -148,8 +148,26 @@ export type NodeSemanticHints = {
     entityNodeId?: string;
     entityKind?: EntityKind;
     fieldLabel?: string;
+    fieldKey?: string;
     actionIntent?: string;
     actionTargetNodeId?: string;
+};
+
+export type EntityColumn = {
+    fieldKey: string;
+    name?: string;
+};
+
+export type EntityPrimaryKey = {
+    fieldKey: string;
+    columns?: string[];
+};
+
+export type EntityBusinessInfo = {
+    businessTag?: string;
+    businessName?: string;
+    primaryKey?: EntityPrimaryKey;
+    columns?: EntityColumn[];
 };
 
 export type SnapshotCacheStats = {
@@ -194,6 +212,11 @@ export type SnapshotResult = {
     contentStore: ContentStore;
     cacheStats?: SnapshotCacheStats;
     snapshotMeta?: SnapshotMeta;
+    businessEntityOverlay?: {
+        byRuleId: Record<string, unknown>;
+        byEntityId: Record<string, EntityBusinessInfo | undefined>;
+        nodeHintsByNodeId: Record<string, NodeSemanticHints | undefined>;
+    };
 };
 
 export type SnapshotDiffBaselineKey = {
@@ -236,6 +259,9 @@ export type FinalEntityRecord = {
     type: 'region' | 'group';
     name?: string;
     businessTag?: string;
+    businessName?: string;
+    primaryKey?: EntityPrimaryKey;
+    columns?: EntityColumn[];
     source: 'auto' | 'overlay_add';
     itemIds?: string[];
     keySlot?: number;

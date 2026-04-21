@@ -10,6 +10,7 @@ type BuildSnapshotInput = {
     contentStore?: SnapshotResult['contentStore'];
     cacheStats?: SnapshotResult['cacheStats'];
     snapshotMeta?: SnapshotResult['snapshotMeta'];
+    businessEntityOverlay?: SnapshotResult['businessEntityOverlay'];
 };
 
 export const buildSnapshot = (input: UnifiedNode | BuildSnapshotInput): SnapshotResult => {
@@ -24,6 +25,7 @@ export const buildSnapshot = (input: UnifiedNode | BuildSnapshotInput): Snapshot
         contentStore: payload.contentStore || {},
         cacheStats: payload.cacheStats,
         snapshotMeta: payload.snapshotMeta,
+        businessEntityOverlay: payload.businessEntityOverlay,
     };
 };
 

@@ -14,6 +14,7 @@ import { buildEntityIndex } from '../indexes/entity';
 import { buildBackendDomSelectorMap } from '../indexes/dom_backend_selector';
 import { buildLocatorIndex } from '../indexes/locator';
 import { buildExternalIndexes } from '../indexes/external_indexes';
+import { applyBusinessEntityRules, loadEntityRules } from '../entity_rules';
 import {
     computeBucketHash,
     computeBucketKey,
@@ -37,6 +38,7 @@ import {
     computeMinimalChangedSubtree,
 } from './scoped_diff';
 import type {
+    EntityKind,
     RawData,
     SnapshotDiffSkippedReason,
     SnapshotMeta,
@@ -171,14 +173,14 @@ export const generateSemanticSnapshot = async (
         });
 
         // 2) 融合构建 unified graph。
-        return generateSemanticSnapshotFromRaw(raw);
+        return generateSemanticSnapshotFromRaw(raw, { pageUrl: currentUrl });
     } finally {
         // 3) 无论成功失败都清理页面临时 state-id，清理失败不阻塞主流程。
         await raw.runtimeStateCleanup?.().catch(() => undefined);
     }
 };
 
-export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult => {
+export const generateSemanticSnapshotFromRaw = (raw: RawData, options: { pageUrl?: string } = {}): SnapshotResult => {
     const cacheStats = createCacheStats();
     const backendSelectorByDomId = buildBackendDomSelectorMap(raw.domTree);
     const graph = stageFuseGraph(raw);
@@ -189,7 +191,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
     stageLinkGlobalRelations(root);
     stageAssignStableIds(root);
 
-    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId);
+    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId, options.pageUrl);
 };
 
 type CacheStats = ReturnType<typeof createCacheStats>;
@@ -300,8 +302,18 @@ const stageBuildSnapshot = (
     root: UnifiedNode,
     cacheStats: CacheStats,
     backendSelectorByDomId?: Record<string, string>,
+    pageUrl?: string,
 ): SnapshotResult => {
     const entityIndex = buildEntityIndex(root);
+    const loadedRules = loadEntityRules({
+        pageKind: inferSnapshotPageKind(entityIndex),
+        pageUrl,
+    });
+    const businessEntityOverlay = applyBusinessEntityRules({
+        root,
+        entityIndex,
+        bundle: loadedRules.bundle,
+    });
     const locatorIndex = buildLocatorIndex({
         root,
         entityIndex,
@@ -317,12 +329,31 @@ const stageBuildSnapshot = (
         attrIndex,
         contentStore,
         cacheStats,
+        businessEntityOverlay,
     });
     snapshotDebugLog('done', {
         snapshotCount: countTreeNodes(snapshot.root),
         topNodes: summarizeTopNodes(snapshot.root),
     });
     return snapshot;
+};
+
+const inferSnapshotPageKind = (entityIndex: SnapshotResult['entityIndex']): EntityKind | undefined => {
+    const scoreByKind = new Map<EntityKind, number>();
+    for (const entity of Object.values(entityIndex.entities)) {
+        const weight = entity.type === 'region' ? 2 : 1;
+        scoreByKind.set(entity.kind, (scoreByKind.get(entity.kind) || 0) + weight);
+    }
+
+    let picked: EntityKind | undefined;
+    let maxScore = Number.NEGATIVE_INFINITY;
+    for (const [kind, score] of scoreByKind.entries()) {
+        if (score > maxScore) {
+            maxScore = score;
+            picked = kind;
+        }
+    }
+    return picked;
 };
 
 const createVirtualRoot = (): UnifiedNode => ({

@@ -9,6 +9,15 @@ type EntityOutputRecord = {
     kind: string;
     name?: string;
     business_tag?: string;
+    business_name?: string;
+    primary_key?: {
+        field_key: string;
+        columns?: string[];
+    };
+    columns?: Array<{
+        field_key: string;
+        name?: string;
+    }>;
     source: 'auto' | 'overlay_add';
     item_ids?: string[];
     key_slot?: number;
@@ -22,6 +31,14 @@ export const toEntityOutputRecord = (entity: FinalEntityRecord): EntityOutputRec
     kind: entity.kind,
     name: entity.name,
     business_tag: entity.businessTag,
+    business_name: entity.businessName,
+    primary_key: entity.primaryKey
+        ? {
+            field_key: entity.primaryKey.fieldKey,
+            columns: entity.primaryKey.columns ? [...entity.primaryKey.columns] : undefined,
+        }
+        : undefined,
+    columns: entity.columns?.map((column) => ({ field_key: column.fieldKey, name: column.name })),
     source: entity.source,
     item_ids: entity.itemIds,
     key_slot: entity.keySlot,

@@ -3,6 +3,7 @@ import { snapshotDebugLog } from './debug';
 import { cloneTreeWithRuntime, getNodeContent, normalizeText } from './runtime_store';
 import type {
     EntityIndex,
+    EntityBusinessInfo,
     EntityKind,
     EntityRecord,
     FinalEntityRecord,
@@ -221,6 +222,7 @@ const cloneSnapshot = (baseSnapshot: SnapshotResult): SnapshotResult => {
         attrIndex: external.attrIndex,
         contentStore: external.contentStore,
         cacheStats: baseSnapshot.cacheStats,
+        businessEntityOverlay: baseSnapshot.businessEntityOverlay,
     };
 };
 
@@ -313,6 +315,7 @@ const toFinalEntityRecord = (
     const nodeId = getEntityNodeId(entity);
     if (!nodeId) return null;
     const name = resolveEntityName(snapshot, entity, nodeId, renamedByNodeId, addedNameByNodeId);
+    const businessInfo = resolveEntityBusinessInfo(snapshot, entity);
     const source = entity.source === 'overlay_add' ? 'overlay_add' : 'auto';
 
     if (entity.type === 'group') {
@@ -323,7 +326,15 @@ const toFinalEntityRecord = (
             kind: entity.kind,
             type: 'group',
             name,
-            businessTag: normalizeText(entity.businessTag),
+            businessTag: normalizeText(businessInfo.businessTag),
+            businessName: normalizeText(businessInfo.businessName),
+            primaryKey: businessInfo.primaryKey
+                ? {
+                    fieldKey: businessInfo.primaryKey.fieldKey,
+                    columns: businessInfo.primaryKey.columns ? [...businessInfo.primaryKey.columns] : undefined,
+                }
+                : undefined,
+            columns: businessInfo.columns?.map((column) => ({ ...column })),
             source,
             itemIds: [...entity.itemIds],
             keySlot: entity.keySlot,
@@ -337,8 +348,31 @@ const toFinalEntityRecord = (
         kind: entity.kind,
         type: 'region',
         name,
-        businessTag: normalizeText(entity.businessTag),
+        businessTag: normalizeText(businessInfo.businessTag),
+        businessName: normalizeText(businessInfo.businessName),
+        primaryKey: businessInfo.primaryKey
+            ? {
+                fieldKey: businessInfo.primaryKey.fieldKey,
+                columns: businessInfo.primaryKey.columns ? [...businessInfo.primaryKey.columns] : undefined,
+            }
+            : undefined,
+        columns: businessInfo.columns?.map((column) => ({ ...column })),
         source,
+    };
+};
+
+const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecord): EntityBusinessInfo => {
+    const overlayInfo = entity.id ? snapshot.businessEntityOverlay?.byEntityId?.[entity.id] : undefined;
+    return {
+        businessTag: overlayInfo?.businessTag || entity.businessTag,
+        businessName: overlayInfo?.businessName,
+        primaryKey: overlayInfo?.primaryKey
+            ? {
+                fieldKey: overlayInfo.primaryKey.fieldKey,
+                columns: overlayInfo.primaryKey.columns ? [...overlayInfo.primaryKey.columns] : undefined,
+            }
+            : undefined,
+        columns: overlayInfo?.columns ? overlayInfo.columns.map((column) => ({ ...column })) : undefined,
     };
 };
 

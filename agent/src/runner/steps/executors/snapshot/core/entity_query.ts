@@ -37,6 +37,10 @@ const matchesQuery = (entity: FinalEntityRecord, query: string): boolean => {
         entity.type,
         entity.name,
         entity.businessTag,
+        entity.businessName,
+        entity.primaryKey?.fieldKey,
+        ...(entity.primaryKey?.columns || []),
+        ...(entity.columns || []).flatMap((column) => [column.fieldKey, column.name || '']),
     ]
         .map((value) => normalizeText(String(value || ''))?.toLowerCase())
         .filter((value): value is string => Boolean(value));
