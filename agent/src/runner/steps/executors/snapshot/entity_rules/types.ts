@@ -8,6 +8,7 @@ import type {
     NodeSemanticHints,
     RegionEntity,
 } from '../core/types';
+import type { EntityRuleConfig } from '../../../../../config/entity_rules';
 
 export type EntityRuleSource = 'region' | 'group' | 'node';
 export type EntityRuleExpect = 'unique' | 'one_or_more';
@@ -112,14 +113,16 @@ export type ValidateEntityRulesResult = {
 };
 
 export type LoadEntityRulesOptions = {
-    rulesRootDir?: string;
     pageUrl?: string;
     pageKind?: EntityKind;
+    config?: EntityRuleConfig;
 };
 
 export type LoadEntityRulesResult = {
     bundle?: NormalizedEntityRuleBundle;
+    selectedProfile?: string;
     errors: string[];
+    warnings: string[];
 };
 
 export type EntityMatchContext = {

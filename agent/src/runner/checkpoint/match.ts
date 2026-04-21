@@ -117,7 +117,10 @@ const evalEntityExistsRule = async (
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'checkpoint.match.entityExists',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, { captureRuntimeState: context.fromDirty }),
+            generateSemanticSnapshot(binding.page, {
+                captureRuntimeState: context.fromDirty,
+                entityRuleConfig: ctx.failedCtx.deps.config.entityRules,
+            }),
     });
 
     const finalEntities = ensured.entry.finalEntityView?.entities || [];

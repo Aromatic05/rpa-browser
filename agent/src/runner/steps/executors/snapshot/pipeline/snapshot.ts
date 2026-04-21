@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import crypto from 'node:crypto';
 import type { Step, StepResult } from '../../../types';
 import type { RunStepsDeps } from '../../../../run_steps';
+import type { EntityRuleConfig } from '../../../../../config/entity_rules';
 import { collectRawData } from '../stages/collect';
 import type { SnapshotWaitMode } from '../stages/collect';
 import { fuseDomAndA11y } from '../stages/fusion';
@@ -61,6 +62,7 @@ export const executeBrowserSnapshot = async (
             generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 waitMode: resolveSnapshotWaitMode(context.fromDirty, context.staleReason),
+                entityRuleConfig: deps.config.entityRules,
             }),
     });
 
@@ -150,6 +152,7 @@ export const executeBrowserSnapshot = async (
 type GenerateSemanticSnapshotOptions = {
     captureRuntimeState?: boolean;
     waitMode?: SnapshotWaitMode;
+    entityRuleConfig?: EntityRuleConfig;
 };
 
 export const generateSemanticSnapshot = async (
@@ -173,14 +176,20 @@ export const generateSemanticSnapshot = async (
         });
 
         // 2) 融合构建 unified graph。
-        return generateSemanticSnapshotFromRaw(raw, { pageUrl: currentUrl });
+        return generateSemanticSnapshotFromRaw(raw, {
+            pageUrl: currentUrl,
+            entityRuleConfig: options.entityRuleConfig,
+        });
     } finally {
         // 3) 无论成功失败都清理页面临时 state-id，清理失败不阻塞主流程。
         await raw.runtimeStateCleanup?.().catch(() => undefined);
     }
 };
 
-export const generateSemanticSnapshotFromRaw = (raw: RawData, options: { pageUrl?: string } = {}): SnapshotResult => {
+export const generateSemanticSnapshotFromRaw = (
+    raw: RawData,
+    options: { pageUrl?: string; entityRuleConfig?: EntityRuleConfig } = {},
+): SnapshotResult => {
     const cacheStats = createCacheStats();
     const backendSelectorByDomId = buildBackendDomSelectorMap(raw.domTree);
     const graph = stageFuseGraph(raw);
@@ -191,7 +200,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData, options: { pageUrl
     stageLinkGlobalRelations(root);
     stageAssignStableIds(root);
 
-    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId, options.pageUrl);
+    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId, options.pageUrl, options.entityRuleConfig);
 };
 
 type CacheStats = ReturnType<typeof createCacheStats>;
@@ -303,12 +312,17 @@ const stageBuildSnapshot = (
     cacheStats: CacheStats,
     backendSelectorByDomId?: Record<string, string>,
     pageUrl?: string,
+    entityRuleConfig?: EntityRuleConfig,
 ): SnapshotResult => {
     const entityIndex = buildEntityIndex(root);
     const loadedRules = loadEntityRules({
         pageKind: inferSnapshotPageKind(entityIndex),
         pageUrl,
+        config: entityRuleConfig,
     });
+    if (loadedRules.errors.length > 0) {
+        throw new Error(`entity rules load failed: ${loadedRules.errors.join('; ')}`);
+    }
     const businessEntityOverlay = applyBusinessEntityRules({
         root,
         entityIndex,

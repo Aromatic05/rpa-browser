@@ -16,7 +16,10 @@ export const executeBrowserDeleteEntity = async (
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'browser.delete_entity',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, { captureRuntimeState: context.fromDirty }),
+            generateSemanticSnapshot(binding.page, {
+                captureRuntimeState: context.fromDirty,
+                entityRuleConfig: deps.config.entityRules,
+            }),
     });
 
     const nodeId = normalizeText(step.args.nodeId);
