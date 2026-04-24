@@ -188,20 +188,6 @@ export default tseslint.config(
     }
   },
 
-  {
-    files: ["extension/**/*.{ts,tsx,js,jsx,mjs,cjs}"],
-    rules: {
-      "@typescript-eslint/prefer-nullish-coalescing": "off",
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off",
-      "@typescript-eslint/no-unnecessary-condition": "off",
-      "@typescript-eslint/explicit-module-boundary-types": "off",
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-argument": "off",
-      "no-console": "off"
-    }
-  },
-
   // build scripts run in node context
   {
     files: ["**/build.mjs"],
