@@ -35,7 +35,7 @@ test('validate rules catches missing annotation.ruleId mapping', () => {
 
     const result = validateEntityRules('order-list', payload.match, payload.annotation);
     assert.equal(result.ok, false);
-    if (result.ok) return;
+    if (result.ok) {return;}
     assert.ok(result.errors.some((error) => error.includes('annotation.ruleId not found')));
 });
 
@@ -45,7 +45,7 @@ test('validate rules catches missing within target', () => {
 
     const result = validateEntityRules('order-list', payload.match, payload.annotation);
     assert.equal(result.ok, false);
-    if (result.ok) return;
+    if (result.ok) {return;}
     assert.ok(result.errors.some((error) => error.includes('within target not found')));
 });
 
@@ -59,7 +59,7 @@ test('validate rules catches within cycles', () => {
 
     const result = validateEntityRules('order-list', payload.match, payload.annotation);
     assert.equal(result.ok, false);
-    if (result.ok) return;
+    if (result.ok) {return;}
     assert.ok(result.errors.some((error) => error.includes('within cycle detected')));
 });
 
@@ -69,6 +69,6 @@ test('validate rules catches page.kind mismatch', () => {
 
     const result = validateEntityRules('order-list', payload.match, payload.annotation);
     assert.equal(result.ok, false);
-    if (result.ok) return;
+    if (result.ok) {return;}
     assert.ok(result.errors.some((error) => error.includes('page.kind mismatch')));
 });

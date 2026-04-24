@@ -95,7 +95,7 @@ test('detectBusinessEntities should tag entityId/entityType on fixture dataset',
             const regions = detectRegions(layer);
             for (const region of regions) {
                 const processed = processRegion(region);
-                if (!processed) continue;
+                if (!processed) {continue;}
                 replaceRegion(layer, region, processed);
             }
         }
@@ -105,7 +105,7 @@ test('detectBusinessEntities should tag entityId/entityType on fixture dataset',
         let entityIdCount = 0;
         walk(root, (node) => {
             const attrs = node.attrs || {};
-            if (!attrs.entityType) return;
+            if (!attrs.entityType) {return;}
             entityCount += 1;
             if (SUPPORTED_ENTITY_TYPES.has(attrs.entityType)) {
                 allowedTypeCount += 1;

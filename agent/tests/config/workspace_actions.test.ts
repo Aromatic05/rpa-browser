@@ -37,7 +37,7 @@ test('tab.opened activates resolved workspace/tab and logs payload', async () =>
 
     const result = await workspaceHandlers['tab.opened'](ctx, action);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(result.data.workspaceId, 'ws-1');
     assert.equal(result.data.tabId, 'tab-1');
     assert.equal(result.data.tabToken, 'token-1');
@@ -82,7 +82,7 @@ test('tab.activated activates resolved workspace/tab and logs payload', async ()
 
     const result = await workspaceHandlers['tab.activated'](ctx, action);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.deepEqual(activated, [{ ws: 'ws-2' }, { ws: 'ws-2', tab: 'tab-9' }]);
     assert.equal(logs.length, 1);
     assert.equal(logs[0][0], 'tab.activated');
@@ -107,7 +107,7 @@ test('tab.closed resolves workspace/tab from token', async () => {
 
     const result = await workspaceHandlers['tab.closed'](ctx, action);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(result.data.workspaceId, 'ws-c');
     assert.equal(result.data.tabId, 'tab-c');
     assert.equal(logs.length, 1);
@@ -137,7 +137,7 @@ test('tab.ping updates alive timestamp and logs payload', async () => {
 
     const result = await workspaceHandlers['tab.ping'](ctx, action);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.deepEqual(touched, [{ token: 'token-ping', at: 1001 }]);
     assert.equal(result.data.workspaceId, 'ws-p');
     assert.equal(result.data.tabId, 'tab-p');
@@ -156,7 +156,7 @@ test('tab.setActive records browser.switch_tab during active recording', async (
         recordingState,
         pageRegistry: {
             resolveScopeFromToken: (token: string) => {
-                if (token === 'token-a') return { workspaceId: 'ws-1', tabId: 'tab-a' };
+                if (token === 'token-a') {return { workspaceId: 'ws-1', tabId: 'tab-a' };}
                 throw new Error('unknown token');
             },
             resolveTabToken: ({ workspaceId, tabId }: { workspaceId: string; tabId: string }) => {
@@ -215,7 +215,7 @@ test('workspace.save writes workspace snapshot and logs lifecycle', async () => 
     const action: any = { v: 1, id: 'save-1', type: 'workspace.save', payload: {} };
     const result = await workspaceHandlers['workspace.save'](ctx, action);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(result.data.saved, true);
     assert.equal(result.data.workspaceId, 'ws-1');
     assert.equal(logs.some((entry) => entry[0] === 'workspace.save.start'), true);
@@ -244,7 +244,7 @@ test('workspace.restore returns ERR_WORKSPACE_SNAPSHOT_NOT_FOUND when no snapsho
     };
     const result = await workspaceHandlers['workspace.restore'](ctx, action);
     assert.equal(result.ok, false);
-    if (result.ok) return;
+    if (result.ok) {return;}
     assert.equal(result.error.code, ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND);
 });
 
@@ -256,7 +256,7 @@ test('tab.init returns generated token', async () => {
         payload: {},
     } as any);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(typeof result.data.tabToken, 'string');
     assert.equal(result.data.tabToken.length > 10, true);
 });
@@ -287,7 +287,7 @@ test('workspace.create opens workspace with tab when workspaceId is not provided
         payload: {},
     } as any);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(result.data.workspaceId, 'ws-new');
     assert.equal(result.data.tabId, 'tab-new');
     assert.equal(result.data.tabToken, 'token-new');
@@ -313,7 +313,7 @@ test('workspace.create uses shell path when workspaceId is provided', async () =
         payload: { workspaceId: 'ws-shell' },
     } as any);
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(result.data.workspaceId, 'ws-shell');
     assert.equal(result.data.tabId, null);
     assert.equal(result.data.tabToken, null);
@@ -344,7 +344,7 @@ test('tab.reassign moves token to target workspace', async () => {
     } as any);
 
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(result.data.workspaceId, 'ws-target');
     assert.equal(result.data.tabId, 'tab-target');
     assert.equal(logs[0][0], 'tab.reassign');

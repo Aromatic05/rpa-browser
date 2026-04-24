@@ -32,7 +32,7 @@ const dispatchRefresh = () => {
             if (!active?.id) {return;}
             void send.toTabTransport(active.id, MSG.REFRESH);
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
             log.debug('refresh.dispatch.failed', String(error));
         })
         .finally(() => {
@@ -71,7 +71,7 @@ actionBus.subscribe(
     ['**'],
     async (action) => {
         const targetTabId = router.resolveActionTargetTabId(action);
-        if (targetTabId == null) {return;}
+        if (targetTabId === null || targetTabId === undefined) {return;}
         await send.toTabTransport(targetTabId, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
     },
 );

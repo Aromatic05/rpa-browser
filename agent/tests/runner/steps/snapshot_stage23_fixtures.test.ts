@@ -58,7 +58,7 @@ const runStage23Pipeline = (raw: RawFixture): UnifiedNode => {
     }
 
     for (const overlay of overlays) {
-        if (isNoiseLayer(overlay)) continue;
+        if (isNoiseLayer(overlay)) {continue;}
         root.children.push(overlay);
     }
 
@@ -66,7 +66,7 @@ const runStage23Pipeline = (raw: RawFixture): UnifiedNode => {
         const regions = detectRegions(layer);
         for (const region of regions) {
             const processed = processRegion(region);
-            if (!processed) continue;
+            if (!processed) {continue;}
             replaceRegion(layer, region, processed);
         }
     }
@@ -115,15 +115,15 @@ test('snapshot stage2/3 acceptance on fixture dataset', { skip: !HAS_FIXTURE_DIR
         walk(root, (node) => {
             nodeCount += 1;
             const attrs = node.attrs || {};
-            if (attrs.entityId) entityCount += 1;
-            if (attrs.entityType && ENTITY_TYPES.has(attrs.entityType)) entityTypeCount += 1;
-            if (attrs.actionIntent) actionIntentCount += 1;
-            if (attrs.actionTargetId) actionTargetCount += 1;
-            if (attrs.strongSemantic === 'true') strongSemanticCount += 1;
-            if (attrs.rowIndex) rowIndexCount += 1;
-            if (attrs.columnIndex) columnIndexCount += 1;
-            if (attrs.columnId) columnIdCount += 1;
-            if (attrs.tableSection === 'header') headerSectionCount += 1;
+            if (attrs.entityId) {entityCount += 1;}
+            if (attrs.entityType && ENTITY_TYPES.has(attrs.entityType)) {entityTypeCount += 1;}
+            if (attrs.actionIntent) {actionIntentCount += 1;}
+            if (attrs.actionTargetId) {actionTargetCount += 1;}
+            if (attrs.strongSemantic === 'true') {strongSemanticCount += 1;}
+            if (attrs.rowIndex) {rowIndexCount += 1;}
+            if (attrs.columnIndex) {columnIndexCount += 1;}
+            if (attrs.columnId) {columnIdCount += 1;}
+            if (attrs.tableSection === 'header') {headerSectionCount += 1;}
         });
 
         assert.ok(nodeCount > 0, `${file}: expected nodes after stage2/3 pipeline`);
@@ -182,8 +182,8 @@ test('shop.yingdao table cells should keep stable roles and avoid guessed names'
     let pollutedCellCount = 0;
     walk(root, (node) => {
         const tag = node.attrs?.tag;
-        if (tag !== 'td' && tag !== 'th') return;
-        if (!node.name || !node.content) return;
+        if (tag !== 'td' && tag !== 'th') {return;}
+        if (!node.name || !node.content) {return;}
         if (node.name !== node.content) {
             pollutedCellCount += 1;
         }

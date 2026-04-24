@@ -166,7 +166,7 @@ test('resolveTarget selector path keeps direct source', async () => {
     const { binding } = createBinding();
     const resolved = await resolveTarget(binding, { selector: '#legacy' });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#legacy');
     assert.equal(resolved.target.resolution.source, 'selector');
 });
@@ -175,7 +175,7 @@ test('resolveTarget id path resolves from snapshot locator index', async () => {
     const { binding } = createBinding(createSnapshotForId());
     const resolved = await resolveTarget(binding, { id: 'node_1' });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#submit-btn');
     assert.equal(resolved.target.resolution.source, 'id');
 });
@@ -186,7 +186,7 @@ test('resolveTarget hint path resolves from hint.raw.selector', async () => {
         hint: { raw: { selector: '#from-hint' } },
     });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#from-hint');
     assert.equal(resolved.target.resolution.source, 'hint');
 });
@@ -206,7 +206,7 @@ test('resolveTarget applies ResolvePolicy preferScoped + requireVisible', async 
         },
     });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, 'form:nth-of-type(1) button.submit:visible');
 });
 
@@ -218,7 +218,7 @@ test('resolveTarget no longer supports A11yHint-only fallback path', async () =>
         },
     });
     assert.equal(resolved.ok, false);
-    if (resolved.ok) return;
+    if (resolved.ok) {return;}
     assert.equal(resolved.error?.code, 'ERR_NOT_FOUND');
 });
 
@@ -232,7 +232,7 @@ test('resolveTarget resolves from resolve.hint.entity.businessTag', async () => 
         },
     });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#form-main');
 });
 
@@ -246,7 +246,7 @@ test('resolveTarget resolves from resolve.hint.entity.fieldKey', async () => {
         },
     });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#submit-btn');
 });
 
@@ -260,7 +260,7 @@ test('resolveTarget resolves from resolve.hint.entity.actionIntent', async () =>
         },
     });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#delete-btn');
 });
 

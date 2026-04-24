@@ -151,7 +151,7 @@ const findRuntimeCandidates = (
 ): Array<{ pathKey: string; value?: string; checked?: string; selected?: string; parentKey?: string }> => {
     const hits: Array<{ pathKey: string; value?: string; checked?: string; selected?: string; parentKey?: string }> = [];
     for (const [pathKey, row] of Object.entries(runtimeMap)) {
-        if (!predicate(row)) continue;
+        if (!predicate(row)) {continue;}
         hits.push({
             pathKey,
             value: row.value,
@@ -175,7 +175,7 @@ const readAttrs = (node: UnifiedNode) => ({
 
 const resolveTargetPaths = (root: DomTreeNode | null): TargetPaths => {
     const paths: TargetPaths = {};
-    if (!root) return paths;
+    if (!root) {return paths;}
     walkDom(root, (node) => {
         const tag = (node.tag || '').toLowerCase();
         const attrs = node.attrs || {};
@@ -194,23 +194,23 @@ const resolveTargetPaths = (root: DomTreeNode | null): TargetPaths => {
 
 const walkDom = (node: DomTreeNode, visitor: (node: DomTreeNode) => void) => {
     visitor(node);
-    for (const child of node.children) walkDom(child, visitor);
+    for (const child of node.children) {walkDom(child, visitor);}
 };
 
 const findById = (root: UnifiedNode, id: string): UnifiedNode | undefined => {
-    if (root.id === id) return root;
+    if (root.id === id) {return root;}
     for (const child of root.children) {
         const hit = findById(child, id);
-        if (hit) return hit;
+        if (hit) {return hit;}
     }
     return undefined;
 };
 
 const findNode = (root: UnifiedNode, predicate: (node: UnifiedNode) => boolean): UnifiedNode | undefined => {
-    if (predicate(root)) return root;
+    if (predicate(root)) {return root;}
     for (const child of root.children) {
         const hit = findNode(child, predicate);
-        if (hit) return hit;
+        if (hit) {return hit;}
     }
     return undefined;
 };

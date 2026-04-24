@@ -40,7 +40,7 @@ const currentLikeAssign: AssignFn = (root) => {
         const context = ['form', 'table', 'dialog', 'list', 'toolbar', 'section', 'article', 'main'].includes(role)
             ? `${role}:${name}`
             : parentContext;
-        for (const child of node.children) walk(child, context);
+        for (const child of node.children) {walk(child, context);}
     };
 
     walk(root, 'root');
@@ -102,8 +102,8 @@ const isStableByKey = (left: AssignedId[], right: AssignedId[]) => {
     const l = toMap(left);
     const r = toMap(right);
     for (const [key, id] of l) {
-        if (!r.has(key)) continue;
-        if (r.get(key) !== id) return false;
+        if (!r.has(key)) {continue;}
+        if (r.get(key) !== id) {return false;}
     }
     return true;
 };
@@ -129,7 +129,7 @@ const baseTree = (): IdNode => ({
 const reorderedTree = (): IdNode => {
     const tree = clone(baseTree());
     const main = tree.children[0];
-    if (!main) return tree;
+    if (!main) {return tree;}
     main.children = [main.children[1], main.children[0], main.children[2]].filter(Boolean) as IdNode[];
     return tree;
 };
@@ -137,9 +137,9 @@ const reorderedTree = (): IdNode => {
 const textChangedTree = (): IdNode => {
     const tree = clone(baseTree());
     const main = tree.children[0];
-    if (!main) return tree;
+    if (!main) {return tree;}
     const ctaA = main.children.find((child) => child.key === 'cta-a');
-    if (ctaA) ctaA.name = 'Buy now';
+    if (ctaA) {ctaA.name = 'Buy now';}
     return tree;
 };
 

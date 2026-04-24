@@ -76,7 +76,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                 return;
             }
             const action = payload as Action;
-            const kind = classifyActionType(String(action.type || ''));
+            const kind = classifyActionType(action.type ?? '');
             if (kind === 'reply' && action.replyTo) {
                 const resolver = pending.get(action.replyTo);
                 if (resolver) {
@@ -85,7 +85,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            if (kind !== 'reply' && isDispatchActionType(String(action.type))) {
+            if (kind !== 'reply' && isDispatchActionType(action.type)) {
                 options.onAction(action);
             }
         });

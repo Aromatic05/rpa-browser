@@ -8,35 +8,40 @@
  * - 仅处理 UI 与消息，不做持久化。
  */
 
+import type * as FloatingUIModule from '../content/floating_ui.js';
+import type * as TokenBridgeModule from '../content/token_bridge.js';
+import type * as ProtocolModule from '../shared/protocol.js';
+import type * as SendModule from '../shared/send.js';
+
 // 协议与发送模块（动态 import，避免内容脚本模块化限制）
 const loadProtocol = (() => {
-    let cached: Promise<typeof import('../shared/protocol.js')> | null = null;
+    let cached: Promise<typeof ProtocolModule> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('shared/protocol.js');
-            cached = import(url) as Promise<typeof import('../shared/protocol.js')>;
+            cached = import(url) as Promise<typeof ProtocolModule>;
         }
         return cached;
     };
 })();
 
 const loadSend = (() => {
-    let cached: Promise<typeof import('../shared/send.js')> | null = null;
+    let cached: Promise<typeof SendModule> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('shared/send.js');
-            cached = import(url) as Promise<typeof import('../shared/send.js')>;
+            cached = import(url) as Promise<typeof SendModule>;
         }
         return cached;
     };
 })();
 
 const loadTokenBridge = (() => {
-    let cached: Promise<typeof import('../content/token_bridge.js')> | null = null;
+    let cached: Promise<typeof TokenBridgeModule> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('content/token_bridge.js');
-            cached = import(url) as Promise<typeof import('../content/token_bridge.js')>;
+            cached = import(url) as Promise<typeof TokenBridgeModule>;
         }
         return cached;
     };
@@ -44,11 +49,11 @@ const loadTokenBridge = (() => {
 
 
 const loadFloatingUI = (() => {
-    let cached: Promise<typeof import('../content/floating_ui.js')> | null = null;
+    let cached: Promise<typeof FloatingUIModule> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('content/floating_ui.js');
-            cached = import(url) as Promise<typeof import('../content/floating_ui.js')>;
+            cached = import(url) as Promise<typeof FloatingUIModule>;
         }
         return cached;
     };
@@ -107,7 +112,7 @@ const loadFloatingUI = (() => {
                     sendResponse({ ok: true, tabToken, url: location.href });
                     return;
                 }
-            })().catch((error) => {
+            })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: String(error) });
             });
             return true;

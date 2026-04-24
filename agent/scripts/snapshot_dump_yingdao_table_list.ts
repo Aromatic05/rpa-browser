@@ -19,7 +19,7 @@ const DEFAULT_OUTPUT_BASE = path.join(os.tmpdir(), 'rpa-snapshot', 'shop.yingdao
 const DEFAULT_VIEWER_API_BASE = 'http://localhost:5173';
 
 const countNodes = (node: unknown): number => {
-    if (!node || typeof node !== 'object') return 0;
+    if (!node || typeof node !== 'object') {return 0;}
     const children = Array.isArray((node as { children?: unknown[] }).children)
         ? ((node as { children?: unknown[] }).children as unknown[])
         : [];
@@ -62,12 +62,12 @@ const ensureLoggedIn = async (
 
     const isReady = async (): Promise<boolean> => {
         const hasLogin = (await loginForm.count()) > 0;
-        if (hasLogin) return false;
+        if (hasLogin) {return false;}
 
         const currentUrl = page.url();
-        if (currentUrl.includes('/user/login')) return false;
+        if (currentUrl.includes('/user/login')) {return false;}
 
-        if (!expectedPathname) return true;
+        if (!expectedPathname) {return true;}
         return currentUrl.includes(expectedPathname);
     };
 

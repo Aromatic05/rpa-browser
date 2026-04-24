@@ -75,8 +75,8 @@ test('snapshot structure detection should avoid ancestor-duplicated groups on el
 
     for (const ancestor of groups) {
         for (const descendant of groups) {
-            if (ancestor.id === descendant.id) continue;
-            if (!isAncestorNode(ancestor.containerId, descendant.containerId, parentById)) continue;
+            if (ancestor.id === descendant.id) {continue;}
+            if (!isAncestorNode(ancestor.containerId, descendant.containerId, parentById)) {continue;}
             const coverage = wrappedItemCoverage(descendant.itemIds, ancestor.itemIds, parentById);
             assert.ok(
                 coverage < 0.9,
@@ -148,7 +148,7 @@ const walkTree = (node: UnifiedNode, parentId: string | null, parentById: Map<st
 const isAncestorNode = (ancestorId: string, nodeId: string, parentById: Map<string, string | null>): boolean => {
     let cursor = parentById.get(nodeId) || null;
     while (cursor) {
-        if (cursor === ancestorId) return true;
+        if (cursor === ancestorId) {return true;}
         cursor = parentById.get(cursor) || null;
     }
     return false;
@@ -159,7 +159,7 @@ const wrappedItemCoverage = (
     ancestorItemIds: string[],
     parentById: Map<string, string | null>,
 ): number => {
-    if (descendantItemIds.length === 0 || ancestorItemIds.length === 0) return 0;
+    if (descendantItemIds.length === 0 || ancestorItemIds.length === 0) {return 0;}
     const ancestorSet = new Set(ancestorItemIds);
     let covered = 0;
     for (const itemId of descendantItemIds) {
@@ -177,7 +177,7 @@ const isSelfOrAncestorInSet = (
 ): boolean => {
     let cursor: string | null = nodeId;
     while (cursor) {
-        if (ancestorSet.has(cursor)) return true;
+        if (ancestorSet.has(cursor)) {return true;}
         cursor = parentById.get(cursor) || null;
     }
     return false;

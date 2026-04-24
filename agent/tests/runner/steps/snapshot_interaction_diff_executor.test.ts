@@ -245,8 +245,8 @@ const buildSelectDomSnapshot = (stateId: string) => {
 };
 
 const hasProjectedContent = (node: any, expected: string): boolean => {
-    if (!node || typeof node !== 'object') return false;
-    if (node.content === expected) return true;
+    if (!node || typeof node !== 'object') {return false;}
+    if (node.content === expected) {return true;}
     const children = Array.isArray(node.children) ? node.children : [];
     return children.some((child) => hasProjectedContent(child, expected));
 };

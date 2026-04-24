@@ -21,9 +21,9 @@ const node = (id: string, role: string, children: UnifiedNode[] = [], attrs: Rec
 const listEntityAnchors = (entities: EntityRecord[]): string[] => {
     const anchors: string[] = [];
     for (const entity of entities) {
-        if (entity.kind !== 'list') continue;
-        if (entity.type === 'region') anchors.push(entity.nodeId);
-        if (entity.type === 'group') anchors.push(entity.containerId);
+        if (entity.kind !== 'list') {continue;}
+        if (entity.type === 'region') {anchors.push(entity.nodeId);}
+        if (entity.type === 'group') {anchors.push(entity.containerId);}
     }
     return anchors;
 };
@@ -31,9 +31,9 @@ const listEntityAnchors = (entities: EntityRecord[]): string[] => {
 const tableEntityAnchors = (entities: EntityRecord[]): string[] => {
     const anchors: string[] = [];
     for (const entity of entities) {
-        if (entity.kind !== 'table') continue;
-        if (entity.type === 'region') anchors.push(entity.nodeId);
-        if (entity.type === 'group') anchors.push(entity.containerId);
+        if (entity.kind !== 'table') {continue;}
+        if (entity.type === 'region') {anchors.push(entity.nodeId);}
+        if (entity.type === 'group') {anchors.push(entity.containerId);}
     }
     return anchors;
 };
@@ -257,7 +257,7 @@ test('candidate selection should keep one table candidate per strong table famil
     const isInSubtree = (ancestorId: string, nodeId: string): boolean => {
         let cursor: string | undefined = nodeId;
         while (cursor) {
-            if (cursor === ancestorId) return true;
+            if (cursor === ancestorId) {return true;}
             cursor = parentById.get(cursor);
         }
         return false;
@@ -399,7 +399,7 @@ test('table group key hint derivation should include header name', () => {
         (group) => group.kind === 'table' && group.containerId === 'tbody',
     );
     assert.ok(tableGroup, 'expected table group detection on tbody');
-    if (!tableGroup) return;
+    if (!tableGroup) {return;}
     const keyHint = deriveGroupTableKeyHint(tableGroup, nodeById, parentById);
     assert.ok(keyHint, 'expected key hint from table group');
     assert.equal(keyHint?.name, 'Name');

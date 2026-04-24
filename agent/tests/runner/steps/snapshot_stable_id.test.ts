@@ -27,7 +27,7 @@ const collectByBackendDomId = (root: UnifiedNode): Map<string, string> => {
     const map = new Map<string, string>();
     const walk = (current: UnifiedNode) => {
         const backend = getNodeAttr(current, 'backendDOMNodeId');
-        if (backend) map.set(backend, current.id);
+        if (backend) {map.set(backend, current.id);}
         for (const child of current.children) {
             walk(child);
         }

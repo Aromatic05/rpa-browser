@@ -21,11 +21,11 @@ const fixtureUrl = (name: string) =>
     pathToFileURL(path.resolve(process.cwd(), 'tests/fixtures', name)).toString();
 
 const findNodeId = (tree: any, role: string, name: string): string | null => {
-    if (!tree) return null;
-    if (tree.role === role && tree.name === name) return tree.id;
+    if (!tree) {return null;}
+    if (tree.role === role && tree.name === name) {return tree.id;}
     for (const child of tree.children || []) {
         const found = findNodeId(child, role, name);
-        if (found) return found;
+        if (found) {return found;}
     }
     return null;
 };

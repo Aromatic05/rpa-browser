@@ -67,7 +67,7 @@ test('keySlot labels should meet accuracy threshold when labels exist', { skip: 
     const metricsByFile = new Map<string, GroupMetric[]>();
     for (const rawFile of rawFileSet) {
         const fullPath = path.join(DATASET_DIR, rawFile);
-        if (!fs.existsSync(fullPath)) continue;
+        if (!fs.existsSync(fullPath)) {continue;}
         const raw = JSON.parse(fs.readFileSync(fullPath, 'utf8')) as RawFixture;
         const snapshot = generateSemanticSnapshotFromRaw(raw);
         metricsByFile.set(rawFile, collectGroupMetrics(snapshot, rawFile));
@@ -78,7 +78,7 @@ test('keySlot labels should meet accuracy threshold when labels exist', { skip: 
     for (const label of labels) {
         const candidates = metricsByFile.get(label.rawFile) || [];
         const hit = pickLabelTarget(candidates, label);
-        if (!hit) continue;
+        if (!hit) {continue;}
         matched += 1;
         if (hit.keySlot === label.expectedKeySlot) {
             correct += 1;
@@ -92,11 +92,11 @@ test('keySlot labels should meet accuracy threshold when labels exist', { skip: 
 
 const pickLabelTarget = (metrics: GroupMetric[], label: KeySlotLabel): GroupMetric | undefined => {
     const filtered = metrics.filter((item) => {
-        if (label.containerId && item.containerId !== label.containerId) return false;
-        if (label.kind && item.kind !== label.kind) return false;
+        if (label.containerId && item.containerId !== label.containerId) {return false;}
+        if (label.kind && item.kind !== label.kind) {return false;}
         return true;
     });
-    if (filtered.length === 0) return undefined;
+    if (filtered.length === 0) {return undefined;}
     return filtered.sort((a, b) => b.itemCount - a.itemCount)[0];
 };
 
@@ -104,7 +104,7 @@ const collectGroupMetrics = (snapshot: SnapshotResult, rawFile: string): GroupMe
     const groups = Object.values(snapshot.entityIndex.entities).filter(
         (entity): entity is GroupEntity => entity.type === 'group',
     );
-    if (groups.length === 0) return [];
+    if (groups.length === 0) {return [];}
 
     const slotMap = buildGroupSlotMap(snapshot.entityIndex);
     const metrics: GroupMetric[] = [];
@@ -136,10 +136,10 @@ const collectGroupMetrics = (snapshot: SnapshotResult, rawFile: string): GroupMe
 const buildGroupSlotMap = (entityIndex: EntityIndex): Map<string, Map<string, Map<number, string[]>>> => {
     const map = new Map<string, Map<string, Map<number, string[]>>>();
     for (const [nodeId, refs] of Object.entries(entityIndex.byNodeId || {})) {
-        if (!refs || refs.length === 0) continue;
+        if (!refs || refs.length === 0) {continue;}
         for (const ref of refs) {
-            if (ref.type !== 'group') continue;
-            if (ref.slotIndex === undefined || !ref.itemId) continue;
+            if (ref.type !== 'group') {continue;}
+            if (ref.slotIndex === undefined || !ref.itemId) {continue;}
 
             const byItem = map.get(ref.entityId) || new Map<string, Map<number, string[]>>();
             const bySlot = byItem.get(ref.itemId) || new Map<number, string[]>();
@@ -163,16 +163,16 @@ const readKeyValue = (
     const nodeIds = slotMap.get(groupId)?.get(itemId)?.get(slotIndex) || [];
     for (const nodeId of nodeIds) {
         const text = readNodeText(snapshot, nodeId);
-        if (text) return text;
+        if (text) {return text;}
     }
     const itemNode = snapshot.nodeIndex[itemId];
-    if (!itemNode) return undefined;
+    if (!itemNode) {return undefined;}
     return firstReadableText(snapshot, itemNode, 2);
 };
 
 const readNodeText = (snapshot: SnapshotResult, nodeId: string): string | undefined => {
     const node = snapshot.nodeIndex[nodeId];
-    if (!node) return undefined;
+    if (!node) {return undefined;}
     const attrs = snapshot.attrIndex[nodeId] || {};
 
     const candidates = [
@@ -185,8 +185,8 @@ const readNodeText = (snapshot: SnapshotResult, nodeId: string): string | undefi
     ];
     for (const value of candidates) {
         const text = normalizeText(value);
-        if (!text) continue;
-        if (text.length > 96) continue;
+        if (!text) {continue;}
+        if (text.length > 96) {continue;}
         return text;
     }
     return undefined;
@@ -196,10 +196,10 @@ const firstReadableText = (snapshot: SnapshotResult, node: UnifiedNode, depthLim
     const queue: Array<{ node: UnifiedNode; depth: number }> = [{ node, depth: 0 }];
     while (queue.length > 0) {
         const current = queue.shift();
-        if (!current) break;
+        if (!current) {break;}
         const own = readNodeText(snapshot, current.node.id);
-        if (own) return own;
-        if (current.depth >= depthLimit) continue;
+        if (own) {return own;}
+        if (current.depth >= depthLimit) {continue;}
         for (const child of current.node.children) {
             queue.push({ node: child, depth: current.depth + 1 });
         }
@@ -208,8 +208,8 @@ const firstReadableText = (snapshot: SnapshotResult, node: UnifiedNode, depthLim
 };
 
 const resolveContent = (snapshot: SnapshotResult, node: UnifiedNode): string | undefined => {
-    if (!node.content) return undefined;
-    if (typeof node.content === 'string') return node.content;
+    if (!node.content) {return undefined;}
+    if (typeof node.content === 'string') {return node.content;}
     if (node.content.ref) {
         return snapshot.contentStore[node.content.ref];
     }
@@ -230,6 +230,6 @@ const normalizeText = (value: string | undefined): string | undefined => {
 };
 
 const avg = (values: number[]): number => {
-    if (values.length === 0) return 0;
+    if (values.length === 0) {return 0;}
     return values.reduce((sum, item) => sum + item, 0) / values.length;
 };

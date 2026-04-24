@@ -20,7 +20,7 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<Transpor
         }, ms);
         promise
             .then((value) => { resolve({ ok: true, data: value }); })
-            .catch((error) => { resolve({ ok: false, error: normalizeRuntimeError(error) }); })
+            .catch((error: unknown) => { resolve({ ok: false, error: normalizeRuntimeError(error) }); })
             .finally(() => {
                 if (timer) {clearTimeout(timer);}
             });
@@ -28,7 +28,12 @@ const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<Transpor
 };
 
 const normalizeRuntimeError = (error: unknown): TransportError => {
-    const message = error instanceof Error ? error.message : String(error || '');
+    const message =
+        error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+            ? error
+            : 'unknown runtime error';
     if (message.includes('message port closed') || message.includes('Message port closed')) {
         return { code: 'PORT_CLOSED', message };
     }
@@ -94,8 +99,8 @@ export const send = {
         return {
             v: 1,
             id: crypto.randomUUID(),
-            type: deriveFailedActionType(String(action.type || '')),
-            replyTo: String(action.id || ''),
+            type: deriveFailedActionType(action.type || ''),
+            replyTo: action.id || '',
             payload: { code: transportError.code, message: transportError.message, details },
             at: Date.now(),
         } satisfies Action;

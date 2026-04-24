@@ -97,7 +97,7 @@ export const isDerivedEventActionType = (value: string) => {
     return isNamedDomain(domain) && hasAllowedPrefix(domain);
 };
 
-export const isDispatchActionType = (value: string): value is ActionType | string =>
+export const isDispatchActionType = (value: string): boolean =>
     isRequestActionType(value) || isReplyActionType(value) || isDerivedEventActionType(value);
 
 export const classifyActionType = (value: string): ActionMessageKind => {

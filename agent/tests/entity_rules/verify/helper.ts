@@ -144,7 +144,7 @@ const waitForHttpReady = async (url: string, timeoutMs: number) => {
 };
 
 const stopProcess = async (proc: ChildProcess): Promise<void> => {
-    if (proc.killed || proc.exitCode !== null) return;
+    if (proc.killed || proc.exitCode !== null) {return;}
 
     proc.kill('SIGTERM');
     await new Promise<void>((resolve) => {
@@ -203,7 +203,7 @@ const normalizeNodeHints = (snapshot: Awaited<ReturnType<typeof generateSemantic
     for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
         const fieldKey = normalizeText(attrs.fieldKey);
         const actionIntent = normalizeText(attrs.actionIntent);
-        if (!fieldKey && !actionIntent) continue;
+        if (!fieldKey && !actionIntent) {continue;}
 
         out.push(
             compactValue({
@@ -252,7 +252,7 @@ const compactValue = <T>(value: T): T => {
         const out: Record<string, unknown> = {};
         for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
             const compacted = compactValue(child);
-            if (compacted === undefined) continue;
+            if (compacted === undefined) {continue;}
             out[key] = compacted;
         }
         return out as T;

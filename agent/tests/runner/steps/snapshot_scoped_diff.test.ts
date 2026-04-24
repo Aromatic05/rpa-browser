@@ -70,7 +70,7 @@ test('snapshot view uses root as default contain', () => {
     const snapshot = createScopedFixtureSnapshot();
     const result = buildSnapshotView(snapshot, {});
     assert.equal(result.ok, true);
-    if (!result.ok) return;
+    if (!result.ok) {return;}
     assert.equal(result.resolvedContainId, 'root');
     assert.equal(result.snapshot.root.id, 'root');
 });
@@ -103,7 +103,7 @@ test('snapshot view returns explicit contain error when id does not exist', () =
     const snapshot = createScopedFixtureSnapshot();
     const result = buildSnapshotView(snapshot, { contain: 'missing-node' });
     assert.equal(result.ok, false);
-    if (result.ok) return;
+    if (result.ok) {return;}
     assert.equal(result.error.code, 'ERR_NOT_FOUND');
 });
 
@@ -163,7 +163,7 @@ test('snapshot filter signature is stable across role array order', () => {
 
     assert.equal(left.ok, true);
     assert.equal(right.ok, true);
-    if (!left.ok || !right.ok) return;
+    if (!left.ok || !right.ok) {return;}
 
     const leftKey = buildSnapshotDiffBaselineKey({
         contain: left.resolvedContainId,
@@ -213,7 +213,7 @@ test('minimal diff keeps local context around changed node', () => {
 
     const result = computeMinimalChangedSubtree(current, baseline);
     assert.equal(result.mode, 'diff');
-    if (result.mode !== 'diff') return;
+    if (result.mode !== 'diff') {return;}
     assert.equal(result.diffRootId, 'container');
     assert.equal(result.changedNodeCount, 1);
     assert.equal(result.root.id, 'container');
@@ -259,7 +259,7 @@ test('minimal diff does not over-promote context when parent subtree is too larg
 
     const result = computeMinimalChangedSubtree(current, baseline);
     assert.equal(result.mode, 'diff');
-    if (result.mode !== 'diff') return;
+    if (result.mode !== 'diff') {return;}
     assert.equal(result.diffRootId, 'item-0');
     assert.equal(result.root.id, 'item-0');
 });
@@ -277,6 +277,6 @@ test('minimal diff falls back to full when changes are too broad', () => {
 
     const result = computeMinimalChangedSubtree(current, baseline);
     assert.equal(result.mode, 'full');
-    if (result.mode !== 'full') return;
+    if (result.mode !== 'full') {return;}
     assert.equal(result.reason, 'too_broad');
 });

@@ -136,7 +136,7 @@ const measureMedianMs = <T>(
 };
 
 const median = (values: number[]): number => {
-    if (values.length === 0) return 0;
+    if (values.length === 0) {return 0;}
     const sorted = [...values].sort((left, right) => left - right);
     const middle = Math.floor(sorted.length / 2);
     if (sorted.length % 2 === 1) {
@@ -170,16 +170,16 @@ const buildSyntheticTableTree = (targetNodes: number): UnifiedNode => {
         table.children.push(row);
 
         appendCell(row, createTextCell(createNode, rowIndex, 0));
-        if (idSeq >= targetNodes) break;
+        if (idSeq >= targetNodes) {break;}
 
         appendCell(row, createLinkCell(createNode, rowIndex, 1));
-        if (idSeq >= targetNodes) break;
+        if (idSeq >= targetNodes) {break;}
 
         appendCell(row, createButtonCell(createNode, rowIndex, 2));
-        if (idSeq >= targetNodes) break;
+        if (idSeq >= targetNodes) {break;}
 
         appendCell(row, createTextboxCell(createNode, rowIndex, 3));
-        if (idSeq >= targetNodes) break;
+        if (idSeq >= targetNodes) {break;}
 
         if (rowIndex % 20 === 0 && idSeq < targetNodes) {
             appendCell(row, createDecorativeCell(createNode));
@@ -301,21 +301,21 @@ const mustFindPoint = (points: PerfPoint[], size: number): PerfPoint => {
 };
 
 const safeRatio = (numerator: number, denominator: number): number => {
-    if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) return Number.POSITIVE_INFINITY;
-    if (denominator <= 0) return Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) {return Number.POSITIVE_INFINITY;}
+    if (denominator <= 0) {return Number.POSITIVE_INFINITY;}
     return numerator / denominator;
 };
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
-    if (!raw) return fallback;
+    if (!raw) {return fallback;}
     const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    if (!Number.isFinite(parsed) || parsed <= 0) {return fallback;}
     return parsed;
 }
 
 function parsePositiveFloat(raw: string | undefined, fallback: number): number {
-    if (!raw) return fallback;
+    if (!raw) {return fallback;}
     const parsed = Number.parseFloat(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    if (!Number.isFinite(parsed) || parsed <= 0) {return fallback;}
     return parsed;
 }

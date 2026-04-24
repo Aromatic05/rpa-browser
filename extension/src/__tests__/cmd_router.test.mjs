@@ -52,7 +52,7 @@ const createChromeMock = () => ({
             tabId === 21
                 ? { id: tabId, windowId: 31, url: 'chrome-extension://start/newtab.html' }
                 : { id: tabId, windowId: 7, url: 'https://example.com' },
-        update: async (_tabId, _update) => ({ ok: true }),
+        update: async () => ({ ok: true }),
         sendMessage: (tabId, message, cb) => {
             if (message?.type === MSG.GET_TOKEN) {
                 if (tabId === 21) {
@@ -66,7 +66,7 @@ const createChromeMock = () => ({
         },
     },
     runtime: {
-        getURL: (path) => `chrome-extension://start/${String(path || '').replace(/^\//, '')}`,
+        getURL: (path) => `chrome-extension://start/${(path || '').replace(/^\//, '')}`,
     },
 });
 

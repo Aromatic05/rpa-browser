@@ -42,8 +42,8 @@ const splitSelectors = (selector: string): string[] => {
 };
 
 const matchesSelector = (el: FakeElement, selector: string): boolean => {
-    if (!selector) return false;
-    if (selector === '*') return true;
+    if (!selector) {return false;}
+    if (selector === '*') {return true;}
 
     if (selector.endsWith(':checked')) {
         const tag = selector.slice(0, -':checked'.length).trim().toLowerCase();
@@ -65,7 +65,7 @@ const matchesSelector = (el: FakeElement, selector: string): boolean => {
     const attrExistMatch = selector.match(/^\[([^\]=]+)\]$/);
     if (attrExistMatch) {
         const attrName = attrExistMatch[1];
-        if (attrName === 'contenteditable') return !!el.isContentEditable || el.getAttribute(attrName) !== null;
+        if (attrName === 'contenteditable') {return !!el.isContentEditable || el.getAttribute(attrName) !== null;}
         return el.getAttribute(attrName) !== null;
     }
 
@@ -75,7 +75,7 @@ const matchesSelector = (el: FakeElement, selector: string): boolean => {
 const collectSubtree = (root: FakeElement, includeSelf: boolean): FakeElement[] => {
     const out: FakeElement[] = [];
     const walk = (node: FakeElement, appendSelf: boolean) => {
-        if (appendSelf) out.push(node);
+        if (appendSelf) {out.push(node);}
         for (const child of node.children) {
             walk(child, true);
         }
@@ -87,13 +87,13 @@ const collectSubtree = (root: FakeElement, includeSelf: boolean): FakeElement[] 
 const queryFromSubtree = (root: FakeElement, selector: string, includeSelf: boolean): FakeElement[] => {
     const candidates = collectSubtree(root, includeSelf);
     const selectors = splitSelectors(selector);
-    if (selectors.length === 0) return [];
+    if (selectors.length === 0) {return [];}
 
     const seen = new Set<FakeElement>();
     const out: FakeElement[] = [];
     for (const candidate of candidates) {
-        if (!selectors.some((item) => matchesSelector(candidate, item))) continue;
-        if (seen.has(candidate)) continue;
+        if (!selectors.some((item) => matchesSelector(candidate, item))) {continue;}
+        if (seen.has(candidate)) {continue;}
         seen.add(candidate);
         out.push(candidate);
     }
@@ -170,7 +170,7 @@ const createDocument = (root: FakeElement): FakeDocument => {
 
     const assignRootNode = (node: FakeElement) => {
         node.getRootNode = () => doc;
-        for (const child of node.children) assignRootNode(child);
+        for (const child of node.children) {assignRootNode(child);}
     };
     assignRootNode(root);
     return doc;

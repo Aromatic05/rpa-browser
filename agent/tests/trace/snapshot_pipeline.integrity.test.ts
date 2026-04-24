@@ -52,28 +52,28 @@ const COMPLEX_HTML = `
 `;
 
 const countNodes = (node: TreeNode | null | undefined): number => {
-    if (!node) return 0;
+    if (!node) {return 0;}
     return 1 + (node.children || []).reduce((sum, child) => sum + countNodes(child), 0);
 };
 
 const collectTags = (node: TreeNode | null | undefined, out: string[]) => {
-    if (!node) return;
-    if (typeof node.tag === 'string') out.push(node.tag.toLowerCase());
+    if (!node) {return;}
+    if (typeof node.tag === 'string') {out.push(node.tag.toLowerCase());}
     for (const child of node.children || []) {
         collectTags(child, out);
     }
 };
 
 const collectTexts = (node: TreeNode | null | undefined, out: string[]) => {
-    if (!node) return;
-    if (typeof node.text === 'string' && node.text.trim()) out.push(node.text.trim());
+    if (!node) {return;}
+    if (typeof node.text === 'string' && node.text.trim()) {out.push(node.text.trim());}
     for (const child of node.children || []) {
         collectTexts(child, out);
     }
 };
 
 const shape = (node: TreeNode | null | undefined): string => {
-    if (!node) return 'x';
+    if (!node) {return 'x';}
     return `(${(node.children || []).map((child) => shape(child)).join('')})`;
 };
 

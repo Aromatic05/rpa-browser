@@ -37,7 +37,7 @@ const projectSingleNodeContent = (node: UnifiedNode): string | undefined => {
     const root = createNode('token-root', 'root', [node]);
     projectInteractionStateContent(root);
     const first = root.children[0];
-    if (!first || typeof first.content !== 'string') return undefined;
+    if (!first || typeof first.content !== 'string') {return undefined;}
     return first.content;
 };
 
@@ -171,7 +171,7 @@ test('diff detects textbox value change through projected content', () => {
 
     const diff = computeMinimalChangedSubtree(currentView, baselineView);
     assert.equal(diff.mode, 'diff');
-    if (diff.mode !== 'diff') return;
+    if (diff.mode !== 'diff') {return;}
     assert.equal(diff.diffRootId, 'textbox-x');
 });
 
@@ -195,7 +195,7 @@ test('diff detects checkbox checked change through projected content', () => {
 
     const diff = computeMinimalChangedSubtree(currentView, baselineView);
     assert.equal(diff.mode, 'diff');
-    if (diff.mode !== 'diff') return;
+    if (diff.mode !== 'diff') {return;}
     assert.equal(diff.diffRootId, 'checkbox-x');
 });
 
@@ -211,7 +211,7 @@ test('diff detects combobox selected change through projected content', () => {
 
     const diff = computeMinimalChangedSubtree(currentView, baselineView);
     assert.equal(diff.mode, 'diff');
-    if (diff.mode !== 'diff') return;
+    if (diff.mode !== 'diff') {return;}
     assert.equal(diff.diffRootId, 'combobox-x');
 });
 
@@ -227,7 +227,7 @@ test('diff detects expanded state change through projected content', () => {
 
     const diff = computeMinimalChangedSubtree(currentView, baselineView);
     assert.equal(diff.mode, 'diff');
-    if (diff.mode !== 'diff') return;
+    if (diff.mode !== 'diff') {return;}
     assert.equal(diff.diffRootId, 'button-x');
 });
 
@@ -247,6 +247,6 @@ test('diff promotes popup-like container when dialog subtree appears', () => {
 
     const diff = computeMinimalChangedSubtree(currentView, baselineView);
     assert.equal(diff.mode, 'diff');
-    if (diff.mode !== 'diff') return;
+    if (diff.mode !== 'diff') {return;}
     assert.equal(diff.diffRootId, 'dialog-1');
 });

@@ -100,11 +100,11 @@ test('pipeline should remove region when processRegion returns null (head subtre
     walk(snapshot.root, (node) => {
         const role = (node.role || '').toLowerCase();
         const tag = (node.attrs?.tag || '').toLowerCase();
-        if (role === 'head') headCount += 1;
-        if (role === '::after' || tag === '::after') pseudoCount += 1;
-        if (role === 'svg' || tag === 'svg') svgCount += 1;
-        if (role === 'path' || tag === 'path') pathCount += 1;
-        if (role === 'link') linkNodes.push(node);
+        if (role === 'head') {headCount += 1;}
+        if (role === '::after' || tag === '::after') {pseudoCount += 1;}
+        if (role === 'svg' || tag === 'svg') {svgCount += 1;}
+        if (role === 'path' || tag === 'path') {pathCount += 1;}
+        if (role === 'link') {linkNodes.push(node);}
     });
 
     assert.equal(headCount, 0, 'head subtree should be fully removed from final snapshot');

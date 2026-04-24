@@ -9,6 +9,12 @@ const restoreStatusEl = document.getElementById('restoreStatus');
 const restoreListEl = document.getElementById('restoreList');
 const refreshRestoreBtn = document.getElementById('refreshRestore');
 const log = (...args: unknown[]) => { console.log('[RPA:start]', ...args); };
+type RestoreItem = {
+    workspaceId?: string;
+    stepCount?: number;
+    updatedAt?: number;
+    entryUrl?: string;
+};
 
 const setStatus = (text: string, ok = false) => {
     if (wsStatusEl) {
@@ -88,7 +94,7 @@ const ensureTabTokenFromAgent = async () => {
 
 const formatTs = (ts: number) => new Date(ts).toLocaleString();
 
-const renderRestoreList = (items: Array<any>) => {
+const renderRestoreList = (items: RestoreItem[]) => {
     if (!restoreListEl) {return;}
     restoreListEl.innerHTML = '';
     if (!items.length) {
@@ -99,30 +105,37 @@ const renderRestoreList = (items: Array<any>) => {
         return;
     }
     items.forEach((item) => {
+        const workspaceId = item.workspaceId ?? '-';
+        const stepCount = item.stepCount ?? 0;
+        const updatedAt = item.updatedAt ?? 0;
+        const entryUrl = item.entryUrl ?? '-';
         const row = document.createElement('div');
         row.className = 'restore-item';
         const meta = document.createElement('div');
         meta.className = 'restore-meta';
         meta.innerHTML = [
-            `<div><strong>${String(item.workspaceId || '-')}</strong></div>`,
-            `<div>steps: ${Number(item.stepCount || 0)} | updated: ${formatTs(Number(item.updatedAt || 0))}</div>`,
-            `<div>${String(item.entryUrl || '-')}</div>`,
+            `<div><strong>${workspaceId}</strong></div>`,
+            `<div>steps: ${String(stepCount)} | updated: ${formatTs(updatedAt)}</div>`,
+            `<div>${entryUrl}</div>`,
         ].join('');
         const restoreBtn = document.createElement('button');
         restoreBtn.className = 'primary';
         restoreBtn.textContent = '恢复 Workspace';
-        restoreBtn.addEventListener('click', async () => {
-            if (restoreStatusEl) {restoreStatusEl.textContent = 'restoring...';}
-            const restored = await sendAction('workspace.restore', {
-                workspaceId: String(item.workspaceId || ''),
-            });
-            if (!restored?.ok) {
-                if (restoreStatusEl) {
-                    restoreStatusEl.textContent = `restore failed: ${restored?.error?.message || 'unknown'}`;
+        restoreBtn.addEventListener('click', () => {
+            void (async () => {
+                if (restoreStatusEl) {restoreStatusEl.textContent = 'restoring...';}
+                const restored = await sendAction('workspace.restore', {
+                    workspaceId: workspaceId === '-' ? '' : workspaceId,
+                });
+                if (!restored?.ok) {
+                    if (restoreStatusEl) {
+                        const errorMessage = restored?.error?.message ?? 'unknown';
+                        restoreStatusEl.textContent = `restore failed: ${String(errorMessage)}`;
+                    }
+                    return;
                 }
-                return;
-            }
-            if (restoreStatusEl) {restoreStatusEl.textContent = 'restore done';}
+                if (restoreStatusEl) {restoreStatusEl.textContent = 'restore done';}
+            })();
         });
         row.append(meta, restoreBtn);
         restoreListEl.appendChild(row);
@@ -133,18 +146,21 @@ const refreshRestoreList = async () => {
     if (restoreStatusEl) {restoreStatusEl.textContent = 'loading...';}
     const result = await sendAction('record.list');
     if (!result?.ok) {
-        if (restoreStatusEl) {restoreStatusEl.textContent = `load failed: ${result?.error?.message || 'unknown'}`;}
+        if (restoreStatusEl) {
+            const errorMessage = result?.error?.message ?? 'unknown';
+            restoreStatusEl.textContent = `load failed: ${String(errorMessage)}`;
+        }
         renderRestoreList([]);
         return;
     }
-    const items = Array.isArray(result?.data?.recordings) ? result.data.recordings : [];
+    const items = Array.isArray(result?.data?.recordings) ? (result.data.recordings as RestoreItem[]) : [];
     renderRestoreList(items);
-    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${items.length})`;}
+    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String(items.length)})`;}
 };
 
 const bootstrapWorkspaceBinding = async (tabToken: string) => {
     const search = new URL(location.href).searchParams;
-    const requestedWorkspaceId = String(search.get('workspaceId') || '').trim();
+    const requestedWorkspaceId = (search.get('workspaceId') ?? '').trim();
     let workspaceId = requestedWorkspaceId || undefined;
     if (!workspaceId) {
         const listed = await sendAction('workspace.list', {

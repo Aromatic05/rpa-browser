@@ -16,7 +16,7 @@ export const withActionBase = (action: Action): Action => ({
 });
 
 export const isFailedReply = (action: Action | null | undefined) => !!action?.type?.endsWith('.failed');
-export const payloadOf = <T = Record<string, unknown>>(action: Action | null | undefined) => ((action?.payload || {}) as T);
+export const payloadOf = (action: Action | null | undefined): Record<string, unknown> => ((action?.payload || {}) as Record<string, unknown>);
 
 type ResolveDeps = {
     state: RouterState;
@@ -148,14 +148,14 @@ export const applyReplyProjection = (
     const responseTabToken = (responsePayload as any)?.tabToken as string | undefined;
     const responseTabId = (responsePayload as any)?.tabId as string | undefined;
     if (responseTabToken && responseTabId) {
-        state.upsertTokenScope(responseTabToken, String(effectiveWorkspaceId), String(responseTabId));
+        state.upsertTokenScope(responseTabToken, effectiveWorkspaceId, responseTabId);
         state.bindWorkspaceToWindowIfKnown(responseTabToken);
     }
 
     if (typeof resolved.senderTabId === 'number') {
         if (resolved.resolvedTabToken) {
             const oldTabId = state.findTabIdByToken(resolved.resolvedTabToken);
-            if (oldTabId != null && oldTabId !== resolved.senderTabId) {
+            if (oldTabId !== null && oldTabId !== undefined && oldTabId !== resolved.senderTabId) {
                 state.removeTab(oldTabId);
             }
         }
@@ -164,7 +164,7 @@ export const applyReplyProjection = (
             state.upsertTab(resolved.senderTabId, resolved.resolvedTabToken, senderUrl, resolved.senderWindowId);
         }
         if (typeof resolved.senderWindowId === 'number') {
-            state.setWindowWorkspace(resolved.senderWindowId, String(effectiveWorkspaceId));
+            state.setWindowWorkspace(resolved.senderWindowId, effectiveWorkspaceId);
         }
     }
 };

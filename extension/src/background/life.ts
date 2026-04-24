@@ -76,7 +76,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         const response = await requestTokenFromTab(tabId);
         if (response?.ok && response.tabToken) {
             let windowId = typeof hintedWindowId === 'number' ? hintedWindowId : null;
-            if (windowId == null) {
+            if (windowId === null) {
                 const tab = await chrome.tabs.get(tabId);
                 windowId = typeof tab.windowId === 'number' ? tab.windowId : null;
             }
@@ -110,7 +110,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 options.state.setWindowWorkspace(info.windowId, scope.workspaceId);
             }
             const now = Date.now();
-            const key = `${info.windowId}:${info.tabId}:${tabInfo.tabToken}`;
+            const key = `${String(info.windowId)}:${String(info.tabId)}:${tabInfo.tabToken}`;
             if (options.state.shouldThrottleTabActivated(key, now, LIFECYCLE_THROTTLE_MS)) {return;}
             await emitLifecycleAction(
                 ACTION_TYPES.TAB_ACTIVATED,
@@ -158,13 +158,13 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         void (async () => {
             const tabInfo = await ensureTabToken(tabId, windowId);
             if (!tabInfo?.tabToken) {
-                throw new Error(`tabs.onCreated tab token unavailable (tabId=${tabId}, windowId=${windowId})`);
+                throw new Error(`tabs.onCreated tab token unavailable (tabId=${String(tabId)}, windowId=${String(windowId)})`);
             }
             const boundScope = options.state.getTokenScope(tabInfo.tabToken);
             const workspaceId = boundScope?.workspaceId || options.state.getWindowWorkspace(windowId) || '';
             if (!workspaceId) {
                 throw new Error(
-                    `tabs.onCreated workspace mapping missing (tabId=${tabId}, windowId=${windowId}, token=${tabInfo.tabToken})`,
+                    `tabs.onCreated workspace mapping missing (tabId=${String(tabId)}, windowId=${String(windowId)}, token=${tabInfo.tabToken})`,
                 );
             }
             options.state.setWindowWorkspace(windowId, workspaceId);
@@ -184,14 +184,18 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 },
             });
             if (isFailedReply(result)) {
-                const error = payloadOf<{ code?: string; message?: string }>(result);
-                throw new Error(`tabs.onCreated tab.opened failed: ${error.code || 'ERR'}:${error.message || 'unknown'}`);
+                const error = payloadOf(result);
+                const code = typeof error.code === 'string' ? error.code : 'ERR';
+                const message = typeof error.message === 'string' ? error.message : 'unknown';
+                throw new Error(`tabs.onCreated tab.opened failed: ${code}:${message}`);
             }
             const resultPayload = payloadOf(result);
             const tabScopeWorkspaceId = String((resultPayload as any)?.workspaceId || workspaceId);
             const tabScopeTabId = String((resultPayload as any)?.tabId || '');
             if (!tabScopeTabId) {
-                throw new Error(`tabs.onCreated tab.opened missing tabId (tabId=${tabId}, windowId=${windowId})`);
+                throw new Error(
+                    `tabs.onCreated tab.opened missing tabId (tabId=${String(tabId)}, windowId=${String(windowId)})`,
+                );
             }
             options.state.upsertTokenScope(tabInfo.tabToken, tabScopeWorkspaceId, tabScopeTabId);
             options.state.setWindowWorkspace(windowId, tabScopeWorkspaceId);
@@ -244,7 +248,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             const scope = options.state.getTokenScope(active.tabToken);
             if (!scope) {return;}
             const now = Date.now();
-            const key = `${windowId}:${scope.workspaceId}`;
+            const key = `${String(windowId)}:${scope.workspaceId}`;
             if (options.state.shouldThrottleWorkspaceActivated(key, now, LIFECYCLE_THROTTLE_MS)) {
                 options.onRefresh();
                 return;

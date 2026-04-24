@@ -11,7 +11,7 @@ const createRegistry = () => {
     return {
         resolveScopeFromToken: (token: string) => {
             const scope = tokenScope.get(token);
-            if (!scope) throw new Error('not found');
+            if (!scope) {throw new Error('not found');}
             return scope;
         },
         resolveScope: (scope?: { workspaceId?: string; tabId?: string }) => ({
@@ -19,7 +19,7 @@ const createRegistry = () => {
             tabId: scope?.tabId || 'tab-1',
         }),
         resolveTabToken: (scope?: { workspaceId?: string; tabId?: string }) => {
-            if (scope?.workspaceId === 'ws-1' && scope?.tabId === 'tab-2') return 'token-b';
+            if (scope?.workspaceId === 'ws-1' && scope?.tabId === 'tab-2') {return 'token-b';}
             return 'token-a';
         },
     } as any;

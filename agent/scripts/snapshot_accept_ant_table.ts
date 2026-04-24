@@ -207,14 +207,14 @@ const buildReport = (input: {
                 const rightReason = right.decision?.reason || 'unknown';
                 const leftPriority = DROP_REASON_PRIORITY[leftReason] ?? -1;
                 const rightPriority = DROP_REASON_PRIORITY[rightReason] ?? -1;
-                if (rightPriority !== leftPriority) return rightPriority - leftPriority;
+                if (rightPriority !== leftPriority) {return rightPriority - leftPriority;}
                 return compareCandidate(left.candidate, right.candidate);
             });
         const top = ranked[0];
         const selectedAncestor = tableCandidates
             .filter((candidate) => {
                 const decision = aggregate.decisionByKey.get(toCandidateKey(candidate));
-                if (!decision?.selected) return false;
+                if (!decision?.selected) {return false;}
                 return isDescendantOrSelf(candidate.nodeId, wrapper.domId, index);
             })
             .sort(compareCandidate)[0];
@@ -320,7 +320,7 @@ const buildSelectionTree = (raw: RawData): UnifiedNode => {
         root.children.push(layeredGraph.root);
     }
     for (const overlay of overlays) {
-        if (isNoiseLayer(overlay)) continue;
+        if (isNoiseLayer(overlay)) {continue;}
         root.children.push(overlay);
     }
 
@@ -330,7 +330,7 @@ const buildSelectionTree = (raw: RawData): UnifiedNode => {
 
 const collectTableWrappers = (domTree: unknown): TableWrapperTruth[] => {
     const root = asDomNode(domTree);
-    if (!root) return [];
+    if (!root) {return [];}
     const wrappers: TableWrapperTruth[] = [];
 
     const visit = (node: DomNodeLike) => {
@@ -395,7 +395,7 @@ const indexTree = (root: UnifiedNode): TreeIndex => {
 };
 
 const isDescendantOrSelf = (ancestorId: string, nodeId: string, index: TreeIndex): boolean => {
-    if (ancestorId === nodeId) return true;
+    if (ancestorId === nodeId) {return true;}
     const ancestorEnter = index.enterById.get(ancestorId);
     const ancestorExit = index.exitById.get(ancestorId);
     const nodeEnter = index.enterById.get(nodeId);
@@ -407,9 +407,9 @@ const isDescendantOrSelf = (ancestorId: string, nodeId: string, index: TreeIndex
 };
 
 const compareCandidate = (left: StructureCandidate, right: StructureCandidate): number => {
-    if (right.score !== left.score) return right.score - left.score;
-    if (right.features.confidence !== left.features.confidence) return right.features.confidence - left.features.confidence;
-    if (right.depth !== left.depth) return right.depth - left.depth;
+    if (right.score !== left.score) {return right.score - left.score;}
+    if (right.features.confidence !== left.features.confidence) {return right.features.confidence - left.features.confidence;}
+    if (right.depth !== left.depth) {return right.depth - left.depth;}
     return left.nodeId.localeCompare(right.nodeId);
 };
 
@@ -420,8 +420,8 @@ const toCandidateKey = (candidate: StructureCandidate): string => {
 const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName') || '');
-    if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) return true;
-    if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) return true;
+    if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) {return true;}
+    if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) {return true;}
     return false;
 };
 
@@ -463,12 +463,12 @@ const parseArgs = (argv: string[]): CliOptions => {
 };
 
 const asDomNode = (value: unknown): DomNodeLike | null => {
-    if (!value || typeof value !== 'object') return null;
+    if (!value || typeof value !== 'object') {return null;}
     return value as DomNodeLike;
 };
 
 const hasClassToken = (className: string | undefined, token: string): boolean => {
-    if (!className) return false;
+    if (!className) {return false;}
     return className
         .split(/\s+/)
         .map((item) => item.trim())

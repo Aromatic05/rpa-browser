@@ -36,7 +36,7 @@ const waitForServer = async (baseUrl: string) => {
     while (Date.now() < deadline) {
         try {
             const res = await fetch(`${baseUrl}/health`);
-            if (res.ok) return;
+            if (res.ok) {return;}
         } catch {
             // ignore
         }
@@ -46,7 +46,7 @@ const waitForServer = async (baseUrl: string) => {
 };
 
 const stopServer = async (child: ChildProcess) => {
-    if (child.killed || child.exitCode !== null) return;
+    if (child.killed || child.exitCode !== null) {return;}
     child.kill('SIGTERM');
     const graceful = await Promise.race([
         new Promise<boolean>((resolve) => {
@@ -92,7 +92,7 @@ const createHttpClient = (baseUrl: string) => {
 const parseToolResult = (message: JsonRpcMessage) => {
     const result = message.result as { content?: Array<{ type: string; text?: string }> } | undefined;
     const text = result?.content?.find((item) => item.type === 'text')?.text;
-    if (!text) return null;
+    if (!text) {return null;}
     return JSON.parse(text);
 };
 

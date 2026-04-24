@@ -203,7 +203,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         }
         workspaces.forEach((ws) => {
             const btn = document.createElement('button');
-            btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${ws.tabCount})`;
+            btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${String(ws.tabCount)})`;
             if (activeWorkspaceId === ws.workspaceId) {
                 btn.classList.add('primary');
             }
@@ -291,7 +291,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
 
     const interceptAction = (action: Action) => {
-        if (!action || String(action.type || '').endsWith('.failed')) {return;}
+        if (!action || action.type.endsWith('.failed')) {return;}
         const payload = (action.payload || {}) as {
             activeWorkspaceId?: string;
             workspaces?: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>;

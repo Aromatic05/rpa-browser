@@ -93,8 +93,10 @@ export default tseslint.config(
         {
           functions: false,
           classes: true,
-          variables: true,
-          typedefs: true
+          // this codebase has many forward references for helpers/constants;
+          // keep class checks only to avoid overwhelming false-positive volume.
+          variables: false,
+          typedefs: false
         }
       ],
 
@@ -151,6 +153,74 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked]
   },
 
+  // browser extension / start page runtime globals
+  {
+    files: [
+      "extension/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+      "start_extension/**/*.{ts,tsx,js,jsx,mjs,cjs}"
+    ],
+    languageOptions: {
+      globals: {
+        chrome: "readonly",
+        console: "readonly",
+        document: "readonly",
+        window: "readonly",
+        navigator: "readonly",
+        location: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        queueMicrotask: "readonly"
+      }
+    },
+    rules: {
+      // @types/chrome 标注了大量 deprecated，不适合作为 MV3 extension 的阻塞规则
+      "@typescript-eslint/no-deprecated": "off"
+    }
+  },
+
+  // build scripts run in node context
+  {
+    files: ["**/build.mjs"],
+    languageOptions: {
+      globals: {
+        URL: "readonly",
+        process: "readonly"
+      }
+    }
+  },
+
+  // these paths are intentionally outside agent/tsconfig include set
+  {
+    files: [
+      "agent/scripts/**/*.{ts,tsx}",
+      "agent/tests/**/*.{ts,tsx}",
+      "agent/debug/snapshot-viewer/**/*.{ts,tsx}"
+    ],
+    extends: [tseslint.configs.disableTypeChecked]
+  },
+
+  // agent runtime uses async-compatible handler signatures and rich string interpolation
+  {
+    files: ["agent/src/actions/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/require-await": "off"
+    }
+  },
+  {
+    files: ["agent/src/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/restrict-template-expressions": [
+        "error",
+        {
+          allowNumber: true,
+          allowBoolean: true,
+          allowNullish: true
+        }
+      ]
+    }
+  },
+
   // 测试文件稍微放宽一点
   {
     files: [
@@ -164,7 +234,8 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-call": "off",
       "@typescript-eslint/no-unsafe-return": "off",
-      "@typescript-eslint/no-floating-promises": "off"
+      "@typescript-eslint/no-floating-promises": "off",
+      "@typescript-eslint/no-non-null-assertion": "off"
     }
   }
 );

@@ -6,7 +6,7 @@ export const startFixtureServer = async () => {
     const fixturesDir = path.resolve(process.cwd(), 'tests/fixtures');
     const server = http.createServer(async (req, res) => {
         const url = new URL(req.url || '/', 'http://localhost');
-        let pathname = url.pathname === '/' ? '/choices.html' : url.pathname;
+        const pathname = url.pathname === '/' ? '/choices.html' : url.pathname;
         const filePath = path.join(fixturesDir, pathname);
         try {
             const data = await fs.readFile(filePath);

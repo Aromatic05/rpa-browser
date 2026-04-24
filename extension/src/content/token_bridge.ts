@@ -56,7 +56,7 @@ export const ensureTabTokenAsync = async () => {
         } satisfies Action);
         const payload = (response.payload || {}) as { tabToken?: string };
         if (response.type === 'tab.init.result' && payload.tabToken) {
-            tabToken = String(payload.tabToken);
+            tabToken = payload.tabToken;
         }
         if (!tabToken) {
             throw new Error('tab token init failed');
@@ -75,16 +75,16 @@ export const bindHello = (tabToken: string, onHello?: () => void) => {
     };
 
     // 监听历史与哈希变化，保证页面切换后也能通知 SW
-    const originalPush = history.pushState;
-    const originalReplace = history.replaceState;
-    const wrap = (method: typeof history.pushState) =>
-        function (...args: Parameters<typeof history.pushState>) {
-            const result = method.apply(history, args as unknown as [any, any, any]);
+    const originalPush = history.pushState.bind(history);
+    const originalReplace = history.replaceState.bind(history);
+    const wrap = (method: typeof originalPush) =>
+        (...args: Parameters<typeof history.pushState>) => {
+            method(...args);
             sendHello();
-            return result;
+            return undefined;
         };
-    history.pushState = wrap(history.pushState);
-    history.replaceState = wrap(history.replaceState);
+    history.pushState = wrap(originalPush) as History['pushState'];
+    history.replaceState = wrap(originalReplace) as History['replaceState'];
 
     window.addEventListener('popstate', sendHello);
     window.addEventListener('hashchange', sendHello);

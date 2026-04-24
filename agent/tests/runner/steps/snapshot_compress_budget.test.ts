@@ -15,7 +15,7 @@ const countNodes = (root: UnifiedNode): number => {
     const stack: UnifiedNode[] = [root];
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
         total += 1;
         for (let index = current.children.length - 1; index >= 0; index -= 1) {
             stack.push(current.children[index]);
@@ -29,7 +29,7 @@ const collectIds = (root: UnifiedNode): Set<string> => {
     const stack: UnifiedNode[] = [root];
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
         ids.add(current.id);
         for (let index = current.children.length - 1; index >= 0; index -= 1) {
             stack.push(current.children[index]);

@@ -17,6 +17,8 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger || createLogger('sw');
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
     const state = createRouterState(log);
+    const toStringValue = (value: unknown): string | null =>
+        typeof value === 'string' ? value : typeof value === 'number' ? String(value) : null;
 
     const sendAction = async (action: Action): Promise<Action> => await options.wsClient.sendAction(withActionBase(action));
 
@@ -37,7 +39,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
             const data = (action.payload || {}) as Record<string, unknown>;
-            const activeId = data.activeWorkspaceId ? String(data.activeWorkspaceId) : null;
+            const activeId = toStringValue(data.activeWorkspaceId);
             if (activeId) {state.setActiveWorkspaceId(activeId);}
             options.onRefresh();
             return;
@@ -45,12 +47,15 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (action.type === ACTION_TYPES.TAB_BOUND) {
             const data = (action.payload || {}) as Record<string, unknown>;
-            if (data.tabToken && data.workspaceId && data.tabId) {
-                state.upsertTokenScope(String(data.tabToken), String(data.workspaceId), String(data.tabId));
-                state.bindWorkspaceToWindowIfKnown(String(data.tabToken));
+            const tabToken = toStringValue(data.tabToken);
+            const workspaceId = toStringValue(data.workspaceId);
+            const tabId = toStringValue(data.tabId);
+            if (tabToken && workspaceId && tabId) {
+                state.upsertTokenScope(tabToken, workspaceId, tabId);
+                state.bindWorkspaceToWindowIfKnown(tabToken);
             }
-            if (!state.getActiveWorkspaceId() && data.workspaceId) {
-                state.setActiveWorkspaceId(String(data.workspaceId));
+            if (!state.getActiveWorkspaceId() && workspaceId) {
+                state.setActiveWorkspaceId(workspaceId);
             }
             options.onRefresh();
             return;
@@ -58,7 +63,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (action.type === ACTION_TYPES.WORKSPACE_CHANGED) {
             const data = (action.payload || {}) as Record<string, unknown>;
-            const workspaceId = data.workspaceId ? String(data.workspaceId) : action.scope?.workspaceId || null;
+            const workspaceId = toStringValue(data.workspaceId) ?? action.scope?.workspaceId ?? null;
             if (workspaceId) {
                 state.setActiveWorkspaceId(workspaceId);
                 const activeWindowId = state.getActiveWindowId();
@@ -79,11 +84,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             scope: {},
         });
         if (isFailedReply(reply)) {
-            const error = payloadOf<{ code?: string; message?: string }>(reply);
-            throw new Error(`bootstrap.workspace_list_failed: ${error?.code || 'UNKNOWN'}:${error?.message || 'unknown'}`);
+            const error = payloadOf(reply);
+            const code = typeof error.code === 'string' ? error.code : 'UNKNOWN';
+            const message = typeof error.message === 'string' ? error.message : 'unknown';
+            throw new Error(`bootstrap.workspace_list_failed: ${code}:${message}`);
         }
         const data = payloadOf(reply);
-        const activeId = (data as any).activeWorkspaceId ? String((data as any).activeWorkspaceId) : null;
+        const activeId = toStringValue(data.activeWorkspaceId);
         if (activeId) {state.setActiveWorkspaceId(activeId);}
     };
 
@@ -92,7 +99,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (message.type === MSG.HELLO) {
             const tabId = sender.tab?.id;
-            if (tabId == null) {return;}
+            if (tabId === null || tabId === undefined) {return;}
             const tabToken = String(message.tabToken || '');
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
             state.upsertTab(tabId, tabToken, message.url || sender.tab?.url || '', windowId);
@@ -116,7 +123,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     sendAction,
                 });
                 sendResponse(reply);
-            })().catch((error) => {
+            })().catch((error: unknown) => {
                 const text = error instanceof Error ? error.message : String(error);
                 sendResponse({
                     v: 1,

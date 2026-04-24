@@ -23,7 +23,7 @@ type FixturePayload = {
 };
 
 const walk = (node: AnyNode | null | undefined, visit: (node: AnyNode) => void) => {
-    if (!node) return;
+    if (!node) {return;}
     visit(node);
     for (const child of node.children || []) {
         walk(child, visit);
@@ -46,25 +46,25 @@ test('shop.yingdao fixture keeps links normalized and target preserved', async (
 
     const domAnchors: AnyNode[] = [];
     walk(fixture.domTree, (node) => {
-        if ((node.tag || '').toLowerCase() === 'a') domAnchors.push(node);
+        if ((node.tag || '').toLowerCase() === 'a') {domAnchors.push(node);}
     });
 
     const unifiedLinks: AnyNode[] = [];
     walk(graph.root as AnyNode, (node) => {
-        if ((node.role || '').toLowerCase() === 'link') unifiedLinks.push(node);
+        if ((node.role || '').toLowerCase() === 'link') {unifiedLinks.push(node);}
     });
 
     assert.ok(unifiedLinks.length >= domAnchors.length, 'unified link nodes should not be fewer than dom anchors');
 
     const roleA: AnyNode[] = [];
     walk(graph.root as AnyNode, (node) => {
-        if ((node.role || '').toLowerCase() === 'a') roleA.push(node);
+        if ((node.role || '').toLowerCase() === 'a') {roleA.push(node);}
     });
     assert.equal(roleA.length, 0, 'anchor nodes should be normalized to role=link');
 
     const linksWithTarget: AnyNode[] = [];
     walk(graph.root as AnyNode, (node) => {
-        if ((node.role || '').toLowerCase() !== 'link') return;
+        if ((node.role || '').toLowerCase() !== 'link') {return;}
         const attrs = (node as { attrs?: Record<string, string> }).attrs || {};
         const target = (node as { target?: { ref?: string } }).target;
         if ((target?.ref || '').trim() || (attrs.href || '').trim()) {

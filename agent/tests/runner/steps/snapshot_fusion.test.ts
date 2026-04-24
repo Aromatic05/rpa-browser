@@ -30,17 +30,17 @@ type A11yNode = {
 };
 
 const countNodes = (node: { children?: unknown[] } | null | undefined): number => {
-    if (!node) return 0;
+    if (!node) {return 0;}
     const children: unknown[] = Array.isArray(node.children) ? node.children : [];
     return 1 + children.reduce<number>((sum, child) => sum + countNodes(child as any), 0);
 };
 
 const findNode = (node: any, id: string): any => {
-    if (!node) return null;
-    if (node.id === id) return node;
+    if (!node) {return null;}
+    if (node.id === id) {return node;}
     for (const child of node.children || []) {
         const matched = findNode(child, id);
-        if (matched) return matched;
+        if (matched) {return matched;}
     }
     return null;
 };
