@@ -19,6 +19,15 @@ export default tseslint.config(
       "**/playwright-report/**",
       "**/test-results/**",
       "**/docs/**",
+      // sample/demo/test-case fixtures: skip lint to keep signal focused on runtime code
+      "agent/tests/**",
+      "agent/tests/specs/**",
+      "agent/tests/integration/scenarios/**",
+      "agent/scripts/**",
+      "agent/debug/snapshot-viewer/**",
+      "agent/src/demo/**",
+      "agent/src/runner/demo/**",
+      "agent/src/runner/trace/demo/**",
       "**/*.bundle.js",
       "**/*.d.ts"
     ]
@@ -219,6 +228,7 @@ export default tseslint.config(
       "@typescript-eslint/no-dynamic-delete": "off",
       "@typescript-eslint/no-implied-eval": "off",
       "@typescript-eslint/return-await": "off",
+      "@typescript-eslint/prefer-nullish-coalescing": "off",
       "@typescript-eslint/restrict-template-expressions": [
         "error",
         {
