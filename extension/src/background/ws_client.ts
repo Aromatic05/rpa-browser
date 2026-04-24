@@ -15,8 +15,11 @@ export type WsClientOptions = {
     logger?: Logger;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
 export const createWsClient = (options: WsClientOptions): WsClient => {
-    const log = options.logger || createLogger('sw');
+    const log = options.logger ?? createLogger('sw');
     let wsRef: WebSocket | null = null;
     let wsReady: Promise<void> | null = null;
     const pending = new Map<string, (reply: Action) => void>();
@@ -32,7 +35,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
 
     const connect = () => {
         if (wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
-            return wsReady || Promise.resolve();
+            return wsReady ?? Promise.resolve();
         }
         wsRef = new WebSocket('ws://127.0.0.1:17333');
         wsReady = new Promise((resolve, reject) => {
@@ -64,7 +67,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             });
         });
         wsRef.addEventListener('message', (event) => {
-            let payload: any = event.data;
+            let payload: unknown = event.data;
             if (typeof payload === 'string') {
                 try {
                     payload = JSON.parse(payload);
@@ -72,11 +75,11 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            if (payload?.v !== 1 || typeof payload?.id !== 'string' || typeof payload?.type !== 'string') {
+            if (!isRecord(payload) || payload.v !== 1 || typeof payload.id !== 'string' || typeof payload.type !== 'string') {
                 return;
             }
             const action = payload as Action;
-            const kind = classifyActionType(action.type ?? '');
+            const kind = classifyActionType(action.type);
             if (kind === 'reply' && action.replyTo) {
                 const resolver = pending.get(action.replyTo);
                 if (resolver) {

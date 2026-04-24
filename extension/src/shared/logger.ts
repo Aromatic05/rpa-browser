@@ -31,6 +31,7 @@ const LEVEL_WEIGHT: Record<LogLevel, number> = {
 
 let initialized = false;
 let runtimeLevel: LogLevel = 'warning';
+type LoggerGlobal = typeof globalThis & { __RPA_LOG_LEVEL?: unknown };
 
 const normalizeLevel = (value: unknown): LogLevel | null => {
     if (typeof value !== 'string') {return null;}
@@ -43,8 +44,8 @@ const normalizeLevel = (value: unknown): LogLevel | null => {
 };
 
 const resolveCurrentLevel = (): LogLevel => {
-    const globalLevel = normalizeLevel((globalThis as any).__RPA_LOG_LEVEL);
-    return globalLevel || runtimeLevel;
+    const globalLevel = normalizeLevel((globalThis as LoggerGlobal).__RPA_LOG_LEVEL);
+    return globalLevel ?? runtimeLevel;
 };
 
 const shouldLog = (level: Exclude<LogLevel, 'silent'>) =>
@@ -53,14 +54,14 @@ const shouldLog = (level: Exclude<LogLevel, 'silent'>) =>
 const initRuntimeLevel = () => {
     if (initialized) {return;}
     initialized = true;
-    if (typeof chrome === 'undefined' || !chrome.storage?.local) {return;}
+    if (typeof chrome === 'undefined') {return;}
     chrome.storage.local.get(['rpaLogLevel'], (values: Record<string, unknown>) => {
-        const next = normalizeLevel(values?.rpaLogLevel);
+        const next = normalizeLevel(values.rpaLogLevel);
         if (next) {runtimeLevel = next;}
     });
-    chrome.storage.onChanged?.addListener((changes, areaName) => {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== 'local') {return;}
-        const next = normalizeLevel(changes?.rpaLogLevel?.newValue);
+        const next = normalizeLevel(changes.rpaLogLevel.newValue);
         if (next) {runtimeLevel = next;}
     });
 };
@@ -71,11 +72,11 @@ export const createLogger = (scope: LoggerScope): Logger => {
     return {
         debug: (...args: unknown[]) => {
             if (!shouldLog('debug')) {return;}
-            console.debug(prefix, ...args);
+            console.warn(`${prefix}[debug]`, ...args);
         },
         info: (...args: unknown[]) => {
             if (!shouldLog('info')) {return;}
-            console.info(prefix, ...args);
+            console.warn(`${prefix}[info]`, ...args);
         },
         warning: (...args: unknown[]) => {
             if (!shouldLog('warning')) {return;}

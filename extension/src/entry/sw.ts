@@ -28,8 +28,8 @@ const dispatchRefresh = () => {
     chrome.tabs
         .query({ active: true, currentWindow: true })
         .then((tabs) => {
-            const active = tabs[0];
-            if (!active?.id) {return;}
+            const active = tabs.at(0);
+            if (!active || typeof active.id !== 'number') {return;}
             void send.toTabTransport(active.id, MSG.REFRESH);
         })
         .catch((error: unknown) => {
@@ -71,7 +71,7 @@ actionBus.subscribe(
     ['**'],
     async (action) => {
         const targetTabId = router.resolveActionTargetTabId(action);
-        if (targetTabId === null || targetTabId === undefined) {return;}
+        if (targetTabId === null) {return;}
         await send.toTabTransport(targetTabId, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
     },
 );
@@ -90,5 +90,5 @@ chrome.tabs.onAttached.addListener((tabId, info) => { router.onAttached(tabId, i
 chrome.windows.onFocusChanged.addListener((windowId) => { router.onFocusChanged(windowId); });
 chrome.windows.onRemoved.addListener((windowId) => { router.onWindowRemoved(windowId); });
 
-chrome.runtime.onStartup?.addListener(() => { router.onStartup(); });
-chrome.runtime.onInstalled?.addListener(() => { router.onInstalled(); });
+chrome.runtime.onStartup.addListener(() => { router.onStartup(); });
+chrome.runtime.onInstalled.addListener(() => { router.onInstalled(); });

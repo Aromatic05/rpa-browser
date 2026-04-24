@@ -5,7 +5,10 @@
  * - 只负责格式化与展示，不做业务逻辑。
  */
 
-export const createUiLogger = (outEl: HTMLPreElement) => {
+export const createUiLogger = (outEl: HTMLPreElement): {
+    logPayload: (payload: unknown) => void;
+    logMessage: (message: string) => void;
+} => {
     const logPayload = (payload: unknown) => {
         outEl.textContent = JSON.stringify(payload, null, 2);
     };

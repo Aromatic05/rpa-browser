@@ -3,20 +3,28 @@ import { ACTION_TYPES, deriveFailedActionType, isRequestActionType } from '../sh
 import type { RouterState, TabRuntimeState } from './state.js';
 
 const PAGELESS_ACTIONS = new Set<string>([ACTION_TYPES.TAB_INIT, ACTION_TYPES.RECORD_LIST]);
+const toStringOrUndefined = (value: unknown): string | undefined =>
+    typeof value === 'string' ? value : typeof value === 'number' ? String(value) : undefined;
 
 export const withActionBase = (action: Action): Action => ({
     v: 1 as const,
-    id: action.id || crypto.randomUUID(),
+    id: action.id,
     type: action.type,
     payload: action.payload,
     scope: action.scope,
     tabToken: action.tabToken,
-    at: action.at || Date.now(),
+    at: action.at,
     traceId: action.traceId,
 });
 
-export const isFailedReply = (action: Action | null | undefined) => !!action?.type?.endsWith('.failed');
-export const payloadOf = (action: Action | null | undefined): Record<string, unknown> => ((action?.payload || {}) as Record<string, unknown>);
+export const isFailedReply = (action: Action | null | undefined): boolean => {
+    if (!action) {return false;}
+    return action.type.endsWith('.failed');
+};
+export const payloadOf = (action: Action | null | undefined): Record<string, unknown> => {
+    if (!action) {return {};}
+    return (action.payload ?? {}) as Record<string, unknown>;
+};
 
 type ResolveDeps = {
     state: RouterState;
@@ -55,8 +63,8 @@ export const resolveIncomingAction = async (
     sender: chrome.runtime.MessageSender,
     deps: ResolveDeps,
 ): Promise<{ ok: true; value: ResolvedIncomingAction } | { ok: false; reply: Action }> => {
-    if (incoming.v !== 1 || typeof incoming.id !== 'string' || typeof incoming.type !== 'string') {
-        return { ok: false, reply: mkInvalidEnvelopeAction(typeof incoming?.id === 'string' ? incoming.id : undefined) };
+    if (typeof incoming.id !== 'string' || typeof incoming.type !== 'string') {
+        return { ok: false, reply: mkInvalidEnvelopeAction(incoming.id) };
     }
     if (!isRequestActionType(incoming.type)) {
         return {
@@ -72,7 +80,7 @@ export const resolveIncomingAction = async (
 
     const isWorkspaceAction = incoming.type.startsWith('workspace.');
     const isPagelessAction = PAGELESS_ACTIONS.has(incoming.type) || isWorkspaceAction;
-    let tabToken = (incoming.tabToken || incoming.scope?.tabToken);
+    let tabToken = incoming.tabToken ?? incoming.scope?.tabToken;
     const senderTabId = sender.tab?.id;
     const senderWindowId = sender.tab?.windowId;
 
@@ -97,7 +105,7 @@ export const resolveIncomingAction = async (
     const scope = tokenScope ? { workspaceId: tokenScope.workspaceId, tabId: tokenScope.tabId } : undefined;
     const requestedWorkspaceId = incoming.scope?.workspaceId;
     const requestedTabId = incoming.scope?.tabId;
-    const hasExplicitScope = !!(requestedWorkspaceId || requestedTabId);
+    const hasExplicitScope = Boolean(requestedWorkspaceId ?? requestedTabId);
 
     const scopedScope = hasExplicitScope
         ? {
@@ -105,16 +113,17 @@ export const resolveIncomingAction = async (
               ...(requestedTabId ? { tabId: requestedTabId } : {}),
           }
         : scope
-          ? { workspaceId: scope.workspaceId, tabId: scope.tabId, ...(tabToken ? { tabToken } : {}) }
+          ? { workspaceId: scope.workspaceId, tabId: scope.tabId, ...(tabToken !== undefined ? { tabToken } : {}) }
           : tabToken
+            !== undefined
             ? { tabToken }
             : {};
 
     const scoped: Action = {
         ...incoming,
         v: 1,
-        id: incoming.id || crypto.randomUUID(),
-        at: incoming.at || Date.now(),
+        id: incoming.id,
+        at: incoming.at ?? Date.now(),
         tabToken: hasExplicitScope ? undefined : tabToken,
         scope: scopedScope,
     };
@@ -138,15 +147,16 @@ export const applyReplyProjection = (
     reply: Action,
     sender: chrome.runtime.MessageSender,
     state: RouterState,
-) => {
+): void => {
     const responsePayload = payloadOf(reply);
+    const replyWorkspaceId = toStringOrUndefined(responsePayload.workspaceId);
     const effectiveWorkspaceId = !isFailedReply(reply)
-        ? (responsePayload as any)?.workspaceId || resolved.inferredScope?.workspaceId || state.getActiveWorkspaceId()
+        ? (replyWorkspaceId ?? resolved.inferredScope?.workspaceId ?? state.getActiveWorkspaceId())
         : null;
     if (isFailedReply(reply) || !effectiveWorkspaceId) {return;}
 
-    const responseTabToken = (responsePayload as any)?.tabToken as string | undefined;
-    const responseTabId = (responsePayload as any)?.tabId as string | undefined;
+    const responseTabToken = toStringOrUndefined(responsePayload.tabToken);
+    const responseTabId = toStringOrUndefined(responsePayload.tabId);
     if (responseTabToken && responseTabId) {
         state.upsertTokenScope(responseTabToken, effectiveWorkspaceId, responseTabId);
         state.bindWorkspaceToWindowIfKnown(responseTabToken);
@@ -155,11 +165,11 @@ export const applyReplyProjection = (
     if (typeof resolved.senderTabId === 'number') {
         if (resolved.resolvedTabToken) {
             const oldTabId = state.findTabIdByToken(resolved.resolvedTabToken);
-            if (oldTabId !== null && oldTabId !== undefined && oldTabId !== resolved.senderTabId) {
+            if (oldTabId !== null && oldTabId !== resolved.senderTabId) {
                 state.removeTab(oldTabId);
             }
         }
-        const senderUrl = sender.tab?.url || state.getTabState(resolved.senderTabId)?.lastUrl || '';
+        const senderUrl = sender.tab?.url ?? state.getTabState(resolved.senderTabId)?.lastUrl ?? '';
         if (resolved.resolvedTabToken) {
             state.upsertTab(resolved.senderTabId, resolved.resolvedTabToken, senderUrl, resolved.senderWindowId);
         }

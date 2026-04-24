@@ -7,6 +7,10 @@ type Subscription = {
     patterns: ActionPattern[];
     subscriber: ActionSubscriber;
 };
+type ActionBus = {
+    subscribe: (patterns: ActionPattern[], subscriber: ActionSubscriber) => () => void;
+    publish: (action: Action) => void;
+};
 
 const matchByPattern = (actionType: string, pattern: ActionPattern) => {
     if (pattern === '*') {return true;}
@@ -33,7 +37,7 @@ const matchesAnyPattern = (actionType: string, patterns: ActionPattern[]) => {
     return false;
 };
 
-export const createActionBus = () => {
+export const createActionBus = (): ActionBus => {
     const subscriptions = new Set<Subscription>();
 
     const subscribe = (patterns: ActionPattern[], subscriber: ActionSubscriber) => {

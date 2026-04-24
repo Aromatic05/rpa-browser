@@ -22,6 +22,6 @@ export type ErrorCode =
     | 'BAD_REQUEST'
     | 'WS_DOWN';
 
-export type TransportError = { code: ErrorCode; message: string; details?: any };
+export type TransportError = { code: ErrorCode; message: string; details?: unknown };
 
 export type TransportResult<T> = { ok: true; data: T } | { ok: false; error: TransportError };

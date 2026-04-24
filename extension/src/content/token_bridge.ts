@@ -9,12 +9,18 @@
 import { send } from '../shared/send.js';
 import type { Action } from '../shared/types.js';
 
+declare global {
+    interface Window {
+        __TAB_TOKEN__?: string;
+    }
+}
+
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
 
-const readTokenFromWindowName = () => {
+const readTokenFromWindowName = (): string | null => {
     try {
-        const raw = window.name || '';
+        const raw = window.name;
         if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) {return null;}
         const token = raw.slice(TAB_TOKEN_WIN_NAME_PREFIX.length).trim();
         return token || null;
@@ -31,16 +37,16 @@ const writeTokenToWindowName = (tabToken: string) => {
     }
 };
 
-export const ensureTabToken = () => {
-    const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) || readTokenFromWindowName() || '';
+export const ensureTabToken = (): string => {
+    const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? readTokenFromWindowName() ?? '';
     if (!tabToken) {return '';}
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
     writeTokenToWindowName(tabToken);
-    (window as any).__TAB_TOKEN__ = tabToken;
+    window.__TAB_TOKEN__ = tabToken;
     return tabToken;
 };
 
-export const ensureTabTokenAsync = async () => {
+export const ensureTabTokenAsync = async (): Promise<string> => {
     let tabToken = ensureTabToken();
     if (!tabToken) {
         const response = await send.action({
@@ -54,7 +60,7 @@ export const ensureTabTokenAsync = async () => {
             },
             scope: {},
         } satisfies Action);
-        const payload = (response.payload || {}) as { tabToken?: string };
+        const payload = (response.payload ?? {}) as { tabToken?: string };
         if (response.type === 'tab.init.result' && payload.tabToken) {
             tabToken = payload.tabToken;
         }
@@ -64,11 +70,11 @@ export const ensureTabTokenAsync = async () => {
     }
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
     writeTokenToWindowName(tabToken);
-    (window as any).__TAB_TOKEN__ = tabToken;
+    window.__TAB_TOKEN__ = tabToken;
     return tabToken;
 };
 
-export const bindHello = (tabToken: string, onHello?: () => void) => {
+export const bindHello = (tabToken: string, onHello?: () => void): () => void => {
     const sendHello = () => {
         void send.hello({ tabToken, url: location.href });
         onHello?.();
