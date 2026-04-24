@@ -5,13 +5,16 @@ const getElementText = (el: Element) => {
     return el.textContent || '';
 };
 
-export type EmitPayload = { type: string; [key: string]: any };
+type WindowWithTabToken = Window & { __rpa_tab_token?: unknown; __TAB_TOKEN__?: unknown };
+type WindowBridge = Window & Record<string, unknown>;
+
+export type EmitPayload = { type: string; [key: string]: unknown };
 export type EmitFn = (payload: EmitPayload) => void;
 export type DebugTargetFn = (label: string, target: Element | null, reason: string) => void;
 
 const tokenKey = '__rpa_tab_token';
 
-const getToken = () => {
+const getToken = (): string | null => {
     try {
         const fromSession = sessionStorage.getItem(tokenKey);
         if (fromSession) {return fromSession;}
@@ -19,28 +22,29 @@ const getToken = () => {
         // ignore sessionStorage read failures
     }
     try {
-        const fromWindow = (window as any).__rpa_tab_token || (window as any).__TAB_TOKEN__;
-        if (fromWindow) {return fromWindow;}
+        const fromWindow = (window as WindowWithTabToken).__rpa_tab_token ?? (window as WindowWithTabToken).__TAB_TOKEN__;
+        if (typeof fromWindow === 'string' && fromWindow.length > 0) {return fromWindow;}
     } catch {
         // ignore window token read failures
     }
     return null;
 };
 
-export const createEmitter = (bindingName: string, version: string) => {
+export const createEmitter = (bindingName: string, version: string): { emit: EmitFn; debugTarget: DebugTargetFn } => {
     const emit: EmitFn = (payload) => {
         const tabToken = getToken();
         if (!tabToken) {
             try {
-                console.warn('[recorder] missing tabToken', { url: location.href, payload: payload && payload.type });
+                console.warn('[recorder] missing tabToken', { url: location.href, payload: payload.type });
             } catch {
                 // ignore debug logging failures
             }
             return;
         }
-        const bridge = (window as any)[bindingName];
-        if (!bridge) {return;}
-        bridge({
+        const bridge = (window as WindowBridge)[bindingName];
+        if (typeof bridge !== 'function') {return;}
+        const bridgeFn = bridge as (payload: Record<string, unknown>) => void;
+        bridgeFn({
             recorderVersion: version,
             tabToken,
             ts: Date.now(),
@@ -60,10 +64,10 @@ export const createEmitter = (bindingName: string, version: string) => {
                 label,
                 reason,
                 url: location.href,
-                tag: target && (target).tagName ? (target).tagName.toLowerCase() : undefined,
-                id: target && (target).getAttribute ? (target).getAttribute('id') : undefined,
-                className: target && (target).className ? String((target).className) : undefined,
-                role: target && (target).getAttribute ? (target).getAttribute('role') : undefined,
+                tag: target?.tagName.toLowerCase(),
+                id: target?.getAttribute('id'),
+                className: target?.className,
+                role: target?.getAttribute('role'),
                 name: target ? getLabelText(target) || normalizeText(getElementText(target)) : undefined,
             };
             console.warn('[recorder] click capture skipped', info);

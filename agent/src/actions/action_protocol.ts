@@ -33,7 +33,7 @@ export type Action<T extends string = string, P = unknown> = {
 export type ActionFailurePayload = {
     code: string;
     message: string;
-    details?: any;
+    details?: unknown;
 };
 
 const copyScope = (scope?: ActionScope) => (scope ? { ...scope } : undefined);
@@ -58,7 +58,7 @@ export const failedAction = (
     request: Action,
     code: string,
     message: string,
-    details?: any,
+    details?: unknown,
     type = `${request.type}.failed`,
 ): Action<string, ActionFailurePayload> => ({
     v: 1,
@@ -72,4 +72,4 @@ export const failedAction = (
     replyTo: request.id,
 });
 
-export const isFailedAction = (action: Action) => action.type.endsWith('.failed');
+export const isFailedAction = (action: Action): boolean => action.type.endsWith('.failed');

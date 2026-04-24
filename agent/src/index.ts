@@ -1,6 +1,7 @@
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { WebSocketServer, type WebSocket } from 'ws';
+import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
@@ -93,6 +94,13 @@ const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
     ACTION_TYPES.TAB_REASSIGN,
 ]);
 const staleNotifiedTokens = new Set<string>();
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+    typeof value === 'object' && value !== null;
+
+const getStringField = (value: UnknownRecord, key: string): string | null =>
+    typeof value[key] === 'string' ? value[key] : null;
 
 const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
     broadcast({
@@ -106,7 +114,7 @@ const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
 };
 
 const broadcastWorkspaceList = (reason: string) => {
-    const active = pageRegistry.getActiveWorkspace?.();
+    const active = pageRegistry.getActiveWorkspace();
     broadcast({
         v: 1,
         id: crypto.randomUUID(),
@@ -128,12 +136,10 @@ const pageRegistry = createPageRegistry({
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
-        if (runtimeRegistry) {
-            try {
-                runtimeRegistry.bindPage(page, token);
-            } catch {
-                // runtime trace binding is best-effort during early token/workspace races
-            }
+        try {
+            runtimeRegistry.bindPage(page, token);
+        } catch {
+            // runtime trace binding is best-effort during early token/workspace races
         }
         try {
             const scope = pageRegistry.resolveScopeFromToken(token);
@@ -166,7 +172,7 @@ setRunStepsDeps({
     pluginHost: runnerPluginHost,
 });
 
-const createActionContext = (page: any, tabToken: string): ActionContext => {
+const createActionContext = (page: Page, tabToken: string): ActionContext => {
     const ctx: ActionContext = {
         page,
         tabToken,
@@ -221,13 +227,18 @@ const runPagelessAction = async (action: Action, tabToken = '') => {
                 throw new Error(`action '${action.type}' accessed page.${String(prop)} without target`);
             },
         },
-    ) as any;
+    ) as unknown as Page;
     actionLogger('action', { type: action.type, tabToken: tabToken || null, id: action.id, mode: 'pageless' });
     return await executeAction(createActionContext(pageStub, tabToken), action);
 };
 
 const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
-    const token = String(action.scope?.tabToken || action.tabToken || '');
+    const token =
+        typeof action.scope?.tabToken === 'string'
+            ? action.scope.tabToken
+            : typeof action.tabToken === 'string'
+              ? action.tabToken
+              : '';
     if (!token) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');}
     const payload = (action.payload || {}) as Record<string, unknown>;
     const workspaceId =
@@ -242,7 +253,8 @@ const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
 };
 
 const handleAction = async (action: Action) => {
-    const urlHint = typeof (action.payload as any)?.url === 'string' ? ((action.payload as any).url as string) : undefined;
+    const payload = isRecord(action.payload) ? action.payload : null;
+    const urlHint = payload && typeof payload.url === 'string' ? payload.url : undefined;
     log('action.inbound', {
         id: action.id,
         type: action.type,
@@ -311,7 +323,7 @@ const parseInboundAction = (raw: unknown): Action => {
         throw new Error('invalid action: missing or invalid fields');
     }
     if (!isRequestActionType(rec.type)) {
-        throw new Error(`invalid action: unsupported type '${String(rec.type)}'`);
+        throw new Error(`invalid action: unsupported type '${rec.type}'`);
     }
     return rec as Action;
 };
@@ -349,7 +361,7 @@ wss.on('listening', () => {
 wss.on('connection', (socket) => {
     wsClients.add(socket);
     socket.on('message', (data) => {
-        let raw: any;
+        let raw: unknown;
         try {
             const rawText =
                 typeof data === 'string'
@@ -380,42 +392,51 @@ wss.on('connection', (socket) => {
                 const action = parseInboundAction(raw);
                 const response = await handleAction(action);
                 if (action.type === ACTION_TYPES.TAB_REPORTED) {
+                    const responsePayload = isRecord(response.payload) ? response.payload : null;
                     logTabReportDebug('agent.reply', {
                         id: action.id,
                         ok: !isFailedAction(response),
-                        workspaceId: (response.payload as any)?.workspaceId || null,
-                        tabId: (response.payload as any)?.tabId || null,
-                        tabToken: (response.payload as any)?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                        workspaceId: responsePayload ? getStringField(responsePayload, 'workspaceId') : null,
+                        tabId: responsePayload ? getStringField(responsePayload, 'tabId') : null,
+                        tabToken:
+                            (responsePayload ? getStringField(responsePayload, 'tabToken') : null) ??
+                            action.tabToken ??
+                            action.scope?.tabToken ??
+                            null,
                     });
                 }
                 socket.send(JSON.stringify(response));
 
                 if (!isFailedAction(response) && isMutatingAction(action.type)) {
-                    const data = response.payload as any;
+                    const data = isRecord(response.payload) ? response.payload : null;
+                    const workspaceId = data ? getStringField(data, 'workspaceId') : null;
+                    const tabId = data ? getStringField(data, 'tabId') : null;
                     broadcast({
                         v: 1,
                         id: crypto.randomUUID(),
                         type: ACTION_TYPES.WORKSPACE_CHANGED,
-                        payload: { workspaceId: data?.workspaceId, tabId: data?.tabId, sourceType: action.type },
-                        scope: data?.workspaceId
-                            ? { workspaceId: String(data.workspaceId), ...(data?.tabId ? { tabId: String(data.tabId) } : {}) }
+                        payload: { workspaceId, tabId, sourceType: action.type },
+                        scope: workspaceId
+                            ? { workspaceId, ...(tabId ? { tabId } : {}) }
                             : {},
                         at: Date.now(),
                     });
                 }
                 if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
-                    const data = response.payload as any;
+                    const data = isRecord(response.payload) ? response.payload : null;
+                    const workspaceId = (data ? getStringField(data, 'workspaceId') : null) ?? action.scope?.workspaceId ?? null;
+                    const tabToken = (data ? getStringField(data, 'tabToken') : null) ?? action.tabToken ?? action.scope?.tabToken ?? null;
                     if (action.type === ACTION_TYPES.TAB_REPORTED) {
                         logTabReportDebug('agent.emit.state_sync', {
                             id: action.id,
                             reason: `report:${action.type}`,
-                            workspaceId: data?.workspaceId || action.scope?.workspaceId || null,
-                            tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                            workspaceId,
+                            tabToken,
                         });
                     }
                     broadcastStateSync(`report:${action.type}`, {
-                        workspaceId: data?.workspaceId || action.scope?.workspaceId || null,
-                        tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                        workspaceId,
+                        tabToken,
                     });
                     broadcastWorkspaceList(`report:${action.type}`);
                 }

@@ -75,13 +75,13 @@ const isNamedDomain = (domain: string) => domain.split('.').every((part) => SEGM
 
 export const isRequestActionType = (value: string): value is RequestActionType => requestTypes.has(value);
 
-export const isReplyActionType = (value: string) => {
+export const isReplyActionType = (value: string): boolean => {
     const match = value.match(resultOrFailureTypeRe);
     if (!match) {return false;}
     return isRequestActionType(match[1]);
 };
 
-export const isDerivedEventActionType = (value: string) => {
+export const isDerivedEventActionType = (value: string): boolean => {
     if (fixedEventTypes.has(value)) {return true;}
     const eventMatch = value.match(eventTypeRe);
     if (eventMatch) {

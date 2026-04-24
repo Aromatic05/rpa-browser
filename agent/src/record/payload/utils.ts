@@ -1,20 +1,19 @@
-export const normalizeText = (value?: string) =>
+export const normalizeText = (value?: string): string =>
     (value || '')
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 120);
 
-const getElementText = (el: Element) => {
+const getElementText = (el: Element): string => {
     if ('innerText' in el) {return (el as HTMLElement).innerText || el.textContent || '';}
     return el.textContent || '';
 };
 
-export const safeEscape = (value: string) => {
-    if ((window as any).CSS?.escape) {return (window as any).CSS.escape(value);}
-    return value.replace(/[^a-zA-Z0-9_-]/g, '');
+export const safeEscape = (value: string): string => {
+    return CSS.escape(value);
 };
 
-const isStableClass = (value: string) => {
+const isStableClass = (value: string): boolean => {
     const clean = value.trim();
     if (!clean) {return false;}
     if (clean.length > 24) {return false;}
@@ -23,7 +22,7 @@ const isStableClass = (value: string) => {
     return true;
 };
 
-export const selectorFor = (el: Element | null) => {
+export const selectorFor = (el: Element | null): string | null => {
     if (!el || !('tagName' in el)) {return null;}
     const dataAttrs = ['data-testid', 'data-test', 'data-qa'];
     for (const attr of dataAttrs) {
@@ -37,7 +36,7 @@ export const selectorFor = (el: Element | null) => {
     while (node?.nodeType === 1 && depth < 7) {
         const tag = node.tagName.toLowerCase();
         let part = tag;
-        const classList = Array.from((node as HTMLElement).classList || [])
+        const classList = Array.from((node as HTMLElement).classList)
             .filter(isStableClass)
             .slice(0, 2)
             .map(safeEscape);
@@ -59,7 +58,7 @@ export const selectorFor = (el: Element | null) => {
     return parts.join(' > ');
 };
 
-export const getRole = (el: Element) => {
+export const getRole = (el: Element): string | null => {
     const explicit = el.getAttribute('role');
     if (explicit) {return explicit;}
     const tag = el.tagName.toLowerCase();
@@ -77,7 +76,7 @@ export const getRole = (el: Element) => {
     return null;
 };
 
-export const getLabelText = (el: Element) => {
+export const getLabelText = (el: Element): string | null => {
     const aria = el.getAttribute('aria-label');
     if (aria) {return normalizeText(aria);}
     const labelledBy = el.getAttribute('aria-labelledby');
@@ -101,20 +100,20 @@ export const getLabelText = (el: Element) => {
     return null;
 };
 
-export const getTestId = (el: Element) => {
+export const getTestId = (el: Element): string | null => {
     const node = el.closest('[data-testid],[data-test],[data-qa]');
     if (!node) {return null;}
     return node.getAttribute('data-testid') || node.getAttribute('data-test') || node.getAttribute('data-qa');
 };
 
-export const getScopeHint = (el: Element) => {
+export const getScopeHint = (el: Element): string | null => {
     if (el.closest('aside')) {return 'aside';}
     if (el.closest('header')) {return 'header';}
     if (el.closest('main')) {return 'main';}
     return null;
 };
 
-export const getTextCandidate = (el: Element) => {
+export const getTextCandidate = (el: Element): string | null => {
     const tag = el.tagName.toLowerCase();
     if (tag === 'button' || tag === 'a' || tag === 'li' || tag === 'span') {
         return normalizeText(getElementText(el));
@@ -122,8 +121,8 @@ export const getTextCandidate = (el: Element) => {
     return null;
 };
 
-export const buildCandidates = (el: Element) => {
-    const candidates: any[] = [];
+export const buildCandidates = (el: Element): Array<Record<string, unknown>> => {
+    const candidates: Array<Record<string, unknown>> = [];
     const testId = getTestId(el);
     if (testId) {
         candidates.push({ kind: 'testid', testId, note: 'data-testid' });
@@ -136,7 +135,7 @@ export const buildCandidates = (el: Element) => {
         el.getAttribute('alt') ||
         el.getAttribute('value');
     if (role && name) {
-        candidates.push({ kind: 'role', role, name: normalizeText(String(name)), exact: true });
+        candidates.push({ kind: 'role', role, name: normalizeText(name), exact: true });
     }
     const labelText = getLabelText(el);
     if (labelText) {
@@ -157,7 +156,7 @@ export const buildCandidates = (el: Element) => {
     return candidates;
 };
 
-export const buildA11yHint = (el: Element) => {
+export const buildA11yHint = (el: Element): Record<string, string> => {
     const role = getRole(el);
     const name =
         getLabelText(el) ||
@@ -165,32 +164,32 @@ export const buildA11yHint = (el: Element) => {
         el.getAttribute('title') ||
         el.getAttribute('alt') ||
         el.getAttribute('value');
-    const text = name ? normalizeText(String(name)) : getTextCandidate(el);
+    const text = name ? normalizeText(name) : getTextCandidate(el);
     const hint: Record<string, string> = {};
     if (role) {hint.role = role;}
-    if (name) {hint.name = normalizeText(String(name));}
-    if (text) {hint.text = normalizeText(String(text));}
+    if (name) {hint.name = normalizeText(name);}
+    if (text) {hint.text = normalizeText(text);}
     return hint;
 };
 
-export const isPassword = (el: Element) => {
+export const isPassword = (el: Element): boolean => {
     const type = (el.getAttribute('type') || '').toLowerCase();
     return type === 'password' || el.getAttribute('autocomplete') === 'current-password';
 };
 
-export const getValue = (el: Element) => {
+export const getValue = (el: Element): string => {
     if (isPassword(el)) {return '***';}
     if ('value' in el) {return (el as HTMLInputElement).value;}
     return el.textContent || '';
 };
 
-export const isCheckboxOrRadio = (el: Element) => {
+export const isCheckboxOrRadio = (el: Element): boolean => {
     if (!(el instanceof HTMLInputElement)) {return false;}
     const type = (el.type || '').toLowerCase();
     return type === 'checkbox' || type === 'radio';
 };
 
-export const findCheckboxInput = (target: Element | null) => {
+export const findCheckboxInput = (target: Element | null): HTMLInputElement | null => {
     if (!target) {return null;}
     if (target instanceof HTMLInputElement) {
         const type = (target.type || '').toLowerCase();
