@@ -8,12 +8,49 @@ const urlEl = document.getElementById('url');
 const restoreStatusEl = document.getElementById('restoreStatus');
 const restoreListEl = document.getElementById('restoreList');
 const refreshRestoreBtn = document.getElementById('refreshRestore');
-const log = (...args: unknown[]) => { console.log('[RPA:start]', ...args); };
+const log = (...args: unknown[]) => { console.warn('[RPA:start]', ...args); };
+
+declare global {
+    interface Window {
+        __rpa_tab_token?: string;
+        __TAB_TOKEN__?: string;
+    }
+}
+
+type ActionError = { message?: string };
+type ActionResult<TData = unknown> = {
+    ok: boolean;
+    data?: TData;
+    error?: ActionError;
+};
+
+type WsActionEnvelope = {
+    replyTo?: string;
+    payload?: unknown;
+};
+
 type RestoreItem = {
     workspaceId?: string;
     stepCount?: number;
     updatedAt?: number;
     entryUrl?: string;
+};
+type TabInitData = { tabToken?: string };
+type WorkspaceListData = { activeWorkspaceId?: string };
+type RecordListData = { recordings?: unknown };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+const asString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+const parseActionResult = <TData = unknown>(value: unknown): ActionResult<TData> => {
+    if (!isRecord(value)) {
+        return { ok: false, error: { message: 'invalid payload' } };
+    }
+    const ok = value.ok === true;
+    const errorRaw = value.error;
+    const error = isRecord(errorRaw) ? { message: asString(errorRaw.message) } : undefined;
+    const data = (value.data as TData | undefined);
+    return { ok, data, error };
 };
 
 const setStatus = (text: string, ok = false) => {
@@ -24,45 +61,49 @@ const setStatus = (text: string, ok = false) => {
 };
 
 const ensureTabToken = () => {
-    return sessionStorage.getItem(TAB_TOKEN_KEY) || '';
+    return sessionStorage.getItem(TAB_TOKEN_KEY) ?? '';
 };
 
-const sendAction = async (type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>
-    await new Promise<any>((resolve) => {
+const sendAction = async <TData = unknown>(type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>
+    await new Promise<ActionResult<TData>>((resolve) => {
         let settled = false;
         let ws: WebSocket | null = null;
         const requestId = crypto.randomUUID();
-        const done = (result: any) => {
+        const done = (result: ActionResult<TData>) => {
             if (settled) {return;}
             settled = true;
             ws?.close();
             resolve(result);
         };
         const timeout = setTimeout(() => {
-            log('action.timeout', { type, requestId, payload, scope: scope || {} });
+            log('action.timeout', { type, requestId, payload, scope: scope ?? {} });
             done({ ok: false, error: { message: 'ws action timeout' } });
         }, 5000);
         ws = new WebSocket(WS_URL);
-        log('action.ws.connecting', { type, requestId, payload, scope: scope || {} });
+        log('action.ws.connecting', { type, requestId, payload, scope: scope ?? {} });
         ws.addEventListener('open', () => {
             log('action.ws.open', { type, requestId });
-            ws?.send(
+            ws.send(
                 JSON.stringify({
                     v: 1,
                     id: requestId,
                     type,
                     payload,
-                    scope: scope || {},
+                    scope: scope ?? {},
                 }),
             );
             log('action.sent', { type, requestId });
         });
         ws.addEventListener('message', (event) => {
-            const message = JSON.parse(String(event.data || '{}'));
-            if (message?.replyTo !== requestId) {return;}
+            const raw = typeof event.data === 'string' ? event.data : '{}';
+            const parsed = JSON.parse(raw) as unknown;
+            if (!isRecord(parsed)) {return;}
+            const message = parsed as WsActionEnvelope;
+            if (message.replyTo !== requestId) {return;}
             clearTimeout(timeout);
-            log('action.reply', { type, requestId, ok: message?.payload?.ok, payload: message?.payload });
-            done(message?.payload || { ok: false, error: { message: 'empty payload' } });
+            const parsedPayload = parseActionResult<TData>(message.payload);
+            log('action.reply', { type, requestId, ok: parsedPayload.ok, payload: parsedPayload });
+            done(parsedPayload);
         });
         ws.addEventListener('error', () => {
             clearTimeout(timeout);
@@ -74,20 +115,21 @@ const sendAction = async (type: string, payload: Record<string, unknown> = {}, s
 const ensureTabTokenFromAgent = async () => {
     let token = ensureTabToken();
     if (!token) {
-        const initialized = await sendAction('tab.init', {
+        const initialized = await sendAction<TabInitData>('tab.init', {
             source: 'start_extension',
             url: location.href,
             at: Date.now(),
         });
-        if (!initialized?.ok || !initialized?.data?.tabToken) {
-            throw new Error(initialized?.error?.message || 'tab token init failed');
+        const initializedToken = asString(initialized.data?.tabToken);
+        if (!initialized.ok || !initializedToken) {
+            throw new Error(initialized.error?.message ?? 'tab token init failed');
         }
-        token = String(initialized.data.tabToken);
+        token = initializedToken;
         sessionStorage.setItem(TAB_TOKEN_KEY, token);
     }
     window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${token}`;
-    (window as any).__rpa_tab_token = token;
-    (window as any).__TAB_TOKEN__ = token;
+    window.__rpa_tab_token = token;
+    window.__TAB_TOKEN__ = token;
     log('token.ensure', { token, url: location.href });
     return token;
 };
@@ -127,10 +169,10 @@ const renderRestoreList = (items: RestoreItem[]) => {
                 const restored = await sendAction('workspace.restore', {
                     workspaceId: workspaceId === '-' ? '' : workspaceId,
                 });
-                if (!restored?.ok) {
+                if (!restored.ok) {
                     if (restoreStatusEl) {
-                        const errorMessage = restored?.error?.message ?? 'unknown';
-                        restoreStatusEl.textContent = `restore failed: ${String(errorMessage)}`;
+                        const errorMessage = restored.error?.message ?? 'unknown';
+                        restoreStatusEl.textContent = `restore failed: ${errorMessage}`;
                     }
                     return;
                 }
@@ -144,16 +186,17 @@ const renderRestoreList = (items: RestoreItem[]) => {
 
 const refreshRestoreList = async () => {
     if (restoreStatusEl) {restoreStatusEl.textContent = 'loading...';}
-    const result = await sendAction('record.list');
-    if (!result?.ok) {
+    const result = await sendAction<RecordListData>('record.list');
+    if (!result.ok) {
         if (restoreStatusEl) {
-            const errorMessage = result?.error?.message ?? 'unknown';
-            restoreStatusEl.textContent = `load failed: ${String(errorMessage)}`;
+            const errorMessage = result.error?.message ?? 'unknown';
+            restoreStatusEl.textContent = `load failed: ${errorMessage}`;
         }
         renderRestoreList([]);
         return;
     }
-    const items = Array.isArray(result?.data?.recordings) ? (result.data.recordings as RestoreItem[]) : [];
+    const recordings = result.data?.recordings;
+    const items = Array.isArray(recordings) ? (recordings as RestoreItem[]) : [];
     renderRestoreList(items);
     if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String(items.length)})`;}
 };
@@ -163,11 +206,11 @@ const bootstrapWorkspaceBinding = async (tabToken: string) => {
     const requestedWorkspaceId = (search.get('workspaceId') ?? '').trim();
     let workspaceId = requestedWorkspaceId || undefined;
     if (!workspaceId) {
-        const listed = await sendAction('workspace.list', {
+        const listed = await sendAction<WorkspaceListData>('workspace.list', {
             source: 'start_extension',
             at: Date.now(),
         });
-        const listedWorkspaceId = listed?.ok ? String(listed?.data?.activeWorkspaceId || '') : '';
+        const listedWorkspaceId = listed.ok ? asString(listed.data?.activeWorkspaceId) ?? '' : '';
         workspaceId = listedWorkspaceId || undefined;
     }
     if (!workspaceId) {
@@ -184,8 +227,8 @@ const bootstrapWorkspaceBinding = async (tabToken: string) => {
         },
         workspaceId ? { tabToken, workspaceId } : { tabToken },
     );
-    if (!opened?.ok) {
-        throw new Error(opened?.error?.message || 'tab.opened bootstrap failed');
+    if (!opened.ok) {
+        throw new Error(opened.error?.message ?? 'tab.opened bootstrap failed');
     }
 };
 
