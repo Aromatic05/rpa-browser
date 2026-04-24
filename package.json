@@ -24,17 +24,20 @@
         "typecheck:agent": "pnpm --filter ./agent typecheck",
         "typecheck:extension": "pnpm --filter ./extension exec tsc --noEmit",
         "typecheck": "pnpm typecheck:agent && pnpm typecheck:extension",
-        "lint": "npx eslint \"**/*.{ts,tsx,js,jsx}\" --ext .ts,.tsx,.js --max-warnings=0",
+        "lint": "pnpm exec eslint \"agent/**/*.{ts,tsx,js,jsx,mjs,cjs}\" \"extension/**/*.{ts,tsx,js,jsx,mjs,cjs}\" \"start_extension/**/*.{ts,tsx,js,jsx,mjs,cjs}\" --max-warnings=0",
         "format": "npx prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\""
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@types/node": "^22.19.7",
         "@typescript-eslint/eslint-plugin": "^8.54.0",
         "@typescript-eslint/parser": "^8.54.0",
         "eslint": "^9.39.2",
         "eslint-config-prettier": "^10.1.8",
         "eslint-plugin-prettier": "^4.2.1",
+        "playwright": "^1.57.0",
         "prettier": "^2.8.8",
-        "playwright": "^1.57.0"
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.59.0"
     }
 }
