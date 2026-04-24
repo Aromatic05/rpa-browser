@@ -3,7 +3,6 @@
  */
 
 import crypto from 'node:crypto';
-import type { Action } from './action_protocol';
 import { failedAction, replyAction } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ACTION_TYPES } from './action_types';
@@ -223,7 +222,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const step = payload;
         const token = action.scope?.tabToken || action.tabToken || ctx.tabToken;
         const scope = ctx.pageRegistry.resolveScopeFromToken(token);
-        let currentUrl = '';
+        let currentUrl: string;
         try {
             const targetPage = await ctx.pageRegistry.resolvePage({ workspaceId: scope.workspaceId, tabId: scope.tabId });
             currentUrl = targetPage.url();

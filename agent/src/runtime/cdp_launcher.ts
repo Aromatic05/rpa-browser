@@ -111,11 +111,11 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
 
     const stop = async () =>
         { await new Promise<void>((resolve) => {
-            if (proc.exitCode != null || proc.killed) {resolve(); return;}
+            if (proc.exitCode !== null || proc.killed) {resolve(); return;}
             proc.once('exit', () => { resolve(); });
             proc.kill('SIGTERM');
             setTimeout(() => {
-                if (proc.exitCode == null) {proc.kill('SIGKILL');}
+                if (proc.exitCode === null) {proc.kill('SIGKILL');}
             }, 3000);
         }); };
 
@@ -126,7 +126,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         await stop();
         const message = error instanceof Error ? error.message : String(error);
         const detail = stderr.trim();
-        throw new Error(detail ? `${message} (${detail})` : message);
+        throw new Error(detail ? `${message} (${detail})` : message, { cause: error });
     }
 
     return {

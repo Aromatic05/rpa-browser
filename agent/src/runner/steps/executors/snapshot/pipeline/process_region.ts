@@ -4,7 +4,7 @@ import { finalizeLabel } from '../stages/finalize_label';
 import { selectStructureCandidates } from '../stages/candidates';
 import { buildStructureEntityIndex, detectStructureCandidates } from '../stages/entity_index';
 import { isStrongSemanticRole } from '../core/interactive';
-import type { EntityIndex, NodeTier, UnifiedNode } from '../core/types';
+import type { NodeTier, UnifiedNode } from '../core/types';
 
 export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
     const tree = node;

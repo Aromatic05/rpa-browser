@@ -6,7 +6,9 @@ if (!global.__rpa_recorder_installed) {
     global.__rpa_recorder_installed = true;
     try {
         console.warn('[recorder] installed', location.href);
-    } catch {}
+    } catch {
+        // ignore debug logging failures
+    }
     const bindingName = global.__rpa_recorder_binding || '__rpa_record';
     const recorderVersion = 'payload-v2';
     const { emit, debugTarget } = createEmitter(bindingName, recorderVersion);

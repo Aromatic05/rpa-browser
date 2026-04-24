@@ -22,10 +22,10 @@ const STATIC_DIR = path.resolve(__dirname, '../../static');
 const HOST = '127.0.0.1';
 const PORT = 17334;
 const TAB_TOKEN_KEY = '__rpa_tab_token';
-const CLICK_DELAY_MS = 300;
-const REPLAY_STEP_DELAY_MS = 900;
+const _CLICK_DELAY_MS = 300;
+const _REPLAY_STEP_DELAY_MS = 900;
 const NAV_DEDUPE_WINDOW_MS = 1200;
-const SCROLL_CONFIG = { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 };
+const _SCROLL_CONFIG = { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 };
 
 const readJsonBody = async (req: http.IncomingMessage) => {
     const chunks: Buffer[] = [];
@@ -62,7 +62,6 @@ const contextManager = createContextManager({
         void pageRegistry.bindPage(page);
     },
 });
-let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
@@ -94,7 +93,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
-runtimeRegistry = createRuntimeRegistry({
+const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled

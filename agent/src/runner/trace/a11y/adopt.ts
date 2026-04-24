@@ -38,7 +38,7 @@ type RawA11yNode = {
  * 该函数由 snapshotA11y 调用，保证 adopt 时有完整索引。
  */
 export const cacheA11ySnapshot = (cache: TraceCache, raw: string): A11ySnapshotNode | null => {
-    let parsed: RawA11yNode | null = null;
+    let parsed: RawA11yNode;
     try {
         parsed = JSON.parse(raw) as RawA11yNode;
     } catch {
@@ -94,7 +94,7 @@ export const adoptA11yNode = async (
         return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'node not bindable', phase: 'trace' } };
     }
 
-    let count = 0;
+    let count: number;
     try {
         count = await locator.count();
     } catch (error) {

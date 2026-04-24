@@ -6,7 +6,7 @@
  * - 后续可在此层做观测/告警/审计
  */
 
-import type { ToolError, TraceEvent, TraceHooks, ToolResult } from './types';
+import type { TraceEvent, TraceHooks } from './types';
 import { getLogger } from '../../logging/logger';
 
 const traceLog = getLogger('trace');

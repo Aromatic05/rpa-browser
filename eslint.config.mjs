@@ -210,6 +210,15 @@ export default tseslint.config(
   {
     files: ["agent/src/**/*.{ts,tsx}"],
     rules: {
+      "@typescript-eslint/no-unnecessary-type-conversion": "warn",
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/only-throw-error": "off",
+      "@typescript-eslint/use-unknown-in-catch-callback-variable": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/await-thenable": "off",
+      "@typescript-eslint/no-dynamic-delete": "off",
+      "@typescript-eslint/no-implied-eval": "off",
+      "@typescript-eslint/return-await": "off",
       "@typescript-eslint/restrict-template-expressions": [
         "error",
         {

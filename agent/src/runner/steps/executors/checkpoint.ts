@@ -1,4 +1,4 @@
-import type { Step, StepResult, StepUnion } from '../types';
+import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { listCheckpoints } from '../../checkpoint';
 import { runCheckpointProcedure } from '../../checkpoint/runtime';

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Checkpoint, RunStatus } from './run_steps_types';
+import type { Checkpoint } from './run_steps_types';
 
 export type TaskRunCheckpoint = Checkpoint & {
     workspaceId: string;

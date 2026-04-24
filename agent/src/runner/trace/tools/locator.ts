@@ -74,7 +74,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
     'trace.locator.type': async (args: LocatorTarget & { text: string; delayMs?: number }) => {
         const result = await base.run('trace.locator.type', args, async () => {
             const locator = await resolveLocator(base, args);
-            await locator.type(args.text, { delay: args.delayMs });
+            await locator.pressSequentially(args.text, { delay: args.delayMs });
         });
         if (result.ok) {invalidateA11yCache(base.ctx.cache, 'input', base.ctx.tags);}
         return result;

@@ -15,11 +15,15 @@ const getToken = () => {
     try {
         const fromSession = sessionStorage.getItem(tokenKey);
         if (fromSession) {return fromSession;}
-    } catch {}
+    } catch {
+        // ignore sessionStorage read failures
+    }
     try {
         const fromWindow = (window as any).__rpa_tab_token || (window as any).__TAB_TOKEN__;
         if (fromWindow) {return fromWindow;}
-    } catch {}
+    } catch {
+        // ignore window token read failures
+    }
     return null;
 };
 
@@ -29,7 +33,9 @@ export const createEmitter = (bindingName: string, version: string) => {
         if (!tabToken) {
             try {
                 console.warn('[recorder] missing tabToken', { url: location.href, payload: payload && payload.type });
-            } catch {}
+            } catch {
+                // ignore debug logging failures
+            }
             return;
         }
         const bridge = (window as any)[bindingName];
@@ -61,7 +67,9 @@ export const createEmitter = (bindingName: string, version: string) => {
                 name: target ? getLabelText(target) || normalizeText(getElementText(target)) : undefined,
             };
             console.warn('[recorder] click capture skipped', info);
-        } catch {}
+        } catch {
+            // ignore debug logging failures
+        }
     };
 
     return { emit, debugTarget };

@@ -20,7 +20,7 @@ export type AgentLoopResult = {
 
 const sanitizeResult = (result: any) => {
     if (!result || typeof result !== 'object') {return result;}
-    const { tabToken, ...rest } = result;
+    const { tabToken: _tabToken, ...rest } = result;
     return rest;
 };
 

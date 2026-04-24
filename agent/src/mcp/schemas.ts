@@ -5,7 +5,7 @@ const coordSchema = z.object({
     y: z.number(),
 });
 
-const ensureIdOrSelector = <T extends { id?: string; selector?: string }>(value: T) => {
+const ensureIdOrSelector = (value: { id?: string; selector?: string }) => {
     return Boolean(value.id || value.selector);
 };
 

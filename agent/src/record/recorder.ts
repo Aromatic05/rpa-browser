@@ -123,7 +123,7 @@ export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent
 
     try {
         await page.exposeBinding(bindingName, (source, event: RecorderEvent) => {
-            onEvent({
+            void onEvent({
                 ...event,
                 pageUrl: source.page?.url?.() || null,
             });

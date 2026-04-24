@@ -30,7 +30,7 @@ export type Checkpoint = {
     maxAttempts?: number;
 };
 
-export type CheckpointValue = unknown | { ref: string };
+export type CheckpointValue = unknown;
 
 export type CheckpointActionBase = {
     saveAs?: string;

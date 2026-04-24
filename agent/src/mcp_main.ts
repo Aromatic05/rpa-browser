@@ -34,8 +34,6 @@ const contextManager = createContextManager({
     },
 });
 
-let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
-
 const config = getRunnerConfig();
 initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
@@ -79,7 +77,7 @@ const pageRegistry = createPageRegistry({
     },
     onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
-runtimeRegistry = createRuntimeRegistry({
+const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
@@ -106,7 +104,7 @@ if (hotReloadEnabled) {
     logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
 }
 
-(async () => {
+void (async () => {
     try {
         await contextManager.getContext();
         logNotice('Playwright Chromium launched with extension.');

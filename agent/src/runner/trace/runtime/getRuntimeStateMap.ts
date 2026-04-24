@@ -59,7 +59,7 @@ export const cleanupTaggedRuntimeState = async (page: Page): Promise<void> => {
     .catch(() => undefined);
 };
 
-const toRuntimeStateMap = (rows: RuntimeStateRow[] | unknown): RuntimeStateMap => {
+const toRuntimeStateMap = (rows: unknown): RuntimeStateMap => {
     const map: RuntimeStateMap = {};
     const safeRows = Array.isArray(rows) ? rows : [];
     for (const row of safeRows) {

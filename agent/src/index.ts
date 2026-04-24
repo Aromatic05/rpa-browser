@@ -59,7 +59,6 @@ const contextManager = createContextManager({
     },
 });
 
-let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 const config = getRunnerConfig();
 initLogger(config);
 const actionLogger = getLogger('action');
@@ -154,7 +153,7 @@ const pageRegistry = createPageRegistry({
 });
 
 const runnerScope = createRunnerScopeRegistry(2);
-runtimeRegistry = createRuntimeRegistry({
+const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
@@ -352,7 +351,17 @@ wss.on('connection', (socket) => {
     socket.on('message', (data) => {
         let raw: any;
         try {
-            raw = JSON.parse(data.toString());
+            const rawText =
+                typeof data === 'string'
+                    ? data
+                    : Buffer.isBuffer(data)
+                      ? data.toString('utf8')
+                      : Array.isArray(data)
+                        ? Buffer.concat(data).toString('utf8')
+                        : data instanceof ArrayBuffer
+                          ? Buffer.from(data).toString('utf8')
+                          : '';
+            raw = JSON.parse(rawText);
         } catch {
             socket.send(
                 JSON.stringify({
@@ -366,7 +375,7 @@ wss.on('connection', (socket) => {
             return;
         }
 
-        (async () => {
+        void (async () => {
             try {
                 const action = parseInboundAction(raw);
                 const response = await handleAction(action);

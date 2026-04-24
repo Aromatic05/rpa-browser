@@ -293,18 +293,16 @@ const scoreRegionFeatures = (
             (region.name ? 0.16 : 0),
     );
 
-    let dominantStructureScore = 0;
-    if (region.kind === 'table') {
-        dominantStructureScore = clamp01(safeRatio(signal.row, signal.size) * 4 + (signal.row >= 2 ? 0.25 : 0));
-    } else if (region.kind === 'list') {
-        dominantStructureScore = clamp01(safeRatio(signal.listItem, signal.size) * 3.5 + (signal.listItem >= 4 ? 0.2 : 0));
-    } else if (region.kind === 'form') {
-        dominantStructureScore = clamp01(safeRatio(signal.field, signal.size) * 4 + (signal.field >= 2 ? 0.25 : 0));
-    } else if (region.kind === 'panel') {
-        dominantStructureScore = clamp01(structuralDensity * 1.4 + interactiveDensity * 0.8);
-    } else {
-        dominantStructureScore = clamp01(interactiveDensity * 2.2 + explicitness * 0.2);
-    }
+    const dominantStructureScore =
+        region.kind === 'table'
+            ? clamp01(safeRatio(signal.row, signal.size) * 4 + (signal.row >= 2 ? 0.25 : 0))
+            : region.kind === 'list'
+              ? clamp01(safeRatio(signal.listItem, signal.size) * 3.5 + (signal.listItem >= 4 ? 0.2 : 0))
+              : region.kind === 'form'
+                ? clamp01(safeRatio(signal.field, signal.size) * 4 + (signal.field >= 2 ? 0.25 : 0))
+                : region.kind === 'panel'
+                  ? clamp01(structuralDensity * 1.4 + interactiveDensity * 0.8)
+                  : clamp01(interactiveDensity * 2.2 + explicitness * 0.2);
 
     const interactionScore = clamp01(interactiveDensity * 2.5 + safeRatio(signal.field, signal.size) * 1.1);
 
@@ -380,14 +378,12 @@ const scoreGroupFeatures = (
             (group.name ? 0.14 : 0),
     );
 
-    let dominantStructureScore = 0;
-    if (group.kind === 'table') {
-        dominantStructureScore = clamp01(stableRate * 0.48 + Math.min(1, slotCount / 4) * 0.26 + Math.min(1, itemCount / 8) * 0.26);
-    } else if (group.kind === 'kv') {
-        dominantStructureScore = clamp01((slotCount === 2 ? 0.45 : 0) + keyCoverage * 0.28 + keyUniqueness * 0.27);
-    } else {
-        dominantStructureScore = clamp01(stableRate * 0.44 + keyCoverage * 0.26 + Math.min(1, itemCount / 8) * 0.3);
-    }
+    const dominantStructureScore =
+        group.kind === 'table'
+            ? clamp01(stableRate * 0.48 + Math.min(1, slotCount / 4) * 0.26 + Math.min(1, itemCount / 8) * 0.26)
+            : group.kind === 'kv'
+              ? clamp01((slotCount === 2 ? 0.45 : 0) + keyCoverage * 0.28 + keyUniqueness * 0.27)
+              : clamp01(stableRate * 0.44 + keyCoverage * 0.26 + Math.min(1, itemCount / 8) * 0.3);
 
     const interactionScore = clamp01(
         (group.signal.interactiveItemRate || 0) * 0.65 +

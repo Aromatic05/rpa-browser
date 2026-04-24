@@ -103,9 +103,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (!switched.ok) {
             return false;
         }
-        currentTabId = tabId;
         if (desiredToken) {
-            currentToken = desiredToken;
             tokenToTab.set(desiredToken, tabId);
         }
         if (desiredTabRef) {
@@ -119,8 +117,6 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     if (req.recordingManifest?.entryTabRef) {
         refToTab.set(req.recordingManifest.entryTabRef, req.initialTabId);
     }
-    let currentTabId = req.initialTabId;
-    let currentToken = req.initialTabToken;
     const stepResults: RunStepsResult['results'] = [];
 
     for (let index = 0; index < req.steps.length; index += 1) {
@@ -235,17 +231,9 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
         if (remappedStep.name === 'browser.switch_tab') {
             const switchedTo = String((remappedStep.args as any)?.tab_id || '');
-            if (switchedTo) {
-                currentTabId = switchedTo;
-            }
-            if (desiredToken) {
-                currentToken = desiredToken;
-            }
             if (desiredTabRef && switchedTo) {
                 refToTab.set(desiredTabRef, switchedTo);
             }
-        } else if (desiredToken) {
-            currentToken = desiredToken;
         }
         if (stepDelayMs > 0) {
             await wait(stepDelayMs);

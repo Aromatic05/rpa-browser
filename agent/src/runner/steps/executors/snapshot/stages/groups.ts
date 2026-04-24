@@ -902,7 +902,7 @@ const isCodeTokenText = (text: string): boolean => {
 };
 
 const HAS_TEXT_PATTERN = /[A-Za-z0-9\u4E00-\u9FFF]/;
-const CODE_TOKEN_PATTERN = /^(<|>|\/>|<\/|=>|=|{|}|\(|\)|\[|\]|:|,|;|\"|'|`)+$/;
+const CODE_TOKEN_PATTERN = /^(<|>|\/>|<\/|=>|=|{|}|\(|\)|\[|\]|:|,|;|"|'|`)+$/;
 const VOLATILE_PATTERN = /(^\d+$)|(\d{4}[-/]\d{1,2}[-/]\d{1,2})|(\d{1,2}:\d{2})|(%$)|(^[#№]?\d+)/;
 const ICON_TEXT_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+){0,3}$/;
 const VOLATILE_KEYWORDS = ['today', 'yesterday', 'now', 'pending', 'failed', 'success', '状态', '时间', '数量', '总数', 'percent'];
