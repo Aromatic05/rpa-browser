@@ -1,7 +1,7 @@
 import { getLabelText, normalizeText } from './utils';
 
 const getElementText = (el: Element) => {
-    if ('innerText' in el) return (el as HTMLElement).innerText || el.textContent || '';
+    if ('innerText' in el) {return (el as HTMLElement).innerText || el.textContent || '';}
     return el.textContent || '';
 };
 
@@ -14,11 +14,11 @@ const tokenKey = '__rpa_tab_token';
 const getToken = () => {
     try {
         const fromSession = sessionStorage.getItem(tokenKey);
-        if (fromSession) return fromSession;
+        if (fromSession) {return fromSession;}
     } catch {}
     try {
         const fromWindow = (window as any).__rpa_tab_token || (window as any).__TAB_TOKEN__;
-        if (fromWindow) return fromWindow;
+        if (fromWindow) {return fromWindow;}
     } catch {}
     return null;
 };
@@ -33,7 +33,7 @@ export const createEmitter = (bindingName: string, version: string) => {
             return;
         }
         const bridge = (window as any)[bindingName];
-        if (!bridge) return;
+        if (!bridge) {return;}
         bridge({
             recorderVersion: version,
             tabToken,
@@ -54,10 +54,10 @@ export const createEmitter = (bindingName: string, version: string) => {
                 label,
                 reason,
                 url: location.href,
-                tag: target && (target as Element).tagName ? (target as Element).tagName.toLowerCase() : undefined,
-                id: target && (target as Element).getAttribute ? (target as Element).getAttribute('id') : undefined,
-                className: target && (target as Element).className ? String((target as Element).className) : undefined,
-                role: target && (target as Element).getAttribute ? (target as Element).getAttribute('role') : undefined,
+                tag: target && (target).tagName ? (target).tagName.toLowerCase() : undefined,
+                id: target && (target).getAttribute ? (target).getAttribute('id') : undefined,
+                className: target && (target).className ? String((target).className) : undefined,
+                role: target && (target).getAttribute ? (target).getAttribute('role') : undefined,
                 name: target ? getLabelText(target) || normalizeText(getElementText(target)) : undefined,
             };
             console.warn('[recorder] click capture skipped', info);

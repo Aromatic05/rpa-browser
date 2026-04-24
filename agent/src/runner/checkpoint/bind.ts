@@ -50,8 +50,8 @@ const bindValue = (value: unknown, bag: Record<string, unknown>): unknown => {
 };
 
 export const maybeBindCheckpoint = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
-    if (!ctx.active || !ctx.checkpoint) return ctx;
-    if (!ctx.checkpoint.content || ctx.checkpoint.content.length === 0) return ctx;
+    if (!ctx.active || !ctx.checkpoint) {return ctx;}
+    if (!ctx.checkpoint.content || ctx.checkpoint.content.length === 0) {return ctx;}
 
     const hasActionModel = ctx.checkpoint.content.some((item) => item && typeof item === 'object' && 'type' in item);
     if (hasActionModel || ctx.checkpoint.prepare || ctx.checkpoint.output || ctx.checkpoint.kind === 'procedure') {

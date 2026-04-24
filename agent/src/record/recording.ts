@@ -116,13 +116,13 @@ const resolveSingleRecordingToken = (
     if (workspaceId) {
         const workspaceToken = state.workspaceLatestRecording.get(workspaceId);
         if (workspaceToken) {
-            if (mustBeEnabled && state.recordingEnabled.has(workspaceToken)) return workspaceToken;
-            if (!mustBeEnabled && state.recordings.has(workspaceToken)) return workspaceToken;
+            if (mustBeEnabled && state.recordingEnabled.has(workspaceToken)) {return workspaceToken;}
+            if (!mustBeEnabled && state.recordings.has(workspaceToken)) {return workspaceToken;}
         }
         for (const [token, manifest] of state.recordingManifests.entries()) {
-            if (manifest.workspaceId !== workspaceId) continue;
-            if (mustBeEnabled && state.recordingEnabled.has(token)) return token;
-            if (!mustBeEnabled && state.recordings.has(token)) return token;
+            if (manifest.workspaceId !== workspaceId) {continue;}
+            if (mustBeEnabled && state.recordingEnabled.has(token)) {return token;}
+            if (!mustBeEnabled && state.recordings.has(token)) {return token;}
         }
     }
     if (state.recordingEnabled.size === 1) {
@@ -135,7 +135,7 @@ const resolveSingleRecordingToken = (
 };
 
 const indexWorkspaceRecording = (state: RecordingState, recordingToken: string, workspaceId?: string) => {
-    if (!workspaceId) return;
+    if (!workspaceId) {return;}
     state.workspaceLatestRecording.set(workspaceId, recordingToken);
 };
 
@@ -276,7 +276,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
     }
     if (event.type === 'scroll' && typeof event.scrollY === 'number') {
         const delta = event.scrollY;
-        if (delta === 0) return null;
+        if (delta === 0) {return null;}
         return createStep(
             'browser.scroll',
             { direction: delta > 0 ? 'down' : 'up', amount: Math.abs(delta) },
@@ -306,12 +306,12 @@ const ensureManifest = (
         state.recordingManifests.set(recordingToken, manifest);
         return manifest;
     }
-    if (!manifest.workspaceId && seed?.workspaceId) manifest.workspaceId = seed.workspaceId;
+    if (!manifest.workspaceId && seed?.workspaceId) {manifest.workspaceId = seed.workspaceId;}
     if (manifest.workspaceId) {
         indexWorkspaceRecording(state, recordingToken, manifest.workspaceId);
     }
-    if (!manifest.entryTabRef && seed?.entryTabRef) manifest.entryTabRef = seed.entryTabRef;
-    if (!manifest.entryUrl && seed?.entryUrl) manifest.entryUrl = seed.entryUrl;
+    if (!manifest.entryTabRef && seed?.entryTabRef) {manifest.entryTabRef = seed.entryTabRef;}
+    if (!manifest.entryUrl && seed?.entryUrl) {manifest.entryUrl = seed.entryUrl;}
     return manifest;
 };
 
@@ -335,10 +335,10 @@ const ensureTabInManifest = (
         manifest.tabs.push(tab);
         return tab;
     }
-    if (!tab.tabId && seed?.tabId) tab.tabId = seed.tabId;
-    if (!tab.tabRef && seed?.tabRef) tab.tabRef = seed.tabRef;
+    if (!tab.tabId && seed?.tabId) {tab.tabId = seed.tabId;}
+    if (!tab.tabRef && seed?.tabRef) {tab.tabRef = seed.tabRef;}
     if (seed?.url) {
-        if (!tab.firstSeenUrl) tab.firstSeenUrl = seed.url;
+        if (!tab.firstSeenUrl) {tab.firstSeenUrl = seed.url;}
         tab.lastSeenUrl = seed.url;
     }
     tab.lastSeenAt = now;
@@ -371,8 +371,8 @@ const enrichRecordedStep = (
         url: stepUrl || undefined,
         at: ts,
     });
-    if (!manifest.entryTabRef) manifest.entryTabRef = tab.tabRef;
-    if (!manifest.entryUrl && stepUrl) manifest.entryUrl = stepUrl;
+    if (!manifest.entryTabRef) {manifest.entryTabRef = tab.tabRef;}
+    if (!manifest.entryUrl && stepUrl) {manifest.entryUrl = stepUrl;}
     return {
         ...step,
         meta: {
@@ -383,7 +383,7 @@ const enrichRecordedStep = (
             tabRef: step.meta?.tabRef || tab.tabRef,
             urlAtRecord: step.meta?.urlAtRecord || stepUrl || undefined,
         },
-    } as StepUnion;
+    };
 };
 
 /**
@@ -408,7 +408,7 @@ export const recordEvent = async (
             return;
         }
     }
-    if (state.replaying.has(tabToken)) return;
+    if (state.replaying.has(tabToken)) {return;}
 
     if (event.type === 'click') {
         state.lastClickTs.set(effectiveToken, event.ts);
@@ -442,7 +442,7 @@ export const recordEvent = async (
     }
 
     const step = toStep(event);
-    if (!step) return;
+    if (!step) {return;}
     const normalized = enrichRecordedStep(state, effectiveToken, event.tabToken, step);
     const enriched = await enrichRecordedStepWithSnapshot({
         event,
@@ -478,7 +478,7 @@ export const recordStep = (
             return;
         }
     }
-    if (state.replaying.has(tabToken) || state.replaying.has(effectiveToken)) return;
+    if (state.replaying.has(tabToken) || state.replaying.has(effectiveToken)) {return;}
 
     const ts = step.meta?.ts ?? Date.now();
     const normalized = enrichRecordedStep(state, effectiveToken, tabToken, {
@@ -489,14 +489,14 @@ export const recordStep = (
             ts,
             tabToken: step.meta?.tabToken || tabToken,
         },
-    } as StepUnion);
+    });
 
     if (normalized.name === 'browser.click') {
         state.lastClickTs.set(effectiveToken, ts);
     }
     if (normalized.name === 'browser.goto') {
         const last = state.lastNavigateTs.get(effectiveToken) || 0;
-        if (ts - last < navDedupeWindowMs) return;
+        if (ts - last < navDedupeWindowMs) {return;}
         state.lastNavigateTs.set(effectiveToken, ts);
     }
 
@@ -522,11 +522,11 @@ export const installNavigationRecorder = (
     tabToken: string,
     navDedupeWindowMs: number,
 ) => {
-    if (navListenerPages.has(page)) return;
+    if (navListenerPages.has(page)) {return;}
     navListenerPages.add(page);
     page.on('framenavigated', (frame) => {
-        if (frame !== page.mainFrame()) return;
-        if (!state.recordingEnabled.has(tabToken)) return;
+        if (frame !== page.mainFrame()) {return;}
+        if (!state.recordingEnabled.has(tabToken)) {return;}
         const lastClick = state.lastClickTs.get(tabToken) || 0;
         const source = Date.now() - lastClick < navDedupeWindowMs ? 'click' : 'direct';
         const navigateEvent: RecorderEvent = {
@@ -674,7 +674,7 @@ export type WorkspaceRecordingSummary = {
 };
 
 const sanitizeSavedManifest = (manifest?: RecordingManifest): SavedRecordingManifest | undefined => {
-    if (!manifest) return undefined;
+    if (!manifest) {return undefined;}
     return {
         ...manifest,
         tabs: manifest.tabs.map((tab) => ({
@@ -689,12 +689,12 @@ const sanitizeSavedManifest = (manifest?: RecordingManifest): SavedRecordingMani
 };
 
 const sanitizeSavedStep = (step: StepUnion): StepUnion => {
-    if (!step.meta) return { ...step };
+    if (!step.meta) {return { ...step };}
     const { tabToken: _dropTabToken, ...metaNoToken } = step.meta;
     return {
         ...step,
         meta: metaNoToken,
-    } as StepUnion;
+    };
 };
 
 export const saveWorkspaceSnapshot = (
@@ -746,9 +746,9 @@ export const listWorkspaceRecordings = (state: RecordingState): WorkspaceRecordi
     }
     const seen = new Set(summaries.map((item) => item.workspaceId));
     for (const [workspaceId, recordingToken] of state.workspaceLatestRecording.entries()) {
-        if (seen.has(workspaceId)) continue;
+        if (seen.has(workspaceId)) {continue;}
         const manifest = state.recordingManifests.get(recordingToken);
-        if (!manifest) continue;
+        if (!manifest) {continue;}
         const latestTabTs = manifest.tabs.reduce((maxTs, tab) => Math.max(maxTs, tab.lastSeenAt || 0), 0);
         summaries.push({
             workspaceId,

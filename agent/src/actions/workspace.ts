@@ -44,8 +44,8 @@ const resolveWorkspaceId = (
     action: { scope?: ActionScope },
     argWorkspaceId?: string,
 ) => {
-    if (argWorkspaceId) return argWorkspaceId;
-    if (action.scope?.workspaceId) return action.scope.workspaceId;
+    if (argWorkspaceId) {return argWorkspaceId;}
+    if (action.scope?.workspaceId) {return action.scope.workspaceId;}
     const active = ctx.pageRegistry.getActiveWorkspace?.();
     return active?.workspaceId || null;
 };
@@ -74,12 +74,12 @@ const ensureRecorderForTabIfRecording = async (
         tabToken: string | null;
     },
 ) => {
-    if (!ctx.recordingState || !params.tabToken) return;
+    if (!ctx.recordingState || !params.tabToken) {return;}
     const recordingTokens = Array.from(ctx.recordingState.recordingEnabled || []);
-    if (recordingTokens.length === 0) return;
+    if (recordingTokens.length === 0) {return;}
     const shouldInstall =
         ctx.recordingState.recordingEnabled.has(params.tabToken) || recordingTokens.length === 1;
-    if (!shouldInstall) return;
+    if (!shouldInstall) {return;}
     try {
         const page = await ctx.pageRegistry.resolvePage({ workspaceId: params.workspaceId, tabId: params.tabId });
         await ensureRecorder(ctx.recordingState, page, params.tabToken, ctx.navDedupeWindowMs);
@@ -189,7 +189,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             tabId: created.tabId,
             url: first.url || '',
             title: first.title || '',
-            active: first.active !== false,
+            active: first.active,
             tabToken: ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: created.tabId }),
         });
 
@@ -219,7 +219,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const sourceSteps = snapshot.recording.steps || [];
         if (sourceSteps.length > 0) {
             recordingToken = crypto.randomUUID();
-            ctx.recordingState.recordings.set(recordingToken, [...(sourceSteps as StepUnion[])]);
+            ctx.recordingState.recordings.set(recordingToken, [...(sourceSteps)]);
             ctx.recordingState.recordingEnhancements.set(recordingToken, {
                 ...(snapshot.recording.enrichments || {}),
             });
@@ -255,7 +255,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 active: tab.active,
             })),
             recordingToken: recordingToken || null,
-            steps: sourceSteps as StepUnion[],
+            steps: sourceSteps,
             manifest: recordingToken ? ctx.recordingState.recordingManifests.get(recordingToken) : undefined,
             enrichments: snapshot.recording.enrichments || undefined,
         });

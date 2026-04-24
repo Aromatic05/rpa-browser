@@ -4,7 +4,7 @@ import type { CheckpointCtx } from './types';
 const log = getLogger('step');
 
 export const maybeRetryOriginalStep = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
-    if (!ctx.active || !ctx.runResult?.ok) return ctx;
+    if (!ctx.active || !ctx.runResult?.ok) {return ctx;}
 
     const retryResult = await ctx.failedCtx.executeStep(ctx.failedCtx.step);
     log.info('checkpoint.retry', {

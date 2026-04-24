@@ -48,8 +48,8 @@ export const buildFinalEntityViewFromSnapshot = (
         .map((entity) => toFinalEntityRecord(finalSnapshot, entity, renamedByNodeId, addedNameByNodeId))
         .filter((entity): entity is FinalEntityRecord => Boolean(entity))
         .sort((left, right) => {
-            if (left.nodeId !== right.nodeId) return left.nodeId.localeCompare(right.nodeId);
-            if (left.kind !== right.kind) return left.kind.localeCompare(right.kind);
+            if (left.nodeId !== right.nodeId) {return left.nodeId.localeCompare(right.nodeId);}
+            if (left.kind !== right.kind) {return left.kind.localeCompare(right.kind);}
             return left.id.localeCompare(right.id);
         });
 
@@ -81,7 +81,7 @@ const applyRenameOverlay = (
 
     for (const [nodeId, renamed] of Object.entries(renamedByNodeId)) {
         const node = snapshot.nodeIndex[nodeId];
-        if (!node) continue;
+        if (!node) {continue;}
         node.name = renamed;
         applied += 1;
     }
@@ -89,12 +89,12 @@ const applyRenameOverlay = (
     for (const entity of Object.values(snapshot.entityIndex.entities)) {
         if (entity.type === 'region') {
             const renamed = renamedByNodeId[entity.nodeId];
-            if (!renamed) continue;
+            if (!renamed) {continue;}
             entity.name = renamed;
             continue;
         }
         const renamed = renamedByNodeId[entity.containerId];
-        if (!renamed) continue;
+        if (!renamed) {continue;}
         entity.name = renamed;
     }
 
@@ -105,22 +105,22 @@ const applyDeleteEntityOverlay = (
     snapshot: SnapshotResult,
     deletedEntities: SnapshotOverlayDeleteEntity[],
 ): number => {
-    if (deletedEntities.length === 0) return 0;
+    if (deletedEntities.length === 0) {return 0;}
 
     const deletions = normalizeDeletions(deletedEntities);
-    if (deletions.length === 0) return 0;
+    if (deletions.length === 0) {return 0;}
 
     const toDeleteEntityIds = new Set<string>();
     for (const entity of Object.values(snapshot.entityIndex.entities)) {
         const entityNodeId = getEntityNodeId(entity);
-        if (!entityNodeId) continue;
+        if (!entityNodeId) {continue;}
 
         if (deletions.some((item) => matchesDeletion(entity, entityNodeId, item))) {
             toDeleteEntityIds.add(entity.id);
         }
     }
 
-    if (toDeleteEntityIds.size === 0) return 0;
+    if (toDeleteEntityIds.size === 0) {return 0;}
 
     for (const entityId of toDeleteEntityIds) {
         delete snapshot.entityIndex.entities[entityId];
@@ -142,7 +142,7 @@ const applyAddEntityOverlay = (
     snapshot: SnapshotResult,
     addedEntities: SnapshotOverlayAddEntity[],
 ): { applied: number; skipped: number } => {
-    if (addedEntities.length === 0) return { applied: 0, skipped: 0 };
+    if (addedEntities.length === 0) {return { applied: 0, skipped: 0 };}
 
     let applied = 0;
     let skipped = 0;
@@ -234,7 +234,7 @@ const cloneEntityIndex = (entityIndex: EntityIndex): EntityIndex => {
 
     const byNodeId: EntityIndex['byNodeId'] = {};
     for (const [nodeId, refs] of Object.entries(entityIndex.byNodeId)) {
-        if (!refs || refs.length === 0) continue;
+        if (!refs || refs.length === 0) {continue;}
         byNodeId[nodeId] = refs.map((ref) => ({ ...ref }));
     }
 
@@ -274,7 +274,7 @@ const normalizeDeletions = (items: SnapshotOverlayDeleteEntity[]): SnapshotOverl
     const normalized: SnapshotOverlayDeleteEntity[] = [];
     for (const item of items) {
         const nodeId = normalizeText(item.nodeId);
-        if (!nodeId) continue;
+        if (!nodeId) {continue;}
         normalized.push({
             nodeId,
             kind: item.kind,
@@ -289,7 +289,7 @@ const buildRenamedByNodeId = (renamedNodes: Record<string, string>): Record<stri
     for (const [nodeIdRaw, renamedRaw] of Object.entries(renamedNodes || {})) {
         const nodeId = normalizeText(nodeIdRaw);
         const renamed = normalizeText(renamedRaw);
-        if (!nodeId || !renamed) continue;
+        if (!nodeId || !renamed) {continue;}
         next[nodeId] = renamed;
     }
     return next;
@@ -300,7 +300,7 @@ const buildAddedNameByNodeId = (addedEntities: SnapshotOverlayAddEntity[]): Map<
     for (const added of addedEntities) {
         const nodeId = normalizeText(added.nodeId);
         const name = normalizeText(added.name);
-        if (!nodeId || !name) continue;
+        if (!nodeId || !name) {continue;}
         addedNameByNodeId.set(nodeId, name);
     }
     return addedNameByNodeId;
@@ -313,7 +313,7 @@ const toFinalEntityRecord = (
     addedNameByNodeId: Map<string, string>,
 ): FinalEntityRecord | null => {
     const nodeId = getEntityNodeId(entity);
-    if (!nodeId) return null;
+    if (!nodeId) {return null;}
     const name = resolveEntityName(snapshot, entity, nodeId, renamedByNodeId, addedNameByNodeId);
     const businessInfo = resolveEntityBusinessInfo(snapshot, entity);
     const source = entity.source === 'overlay_add' ? 'overlay_add' : 'auto';
@@ -384,17 +384,17 @@ const resolveEntityName = (
     addedNameByNodeId: Map<string, string>,
 ): string | undefined => {
     const renamed = renamedByNodeId[nodeId];
-    if (renamed) return renamed;
+    if (renamed) {return renamed;}
 
     const addedName = addedNameByNodeId.get(nodeId);
-    if (addedName) return addedName;
+    if (addedName) {return addedName;}
 
     const entityName = normalizeText(entity.name);
-    if (entityName) return entityName;
+    if (entityName) {return entityName;}
 
     const node = snapshot.nodeIndex[nodeId];
     const nodeName = normalizeText(node?.name);
-    if (nodeName) return nodeName;
+    if (nodeName) {return nodeName;}
 
     return normalizeText(node ? getNodeContent(node) : undefined);
 };
@@ -405,7 +405,7 @@ const getEntityNodeId = (entity: EntityRecord): string => {
 
 const nextOverlayEntityId = (usedIds: Set<string>, kind: EntityKind, index: number): string => {
     const normalizedKind = String(kind).replace(/[^a-zA-Z0-9_]/g, '_');
-    let suffix = `${String(index + 1).padStart(4, '0')}`;
+    let suffix = String(index + 1).padStart(4, '0');
     let candidate = `ent_overlay_${normalizedKind}_${suffix}`;
     while (usedIds.has(candidate)) {
         suffix = `${suffix}_x`;
@@ -424,12 +424,12 @@ const matchesDeletion = (
     entityNodeId: string,
     deletion: SnapshotOverlayDeleteEntity,
 ): boolean => {
-    if (entityNodeId !== deletion.nodeId) return false;
-    if (deletion.kind && deletion.kind !== entity.kind) return false;
+    if (entityNodeId !== deletion.nodeId) {return false;}
+    if (deletion.kind && deletion.kind !== entity.kind) {return false;}
 
     const entityBusinessTag = normalizeText(entity.businessTag);
     const deletionBusinessTag = normalizeText(deletion.businessTag);
-    if (deletionBusinessTag && deletionBusinessTag !== entityBusinessTag) return false;
+    if (deletionBusinessTag && deletionBusinessTag !== entityBusinessTag) {return false;}
 
     return true;
 };
@@ -466,10 +466,10 @@ const resolveAddedEntityType = (
     const refs = snapshot.entityIndex.byNodeId[nodeId] || [];
     for (const ref of refs) {
         const entity = snapshot.entityIndex.entities[ref.entityId];
-        if (!entity || entity.kind !== kind) continue;
+        if (entity?.kind !== kind) {continue;}
         return entity.type;
     }
-    if (GROUP_ONLY_KINDS.has(kind)) return 'group';
+    if (GROUP_ONLY_KINDS.has(kind)) {return 'group';}
     return 'region';
 };
 

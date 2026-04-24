@@ -70,7 +70,7 @@ class FakeWebSocket {
 
     emit(name, event) {
         const list = this.listeners.get(name) || [];
-        for (const cb of list) cb(event);
+        for (const cb of list) {cb(event);}
     }
 }
 

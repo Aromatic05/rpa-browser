@@ -11,7 +11,7 @@ export const mergeEntityBusinessInfo = (
     base: EntityBusinessInfo | undefined,
     patch: EntityBusinessInfo | undefined,
 ): EntityBusinessInfo | undefined => {
-    if (!base && !patch) return undefined;
+    if (!base && !patch) {return undefined;}
     return {
         businessTag: patch?.businessTag ?? base?.businessTag,
         businessName: patch?.businessName ?? base?.businessName,
@@ -38,7 +38,7 @@ export const mergeNodeBusinessHint = (
     base: NodeBusinessHint | undefined,
     patch: NodeBusinessHint | undefined,
 ): NodeBusinessHint | undefined => {
-    if (!base && !patch) return undefined;
+    if (!base && !patch) {return undefined;}
     return {
         entityNodeId: patch?.entityNodeId ?? base?.entityNodeId,
         entityKind: patch?.entityKind ?? base?.entityKind,

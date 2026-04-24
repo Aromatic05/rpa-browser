@@ -88,7 +88,7 @@ const evalValue = (value: ComputeValue, scope: EvalScope): unknown => {
 };
 
 const isExpr = (value: ComputeValue): value is ComputeExpr => {
-    if (!value || typeof value !== 'object') return false;
+    if (!value || typeof value !== 'object') {return false;}
     return 'op' in value && 'args' in value;
 };
 
@@ -129,7 +129,7 @@ const opExists = (value: unknown) => {
 };
 
 const opFirst = (value: unknown) => {
-    if (!Array.isArray(value)) return undefined;
+    if (!Array.isArray(value)) {return undefined;}
     return value[0];
 };
 
@@ -148,7 +148,7 @@ const opGet = (value: unknown, indexValue: unknown) => {
 };
 
 const toBoolean = (value: unknown) => {
-    if (typeof value === 'boolean') return value;
+    if (typeof value === 'boolean') {return value;}
     return Boolean(value);
 };
 
@@ -159,6 +159,6 @@ const assertArity = (op: string, args: unknown[], expected: number) => {
 };
 
 const asObject = (value: unknown): Record<string, any> | undefined => {
-    if (!value || typeof value !== 'object') return undefined;
-    return value as Record<string, any>;
+    if (!value || typeof value !== 'object') {return undefined;}
+    return value;
 };

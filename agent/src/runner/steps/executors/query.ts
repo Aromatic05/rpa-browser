@@ -76,9 +76,9 @@ export const executeBrowserQuery = async (
 };
 
 const readLatestSnapshot = (cache: unknown): SnapshotResult | null => {
-    if (!cache || typeof cache !== 'object') return null;
+    if (!cache || typeof cache !== 'object') {return null;}
     const snapshot = (cache as { latestSnapshot?: unknown }).latestSnapshot;
-    if (!snapshot || typeof snapshot !== 'object') return null;
+    if (!snapshot || typeof snapshot !== 'object') {return null;}
     const typed = snapshot as Partial<SnapshotResult>;
     if (!typed.root || !typed.nodeIndex || !typed.attrIndex || !typed.contentStore) {
         return null;
@@ -115,10 +115,10 @@ const resolveSourceNodes = (
         }
         const ids = from.nodes.map((item) => {
             if (item && typeof item === 'object') {
-                if ('id' in item && typeof item.id === 'string') return item.id;
+                if ('id' in item && typeof item.id === 'string') {return item.id;}
                 if ('handle' in item && item.handle && typeof item.handle === 'object' && 'nodeId' in item.handle) {
                     const nodeId = (item.handle as { nodeId?: unknown }).nodeId;
-                    if (typeof nodeId === 'string') return nodeId;
+                    if (typeof nodeId === 'string') {return nodeId;}
                 }
             }
             return '';
@@ -144,7 +144,7 @@ const collectCandidates = (sources: UnifiedNode[], relation: 'child' | 'descenda
     for (const source of sources) {
         const items = relation === 'child' ? source.children : getDescendants(source);
         for (const item of items) {
-            if (seen.has(item.id)) continue;
+            if (seen.has(item.id)) {continue;}
             seen.add(item.id);
             out.push(item);
         }
@@ -170,21 +170,21 @@ const matchesWhere = (
     snapshot: SnapshotResult,
     where: Step<'browser.query'>['args']['where'],
 ): boolean => {
-    if (!where) return true;
-    if (where.role && normalizeLower(node.role) !== normalizeLower(where.role)) return false;
+    if (!where) {return true;}
+    if (where.role && normalizeLower(node.role) !== normalizeLower(where.role)) {return false;}
 
     const attrs = snapshot.attrIndex[node.id] || {};
     const tag = attrs.tag || attrs.tagName;
-    if (where.tag && normalizeLower(tag) !== normalizeLower(where.tag)) return false;
+    if (where.tag && normalizeLower(tag) !== normalizeLower(where.tag)) {return false;}
 
     if (where.text?.contains) {
         const text = normalizeLower(readNodeText(node, snapshot));
-        if (!text.includes(normalizeLower(where.text.contains))) return false;
+        if (!text.includes(normalizeLower(where.text.contains))) {return false;}
     }
 
     if (where.attrs) {
         for (const [key, value] of Object.entries(where.attrs)) {
-            if ((attrs[key] || '') !== value) return false;
+            if ((attrs[key] || '') !== value) {return false;}
         }
     }
     return true;
@@ -208,8 +208,8 @@ const toNodeLike = (node: UnifiedNode, snapshot: SnapshotResult) => {
 
 const readNodeText = (node: UnifiedNode, snapshot: SnapshotResult) => {
     const name = normalizeText(node.name);
-    if (name) return name;
-    if (typeof node.content === 'string') return normalizeText(node.content);
+    if (name) {return name;}
+    if (typeof node.content === 'string') {return normalizeText(node.content);}
     if (node.content?.ref) {
         return normalizeText(snapshot.contentStore[node.content.ref]);
     }

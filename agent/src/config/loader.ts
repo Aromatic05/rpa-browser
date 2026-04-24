@@ -17,7 +17,7 @@ const defaultConfigPath = () =>
 
 const readJsonIfExists = (filePath: string): Partial<RunnerConfig> | null => {
     try {
-        if (!fs.existsSync(filePath)) return null;
+        if (!fs.existsSync(filePath)) {return null;}
         const raw = fs.readFileSync(filePath, 'utf-8');
         return JSON.parse(raw) as Partial<RunnerConfig>;
     } catch {
@@ -26,11 +26,11 @@ const readJsonIfExists = (filePath: string): Partial<RunnerConfig> | null => {
 };
 
 const mergeDeep = <T extends Record<string, any>>(base: T, patch?: Partial<T>): T => {
-    if (!patch) return base;
+    if (!patch) {return base;}
     const out: any = Array.isArray(base) ? [...base] : { ...base };
     for (const [key, value] of Object.entries(patch)) {
         if (value && typeof value === 'object' && !Array.isArray(value)) {
-            out[key] = mergeDeep(out[key] || {}, value as any);
+            out[key] = mergeDeep(out[key] || {}, value);
         } else if (value !== undefined) {
             out[key] = value;
         }
@@ -55,7 +55,7 @@ const envCsv = (name: string) =>
 const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     const patch: Partial<RunnerConfig> = {};
     const set = (path: string[], value: unknown) => {
-        if (value === undefined) return;
+        if (value === undefined) {return;}
         let cursor: any = patch;
         for (let i = 0; i < path.length - 1; i += 1) {
             const key = path[i];

@@ -4,8 +4,8 @@ import { mapTraceError } from '../helpers/target';
 import { resolveTarget } from '../helpers/resolve_target';
 
 const pickDelayMs = (min: number, max: number) => {
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
-    if (max <= min) return Math.max(0, min);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {return 0;}
+    if (max <= min) {return Math.max(0, min);}
     return Math.floor(min + Math.random() * (max - min + 1));
 };
 
@@ -21,11 +21,11 @@ export const executeBrowserType = async (
         hint: step.resolve?.hint,
         policy: step.resolve?.policy,
     });
-    if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+    if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
     const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
-    if (!scroll.ok) return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };
+    if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
 
     const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: resolved.target.selector, timeout });
     if (!visible.ok) {

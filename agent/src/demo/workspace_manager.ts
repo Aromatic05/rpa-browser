@@ -43,7 +43,7 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
     };
 
     const getActiveWorkspacePublicInfo = async (): Promise<WorkspacePublicInfo | null> => {
-        if (!active) return null;
+        if (!active) {return null;}
         const page = await deps.pageRegistry.resolvePage({
             workspaceId: active.workspaceId,
             tabId: active.tabId,

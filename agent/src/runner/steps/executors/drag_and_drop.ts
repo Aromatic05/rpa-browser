@@ -14,14 +14,14 @@ export const executeBrowserDragAndDrop = async (
         id: step.args.source.id,
         selector: step.args.source.selector,
     });
-    if (!source.ok) return { stepId: step.id, ok: false, error: source.error };
+    if (!source.ok) {return { stepId: step.id, ok: false, error: source.error };}
 
     if (step.args.dest_target) {
         const dest = await resolveTarget(binding, {
             id: step.args.dest_target.id,
             selector: step.args.dest_target.selector,
         });
-        if (!dest.ok) return { stepId: step.id, ok: false, error: dest.error };
+        if (!dest.ok) {return { stepId: step.id, ok: false, error: dest.error };}
         const result = await binding.traceTools['trace.locator.dragDrop']({
             source: { selector: source.target.selector },
             dest: { selector: dest.target.selector },
@@ -34,7 +34,7 @@ export const executeBrowserDragAndDrop = async (
                 deps.config.humanPolicy.clickDelayMsRange.min,
                 deps.config.humanPolicy.clickDelayMsRange.max,
             );
-            if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
         }
         return { stepId: step.id, ok: true };
     }
@@ -54,7 +54,7 @@ export const executeBrowserDragAndDrop = async (
             deps.config.humanPolicy.clickDelayMsRange.min,
             deps.config.humanPolicy.clickDelayMsRange.max,
         );
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };

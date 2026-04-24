@@ -38,12 +38,12 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         wsReady = new Promise((resolve, reject) => {
             let settled = false;
             const settleResolve = () => {
-                if (settled) return;
+                if (settled) {return;}
                 settled = true;
                 resolve();
             };
             const settleReject = (message: string) => {
-                if (settled) return;
+                if (settled) {return;}
                 settled = true;
                 reject(new Error(message));
             };
@@ -92,7 +92,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         wsRef.addEventListener('close', () => {
             wsRef = null;
             wsReady = null;
-            pending.forEach((resolver, requestId) => resolver(mkFailedReply(requestId, 'ERR_CLOSED', 'ws closed')));
+            pending.forEach((resolver, requestId) => { resolver(mkFailedReply(requestId, 'ERR_CLOSED', 'ws closed')); });
             pending.clear();
         });
         wsRef.addEventListener('error', () => {

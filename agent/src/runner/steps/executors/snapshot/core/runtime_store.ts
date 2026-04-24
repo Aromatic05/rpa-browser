@@ -11,14 +11,14 @@ const runtimeStore = new WeakMap<UnifiedNode, NodeRuntimeData>();
 
 const ensureRuntimeData = (node: UnifiedNode): NodeRuntimeData => {
     const current = runtimeStore.get(node);
-    if (current) return current;
+    if (current) {return current;}
     const next: NodeRuntimeData = {};
     runtimeStore.set(node, next);
     return next;
 };
 
 export const setNodeAttrs = (node: UnifiedNode, attrs: Record<string, string> | undefined) => {
-    if (!attrs || Object.keys(attrs).length === 0) return;
+    if (!attrs || Object.keys(attrs).length === 0) {return;}
     ensureRuntimeData(node).attrs = { ...attrs };
 };
 
@@ -34,7 +34,7 @@ export const setNodeAttr = (node: UnifiedNode, key: string, value: string | unde
     const normalized = normalizeText(value);
     const data = ensureRuntimeData(node);
     if (!normalized) {
-        if (!data.attrs) return;
+        if (!data.attrs) {return;}
         delete data.attrs[key];
         if (Object.keys(data.attrs).length === 0) {
             data.attrs = undefined;
@@ -48,7 +48,7 @@ export const setNodeAttr = (node: UnifiedNode, key: string, value: string | unde
 };
 
 export const setNodeBbox = (node: UnifiedNode, bbox: BBox | undefined) => {
-    if (!bbox) return;
+    if (!bbox) {return;}
     ensureRuntimeData(node).bbox = { ...bbox };
 };
 
@@ -58,7 +58,7 @@ export const getNodeBbox = (node: UnifiedNode): BBox | undefined => {
 
 export const setNodeContent = (node: UnifiedNode, content: string | undefined) => {
     const normalized = normalizeText(content);
-    if (!normalized) return;
+    if (!normalized) {return;}
     ensureRuntimeData(node).content = normalized;
 };
 

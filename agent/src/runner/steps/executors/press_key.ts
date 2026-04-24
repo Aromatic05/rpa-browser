@@ -18,11 +18,11 @@ export const executeBrowserPressKey = async (
             hint: step.resolve?.hint,
             policy: step.resolve?.policy,
         });
-        if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
         const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
-        if (!scroll.ok) return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };
+        if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
         const visible = await binding.traceTools['trace.locator.waitForVisible']({
             selector: resolved.target.selector,
             timeout,
@@ -47,14 +47,14 @@ export const executeBrowserPressKey = async (
             deps.config.humanPolicy.typeDelayMsRange.min,
             deps.config.humanPolicy.typeDelayMsRange.max,
         );
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };
 
 export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platform = process.platform): string => {
     const key = String(rawKey || '').trim();
-    if (!key) return key;
+    if (!key) {return key;}
 
     const normalized = key
         .split('+')
@@ -62,10 +62,10 @@ export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platfo
         .filter((part) => part.length > 0)
         .map((part) => {
             const lower = part.toLowerCase();
-            if (lower === 'ctrl') return 'Control';
-            if (lower === 'cmdorctrl') return platform === 'darwin' ? 'Meta' : 'Control';
-            if (lower === 'cmd' || lower === 'command') return 'Meta';
-            if (lower === 'esc') return 'Escape';
+            if (lower === 'ctrl') {return 'Control';}
+            if (lower === 'cmdorctrl') {return platform === 'darwin' ? 'Meta' : 'Control';}
+            if (lower === 'cmd' || lower === 'command') {return 'Meta';}
+            if (lower === 'esc') {return 'Escape';}
             return part.length === 1 ? part.toUpperCase() : part;
         });
 

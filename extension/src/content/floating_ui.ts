@@ -254,14 +254,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         void (async () => {
             const action = await sendPanelAction('workspace.create', {});
             const payload = (action.payload || {}) as { workspaceId?: string };
-            if (payload.workspaceId) activeWorkspaceId = payload.workspaceId;
+            if (payload.workspaceId) {activeWorkspaceId = payload.workspaceId;}
             refreshWorkspaces();
             refreshTabs();
         })();
     });
 
     closeTabBtn.addEventListener('click', () => {
-        if (!activeTabId) return;
+        if (!activeTabId) {return;}
         void (async () => {
             if (activeWorkspaceId) {
                 await sendPanelAction('tab.close', { workspaceId: activeWorkspaceId, tabId: activeTabId });
@@ -291,7 +291,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
 
     const interceptAction = (action: Action) => {
-        if (!action || String(action.type || '').endsWith('.failed')) return;
+        if (!action || String(action.type || '').endsWith('.failed')) {return;}
         const payload = (action.payload || {}) as {
             activeWorkspaceId?: string;
             workspaces?: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>;
@@ -318,7 +318,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     let refreshPending = false;
     const scheduleRefresh = () => {
-        if (refreshPending) return;
+        if (refreshPending) {return;}
         refreshPending = true;
         queueMicrotask(() => {
             refreshPending = false;

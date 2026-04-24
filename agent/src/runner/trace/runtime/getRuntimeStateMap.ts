@@ -16,7 +16,7 @@ export const collectTaggedRuntimeState = async (page: Page, epoch: string): Prom
     const target = page as unknown as {
         evaluate?: <T, A>(fn: (arg: A) => T | Promise<T>, arg: A) => Promise<T>;
     };
-    if (typeof target.evaluate !== 'function') return {};
+    if (typeof target.evaluate !== 'function') {return {};}
 
     const rows = await target
         // Use string-script evaluate to avoid transpiler helper leakage (e.g. __name) into page context.
@@ -46,7 +46,7 @@ export const cleanupTaggedRuntimeState = async (page: Page): Promise<void> => {
   const target = page as unknown as {
     evaluate?: <T, A>(fn: (arg: A) => T | Promise<T>, arg: A) => Promise<T>;
   };
-  if (typeof target.evaluate !== 'function') return;
+  if (typeof target.evaluate !== 'function') {return;}
 
   await target
     .evaluate((script) => {
@@ -64,7 +64,7 @@ const toRuntimeStateMap = (rows: RuntimeStateRow[] | unknown): RuntimeStateMap =
     const safeRows = Array.isArray(rows) ? rows : [];
     for (const row of safeRows) {
     const stateId = typeof row?.stateId === 'string' ? row.stateId.trim() : '';
-    if (!stateId) continue;
+    if (!stateId) {continue;}
     map[stateId] = {
       ...row,
       stateId,

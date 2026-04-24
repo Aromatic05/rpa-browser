@@ -48,18 +48,18 @@ const commandExists = (command: string) => {
 };
 
 const resolveChromeExecutable = (explicitPath?: string) => {
-    if (explicitPath?.trim()) return explicitPath.trim();
+    if (explicitPath?.trim()) {return explicitPath.trim();}
     const fromEnv = process.env.RPA_CDP_CHROME_PATH?.trim();
-    if (fromEnv) return fromEnv;
+    if (fromEnv) {return fromEnv;}
     const candidates = defaultChromeCandidates();
     const unavailable: string[] = [];
     for (const candidate of candidates) {
         if (candidate.includes(path.sep)) {
-            if (fs.existsSync(candidate)) return candidate;
+            if (fs.existsSync(candidate)) {return candidate;}
             unavailable.push(candidate);
             continue;
         }
-        if (commandExists(candidate)) return candidate;
+        if (commandExists(candidate)) {return candidate;}
         unavailable.push(candidate);
     }
     throw new Error(`No Chrome/Chromium executable found. Tried: ${unavailable.join(', ')}`);
@@ -70,7 +70,7 @@ const waitForCdpReady = async (endpoint: string, timeoutMs: number) => {
     while (Date.now() < deadline) {
         try {
             const response = await fetch(`${endpoint.replace(/\/$/, '')}/json/version`);
-            if (response.ok) return;
+            if (response.ok) {return;}
         } catch {
             // ignore retry errors
         }
@@ -110,14 +110,14 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     });
 
     const stop = async () =>
-        new Promise<void>((resolve) => {
-            if (proc.exitCode != null || proc.killed) return resolve();
-            proc.once('exit', () => resolve());
+        { await new Promise<void>((resolve) => {
+            if (proc.exitCode != null || proc.killed) {resolve(); return;}
+            proc.once('exit', () => { resolve(); });
             proc.kill('SIGTERM');
             setTimeout(() => {
-                if (proc.exitCode == null) proc.kill('SIGKILL');
+                if (proc.exitCode == null) {proc.kill('SIGKILL');}
             }, 3000);
-        });
+        }); };
 
     try {
         await waitForCdpReady(endpoint, timeoutMs);

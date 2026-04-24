@@ -29,18 +29,18 @@ type LogTarget = {
 };
 
 let loggerConfig: RunnerConfig | null = null;
-let runId = new Date().toISOString().replace(/[:.]/g, '-');
+const runId = new Date().toISOString().replace(/[:.]/g, '-');
 const streams = new Map<LogType, fs.WriteStream>();
 
 export const resolveLogPath = (template: string) => {
-    if (template.includes('{ts}')) return template.replace('{ts}', runId);
+    if (template.includes('{ts}')) {return template.replace('{ts}', runId);}
     const ext = path.extname(template);
     const base = ext ? template.slice(0, -ext.length) : template;
     return `${base}-${runId}${ext || '.log'}`;
 };
 
 const ensureStream = (type: LogType, filePath: string) => {
-    if (streams.has(type)) return streams.get(type)!;
+    if (streams.has(type)) {return streams.get(type)!;}
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });

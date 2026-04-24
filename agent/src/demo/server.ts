@@ -32,7 +32,7 @@ const readJsonBody = async (req: http.IncomingMessage) => {
     for await (const chunk of req) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
-    if (!chunks.length) return null;
+    if (!chunks.length) {return null;}
     const raw = Buffer.concat(chunks).toString('utf8');
     return JSON.parse(raw);
 };
@@ -75,7 +75,7 @@ const pageRegistry = createPageRegistry({
             runtimeRegistry.bindPage(page, token);
         }
     },
-    onTokenClosed: (token) => cleanupRecording(recordingState, token),
+    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
 
 const workspaceManager = createWorkspaceManager({
@@ -121,7 +121,7 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
     if (url.pathname === '/api/config') {
         if (req.method === 'GET') {
-            void getMaskedConfig().then((cfg) => sendJson(res, 200, cfg));
+            void getMaskedConfig().then((cfg) => { sendJson(res, 200, cfg); });
             return;
         }
         if (req.method === 'PUT') {
@@ -156,7 +156,7 @@ const server = http.createServer((req, res) => {
         return;
     }
     if (url.pathname === '/api/env/status' && req.method === 'GET') {
-        void workspaceManager.getActiveWorkspacePublicInfo().then((info) => sendJson(res, 200, info));
+        void workspaceManager.getActiveWorkspacePublicInfo().then((info) => { sendJson(res, 200, info); });
         return;
     }
     if (url.pathname === '/api/chat' && req.method === 'POST') {

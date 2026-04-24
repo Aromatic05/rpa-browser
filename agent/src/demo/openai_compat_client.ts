@@ -36,9 +36,9 @@ export type ChatCompletionResponse = {
 
 const buildChatUrl = (apiBase: string) => {
     const trimmed = apiBase.replace(/\/$/, '');
-    if (trimmed.endsWith('/v1/chat/completions')) return trimmed;
-    if (trimmed.endsWith('/chat/completions')) return trimmed;
-    if (trimmed.endsWith('/v1')) return `${trimmed}/chat/completions`;
+    if (trimmed.endsWith('/v1/chat/completions')) {return trimmed;}
+    if (trimmed.endsWith('/chat/completions')) {return trimmed;}
+    if (trimmed.endsWith('/v1')) {return `${trimmed}/chat/completions`;}
     return `${trimmed}/v1/chat/completions`;
 };
 
@@ -69,7 +69,7 @@ export const createChatCompletion = async (
         throw new Error(`LLM request failed: ${resp.status} ${text}`);
     }
 
-    const data = (await resp.json()) as any;
+    const data = (await resp.json());
     const message = data?.choices?.[0]?.message;
     if (!message) {
         throw new Error('LLM response missing message');

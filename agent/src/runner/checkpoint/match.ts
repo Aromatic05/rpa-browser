@@ -47,7 +47,7 @@ export const maybeEnterCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoi
 };
 
 export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
-    if (!ctx.active) return ctx;
+    if (!ctx.active) {return ctx;}
 
     const candidates = listCheckpoints(ctx.failedCtx.checkpoints)
         .filter((item) => item.enabled !== false)
@@ -83,7 +83,7 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
 const evalUrlIncludesRule = async (needle: string, ctx: CheckpointCtx): Promise<boolean> => {
     const binding = await ctx.failedCtx.deps.runtime.ensureActivePage(ctx.failedCtx.workspaceId);
     const info = await binding.traceTools['trace.page.getInfo']();
-    if (!info.ok) return false;
+    if (!info.ok) {return false;}
     return (info.data?.url || '').includes(needle);
 };
 
@@ -117,7 +117,7 @@ const evalEntityExistsRule = async (
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'checkpoint.match.entityExists',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, {
+            await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 entityRuleConfig: ctx.failedCtx.deps.config.entityRules,
             }),
@@ -140,13 +140,13 @@ export const evalMatchRule = async (rule: MatchRule, ctx: CheckpointCtx): Promis
         return ctx.failedCtx.step.name === rule.stepName;
     }
     if ('urlIncludes' in rule) {
-        return evalUrlIncludesRule(rule.urlIncludes, ctx);
+        return await evalUrlIncludesRule(rule.urlIncludes, ctx);
     }
     if ('textVisible' in rule) {
-        return evalTextVisibleRule(rule.textVisible, ctx);
+        return await evalTextVisibleRule(rule.textVisible, ctx);
     }
     if ('entityExists' in rule) {
-        return evalEntityExistsRule(rule.entityExists, ctx);
+        return await evalEntityExistsRule(rule.entityExists, ctx);
     }
     return false;
 };

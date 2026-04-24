@@ -66,7 +66,7 @@ export const getDomTree = async (page: Page): Promise<DomTreeNode | null> => {
         })) as DomSnapshotCaptureResult;
 
         const built = buildDomTreeFromSnapshot(raw);
-        if (!built) return null;
+        if (!built) {return null;}
         await hydrateIframeSubtrees(page, built);
         return built;
     } catch (error) {
@@ -82,20 +82,20 @@ export const getDomTree = async (page: Page): Promise<DomTreeNode | null> => {
 const buildDomTreeFromSnapshot = (raw: DomSnapshotCaptureResult): DomTreeNode | null => {
     const documents = Array.isArray(raw.documents) ? raw.documents : [];
     const strings = Array.isArray(raw.strings) ? raw.strings : [];
-    if (documents.length === 0) return null;
+    if (documents.length === 0) {return null;}
 
     const views = documents.map((document) => createNodeView(document, strings));
     const mainView = views[0];
-    if (!mainView) return null;
+    if (!mainView) {return null;}
 
     const rootIndex = findRootElementIndex(mainView);
-    if (rootIndex < 0) return null;
+    if (rootIndex < 0) {return null;}
     return buildElementNode(views, 0, rootIndex, 'n0');
 };
 
 const createNodeView = (document: DocumentSnapshot, strings: string[]): NodeView | null => {
     const nodes = document.nodes;
-    if (!nodes) return null;
+    if (!nodes) {return null;}
 
     const parentIndex = Array.isArray(nodes.parentIndex) ? nodes.parentIndex : [];
     const nodeType = Array.isArray(nodes.nodeType) ? nodes.nodeType : [];
@@ -106,12 +106,12 @@ const createNodeView = (document: DocumentSnapshot, strings: string[]): NodeView
     const contentDocumentIndex = Array.isArray(nodes.contentDocumentIndex) ? nodes.contentDocumentIndex : [];
 
     const count = nodeType.length;
-    if (count === 0) return null;
+    if (count === 0) {return null;}
 
     const childrenByParent = new Map<number, number[]>();
     for (let index = 0; index < count; index += 1) {
         const parent = parentIndex[index];
-        if (typeof parent !== 'number' || parent < 0) continue;
+        if (typeof parent !== 'number' || parent < 0) {continue;}
         const bucket = childrenByParent.get(parent) || [];
         bucket.push(index);
         childrenByParent.set(parent, bucket);
@@ -138,22 +138,22 @@ const findRootElementIndex = (view: NodeView): number => {
 
     // 优先找 <html> 根节点。
     for (let index = 0; index < total; index += 1) {
-        if (!isElementNode(view, index)) continue;
-        if (readTagName(view, index) !== 'html') continue;
+        if (!isElementNode(view, index)) {continue;}
+        if (readTagName(view, index) !== 'html') {continue;}
         return index;
     }
 
     // 退化：找 document 的第一个 element 子节点。
     for (let index = 0; index < total; index += 1) {
-        if (!isElementNode(view, index)) continue;
+        if (!isElementNode(view, index)) {continue;}
         const parent = view.parentIndex[index];
-        if (parent < 0) return index;
-        if (view.nodeType[parent] === NODE_TYPE.DOCUMENT) return index;
+        if (parent < 0) {return index;}
+        if (view.nodeType[parent] === NODE_TYPE.DOCUMENT) {return index;}
     }
 
     // 最后兜底：第一个 element。
     for (let index = 0; index < total; index += 1) {
-        if (isElementNode(view, index)) return index;
+        if (isElementNode(view, index)) {return index;}
     }
     return -1;
 };
@@ -165,25 +165,25 @@ const buildElementNode = (
     id: string,
 ): DomTreeNode | null => {
     const view = views[viewIndex];
-    if (!view) return null;
-    if (!isElementNode(view, index)) return null;
+    if (!view) {return null;}
+    if (!isElementNode(view, index)) {return null;}
 
     const tag = readTagName(view, index);
-    if (!tag || BLACKLIST_TAGS.has(tag)) return null;
+    if (!tag || BLACKLIST_TAGS.has(tag)) {return null;}
 
     const backendNodeId = view.backendNodeId[index];
     const backendDOMNodeId = typeof backendNodeId === 'number' && backendNodeId > 0 ? String(backendNodeId) : undefined;
     const attrs = decodeWhitelistedAttrs(view, index, backendDOMNodeId);
-    if (shouldIgnoreSnapshotNode(attrs)) return null;
+    if (shouldIgnoreSnapshotNode(attrs)) {return null;}
 
     const childIndexes = view.childrenByParent.get(index) || [];
     const children: DomTreeNode[] = [];
     let childIndex = 0;
     for (const child of childIndexes) {
-        if (!isElementNode(view, child)) continue;
+        if (!isElementNode(view, child)) {continue;}
         const childNode = buildElementNode(views, viewIndex, child, `${id}.${childIndex}`);
         childIndex += 1;
-        if (childNode) children.push(childNode);
+        if (childNode) {children.push(childNode);}
     }
 
     const contentDocIndex = view.contentDocumentIndex[index];
@@ -193,7 +193,7 @@ const buildElementNode = (
             const childRootIndex = findRootElementIndex(childDocView);
             if (childRootIndex >= 0) {
                 const frameRoot = buildElementNode(views, contentDocIndex, childRootIndex, `${id}.f0`);
-                if (frameRoot) children.push(frameRoot);
+                if (frameRoot) {children.push(frameRoot);}
             }
         }
     }
@@ -221,7 +221,7 @@ const decodeWhitelistedAttrs = (
             const rawNameIndex = raw[cursor];
             const rawValueIndex = raw[cursor + 1];
             const name = readString(view, rawNameIndex).toLowerCase();
-            if (!name || !ATTR_WHITELIST.has(name)) continue;
+            if (!name || !ATTR_WHITELIST.has(name)) {continue;}
             attrs[name] = readString(view, rawValueIndex);
         }
     }
@@ -237,9 +237,9 @@ const readOwnText = (view: NodeView, index: number): string | undefined => {
     const chunks: string[] = [];
     for (const child of childIndexes) {
         const type = view.nodeType[child];
-        if (type !== NODE_TYPE.TEXT && type !== NODE_TYPE.CDATA) continue;
+        if (type !== NODE_TYPE.TEXT && type !== NODE_TYPE.CDATA) {continue;}
         const value = readNodeValue(view, child);
-        if (value) chunks.push(value);
+        if (value) {chunks.push(value);}
     }
     const normalized = normalizeText(chunks.join(' '));
     return normalized || undefined;
@@ -247,7 +247,7 @@ const readOwnText = (view: NodeView, index: number): string | undefined => {
 
 const collectBoundingBoxes = (layout: SnapshotLayout | undefined): Map<number, DomTreeNode['bbox']> => {
     const map = new Map<number, DomTreeNode['bbox']>();
-    if (!layout) return map;
+    if (!layout) {return map;}
 
     const nodeIndexes = Array.isArray(layout.nodeIndex) ? layout.nodeIndex : [];
     const bounds = Array.isArray(layout.bounds) ? layout.bounds : [];
@@ -256,9 +256,9 @@ const collectBoundingBoxes = (layout: SnapshotLayout | undefined): Map<number, D
     for (let i = 0; i < limit; i += 1) {
         const nodeIndex = nodeIndexes[i];
         const rect = bounds[i];
-        if (typeof nodeIndex !== 'number' || !Array.isArray(rect) || rect.length < 4) continue;
+        if (typeof nodeIndex !== 'number' || !Array.isArray(rect) || rect.length < 4) {continue;}
         const next = toBbox(rect);
-        if (!next) continue;
+        if (!next) {continue;}
 
         const previous = map.get(nodeIndex);
         if (!previous) {
@@ -278,7 +278,7 @@ const toBbox = (rect: number[]): DomTreeNode['bbox'] | undefined => {
 
     const width = Math.round(widthRaw);
     const height = Math.round(heightRaw);
-    if (width <= 0 && height <= 0) return undefined;
+    if (width <= 0 && height <= 0) {return undefined;}
 
     return {
         x: Math.round(xRaw),
@@ -310,7 +310,7 @@ const readNodeValue = (view: NodeView, index: number): string => {
 };
 
 const readString = (view: NodeView, index: number): string => {
-    if (typeof index !== 'number' || index < 0) return '';
+    if (typeof index !== 'number' || index < 0) {return '';}
     return view.strings[index] || '';
 };
 
@@ -324,9 +324,9 @@ const isElementNode = (view: NodeView, index: number): boolean => {
 
 const BLACKLIST_TAGS = new Set(['script', 'style']);
 const shouldIgnoreSnapshotNode = (attrs: Record<string, string> | undefined): boolean => {
-    if (!attrs) return false;
+    if (!attrs) {return false;}
     const marker = (attrs['data-rpa-snapshot-ignore'] || '').trim().toLowerCase();
-    if (marker === '1' || marker === 'true' || marker === 'yes') return true;
+    if (marker === '1' || marker === 'true' || marker === 'yes') {return true;}
     return (attrs.id || '').trim().toLowerCase() === 'rpa-floating-panel';
 };
 const ATTR_WHITELIST = new Set([
@@ -360,7 +360,7 @@ const ATTR_WHITELIST = new Set([
 const hydrateIframeSubtrees = async (page: Page, root: DomTreeNode): Promise<void> => {
     const iframeNodes: DomTreeNode[] = [];
     collectIframeNodes(root, iframeNodes);
-    if (iframeNodes.length === 0) return;
+    if (iframeNodes.length === 0) {return;}
 
     const frames = page
         .frames()
@@ -369,15 +369,15 @@ const hydrateIframeSubtrees = async (page: Page, root: DomTreeNode): Promise<voi
             const url = (frame.url() || '').trim().toLowerCase();
             return url && url !== 'about:blank';
         });
-    if (frames.length === 0) return;
+    if (frames.length === 0) {return;}
 
     const unused = [...frames];
     for (const node of iframeNodes) {
-        if (node.children.length > 0) continue;
+        if (node.children.length > 0) {continue;}
         const frame = pickFrameForIframeNode(node, unused);
-        if (!frame) continue;
+        if (!frame) {continue;}
         const subtree = await extractFrameSubtree(frame, `${node.id}.f0`);
-        if (!subtree) continue;
+        if (!subtree) {continue;}
         node.children.push(subtree);
     }
 };
@@ -451,7 +451,7 @@ const extractFrameSubtree = async (frame: Frame, idPrefix: string): Promise<DomT
                 const toBbox = (rect: DOMRect) => {
                     const width = Math.round(rect.width);
                     const height = Math.round(rect.height);
-                    if (width <= 0 && height <= 0) return undefined;
+                    if (width <= 0 && height <= 0) {return undefined;}
                     return {
                         x: Math.round(rect.x),
                         y: Math.round(rect.y),
@@ -462,9 +462,9 @@ const extractFrameSubtree = async (frame: Frame, idPrefix: string): Promise<DomT
                 const readOwnText = (el: Element) => {
                     const chunks: string[] = [];
                     for (const child of Array.from(el.childNodes)) {
-                        if (child.nodeType !== Node.TEXT_NODE) continue;
+                        if (child.nodeType !== Node.TEXT_NODE) {continue;}
                         const value = normalizeText(child.textContent || '');
-                        if (value) chunks.push(value);
+                        if (value) {chunks.push(value);}
                     }
                     const merged = normalizeText(chunks.join(' '));
                     return merged || undefined;
@@ -473,20 +473,20 @@ const extractFrameSubtree = async (frame: Frame, idPrefix: string): Promise<DomT
                     const attrs: Record<string, string> = {};
                     for (const attr of Array.from(el.attributes)) {
                         const name = (attr.name || '').toLowerCase();
-                        if (!name || !attrWhitelist.has(name)) continue;
+                        if (!name || !attrWhitelist.has(name)) {continue;}
                         attrs[name] = attr.value;
                     }
                     return Object.keys(attrs).length > 0 ? attrs : undefined;
                 };
                 const build = (el: Element, id: string): FrameNode | null => {
                     const tag = (el.tagName || '').toLowerCase();
-                    if (!tag || blacklistTags.has(tag)) return null;
+                    if (!tag || blacklistTags.has(tag)) {return null;}
                     const children: FrameNode[] = [];
                     let childIndex = 0;
                     for (const child of Array.from(el.children)) {
                         const childNode = build(child, `${id}.${childIndex}`);
                         childIndex += 1;
-                        if (childNode) children.push(childNode);
+                        if (childNode) {children.push(childNode);}
                     }
                     return {
                         id,
@@ -499,12 +499,12 @@ const extractFrameSubtree = async (frame: Frame, idPrefix: string): Promise<DomT
                 };
 
                 const root = document.documentElement;
-                if (!root) return null;
+                if (!root) {return null;}
                 return build(root, `${prefix}.0`);
             },
             { prefix: idPrefix },
         );
-        return snapshot as DomTreeNode | null;
+        return snapshot;
     } catch {
         return null;
     }

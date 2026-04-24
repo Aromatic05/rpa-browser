@@ -57,7 +57,7 @@ const compactToolResult = (
     }
 
     const first = (result.results || [])[0] as { data?: unknown } | undefined;
-    if (!first || first.data === undefined) {
+    if (first?.data === undefined) {
         return { ok: true };
     }
     return { ok: true, data: first.data };
@@ -129,7 +129,7 @@ type McpHttpOptions = {
 };
 
 const normalizePath = (value: string): string => {
-    if (!value) return '/';
+    if (!value) {return '/';}
     return value.startsWith('/') ? value : `/${value}`;
 };
 

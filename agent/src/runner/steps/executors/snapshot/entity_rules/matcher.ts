@@ -104,7 +104,7 @@ const matchesRule = (
     parentById: Map<string, string | null>,
 ): boolean => {
     const node = nodes.get(candidate.nodeId);
-    if (!node) return false;
+    if (!node) {return false;}
 
     if (scopeNodeIds && scopeNodeIds.size > 0) {
         let inScope = false;
@@ -114,42 +114,42 @@ const matchesRule = (
                 break;
             }
         }
-        if (!inScope) return false;
+        if (!inScope) {return false;}
     }
 
     const match = rule.match;
     if (match.kind) {
         const candidateKind = resolveCandidateKind(candidate);
-        if (!candidateKind || candidateKind !== match.kind) return false;
+        if (!candidateKind || candidateKind !== match.kind) {return false;}
     }
 
     if (match.nameContains) {
         const nameText = normalizeLower(resolveCandidateName(candidate, node));
         const needle = normalizeLower(match.nameContains);
-        if (!nameText.includes(needle)) return false;
+        if (!nameText.includes(needle)) {return false;}
     }
 
     if (match.keyHint) {
         const keyHintText = normalizeLower(resolveKeyHintText(candidate));
         const headerNeedles = (match.keyHint.headerContainsAll || []).map(normalizeLower).filter(Boolean);
-        if (headerNeedles.length > 0 && !headerNeedles.every((needle) => keyHintText.includes(needle))) return false;
+        if (headerNeedles.length > 0 && !headerNeedles.every((needle) => keyHintText.includes(needle))) {return false;}
 
         const primaryNeedles = (match.keyHint.primaryKeyCandidatesContains || []).map(normalizeLower).filter(Boolean);
-        if (primaryNeedles.length > 0 && !primaryNeedles.every((needle) => keyHintText.includes(needle))) return false;
+        if (primaryNeedles.length > 0 && !primaryNeedles.every((needle) => keyHintText.includes(needle))) {return false;}
     }
 
     if (match.relation === 'pagination') {
-        if (!hasPaginationRelation(node)) return false;
+        if (!hasPaginationRelation(node)) {return false;}
     }
 
     if (match.classContains) {
         const classText = normalizeLower(getNodeAttr(node, 'class'));
-        if (!classText.includes(normalizeLower(match.classContains))) return false;
+        if (!classText.includes(normalizeLower(match.classContains))) {return false;}
     }
 
     if (match.textContains) {
         const text = normalizeLower(node.name || getNodeContent(node));
-        if (!text.includes(normalizeLower(match.textContains))) return false;
+        if (!text.includes(normalizeLower(match.textContains))) {return false;}
     }
 
     if (match.ariaContains) {
@@ -162,7 +162,7 @@ const matchesRule = (
             .map((value) => normalizeText(value))
             .filter((value): value is string => Boolean(value))
             .join(' '));
-        if (!aria.includes(normalizeLower(match.ariaContains))) return false;
+        if (!aria.includes(normalizeLower(match.ariaContains))) {return false;}
     }
 
     return true;
@@ -172,7 +172,7 @@ const hasPaginationRelation = (node: UnifiedNode): boolean => {
     const stack = [node];
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
 
         const role = normalizeLower(current.role);
         const tag = normalizeLower(getNodeAttr(current, 'tag') || getNodeAttr(current, 'tagName'));
@@ -200,9 +200,9 @@ const resolveScopeNodeIds = (
     rule: EntityMatchRule,
     results: Record<string, ResolvedRuleBinding>,
 ): Set<string> | null => {
-    if (!rule.within) return null;
+    if (!rule.within) {return null;}
     const within = results[rule.within];
-    if (!within) return new Set();
+    if (!within) {return new Set();}
 
     const nodeIds = new Set<string>(within.matchedNodeIds);
     for (const ref of within.matchedEntityRefs) {
@@ -220,7 +220,7 @@ const toEntityRef = (entity: RegionEntity | GroupEntity): RuleBindingEntityRef =
 });
 
 const resolveCandidateKind = (candidate: EntityCandidate): EntityKind | undefined => {
-    if (candidate.source === 'node') return candidate.kind;
+    if (candidate.source === 'node') {return candidate.kind;}
     return candidate.entity.kind;
 };
 
@@ -232,9 +232,9 @@ const resolveCandidateName = (candidate: EntityCandidate, node: UnifiedNode): st
 };
 
 const resolveKeyHintText = (candidate: EntityCandidate): string => {
-    if (candidate.source === 'node') return '';
+    if (candidate.source === 'node') {return '';}
     const keyHint = candidate.entity.keyHint;
-    if (!keyHint) return '';
+    if (!keyHint) {return '';}
     return [keyHint.name, ...(keyHint.sampleValues || [])]
         .map((value) => normalizeText(value))
         .filter((value): value is string => Boolean(value))
@@ -247,7 +247,7 @@ const buildNodeIndex = (root: UnifiedNode): Map<string, UnifiedNode> => {
     const stack: UnifiedNode[] = [root];
     while (stack.length > 0) {
         const node = stack.pop();
-        if (!node) break;
+        if (!node) {break;}
         map.set(node.id, node);
         for (let index = node.children.length - 1; index >= 0; index -= 1) {
             stack.push(node.children[index]);
@@ -261,7 +261,7 @@ const buildParentById = (root: UnifiedNode): Map<string, string | null> => {
     const stack: Array<{ node: UnifiedNode; parentId: string | null }> = [{ node: root, parentId: null }];
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
         parentById.set(current.node.id, current.parentId);
         for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
             stack.push({
@@ -276,7 +276,7 @@ const buildParentById = (root: UnifiedNode): Map<string, string | null> => {
 const isDescendantOrSelf = (nodeId: string, ancestorId: string, parentById: Map<string, string | null>): boolean => {
     let cursor: string | null = nodeId;
     while (cursor) {
-        if (cursor === ancestorId) return true;
+        if (cursor === ancestorId) {return true;}
         cursor = parentById.get(cursor) || null;
     }
     return false;

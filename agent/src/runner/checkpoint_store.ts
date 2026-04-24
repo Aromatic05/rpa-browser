@@ -24,7 +24,7 @@ const readPayload = async (filePath: string): Promise<PersistedTaskRunCheckpoint
     try {
         const raw = await fs.readFile(filePath, 'utf8');
         const parsed = JSON.parse(raw) as PersistedTaskRunCheckpointsV1;
-        if (!parsed || parsed.version !== 1 || !parsed.checkpoints || typeof parsed.checkpoints !== 'object') {
+        if (parsed?.version !== 1 || !parsed.checkpoints || typeof parsed.checkpoints !== 'object') {
             return null;
         }
         return parsed;
@@ -51,14 +51,14 @@ export const createTaskCheckpointStore = (filePath: string, opts?: { flushInterv
     const load = async () => {
         const payload = await readPayload(filePath);
         checkpoints.clear();
-        if (!payload) return checkpoints;
+        if (!payload) {return checkpoints;}
         for (const [runId, cp] of Object.entries(payload.checkpoints)) {
-            if (!runId || !cp || typeof cp !== 'object') continue;
-            if (!cp.workspaceId || typeof cp.cursor !== 'number') continue;
+            if (!runId || !cp || typeof cp !== 'object') {continue;}
+            if (!cp.workspaceId || typeof cp.cursor !== 'number') {continue;}
             checkpoints.set(runId, {
                 runId,
                 workspaceId: cp.workspaceId,
-                status: cp.status as RunStatus,
+                status: cp.status,
                 cursor: cp.cursor,
                 nextSeq: typeof cp.nextSeq === 'number' ? cp.nextSeq : cp.cursor,
                 lastAckSeq: typeof cp.lastAckSeq === 'number' ? cp.lastAckSeq : Math.max(-1, cp.cursor - 1),
@@ -69,9 +69,9 @@ export const createTaskCheckpointStore = (filePath: string, opts?: { flushInterv
     };
 
     const flush = async () => {
-        if (writing) return;
+        if (writing) {return;}
         const snapshot = JSON.stringify(toPayload(checkpoints));
-        if (snapshot === lastSnapshot) return;
+        if (snapshot === lastSnapshot) {return;}
         writing = true;
         try {
             await persist(filePath, checkpoints);
@@ -90,6 +90,6 @@ export const createTaskCheckpointStore = (filePath: string, opts?: { flushInterv
         checkpoints,
         load,
         flush,
-        stop: () => clearInterval(timer),
+        stop: () => { clearInterval(timer); },
     };
 };

@@ -14,7 +14,7 @@ const log = async (name, fn) => {
 };
 
 const toReplyAction = (request, result) => {
-    if (result?.v === 1) return result;
+    if (result?.v === 1) {return result;}
     if (result?.ok === false) {
         return {
             v: 1,
@@ -341,7 +341,7 @@ await log('workspace.list works without tab token', async () => {
         cb({ ok: true });
     };
     chrome.tabs.query = async ({ windowId }) => {
-        if (windowId === 88) return [];
+        if (windowId === 88) {return [];}
         return [{ id: 11, windowId, url: 'https://example.com' }];
     };
     const sent = [];

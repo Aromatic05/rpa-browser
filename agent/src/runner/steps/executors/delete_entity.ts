@@ -16,7 +16,7 @@ export const executeBrowserDeleteEntity = async (
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'browser.delete_entity',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, {
+            await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 entityRuleConfig: deps.config.entityRules,
             }),
@@ -36,8 +36,8 @@ export const executeBrowserDeleteEntity = async (
 
     const businessTag = normalizeText(step.args.businessTag);
     const before = (ensured.entry.finalEntityView?.byNodeId[nodeId] || []).filter((entity) => {
-        if (step.args.kind && entity.kind !== step.args.kind) return false;
-        if (businessTag && entity.businessTag !== businessTag) return false;
+        if (step.args.kind && entity.kind !== step.args.kind) {return false;}
+        if (businessTag && entity.businessTag !== businessTag) {return false;}
         return true;
     }).length;
 
@@ -50,8 +50,8 @@ export const executeBrowserDeleteEntity = async (
     });
 
     const after = (entry.finalEntityView?.byNodeId[nodeId] || []).filter((entity) => {
-        if (step.args.kind && entity.kind !== step.args.kind) return false;
-        if (businessTag && entity.businessTag !== businessTag) return false;
+        if (step.args.kind && entity.kind !== step.args.kind) {return false;}
+        if (businessTag && entity.businessTag !== businessTag) {return false;}
         return true;
     }).length;
 

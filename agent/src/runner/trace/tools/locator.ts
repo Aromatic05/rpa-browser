@@ -16,14 +16,14 @@ type LocatorTarget = {
 
 export const createLocatorTools = (base: ToolsBuildContext) => ({
     'trace.a11y.findByA11yHint': async (args: { hint: TraceA11yHint }) =>
-        base.run('trace.a11y.findByA11yHint', args, async (): Promise<A11yCandidate[]> => {
+        await base.run('trace.a11y.findByA11yHint', args, async (): Promise<A11yCandidate[]> => {
             const tree = await getA11yTree(base.getCurrentPage(), base.ctx.cache);
-            if (!tree) return [];
+            if (!tree) {return [];}
             return findA11yCandidates(tree, args.hint);
         }),
 
     'trace.a11y.resolveByNodeId': async (args: { a11yNodeId: string }) =>
-        base.run('trace.a11y.resolveByNodeId', args, async () => {
+        await base.run('trace.a11y.resolveByNodeId', args, async () => {
             await base.ensureA11yCache();
             const tree = base.ctx.cache.a11yTree as A11ySnapshotNode | undefined;
             if (!tree || !base.ctx.cache.a11yNodeMap?.has(args.a11yNodeId)) {
@@ -33,7 +33,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.locator.waitForVisible': async (args: LocatorTarget & { timeout?: number }) =>
-        base.run('trace.locator.waitForVisible', args, async () => {
+        await base.run('trace.locator.waitForVisible', args, async () => {
             const locator = await resolveLocator(base, args);
             await locator.waitFor({ state: 'visible', timeout: args.timeout });
         }),
@@ -43,7 +43,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
             const locator = await resolveLocator(base, args);
             await locator.scrollIntoViewIfNeeded();
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'scroll', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'scroll', base.ctx.tags);}
         return result;
     },
 
@@ -52,12 +52,12 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
             const locator = await resolveLocator(base, args);
             await locator.click({ timeout: args.timeout, button: args.button });
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'click', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'click', base.ctx.tags);}
         return result;
     },
 
     'trace.locator.focus': async (args: LocatorTarget) =>
-        base.run('trace.locator.focus', args, async () => {
+        await base.run('trace.locator.focus', args, async () => {
             const locator = await resolveLocator(base, args);
             await locator.focus();
         }),
@@ -67,7 +67,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
             const locator = await resolveLocator(base, args);
             await locator.fill(args.value);
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'input', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'input', base.ctx.tags);}
         return result;
     },
 
@@ -76,7 +76,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
             const locator = await resolveLocator(base, args);
             await locator.type(args.text, { delay: args.delayMs });
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'input', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'input', base.ctx.tags);}
         return result;
     },
 
@@ -86,12 +86,12 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
             const selected = await locator.selectOption(args.values, { timeout: args.timeout });
             return { selected };
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'input', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'input', base.ctx.tags);}
         return result;
     },
 
     'trace.locator.readSelectState': async (args: LocatorTarget) =>
-        base.run('trace.locator.readSelectState', args, async () => {
+        await base.run('trace.locator.readSelectState', args, async () => {
             const locator = await resolveLocator(base, args);
             const state = await locator.evaluate((node) => {
                 const select = node as HTMLSelectElement | null;
@@ -111,13 +111,13 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.locator.hover': async (args: LocatorTarget) =>
-        base.run('trace.locator.hover', args, async () => {
+        await base.run('trace.locator.hover', args, async () => {
             const locator = await resolveLocator(base, args);
             await locator.hover();
         }),
 
     'trace.locator.dragDrop': async (args: { source: LocatorTarget; dest?: LocatorTarget; destCoord?: { x: number; y: number } }) =>
-        base.run('trace.locator.dragDrop', args, async () => {
+        await base.run('trace.locator.dragDrop', args, async () => {
             const currentPage = base.getCurrentPage();
             const source = await resolveLocator(base, args.source);
             if (args.dest) {
@@ -144,7 +144,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
         const result = await base.run('trace.keyboard.press', args, async () => {
             await base.getCurrentPage().keyboard.press(args.key);
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'keyboard', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'keyboard', base.ctx.tags);}
         return result;
     },
 
@@ -158,7 +158,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
         const result = await base.run('trace.mouse.action', args, async () => {
             const currentPage = base.getCurrentPage();
             await currentPage.mouse.move(args.x, args.y);
-            if (args.action === 'move') return;
+            if (args.action === 'move') {return;}
             if (args.action === 'down') {
                 await currentPage.mouse.down({ button: args.button });
                 return;
@@ -194,20 +194,20 @@ const resolveLocator = async (
             return await resolveRoleLocator(base, args.role, args.name);
         } catch (error) {
             if (args.selector) {
-                return base.resolveSelectorLocator(args.selector);
+                return await base.resolveSelectorLocator(args.selector);
             }
             throw error;
         }
     }
     if (args.selector) {
-        return base.resolveSelectorLocator(args.selector);
+        return await base.resolveSelectorLocator(args.selector);
     }
     if (!args.a11yNodeId) {
         throw { code: 'ERR_NOT_FOUND', message: 'missing target', phase: 'trace' };
     }
     await base.ensureA11yCache();
     const adopted = await adoptA11yNode(base.getCurrentPage(), args.a11yNodeId, base.ctx.cache);
-    if (!adopted.ok) throw adopted.error;
+    if (!adopted.ok) {throw adopted.error;}
     return adopted.data!;
 };
 

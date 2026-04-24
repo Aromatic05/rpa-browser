@@ -67,7 +67,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
     const bindPage = (page: Page, tabToken: string): PageBinding => {
         const scope = options.pageRegistry.resolveScopeFromToken(tabToken);
         const existing = bindings.get(tabToken);
-        if (existing && existing.page === page) {
+        if (existing?.page === page) {
             return existing;
         }
         const { tools, ctx } = resolveCreateTraceTools()({

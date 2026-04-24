@@ -122,7 +122,7 @@ export const shouldMarkSnapshotDirtyByStep = (
     stepName: string,
     stepArgs: Record<string, unknown> | undefined,
 ): boolean => {
-    if (DIRTY_STEP_NAMES.has(stepName)) return true;
+    if (DIRTY_STEP_NAMES.has(stepName)) {return true;}
     if (CONDITIONAL_DIRTY_STEP_NAMES.has(stepName)) {
         return stepArgs?.mutatesPage === true;
     }
@@ -277,7 +277,7 @@ export const readSnapshotDiffBaseline = (
     key: string,
 ): SnapshotDiffBaselineEntry | undefined => {
     const baseline = ensureDiffBaselineMap(entry)[key];
-    if (!baseline) return undefined;
+    if (!baseline) {return undefined;}
     return {
         snapshotId: baseline.snapshotId,
         root: cloneTreeWithRuntime(baseline.root),
@@ -387,9 +387,9 @@ const setLatestSnapshotCache = (binding: PageBinding, snapshot: SnapshotResult) 
 };
 
 const isSnapshotTtlExpired = (entry: SnapshotSessionEntry, ttlMs?: number): boolean => {
-    if (!entry.lastRefreshAt) return true;
+    if (!entry.lastRefreshAt) {return true;}
     const ttl = resolveSnapshotTtlMs(ttlMs);
-    if (ttl <= 0) return false;
+    if (ttl <= 0) {return false;}
     return Date.now() - entry.lastRefreshAt > ttl;
 };
 
@@ -445,7 +445,7 @@ const ensureDiffBaselineMap = (entry: SnapshotSessionEntry): Record<string, Snap
 
 const trimDiffBaselineMap = (map: Record<string, SnapshotDiffBaselineEntry>, maxCount: number) => {
     const keys = Object.keys(map);
-    if (keys.length <= maxCount) return;
+    if (keys.length <= maxCount) {return;}
 
     const sorted = keys.sort((left, right) => {
         const leftAt = map[left]?.createdAt || 0;
@@ -459,7 +459,7 @@ const trimDiffBaselineMap = (map: Record<string, SnapshotDiffBaselineEntry>, max
 };
 
 const isSnapshotSessionStore = (value: unknown): value is SnapshotSessionStore => {
-    if (!value || typeof value !== 'object') return false;
+    if (!value || typeof value !== 'object') {return false;}
     const store = value as SnapshotSessionStore;
     return typeof store.version === 'number' && store.entries && typeof store.entries === 'object';
 };

@@ -18,7 +18,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
     const state = createRouterState(log);
 
-    const sendAction = async (action: Action): Promise<Action> => options.wsClient.sendAction(withActionBase(action));
+    const sendAction = async (action: Action): Promise<Action> => await options.wsClient.sendAction(withActionBase(action));
 
     const life = createLifecycleRuntime({
         state,
@@ -33,12 +33,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const handleInboundAction = (action: Action) => {
-        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) return;
+        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) {return;}
 
         if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
             const data = (action.payload || {}) as Record<string, unknown>;
             const activeId = data.activeWorkspaceId ? String(data.activeWorkspaceId) : null;
-            if (activeId) state.setActiveWorkspaceId(activeId);
+            if (activeId) {state.setActiveWorkspaceId(activeId);}
             options.onRefresh();
             return;
         }
@@ -84,15 +84,15 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         }
         const data = payloadOf(reply);
         const activeId = (data as any).activeWorkspaceId ? String((data as any).activeWorkspaceId) : null;
-        if (activeId) state.setActiveWorkspaceId(activeId);
+        if (activeId) {state.setActiveWorkspaceId(activeId);}
     };
 
     const handleMessage = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
-        if (!message?.type) return;
+        if (!message?.type) {return;}
 
         if (message.type === MSG.HELLO) {
             const tabId = sender.tab?.id;
-            if (tabId == null) return;
+            if (tabId == null) {return;}
             const tabToken = String(message.tabToken || '');
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
             state.upsertTab(tabId, tabToken, message.url || sender.tab?.url || '', windowId);

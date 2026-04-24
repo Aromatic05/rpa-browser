@@ -46,7 +46,7 @@ export const toEntityOutputRecord = (entity: FinalEntityRecord): EntityOutputRec
 
 export const buildNodeSummary = (snapshot: SnapshotResult, nodeId: string) => {
     const node = snapshot.nodeIndex[nodeId];
-    if (!node) return null;
+    if (!node) {return null;}
     const attrs = getNodeAttrs(node);
     const debugAttrs = pickNodeDebugAttrs(attrs);
     return {
@@ -72,13 +72,13 @@ type TableMeta = {
 
 export const buildTableMeta = (snapshot: SnapshotResult, tableNodeId: string): TableMeta | null => {
     const tableNode = snapshot.nodeIndex[tableNodeId];
-    if (!tableNode || normalizeText(tableNode.role) !== 'table') return null;
+    if (!tableNode || normalizeText(tableNode.role) !== 'table') {return null;}
 
     const rowNodeIds: string[] = [];
     const headerRows: string[] = [];
     walkDescendants(tableNode, (node) => {
         const role = normalizeText(node.role);
-        if (role !== 'row') return;
+        if (role !== 'row') {return;}
         const cells = node.children.filter((child) => normalizeText(child.role) === 'cell');
         const headers = node.children.filter((child) => normalizeText(child.role) === 'columnheader');
         if (headers.length > 0) {
@@ -98,7 +98,7 @@ export const buildTableMeta = (snapshot: SnapshotResult, tableNodeId: string): T
     const candidates: TableMeta['primary_key_candidates'] = [];
     for (let columnIndex = 0; columnIndex < normalizedHeaders.length; columnIndex += 1) {
         const values = rows.map((row) => normalizeText(row[columnIndex] || '')).filter(Boolean);
-        if (values.length === 0) continue;
+        if (values.length === 0) {continue;}
         const uniqueCount = new Set(values).size;
         const duplicateCount = values.length - uniqueCount;
         candidates.push({
@@ -137,16 +137,16 @@ const walkDescendants = (node: SnapshotResult['root'], visitor: (node: SnapshotR
 const resolveHeaders = (snapshot: SnapshotResult, headerRows: string[], rowNodeIds: string[]): string[] => {
     for (const rowId of headerRows) {
         const headers = extractHeaders(snapshot, rowId);
-        if (headers.length > 0) return headers;
+        if (headers.length > 0) {return headers;}
     }
-    if (rowNodeIds.length === 0) return [];
+    if (rowNodeIds.length === 0) {return [];}
     const firstRow = extractRowValues(snapshot, rowNodeIds[0]);
     return firstRow.map((_, index) => `col_${index + 1}`);
 };
 
 const extractHeaders = (snapshot: SnapshotResult, rowNodeId: string): string[] => {
     const row = snapshot.nodeIndex[rowNodeId];
-    if (!row) return [];
+    if (!row) {return [];}
     return row.children
         .filter((child) => normalizeText(child.role) === 'columnheader')
         .map((cell) => readNodeText(cell))
@@ -155,20 +155,20 @@ const extractHeaders = (snapshot: SnapshotResult, rowNodeId: string): string[] =
 
 const extractRowValues = (snapshot: SnapshotResult, rowNodeId: string): string[] => {
     const row = snapshot.nodeIndex[rowNodeId];
-    if (!row) return [];
+    if (!row) {return [];}
     return row.children
         .filter((child) => normalizeText(child.role) === 'cell')
         .map((cell) => readNodeText(cell) || '');
 };
 
 const readNodeText = (node: SnapshotResult['root']): string => {
-    if (node.name) return normalizeText(node.name) || '';
-    if (typeof node.content === 'string') return normalizeText(node.content) || '';
+    if (node.name) {return normalizeText(node.name) || '';}
+    if (typeof node.content === 'string') {return normalizeText(node.content) || '';}
     return '';
 };
 
 const resolveRecommendedPrimaryKey = (rows: string[][], headers: string[]): string[] | null => {
-    if (rows.length === 0 || headers.length === 0) return null;
+    if (rows.length === 0 || headers.length === 0) {return null;}
     for (let width = 1; width <= Math.min(3, headers.length); width += 1) {
         const indices = Array.from({ length: width }, (_, index) => index);
         const duplicateCount = countTupleDuplicates(rows, indices);
@@ -177,7 +177,7 @@ const resolveRecommendedPrimaryKey = (rows: string[][], headers: string[]): stri
         }
     }
     const best = findBestSingleColumn(rows);
-    if (best < 0) return null;
+    if (best < 0) {return null;}
     return [headers[best]];
 };
 
@@ -185,7 +185,7 @@ const countTupleDuplicates = (rows: string[][], indices: number[]): number => {
     const tuples = rows
         .map((row) => indices.map((index) => normalizeText(row[index] || '')).join('||'))
         .filter(Boolean);
-    if (tuples.length === 0) return 0;
+    if (tuples.length === 0) {return 0;}
     return tuples.length - new Set(tuples).size;
 };
 
@@ -204,12 +204,12 @@ const findBestSingleColumn = (rows: string[][]): number => {
 };
 
 const pickNodeDebugAttrs = (attrs: Record<string, string> | undefined): Record<string, string> | undefined => {
-    if (!attrs) return undefined;
+    if (!attrs) {return undefined;}
     const keys = ['id', 'name', 'type', 'role', 'href', 'src', 'aria-label', 'placeholder'];
     const out: Record<string, string> = {};
     for (const key of keys) {
         const value = normalizeText(attrs[key]);
-        if (!value) continue;
+        if (!value) {continue;}
         out[key] = value;
     }
     return Object.keys(out).length > 0 ? out : undefined;

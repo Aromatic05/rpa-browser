@@ -33,9 +33,9 @@ let initialized = false;
 let runtimeLevel: LogLevel = 'warning';
 
 const normalizeLevel = (value: unknown): LogLevel | null => {
-    if (typeof value !== 'string') return null;
+    if (typeof value !== 'string') {return null;}
     const level = value.trim().toLowerCase();
-    if (level === 'warn') return 'warning';
+    if (level === 'warn') {return 'warning';}
     if (level === 'debug' || level === 'info' || level === 'warning' || level === 'error' || level === 'silent') {
         return level;
     }
@@ -51,17 +51,17 @@ const shouldLog = (level: Exclude<LogLevel, 'silent'>) =>
     LEVEL_WEIGHT[level] >= LEVEL_WEIGHT[resolveCurrentLevel()];
 
 const initRuntimeLevel = () => {
-    if (initialized) return;
+    if (initialized) {return;}
     initialized = true;
-    if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) {return;}
     chrome.storage.local.get(['rpaLogLevel'], (values: Record<string, unknown>) => {
         const next = normalizeLevel(values?.rpaLogLevel);
-        if (next) runtimeLevel = next;
+        if (next) {runtimeLevel = next;}
     });
     chrome.storage.onChanged?.addListener((changes, areaName) => {
-        if (areaName !== 'local') return;
+        if (areaName !== 'local') {return;}
         const next = normalizeLevel(changes?.rpaLogLevel?.newValue);
-        if (next) runtimeLevel = next;
+        if (next) {runtimeLevel = next;}
     });
 };
 
@@ -70,19 +70,19 @@ export const createLogger = (scope: LoggerScope): Logger => {
     const prefix = `${LOG_PREFIX}[${scope}]`;
     return {
         debug: (...args: unknown[]) => {
-            if (!shouldLog('debug')) return;
+            if (!shouldLog('debug')) {return;}
             console.debug(prefix, ...args);
         },
         info: (...args: unknown[]) => {
-            if (!shouldLog('info')) return;
+            if (!shouldLog('info')) {return;}
             console.info(prefix, ...args);
         },
         warning: (...args: unknown[]) => {
-            if (!shouldLog('warning')) return;
+            if (!shouldLog('warning')) {return;}
             console.warn(prefix, ...args);
         },
         error: (...args: unknown[]) => {
-            if (!shouldLog('error')) return;
+            if (!shouldLog('error')) {return;}
             console.error(prefix, ...args);
         },
     };

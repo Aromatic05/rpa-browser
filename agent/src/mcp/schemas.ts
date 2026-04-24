@@ -289,7 +289,7 @@ export const browserBatchInputSchema = z
     .superRefine((value, ctx) => {
         value.actions.forEach((action, index) => {
             const hasTarget = Boolean(action.id || action.selector || action.label || action.op === 'click' && action.coord);
-            if (hasTarget) return;
+            if (hasTarget) {return;}
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 message:

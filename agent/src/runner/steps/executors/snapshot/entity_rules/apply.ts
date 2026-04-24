@@ -20,7 +20,7 @@ type ApplyBusinessEntityRulesInput = {
 };
 
 export const applyBusinessEntityRules = (input: ApplyBusinessEntityRulesInput): BusinessEntityOverlay => {
-    if (!input.bundle) return createEmptyBusinessEntityOverlay();
+    if (!input.bundle) {return createEmptyBusinessEntityOverlay();}
     log.info('entity.rules.apply.start', {
         profile: input.bundle.id,
         entityCount: Object.keys(input.entityIndex.entities).length,
@@ -50,12 +50,12 @@ export const applyEntityRuleBindings = (
 
     for (const rule of bundle.matchRules) {
         const binding = bindings[rule.ruleId];
-        if (!binding) continue;
+        if (!binding) {continue;}
         overlay.byRuleId[rule.ruleId] = binding;
-        if (!binding.ok) continue;
+        if (!binding.ok) {continue;}
 
         const annotation = bundle.annotationByRuleId[rule.ruleId];
-        if (!annotation) continue;
+        if (!annotation) {continue;}
 
         applyEntityInfoAnnotation(overlay, binding, annotation);
         applyNodeHintAnnotation(overlay, binding, annotation, entityIndex);
@@ -83,7 +83,7 @@ const applyEntityInfoAnnotation = (
     };
 
     const hasEntityPatch = Boolean(patch.businessTag || patch.businessName || patch.primaryKey || patch.columns);
-    if (!hasEntityPatch) return;
+    if (!hasEntityPatch) {return;}
 
     for (const entityRef of binding.matchedEntityRefs) {
         overlay.byEntityId[entityRef.entityId] = mergeEntityBusinessInfo(overlay.byEntityId[entityRef.entityId], patch);
@@ -96,7 +96,7 @@ const applyNodeHintAnnotation = (
     annotation: EntityAnnotationRule,
     entityIndex: EntityIndex,
 ) => {
-    if (!annotation.fieldKey && !annotation.actionIntent) return;
+    if (!annotation.fieldKey && !annotation.actionIntent) {return;}
 
     const entityById = entityIndex.entities;
 
@@ -120,9 +120,9 @@ const materializeOverlayToNodeHints = (
     nodeById: Map<string, UnifiedNode>,
 ) => {
     for (const [nodeId, hint] of Object.entries(overlay.nodeHintsByNodeId)) {
-        if (!hint) continue;
+        if (!hint) {continue;}
         const node = nodeById.get(nodeId);
-        if (!node) continue;
+        if (!node) {continue;}
 
         mergeNodeSemanticHints(node, hint);
         setNodeAttr(node, 'fieldKey', hint.fieldKey);
@@ -139,12 +139,12 @@ const pickPreferredEntityRef = (entityIndex: EntityIndex, nodeId: string) => {
 
     for (const ref of refs) {
         const entity = entityIndex.entities[ref.entityId];
-        if (!entity) continue;
+        if (!entity) {continue;}
         let nextScore = 0;
-        if (entity.type === 'region') nextScore += 5;
-        if (ref.role === 'container') nextScore += 3;
-        if (ref.role === 'item') nextScore += 2;
-        if (ref.role === 'descendant') nextScore += 1;
+        if (entity.type === 'region') {nextScore += 5;}
+        if (ref.role === 'container') {nextScore += 3;}
+        if (ref.role === 'item') {nextScore += 2;}
+        if (ref.role === 'descendant') {nextScore += 1;}
 
         if (nextScore > score) {
             score = nextScore;
@@ -162,7 +162,7 @@ const buildNodeById = (root: UnifiedNode): Map<string, UnifiedNode> => {
     const stack = [root];
     while (stack.length > 0) {
         const node = stack.pop();
-        if (!node) break;
+        if (!node) {break;}
         map.set(node.id, node);
         for (let index = node.children.length - 1; index >= 0; index -= 1) {
             stack.push(node.children[index]);

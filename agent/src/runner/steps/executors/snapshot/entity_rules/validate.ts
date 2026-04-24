@@ -63,7 +63,7 @@ export const validateEntityRules = (
 
     const adjacency = new Map<string, string>();
     for (const rule of matchSet.entities) {
-        if (!rule.within) continue;
+        if (!rule.within) {continue;}
         if (!matchRuleById.has(rule.within)) {
             errors.push(`within target not found: ${rule.ruleId} -> ${rule.within}`);
             continue;
@@ -122,10 +122,10 @@ const dfs = (
     visited: Set<string>,
     path: string[],
 ): string[] => {
-    if (visited.has(node)) return [];
+    if (visited.has(node)) {return [];}
     if (visiting.has(node)) {
         const start = path.indexOf(node);
-        if (start < 0) return [node, node];
+        if (start < 0) {return [node, node];}
         return [...path.slice(start), node];
     }
 

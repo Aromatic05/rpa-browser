@@ -94,12 +94,12 @@ const pruneSchema = (value: unknown): unknown => {
     const obj = value as Record<string, unknown>;
     const next: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(obj)) {
-        if (key === 'additionalProperties' && child === false) continue;
+        if (key === 'additionalProperties' && child === false) {continue;}
         const pruned = pruneSchema(child);
-        if (pruned === undefined) continue;
-        if (key === 'required' && Array.isArray(pruned) && pruned.length === 0) continue;
+        if (pruned === undefined) {continue;}
+        if (key === 'required' && Array.isArray(pruned) && pruned.length === 0) {continue;}
         if (key === 'properties' && pruned && typeof pruned === 'object' && !Array.isArray(pruned) && Object.keys(pruned).length === 0)
-            continue;
+            {continue;}
         next[key] = pruned;
     }
     return Object.keys(next).length > 0 ? next : undefined;
@@ -170,7 +170,7 @@ export const getToolHandlers = (
     options?: { enabledTools?: Set<string> },
 ): Record<string, McpToolHandler> => {
     const handlers = createToolHandlers(deps);
-    if (!options?.enabledTools) return handlers;
+    if (!options?.enabledTools) {return handlers;}
     return Object.fromEntries(Object.entries(handlers).filter(([name]) => options.enabledTools!.has(name)));
 };
 
@@ -192,5 +192,5 @@ export const executeTool = async (
     }
 
     const tabToken = await resolveTabToken(deps, options);
-    return handler(withTabToken(args, tabToken));
+    return await handler(withTabToken(args, tabToken));
 };

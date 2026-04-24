@@ -59,7 +59,7 @@ export const executeBrowserSnapshot = async (
         forceRefresh: step.args.refresh === true,
         refreshReason: 'browser.snapshot',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, {
+            await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 waitMode: resolveSnapshotWaitMode(context.fromDirty, context.staleReason),
                 entityRuleConfig: deps.config.entityRules,
@@ -233,7 +233,7 @@ const stageAttachLayers = (layeredGraph: ReturnType<typeof stageBuildSpatialGrap
     }
 
     for (const overlay of overlays) {
-        if (isNoiseLayer(overlay)) continue;
+        if (isNoiseLayer(overlay)) {continue;}
         root.children.push(overlay);
     }
 
@@ -379,18 +379,18 @@ const createVirtualRoot = (): UnifiedNode => ({
 const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName') || '');
-    if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) return true;
-    if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) return true;
+    if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) {return true;}
+    if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) {return true;}
     return false;
 };
 
 const resolveSnapshotWaitMode = (fromDirty: boolean, staleReason: string | undefined): SnapshotWaitMode => {
-    if (!fromDirty) return 'interaction';
+    if (!fromDirty) {return 'interaction';}
     const reason = normalizeLower(staleReason);
     if (reason.includes('browser.goto') || reason.includes('browser.reload') || reason.includes('browser.go_back')) {
         return 'navigation';
     }
-    if (reason.includes('page-identity-changed')) return 'navigation';
+    if (reason.includes('page-identity-changed')) {return 'navigation';}
     return 'interaction';
 };
 
@@ -403,7 +403,7 @@ const hasPageIdentityChanged = (
     previousIdentity: SnapshotPageIdentity | undefined,
     nextIdentity: SnapshotPageIdentity,
 ): boolean => {
-    if (!previousIdentity) return false;
+    if (!previousIdentity) {return false;}
     return !(
         previousIdentity.workspaceId === nextIdentity.workspaceId &&
         previousIdentity.tabId === nextIdentity.tabId &&
@@ -413,7 +413,7 @@ const hasPageIdentityChanged = (
 };
 
 const clonePageIdentity = (identity: SnapshotPageIdentity | undefined): SnapshotPageIdentity | undefined => {
-    if (!identity) return undefined;
+    if (!identity) {return undefined;}
     return {
         workspaceId: identity.workspaceId,
         tabId: identity.tabId,

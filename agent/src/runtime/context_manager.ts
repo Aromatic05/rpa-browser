@@ -28,7 +28,7 @@ export type ContextManagerOptions = {
 type ContextProvider = () => Promise<BrowserContext>;
 
 const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void) => {
-    if (!onPage) return;
+    if (!onPage) {return;}
     context.on('page', onPage);
     for (const page of context.pages()) {
         onPage(page);
@@ -49,8 +49,8 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
 
     return async () => {
-        if (contextRef) return contextRef;
-        if (contextPromise) return contextPromise;
+        if (contextRef) {return contextRef;}
+        if (contextPromise) {return await contextPromise;}
 
         let endpoint = cdpEndpoint;
         if (!endpoint) {
@@ -61,7 +61,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
                 port: cdpPort,
                 userDataDir: cdpUserDataDir,
                 extensionPaths: options.extensionPaths,
-                logger: (...args) => actionLog.info('[RPA:agent]', ...args),
+                logger: (...args) => { actionLog.info('[RPA:agent]', ...args); },
             });
             endpoint = launched.endpoint;
             cdpLocalStop = launched.stop;
@@ -80,7 +80,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
                 const context = browser.contexts()[0] || (await browser.newContext());
                 contextRef = context;
                 browser.on('disconnected', () => {
-                    if (cdpLocalStop) void cdpLocalStop();
+                    if (cdpLocalStop) {void cdpLocalStop();}
                     cdpLocalStop = undefined;
                     cdpBrowserRef = undefined;
                     contextRef = undefined;
@@ -95,7 +95,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
                 cdpBrowserRef = undefined;
                 throw error;
             });
-        return contextPromise;
+        return await contextPromise;
     };
 };
 
@@ -126,8 +126,8 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
     };
 
     return async () => {
-        if (contextRef) return contextRef;
-        if (contextPromise) return contextPromise;
+        if (contextRef) {return contextRef;}
+        if (contextPromise) {return await contextPromise;}
 
         actionLog.info('[RPA:agent]', 'Launching Chromium with extensions', options.extensionPaths);
         const extensionArg = options.extensionPaths.join(',');
@@ -156,7 +156,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
                 contextRef = undefined;
                 throw error;
             });
-        return contextPromise;
+        return await contextPromise;
     };
 };
 

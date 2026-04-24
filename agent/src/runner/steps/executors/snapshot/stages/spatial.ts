@@ -44,7 +44,7 @@ export const buildSpatialLayers = (graph: NodeGraph): NodeGraph => {
 export const isNoiseLayer = (node: UnifiedNode): boolean => {
     // 第二阶段轻量版：小尺寸 + 靠边 + 无交互 才判噪声（保守策略）。
     const bbox = getNodeBbox(node);
-    if (!bbox) return false;
+    if (!bbox) {return false;}
 
     const hasSmallArea = bbox.width * bbox.height <= 16_000;
     const hasSmallSize = bbox.width <= 180 && bbox.height <= 180;
@@ -56,37 +56,37 @@ export const isNoiseLayer = (node: UnifiedNode): boolean => {
 
 const isOverlayLikeNode = (node: UnifiedNode): boolean => {
     const role = node.role.toLowerCase();
-    if (OVERLAY_ROLES.has(role)) return true;
+    if (OVERLAY_ROLES.has(role)) {return true;}
 
     const position = getAttr(node, ['position']);
-    if (position === 'fixed' || position === 'absolute') return true;
+    if (position === 'fixed' || position === 'absolute') {return true;}
 
     const style = getAttr(node, ['style']);
-    if (style.includes('position:fixed') || style.includes('position:absolute')) return true;
+    if (style.includes('position:fixed') || style.includes('position:absolute')) {return true;}
 
     const zIndex = readZIndex(node);
-    if (zIndex >= 20) return true;
+    if (zIndex >= 20) {return true;}
 
-    if (getAttr(node, ['aria-modal']) === 'true') return true;
+    if (getAttr(node, ['aria-modal']) === 'true') {return true;}
 
     return false;
 };
 
 const hasInteractiveSignal = (node: UnifiedNode): boolean => {
-    if (INTERACTIVE_ROLES.has(node.role.toLowerCase())) return true;
-    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) return true;
-    if ((getNodeContent(node) || node.name || '').trim().length > 0) return true;
+    if (INTERACTIVE_ROLES.has(node.role.toLowerCase())) {return true;}
+    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) {return true;}
+    if ((getNodeContent(node) || node.name || '').trim().length > 0) {return true;}
     return node.children.some((child) => hasInteractiveSignal(child));
 };
 
 const readZIndex = (node: UnifiedNode): number => {
     const raw = getAttr(node, ['zIndex', 'z-index']);
     const parsed = Number.parseInt(raw, 10);
-    if (!Number.isNaN(parsed)) return parsed;
+    if (!Number.isNaN(parsed)) {return parsed;}
 
     const style = getAttr(node, ['style']);
     const matched = style.match(/z-index\s*:\s*(-?\d+)/i);
-    if (!matched) return Number.NEGATIVE_INFINITY;
+    if (!matched) {return Number.NEGATIVE_INFINITY;}
     const styleParsed = Number.parseInt(matched[1] || '', 10);
     return Number.isNaN(styleParsed) ? Number.NEGATIVE_INFINITY : styleParsed;
 };

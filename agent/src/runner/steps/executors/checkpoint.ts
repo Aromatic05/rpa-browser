@@ -36,7 +36,7 @@ export const executeBrowserCheckpoint = async (
                     },
                 };
             }
-            return fn(nestedStep as StepUnion, deps, workspaceId);
+            return await fn(nestedStep, deps, workspaceId);
         },
     });
 

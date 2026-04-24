@@ -16,7 +16,7 @@ export const executeBrowserHover = async (
         hint: step.resolve?.hint,
         policy: step.resolve?.policy,
     });
-    if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+    if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
     const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
@@ -39,7 +39,7 @@ export const executeBrowserHover = async (
             deps.config.humanPolicy.clickDelayMsRange.min,
             deps.config.humanPolicy.clickDelayMsRange.max,
         );
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };

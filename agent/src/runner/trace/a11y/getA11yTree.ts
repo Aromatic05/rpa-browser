@@ -31,7 +31,7 @@ export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11yS
         try {
             await cdp.send('Accessibility.enable');
             const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-            const tree = buildA11yTreeFromCdp(nodes as CdpAXNode[]);
+            const tree = buildA11yTreeFromCdp(nodes);
             return cacheA11ySnapshot(targetCache, JSON.stringify(tree));
         } finally {
             await cdp.detach().catch(() => undefined);
@@ -46,7 +46,7 @@ export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11yS
         });
         if (snapshot) {
             const normalized = normalizeFromSnapshot(snapshot);
-            if (!normalized) return null;
+            if (!normalized) {return null;}
             return cacheA11ySnapshot(targetCache, JSON.stringify(normalized));
         }
     } catch {
@@ -56,7 +56,7 @@ export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11yS
 };
 
 const normalizeFromSnapshot = (node: any): MinimalA11yNode | null => {
-    if (!node || typeof node !== 'object') return null;
+    if (!node || typeof node !== 'object') {return null;}
     const role = typeof node.role === 'string' ? node.role : undefined;
     const name = typeof node.name === 'string' ? node.name : undefined;
     const children = Array.isArray(node.children)
@@ -84,9 +84,9 @@ const buildA11yTreeFromCdp = (nodes: CdpAXNode[]): MinimalA11yNode => {
 
     const visited = new Set<string>();
     const walk = (id: string): MinimalA11yNode | null => {
-        if (visited.has(id)) return null;
+        if (visited.has(id)) {return null;}
         const node = map.get(id);
-        if (!node) return null;
+        if (!node) {return null;}
         visited.add(id);
 
         const children = (node.childIds || [])

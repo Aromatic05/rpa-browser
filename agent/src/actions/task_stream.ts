@@ -42,7 +42,7 @@ const checkpointEnabled = runnerConfig.checkpointPolicy.enabled;
 let checkpointLoaded = false;
 
 const ensureCheckpointLoaded = async () => {
-    if (checkpointLoaded || !checkpointEnabled) return;
+    if (checkpointLoaded || !checkpointEnabled) {return;}
     await checkpointStore.load();
     checkpointLoaded = true;
 };
@@ -63,7 +63,7 @@ const toTaskRunCheckpoint = (
 });
 
 const persistCheckpoint = async (checkpoint: TaskRunCheckpoint) => {
-    if (!checkpointEnabled) return;
+    if (!checkpointEnabled) {return;}
     checkpointStore.checkpoints.set(checkpoint.runId, checkpoint);
     await checkpointStore.flush();
 };
@@ -134,21 +134,21 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.push': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string; steps?: StepUnion[]; close?: boolean };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         const run = getRun(payload.runId);
-        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         const steps = Array.isArray(payload.steps) ? payload.steps : [];
-        if (steps.length > 0) enqueueSteps(run.queue, steps);
-        if (payload.close === true) closeStepsQueue(run.queue);
+        if (steps.length > 0) {enqueueSteps(run.queue, steps);}
+        if (payload.close === true) {closeStepsQueue(run.queue);}
         return replyAction(action, { runId: run.runId, queued: steps.length, cursor: run.queue.cursor });
     },
 
     'task.run.poll': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string; cursor?: number; limit?: number };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         const run = getRun(payload.runId);
-        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         const { items, nextCursor } = readResultPipe(run.pipe, payload.cursor, payload.limit);
         const done = run.status !== 'running' && run.status !== 'suspended' && nextCursor >= run.pipe.items.length;
         return replyAction(action, { runId: run.runId, items, cursor: nextCursor, done });
@@ -157,9 +157,9 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.checkpoint': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         const run = getRun(payload.runId);
-        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         sendSignal(run.signals, 'checkpoint');
         run.checkpoint = {
             runId: run.runId,
@@ -177,9 +177,9 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.halt': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         const run = getRun(payload.runId);
-        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         sendSignal(run.signals, 'halt');
         run.status = 'halted';
         runs.delete(run.runId);
@@ -197,9 +197,9 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.suspend': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         const run = getRun(payload.runId);
-        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         sendSignal(run.signals, 'suspend');
         return replyAction(action, { runId: run.runId });
     },
@@ -207,9 +207,9 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.continue': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         const run = getRun(payload.runId);
-        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         sendSignal(run.signals, 'continue');
         return replyAction(action, { runId: run.runId });
     },
@@ -217,9 +217,9 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.flush': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         const run = getRun(payload.runId);
-        if (!run) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');
+        if (!run) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         sendSignal(run.signals, 'flush');
         return replyAction(action, { runId: run.runId, cursor: run.queue.cursor });
     },
@@ -227,7 +227,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.resume': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { runId?: string; steps?: StepUnion[]; close?: boolean };
-        if (!payload.runId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
+        if (!payload.runId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing runId');}
         if (getRun(payload.runId)) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'run already active');
         }

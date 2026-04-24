@@ -24,7 +24,7 @@ const payloadBundlePath = path.join(recordDir, 'payload.bundle.js');
 let payloadReady: Promise<void> | null = null;
 
 const resolvePayloadInputs = () => {
-    if (!fs.existsSync(payloadDir)) return [];
+    if (!fs.existsSync(payloadDir)) {return [];}
     const entries = fs.readdirSync(payloadDir, { withFileTypes: true });
     const files: string[] = [];
     for (const entry of entries) {
@@ -44,10 +44,10 @@ const resolvePayloadInputs = () => {
 };
 
 const shouldBuildPayload = () => {
-    if (!fs.existsSync(payloadBundlePath)) return true;
+    if (!fs.existsSync(payloadBundlePath)) {return true;}
     const bundleStat = fs.statSync(payloadBundlePath);
     const inputs = resolvePayloadInputs();
-    if (!inputs.length) return false;
+    if (!inputs.length) {return false;}
     const newest = inputs.reduce((max, file) => {
         const stat = fs.statSync(file);
         return stat.mtimeMs > max ? stat.mtimeMs : max;
@@ -56,9 +56,9 @@ const shouldBuildPayload = () => {
 };
 
 const ensurePayloadBundle = async () => {
-    if (payloadReady) return payloadReady;
+    if (payloadReady) {await payloadReady; return;}
     payloadReady = (async () => {
-        if (!shouldBuildPayload()) return;
+        if (!shouldBuildPayload()) {return;}
         const esbuild = await import('esbuild');
         const entry = path.join(payloadDir, 'index.ts');
         await esbuild.build({
@@ -71,7 +71,7 @@ const ensurePayloadBundle = async () => {
             outfile: payloadBundlePath,
         });
     })();
-    return payloadReady;
+    await payloadReady;
 };
 
 export type RecordedEventType =
@@ -116,7 +116,7 @@ export type RecorderEvent = {
  * 在 Page 上安装录制脚本，并通过 binding 把事件转发回 Node 侧。
  */
 export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent) => void | Promise<void>) => {
-    if (installedPages.has(page)) return;
+    if (installedPages.has(page)) {return;}
     installedPages.add(page);
 
     await ensurePayloadBundle();

@@ -14,15 +14,15 @@ const DEFAULT_TIMEOUT_MS = 20000;
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<TransportResult<T>> => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    return new Promise((resolve) => {
+    return await new Promise((resolve) => {
         timer = setTimeout(() => {
             resolve({ ok: false, error: { code: 'TIMEOUT', message: 'request timeout' } });
         }, ms);
         promise
-            .then((value) => resolve({ ok: true, data: value }))
-            .catch((error) => resolve({ ok: false, error: normalizeRuntimeError(error) }))
+            .then((value) => { resolve({ ok: true, data: value }); })
+            .catch((error) => { resolve({ ok: false, error: normalizeRuntimeError(error) }); })
             .finally(() => {
-                if (timer) clearTimeout(timer);
+                if (timer) {clearTimeout(timer);}
             });
     });
 };
@@ -48,7 +48,7 @@ const runtimeTransport = async <T>(req: any, timeoutMs = DEFAULT_TIMEOUT_MS): Pr
             resolve(response as T);
         });
     });
-    return withTimeout(promise, timeoutMs);
+    return await withTimeout(promise, timeoutMs);
 };
 
 const tabTransport = async <T>(
@@ -65,7 +65,7 @@ const tabTransport = async <T>(
             resolve(response as T);
         });
     });
-    return withTimeout(promise, timeoutMs);
+    return await withTimeout(promise, timeoutMs);
 };
 
 export const send = {
@@ -83,7 +83,7 @@ export const send = {
      */
     action: async (action: Action): Promise<Action> => {
         const response = await runtimeTransport<Action>({ type: MSG.ACTION, action });
-        if (response.ok && response.data && response.data.v === 1 && typeof response.data.type === 'string') {
+        if (response.ok && response.data?.v === 1 && typeof response.data.type === 'string') {
             return response.data;
         }
         const transportError = response.ok

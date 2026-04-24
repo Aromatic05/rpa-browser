@@ -10,7 +10,7 @@ const runWithHardTimeout = async (
     task: () => Promise<StepResult>,
 ): Promise<StepResult> => {
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-        return task();
+        return await task();
     }
     let timer: NodeJS.Timeout | undefined;
     try {
@@ -31,7 +31,7 @@ const runWithHardTimeout = async (
             }),
         ]);
     } finally {
-        if (timer) clearTimeout(timer);
+        if (timer) {clearTimeout(timer);}
     }
 };
 
@@ -69,7 +69,7 @@ const runSelectorClick = async (input: {
                 deps.config.humanPolicy.clickDelayMsRange.min,
                 deps.config.humanPolicy.clickDelayMsRange.max,
             );
-            if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
         }
     }
     return { stepId: step.id, ok: true };
@@ -85,7 +85,7 @@ export const executeBrowserClick = async (
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
     const hardTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.interactionTimeoutMs;
 
-    return runWithHardTimeout(step.id, hardTimeoutMs, async () => {
+    return await runWithHardTimeout(step.id, hardTimeoutMs, async () => {
         if (coord) {
             if (step.args.target || step.args.id || step.args.selector || step.resolve?.hint) {
                 return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'coord and target are mutually exclusive' } };
@@ -98,20 +98,20 @@ export const executeBrowserClick = async (
                     y: coord.y,
                     button: step.args.options?.button,
                 });
-                if (!down.ok) return { stepId: step.id, ok: false, error: mapTraceError(down.error) };
+                if (!down.ok) {return { stepId: step.id, ok: false, error: mapTraceError(down.error) };}
                 const up = await binding.traceTools['trace.mouse.action']({
                     action: 'up',
                     x: coord.x,
                     y: coord.y,
                     button: step.args.options?.button,
                 });
-                if (!up.ok) return { stepId: step.id, ok: false, error: mapTraceError(up.error) };
+                if (!up.ok) {return { stepId: step.id, ok: false, error: mapTraceError(up.error) };}
                 if (deps.config.humanPolicy.enabled) {
                     const delayMs = pickDelayMs(
                         deps.config.humanPolicy.clickDelayMsRange.min,
                         deps.config.humanPolicy.clickDelayMsRange.max,
                     );
-                    if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+                    if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
                 }
             }
             return { stepId: step.id, ok: true };
@@ -123,9 +123,9 @@ export const executeBrowserClick = async (
             hint: step.resolve?.hint,
             policy: step.resolve?.policy,
         });
-        if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-        return runSelectorClick({
+        return await runSelectorClick({
             selector: resolved.target.selector,
             step,
             deps,

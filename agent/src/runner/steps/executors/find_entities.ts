@@ -14,7 +14,7 @@ export const executeBrowserFindEntities = async (
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'browser.find_entities',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, {
+            await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 entityRuleConfig: deps.config.entityRules,
             }),

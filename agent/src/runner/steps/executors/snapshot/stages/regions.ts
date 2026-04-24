@@ -2,7 +2,7 @@ import { getNodeAttr, getNodeContent, normalizeText } from '../core/runtime_stor
 import type { RegionKind, UnifiedNode } from '../core/types';
 
 export const detectRegions = (node: UnifiedNode): UnifiedNode[] => {
-    if (node.children.length === 0) return [node];
+    if (node.children.length === 0) {return [node];}
     // 返回快照，避免上游边遍历边替换/删除 children 时跳过后续 region。
     return [...node.children];
 };
@@ -41,14 +41,14 @@ export const detectRegionEntities = (root: UnifiedNode): RegionDetection[] => {
     const candidates: RegionDetection[] = [];
     walk(root, (node) => {
         const signal = signalById.get(node.id);
-        if (!signal) return;
+        if (!signal) {return;}
 
         const kind = detectRegionKind(node, signal);
-        if (!kind) return;
+        if (!kind) {return;}
 
         const name = normalizeText(node.name || getNodeContent(node));
         const evidence = buildRegionEvidence(node, signal);
-        if (!passesRegionDetectionFloor(kind, signal, evidence, name)) return;
+        if (!passesRegionDetectionFloor(kind, signal, evidence, name)) {return;}
 
         candidates.push({
             nodeId: node.id,
@@ -67,20 +67,20 @@ const detectRegionKind = (node: UnifiedNode, signal: NodeSignal): RegionKind | u
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const cls = normalizeLower(getNodeAttr(node, 'class'));
 
-    if (isCodeLikeNode(role, tag, cls)) return undefined;
-    if (isTableAtomicNode(role, tag)) return undefined;
-    if (isPaginationLikeNode(role, tag, cls)) return undefined;
+    if (isCodeLikeNode(role, tag, cls)) {return undefined;}
+    if (isTableAtomicNode(role, tag)) {return undefined;}
+    if (isPaginationLikeNode(role, tag, cls)) {return undefined;}
 
-    if ((role === 'form' || tag === 'form') && signal.field >= 1) return 'form';
+    if ((role === 'form' || tag === 'form') && signal.field >= 1) {return 'form';}
     const explicitList = role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol';
-    if (explicitList) return 'list';
-    if (signal.listItem >= 3 && hasListSemantic(node)) return 'list';
-    if (isTableLikeNode(role, tag, cls) || hasDenseRowChildren(node)) return 'table';
-    if (role === 'dialog' || role === 'alertdialog') return 'dialog';
-    if (role === 'toolbar' || cls.includes('toolbar')) return 'toolbar';
+    if (explicitList) {return 'list';}
+    if (signal.listItem >= 3 && hasListSemantic(node)) {return 'list';}
+    if (isTableLikeNode(role, tag, cls) || hasDenseRowChildren(node)) {return 'table';}
+    if (role === 'dialog' || role === 'alertdialog') {return 'dialog';}
+    if (role === 'toolbar' || cls.includes('toolbar')) {return 'toolbar';}
 
     const isPanelRole = PANEL_ROLES.has(role) || cls.includes('panel') || cls.includes('card');
-    if (!isPanelRole) return undefined;
+    if (!isPanelRole) {return undefined;}
     return 'panel';
 };
 
@@ -104,7 +104,7 @@ const passesRegionDetectionFloor = (
     evidence: RegionEvidence,
     name: string | undefined,
 ): boolean => {
-    if (evidence.shellLike || evidence.codeLike) return false;
+    if (evidence.shellLike || evidence.codeLike) {return false;}
 
     if (kind === 'dialog') {
         return signal.size >= 3;
@@ -115,29 +115,29 @@ const passesRegionDetectionFloor = (
     }
 
     if (kind === 'table') {
-        if (signal.size < 6) return false;
+        if (signal.size < 6) {return false;}
         return signal.row >= 2 || evidence.explicitRole || evidence.explicitTag || evidence.explicitClass;
     }
 
     if (kind === 'list') {
-        if (signal.size < 6) return false;
+        if (signal.size < 6) {return false;}
         const explicit = evidence.explicitRole || evidence.explicitTag || evidence.explicitClass;
-        if (!explicit && signal.listItem < 4) return false;
-        if (!explicit && signal.listItem < 6 && signal.interactive < 3) return false;
-        if (!explicit && signal.heading >= signal.listItem) return false;
+        if (!explicit && signal.listItem < 4) {return false;}
+        if (!explicit && signal.listItem < 6 && signal.interactive < 3) {return false;}
+        if (!explicit && signal.heading >= signal.listItem) {return false;}
         return true;
     }
 
     if (kind === 'form') {
-        if (signal.size < 5) return false;
-        if (signal.field >= 1) return true;
+        if (signal.size < 5) {return false;}
+        if (signal.field >= 1) {return true;}
         return signal.interactive >= 3 && Boolean(name);
     }
 
-    if (kind !== 'panel') return false;
-    if (signal.size < 10) return false;
-    if (!name && signal.interactive < 2 && signal.field < 1) return false;
-    if (!name && evidence.headingDominant && signal.interactive <= 2) return false;
+    if (kind !== 'panel') {return false;}
+    if (signal.size < 10) {return false;}
+    if (!name && signal.interactive < 2 && signal.field < 1) {return false;}
+    if (!name && evidence.headingDominant && signal.interactive <= 2) {return false;}
     return true;
 };
 
@@ -174,9 +174,9 @@ const hasListSemantic = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const cls = normalizeLower(getNodeAttr(node, 'class'));
-    if (role === 'list' || role === 'listbox' || role === 'menu' || role === 'tablist') return true;
-    if (tag === 'ul' || tag === 'ol' || tag === 'menu') return true;
-    if (cls.includes('list') || cls.includes('menu')) return true;
+    if (role === 'list' || role === 'listbox' || role === 'menu' || role === 'tablist') {return true;}
+    if (tag === 'ul' || tag === 'ol' || tag === 'menu') {return true;}
+    if (cls.includes('list') || cls.includes('menu')) {return true;}
     return false;
 };
 
@@ -213,34 +213,34 @@ const isFieldNode = (node: UnifiedNode): boolean => {
 const isInteractiveNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) return true;
-    if (node.target) return true;
-    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) return true;
+    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) {return true;}
+    if (node.target) {return true;}
+    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) {return true;}
     return false;
 };
 
 const isTableLikeNode = (role: string, tag: string, cls: string): boolean => {
-    if (role === 'table' || role === 'grid' || role === 'treegrid' || role === 'rowgroup') return true;
-    if (tag === 'table' || tag === 'thead' || tag === 'tbody') return true;
-    if (TABLE_KEYWORDS.some((keyword) => cls.includes(keyword))) return true;
+    if (role === 'table' || role === 'grid' || role === 'treegrid' || role === 'rowgroup') {return true;}
+    if (tag === 'table' || tag === 'thead' || tag === 'tbody') {return true;}
+    if (TABLE_KEYWORDS.some((keyword) => cls.includes(keyword))) {return true;}
     return false;
 };
 
 const isTableAtomicNode = (role: string, tag: string): boolean => {
-    if (TABLE_ATOMIC_ROLES.has(role)) return true;
-    if (TABLE_ATOMIC_TAGS.has(tag)) return true;
+    if (TABLE_ATOMIC_ROLES.has(role)) {return true;}
+    if (TABLE_ATOMIC_TAGS.has(tag)) {return true;}
     return false;
 };
 
 const isPaginationLikeNode = (role: string, tag: string, cls: string): boolean => {
-    if (!PAGINATION_CLASS_HINTS.some((hint) => cls.includes(hint))) return false;
-    if (PAGINATION_TAGS.has(tag)) return true;
-    if (PAGINATION_ROLES.has(role)) return true;
+    if (!PAGINATION_CLASS_HINTS.some((hint) => cls.includes(hint))) {return false;}
+    if (PAGINATION_TAGS.has(tag)) {return true;}
+    if (PAGINATION_ROLES.has(role)) {return true;}
     return false;
 };
 
 const hasDenseRowChildren = (node: UnifiedNode): boolean => {
-    if (node.children.length < 2) return false;
+    if (node.children.length < 2) {return false;}
     let rowLikeCount = 0;
     for (const child of node.children) {
         const role = normalizeLower(child.role);
@@ -253,8 +253,8 @@ const hasDenseRowChildren = (node: UnifiedNode): boolean => {
 };
 
 const isCodeLikeNode = (role: string, tag: string, cls: string): boolean => {
-    if (CODE_ROLES.has(role) || CODE_TAGS.has(tag)) return true;
-    if (CODE_CLASS_HINTS.some((hint) => cls.includes(hint))) return true;
+    if (CODE_ROLES.has(role) || CODE_TAGS.has(tag)) {return true;}
+    if (CODE_CLASS_HINTS.some((hint) => cls.includes(hint))) {return true;}
     return false;
 };
 

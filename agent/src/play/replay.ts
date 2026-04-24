@@ -65,16 +65,16 @@ export type ReplayEvent =
       };
 
 const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnhancementMap[string]): StepUnion => {
-    if (!enhancement) return step;
+    if (!enhancement) {return step;}
     const nextResolve = {
         hint: enhancement.resolveHint,
         policy: enhancement.resolvePolicy,
     };
-    if (!nextResolve.hint && !nextResolve.policy) return step;
+    if (!nextResolve.hint && !nextResolve.policy) {return step;}
     return {
         ...step,
         resolve: nextResolve,
-    } as StepUnion;
+    };
 };
 
 /**
@@ -166,7 +166,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                             ? String((originalStep.args as any)?.tab_url || '')
                             : undefined) ||
                         req.recordingManifest?.tabs.find((tab) => {
-                            if (!desiredTabRef) return false;
+                            if (!desiredTabRef) {return false;}
                             return tab.tabRef === desiredTabRef;
                         })?.lastSeenUrl ||
                         undefined;
@@ -203,7 +203,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 remappedStep = {
                     ...originalStep,
                     args: { ...(originalStep.args as any), tab_id: targetTabId },
-                } as StepUnion;
+                };
             }
         } else if (targetTabId) {
             const activated = await forceActivateTab(targetTabId, desiredToken, desiredTabRef);

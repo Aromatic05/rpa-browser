@@ -25,7 +25,7 @@ const createSemaphore = (maxConcurrent: number): Semaphore => {
     const release = () => {
         inFlight = Math.max(0, inFlight - 1);
         const next = waiters.shift();
-        if (next) next();
+        if (next) {next();}
     };
 
     return { acquire, release };
@@ -48,7 +48,7 @@ export const createRunnerScopeRegistry = (maxConcurrent = 2): RunnerScopeRegistr
                 }
             });
         queues.set(workspaceId, next);
-        return next as Promise<T>;
+        return await (next);
     };
 
     return { run };

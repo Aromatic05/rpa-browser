@@ -80,19 +80,19 @@ export const isRequestActionType = (value: string): value is RequestActionType =
 
 export const isReplyActionType = (value: string) => {
     const match = value.match(resultOrFailureTypeRe);
-    if (!match) return false;
+    if (!match) {return false;}
     return isRequestActionType(match[1]);
 };
 
 export const isDerivedEventActionType = (value: string) => {
-    if (fixedEventTypes.has(value)) return true;
+    if (fixedEventTypes.has(value)) {return true;}
     const eventMatch = value.match(eventTypeRe);
     if (eventMatch) {
         const domain = eventMatch[1];
         return isNamedDomain(domain) && hasAllowedPrefix(domain);
     }
     const stepMatch = value.match(stepEventTypeRe);
-    if (!stepMatch) return false;
+    if (!stepMatch) {return false;}
     const domain = stepMatch[1];
     return isNamedDomain(domain) && hasAllowedPrefix(domain);
 };
@@ -101,9 +101,9 @@ export const isDispatchActionType = (value: string): value is ActionType | strin
     isRequestActionType(value) || isReplyActionType(value) || isDerivedEventActionType(value);
 
 export const classifyActionType = (value: string): ActionMessageKind => {
-    if (isRequestActionType(value)) return 'command';
-    if (isReplyActionType(value)) return 'reply';
-    if (isDerivedEventActionType(value)) return 'event';
+    if (isRequestActionType(value)) {return 'command';}
+    if (isReplyActionType(value)) {return 'reply';}
+    if (isDerivedEventActionType(value)) {return 'event';}
     return 'invalid';
 };
 

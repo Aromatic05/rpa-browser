@@ -19,9 +19,9 @@ if (!process.env.RPA_USER_DATA_DIR) {
 }
 
 const actionLog = getLogger('action');
-const log = (...args: unknown[]) => actionLog.info('[RPA:mcp]', ...args);
-const logNotice = (...args: unknown[]) => actionLog.warning('[RPA:mcp]', ...args);
-const logError = (...args: unknown[]) => actionLog.error('[RPA:mcp]', ...args);
+const log = (...args: unknown[]) => { actionLog.info('[RPA:mcp]', ...args); };
+const logNotice = (...args: unknown[]) => { actionLog.warning('[RPA:mcp]', ...args); };
+const logError = (...args: unknown[]) => { actionLog.error('[RPA:mcp]', ...args); };
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -77,7 +77,7 @@ const pageRegistry = createPageRegistry({
             runtimeRegistry.bindPage(page, token);
         }
     },
-    onTokenClosed: (token) => cleanupRecording(recordingState, token),
+    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
 runtimeRegistry = createRuntimeRegistry({
     pageRegistry,

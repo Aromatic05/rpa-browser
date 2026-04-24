@@ -66,19 +66,19 @@ const signalWaiters = new WeakMap<SignalChannel, Set<() => void>>();
 
 const getWaiters = <T extends object>(map: WeakMap<T, Set<() => void>>, key: T) => {
     const existing = map.get(key);
-    if (existing) return existing;
+    if (existing) {return existing;}
     const created = new Set<() => void>();
     map.set(key, created);
     return created;
 };
 
 const notifyAll = (waiters: Set<() => void>) => {
-    for (const wake of waiters) wake();
+    for (const wake of waiters) {wake();}
     waiters.clear();
 };
 
 const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) => {
-    if (!sinks || sinks.length === 0) return;
+    if (!sinks || sinks.length === 0) {return;}
     await Promise.all(sinks.map((sink) => sink.write(event)));
 };
 
@@ -96,7 +96,7 @@ const executeOne = async (
             error: { code: 'ERR_NOT_FOUND', message: `executor not found for step: ${step.name}` },
         };
     }
-    return fn(step, deps, workspaceId);
+    return await fn(step, deps, workspaceId);
 };
 
 const writeRunnerStepResultCache = async (
@@ -147,8 +147,8 @@ export const createStepsQueue = (steps: StepUnion[] = [], opts?: { closed?: bool
 });
 
 export const enqueueSteps = (queue: StepsQueue, steps: StepUnion[]) => {
-    if (queue.closed) throw new Error('steps queue is closed');
-    if (steps.length === 0) return;
+    if (queue.closed) {throw new Error('steps queue is closed');}
+    if (steps.length === 0) {return;}
     queue.items.push(...steps);
     notifyAll(getWaiters(queueWaiters, queue));
 };
@@ -170,10 +170,10 @@ export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100) => {
 export const createSignalChannel = (): SignalChannel => ({ items: [], cursor: 0 });
 
 const signalPriority = (signal: RunSignal): number => {
-    if (signal === 'halt') return 100;
-    if (signal === 'flush') return 80;
-    if (signal === 'suspend') return 60;
-    if (signal === 'continue') return 40;
+    if (signal === 'halt') {return 100;}
+    if (signal === 'flush') {return 80;}
+    if (signal === 'suspend') {return 60;}
+    if (signal === 'continue') {return 40;}
     return 10;
 };
 
@@ -253,7 +253,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             });
 
             const result = await executeOne(step, req.workspaceId, resolvedDeps);
-            if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args as Record<string, unknown>)) {
+            if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
                     const binding = await resolvedDeps.runtime.ensureActivePage(req.workspaceId);
                     markSnapshotSessionDirty(binding, `step:${step.name}`);

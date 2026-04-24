@@ -7,7 +7,7 @@ type DomNode = {
 
 export const buildBackendDomSelectorMap = (domTree: unknown): Record<string, string> => {
     const root = asDomNode(domTree);
-    if (!root) return {};
+    if (!root) {return {};}
 
     const result: Record<string, string> = {};
 
@@ -39,8 +39,8 @@ export const buildBackendDomSelectorMap = (domTree: unknown): Record<string, str
 };
 
 const asDomNode = (value: unknown): DomNode | null => {
-    if (!value || typeof value !== 'object') return null;
-    return value as DomNode;
+    if (!value || typeof value !== 'object') {return null;}
+    return value;
 };
 
 const normalizeTag = (value: string | undefined): string => {
@@ -51,13 +51,13 @@ const normalizeTag = (value: string | undefined): string => {
 const normalizeBackendId = (value: string | undefined): string => (value || '').trim();
 
 const computeNthOfType = (node: DomNode, siblings: DomNode[] | undefined, tag: string): number => {
-    if (!siblings || siblings.length === 0) return 1;
+    if (!siblings || siblings.length === 0) {return 1;}
     let index = 0;
     for (const sibling of siblings) {
         const siblingTag = normalizeTag(sibling.tag || sibling.attrs?.tag || sibling.attrs?.tagName);
-        if (siblingTag !== tag) continue;
+        if (siblingTag !== tag) {continue;}
         index += 1;
-        if (sibling === node) return index;
+        if (sibling === node) {return index;}
     }
     return 1;
 };

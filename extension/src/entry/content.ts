@@ -56,8 +56,8 @@ const loadFloatingUI = (() => {
 
 (() => {
     // 幂等保护：避免重复注入 UI 与监听器
-    if (window.top !== window) return;
-    if ((window as any).__rpaTokenInjected) return;
+    if (window.top !== window) {return;}
+    if ((window as any).__rpaTokenInjected) {return;}
     (window as any).__rpaTokenInjected = true;
 
     // tabToken + hello 绑定（异步初始化，所有使用点需 await）
@@ -135,7 +135,7 @@ const loadFloatingUI = (() => {
         });
     };
     const startHeartbeat = () => {
-        if (pingTimer) return;
+        if (pingTimer) {return;}
         void sendPing();
         pingTimer = setInterval(() => {
             void sendPing();
@@ -182,15 +182,15 @@ const loadFloatingUI = (() => {
                     scope: normalizedScope,
                     payload: normalizedPayload,
                 };
-                return send.action(action);
+                return await send.action(action);
             },
             onEvent: (handler) => {
                 consumeActionEvent = handler;
             },
         });
         chrome.runtime.onMessage.addListener((message: any) => {
-            if (message?.type !== MSG.ACTION_EVENT) return;
-            if (!message?.action) return;
+            if (message?.type !== MSG.ACTION_EVENT) {return;}
+            if (!message?.action) {return;}
             consumeActionEvent?.(message.action);
         });
     })();
@@ -199,7 +199,7 @@ const loadFloatingUI = (() => {
     chrome.runtime.onMessage.addListener((message: any) => {
         void (async () => {
             const { MSG } = await loadProtocol();
-            if (message?.type !== MSG.REFRESH) return;
+            if (message?.type !== MSG.REFRESH) {return;}
             uiHandle?.scheduleRefresh();
         })();
     });

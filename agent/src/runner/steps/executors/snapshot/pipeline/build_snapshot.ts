@@ -34,7 +34,7 @@ const isUnifiedNode = (value: UnifiedNode | BuildSnapshotInput): value is Unifie
         typeof value === 'object' &&
         value !== null &&
         'children' in value &&
-        Array.isArray((value as UnifiedNode).children) &&
+        Array.isArray((value).children) &&
         !('root' in value)
     );
 };

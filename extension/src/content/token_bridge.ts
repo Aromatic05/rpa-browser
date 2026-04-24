@@ -15,7 +15,7 @@ const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
 const readTokenFromWindowName = () => {
     try {
         const raw = window.name || '';
-        if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) return null;
+        if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) {return null;}
         const token = raw.slice(TAB_TOKEN_WIN_NAME_PREFIX.length).trim();
         return token || null;
     } catch {
@@ -33,7 +33,7 @@ const writeTokenToWindowName = (tabToken: string) => {
 
 export const ensureTabToken = () => {
     const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) || readTokenFromWindowName() || '';
-    if (!tabToken) return '';
+    if (!tabToken) {return '';}
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
     writeTokenToWindowName(tabToken);
     (window as any).__TAB_TOKEN__ = tabToken;

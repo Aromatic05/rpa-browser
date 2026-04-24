@@ -10,7 +10,7 @@ const toStepFailureReason = (stepName: string) =>
     stepName === 'browser.assert' ? 'checkpoint_assert_failed' : 'checkpoint_step_failed';
 
 export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
-    if (!ctx.active || !ctx.checkpoint) return ctx;
+    if (!ctx.active || !ctx.checkpoint) {return ctx;}
 
     if (ctx.checkpoint.prepare || ctx.checkpoint.output || hasActionContent(ctx.checkpoint.content)) {
         const output = await runCheckpointProcedure({
@@ -44,7 +44,7 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
         };
     }
 
-    if (!ctx.boundContent) return ctx;
+    if (!ctx.boundContent) {return ctx;}
 
     for (const item of ctx.boundContent) {
         const result = await ctx.failedCtx.executeStep(item);
@@ -89,6 +89,6 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
 };
 
 const hasActionContent = (content: Checkpoint['content']) => {
-    if (!content || content.length === 0) return false;
+    if (!content || content.length === 0) {return false;}
     return content.some((item: unknown) => item && typeof item === 'object' && 'type' in item);
 };

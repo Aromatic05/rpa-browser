@@ -16,14 +16,14 @@ export const filterFinalEntities = (
     const query = normalizeText(filters.query)?.toLowerCase();
 
     return entities.filter((entity) => {
-        if (kinds && !kinds.has(entity.kind)) return false;
+        if (kinds && !kinds.has(entity.kind)) {return false;}
 
         if (tags) {
             const businessTag = normalizeText(entity.businessTag);
-            if (!businessTag || !tags.has(businessTag)) return false;
+            if (!businessTag || !tags.has(businessTag)) {return false;}
         }
 
-        if (!query) return true;
+        if (!query) {return true;}
         return matchesQuery(entity, query);
     });
 };
@@ -49,7 +49,7 @@ const matchesQuery = (entity: FinalEntityRecord, query: string): boolean => {
 };
 
 const normalizeKindFilter = (kind?: EntityKind | EntityKind[]): Set<EntityKind> | null => {
-    if (!kind) return null;
+    if (!kind) {return null;}
     if (Array.isArray(kind)) {
         const normalized = kind.filter((item): item is EntityKind => Boolean(item));
         return normalized.length > 0 ? new Set(normalized) : null;
@@ -58,7 +58,7 @@ const normalizeKindFilter = (kind?: EntityKind | EntityKind[]): Set<EntityKind> 
 };
 
 const normalizeTextSet = (input?: string | string[]): Set<string> | null => {
-    if (!input) return null;
+    if (!input) {return null;}
     const values = Array.isArray(input) ? input : [input];
     const normalized = values
         .map((value) => normalizeText(value))

@@ -1,4 +1,4 @@
-export * from './types';
+export type * from './types';
 export * from './loader';
 export * from './validate';
 export * from './matcher';

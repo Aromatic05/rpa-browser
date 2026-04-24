@@ -31,14 +31,14 @@ const buildPreview = (node: A11ySnapshotNode) => {
 };
 
 const matchesNode = (node: A11ySnapshotNode, hint: TraceA11yHint) => {
-    if (hint.role && normalizeRole(node.role) !== normalizeRole(hint.role)) return false;
+    if (hint.role && normalizeRole(node.role) !== normalizeRole(hint.role)) {return false;}
     if (hint.name) {
         const nodeName = normalizeText(node.name);
-        if (!nodeName.includes(normalizeText(hint.name))) return false;
+        if (!nodeName.includes(normalizeText(hint.name))) {return false;}
     }
     if (hint.text) {
         const text = normalizeText([node.name, node.description, node.value].filter(Boolean).join(' '));
-        if (!text.includes(normalizeText(hint.text))) return false;
+        if (!text.includes(normalizeText(hint.text))) {return false;}
     }
     return Boolean(node.id);
 };

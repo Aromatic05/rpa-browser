@@ -1,6 +1,6 @@
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
@@ -36,11 +36,11 @@ const REPLAY_OPTIONS = {
 const NAV_DEDUPE_WINDOW_MS = 1200;
 
 const actionLog = getLogger('action');
-const log = (...args: unknown[]) => actionLog.info('[RPA:agent]', ...args);
-const logWarning = (...args: unknown[]) => actionLog.warning('[RPA:agent]', ...args);
-const logError = (...args: unknown[]) => actionLog.error('[RPA:agent]', ...args);
+const log = (...args: unknown[]) => { actionLog.info('[RPA:agent]', ...args); };
+const logWarning = (...args: unknown[]) => { actionLog.warning('[RPA:agent]', ...args); };
+const logError = (...args: unknown[]) => { actionLog.error('[RPA:agent]', ...args); };
 const logTabReportDebug = (stage: string, data: Record<string, unknown>) =>
-    actionLog.debug('[RPA:tab.report]', { ts: Date.now(), stage, ...data });
+    { actionLog.debug('[RPA:tab.report]', { ts: Date.now(), stage, ...data }); };
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -48,7 +48,7 @@ const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.jso
 await loadRecordingStateFromFile(recordingState, recordingStatePath);
 const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
     intervalMs: 1500,
-    onError: (error) => actionLog.error('[RPA:agent]', 'recording persistence error', String(error)),
+    onError: (error) => { actionLog.error('[RPA:agent]', 'recording persistence error', String(error)); },
 });
 
 const contextManager = createContextManager({
@@ -77,7 +77,7 @@ const broadcast = (action: Action) => {
     const payload = JSON.stringify(action);
     wsClients.forEach((client) => {
         try {
-            if (client.readyState === client.OPEN) client.send(payload);
+            if (client.readyState === client.OPEN) {client.send(payload);}
         } catch {
             // ignore
         }
@@ -150,7 +150,7 @@ const pageRegistry = createPageRegistry({
             // ignore
         }
     },
-    onTokenClosed: (token) => cleanupRecording(recordingState, token),
+    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
 
 const runnerScope = createRunnerScopeRegistry(2);
@@ -188,8 +188,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const retryClaim = async <T>(fn: () => T | null, attempts = 10, intervalMs = 60): Promise<T | null> => {
     for (let i = 0; i < attempts; i += 1) {
         const result = fn();
-        if (result) return result;
-        if (i < attempts - 1) await sleep(intervalMs);
+        if (result) {return result;}
+        if (i < attempts - 1) {await sleep(intervalMs);}
     }
     return null;
 };
@@ -208,9 +208,9 @@ const runAction = async (
         extra: extra || null,
     });
     const page = await pageRegistry.getPage(target.tabToken, urlHint);
-    return runnerScope.run(target.scope.workspaceId, async () => {
+    return await runnerScope.run(target.scope.workspaceId, async () => {
         actionLogger('action', { type: action.type, tabToken: target.tabToken, id: action.id, ...(extra || {}) });
-        return executeAction(createActionContext(page, target.tabToken), action);
+        return await executeAction(createActionContext(page, target.tabToken), action);
     });
 };
 
@@ -224,22 +224,22 @@ const runPagelessAction = async (action: Action, tabToken = '') => {
         },
     ) as any;
     actionLogger('action', { type: action.type, tabToken: tabToken || null, id: action.id, mode: 'pageless' });
-    return executeAction(createActionContext(pageStub, tabToken), action);
+    return await executeAction(createActionContext(pageStub, tabToken), action);
 };
 
 const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
     const token = String(action.scope?.tabToken || action.tabToken || '');
-    if (!token) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');
+    if (!token) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');}
     const payload = (action.payload || {}) as Record<string, unknown>;
     const workspaceId =
         (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
         (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
-    if (!workspaceId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
+    if (!workspaceId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');}
     const scoped = await retryClaim(() => pageRegistry.bindTokenToWorkspace(token, workspaceId), 80, 50);
     if (!scoped) {
         return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `failed to bind tab.opened to workspace (${workspaceId}, ${token})`);
     }
-    return runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
+    return await runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
 };
 
 const handleAction = async (action: Action) => {
@@ -270,7 +270,7 @@ const handleAction = async (action: Action) => {
         }
         return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing action target');
     } catch (error) {
-        if (!(error instanceof ActionTargetError)) throw error;
+        if (!(error instanceof ActionTargetError)) {throw error;}
 
         logWarning('action.target.error', {
             id: action.id,
@@ -282,11 +282,11 @@ const handleAction = async (action: Action) => {
         });
 
         if (PAGELESS_ACTIONS.has(action.type)) {
-            return runPagelessAction(action);
+            return await runPagelessAction(action);
         }
 
         if (error.message === 'workspace scope not found for tabToken' && action.type === ACTION_TYPES.TAB_OPENED) {
-            return bindTabOpenedAction(action, urlHint);
+            return await bindTabOpenedAction(action, urlHint);
         }
 
         return failedAction(action, error.code, error.message);
@@ -433,7 +433,7 @@ wss.on('connection', (socket) => {
 setInterval(() => {
     const staleTabs = pageRegistry.listTimedOutTokens(TAB_PING_TIMEOUT_MS, Date.now());
     for (const stale of staleTabs) {
-        if (staleNotifiedTokens.has(stale.tabToken)) continue;
+        if (staleNotifiedTokens.has(stale.tabToken)) {continue;}
         staleNotifiedTokens.add(stale.tabToken);
         broadcastStateSync('ping-timeout', {
             workspaceId: stale.workspaceId,

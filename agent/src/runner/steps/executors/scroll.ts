@@ -18,7 +18,7 @@ export const executeBrowserScroll = async (
             hint: step.resolve?.hint,
             policy: step.resolve?.policy,
         });
-        if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
         if (!scroll.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };
@@ -28,7 +28,7 @@ export const executeBrowserScroll = async (
                 deps.config.humanPolicy.scrollDelayMsRange.min,
                 deps.config.humanPolicy.scrollDelayMsRange.max,
             );
-            if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
         }
         return { stepId: step.id, ok: true };
     }
@@ -42,7 +42,7 @@ export const executeBrowserScroll = async (
     for (let i = 0; i < steps; i += 1) {
         const delta = i === steps - 1 ? remaining : perStep;
         remaining -= delta;
-        if (delta <= 0) continue;
+        if (delta <= 0) {continue;}
         const scrolled = await binding.traceTools['trace.page.scrollBy']({ direction, amount: delta });
         if (!scrolled.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(scrolled.error) };
@@ -53,7 +53,7 @@ export const executeBrowserScroll = async (
                   deps.config.humanPolicy.scrollDelayMsRange.max,
               )
             : 16;
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };

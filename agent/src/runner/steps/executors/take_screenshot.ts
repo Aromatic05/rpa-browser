@@ -22,7 +22,7 @@ export const executeBrowserTakeScreenshot = async (
             hint: step.resolve?.hint,
             policy: step.resolve?.policy,
         });
-        if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
         resolvedSelector = resolved.target.selector;
     }
 

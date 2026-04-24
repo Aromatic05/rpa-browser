@@ -17,7 +17,7 @@ export const executeBrowserRenameEntity = async (
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'browser.rename_entity',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, {
+            await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 entityRuleConfig: deps.config.entityRules,
             }),

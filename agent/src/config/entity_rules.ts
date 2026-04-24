@@ -65,7 +65,7 @@ export const selectEntityRuleProfiles = (
 
     if (config.selection === 'auto') {
         for (const candidate of candidates) {
-            if (!matchesAutoPage(candidate, page)) continue;
+            if (!matchesAutoPage(candidate, page)) {continue;}
             selected.push(candidate.name);
         }
     }
@@ -91,11 +91,11 @@ const matchesAutoPage = (
     candidate: EntityRuleProfileMeta,
     page: { kind?: EntityKind; url?: string },
 ): boolean => {
-    if (page.kind && candidate.pageKind && candidate.pageKind !== page.kind) return false;
-    if (page.kind && !candidate.pageKind) return false;
+    if (page.kind && candidate.pageKind && candidate.pageKind !== page.kind) {return false;}
+    if (page.kind && !candidate.pageKind) {return false;}
 
-    if (!candidate.urlPattern) return true;
-    if (!page.url) return false;
+    if (!candidate.urlPattern) {return true;}
+    if (!page.url) {return false;}
 
     try {
         return new RegExp(candidate.urlPattern).test(page.url);

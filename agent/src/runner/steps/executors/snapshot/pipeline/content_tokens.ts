@@ -6,7 +6,7 @@ const TOKEN_JOINER = '; ';
 export const projectInteractionStateContent = (root: UnifiedNode) => {
     walk(root, (node) => {
         const tokens = buildInteractionContentTokens(node);
-        if (tokens.length === 0) return;
+        if (tokens.length === 0) {return;}
         const content = joinContentTokens(tokens);
         node.content = content;
         setNodeContent(node, content);
@@ -101,7 +101,7 @@ const joinContentTokens = (tokens: string[]): string => {
 
 const normalizeContentTokenValue = (value: string): string => {
     const normalized = normalizeText(value) || '';
-    if (!normalized) return '';
+    if (!normalized) {return '';}
     return normalized
         .replace(/;/g, ',')
         .replace(/"/g, '\\"');
@@ -113,13 +113,13 @@ const isStatefulInteractionNode = (
     inputType: string,
     attrs: Record<string, string>,
 ): boolean => {
-    if (isTextInputNode(role, tag, inputType)) return true;
-    if (isCheckableNode(role, tag, inputType)) return true;
-    if (isSelectLikeNode(role, tag)) return true;
+    if (isTextInputNode(role, tag, inputType)) {return true;}
+    if (isCheckableNode(role, tag, inputType)) {return true;}
+    if (isSelectLikeNode(role, tag)) {return true;}
 
     if (role === 'button') {
-        if (resolveBooleanState(attrs, ['aria-pressed', 'pressed']) !== undefined) return true;
-        if (resolveBooleanState(attrs, ['aria-expanded', 'expanded']) !== undefined) return true;
+        if (resolveBooleanState(attrs, ['aria-pressed', 'pressed']) !== undefined) {return true;}
+        if (resolveBooleanState(attrs, ['aria-expanded', 'expanded']) !== undefined) {return true;}
     }
 
     if (hasAnyAttr(attrs, ['aria-expanded', 'aria-pressed', 'disabled', 'readonly', 'aria-invalid'])) {
@@ -130,29 +130,29 @@ const isStatefulInteractionNode = (
 };
 
 const isLikelyInteractiveNode = (role: string, tag: string, inputType: string): boolean => {
-    if (INTERACTIVE_ROLES.has(role)) return true;
-    if (INTERACTIVE_TAGS.has(tag)) return true;
-    if (inputType) return true;
+    if (INTERACTIVE_ROLES.has(role)) {return true;}
+    if (INTERACTIVE_TAGS.has(tag)) {return true;}
+    if (inputType) {return true;}
     return false;
 };
 
 const isTextInputNode = (role: string, tag: string, inputType: string): boolean => {
-    if (CHECKABLE_INPUT_TYPES.has(inputType)) return false;
-    if (role === 'textbox' || role === 'textarea' || role === 'searchbox') return true;
-    if (tag === 'textarea') return true;
-    if (tag === 'input' && TEXT_INPUT_TYPES.has(inputType || 'text')) return true;
+    if (CHECKABLE_INPUT_TYPES.has(inputType)) {return false;}
+    if (role === 'textbox' || role === 'textarea' || role === 'searchbox') {return true;}
+    if (tag === 'textarea') {return true;}
+    if (tag === 'input' && TEXT_INPUT_TYPES.has(inputType || 'text')) {return true;}
     return false;
 };
 
 const isCheckableNode = (role: string, tag: string, inputType: string): boolean => {
-    if (role === 'checkbox' || role === 'radio' || role === 'switch') return true;
-    if (tag === 'input' && CHECKABLE_INPUT_TYPES.has(inputType)) return true;
+    if (role === 'checkbox' || role === 'radio' || role === 'switch') {return true;}
+    if (tag === 'input' && CHECKABLE_INPUT_TYPES.has(inputType)) {return true;}
     return false;
 };
 
 const isSelectLikeNode = (role: string, tag: string): boolean => {
-    if (role === 'combobox' || role === 'listbox') return true;
-    if (tag === 'select') return true;
+    if (role === 'combobox' || role === 'listbox') {return true;}
+    if (tag === 'select') {return true;}
     return false;
 };
 
@@ -170,21 +170,21 @@ const resolveSelectedValues = (node: UnifiedNode): string[] => {
 
     const selected: string[] = [];
     walk(node, (cursor) => {
-        if (cursor === node) return;
+        if (cursor === node) {return;}
         const role = normalizeRole(cursor.role);
         const childAttrs = getNodeAttrs(cursor) || {};
         const tag = normalizeRole(childAttrs.tag || childAttrs.tagName);
-        if (role !== 'option' && tag !== 'option') return;
+        if (role !== 'option' && tag !== 'option') {return;}
 
         const isSelected = resolveBooleanState(childAttrs, ['aria-selected', 'selected']);
-        if (!isSelected) return;
+        if (!isSelected) {return;}
 
         const label =
             normalizeText(cursor.name) ||
             readAttrValue(childAttrs, 'value') ||
             normalizeText(getNodeContent(cursor)) ||
             (typeof cursor.content === 'string' ? normalizeText(cursor.content) : undefined);
-        if (!label) return;
+        if (!label) {return;}
         selected.push(label);
     });
 
@@ -195,9 +195,9 @@ const resolveCheckedState = (attrs: Record<string, string>): boolean => {
     const ariaChecked = readRawAttr(attrs, 'aria-checked');
     if (ariaChecked.found) {
         const normalized = normalizeRole(ariaChecked.value);
-        if (normalized === 'mixed') return true;
+        if (normalized === 'mixed') {return true;}
         const parsed = parseBooleanAttr(ariaChecked.value, ariaChecked.found);
-        if (parsed !== undefined) return parsed;
+        if (parsed !== undefined) {return parsed;}
     }
 
     const checked = readRawAttr(attrs, 'checked');
@@ -207,8 +207,8 @@ const resolveCheckedState = (attrs: Record<string, string>): boolean => {
     }
 
     const state = normalizeRole(readRawAttr(attrs, 'data-state').value);
-    if (state === 'checked' || state === 'on' || state === 'selected') return true;
-    if (state === 'unchecked' || state === 'off' || state === 'unselected') return false;
+    if (state === 'checked' || state === 'on' || state === 'selected') {return true;}
+    if (state === 'unchecked' || state === 'off' || state === 'unselected') {return false;}
 
     const className = normalizeRole(readRawAttr(attrs, 'class').value);
     if (className) {
@@ -228,29 +228,29 @@ const resolveCheckedState = (attrs: Record<string, string>): boolean => {
 const resolveBooleanState = (attrs: Record<string, string>, keys: string[]): boolean | undefined => {
     for (const key of keys) {
         const raw = readRawAttr(attrs, key);
-        if (!raw.found) continue;
+        if (!raw.found) {continue;}
         const parsed = parseBooleanAttr(raw.value, raw.found);
-        if (parsed !== undefined) return parsed;
+        if (parsed !== undefined) {return parsed;}
     }
     return undefined;
 };
 
 const resolveInvalidState = (attrs: Record<string, string>): boolean => {
     const raw = readRawAttr(attrs, 'aria-invalid');
-    if (!raw.found) return false;
+    if (!raw.found) {return false;}
     const value = normalizeRole(raw.value);
-    if (!value) return true;
-    if (value === 'false' || value === '0' || value === 'no') return false;
+    if (!value) {return true;}
+    if (value === 'false' || value === '0' || value === 'no') {return false;}
     return true;
 };
 
 const parseBooleanAttr = (value: string | undefined, found: boolean): boolean | undefined => {
-    if (!found) return undefined;
+    if (!found) {return undefined;}
     const normalized = normalizeRole(value);
-    if (!normalized) return true;
+    if (!normalized) {return true;}
 
-    if (TRUE_SET.has(normalized)) return true;
-    if (FALSE_SET.has(normalized)) return false;
+    if (TRUE_SET.has(normalized)) {return true;}
+    if (FALSE_SET.has(normalized)) {return false;}
     return true;
 };
 
@@ -261,7 +261,7 @@ const formatKeyValueToken = (key: string, rawValue: string): string => {
 
 const readAttrValue = (attrs: Record<string, string>, key: string): string | undefined => {
     const raw = readRawAttr(attrs, key);
-    if (!raw.found) return undefined;
+    if (!raw.found) {return undefined;}
     return normalizeText(raw.value);
 };
 
@@ -280,8 +280,8 @@ const dedupeTokens = (tokens: string[]): string[] => {
     const unique: string[] = [];
     const seen = new Set<string>();
     for (const token of tokens) {
-        if (!token) continue;
-        if (seen.has(token)) continue;
+        if (!token) {continue;}
+        if (seen.has(token)) {continue;}
         seen.add(token);
         unique.push(token);
     }

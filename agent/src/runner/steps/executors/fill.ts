@@ -16,7 +16,7 @@ export const executeBrowserFill = async (
         hint: step.resolve?.hint,
         policy: step.resolve?.policy,
     });
-    if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+    if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
 
@@ -51,7 +51,7 @@ export const executeBrowserFill = async (
             deps.config.humanPolicy.typeDelayMsRange.min,
             deps.config.humanPolicy.typeDelayMsRange.max,
         );
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };

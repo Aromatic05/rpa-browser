@@ -86,29 +86,29 @@ const resolveByHint = (
 
     if (preferDirect) {
         const directFirst = resolveFromHintLocator(binding, hint, policy);
-        if (directFirst) return { ok: true, selector: directFirst, path: 'hint.locator.direct' };
+        if (directFirst) {return { ok: true, selector: directFirst, path: 'hint.locator.direct' };}
     }
 
     const byEntity = resolveByEntityHint(binding, hint, policy);
-    if (byEntity) return { ok: true, selector: byEntity, path: 'hint.entity' };
+    if (byEntity) {return { ok: true, selector: byEntity, path: 'hint.entity' };}
 
     if (hint.target?.nodeId) {
         const byNode = resolveBySnapshotNodeId(binding, hint.target.nodeId, hint, policy);
-        if (byNode.ok) return { ok: true, selector: byNode.selector, path: 'hint.target.nodeId' };
+        if (byNode.ok) {return { ok: true, selector: byNode.selector, path: 'hint.target.nodeId' };}
     }
 
     const byDom = resolveByDomFingerprint(binding, hint, policy);
-    if (byDom) return { ok: true, selector: byDom, path: 'hint.target.primaryDomId' };
+    if (byDom) {return { ok: true, selector: byDom, path: 'hint.target.primaryDomId' };}
 
     const byLocator = resolveFromHintLocator(binding, hint, policy);
-    if (byLocator) return { ok: true, selector: byLocator, path: 'hint.locator.direct' };
+    if (byLocator) {return { ok: true, selector: byLocator, path: 'hint.locator.direct' };}
 
     const byRaw = resolveFromHintRaw(binding, hint, policy);
-    if (byRaw) return { ok: true, selector: byRaw, path: 'hint.raw' };
+    if (byRaw) {return { ok: true, selector: byRaw, path: 'hint.raw' };}
 
     if (policy.allowFuzzy) {
         const byFuzzy = resolveByHintFuzzy(binding, hint, policy);
-        if (byFuzzy) return { ok: true, selector: byFuzzy, path: 'hint.fuzzy' };
+        if (byFuzzy) {return { ok: true, selector: byFuzzy, path: 'hint.fuzzy' };}
     }
 
     return {
@@ -129,15 +129,15 @@ const resolveByHint = (
 
 const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const entityHint = hint.entity;
-    if (!entityHint) return undefined;
+    if (!entityHint) {return undefined;}
 
     const businessTag = normalizeTag(entityHint.businessTag);
     const fieldKey = normalizeTag(entityHint.fieldKey);
     const actionIntent = normalizeTag(entityHint.actionIntent);
-    if (!businessTag && !fieldKey && !actionIntent) return undefined;
+    if (!businessTag && !fieldKey && !actionIntent) {return undefined;}
 
     const snapshot = getSnapshot(binding);
-    if (!snapshot) return undefined;
+    if (!snapshot) {return undefined;}
 
     const parentById = buildNodeParentById(snapshot.root);
     const scopeNodeIds = businessTag
@@ -155,8 +155,8 @@ const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: Re
         const nodeFieldKey = normalizeTag(semantic?.fieldKey || attr.fieldKey);
         const nodeActionIntent = normalizeTag(semantic?.actionIntent || attr.actionIntent);
 
-        if (fieldKey && fieldKey !== nodeFieldKey) continue;
-        if (actionIntent && actionIntent !== nodeActionIntent) continue;
+        if (fieldKey && fieldKey !== nodeFieldKey) {continue;}
+        if (actionIntent && actionIntent !== nodeActionIntent) {continue;}
 
         matchedNodeIds.push(nodeId);
     }
@@ -182,7 +182,7 @@ const collectEntityScopeNodeIds = (snapshot: SnapshotResult, businessTag: string
     for (const entity of Object.values(snapshot.entityIndex.entities || {})) {
         const overlayTag = normalizeTag(snapshot.businessEntityOverlay?.byEntityId?.[entity.id]?.businessTag);
         const entityTag = normalizeTag(entity.businessTag);
-        if (businessTag !== overlayTag && businessTag !== entityTag) continue;
+        if (businessTag !== overlayTag && businessTag !== entityTag) {continue;}
         if (entity.type === 'region') {
             out.add(entity.nodeId);
             continue;
@@ -197,7 +197,7 @@ const buildNodeParentById = (root: SnapshotResult['root']): Map<string, string |
     const stack: Array<{ node: SnapshotResult['root']; parentId: string | null }> = [{ node: root, parentId: null }];
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
         parentById.set(current.node.id, current.parentId);
         for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
             stack.push({ node: current.node.children[index], parentId: current.node.id });
@@ -209,7 +209,7 @@ const buildNodeParentById = (root: SnapshotResult['root']): Map<string, string |
 const isInAnyScope = (nodeId: string, scopeNodeIds: Set<string>, parentById: Map<string, string | null>): boolean => {
     let cursor: string | null = nodeId;
     while (cursor) {
-        if (scopeNodeIds.has(cursor)) return true;
+        if (scopeNodeIds.has(cursor)) {return true;}
         cursor = parentById.get(cursor) || null;
     }
     return false;
@@ -222,7 +222,7 @@ const resolveBySnapshotNodeId = (
     policy: ResolvePolicy | undefined,
 ): { ok: true; selector: string; path: string } | { ok: false; error: StepResult['error'] } => {
     const snapshot = getSnapshot(binding);
-    if (!snapshot || !snapshot.locatorIndex) {
+    if (!snapshot?.locatorIndex) {
         return {
             ok: false,
             error: {
@@ -278,35 +278,35 @@ const resolveBySnapshotNodeId = (
 
 const resolveByDomFingerprint = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const snapshot = getSnapshot(binding);
-    if (!snapshot || !hint.target) return undefined;
+    if (!snapshot || !hint.target) {return undefined;}
 
     const domIds = [hint.target.primaryDomId, ...(hint.target.sourceDomIds || [])].filter(Boolean) as string[];
     for (const domId of domIds) {
         const matchedNodeId = findNodeIdByDomId(snapshot, domId);
-        if (!matchedNodeId) continue;
+        if (!matchedNodeId) {continue;}
         const resolved = resolveBySnapshotNodeId(binding, matchedNodeId, hint, policy);
-        if (resolved.ok) return resolved.selector;
+        if (resolved.ok) {return resolved.selector;}
     }
 
-    if (!policy.allowIndexDrift) return undefined;
+    if (!policy.allowIndexDrift) {return undefined;}
     const fuzzyNodeId = findNodeIdByFuzzyFingerprint(snapshot, hint);
-    if (!fuzzyNodeId) return undefined;
+    if (!fuzzyNodeId) {return undefined;}
     const fuzzy = resolveBySnapshotNodeId(binding, fuzzyNodeId, hint, policy);
     return fuzzy.ok ? fuzzy.selector : undefined;
 };
 
 const resolveByHintFuzzy = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const snapshot = getSnapshot(binding);
-    if (!snapshot || !hint.target) return undefined;
+    if (!snapshot || !hint.target) {return undefined;}
     const fuzzyNodeId = findNodeIdByFuzzyFingerprint(snapshot, hint);
-    if (!fuzzyNodeId) return undefined;
+    if (!fuzzyNodeId) {return undefined;}
     const resolved = resolveBySnapshotNodeId(binding, fuzzyNodeId, hint, policy);
     return resolved.ok ? resolved.selector : undefined;
 };
 
 const resolveFromHintLocator = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const direct = hint.locator?.direct;
-    if (!direct) return undefined;
+    if (!direct) {return undefined;}
 
     if (direct.kind === 'css' && direct.query) {
         return withVisibilityConstraint(withHintScope(binding, hint, direct.query, policy), policy.requireVisible);
@@ -345,21 +345,21 @@ const getSnapshot = (binding: PageBinding): SnapshotResult | undefined => {
 };
 
 const withHintScope = (binding: PageBinding, hint: ResolveHint | undefined, selector: string, policy: ResolvePolicy | undefined): string => {
-    if (!selector) return selector;
-    if (!policy?.preferScoped) return selector;
-    if (!hint?.locator?.scope?.id) return selector;
+    if (!selector) {return selector;}
+    if (!policy?.preferScoped) {return selector;}
+    if (!hint?.locator?.scope?.id) {return selector;}
 
     const snapshot = getSnapshot(binding);
-    if (!snapshot) return selector;
+    if (!snapshot) {return selector;}
 
     const scopeNodeId = resolveScopeNodeId(snapshot, hint.locator.scope.id);
-    if (!scopeNodeId) return selector;
+    if (!scopeNodeId) {return selector;}
     const scopeSelector = buildStructuralSelectorFallback(snapshot, scopeNodeId);
-    if (!scopeSelector) return selector;
+    if (!scopeSelector) {return selector;}
 
     const trimmed = selector.trim();
-    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) return selector;
-    if (isAbsoluteDomSelector(trimmed)) return selector;
+    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) {return selector;}
+    if (isAbsoluteDomSelector(trimmed)) {return selector;}
     return `${scopeSelector} ${trimmed}`;
 };
 
@@ -370,32 +370,32 @@ const applyScopeConstraint = (
     hint: ResolveHint | undefined,
     policy: ResolvePolicy | undefined,
 ): string => {
-    if (!selector) return selector;
+    if (!selector) {return selector;}
     const preferScoped = policy?.preferScoped === true || locator.policy?.preferScopedSearch === true;
-    if (!preferScoped) return selector;
+    if (!preferScoped) {return selector;}
 
     const scopeId = hint?.locator?.scope?.id || locator.scope?.id;
-    if (!scopeId) return selector;
+    if (!scopeId) {return selector;}
 
     const scopeNodeId = resolveScopeNodeId(snapshot, scopeId);
-    if (!scopeNodeId) return selector;
+    if (!scopeNodeId) {return selector;}
 
     const scopeSelector = buildStructuralSelectorFallback(snapshot, scopeNodeId);
-    if (!scopeSelector) return selector;
+    if (!scopeSelector) {return selector;}
 
     const trimmed = selector.trim();
-    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) return selector;
-    if (isAbsoluteDomSelector(trimmed)) return selector;
+    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) {return selector;}
+    if (isAbsoluteDomSelector(trimmed)) {return selector;}
 
     return `${scopeSelector} ${trimmed}`;
 };
 
 const resolveScopeNodeId = (snapshot: SnapshotResult, scopeId: string): string | undefined => {
-    if (snapshot.nodeIndex?.[scopeId]) return scopeId;
+    if (snapshot.nodeIndex?.[scopeId]) {return scopeId;}
 
     const entity = snapshot.entityIndex?.entities?.[scopeId];
-    if (!entity) return undefined;
-    if (entity.type === 'region') return entity.nodeId;
+    if (!entity) {return undefined;}
+    if (entity.type === 'region') {return entity.nodeId;}
     return entity.containerId;
 };
 
@@ -420,12 +420,12 @@ const findNodeIdByFuzzyFingerprint = (snapshot: SnapshotResult, hint: ResolveHin
         const role = normalizeTag(node.role);
         const name = normalizeTag(node.name);
         const text = normalizeTag(typeof node.content === 'string' ? node.content : undefined);
-        const tag = normalizeTag((attrs.tag || attrs.tagName || '') as string);
+        const tag = normalizeTag((attrs.tag || attrs.tagName || ''));
 
-        if (expectedRole && role && expectedRole !== role) continue;
-        if (expectedTag && tag && expectedTag !== tag) continue;
-        if (expectedName && name && !name.includes(expectedName)) continue;
-        if (expectedText && text && !text.includes(expectedText)) continue;
+        if (expectedRole && role && expectedRole !== role) {continue;}
+        if (expectedTag && tag && expectedTag !== tag) {continue;}
+        if (expectedName && name && !name.includes(expectedName)) {continue;}
+        if (expectedText && text && !text.includes(expectedText)) {continue;}
         return nodeId;
     }
 
@@ -433,31 +433,31 @@ const findNodeIdByFuzzyFingerprint = (snapshot: SnapshotResult, hint: ResolveHin
 };
 
 const collectAppliedPolicy = (policy: ResolvePolicy | undefined, hasScope: boolean): string[] | undefined => {
-    if (!policy) return undefined;
+    if (!policy) {return undefined;}
     const applied: string[] = [];
-    if (policy.preferDirect) applied.push('preferDirect');
-    if (policy.preferScoped && hasScope) applied.push('preferScoped');
-    if (policy.requireVisible) applied.push('requireVisible');
-    if (policy.allowFuzzy) applied.push('allowFuzzy');
-    if (policy.allowIndexDrift) applied.push('allowIndexDrift');
+    if (policy.preferDirect) {applied.push('preferDirect');}
+    if (policy.preferScoped && hasScope) {applied.push('preferScoped');}
+    if (policy.requireVisible) {applied.push('requireVisible');}
+    if (policy.allowFuzzy) {applied.push('allowFuzzy');}
+    if (policy.allowIndexDrift) {applied.push('allowIndexDrift');}
     return applied.length > 0 ? applied : undefined;
 };
 
 const buildStructuralSelectorFallback = (snapshot: SnapshotResult, nodeId: string): string | undefined => {
     const targetNode = snapshot.nodeIndex?.[nodeId];
-    if (!targetNode || !snapshot.root) return undefined;
+    if (!targetNode || !snapshot.root) {return undefined;}
 
     const parentById = new Map<string, string | null>();
     buildParentById(snapshot.root, null, parentById);
 
     const startNodeId = snapshot.root.id;
     const chain = buildIdChain(parentById, startNodeId, nodeId);
-    if (chain.length === 0) return undefined;
+    if (chain.length === 0) {return undefined;}
 
     const segments: string[] = [];
     for (const currentId of chain) {
         const node = snapshot.nodeIndex[currentId];
-        if (!node || !isStructuralDomNode(node)) continue;
+        if (!node || !isStructuralDomNode(node)) {continue;}
 
         const stable = buildStableSegment(node);
         if (stable) {
@@ -466,9 +466,9 @@ const buildStructuralSelectorFallback = (snapshot: SnapshotResult, nodeId: strin
         }
 
         const parentId = parentById.get(currentId);
-        if (!parentId) continue;
+        if (!parentId) {continue;}
         const parent = snapshot.nodeIndex[parentId];
-        if (!parent) continue;
+        if (!parent) {continue;}
 
         const tag = resolveElementTag(node);
         if (tag) {
@@ -479,11 +479,11 @@ const buildStructuralSelectorFallback = (snapshot: SnapshotResult, nodeId: strin
             }
         }
         const nthChild = nthChildIndex(parent.children, currentId);
-        if (!nthChild) continue;
+        if (!nthChild) {continue;}
         segments.push(`*:nth-child(${nthChild})`);
     }
 
-    if (segments.length === 0) return undefined;
+    if (segments.length === 0) {return undefined;}
     return trimLeadingWildcardSegments(segments).join(' > ');
 };
 
@@ -495,52 +495,52 @@ const buildParentById = (node: SnapshotResult['root'], parentId: string | null, 
 };
 
 const buildIdChain = (parentById: Map<string, string | null>, startId: string, targetId: string): string[] => {
-    if (startId === targetId) return [targetId];
+    if (startId === targetId) {return [targetId];}
     const reversed: string[] = [];
     let cursor = targetId;
     while (cursor) {
         reversed.push(cursor);
-        if (cursor === startId) break;
+        if (cursor === startId) {break;}
         cursor = parentById.get(cursor) || '';
     }
-    if (reversed[reversed.length - 1] !== startId) return [];
+    if (reversed[reversed.length - 1] !== startId) {return [];}
     return reversed.reverse();
 };
 
 const buildStableSegment = (node: SnapshotResult['root']): string | undefined => {
     const testId = getNodeAttr(node, 'data-testid') || getNodeAttr(node, 'data-test-id');
-    if (testId) return `[data-testid="${escapeCssText(testId)}"]`;
+    if (testId) {return `[data-testid="${escapeCssText(testId)}"]`;}
 
     const id = getNodeAttr(node, 'id');
-    if (id) return `#${escapeCssIdentifier(id)}`;
+    if (id) {return `#${escapeCssIdentifier(id)}`;}
 
     const tag = resolveElementTag(node);
-    if (!tag) return undefined;
+    if (!tag) {return undefined;}
 
     const name = getNodeAttr(node, 'name');
-    if (name) return `${tag}[name="${escapeCssText(name)}"]`;
+    if (name) {return `${tag}[name="${escapeCssText(name)}"]`;}
 
     const placeholder = getNodeAttr(node, 'placeholder');
-    if (placeholder) return `${tag}[placeholder="${escapeCssText(placeholder)}"]`;
+    if (placeholder) {return `${tag}[placeholder="${escapeCssText(placeholder)}"]`;}
 
     return undefined;
 };
 
 const resolveElementTag = (node: SnapshotResult['root']): string | undefined => {
     const rawTag = normalizeTag(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (rawTag && !rawTag.startsWith('::')) return rawTag;
+    if (rawTag && !rawTag.startsWith('::')) {return rawTag;}
 
     const role = normalizeTag(node.role);
-    if (role === 'body') return 'body';
-    if (role === 'main') return 'main';
-    if (role === 'banner') return 'header';
-    if (role === 'contentinfo') return 'footer';
-    if (role === 'complementary') return 'aside';
-    if (role === 'region') return 'section';
-    if (role === 'textbox') return 'input';
-    if (role === 'button') return 'button';
-    if (role === 'link') return 'a';
-    if (role === 'select') return 'select';
+    if (role === 'body') {return 'body';}
+    if (role === 'main') {return 'main';}
+    if (role === 'banner') {return 'header';}
+    if (role === 'contentinfo') {return 'footer';}
+    if (role === 'complementary') {return 'aside';}
+    if (role === 'region') {return 'section';}
+    if (role === 'textbox') {return 'input';}
+    if (role === 'button') {return 'button';}
+    if (role === 'link') {return 'a';}
+    if (role === 'select') {return 'select';}
     return undefined;
 };
 
@@ -553,17 +553,17 @@ const nthOfTypeIndex = (
     let index = 0;
     for (const sibling of siblings) {
         const siblingNode = snapshot.nodeIndex[sibling.id];
-        if (!siblingNode) continue;
-        if (resolveElementTag(siblingNode) !== tag) continue;
+        if (!siblingNode) {continue;}
+        if (resolveElementTag(siblingNode) !== tag) {continue;}
         index += 1;
-        if (sibling.id === currentId) return index;
+        if (sibling.id === currentId) {return index;}
     }
     return undefined;
 };
 
 const nthChildIndex = (siblings: SnapshotResult['root']['children'], currentId: string): number | undefined => {
     const idx = siblings.findIndex((sibling) => sibling.id === currentId);
-    if (idx < 0) return undefined;
+    if (idx < 0) {return undefined;}
     return idx + 1;
 };
 
@@ -577,16 +577,16 @@ const trimLeadingWildcardSegments = (segments: string[]): string[] => {
 
 const isStructuralDomNode = (node: SnapshotResult['root']): boolean => {
     const tag = normalizeTag(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (tag && !tag.startsWith('::')) return true;
+    if (tag && !tag.startsWith('::')) {return true;}
     const domId = (getNodeAttr(node, 'backendDOMNodeId') || '').trim();
-    if (domId) return true;
+    if (domId) {return true;}
     return normalizeTag(node.role) === 'body';
 };
 
 const withVisibilityConstraint = (selector: string, requireVisible: boolean | undefined): string => {
-    if (!requireVisible) return selector;
+    if (!requireVisible) {return selector;}
     const trimmed = selector.trim();
-    if (!trimmed || trimmed.includes(':visible')) return selector;
+    if (!trimmed || trimmed.includes(':visible')) {return selector;}
     return `${trimmed}:visible`;
 };
 

@@ -41,7 +41,7 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     }
 
     const node = snapshot.nodeIndex[bestNodeId];
-    if (!node) return withRawContext(event);
+    if (!node) {return withRawContext(event);}
 
     const locator = snapshot.locatorIndex[bestNodeId];
     const target = buildTargetFingerprint(snapshot, node, bestNodeId, locator?.origin);
@@ -110,19 +110,19 @@ const resolveSnapshotForEvent = async (input: {
     cacheKey: string;
 }): Promise<SnapshotResult | undefined> => {
     const { event, page, snapshotCache, cacheKey } = input;
-    if (!shouldUseSnapshotForEvent(event)) return undefined;
+    if (!shouldUseSnapshotForEvent(event)) {return undefined;}
 
     const now = Date.now();
     const cached = snapshotCache.get(cacheKey);
     if (cached && now - cached.capturedAt <= SNAPSHOT_CACHE_TTL_MS) {
-        if (!page) return cached.snapshot;
+        if (!page) {return cached.snapshot;}
         const pageUrl = safePageUrl(page);
         if (cached.pageUrl === pageUrl) {
             return cached.snapshot;
         }
     }
 
-    if (!page) return undefined;
+    if (!page) {return undefined;}
 
     const pageUrl = safePageUrl(page);
 
@@ -143,7 +143,7 @@ const resolveSnapshotForEvent = async (input: {
 };
 
 const shouldUseSnapshotForEvent = (event: RecorderEvent): boolean => {
-    if (event.type === 'navigate' || event.type === 'scroll' || event.type === 'copy') return false;
+    if (event.type === 'navigate' || event.type === 'scroll' || event.type === 'copy') {return false;}
     return true;
 };
 
@@ -204,7 +204,7 @@ const buildTargetFingerprint = (
 
 const buildEntityBindings = (snapshot: SnapshotResult, nodeId: string): RecordedEntityBinding[] | undefined => {
     const refs = snapshot.entityIndex.byNodeId[nodeId] || [];
-    if (!refs.length) return undefined;
+    if (!refs.length) {return undefined;}
     const bindings: RecordedEntityBinding[] = [];
     for (const ref of refs) {
         const entity = snapshot.entityIndex.entities[ref.entityId];
@@ -221,7 +221,7 @@ const buildEntityBindings = (snapshot: SnapshotResult, nodeId: string): Recorded
 };
 
 const resolveNodeContent = (snapshot: SnapshotResult, node: UnifiedNode): string | undefined => {
-    if (typeof node.content === 'string') return node.content;
+    if (typeof node.content === 'string') {return node.content;}
     if (node.content && typeof node.content === 'object' && node.content.ref) {
         return snapshot.contentStore[node.content.ref];
     }
@@ -240,7 +240,7 @@ const pickBestNodeId = (snapshot: SnapshotResult, event: RecorderEvent): string 
         }
     }
 
-    if (bestScore < 12) return undefined;
+    if (bestScore < 12) {return undefined;}
     return bestNodeId;
 };
 
@@ -257,19 +257,19 @@ const scoreNode = (snapshot: SnapshotResult, nodeId: string, node: UnifiedNode, 
         if (selector) {
             const directQuery = normalizeText(locator?.direct?.query);
             const directFallback = normalizeText(locator?.direct?.fallback);
-            if (selector === directQuery || selector === directFallback) score += 80;
-            if (directQuery && (selector.includes(directQuery) || directQuery.includes(selector))) score += 30;
-            if (directFallback && (selector.includes(directFallback) || directFallback.includes(selector))) score += 25;
-            if (attrs.id && selector.includes(`#${attrs.id}`)) score += 20;
+            if (selector === directQuery || selector === directFallback) {score += 80;}
+            if (directQuery && (selector.includes(directQuery) || directQuery.includes(selector))) {score += 30;}
+            if (directFallback && (selector.includes(directFallback) || directFallback.includes(selector))) {score += 25;}
+            if (attrs.id && selector.includes(`#${attrs.id}`)) {score += 20;}
             const testId = attrs['data-testid'] || attrs['data-test-id'] || attrs['data-test'] || attrs['data-qa'];
-            if (testId && selector.includes(String(testId))) score += 24;
+            if (testId && selector.includes(String(testId))) {score += 24;}
         }
     }
 
     score += scoreByA11yHint(event.a11yHint, node.role, name, content);
     score += scoreByCandidates(event, node.role, tag, name, content, attrs, locator?.direct?.query);
 
-    if (event.targetHint && tag && normalizeText(event.targetHint) === tag) score += 6;
+    if (event.targetHint && tag && normalizeText(event.targetHint) === tag) {score += 6;}
 
     return score;
 };
@@ -280,26 +280,26 @@ const scoreByA11yHint = (
     name: string | undefined,
     content: string | undefined,
 ): number => {
-    if (!hint) return 0;
+    if (!hint) {return 0;}
     let score = 0;
     const roleNorm = normalizeText(role);
     const hintRole = normalizeText(hint.role);
     if (hintRole) {
-        if (hintRole === roleNorm) score += 28;
-        else score -= 14;
+        if (hintRole === roleNorm) {score += 28;}
+        else {score -= 14;}
     }
 
     const mergedText = `${name || ''} ${content || ''}`.trim();
     const hintName = normalizeText(hint.name);
     if (hintName) {
-        if (mergedText.includes(hintName)) score += 34;
-        else score -= 10;
+        if (mergedText.includes(hintName)) {score += 34;}
+        else {score -= 10;}
     }
 
     const hintText = normalizeText(hint.text);
     if (hintText) {
-        if (mergedText.includes(hintText)) score += 22;
-        else score -= 8;
+        if (mergedText.includes(hintText)) {score += 22;}
+        else {score -= 8;}
     }
 
     return score;
@@ -315,35 +315,35 @@ const scoreByCandidates = (
     directQuery: string | undefined,
 ): number => {
     const candidates = event.locatorCandidates || [];
-    if (!candidates.length) return 0;
+    if (!candidates.length) {return 0;}
     let score = 0;
     const mergedText = `${name || ''} ${content || ''}`.trim();
 
     for (const candidate of candidates) {
         if (candidate.kind === 'css') {
             const selector = normalizeText(candidate.selector);
-            if (!selector) continue;
-            if (selector === normalizeText(directQuery)) score += 25;
-            else if (directQuery && selector.includes(normalizeText(directQuery) || '')) score += 12;
+            if (!selector) {continue;}
+            if (selector === normalizeText(directQuery)) {score += 25;}
+            else if (directQuery && selector.includes(normalizeText(directQuery) || '')) {score += 12;}
             continue;
         }
 
         if (candidate.kind === 'testid') {
             const actualTestId = attrs['data-testid'] || attrs['data-test-id'] || attrs['data-test'] || attrs['data-qa'];
-            if (actualTestId && normalizeText(candidate.testId) === normalizeText(actualTestId)) score += 30;
+            if (actualTestId && normalizeText(candidate.testId) === normalizeText(actualTestId)) {score += 30;}
             continue;
         }
 
         if (candidate.kind === 'role') {
-            if (normalizeText(candidate.role) === normalizeText(role)) score += 18;
-            if (candidate.name && mergedText.includes(normalizeText(candidate.name) || '')) score += 16;
+            if (normalizeText(candidate.role) === normalizeText(role)) {score += 18;}
+            if (candidate.name && mergedText.includes(normalizeText(candidate.name) || '')) {score += 16;}
             continue;
         }
 
         if (candidate.kind === 'label' || candidate.kind === 'text' || candidate.kind === 'placeholder') {
             const text = normalizeText(candidate.text);
-            if (text && mergedText.includes(text)) score += 12;
-            if (candidate.kind === 'placeholder' && text && normalizeText(attrs.placeholder)?.includes(text)) score += 10;
+            if (text && mergedText.includes(text)) {score += 12;}
+            if (candidate.kind === 'placeholder' && text && normalizeText(attrs.placeholder)?.includes(text)) {score += 10;}
             continue;
         }
 
@@ -356,7 +356,7 @@ const scoreByCandidates = (
 };
 
 const pickRuntimeState = (attrs: Record<string, string> | undefined): Record<string, string> | undefined => {
-    if (!attrs) return undefined;
+    if (!attrs) {return undefined;}
     const keys = [
         'value',
         'checked',
@@ -377,10 +377,10 @@ const pickRuntimeState = (attrs: Record<string, string> | undefined): Record<str
     ];
     const state: Record<string, string> = {};
     for (const key of keys) {
-        if (!attrs[key]) continue;
+        if (!attrs[key]) {continue;}
         state[key] = attrs[key];
     }
-    if (!Object.keys(state).length) return undefined;
+    if (!Object.keys(state).length) {return undefined;}
     return state;
 };
 

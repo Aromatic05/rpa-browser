@@ -197,19 +197,19 @@ const expandDiffRootByChangeRadius = (
 
     while (promotedHops < DIFF_CONTEXT_RADIUS_MAX_HOPS) {
         const currentRoot = current.byId.get(diffRootId);
-        if (!currentRoot) break;
+        if (!currentRoot) {break;}
 
         const currentSpan = countSubtreeNodes(currentRoot);
-        if (currentSpan >= DIFF_CONTEXT_MIN_SUBTREE_NODES) break;
+        if (currentSpan >= DIFF_CONTEXT_MIN_SUBTREE_NODES) {break;}
 
         const parentId = current.parentById.get(diffRootId) || null;
-        if (!parentId) break;
+        if (!parentId) {break;}
         const parent = current.byId.get(parentId);
-        if (!parent) break;
+        if (!parent) {break;}
 
         const parentSpan = countSubtreeNodes(parent);
-        if (parentSpan > DIFF_CONTEXT_MAX_EXPANDED_SUBTREE_NODES) break;
-        if (!shouldPromoteForContext(diffRootId, parent, changedNodeIds)) break;
+        if (parentSpan > DIFF_CONTEXT_MAX_EXPANDED_SUBTREE_NODES) {break;}
+        if (!shouldPromoteForContext(diffRootId, parent, changedNodeIds)) {break;}
 
         diffRootId = parentId;
         promotedHops += 1;
@@ -241,10 +241,10 @@ const shouldPromoteForContext = (
 
 const isContextualSiblingNode = (node: UnifiedNode): boolean => {
     const role = normalizeRole(node.role);
-    if (POPUP_LIKE_ROLES.has(role)) return true;
-    if (CONTEXT_INTERACTIVE_ROLES.has(role)) return true;
-    if (normalizeText(node.name)) return true;
-    if (readComparableContent(node)) return true;
+    if (POPUP_LIKE_ROLES.has(role)) {return true;}
+    if (CONTEXT_INTERACTIVE_ROLES.has(role)) {return true;}
+    if (normalizeText(node.name)) {return true;}
+    if (readComparableContent(node)) {return true;}
     return node.children.length > 0;
 };
 
@@ -447,7 +447,7 @@ const isNodeMatchedByFilter = (node: UnifiedNode, filter: NormalizedSnapshotFilt
 };
 
 const containsText = (source: string | undefined, needle: string): boolean => {
-    if (!source) return false;
+    if (!source) {return false;}
     return source.includes(needle);
 };
 
@@ -511,7 +511,7 @@ const collectChangedNodeIds = (current: TreeIndex, baseline: TreeIndex): Set<str
     }
 
     for (const nodeId of baseline.byId.keys()) {
-        if (current.byId.has(nodeId)) continue;
+        if (current.byId.has(nodeId)) {continue;}
         const mappedAncestor = mapRemovedNodeToCurrentAncestor(nodeId, baseline, current);
         changed.add(mappedAncestor || current.rootId);
     }
@@ -542,11 +542,11 @@ const pickPopupLikeDiffRootId = (
     const candidates: Array<{ id: string; priority: number; depth: number; span: number }> = [];
 
     for (const nodeId of changedNodeIds) {
-        if (nodeId === current.rootId) continue;
+        if (nodeId === current.rootId) {continue;}
         const node = current.byId.get(nodeId);
-        if (!node) continue;
+        if (!node) {continue;}
         const role = normalizeRole(node.role);
-        if (!POPUP_LIKE_ROLES.has(role)) continue;
+        if (!POPUP_LIKE_ROLES.has(role)) {continue;}
 
         candidates.push({
             id: nodeId,
@@ -556,11 +556,11 @@ const pickPopupLikeDiffRootId = (
         });
     }
 
-    if (candidates.length === 0) return undefined;
+    if (candidates.length === 0) {return undefined;}
     candidates.sort((left, right) => {
-        if (left.priority !== right.priority) return left.priority - right.priority;
-        if (left.depth !== right.depth) return left.depth - right.depth;
-        if (left.span !== right.span) return left.span - right.span;
+        if (left.priority !== right.priority) {return left.priority - right.priority;}
+        if (left.depth !== right.depth) {return left.depth - right.depth;}
+        if (left.span !== right.span) {return left.span - right.span;}
         return left.id.localeCompare(right.id);
     });
     return candidates[0]?.id;
@@ -577,17 +577,17 @@ const computeNodeDepth = (nodeId: string, parentById: Map<string, string | null>
 };
 
 const isNodeChanged = (current: UnifiedNode, baseline: UnifiedNode): boolean => {
-    if (normalizeRole(current.role) !== normalizeRole(baseline.role)) return true;
-    if ((normalizeText(current.name) || '') !== (normalizeText(baseline.name) || '')) return true;
-    if (readComparableContent(current) !== readComparableContent(baseline)) return true;
-    if (readComparableTarget(current) !== readComparableTarget(baseline)) return true;
-    if (!isSameChildIdSet(current.children, baseline.children)) return true;
+    if (normalizeRole(current.role) !== normalizeRole(baseline.role)) {return true;}
+    if ((normalizeText(current.name) || '') !== (normalizeText(baseline.name) || '')) {return true;}
+    if (readComparableContent(current) !== readComparableContent(baseline)) {return true;}
+    if (readComparableTarget(current) !== readComparableTarget(baseline)) {return true;}
+    if (!isSameChildIdSet(current.children, baseline.children)) {return true;}
     return false;
 };
 
 const readComparableContent = (node: UnifiedNode): string => {
     const runtimeContent = normalizeText(getNodeContent(node));
-    if (runtimeContent) return runtimeContent;
+    if (runtimeContent) {return runtimeContent;}
     if (typeof node.content === 'string') {
         return normalizeText(node.content) || '';
     }
@@ -595,7 +595,7 @@ const readComparableContent = (node: UnifiedNode): string => {
 };
 
 const readComparableTarget = (node: UnifiedNode): string => {
-    if (!node.target) return '';
+    if (!node.target) {return '';}
     const ref = normalizeText(node.target.ref) || '';
     const kind = normalizeText(node.target.kind) || '';
     return `${kind}:${ref}`;
@@ -629,7 +629,7 @@ const computeLowestCommonAncestorId = (nodeIds: string[], index: TreeIndex): str
     let lca = index.rootId;
     for (let cursor = 0; cursor < paths[0].length; cursor += 1) {
         const candidate = paths[0][cursor];
-        if (!candidate) break;
+        if (!candidate) {break;}
         if (paths.every((path) => path[cursor] === candidate)) {
             lca = candidate;
             continue;
@@ -685,7 +685,7 @@ const countSubtreeNodes = (root: UnifiedNode): number => {
 };
 
 const normalizeRoleList = (role: string | string[] | undefined): string[] => {
-    if (role === undefined) return [];
+    if (role === undefined) {return [];}
     const values = Array.isArray(role) ? role : [role];
     const normalized = values
         .map((item) => normalizeRole(item))

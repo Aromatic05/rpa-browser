@@ -19,8 +19,8 @@ export type AgentLoopResult = {
 };
 
 const sanitizeResult = (result: any) => {
-    if (!result || typeof result !== 'object') return result;
-    const { tabToken, ...rest } = result as any;
+    if (!result || typeof result !== 'object') {return result;}
+    const { tabToken, ...rest } = result;
     return rest;
 };
 
@@ -80,7 +80,7 @@ export const runAgentLoop = async (params: {
             tools,
         });
 
-        const assistantMessage = response.message as ChatMessage;
+        const assistantMessage = response.message;
         messages.push(assistantMessage);
 
         const toolCalls = assistantMessage.tool_calls || [];

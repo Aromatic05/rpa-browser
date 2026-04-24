@@ -68,10 +68,10 @@ const settleUiFrame = async (target: {
                 const nextFrame = () =>
                     new Promise<void>((resolve) => {
                         if (typeof window.requestAnimationFrame === 'function') {
-                            window.requestAnimationFrame(() => resolve());
+                            window.requestAnimationFrame(() => { resolve(); });
                             return;
                         }
-                        setTimeout(() => resolve(), 0);
+                        setTimeout(() => { resolve(); }, 0);
                     });
                 await nextFrame();
                 await nextFrame();

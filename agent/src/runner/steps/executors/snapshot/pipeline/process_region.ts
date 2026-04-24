@@ -15,7 +15,7 @@ export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
     applyLCA(tree, entityIndex);
 
     walk(tree, (node) => {
-        if (node.tier) return;
+        if (node.tier) {return;}
         if (isStrongSemanticRole(node.role)) {
             node.tier = 'A';
             return;
@@ -24,7 +24,7 @@ export const processRegion = (node: UnifiedNode): UnifiedNode | null => {
     });
 
     const compressed = compress(tree);
-    if (!compressed) return null;
+    if (!compressed) {return null;}
     return finalizeLabel(compressed);
 };
 

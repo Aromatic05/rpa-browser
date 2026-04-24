@@ -132,7 +132,7 @@ export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntit
 };
 
 const syncBuiltinProfilesToRuntime = (rootDir: string) => {
-    if (!fs.existsSync(BUILTIN_PROFILE_DIR)) return;
+    if (!fs.existsSync(BUILTIN_PROFILE_DIR)) {return;}
 
     const runtimeProfilesDir = path.join(rootDir, 'profiles');
     try {

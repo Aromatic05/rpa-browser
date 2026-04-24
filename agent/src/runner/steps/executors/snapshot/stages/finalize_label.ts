@@ -13,9 +13,9 @@ export const finalizeLabel = (tree: UnifiedNode): UnifiedNode => {
 
     walk(tree, (node) => {
         relabelStructuralNode(node, parentById);
-        if (isActionNode(node)) finalizeActionNode(node);
-        if (isFieldNode(node)) finalizeFieldNode(node, parentById);
-        if (isContainerNode(node)) finalizeContainerNode(node);
+        if (isActionNode(node)) {finalizeActionNode(node);}
+        if (isFieldNode(node)) {finalizeFieldNode(node, parentById);}
+        if (isContainerNode(node)) {finalizeContainerNode(node);}
     });
 
     return tree;
@@ -35,7 +35,7 @@ const finalizeActionNode = (node: UnifiedNode) => {
 
 const finalizeFieldNode = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>) => {
     const hints = getNodeSemanticHints(node) || {};
-    if (hints.fieldLabel) return;
+    if (hints.fieldLabel) {return;}
 
     const explicit = pickExplicitFieldLabel(node);
     if (explicit) {
@@ -46,12 +46,12 @@ const finalizeFieldNode = (node: UnifiedNode, parentById: Map<string, UnifiedNod
     const local = findLocalFieldLabel(node, parentById);
     if (local) {
         mergeNodeSemanticHints(node, { fieldLabel: local });
-        if (!node.name) node.name = local;
+        if (!node.name) {node.name = local;}
     }
 };
 
 const finalizeContainerNode = (node: UnifiedNode) => {
-    if (node.name) return;
+    if (node.name) {return;}
     const title = findContainerTitle(node);
     if (title) {
         node.name = title;
@@ -60,28 +60,28 @@ const finalizeContainerNode = (node: UnifiedNode) => {
 
 const relabelStructuralNode = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>) => {
     const role = normalizeRole(node.role);
-    if (!WEAK_TEXT_CONTAINER_ROLES.has(role)) return;
-    if (node.children.length > 0) return;
+    if (!WEAK_TEXT_CONTAINER_ROLES.has(role)) {return;}
+    if (node.children.length > 0) {return;}
 
     const text = normalizeText(node.name || getNodeContent(node));
-    if (!text || text.length > 24) return;
+    if (!text || text.length > 24) {return;}
 
     const parent = parentById.get(node.id) || null;
-    if (!parent) return;
+    if (!parent) {return;}
 
     const parentRole = normalizeRole(parent.role);
-    if (!RELABELED_PARENT_ROLES.has(parentRole)) return;
+    if (!RELABELED_PARENT_ROLES.has(parentRole)) {return;}
 
     const index = parent.children.findIndex((child) => child.id === node.id);
-    if (index < 0) return;
+    if (index < 0) {return;}
 
     const hasNearbyList = parent.children.some((sibling, siblingIndex) => {
-        if (siblingIndex === index) return false;
-        if (Math.abs(siblingIndex - index) > 2) return false;
+        if (siblingIndex === index) {return false;}
+        if (Math.abs(siblingIndex - index) > 2) {return false;}
         const siblingRole = normalizeRole(sibling.role);
         return siblingRole === 'list';
     });
-    if (!hasNearbyList) return;
+    if (!hasNearbyList) {return;}
 
     node.role = 'heading';
 };
@@ -102,21 +102,21 @@ const walk = (node: UnifiedNode, visitor: (node: UnifiedNode) => void) => {
 
 const findLocalFieldLabel = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>): string | undefined => {
     const parent = parentById.get(node.id) || null;
-    if (!parent) return undefined;
+    if (!parent) {return undefined;}
     const index = parent.children.findIndex((child) => child.id === node.id);
-    if (index <= 0) return undefined;
+    if (index <= 0) {return undefined;}
     for (let i = index - 1; i >= 0; i -= 1) {
         const text = firstReadableText(parent.children[i], 2);
-        if (text) return text;
+        if (text) {return text;}
     }
     return undefined;
 };
 
 const findContainerTitle = (node: UnifiedNode): string | undefined => {
     for (const child of node.children) {
-        if (!isLabelLikeNode(child)) continue;
+        if (!isLabelLikeNode(child)) {continue;}
         const text = normalizeText(child.name || getNodeContent(child));
-        if (text) return text;
+        if (text) {return text;}
     }
     return undefined;
 };
@@ -125,13 +125,13 @@ const firstReadableText = (node: UnifiedNode, depthLimit: number): string | unde
     const queue: Array<{ node: UnifiedNode; depth: number }> = [{ node, depth: 0 }];
     while (queue.length > 0) {
         const current = queue.shift();
-        if (!current) break;
+        if (!current) {break;}
 
         const own = normalizeText(current.node.name || getNodeContent(current.node));
         if (own && own.length <= 48 && !isActionNode(current.node)) {
             return own;
         }
-        if (current.depth >= depthLimit) continue;
+        if (current.depth >= depthLimit) {continue;}
         for (const child of current.node.children) {
             queue.push({ node: child, depth: current.depth + 1 });
         }
@@ -156,7 +156,7 @@ const pickExplicitFieldLabel = (node: UnifiedNode): string | undefined => {
     const candidates = [getNodeAttr(node, 'aria-label'), getNodeAttr(node, 'placeholder'), getNodeAttr(node, 'title')];
     for (const candidate of candidates) {
         const normalized = normalizeText(candidate);
-        if (normalized) return normalized;
+        if (normalized) {return normalized;}
     }
     return undefined;
 };
@@ -169,12 +169,12 @@ const inferActionIntent = (node: UnifiedNode, text: string | undefined): string 
         .toLowerCase();
 
     for (const [intent, keywords] of ACTION_INTENT_KEYWORDS) {
-        if (keywords.some((keyword) => corpus.includes(keyword))) return intent;
+        if (keywords.some((keyword) => corpus.includes(keyword))) {return intent;}
     }
 
     const role = normalizeRole(node.role);
-    if (role === 'link') return 'open';
-    if (role === 'button') return 'submit';
+    if (role === 'link') {return 'open';}
+    if (role === 'button') {return 'submit';}
     return undefined;
 };
 

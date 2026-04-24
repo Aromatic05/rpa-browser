@@ -8,7 +8,7 @@ const urlEl = document.getElementById('url');
 const restoreStatusEl = document.getElementById('restoreStatus');
 const restoreListEl = document.getElementById('restoreList');
 const refreshRestoreBtn = document.getElementById('refreshRestore');
-const log = (...args: unknown[]) => console.log('[RPA:start]', ...args);
+const log = (...args: unknown[]) => { console.log('[RPA:start]', ...args); };
 
 const setStatus = (text: string, ok = false) => {
     if (wsStatusEl) {
@@ -22,12 +22,12 @@ const ensureTabToken = () => {
 };
 
 const sendAction = async (type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>
-    new Promise<any>((resolve) => {
+    await new Promise<any>((resolve) => {
         let settled = false;
         let ws: WebSocket | null = null;
         const requestId = crypto.randomUUID();
         const done = (result: any) => {
-            if (settled) return;
+            if (settled) {return;}
             settled = true;
             ws?.close();
             resolve(result);
@@ -53,7 +53,7 @@ const sendAction = async (type: string, payload: Record<string, unknown> = {}, s
         });
         ws.addEventListener('message', (event) => {
             const message = JSON.parse(String(event.data || '{}'));
-            if (message?.replyTo !== requestId) return;
+            if (message?.replyTo !== requestId) {return;}
             clearTimeout(timeout);
             log('action.reply', { type, requestId, ok: message?.payload?.ok, payload: message?.payload });
             done(message?.payload || { ok: false, error: { message: 'empty payload' } });
@@ -89,7 +89,7 @@ const ensureTabTokenFromAgent = async () => {
 const formatTs = (ts: number) => new Date(ts).toLocaleString();
 
 const renderRestoreList = (items: Array<any>) => {
-    if (!restoreListEl) return;
+    if (!restoreListEl) {return;}
     restoreListEl.innerHTML = '';
     if (!items.length) {
         const empty = document.createElement('div');
@@ -112,7 +112,7 @@ const renderRestoreList = (items: Array<any>) => {
         restoreBtn.className = 'primary';
         restoreBtn.textContent = '恢复 Workspace';
         restoreBtn.addEventListener('click', async () => {
-            if (restoreStatusEl) restoreStatusEl.textContent = 'restoring...';
+            if (restoreStatusEl) {restoreStatusEl.textContent = 'restoring...';}
             const restored = await sendAction('workspace.restore', {
                 workspaceId: String(item.workspaceId || ''),
             });
@@ -122,7 +122,7 @@ const renderRestoreList = (items: Array<any>) => {
                 }
                 return;
             }
-            if (restoreStatusEl) restoreStatusEl.textContent = 'restore done';
+            if (restoreStatusEl) {restoreStatusEl.textContent = 'restore done';}
         });
         row.append(meta, restoreBtn);
         restoreListEl.appendChild(row);
@@ -130,16 +130,16 @@ const renderRestoreList = (items: Array<any>) => {
 };
 
 const refreshRestoreList = async () => {
-    if (restoreStatusEl) restoreStatusEl.textContent = 'loading...';
+    if (restoreStatusEl) {restoreStatusEl.textContent = 'loading...';}
     const result = await sendAction('record.list');
     if (!result?.ok) {
-        if (restoreStatusEl) restoreStatusEl.textContent = `load failed: ${result?.error?.message || 'unknown'}`;
+        if (restoreStatusEl) {restoreStatusEl.textContent = `load failed: ${result?.error?.message || 'unknown'}`;}
         renderRestoreList([]);
         return;
     }
     const items = Array.isArray(result?.data?.recordings) ? result.data.recordings : [];
     renderRestoreList(items);
-    if (restoreStatusEl) restoreStatusEl.textContent = `ready (${items.length})`;
+    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${items.length})`;}
 };
 
 const bootstrapWorkspaceBinding = async (tabToken: string) => {
@@ -177,8 +177,8 @@ void (async () => {
     try {
         const token = await ensureTabTokenFromAgent();
         await bootstrapWorkspaceBinding(token);
-        if (tokenEl) tokenEl.textContent = `${token.slice(0, 8)}...`;
-        if (urlEl) urlEl.textContent = location.href;
+        if (tokenEl) {tokenEl.textContent = `${token.slice(0, 8)}...`;}
+        if (urlEl) {urlEl.textContent = location.href;}
         setStatus('connected', true);
     } catch (error) {
         setStatus('offline');
