@@ -80,8 +80,8 @@ const applyRenameOverlay = (
     let applied = 0;
 
     for (const [nodeId, renamed] of Object.entries(renamedByNodeId)) {
+        if (!Object.prototype.hasOwnProperty.call(snapshot.nodeIndex, nodeId)) {continue;}
         const node = snapshot.nodeIndex[nodeId];
-        if (!node) {continue;}
         node.name = renamed;
         applied += 1;
     }
@@ -151,7 +151,7 @@ const applyAddEntityOverlay = (
     for (let index = 0; index < addedEntities.length; index += 1) {
         const added = addedEntities[index];
         const nodeId = normalizeText(added.nodeId);
-        if (!nodeId || !snapshot.nodeIndex[nodeId]) {
+        if (!nodeId || !Object.prototype.hasOwnProperty.call(snapshot.nodeIndex, nodeId)) {
             skipped += 1;
             continue;
         }
@@ -286,7 +286,7 @@ const normalizeDeletions = (items: SnapshotOverlayDeleteEntity[]): SnapshotOverl
 
 const buildRenamedByNodeId = (renamedNodes: Record<string, string>): Record<string, string> => {
     const next: Record<string, string> = {};
-    for (const [nodeIdRaw, renamedRaw] of Object.entries(renamedNodes || {})) {
+    for (const [nodeIdRaw, renamedRaw] of Object.entries(renamedNodes)) {
         const nodeId = normalizeText(nodeIdRaw);
         const renamed = normalizeText(renamedRaw);
         if (!nodeId || !renamed) {continue;}
@@ -362,7 +362,7 @@ const toFinalEntityRecord = (
 };
 
 const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecord): EntityBusinessInfo => {
-    const overlayInfo = entity.id ? snapshot.businessEntityOverlay?.byEntityId?.[entity.id] : undefined;
+    const overlayInfo = snapshot.businessEntityOverlay?.byEntityId[entity.id];
     return {
         businessTag: overlayInfo?.businessTag || entity.businessTag,
         businessName: overlayInfo?.businessName,
@@ -393,10 +393,10 @@ const resolveEntityName = (
     if (entityName) {return entityName;}
 
     const node = snapshot.nodeIndex[nodeId];
-    const nodeName = normalizeText(node?.name);
+    const nodeName = normalizeText(node.name);
     if (nodeName) {return nodeName;}
 
-    return normalizeText(node ? getNodeContent(node) : undefined);
+    return normalizeText(getNodeContent(node));
 };
 
 const getEntityNodeId = (entity: EntityRecord): string => {
@@ -404,7 +404,7 @@ const getEntityNodeId = (entity: EntityRecord): string => {
 };
 
 const nextOverlayEntityId = (usedIds: Set<string>, kind: EntityKind, index: number): string => {
-    const normalizedKind = String(kind).replace(/[^a-zA-Z0-9_]/g, '_');
+    const normalizedKind = kind.replace(/[^a-zA-Z0-9_]/g, '_');
     let suffix = String(index + 1).padStart(4, '0');
     let candidate = `ent_overlay_${normalizedKind}_${suffix}`;
     while (usedIds.has(candidate)) {
@@ -466,7 +466,7 @@ const resolveAddedEntityType = (
     const refs = snapshot.entityIndex.byNodeId[nodeId] || [];
     for (const ref of refs) {
         const entity = snapshot.entityIndex.entities[ref.entityId];
-        if (entity?.kind !== kind) {continue;}
+        if (entity.kind !== kind) {continue;}
         return entity.type;
     }
     if (GROUP_ONLY_KINDS.has(kind)) {return 'group';}

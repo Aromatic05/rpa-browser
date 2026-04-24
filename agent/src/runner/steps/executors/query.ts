@@ -12,7 +12,7 @@ export const executeBrowserQuery = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const snapshot = readLatestSnapshot(binding.traceCtx?.cache);
+    const snapshot = readLatestSnapshot(binding.traceCtx.cache);
     if (!snapshot) {
         return {
             stepId: step.id,
@@ -25,16 +25,6 @@ export const executeBrowserQuery = async (
     }
 
     const relation = step.args.relation || 'descendant';
-    if (relation !== 'child' && relation !== 'descendant') {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: 'relation must be child or descendant',
-            },
-        };
-    }
 
     if (
         step.args.limit !== undefined &&
@@ -114,9 +104,9 @@ const resolveSourceNodes = (
             return badArgs('from.nodes must be a non-empty array');
         }
         const ids = from.nodes.map((item) => {
-            if (item && typeof item === 'object') {
+            if (typeof item === 'object') {
                 if ('id' in item && typeof item.id === 'string') {return item.id;}
-                if ('handle' in item && item.handle && typeof item.handle === 'object' && 'nodeId' in item.handle) {
+                if ('handle' in item && typeof item.handle === 'object' && 'nodeId' in item.handle) {
                     const nodeId = (item.handle as { nodeId?: unknown }).nodeId;
                     if (typeof nodeId === 'string') {return nodeId;}
                 }
@@ -173,7 +163,7 @@ const matchesWhere = (
     if (!where) {return true;}
     if (where.role && normalizeLower(node.role) !== normalizeLower(where.role)) {return false;}
 
-    const attrs = snapshot.attrIndex[node.id] || {};
+    const attrs = snapshot.attrIndex[node.id];
     const tag = attrs.tag || attrs.tagName;
     if (where.tag && normalizeLower(tag) !== normalizeLower(where.tag)) {return false;}
 
@@ -192,13 +182,13 @@ const matchesWhere = (
 
 const toNodeLike = (node: UnifiedNode, snapshot: SnapshotResult) => {
     const attrs = snapshot.attrIndex[node.id];
-    const tag = attrs?.tag || attrs?.tagName;
+    const tag = attrs.tag || attrs.tagName;
     return {
         id: node.id,
         role: node.role || undefined,
         tag,
         text: readNodeText(node, snapshot),
-        attrs: attrs && Object.keys(attrs).length > 0 ? attrs : undefined,
+        attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
         children: node.children.length > 0 ? node.children.map((child) => child.id) : undefined,
         handle: {
             nodeId: node.id,

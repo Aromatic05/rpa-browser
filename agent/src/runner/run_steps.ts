@@ -39,7 +39,7 @@ const stepLogger = getLogger('step');
 
 export class MemoryStepSink implements StepSink {
     events: StepEvent[] = [];
-    write(event: StepEvent) {
+    write(event: StepEvent): void {
         this.events.push(event);
     }
 }
@@ -64,7 +64,7 @@ let defaultDeps: RunStepsDeps | null = null;
 const queueWaiters = new WeakMap<StepsQueue, Set<() => void>>();
 const signalWaiters = new WeakMap<SignalChannel, Set<() => void>>();
 
-const getWaiters = <T extends object>(map: WeakMap<T, Set<() => void>>, key: T) => {
+const getWaiters = <T extends object>(map: WeakMap<T, Set<() => void>>, key: T): Set<() => void> => {
     const existing = map.get(key);
     if (existing) {return existing;}
     const created = new Set<() => void>();
@@ -87,8 +87,8 @@ const executeOne = async (
     workspaceId: string,
     deps: RunStepsDeps,
 ): Promise<ExecStepResult> => {
-    const fn = deps.pluginHost.getExecutors()[step.name];
-    if (!fn) {
+    const executors = deps.pluginHost.getExecutors();
+    if (!Object.prototype.hasOwnProperty.call(executors, step.name)) {
         stepLogger('[runner] missing executor', step.name);
         return {
             stepId: step.id,
@@ -96,6 +96,7 @@ const executeOne = async (
             error: { code: 'ERR_NOT_FOUND', message: `executor not found for step: ${step.name}` },
         };
     }
+    const fn = executors[step.name];
     return await fn(step, deps, workspaceId);
 };
 
@@ -107,7 +108,7 @@ const writeRunnerStepResultCache = async (
 ) => {
     try {
         const binding = await deps.runtime.ensureActivePage(workspaceId);
-        const cache = (binding.traceCtx?.cache || {}) as {
+        const cache = binding.traceCtx.cache as {
             runnerStepResults?: Record<string, unknown>;
             runnerStepResultsRunId?: string;
         };
@@ -126,7 +127,7 @@ const writeRunnerStepResultCache = async (
     }
 };
 
-const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel) =>
+const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel): Promise<void> =>
     new Promise<void>((resolve) => {
         getWaiters(queueWaiters, queue).add(resolve);
         getWaiters(signalWaiters, signalChannel).add(resolve);
@@ -146,21 +147,21 @@ export const createStepsQueue = (steps: StepUnion[] = [], opts?: { closed?: bool
     closed: opts?.closed === true,
 });
 
-export const enqueueSteps = (queue: StepsQueue, steps: StepUnion[]) => {
+export const enqueueSteps = (queue: StepsQueue, steps: StepUnion[]): void => {
     if (queue.closed) {throw new Error('steps queue is closed');}
     if (steps.length === 0) {return;}
     queue.items.push(...steps);
     notifyAll(getWaiters(queueWaiters, queue));
 };
 
-export const closeStepsQueue = (queue: StepsQueue) => {
+export const closeStepsQueue = (queue: StepsQueue): void => {
     queue.closed = true;
     notifyAll(getWaiters(queueWaiters, queue));
 };
 
 export const createResultPipe = (): ResultPipe => ({ items: [] });
 
-export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100) => {
+export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100): { items: StepResult[]; nextCursor: number } => {
     const start = cursor >= 0 ? cursor : 0;
     const max = limit > 0 ? limit : 100;
     const items = pipe.items.slice(start, start + max);
@@ -177,7 +178,7 @@ const signalPriority = (signal: RunSignal): number => {
     return 10;
 };
 
-export const sendSignal = (signalChannel: SignalChannel, signal: RunSignal) => {
+export const sendSignal = (signalChannel: SignalChannel, signal: RunSignal): void => {
     const event = { signal, ts: Date.now(), priority: signalPriority(signal) };
     const unreadStart = signalChannel.cursor;
     let insertAt = signalChannel.items.length;
@@ -192,7 +193,7 @@ export const sendSignal = (signalChannel: SignalChannel, signal: RunSignal) => {
     notifyAll(getWaiters(signalWaiters, signalChannel));
 };
 
-export const setRunStepsDeps = (deps: RunStepsDeps) => {
+export const setRunStepsDeps = (deps: RunStepsDeps): void => {
     defaultDeps = deps;
 };
 
@@ -343,7 +344,7 @@ export const runStepList = async (
     steps: StepUnion[],
     deps?: RunStepsDeps,
     opts?: { stopOnError?: boolean; runId?: string },
-) => {
+): Promise<{ checkpoint: Checkpoint; pipe: ResultPipe }> => {
     const queue = createStepsQueue(steps, { closed: true });
     const pipe = createResultPipe();
     const signals = createSignalChannel();

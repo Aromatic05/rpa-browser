@@ -41,10 +41,8 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     }
 
     const node = snapshot.nodeIndex[bestNodeId];
-    if (!node) {return withRawContext(event);}
-
     const locator = snapshot.locatorIndex[bestNodeId];
-    const target = buildTargetFingerprint(snapshot, node, bestNodeId, locator?.origin);
+    const target = buildTargetFingerprint(snapshot, node, bestNodeId, locator.origin);
     const entityBindings = buildEntityBindings(snapshot, bestNodeId);
     const enhancement: RecordedStepEnhancement = {
         version: 1,
@@ -67,29 +65,27 @@ export const enrichRecordedStepWithSnapshot = async (input: {
                 name: target.name,
                 text: target.content,
             },
-            locator: locator
-                ? {
-                      direct: locator.direct
-                          ? {
-                                kind: locator.direct.kind,
-                                query: locator.direct.query,
-                                fallback: locator.direct.fallback,
-                            }
-                          : undefined,
-                      scope: locator.scope
-                          ? {
-                                id: locator.scope.id,
-                                kind: locator.scope.kind,
-                            }
-                          : undefined,
-                      origin: {
-                          primaryDomId: locator.origin?.primaryDomId,
-                          sourceDomIds: locator.origin?.sourceDomIds,
-                      },
-                  }
-                : undefined,
+            locator: {
+                direct: locator.direct
+                    ? {
+                          kind: locator.direct.kind,
+                          query: locator.direct.query,
+                          fallback: locator.direct.fallback,
+                      }
+                    : undefined,
+                scope: locator.scope
+                    ? {
+                          id: locator.scope.id,
+                          kind: locator.scope.kind,
+                      }
+                    : undefined,
+                origin: {
+                    primaryDomId: locator.origin.primaryDomId,
+                    sourceDomIds: locator.origin.sourceDomIds,
+                },
+            },
         },
-        resolvePolicy: locator?.policy
+        resolvePolicy: locator.policy
             ? {
                   preferDirect: locator.policy.preferDirect,
                   preferScoped: locator.policy.preferScopedSearch,
@@ -192,7 +188,7 @@ const buildTargetFingerprint = (
         primaryDomId: origin?.primaryDomId,
         sourceDomIds: origin?.sourceDomIds,
         role: node.role,
-        tag: attrs?.tag || attrs?.tagName,
+        tag: attrs.tag || attrs.tagName,
         name: normalizeText(node.name),
         content: normalizeText(resolveNodeContent(snapshot, node)),
         attrs,
@@ -212,7 +208,7 @@ const buildEntityBindings = (snapshot: SnapshotResult, nodeId: string): Recorded
             entityId: ref.entityId,
             type: ref.type,
             role: ref.role,
-            kind: entity?.kind,
+            kind: entity.kind,
             itemId: ref.itemId,
             slotIndex: ref.slotIndex,
         });
@@ -246,7 +242,7 @@ const pickBestNodeId = (snapshot: SnapshotResult, event: RecorderEvent): string 
 
 const scoreNode = (snapshot: SnapshotResult, nodeId: string, node: UnifiedNode, event: RecorderEvent): number => {
     const locator = snapshot.locatorIndex[nodeId];
-    const attrs = snapshot.attrIndex[nodeId] || {};
+    const attrs = snapshot.attrIndex[nodeId];
     const tag = normalizeText(attrs.tag || attrs.tagName);
     const name = normalizeText(node.name);
     const content = normalizeText(resolveNodeContent(snapshot, node));
@@ -255,19 +251,19 @@ const scoreNode = (snapshot: SnapshotResult, nodeId: string, node: UnifiedNode, 
     if (event.selector) {
         const selector = normalizeText(event.selector);
         if (selector) {
-            const directQuery = normalizeText(locator?.direct?.query);
-            const directFallback = normalizeText(locator?.direct?.fallback);
+            const directQuery = normalizeText(locator.direct?.query);
+            const directFallback = normalizeText(locator.direct?.fallback);
             if (selector === directQuery || selector === directFallback) {score += 80;}
             if (directQuery && (selector.includes(directQuery) || directQuery.includes(selector))) {score += 30;}
             if (directFallback && (selector.includes(directFallback) || directFallback.includes(selector))) {score += 25;}
             if (attrs.id && selector.includes(`#${attrs.id}`)) {score += 20;}
             const testId = attrs['data-testid'] || attrs['data-test-id'] || attrs['data-test'] || attrs['data-qa'];
-            if (testId && selector.includes(String(testId))) {score += 24;}
+            if (testId && selector.includes(testId)) {score += 24;}
         }
     }
 
     score += scoreByA11yHint(event.a11yHint, node.role, name, content);
-    score += scoreByCandidates(event, node.role, tag, name, content, attrs, locator?.direct?.query);
+    score += scoreByCandidates(event, node.role, tag, name, content, attrs, locator.direct?.query);
 
     if (event.targetHint && tag && normalizeText(event.targetHint) === tag) {score += 6;}
 
@@ -340,16 +336,9 @@ const scoreByCandidates = (
             continue;
         }
 
-        if (candidate.kind === 'label' || candidate.kind === 'text' || candidate.kind === 'placeholder') {
-            const text = normalizeText(candidate.text);
-            if (text && mergedText.includes(text)) {score += 12;}
-            if (candidate.kind === 'placeholder' && text && normalizeText(attrs.placeholder)?.includes(text)) {score += 10;}
-            continue;
-        }
-
-        if (candidate.kind === 'role' && tag && normalizeText(candidate.role) === tag) {
-            score += 8;
-        }
+        const text = normalizeText(candidate.text);
+        if (text && mergedText.includes(text)) {score += 12;}
+        if (candidate.kind === 'placeholder' && text && normalizeText(attrs.placeholder).includes(text)) {score += 10;}
     }
 
     return score;

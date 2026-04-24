@@ -32,7 +32,7 @@ let loggerConfig: RunnerConfig | null = null;
 const runId = new Date().toISOString().replace(/[:.]/g, '-');
 const streams = new Map<LogType, fs.WriteStream>();
 
-export const resolveLogPath = (template: string) => {
+export const resolveLogPath = (template: string): string => {
     if (template.includes('{ts}')) {return template.replace('{ts}', runId);}
     const ext = path.extname(template);
     const base = ext ? template.slice(0, -ext.length) : template;
@@ -60,7 +60,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.actionConsoleEnabled,
             fileEnabled: obs.actionFileEnabled,
             filePath: resolveLogPath(obs.actionFilePath),
-            minLevel: obs.actionLogLevel || 'warning',
+            minLevel: obs.actionLogLevel,
         };
     }
     if (type === 'record') {
@@ -68,7 +68,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.recordConsoleEnabled,
             fileEnabled: obs.recordFileEnabled,
             filePath: resolveLogPath(obs.recordFilePath),
-            minLevel: obs.recordLogLevel || 'warning',
+            minLevel: obs.recordLogLevel,
         };
     }
     if (type === 'trace') {
@@ -76,7 +76,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.traceConsoleEnabled,
             fileEnabled: obs.traceFileEnabled,
             filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel || 'warning',
+            minLevel: obs.traceLogLevel,
         };
     }
     if (type === 'entity') {
@@ -84,18 +84,18 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.traceConsoleEnabled,
             fileEnabled: obs.traceFileEnabled,
             filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel || 'warning',
+            minLevel: obs.traceLogLevel,
         };
     }
     return {
         consoleEnabled: false,
         fileEnabled: false,
         filePath: '',
-        minLevel: obs.stepLogLevel || 'warning',
+        minLevel: obs.stepLogLevel,
     };
 };
 
-export const initLogger = (config: RunnerConfig) => {
+export const initLogger = (config: RunnerConfig): void => {
     loggerConfig = config;
 };
 
@@ -111,7 +111,7 @@ const emit = (type: LogType, level: LogLevel, args: unknown[]) => {
         } else if (level === 'warning') {
             console.warn(`[${type}]`, ...args);
         } else {
-            console.log(`[${type}]`, ...args);
+            console.warn(`[${type}][${level}]`, ...args);
         }
     }
     if (target.fileEnabled && target.filePath) {

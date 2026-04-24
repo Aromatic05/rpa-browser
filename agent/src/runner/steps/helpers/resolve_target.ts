@@ -151,7 +151,7 @@ const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: Re
         }
 
         const semantic = getNodeSemanticHints(node);
-        const attr = snapshot.attrIndex[nodeId] || {};
+        const attr = snapshot.attrIndex[nodeId];
         const nodeFieldKey = normalizeTag(semantic?.fieldKey || attr.fieldKey);
         const nodeActionIntent = normalizeTag(semantic?.actionIntent || attr.actionIntent);
 
@@ -179,8 +179,8 @@ const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: Re
 
 const collectEntityScopeNodeIds = (snapshot: SnapshotResult, businessTag: string): Set<string> => {
     const out = new Set<string>();
-    for (const entity of Object.values(snapshot.entityIndex.entities || {})) {
-        const overlayTag = normalizeTag(snapshot.businessEntityOverlay?.byEntityId?.[entity.id]?.businessTag);
+    for (const entity of Object.values(snapshot.entityIndex.entities)) {
+        const overlayTag = normalizeTag(snapshot.businessEntityOverlay.byEntityId[entity.id]?.businessTag);
         const entityTag = normalizeTag(entity.businessTag);
         if (businessTag !== overlayTag && businessTag !== entityTag) {continue;}
         if (entity.type === 'region') {
@@ -234,16 +234,6 @@ const resolveBySnapshotNodeId = (
     }
 
     const locator = snapshot.locatorIndex[nodeId];
-    if (!locator) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_NOT_FOUND',
-                message: 'node id not found in snapshot locator index',
-                details: { id: nodeId },
-            },
-        };
-    }
 
     const direct = locator.direct;
     if (direct?.kind === 'css' && direct.query) {
@@ -391,10 +381,10 @@ const applyScopeConstraint = (
 };
 
 const resolveScopeNodeId = (snapshot: SnapshotResult, scopeId: string): string | undefined => {
-    if (snapshot.nodeIndex?.[scopeId]) {return scopeId;}
+    if (Object.prototype.hasOwnProperty.call(snapshot.nodeIndex, scopeId)) {return scopeId;}
 
-    const entity = snapshot.entityIndex?.entities?.[scopeId];
-    if (!entity) {return undefined;}
+    if (!Object.prototype.hasOwnProperty.call(snapshot.entityIndex.entities, scopeId)) {return undefined;}
+    const entity = snapshot.entityIndex.entities[scopeId];
     if (entity.type === 'region') {return entity.nodeId;}
     return entity.containerId;
 };
@@ -416,7 +406,7 @@ const findNodeIdByFuzzyFingerprint = (snapshot: SnapshotResult, hint: ResolveHin
     const expectedText = normalizeTag(hint.target?.text);
 
     for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
-        const attrs = snapshot.attrIndex[nodeId] || {};
+        const attrs = snapshot.attrIndex[nodeId];
         const role = normalizeTag(node.role);
         const name = normalizeTag(node.name);
         const text = normalizeTag(typeof node.content === 'string' ? node.content : undefined);
@@ -444,9 +434,6 @@ const collectAppliedPolicy = (policy: ResolvePolicy | undefined, hasScope: boole
 };
 
 const buildStructuralSelectorFallback = (snapshot: SnapshotResult, nodeId: string): string | undefined => {
-    const targetNode = snapshot.nodeIndex?.[nodeId];
-    if (!targetNode || !snapshot.root) {return undefined;}
-
     const parentById = new Map<string, string | null>();
     buildParentById(snapshot.root, null, parentById);
 
@@ -457,7 +444,7 @@ const buildStructuralSelectorFallback = (snapshot: SnapshotResult, nodeId: strin
     const segments: string[] = [];
     for (const currentId of chain) {
         const node = snapshot.nodeIndex[currentId];
-        if (!node || !isStructuralDomNode(node)) {continue;}
+        if (!isStructuralDomNode(node)) {continue;}
 
         const stable = buildStableSegment(node);
         if (stable) {
@@ -468,7 +455,6 @@ const buildStructuralSelectorFallback = (snapshot: SnapshotResult, nodeId: strin
         const parentId = parentById.get(currentId);
         if (!parentId) {continue;}
         const parent = snapshot.nodeIndex[parentId];
-        if (!parent) {continue;}
 
         const tag = resolveElementTag(node);
         if (tag) {
@@ -553,7 +539,6 @@ const nthOfTypeIndex = (
     let index = 0;
     for (const sibling of siblings) {
         const siblingNode = snapshot.nodeIndex[sibling.id];
-        if (!siblingNode) {continue;}
         if (resolveElementTag(siblingNode) !== tag) {continue;}
         index += 1;
         if (sibling.id === currentId) {return index;}

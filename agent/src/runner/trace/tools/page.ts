@@ -1,12 +1,12 @@
 import crypto from 'crypto';
-import type { Page } from 'playwright';
+import type { AriaRole, Page } from 'playwright';
 import { adoptA11yNode } from '../a11y/adopt';
 import { invalidateA11yCache } from '../a11y/cache';
 import { getA11yTree } from '../a11y/getA11yTree';
 import type { ConsoleEntry, NetworkEntry } from '../types';
 import type { ToolsBuildContext } from './context';
 
-export const createPageTools = (base: ToolsBuildContext) => ({
+export const createPageTools = (base: ToolsBuildContext): Record<string, (args?: unknown) => Promise<unknown>> => ({
     'trace.page.goto': async (args: { url: string; timeout?: number }) => {
         const result = await base.run('trace.page.goto', args, async () => {
             await base.getCurrentPage().goto(args.url, { timeout: args.timeout });
@@ -87,21 +87,22 @@ export const createPageTools = (base: ToolsBuildContext) => ({
 
     'trace.page.evaluate': async (args: { expression: string; arg?: unknown }) =>
         await base.run('trace.page.evaluate', args, async () => {
-            return await base.getCurrentPage().evaluate(
+            const evaluated = await base.getCurrentPage().evaluate(
                 ({ expression, arg }) => {
                     try {
-                        const fn = new Function('arg', `return (${expression});`);
+                        const fn = new Function('arg', `return (${expression});`) as (arg: unknown) => unknown;
                         return fn(arg);
                     } catch {
-                        const fn = new Function('arg', expression);
+                        const fn = new Function('arg', expression) as (arg: unknown) => unknown;
                         return fn(arg);
                     }
                 },
                 { expression: args.expression, arg: args.arg },
             );
+            return evaluated;
         }),
 
-    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: string; name?: string }) =>
+    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: AriaRole; name?: string }) =>
         await base.run('trace.page.screenshot', args, async () => {
             const currentPage = base.getCurrentPage();
             ensurePageDiagnostics(currentPage, base.ctx.cache);
@@ -111,17 +112,23 @@ export const createPageTools = (base: ToolsBuildContext) => ({
                 return buffer.toString('base64');
             }
             if (args.role) {
-                const locator = currentPage.getByRole(args.role as any, args.name ? { name: args.name } : undefined);
+                const escapedRole = String(args.role).replace(/"/g, '\\"');
+                let locator = currentPage.locator(`[role="${escapedRole}"]`);
+                if (args.name) {
+                    locator = locator.filter({ hasText: args.name });
+                }
                 const count = await locator.count();
+                const detailRole = typeof args.role === 'string' ? args.role : undefined;
+                const detailName = typeof args.name === 'string' ? args.name : undefined;
                 if (count === 0) {
-                    throw { code: 'ERR_NOT_FOUND', message: 'role locator not found', phase: 'trace', details: { role: args.role, name: args.name } };
+                    throw { code: 'ERR_NOT_FOUND', message: 'role locator not found', phase: 'trace', details: { role: detailRole, name: detailName } };
                 }
                 if (count > 1) {
                     throw {
                         code: 'ERR_AMBIGUOUS',
                         message: 'role locator matches multiple elements',
                         phase: 'trace',
-                        details: { role: args.role, name: args.name, count },
+                        details: { role: detailRole, name: detailName, count },
                     };
                 }
                 const buffer = await locator.first().screenshot();

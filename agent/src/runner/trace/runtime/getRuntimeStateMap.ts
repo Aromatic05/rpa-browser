@@ -1,8 +1,6 @@
 import type { Page } from 'playwright';
 import type { RuntimeStateMap } from '../../steps/executors/snapshot/core/types';
 
-type RuntimeStateRow = Exclude<RuntimeStateMap[string], undefined>;
-
 const STATE_ID_ATTR = 'data-rpa-state-id';
 
 let runtimeEpochSequence = 0;
@@ -20,24 +18,30 @@ export const collectTaggedRuntimeState = async (page: Page, epoch: string): Prom
 
     const rows = await target
         // Use string-script evaluate to avoid transpiler helper leakage (e.g. __name) into page context.
-    .evaluate(
-      ({ script, runEpoch }) => {
-        try {
-          // Keep this marker literal so unit-test fakes can detect runtime collector evaluation.
-          const marker = '[contenteditable]';
-          void marker;
-          (globalThis as { __RPA_RUNTIME_EPOCH__?: string }).__RPA_RUNTIME_EPOCH__ = runEpoch;
-          return (0, eval)(script);
-        } catch {
-          return [] as RuntimeStateRow[];
-        }
-      },
-      {
-        script: RUNTIME_STATE_COLLECTOR_SCRIPT,
-        runEpoch: epoch,
-      },
-    )
-    .catch(() => [] as RuntimeStateRow[]);
+        .evaluate(
+            ({ script, runEpoch }) => {
+                try {
+                    // Keep this marker literal so unit-test fakes can detect runtime collector evaluation.
+                    const marker = '[contenteditable]';
+                    void marker;
+                    (globalThis as { __RPA_RUNTIME_EPOCH__?: string }).__RPA_RUNTIME_EPOCH__ = runEpoch;
+                    const output = (0, eval)(script) as unknown;
+                    if (!Array.isArray(output)) {return [] as unknown[];}
+                    const rows: unknown[] = [];
+                    for (const item of output as unknown[]) {
+                        if (item && typeof item === 'object') {rows.push(item);}
+                    }
+                    return rows;
+                } catch {
+                    return [] as unknown[];
+                }
+            },
+            {
+                script: RUNTIME_STATE_COLLECTOR_SCRIPT,
+                runEpoch: epoch,
+            },
+        )
+        .catch(() => [] as unknown[]);
 
   return toRuntimeStateMap(rows);
 };
@@ -51,7 +55,8 @@ export const cleanupTaggedRuntimeState = async (page: Page): Promise<void> => {
   await target
     .evaluate((script) => {
             try {
-                return (0, eval)(script);
+                const result = (0, eval)(script) as unknown;
+                return result === true;
             } catch {
         return false;
             }
@@ -63,12 +68,32 @@ const toRuntimeStateMap = (rows: unknown): RuntimeStateMap => {
     const map: RuntimeStateMap = {};
     const safeRows = Array.isArray(rows) ? rows : [];
     for (const row of safeRows) {
-    const stateId = typeof row?.stateId === 'string' ? row.stateId.trim() : '';
-    if (!stateId) {continue;}
-    map[stateId] = {
-      ...row,
-      stateId,
-    };
+        if (!row || typeof row !== 'object') {continue;}
+        const rowRecord = row as Record<string, unknown>;
+        const stateId = typeof rowRecord.stateId === 'string' ? rowRecord.stateId.trim() : '';
+        if (!stateId) {continue;}
+        map[stateId] = {
+            stateId,
+            tag: typeof rowRecord.tag === 'string' ? rowRecord.tag : undefined,
+            type: typeof rowRecord.type === 'string' ? rowRecord.type : undefined,
+            role: typeof rowRecord.role === 'string' ? rowRecord.role : undefined,
+            value: typeof rowRecord.value === 'string' ? rowRecord.value : undefined,
+            checked: typeof rowRecord.checked === 'string' ? rowRecord.checked : undefined,
+            selected: typeof rowRecord.selected === 'string' ? rowRecord.selected : undefined,
+            ariaChecked: typeof rowRecord.ariaChecked === 'string' ? rowRecord.ariaChecked : undefined,
+            ariaSelected: typeof rowRecord.ariaSelected === 'string' ? rowRecord.ariaSelected : undefined,
+            ariaExpanded: typeof rowRecord.ariaExpanded === 'string' ? rowRecord.ariaExpanded : undefined,
+            ariaPressed: typeof rowRecord.ariaPressed === 'string' ? rowRecord.ariaPressed : undefined,
+            disabled: typeof rowRecord.disabled === 'string' ? rowRecord.disabled : undefined,
+            readonly: typeof rowRecord.readonly === 'string' ? rowRecord.readonly : undefined,
+            invalid: typeof rowRecord.invalid === 'string' ? rowRecord.invalid : undefined,
+            focused: typeof rowRecord.focused === 'string' ? rowRecord.focused : undefined,
+            popupSelectedText: typeof rowRecord.popupSelectedText === 'string' ? rowRecord.popupSelectedText : undefined,
+            ariaValueText: typeof rowRecord.ariaValueText === 'string' ? rowRecord.ariaValueText : undefined,
+            ariaLabelledBy: typeof rowRecord.ariaLabelledBy === 'string' ? rowRecord.ariaLabelledBy : undefined,
+            ariaDescribedBy: typeof rowRecord.ariaDescribedBy === 'string' ? rowRecord.ariaDescribedBy : undefined,
+            contentEditableText: typeof rowRecord.contentEditableText === 'string' ? rowRecord.contentEditableText : undefined,
+        };
     }
     return map;
 };

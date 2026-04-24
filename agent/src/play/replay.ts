@@ -64,6 +64,14 @@ export type ReplayEvent =
           total: number;
       };
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+    (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+
+const readStepStringArg = (step: StepUnion, key: string): string | undefined => {
+    const args = asRecord(step.args);
+    return typeof args[key] === 'string' ? args[key] : undefined;
+};
+
 const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnhancementMap[string]): StepUnion => {
     if (!enhancement) {return step;}
     const nextResolve = {
@@ -157,9 +165,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 if (!targetTabId) {
                     const fallbackUrl =
                         originalStep.meta?.urlAtRecord ||
-                        (originalStep.name === 'browser.goto' ? String((originalStep.args as any)?.url || '') : undefined) ||
+                        (originalStep.name === 'browser.goto'
+                            ? readStepStringArg(originalStep, 'url')
+                            : undefined) ||
                         (originalStep.name === 'browser.switch_tab'
-                            ? String((originalStep.args as any)?.tab_url || '')
+                            ? readStepStringArg(originalStep, 'tab_url')
                             : undefined) ||
                         req.recordingManifest?.tabs.find((tab) => {
                             if (!desiredTabRef) {return false;}
@@ -176,15 +186,17 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                     if (!created.ok) {
                         return { ok: false, results: stepResults };
                     }
-                    const createdTabId = created.results[0]?.data && (created.results[0].data as any).tab_id;
-                    if (!createdTabId) {
+                    const createdFirst = created.results[0];
+                    const createdData = asRecord(createdFirst.data);
+                    const createdTabId = typeof createdData.tab_id === 'string' ? createdData.tab_id : undefined;
+                    if (createdTabId === undefined) {
                         return {
                             ok: false,
                             results: stepResults,
                             error: { code: 'ERR_ASSERTION_FAILED', message: 'failed to create replay tab' },
                         };
                     }
-                    targetTabId = String(createdTabId);
+                    targetTabId = createdTabId;
                 }
                 tokenToTab.set(desiredToken, targetTabId);
                 if (desiredTabRef) {
@@ -198,7 +210,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (targetTabId) {
                 remappedStep = {
                     ...originalStep,
-                    args: { ...(originalStep.args as any), tab_id: targetTabId },
+                    args: { ...asRecord(originalStep.args), tab_id: targetTabId },
                 };
             }
         } else if (targetTabId) {
@@ -218,8 +230,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             stepId: remappedStep.id,
             stepName: remappedStep.name,
             ok: response.ok,
-            data: primary?.data,
-            error: primary?.error,
+            data: primary.data,
+            error: primary.error,
         });
         await req.onEvent?.({
             type: 'progress',
@@ -230,7 +242,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             return { ok: false, results: stepResults };
         }
         if (remappedStep.name === 'browser.switch_tab') {
-            const switchedTo = String((remappedStep.args as any)?.tab_id || '');
+            const switchedTo = readStepStringArg(remappedStep, 'tab_id') || '';
             if (desiredTabRef && switchedTo) {
                 refToTab.set(desiredTabRef, switchedTo);
             }

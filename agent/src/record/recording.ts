@@ -77,8 +77,10 @@ export type RecordingState = {
 
 type RecorderEventSink = (event: RecorderEvent, page: Page, tabToken: string) => void | Promise<void>;
 let recorderEventSink: RecorderEventSink | null = null;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
 
-export const setRecorderEventSink = (sink: RecorderEventSink | null) => {
+export const setRecorderEventSink = (sink: RecorderEventSink | null): void => {
     recorderEventSink = sink;
 };
 
@@ -104,7 +106,7 @@ const resolveSingleRecordingToken = (
     state: RecordingState,
     tabToken: string,
     opts?: { mustBeEnabled?: boolean; workspaceId?: string },
-) => {
+): string => {
     const mustBeEnabled = opts?.mustBeEnabled !== false;
     const workspaceId = opts?.workspaceId;
     if (tabToken && mustBeEnabled && state.recordingEnabled.has(tabToken)) {
@@ -292,7 +294,7 @@ const ensureManifest = (
     state: RecordingState,
     recordingToken: string,
     seed?: { workspaceId?: string; entryTabRef?: string; entryUrl?: string },
-) => {
+): RecordingManifest => {
     let manifest = state.recordingManifests.get(recordingToken);
     if (!manifest) {
         manifest = {
@@ -319,7 +321,7 @@ const ensureTabInManifest = (
     manifest: RecordingManifest,
     tabToken: string,
     seed?: { tabRef?: string; tabId?: string; url?: string; at?: number },
-) => {
+): RecordingTabManifest => {
     const now = seed?.at || Date.now();
     let tab = manifest.tabs.find((item) => item.tabToken === tabToken);
     if (!tab) {
@@ -360,10 +362,13 @@ const enrichRecordedStep = (
         indexWorkspaceRecording(state, recordingToken, manifest.workspaceId);
     }
     const stepTabToken = step.meta?.tabToken || sourceTabToken;
+    const args = step.args as unknown;
+    const gotoUrl = isRecord(args) && typeof args.url === 'string' ? args.url : undefined;
+    const switchTabUrl = isRecord(args) && typeof args.tab_url === 'string' ? args.tab_url : undefined;
     const stepUrl =
         step.meta?.urlAtRecord ||
-        (step.name === 'browser.goto' ? String((step.args as any)?.url || '') : undefined) ||
-        (step.name === 'browser.switch_tab' ? String((step.args as any)?.tab_url || '') : undefined) ||
+        (step.name === 'browser.goto' ? gotoUrl : undefined) ||
+        (step.name === 'browser.switch_tab' ? switchTabUrl : undefined) ||
         undefined;
     const tab = ensureTabInManifest(manifest, stepTabToken, {
         tabId: step.meta?.tabId,
@@ -397,7 +402,7 @@ export const recordEvent = async (
     event: RecorderEvent,
     navDedupeWindowMs: number,
     page?: Page,
-) => {
+): Promise<void> => {
     const recordLog = getLogger('record');
     const tabToken = event.tabToken;
     let effectiveToken = tabToken;
@@ -468,7 +473,7 @@ export const recordStep = (
     tabToken: string,
     step: StepUnion,
     navDedupeWindowMs: number,
-) => {
+): void => {
     const recordLog = getLogger('record');
     let effectiveToken = tabToken;
     if (!effectiveToken || !state.recordingEnabled.has(effectiveToken)) {
@@ -521,7 +526,7 @@ export const installNavigationRecorder = (
     page: Page,
     tabToken: string,
     navDedupeWindowMs: number,
-) => {
+): void => {
     if (navListenerPages.has(page)) {return;}
     navListenerPages.add(page);
     page.on('framenavigated', (frame) => {
@@ -552,7 +557,7 @@ export const ensureRecorder = async (
     page: Page,
     tabToken: string,
     navDedupeWindowMs: number,
-) => {
+): Promise<void> => {
     await installRecorder(page, (event) => {
         if (recorderEventSink) {
             return recorderEventSink(event, page, tabToken);
@@ -571,7 +576,7 @@ export const startRecording = async (
     tabToken: string,
     navDedupeWindowMs: number,
     seed?: { workspaceId?: string; tabId?: string; entryUrl?: string },
-) => {
+): Promise<void> => {
     const recordLog = getLogger('record');
     state.recordingEnabled.add(tabToken);
     if (!state.recordings.has(tabToken)) {
@@ -598,7 +603,7 @@ export const startRecording = async (
 /**
  * 停止录制：仅关闭录制开关，保留已有记录。
  */
-export const stopRecording = (state: RecordingState, tabToken: string) => {
+export const stopRecording = (state: RecordingState, tabToken: string): void => {
     const recordLog = getLogger('record');
     const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: true });
     state.recordingEnabled.delete(effectiveToken);
@@ -612,7 +617,7 @@ export const stopRecording = (state: RecordingState, tabToken: string) => {
 /**
  * 标记进入回放，避免录制回放自身的动作。
  */
-export const beginReplay = (state: RecordingState, tabToken: string) => {
+export const beginReplay = (state: RecordingState, tabToken: string): void => {
     state.replaying.add(tabToken);
     state.replayCancel.delete(tabToken);
 };
@@ -620,7 +625,7 @@ export const beginReplay = (state: RecordingState, tabToken: string) => {
 /**
  * 退出回放状态。
  */
-export const endReplay = (state: RecordingState, tabToken: string) => {
+export const endReplay = (state: RecordingState, tabToken: string): void => {
     state.replaying.delete(tabToken);
     state.replayCancel.delete(tabToken);
 };
@@ -628,16 +633,25 @@ export const endReplay = (state: RecordingState, tabToken: string) => {
 /**
  * 请求取消回放（由上层循环读取）。
  */
-export const cancelReplay = (state: RecordingState, tabToken: string) => {
+export const cancelReplay = (state: RecordingState, tabToken: string): void => {
     state.replayCancel.add(tabToken);
 };
 
-export const getRecording = (state: RecordingState, tabToken: string) => {
+export const getRecording = (state: RecordingState, tabToken: string): StepUnion[] => {
     const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: false });
     return state.recordings.get(effectiveToken) || [];
 };
 
-export const getRecordingBundle = (state: RecordingState, tabToken: string, opts?: { workspaceId?: string }) => {
+export const getRecordingBundle = (
+    state: RecordingState,
+    tabToken: string,
+    opts?: { workspaceId?: string },
+): {
+    recordingToken: string;
+    steps: StepUnion[];
+    manifest: RecordingManifest | undefined;
+    enrichments: RecordingEnhancementMap;
+} => {
     const effectiveToken = resolveSingleRecordingToken(state, tabToken, {
         mustBeEnabled: false,
         workspaceId: opts?.workspaceId,
@@ -650,7 +664,7 @@ export const getRecordingBundle = (state: RecordingState, tabToken: string, opts
     };
 };
 
-export const clearRecording = (state: RecordingState, tabToken: string, opts?: { workspaceId?: string }) => {
+export const clearRecording = (state: RecordingState, tabToken: string, opts?: { workspaceId?: string }): void => {
     const effectiveToken = resolveSingleRecordingToken(state, tabToken, {
         mustBeEnabled: false,
         workspaceId: opts?.workspaceId,
@@ -728,7 +742,7 @@ export const saveWorkspaceSnapshot = (
     return snapshot;
 };
 
-export const getWorkspaceSnapshot = (state: RecordingState, workspaceId: string) => {
+export const getWorkspaceSnapshot = (state: RecordingState, workspaceId: string): WorkspaceSavedSnapshot | undefined => {
     return state.workspaceSnapshots.get(workspaceId);
 };
 
@@ -766,7 +780,7 @@ export const listWorkspaceRecordings = (state: RecordingState): WorkspaceRecordi
 /**
  * tab 关闭时清理所有录制相关状态。
  */
-export const cleanupRecording = (state: RecordingState, tabToken: string) => {
+export const cleanupRecording = (state: RecordingState, tabToken: string): void => {
     state.recordingEnabled.delete(tabToken);
     state.lastNavigateTs.delete(tabToken);
     state.lastClickTs.delete(tabToken);

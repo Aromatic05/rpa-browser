@@ -189,7 +189,7 @@ const evaluateKeyQuality = (
 ): { coverage: number; uniqueness: number } => {
     const keyTexts: string[] = [];
     for (const item of items) {
-        const slot = (slotMap.get(item.id) || [])[keySlot];
+        const slot = (slotMap.get(item.id) ?? []).at(keySlot);
         const text = slot ? readSlotText(slot) : undefined;
         if (text) {
             keyTexts.push(text);
@@ -268,7 +268,7 @@ const shrinkGroupContainer = (
         if (!dominantChild) {break;}
 
         const nextBuckets = detectSiblingBuckets(dominantChild);
-        const largest = nextBuckets[0];
+        const largest = nextBuckets.at(0);
         if (!largest || largest.nodes.length < 2) {break;}
 
         container = dominantChild;
@@ -293,8 +293,8 @@ const pickDominantChild = (
     }
 
     const sorted = [...topById.entries()].sort((a, b) => b[1] - a[1]);
-    const first = sorted[0];
-    const second = sorted[1];
+    const first = sorted.at(0);
+    const second = sorted.at(1);
     if (!first) {return undefined;}
     if ((second?.[1] || 0) > 0) {return undefined;}
     if (first[1] !== items.length) {return undefined;}
@@ -311,11 +311,11 @@ const findTopChild = (
 ): UnifiedNode | undefined => {
     let cursor: UnifiedNode | null = node;
     let parent = parentById.get(cursor.id) || null;
-    while (cursor && parent && parent.id !== container.id) {
+    while (parent && parent.id !== container.id) {
         cursor = parent;
         parent = parentById.get(cursor.id) || null;
     }
-    if (!cursor || parent?.id !== container.id) {return undefined;}
+    if (parent?.id !== container.id) {return undefined;}
     return cursor;
 };
 
@@ -373,9 +373,9 @@ const looksLikeKv = (items: UnifiedNode[], slotMap: Map<string, UnifiedNode[]>):
     let samples = 0;
 
     for (const item of items) {
-        const slots = slotMap.get(item.id) || [];
-        const keySlot = slots[0];
-        const valueSlot = slots[1];
+        const slots = slotMap.get(item.id) ?? [];
+        const keySlot = slots.at(0);
+        const valueSlot = slots.at(1);
         if (!keySlot || !valueSlot) {continue;}
         samples += 1;
         const keyText = readSlotText(keySlot);
@@ -401,7 +401,7 @@ const selectKeySlot = (kind: 'table' | 'list', items: UnifiedNode[], slotMap: Ma
         const sampleNodes: UnifiedNode[] = [];
         const sampleTexts: string[] = [];
         for (const item of items) {
-            const slot = (slotMap.get(item.id) || [])[slotIndex];
+            const slot = (slotMap.get(item.id) ?? []).at(slotIndex);
             if (!slot) {continue;}
             sampleNodes.push(slot);
             const text = readSlotText(slot);
@@ -644,7 +644,7 @@ const extractSlots = (rawItem: UnifiedNode): UnifiedNode[] => {
     for (let i = 0; i < 2; i += 1) {
         if (!isWrapperItem(item)) {break;}
         if (item.children.length !== 1) {break;}
-        const next = item.children[0];
+        const next = item.children.at(0);
         if (!next) {break;}
         item = next;
     }
