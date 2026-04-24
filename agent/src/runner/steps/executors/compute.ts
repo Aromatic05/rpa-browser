@@ -15,7 +15,7 @@ export const executeBrowserCompute = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const cache = ((binding.traceCtx?.cache || {}) as { computeScope?: unknown; runnerStepResults?: unknown }) || {};
+    const cache = binding.traceCtx.cache as { computeScope?: unknown; runnerStepResults?: unknown };
     const scope: EvalScope = {
         steps: asObject(cache.runnerStepResults),
         ...(asObject(cache.computeScope) as EvalScope),
@@ -88,7 +88,7 @@ const evalValue = (value: ComputeValue, scope: EvalScope): unknown => {
 };
 
 const isExpr = (value: ComputeValue): value is ComputeExpr => {
-    if (!value || typeof value !== 'object') {return false;}
+    if (typeof value !== 'object') {return false;}
     return 'op' in value && 'args' in value;
 };
 
@@ -130,7 +130,7 @@ const opExists = (value: unknown) => {
 
 const opFirst = (value: unknown) => {
     if (!Array.isArray(value)) {return undefined;}
-    return value[0];
+    return value[0] as unknown;
 };
 
 const opGet = (value: unknown, indexValue: unknown) => {
@@ -138,7 +138,10 @@ const opGet = (value: unknown, indexValue: unknown) => {
         throw new Error('get index must be an integer');
     }
     const index = indexValue as number;
-    if (Array.isArray(value) || typeof value === 'string') {
+    if (Array.isArray(value)) {
+        return value[index] as unknown;
+    }
+    if (typeof value === 'string') {
         return value[index];
     }
     if (value && typeof value === 'object') {
@@ -158,7 +161,7 @@ const assertArity = (op: string, args: unknown[], expected: number) => {
     }
 };
 
-const asObject = (value: unknown): Record<string, any> | undefined => {
+const asObject = (value: unknown): Record<string, unknown> | undefined => {
     if (!value || typeof value !== 'object') {return undefined;}
     return value;
 };
