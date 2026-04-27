@@ -324,6 +324,8 @@ export type StepArgsMap = {
                   | 'table.primary_key'
                   | 'table.columns'
                   | 'table.current_rows'
+                  | 'table.hasNextPage'
+                  | 'table.nextPageTarget'
                   | 'form.fields'
                   | 'form.actions';
           }

@@ -1,5 +1,6 @@
 import type { BrowserQueryResult } from '../../../types';
 import { filterEntityDiagnostics } from './diagnostics';
+import { queryTableHasNextPage, resolveTableNextPageTarget } from './pagination';
 import { normalizeText } from './runtime_store';
 import { buildTableStructureModel } from './table_model';
 import { resolveTableRowAction, resolveTableRowByPrimaryKey } from './entity_query';
@@ -26,13 +27,14 @@ type ResolverDiagnosticDetails = {
     relatedDiagnostics?: EntityRuleDiagnostic[];
 };
 
-// TODO(entity-rules-pagination): add table.hasNextPage query once pagination annotations stabilize.
 export type BusinessEntityQuery =
     | 'table.row_count'
     | 'table.headers'
     | 'table.primary_key'
     | 'table.columns'
     | 'table.current_rows'
+    | 'table.hasNextPage'
+    | 'table.nextPageTarget'
     | 'form.fields'
     | 'form.actions';
 
@@ -236,6 +238,90 @@ export const queryBusinessEntity = (
                 kind: 'value',
                 value: rows,
                 meta: metaBase,
+            },
+        };
+    }
+
+    if (query === 'table.hasNextPage') {
+        const pagination = queryTableHasNextPage(snapshot, entity);
+        return {
+            ok: true,
+            data: {
+                kind: 'value',
+                value: pagination.hasNextPage,
+                meta: {
+                    ...metaBase,
+                    targetNodeId: pagination.nodeId,
+                    reason: pagination.reason,
+                },
+            },
+        };
+    }
+
+    if (query === 'table.nextPageTarget') {
+        const resolvedTarget = resolveTableNextPageTarget(snapshot, entity);
+        if (!resolvedTarget.ok) {
+            if (resolvedTarget.reason === 'nextActionDisabled') {
+                return {
+                    ok: false,
+                    error: {
+                        code: 'ERR_UNRESOLVED_TARGET',
+                        message: 'table next page target is disabled',
+                        details: {
+                            businessTag: entity.businessTag,
+                            entityId: entity.id,
+                            reason: resolvedTarget.reason,
+                        },
+                    },
+                };
+            }
+            if (resolvedTarget.reason === 'nextActionNodeMissing') {
+                return {
+                    ok: false,
+                    error: {
+                        code: 'ERR_NOT_FOUND',
+                        message: 'table next page target node not found',
+                        details: {
+                            businessTag: entity.businessTag,
+                            entityId: entity.id,
+                            reason: resolvedTarget.reason,
+                        },
+                    },
+                };
+            }
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'table next page target unresolved',
+                    details: {
+                        businessTag: entity.businessTag,
+                        entityId: entity.id,
+                        diagnostic: {
+                            code: 'TABLE_PAGINATION_NEXT_UNRESOLVED',
+                            level: 'warning',
+                            message: 'table next page target unresolved',
+                            entityId: entity.id,
+                            businessTag: entity.businessTag,
+                            nodeIds: [entity.nodeId],
+                        },
+                        reason: resolvedTarget.reason,
+                    },
+                },
+            };
+        }
+
+        return {
+            ok: true,
+            data: {
+                kind: 'nodeId',
+                nodeId: resolvedTarget.nodeId,
+                meta: {
+                    businessTag: entity.businessTag,
+                    entityId: entity.id,
+                    targetKind: 'table.nextPage',
+                    actionIntent: 'nextPage',
+                },
             },
         };
     }
