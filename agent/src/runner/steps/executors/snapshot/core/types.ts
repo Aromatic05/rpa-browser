@@ -269,6 +269,9 @@ export type SnapshotResult = {
         byEntityId: Record<string, EntityBusinessInfo | undefined>;
         nodeHintsByNodeId: Record<string, NodeSemanticHints | undefined>;
     };
+    /**
+     * @deprecated Use `ruleEntityOverlay` instead.
+     */
     businessEntityOverlay?: {
         byRuleId: Record<string, unknown>;
         byEntityId: Record<string, EntityBusinessInfo | undefined>;

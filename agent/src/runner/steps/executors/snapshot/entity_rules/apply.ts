@@ -67,7 +67,7 @@ export const applyEntityRuleBindings = (
         if (!binding?.ok) {continue;}
         const annotation = bundle.annotationByRuleId[rule.ruleId];
         if (!annotation) {continue;}
-        applyFormBindingAnnotations(overlay, annotation, binding, bindings, entityIndex);
+        applyFormBindingAnnotations(overlay, annotation, binding, bindings);
     }
 
     materializeOverlayToNodeHints(overlay, nodeById);
@@ -79,12 +79,6 @@ const applyEntityInfoAnnotation = (
     binding: ResolvedRuleBinding,
     annotation: EntityAnnotationRule,
 ) => {
-    const formFields = annotation.fields?.map((field) => ({
-        ...field,
-        optionSource: field.optionSource ? { ...field.optionSource } : undefined,
-    }));
-    const formActions = annotation.actions?.map((action) => ({ ...action }));
-
     const patch: EntityBusinessInfo = {
         businessTag: annotation.businessTag,
         businessName: annotation.businessName,
@@ -100,17 +94,13 @@ const applyEntityInfoAnnotation = (
             source: 'annotation',
             actions: column.actions?.map((action) => ({ ...action })),
         })),
-        formFields,
-        formActions,
     };
 
     const hasEntityPatch = Boolean(
         patch.businessTag ||
             patch.businessName ||
             patch.primaryKey ||
-            patch.columns ||
-            patch.formFields ||
-            patch.formActions,
+            patch.columns,
     );
     if (!hasEntityPatch) {return;}
 
@@ -149,15 +139,14 @@ const applyFormBindingAnnotations = (
     annotation: EntityAnnotationRule,
     binding: ResolvedRuleBinding,
     bindings: Record<string, ResolvedRuleBinding>,
-    entityIndex: EntityIndex,
 ) => {
     if ((annotation.fields?.length || 0) === 0 && (annotation.actions?.length || 0) === 0) {
         return;
     }
 
     for (const entityRef of binding.matchedEntityRefs) {
-        bindFormFieldsForEntity(overlay, annotation.fields || [], entityRef, bindings, entityIndex);
-        bindFormActionsForEntity(overlay, annotation.actions || [], entityRef, bindings, entityIndex);
+        bindFormFieldsForEntity(overlay, annotation.fields || [], entityRef, bindings);
+        bindFormActionsForEntity(overlay, annotation.actions || [], entityRef, bindings);
     }
 };
 
@@ -166,7 +155,6 @@ const bindFormFieldsForEntity = (
     fields: EntityFormField[],
     entityRef: RuleBindingEntityRef,
     bindings: Record<string, ResolvedRuleBinding>,
-    entityIndex: EntityIndex,
 ) => {
     if (fields.length === 0) {return;}
     const base = overlay.byEntityId[entityRef.entityId];
@@ -183,6 +171,7 @@ const bindFormFieldsForEntity = (
             controlNodeId: controlNodeId || field.controlNodeId,
             labelNodeId: labelNodeId || field.labelNodeId,
         };
+        if (!normalizedField.controlNodeId && !normalizedField.labelNodeId) {continue;}
 
         const existedIndex = fieldIndexByKey.get(field.fieldKey);
         if (existedIndex === undefined) {
@@ -238,7 +227,6 @@ const bindFormActionsForEntity = (
     actions: EntityFormAction[],
     entityRef: RuleBindingEntityRef,
     bindings: Record<string, ResolvedRuleBinding>,
-    entityIndex: EntityIndex,
 ) => {
     if (actions.length === 0) {return;}
     const base = overlay.byEntityId[entityRef.entityId];
@@ -251,6 +239,7 @@ const bindFormActionsForEntity = (
             ...action,
             nodeId: nodeId || action.nodeId,
         };
+        if (!normalizedAction.nodeId) {continue;}
 
         const existedIndex = actionIndexByIntent.get(action.actionIntent);
         if (existedIndex === undefined) {
@@ -264,11 +253,9 @@ const bindFormActionsForEntity = (
         }
 
         if (nodeId) {
-            const preferredEntity = pickPreferredEntityRef(entityIndex, nodeId);
-            const resolvedEntity = preferredEntity ? entityIndex.entities[preferredEntity.entityId] : undefined;
             patchNodeHint(overlay, nodeId, {
-                entityNodeId: resolvedEntity ? getEntityNodeId(resolvedEntity) : entityRef.nodeId,
-                entityKind: resolvedEntity?.kind || entityRef.kind,
+                entityNodeId: entityRef.nodeId,
+                entityKind: entityRef.kind,
                 actionIntent: action.actionIntent,
             });
         }
