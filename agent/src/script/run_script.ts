@@ -6,8 +6,8 @@
  * - 行式脚本：
  *   - goto <url>
  *   - snapshot
- *   - click <id>
- *   - fill <id> <value>
+ *   - click <nodeId>
+ *   - fill <nodeId> <value>
  */
 
 import crypto from 'crypto';
@@ -61,7 +61,7 @@ const parseScript = (script: string): StepUnion[] => {
             steps.push({
                 id: crypto.randomUUID(),
                 name: 'browser.click',
-                args: { id: rest[0] },
+                args: { nodeId: rest[0] },
                 meta: { source: 'script', ts: Date.now() },
             });
             continue;
@@ -70,7 +70,7 @@ const parseScript = (script: string): StepUnion[] => {
             steps.push({
                 id: crypto.randomUUID(),
                 name: 'browser.fill',
-                args: { id: rest[0], value: rest.slice(1).join(' ') },
+                args: { nodeId: rest[0], value: rest.slice(1).join(' ') },
                 meta: { source: 'script', ts: Date.now() },
             });
             continue;

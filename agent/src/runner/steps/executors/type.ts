@@ -16,10 +16,9 @@ export const executeBrowserType = async (
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const resolved = await resolveTarget(binding, {
-        id: step.args.id || step.args.target?.id,
-        selector: step.args.selector || step.args.target?.selector,
-        hint: step.resolve?.hint,
-        policy: step.resolve?.policy,
+        nodeId: step.args.nodeId,
+        selector: step.args.selector,
+        resolve: step.resolve,
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 

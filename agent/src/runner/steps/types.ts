@@ -39,11 +39,6 @@ export type StepName =
     | 'browser.compute'
     | 'browser.checkpoint';
 
-export type Target = {
-    id?: string;
-    selector?: string;
-};
-
 export type ResolvePolicy = {
     preferDirect?: boolean;
     preferScoped?: boolean;
@@ -187,67 +182,71 @@ export type StepArgsMap = {
     'browser.read_network': { limit?: number };
     'browser.evaluate': { expression: string; arg?: unknown; mutatesPage?: boolean };
     'browser.take_screenshot': {
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         full_page?: boolean;
         inline?: boolean;
     };
     'browser.click': {
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         coord?: { x: number; y: number };
         options?: { button?: 'left' | 'right' | 'middle'; double?: boolean };
         timeout?: number;
     };
     'browser.fill': {
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         value: string;
         timeout?: number;
     };
     'browser.type': {
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         text: string;
         delay_ms?: number;
         timeout?: number;
     };
     'browser.select_option': {
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         values: string[];
         timeout?: number;
     };
     'browser.hover': {
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         timeout?: number;
     };
     'browser.scroll': {
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         direction?: 'up' | 'down';
         amount?: number;
         timeout?: number;
     };
     'browser.press_key': {
         key: string;
-        id?: string;
+        nodeId?: string;
         selector?: string;
-        target?: Target;
+        resolveId?: string;
         timeout?: number;
     };
     'browser.drag_and_drop': {
-        source: Target;
-        dest_target?: Target;
-        dest_coord?: { x: number; y: number };
+        sourceNodeId?: string;
+        sourceSelector?: string;
+        sourceResolveId?: string;
+        destNodeId?: string;
+        destSelector?: string;
+        destResolveId?: string;
+        destCoord?: { x: number; y: number };
         timeout?: number;
     };
     'browser.mouse': {
@@ -381,9 +380,13 @@ export type Step<TName extends StepName = StepName> = {
     id: string;
     name: TName;
     args: StepArgsMap[TName];
+    /**
+     * Runtime-only metadata. It is not serialized into core steps.yaml.
+     */
     meta?: StepMeta;
     /**
-     * @deprecated Store hints in StepHintFile sidecar instead.
+     * Runtime-only resolve data. It is not serialized into core steps.yaml.
+     * Persist resolve data in step_resolve.yaml and reference it with resolveId.
      */
     resolve?: StepResolve;
 };

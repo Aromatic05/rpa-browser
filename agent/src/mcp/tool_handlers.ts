@@ -329,9 +329,10 @@ const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         id: crypto.randomUUID(),
         name: 'browser.click',
         args: {
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
             coord: input.coord,
+            resolveId: input.resolveId,
             options,
         },
         meta: { source: 'mcp' },
@@ -346,8 +347,9 @@ const handleFill = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
         id: crypto.randomUUID(),
         name: 'browser.fill',
         args: {
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
+            resolveId: input.resolveId,
             value: input.value,
         },
         meta: { source: 'mcp' },
@@ -362,8 +364,9 @@ const handleType = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
         id: crypto.randomUUID(),
         name: 'browser.type',
         args: {
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
+            resolveId: input.resolveId,
             text: input.text,
             delay_ms: input.delay_ms ?? 0,
         },
@@ -379,8 +382,9 @@ const handleSelectOption = (deps: McpToolDeps): McpToolHandler => async (args: u
         id: crypto.randomUUID(),
         name: 'browser.select_option',
         args: {
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
+            resolveId: input.resolveId,
             values: input.values,
         },
         meta: { source: 'mcp' },
@@ -395,8 +399,9 @@ const handleHover = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         id: crypto.randomUUID(),
         name: 'browser.hover',
         args: {
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
+            resolveId: input.resolveId,
         },
         meta: { source: 'mcp' },
     });
@@ -410,8 +415,9 @@ const handleScroll = (deps: McpToolDeps): McpToolHandler => async (args: unknown
         id: crypto.randomUUID(),
         name: 'browser.scroll',
         args: {
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
+            resolveId: input.resolveId,
             direction: input.direction,
             amount: input.amount ?? 600,
         },
@@ -428,8 +434,9 @@ const handlePressKey = (deps: McpToolDeps): McpToolHandler => async (args: unkno
         name: 'browser.press_key',
         args: {
             key: input.key,
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
+            resolveId: input.resolveId,
         },
         meta: { source: 'mcp' },
     });
@@ -443,18 +450,13 @@ const handleDragAndDrop = (deps: McpToolDeps): McpToolHandler => async (args: un
         id: crypto.randomUUID(),
         name: 'browser.drag_and_drop',
         args: {
-            source: {
-                id: input.source_id,
-                selector: input.source_selector,
-            },
-            dest_target:
-                input.dest_id || input.dest_selector
-                    ? {
-                          id: input.dest_id,
-                          selector: input.dest_selector,
-                      }
-                    : undefined,
-            dest_coord: input.dest_coord,
+            sourceNodeId: input.sourceNodeId,
+            sourceSelector: input.sourceSelector,
+            sourceResolveId: input.sourceResolveId,
+            destNodeId: input.destNodeId,
+            destSelector: input.destSelector,
+            destResolveId: input.destResolveId,
+            destCoord: input.destCoord,
         },
         meta: { source: 'mcp' },
     });
@@ -584,8 +586,9 @@ const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args:
         id: crypto.randomUUID(),
         name: 'browser.take_screenshot',
         args: {
-            id: input.id,
+            nodeId: input.nodeId,
             selector: input.selector,
+            resolveId: input.resolveId,
             full_page: input.full_page,
             inline: input.inline,
         },
@@ -621,7 +624,7 @@ const resolveBatchActionTargetsByLabel = async (
     tabToken: string | undefined,
     input: BrowserBatchInput,
 ): Promise<{ ok: true; actions: BrowserBatchInput['actions'] } | { ok: false; error: unknown }> => {
-    const unresolved = input.actions.filter((action) => !action.id && !action.selector && action.label);
+    const unresolved = input.actions.filter((action) => !action.nodeId && !action.selector && action.label);
     if (unresolved.length === 0) {
         return { ok: true, actions: input.actions };
     }
@@ -647,7 +650,7 @@ const resolveBatchActionTargetsByLabel = async (
     const resolved = input.actions.map((action) => ({ ...action }));
     for (let idx = 0; idx < resolved.length; idx += 1) {
         const action = resolved[idx];
-        if (action.id || action.selector || !action.label) {continue;}
+        if (action.nodeId || action.selector || !action.label) {continue;}
         const wantedRole = normalizeText(action.role || defaultRoleByBatchOp(action.op));
         const wantedLabel = normalizeText(action.label);
         const candidates = nodes.filter((node) => {
@@ -680,7 +683,7 @@ const resolveBatchActionTargetsByLabel = async (
                 },
             };
         }
-        action.id = candidates[0].id!;
+        action.nodeId = candidates[0].id!;
     }
 
     return { ok: true, actions: resolved as BrowserBatchInput['actions'] };
@@ -690,10 +693,10 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
     const stepId = crypto.randomUUID();
     if (action.op === 'fill') {
         return {
-            id: stepId,
-            name: 'browser.fill',
-            args: {
-                id: action.id,
+                id: stepId,
+                name: 'browser.fill',
+                args: {
+                nodeId: action.nodeId,
                 selector: action.selector,
                 value: action.value,
             },
@@ -705,7 +708,7 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
             id: stepId,
             name: 'browser.select_option',
             args: {
-                id: action.id,
+                nodeId: action.nodeId,
                 selector: action.selector,
                 values: action.values,
             },
@@ -716,7 +719,7 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
         id: stepId,
         name: 'browser.click',
         args: {
-            id: action.id,
+            nodeId: action.nodeId,
             selector: action.selector,
             coord: action.coord,
             options: action.options,

@@ -5,8 +5,8 @@ const coordSchema = z.object({
     y: z.number(),
 });
 
-const ensureIdOrSelector = (value: { id?: string; selector?: string }) => {
-    return Boolean(value.id || value.selector);
+const ensureNodeIdOrSelector = (value: { nodeId?: string; selector?: string }) => {
+    return Boolean(value.nodeId || value.selector);
 };
 
 const entityKindSchema = z.enum(['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv']);
@@ -23,7 +23,7 @@ const snapshotFilterInputSchema = z
 
 const batchFillActionSchema = z.object({
     op: z.literal('fill'),
-    id: z.string().optional(),
+    nodeId: z.string().optional(),
     selector: z.string().optional(),
     label: z.string().optional(),
     role: z.string().optional(),
@@ -32,7 +32,7 @@ const batchFillActionSchema = z.object({
 
 const batchSelectOptionActionSchema = z.object({
     op: z.literal('select_option'),
-    id: z.string().optional(),
+    nodeId: z.string().optional(),
     selector: z.string().optional(),
     label: z.string().optional(),
     role: z.string().optional(),
@@ -41,7 +41,7 @@ const batchSelectOptionActionSchema = z.object({
 
 const batchClickActionSchema = z.object({
     op: z.literal('click'),
-    id: z.string().optional(),
+    nodeId: z.string().optional(),
     selector: z.string().optional(),
     label: z.string().optional(),
     role: z.string().optional(),
@@ -259,8 +259,9 @@ export const browserEvaluateInputSchema = z.object({
 
 export const browserTakeScreenshotInputSchema = z.object({
     tabToken: z.string().optional(),
-    id: z.string().optional(),
+    nodeId: z.string().optional(),
     selector: z.string().optional(),
+    resolveId: z.string().optional(),
     full_page: z.boolean().optional(),
     inline: z.boolean().optional(),
 });
@@ -268,8 +269,9 @@ export const browserTakeScreenshotInputSchema = z.object({
 export const browserClickInputSchema = z
     .object({
         tabToken: z.string().optional(),
-        id: z.string().optional(),
+        nodeId: z.string().optional(),
         selector: z.string().optional(),
+        resolveId: z.string().optional(),
         coord: coordSchema.optional(),
         options: z
             .object({
@@ -278,58 +280,63 @@ export const browserClickInputSchema = z
             })
             .optional(),
     })
-    .refine((value) => Boolean(value.coord) || ensureIdOrSelector(value), {
-        message: 'click requires coord or id/selector',
+    .refine((value) => Boolean(value.coord) || ensureNodeIdOrSelector(value), {
+        message: 'click requires coord or nodeId/selector',
     });
 
 export const browserFillInputSchema = z
     .object({
         tabToken: z.string().optional(),
-        id: z.string().optional(),
+        nodeId: z.string().optional(),
         selector: z.string().optional(),
+        resolveId: z.string().optional(),
         value: z.string(),
     })
-    .refine(ensureIdOrSelector, {
-        message: 'fill requires id or selector',
+    .refine(ensureNodeIdOrSelector, {
+        message: 'fill requires nodeId or selector',
     });
 
 export const browserTypeInputSchema = z
     .object({
         tabToken: z.string().optional(),
-        id: z.string().optional(),
+        nodeId: z.string().optional(),
         selector: z.string().optional(),
+        resolveId: z.string().optional(),
         text: z.string(),
         delay_ms: z.number().int().min(0).optional(),
     })
-    .refine(ensureIdOrSelector, {
-        message: 'type requires id or selector',
+    .refine(ensureNodeIdOrSelector, {
+        message: 'type requires nodeId or selector',
     });
 
 export const browserSelectOptionInputSchema = z
     .object({
         tabToken: z.string().optional(),
-        id: z.string().optional(),
+        nodeId: z.string().optional(),
         selector: z.string().optional(),
+        resolveId: z.string().optional(),
         values: z.array(z.string()),
     })
-    .refine(ensureIdOrSelector, {
-        message: 'select_option requires id or selector',
+    .refine(ensureNodeIdOrSelector, {
+        message: 'select_option requires nodeId or selector',
     });
 
 export const browserHoverInputSchema = z
     .object({
         tabToken: z.string().optional(),
-        id: z.string().optional(),
+        nodeId: z.string().optional(),
         selector: z.string().optional(),
+        resolveId: z.string().optional(),
     })
-    .refine(ensureIdOrSelector, {
-        message: 'hover requires id or selector',
+    .refine(ensureNodeIdOrSelector, {
+        message: 'hover requires nodeId or selector',
     });
 
 export const browserScrollInputSchema = z.object({
     tabToken: z.string().optional(),
-    id: z.string().optional(),
+    nodeId: z.string().optional(),
     selector: z.string().optional(),
+    resolveId: z.string().optional(),
     direction: z.enum(['up', 'down']).optional(),
     amount: z.number().int().positive().optional(),
 });
@@ -337,24 +344,27 @@ export const browserScrollInputSchema = z.object({
 export const browserPressKeyInputSchema = z.object({
     tabToken: z.string().optional(),
     key: z.string(),
-    id: z.string().optional(),
+    nodeId: z.string().optional(),
     selector: z.string().optional(),
+    resolveId: z.string().optional(),
 });
 
 export const browserDragAndDropInputSchema = z
     .object({
         tabToken: z.string().optional(),
-        source_id: z.string().optional(),
-        source_selector: z.string().optional(),
-        dest_id: z.string().optional(),
-        dest_selector: z.string().optional(),
-        dest_coord: coordSchema.optional(),
+        sourceNodeId: z.string().optional(),
+        sourceSelector: z.string().optional(),
+        sourceResolveId: z.string().optional(),
+        destNodeId: z.string().optional(),
+        destSelector: z.string().optional(),
+        destResolveId: z.string().optional(),
+        destCoord: coordSchema.optional(),
     })
-    .refine((value) => Boolean(value.source_id || value.source_selector), {
-        message: 'drag_and_drop requires source_id or source_selector',
+    .refine((value) => Boolean(value.sourceNodeId || value.sourceSelector || value.sourceResolveId), {
+        message: 'drag_and_drop requires sourceNodeId, sourceSelector, or sourceResolveId',
     })
-    .refine((value) => Boolean(value.dest_id || value.dest_selector || value.dest_coord), {
-        message: 'drag_and_drop requires destination target or dest_coord',
+    .refine((value) => Boolean(value.destNodeId || value.destSelector || value.destResolveId || value.destCoord), {
+        message: 'drag_and_drop requires destination target or destCoord',
     });
 
 export const browserMouseInputSchema = z.object({
@@ -376,14 +386,14 @@ export const browserBatchInputSchema = z
     })
     .superRefine((value, ctx) => {
         value.actions.forEach((action, index) => {
-            const hasTarget = Boolean(action.id || action.selector || action.label || action.op === 'click' && action.coord);
+            const hasTarget = Boolean(action.nodeId || action.selector || action.label || action.op === 'click' && action.coord);
             if (hasTarget) {return;}
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 message:
                     action.op === 'click'
-                        ? 'batch click action requires coord, id, selector, or label'
-                        : `batch ${action.op} action requires id, selector, or label`,
+                        ? 'batch click action requires coord, nodeId, selector, or label'
+                        : `batch ${action.op} action requires nodeId, selector, or label`,
                 path: ['actions', index],
             });
         });
@@ -810,8 +820,9 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
             full_page: { type: 'boolean' },
             inline: { type: 'boolean' },
         },
@@ -822,8 +833,9 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
             coord: {
                 type: 'object',
                 properties: {
@@ -849,8 +861,9 @@ export const toolInputJsonSchemas = {
         required: ['value'],
         properties: {
             tabToken: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
             value: { type: 'string' },
         },
         additionalProperties: false,
@@ -860,8 +873,9 @@ export const toolInputJsonSchemas = {
         required: ['text'],
         properties: {
             tabToken: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
             text: { type: 'string' },
             delay_ms: { type: 'integer', minimum: 0 },
         },
@@ -872,8 +886,9 @@ export const toolInputJsonSchemas = {
         required: ['values'],
         properties: {
             tabToken: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
             values: { type: 'array', items: { type: 'string' } },
         },
         additionalProperties: false,
@@ -883,8 +898,9 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
         },
         additionalProperties: false,
     },
@@ -893,8 +909,9 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
             direction: { type: 'string', enum: ['up', 'down'] },
             amount: { type: 'integer', minimum: 1 },
         },
@@ -906,8 +923,9 @@ export const toolInputJsonSchemas = {
         properties: {
             tabToken: { type: 'string' },
             key: { type: 'string' },
-            id: { type: 'string' },
+            nodeId: { type: 'string' },
             selector: { type: 'string' },
+            resolveId: { type: 'string' },
         },
         additionalProperties: false,
     },
@@ -916,11 +934,13 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            source_id: { type: 'string' },
-            source_selector: { type: 'string' },
-            dest_id: { type: 'string' },
-            dest_selector: { type: 'string' },
-            dest_coord: {
+            sourceNodeId: { type: 'string' },
+            sourceSelector: { type: 'string' },
+            sourceResolveId: { type: 'string' },
+            destNodeId: { type: 'string' },
+            destSelector: { type: 'string' },
+            destResolveId: { type: 'string' },
+            destCoord: {
                 type: 'object',
                 properties: {
                     x: { type: 'number' },

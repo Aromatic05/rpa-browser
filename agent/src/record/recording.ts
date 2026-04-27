@@ -260,7 +260,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             'browser.press_key',
             {
                 key: event.key,
-                target: event.selector ? { selector: event.selector } : undefined,
+                selector: event.selector || undefined,
             },
             event.ts,
             { tabToken: event.tabToken },
