@@ -33,6 +33,7 @@ const toolDefinitions: ToolDefinition[] = [
     { name: 'browser.list_entities', description: 'List entities.', group: 'business_entities' },
     { name: 'browser.get_entity', description: 'Get entity.', group: 'business_entities' },
     { name: 'browser.find_entities', description: 'Find entities.', group: 'business_entities' },
+    { name: 'browser.query_entity', description: 'Query business entity.', group: 'business_entities' },
     { name: 'browser.add_entity', description: 'Add entity overlay.', group: 'business_entities' },
     { name: 'browser.delete_entity', description: 'Delete entity overlay.', group: 'business_entities' },
     { name: 'browser.rename_entity', description: 'Rename entity.', group: 'business_entities' },

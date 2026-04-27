@@ -26,6 +26,7 @@ import { executeBrowserMouse } from './mouse';
 import { executeBrowserListEntities } from './list_entities';
 import { executeBrowserGetEntity } from './get_entity';
 import { executeBrowserFindEntities } from './find_entities';
+import { executeBrowserQueryEntity } from './query_entity';
 import { executeBrowserAddEntity } from './add_entity';
 import { executeBrowserDeleteEntity } from './delete_entity';
 import { executeBrowserRenameEntity } from './rename_entity';
@@ -63,6 +64,7 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.list_entities': executeBrowserListEntities as ExecutorFn,
     'browser.get_entity': executeBrowserGetEntity as ExecutorFn,
     'browser.find_entities': executeBrowserFindEntities as ExecutorFn,
+    'browser.query_entity': executeBrowserQueryEntity as ExecutorFn,
     'browser.add_entity': executeBrowserAddEntity as ExecutorFn,
     'browser.delete_entity': executeBrowserDeleteEntity as ExecutorFn,
     'browser.rename_entity': executeBrowserRenameEntity as ExecutorFn,

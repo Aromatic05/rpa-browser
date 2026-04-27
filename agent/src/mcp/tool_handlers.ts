@@ -58,6 +58,8 @@ import {
     type BrowserGetEntityInput,
     browserFindEntitiesInputSchema,
     type BrowserFindEntitiesInput,
+    browserQueryEntityInputSchema,
+    type BrowserQueryEntityInput,
     browserAddEntityInputSchema,
     type BrowserAddEntityInput,
     browserDeleteEntityInputSchema,
@@ -552,6 +554,21 @@ const handleFindEntities = (deps: McpToolDeps): McpToolHandler => async (args: u
     });
 };
 
+const handleQueryEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserQueryEntityInput>(browserQueryEntityInputSchema, args);
+    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
+    const input = parsed.data;
+    return await runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.query_entity',
+        args: {
+            businessTag: input.businessTag,
+            query: input.query,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
 const handleAddEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserAddEntityInput>(browserAddEntityInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
@@ -853,6 +870,7 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.list_entities': handleListEntities(deps),
     'browser.get_entity': handleGetEntity(deps),
     'browser.find_entities': handleFindEntities(deps),
+    'browser.query_entity': handleQueryEntity(deps),
     'browser.add_entity': handleAddEntity(deps),
     'browser.delete_entity': handleDeleteEntity(deps),
     'browser.rename_entity': handleRenameEntity(deps),

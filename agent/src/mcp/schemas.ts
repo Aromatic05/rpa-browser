@@ -126,6 +126,20 @@ export const browserFindEntitiesInputSchema = z.object({
     businessTag: textOrArraySchema.optional(),
 });
 
+export const browserQueryEntityInputSchema = z.object({
+    tabToken: z.string().optional(),
+    businessTag: z.string(),
+    query: z.enum([
+        'table.row_count',
+        'table.headers',
+        'table.primary_key',
+        'table.columns',
+        'table.current_rows',
+        'form.fields',
+        'form.actions',
+    ]),
+});
+
 export const browserAddEntityInputSchema = z.object({
     tabToken: z.string().optional(),
     nodeId: z.string(),
@@ -327,6 +341,7 @@ export type BrowserMouseInput = z.infer<typeof browserMouseInputSchema>;
 export type BrowserListEntitiesInput = z.infer<typeof browserListEntitiesInputSchema>;
 export type BrowserGetEntityInput = z.infer<typeof browserGetEntityInputSchema>;
 export type BrowserFindEntitiesInput = z.infer<typeof browserFindEntitiesInputSchema>;
+export type BrowserQueryEntityInput = z.infer<typeof browserQueryEntityInputSchema>;
 export type BrowserAddEntityInput = z.infer<typeof browserAddEntityInputSchema>;
 export type BrowserDeleteEntityInput = z.infer<typeof browserDeleteEntityInputSchema>;
 export type BrowserRenameEntityInput = z.infer<typeof browserRenameEntityInputSchema>;
@@ -476,6 +491,27 @@ export const toolInputJsonSchemas = {
                 anyOf: [
                     { type: 'string' },
                     { type: 'array', items: { type: 'string' } },
+                ],
+            },
+        },
+        additionalProperties: false,
+    },
+    'browser.query_entity': {
+        type: 'object',
+        required: ['businessTag', 'query'],
+        properties: {
+            tabToken: { type: 'string' },
+            businessTag: { type: 'string' },
+            query: {
+                type: 'string',
+                enum: [
+                    'table.row_count',
+                    'table.headers',
+                    'table.primary_key',
+                    'table.columns',
+                    'table.current_rows',
+                    'form.fields',
+                    'form.actions',
                 ],
             },
         },
