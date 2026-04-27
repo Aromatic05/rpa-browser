@@ -284,9 +284,14 @@ test('checkpoint example yaml files round-trip without leaking hints into core f
         validateCheckpointFileForSerialization(roundTripped);
 
         const serialized = stringify(roundTripped);
+        assert.equal(serialized.includes('{{'), false);
+        assert.equal(serialized.includes('}}'), false);
         assert.equal(serialized.includes('rawContext'), false);
         assert.equal(serialized.includes('preferredEntityRules'), false);
         assert.equal(serialized.includes('fallbacks'), false);
+        assert.equal(serialized.includes('locatorCandidates'), false);
+        assert.equal(serialized.includes('replayHints'), false);
+        assert.equal(serialized.includes('ref: local.'), true);
     }
 
     for (const fileName of hintExampleNames) {

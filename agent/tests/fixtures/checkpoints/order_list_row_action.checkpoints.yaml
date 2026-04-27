@@ -8,8 +8,8 @@ checkpoints:
         - stepName: browser.click
         - errorCode: ERR_NOT_FOUND
     content:
-      - id: resolveAction
-        name: browser.query
+      - type: query
+        saveAs: actionTarget
         args:
           op: entity.target
           businessTag: order.list.main
@@ -19,10 +19,12 @@ checkpoints:
               fieldKey: orderNo
               value: ORD-2026-001
             actionIntent: edit
-      - id: clickAction
-        name: browser.click
-        args:
-          id: "{{resolveAction.data.nodeId}}"
+      - type: act
+        step:
+          name: browser.click
+          args:
+            id:
+              ref: local.actionTarget.nodeId
     policy:
       maxAttempts: 1
       retryOriginal: false
