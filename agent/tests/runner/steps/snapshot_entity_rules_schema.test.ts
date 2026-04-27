@@ -51,10 +51,24 @@ test('annotation rule schema accepts valid payload', () => {
                 businessTag: 'order.list.main',
                 businessName: 'Order List',
                 columns: [
-                    { fieldKey: 'orderNo', name: 'Order No' },
-                    { fieldKey: 'status', name: 'Status' },
+                    { fieldKey: 'orderNo', name: 'Order No', kind: 'text' },
+                    {
+                        fieldKey: 'operation',
+                        name: 'Operation',
+                        kind: 'action_column',
+                        actions: [{ actionIntent: 'approve', text: 'Approve' }],
+                    },
                 ],
                 primaryKey: { fieldKey: 'orderNo', columns: ['orderNo'] },
+                fields: [
+                    {
+                        fieldKey: 'dept',
+                        kind: 'select',
+                        controlRuleId: 'dept_select',
+                        optionSource: { kind: 'popup', optionRuleId: 'dept_options' },
+                    },
+                ],
+                actions: [{ actionIntent: 'submit', nodeRuleId: 'submit_btn' }],
             },
         ],
     });

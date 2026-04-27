@@ -96,7 +96,15 @@ const buildFixture = () => {
                 ruleId: 'main_table',
                 businessTag: 'order.list.main',
                 businessName: 'Order List Main',
-                columns: [{ fieldKey: 'orderNo', name: 'Order No' }],
+                columns: [
+                    { fieldKey: 'orderNo', name: 'Order No', kind: 'text' },
+                    {
+                        fieldKey: 'operation',
+                        name: 'Operation',
+                        kind: 'action_column',
+                        actions: [{ actionIntent: 'delete', text: 'Delete' }],
+                    },
+                ],
                 primaryKey: { fieldKey: 'orderNo', columns: ['orderNo'] },
             },
             delete_action: {
@@ -134,6 +142,9 @@ test('apply maps business info and node semantic hints to overlay', () => {
     assert.equal(overlay.byEntityId.ent_table?.businessTag, 'order.list.main');
     assert.equal(overlay.byEntityId.ent_table?.primaryKey?.fieldKey, 'orderNo');
     assert.equal(overlay.byEntityId.ent_table?.columns?.[0]?.fieldKey, 'orderNo');
+    assert.equal(overlay.byEntityId.ent_table?.columns?.[1]?.kind, 'action_column');
+    assert.equal(overlay.byEntityId.ent_table?.columns?.[1]?.actions?.[0]?.actionIntent, 'delete');
+    assert.equal(overlay.byEntityId.ent_table?.primaryKey?.source, 'annotation');
 
     assert.equal(overlay.nodeHintsByNodeId.node_delete?.fieldKey, 'operation');
     assert.equal(overlay.nodeHintsByNodeId.node_delete?.actionIntent, 'delete');
@@ -142,4 +153,77 @@ test('apply maps business info and node semantic hints to overlay', () => {
     const semantic = getNodeSemanticHints(deleteNode);
     assert.equal(semantic?.fieldKey, 'operation');
     assert.equal(semantic?.actionIntent, 'delete');
+});
+
+test('apply binds form fields/actions by referenced ruleId and keeps legacy fieldKey/actionIntent', () => {
+    const submitBtn: UnifiedNode = { id: 'submit_btn', role: 'button', name: 'Submit', children: [] };
+    const orderNoLabel: UnifiedNode = { id: 'order_no_label', role: 'text', name: 'Order No', children: [] };
+    const orderNoInput: UnifiedNode = { id: 'order_no_input', role: 'textbox', name: 'Order No Input', children: [] };
+    const form: UnifiedNode = { id: 'order_form', role: 'form', name: 'Order Form', children: [orderNoLabel, orderNoInput, submitBtn] };
+    const root: UnifiedNode = { id: 'root', role: 'root', children: [form] };
+
+    const entityIndex: EntityIndex = {
+        entities: {
+            ent_form: {
+                id: 'ent_form',
+                type: 'region',
+                kind: 'form',
+                nodeId: 'order_form',
+                name: 'Order Form',
+            },
+        },
+        byNodeId: {
+            order_form: [{ type: 'region', entityId: 'ent_form', role: 'container' }],
+            order_no_input: [{ type: 'region', entityId: 'ent_form', role: 'descendant' }],
+            order_no_label: [{ type: 'region', entityId: 'ent_form', role: 'descendant' }],
+            submit_btn: [{ type: 'region', entityId: 'ent_form', role: 'descendant' }],
+        },
+    };
+
+    const bundle: NormalizedEntityRuleBundle = {
+        id: 'order-form',
+        page: { kind: 'form' },
+        matchRules: [
+            { ruleId: 'order_form', source: 'region', expect: 'unique', order: 0, match: { kind: 'form' } },
+            { ruleId: 'order_no_input_rule', source: 'node', expect: 'unique', order: 1, within: 'order_form', match: { textContains: 'Input' } },
+            { ruleId: 'order_no_label_rule', source: 'node', expect: 'unique', order: 2, within: 'order_form', match: { textContains: 'Label' } },
+            { ruleId: 'submit_rule', source: 'node', expect: 'unique', order: 3, within: 'order_form', match: { textContains: 'Submit' } },
+        ],
+        annotationByRuleId: {
+            order_form: {
+                ruleId: 'order_form',
+                fields: [
+                    {
+                        fieldKey: 'orderNo',
+                        name: 'Order No',
+                        kind: 'input',
+                        controlRuleId: 'order_no_input_rule',
+                        labelRuleId: 'order_no_label_rule',
+                    },
+                ],
+                actions: [{ actionIntent: 'submit', text: 'Submit', nodeRuleId: 'submit_rule' }],
+            },
+            submit_rule: {
+                ruleId: 'submit_rule',
+                fieldKey: 'legacy_submit',
+                actionIntent: 'submit_legacy',
+            },
+        },
+    };
+
+    const bindings = matchEntityRules(bundle, { root, entityIndex });
+    const overlay = applyEntityRuleBindings(bundle, root, entityIndex, bindings);
+
+    assert.equal(overlay.byEntityId.ent_form?.formFields?.[0]?.fieldKey, 'orderNo');
+    assert.equal(overlay.byEntityId.ent_form?.formFields?.[0]?.controlNodeId, 'order_no_input');
+    assert.equal(overlay.byEntityId.ent_form?.formActions?.[0]?.actionIntent, 'submit');
+    assert.equal(overlay.byEntityId.ent_form?.formActions?.[0]?.nodeId, 'submit_btn');
+
+    assert.equal(overlay.nodeHintsByNodeId.order_no_input?.fieldKey, 'orderNo');
+    assert.equal(overlay.nodeHintsByNodeId.order_no_input?.fieldRole, 'control');
+    assert.equal(overlay.nodeHintsByNodeId.submit_btn?.actionIntent, 'submit');
+
+    const submitSemantic = getNodeSemanticHints(submitBtn);
+    assert.equal(submitSemantic?.actionIntent, 'submit');
+    assert.equal(submitSemantic?.fieldKey, 'legacy_submit');
 });
