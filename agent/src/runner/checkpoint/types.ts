@@ -15,19 +15,19 @@ export type Checkpoint = {
     kind?: 'procedure' | 'recovery' | 'guard';
     name?: string;
     input?: Record<string, unknown>;
+    trigger?: {
+        matchRules: MatchRule[];
+    };
     prepare?: CheckpointAction[];
     content?: Array<StepUnion | CheckpointAction>;
     output?: Record<string, CheckpointValue>;
     policy?: {
-        trigger?: {
-            matchRules?: MatchRule[];
-        };
         maxAttempts?: number;
+        retryOriginal?: boolean;
+        stopOnFailure?: boolean;
     };
-    matchRules?: MatchRule[];
     enabled?: boolean;
     priority?: number;
-    maxAttempts?: number;
 };
 
 export type CheckpointValue = unknown;
@@ -107,3 +107,6 @@ export type CheckpointProcedureOutput = {
     local?: Record<string, unknown>;
     error?: StepResult['error'];
 };
+
+export const getCheckpointMatchRules = (checkpoint: Pick<Checkpoint, 'trigger'>): MatchRule[] =>
+    checkpoint.trigger?.matchRules || [];

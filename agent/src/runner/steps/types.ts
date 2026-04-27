@@ -380,6 +380,9 @@ export type Step<TName extends StepName = StepName> = {
     name: TName;
     args: StepArgsMap[TName];
     meta?: StepMeta;
+    /**
+     * @deprecated Store hints in StepHintFile sidecar instead.
+     */
     resolve?: StepResolve;
 };
 
