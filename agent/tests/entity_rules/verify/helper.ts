@@ -10,6 +10,7 @@ import { defaultEntityRuleConfig } from '../../../src/config/entity_rules';
 import { generateSemanticSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
 import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
 import { normalizeText } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { FinalEntityView, SnapshotResult } from '../../../src/runner/steps/executors/snapshot/core/types';
 import { createEntityRuleFixtureRoot } from '../profile_fixture';
 
 const entityLog = getLogger('entity');
@@ -18,6 +19,11 @@ export type EntityRuleVerifyCase = {
     profile: string;
     app: 'ant' | 'element';
     pagePath: string;
+};
+
+export type EntityRuleSnapshotContext = {
+    snapshot: SnapshotResult;
+    finalEntityView: FinalEntityView;
 };
 
 export const verifyEntityRuleGoldenCase = async (testCase: EntityRuleVerifyCase) => {
@@ -69,6 +75,52 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
             finalEntities: normalizeFinalEntities(snapshot, finalEntityView.entities),
             nodeHints: normalizeNodeHints(snapshot),
         };
+    } finally {
+        await fixture.cleanup();
+        await browser.close();
+        await mockServer.close();
+    }
+};
+
+export const withEntityRuleSnapshotContext = async <T>(
+    testCase: EntityRuleVerifyCase,
+    callback: (context: EntityRuleSnapshotContext) => Promise<T>,
+): Promise<T> => {
+    const config = loadRunnerConfig({ configPath: '__non_exist__.json' });
+    config.observability.traceConsoleEnabled = false;
+    config.observability.traceFileEnabled = false;
+    initLogger(config);
+
+    const mockServer = await startMockApp(testCase.app);
+    const browser = await chromium.launch({ headless: true });
+    const fixture = await createEntityRuleFixtureRoot();
+
+    try {
+        const page = await browser.newPage();
+        const url = `${mockServer.baseUrl}${testCase.pagePath}`;
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+        const snapshot = await generateSemanticSnapshot(page, {
+            entityRuleConfig: {
+                ...defaultEntityRuleConfig,
+                enabled: true,
+                rootDir: fixture.rootDir,
+                selection: 'explicit',
+                profiles: [testCase.profile],
+                strict: true,
+            },
+        });
+
+        const finalEntityView = buildFinalEntityViewFromSnapshot(snapshot, {
+            renamedNodes: {},
+            addedEntities: [],
+            deletedEntities: [],
+        });
+
+        return await callback({
+            snapshot,
+            finalEntityView,
+        });
     } finally {
         await fixture.cleanup();
         await browser.close();
