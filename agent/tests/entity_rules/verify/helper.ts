@@ -10,6 +10,7 @@ import { defaultEntityRuleConfig } from '../../../src/config/entity_rules';
 import { generateSemanticSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
 import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
 import { normalizeText } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { createEntityRuleFixtureRoot } from '../profile_fixture';
 
 const entityLog = getLogger('entity');
 
@@ -21,7 +22,7 @@ export type EntityRuleVerifyCase = {
 
 export const verifyEntityRuleGoldenCase = async (testCase: EntityRuleVerifyCase) => {
     const actual = await collectEntityRuleActual(testCase);
-    const profileDir = path.resolve(process.cwd(), '.artifacts/entity_rules/profiles', testCase.profile);
+    const profileDir = path.resolve(process.cwd(), 'tests/entity_rules/profiles', testCase.profile);
     const expectedFinalPath = path.join(profileDir, 'expected.final_entities.json');
     const expectedHintsPath = path.join(profileDir, 'expected.node_hints.json');
 
@@ -40,6 +41,7 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
 
     const mockServer = await startMockApp(testCase.app);
     const browser = await chromium.launch({ headless: true });
+    const fixture = await createEntityRuleFixtureRoot();
 
     try {
         const page = await browser.newPage();
@@ -50,6 +52,7 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
             entityRuleConfig: {
                 ...defaultEntityRuleConfig,
                 enabled: true,
+                rootDir: fixture.rootDir,
                 selection: 'explicit',
                 profiles: [testCase.profile],
                 strict: true,
@@ -67,6 +70,7 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
             nodeHints: normalizeNodeHints(snapshot),
         };
     } finally {
+        await fixture.cleanup();
         await browser.close();
         await mockServer.close();
     }
