@@ -26,6 +26,10 @@
       {
         "fieldKey": "status",
         "name": "状态"
+      },
+      {
+        "fieldKey": "actions",
+        "name": "操作"
       }
     ]
   }

@@ -18,11 +18,11 @@ annotations:
         name: 金额
       - fieldKey: status
         name: 状态
-
-  - ruleId: order_action_edit
-    fieldKey: actions
-    actionIntent: edit
-
-  - ruleId: order_action_delete
-    fieldKey: actions
-    actionIntent: delete
+      - fieldKey: actions
+        name: 操作
+        kind: action_column
+        actions:
+          - actionIntent: edit
+            text: 编辑
+          - actionIntent: delete
+            text: 删除

@@ -128,7 +128,7 @@ export const withEntityRuleSnapshotContext = async <T>(
     }
 };
 
-const startMockApp = async (app: 'ant' | 'element'): Promise<{ baseUrl: string; close: () => Promise<void> }> => {
+export const startMockApp = async (app: 'ant' | 'element'): Promise<{ baseUrl: string; close: () => Promise<void> }> => {
     const rootDir = path.resolve(process.cwd(), '../mock');
     const packageName = app === 'ant' ? '@mock/ant-app' : '@mock/element-app';
     const port = await getFreePort();
