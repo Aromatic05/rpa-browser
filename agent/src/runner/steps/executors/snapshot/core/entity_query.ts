@@ -318,4 +318,4 @@ const normalizeTextSet = (input?: string | string[]): Set<string> | null => {
     return normalized.length > 0 ? new Set(normalized) : null;
 };
 
-const normalizeLower = (value: string | undefined): string => normalizeText(value)?.toLowerCase() || '';
+const normalizeLower = (value: string | undefined): string => normalizeText(value)?.toLowerCase().replace(/\s+/g, '') || '';

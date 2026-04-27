@@ -419,6 +419,21 @@ const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecor
     const autoInfo = resolveAutoEntityBusinessInfo(snapshot, entity);
     const ruleOverlay = snapshot.ruleEntityOverlay || snapshot.businessEntityOverlay;
     const ruleInfo = ruleOverlay?.byEntityId[entity.id];
+    const columns = ruleInfo?.columns
+        ? ruleInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
+        : autoInfo.columns
+          ? autoInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
+          : undefined;
+    const formFields = ruleInfo?.formFields
+        ? ruleInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
+        : autoInfo.formFields
+          ? autoInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
+          : inferFormFieldsFromColumns(snapshot, entity, columns);
+    const formActions = ruleInfo?.formActions
+        ? ruleInfo.formActions.map((action) => ({ ...action }))
+        : autoInfo.formActions
+          ? autoInfo.formActions.map((action) => ({ ...action }))
+          : inferFormActions(snapshot, entity);
     return {
         businessTag: ruleInfo?.businessTag || autoInfo.businessTag || entity.businessTag,
         businessName: ruleInfo?.businessName ?? autoInfo.businessName,
@@ -435,21 +450,9 @@ const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecor
                   source: autoInfo.primaryKey.source,
               }
               : undefined,
-        columns: ruleInfo?.columns
-            ? ruleInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
-            : autoInfo.columns
-              ? autoInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
-              : undefined,
-        formFields: ruleInfo?.formFields
-            ? ruleInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
-            : autoInfo.formFields
-              ? autoInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
-              : undefined,
-        formActions: ruleInfo?.formActions
-            ? ruleInfo.formActions.map((action) => ({ ...action }))
-            : autoInfo.formActions
-              ? autoInfo.formActions.map((action) => ({ ...action }))
-              : undefined,
+        columns,
+        formFields,
+        formActions,
         tableMeta: ruleInfo?.tableMeta
             ? {
                 ...ruleInfo.tableMeta,
@@ -466,7 +469,7 @@ const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecor
 
 const resolveAutoEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecord): EntityBusinessInfo => {
     const nodeId = getEntityNodeId(entity);
-    if (entity.kind !== 'table' || !nodeId) {
+    if (!nodeId || entity.kind !== 'table') {
         return {};
     }
 
@@ -511,6 +514,124 @@ const resolveAutoEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityR
         },
     };
 };
+
+const inferFormFieldsFromColumns = (
+    snapshot: SnapshotResult,
+    entity: EntityRecord,
+    columns: EntityBusinessInfo['columns'],
+): EntityBusinessInfo['formFields'] | undefined => {
+    if (entity.kind !== 'form' || !columns || columns.length === 0) {return undefined;}
+    const formNode = snapshot.nodeIndex[getEntityNodeId(entity)];
+    if (!formNode) {return undefined;}
+
+    const remainingControls = walkDescendants(formNode)
+        .filter((node) => isFormControl(node, snapshot))
+        .map((node) => ({
+            node,
+            label: readFormControlLabel(node, snapshot),
+        }));
+    if (remainingControls.length === 0) {return undefined;}
+
+    const fields: NonNullable<EntityBusinessInfo['formFields']> = [];
+    for (const column of columns) {
+        const matchedIndex = remainingControls.findIndex((candidate) => matchesFormFieldCandidate(candidate.label, column));
+        const picked = matchedIndex >= 0 ? remainingControls.splice(matchedIndex, 1)[0] : remainingControls.shift();
+        if (!picked) {continue;}
+        fields.push({
+            fieldKey: column.fieldKey,
+            name: column.name,
+            kind: inferFormFieldKind(picked.node, snapshot),
+            controlNodeId: picked.node.id,
+        });
+    }
+
+    return fields.length > 0 ? fields : undefined;
+};
+
+const inferFormActions = (
+    snapshot: SnapshotResult,
+    entity: EntityRecord,
+): EntityBusinessInfo['formActions'] | undefined => {
+    if (entity.kind !== 'form') {return undefined;}
+    const formNode = snapshot.nodeIndex[getEntityNodeId(entity)];
+    if (!formNode) {return undefined;}
+
+    const actions: NonNullable<EntityBusinessInfo['formActions']> = [];
+    for (const node of walkDescendants(formNode)) {
+        if (normalizeLower(node.role) !== 'button') {continue;}
+        const text = normalizeText(node.name || getNodeContent(node));
+        const actionIntent = inferFormActionIntent(text);
+        if (!actionIntent) {continue;}
+        actions.push({
+            actionIntent,
+            text,
+            nodeId: node.id,
+        });
+    }
+
+    return actions.length > 0 ? actions : undefined;
+};
+
+const walkDescendants = (root: SnapshotResult['root']): SnapshotResult['root'][] => {
+    const out: SnapshotResult['root'][] = [];
+    const stack = [...root.children].reverse();
+    while (stack.length > 0) {
+        const node = stack.pop();
+        if (!node) {break;}
+        out.push(node);
+        for (let index = node.children.length - 1; index >= 0; index -= 1) {
+            stack.push(node.children[index]);
+        }
+    }
+    return out;
+};
+
+const isFormControl = (node: SnapshotResult['root'], snapshot: SnapshotResult): boolean => {
+    const role = normalizeLower(node.role);
+    if (role === 'textbox' || role === 'spinbutton' || role === 'combobox') {return true;}
+    const attrs = snapshot.attrIndex[node.id] || {};
+    const tag = normalizeLower(attrs.tag || attrs.tagName);
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
+};
+
+const readFormControlLabel = (node: SnapshotResult['root'], snapshot: SnapshotResult): string => {
+    const attrs = snapshot.attrIndex[node.id] || {};
+    return [
+        normalizeText(node.name),
+        normalizeText(attrs.placeholder),
+        normalizeText(getNodeContent(node)),
+    ]
+        .filter((value): value is string => Boolean(value))
+        .join(' ');
+};
+
+const matchesFormFieldCandidate = (label: string, column: NonNullable<EntityBusinessInfo['columns']>[number]): boolean => {
+    const haystack = normalizeLower(label);
+    return haystack.includes(normalizeLower(column.name)) || haystack.includes(normalizeLower(column.fieldKey));
+};
+
+const inferFormFieldKind = (
+    node: SnapshotResult['root'],
+    snapshot: SnapshotResult,
+): NonNullable<EntityBusinessInfo['formFields']>[number]['kind'] => {
+    const role = normalizeLower(node.role);
+    if (role === 'combobox') {return 'select';}
+    const attrs = snapshot.attrIndex[node.id] || {};
+    const tag = normalizeLower(attrs.tag || attrs.tagName);
+    if (tag === 'textarea') {return 'textarea';}
+    return 'input';
+};
+
+const inferFormActionIntent = (text: string | undefined): string | undefined => {
+    const normalized = normalizeLower(text);
+    if (!normalized) {return undefined;}
+    if (normalized.includes('提交')) {return 'submit';}
+    if (normalized.includes('重置')) {return 'reset';}
+    if (normalized.includes('取消')) {return 'cancel';}
+    return undefined;
+};
+
+const normalizeLower = (value: string | undefined): string => normalizeText(value)?.toLowerCase().replace(/\s+/g, '') || '';
 
 const resolveEntityName = (
     snapshot: SnapshotResult,
