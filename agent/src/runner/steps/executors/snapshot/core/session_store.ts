@@ -93,18 +93,19 @@ export const getSnapshotSessionEntry = (binding: PageBinding): SnapshotSessionEn
 export const ensureSnapshotSessionEntry = (binding: PageBinding): SnapshotSessionEntry => {
     const store = getSnapshotSessionStore(binding);
     const key = getSnapshotSessionEntryKey(binding);
-    const existing = store.entries[key];
-    if (existing) {
+    if (Object.prototype.hasOwnProperty.call(store.entries, key)) {
+        const existing = store.entries[key];
         syncPageIdentity(existing, resolveSnapshotPageIdentity(binding));
         return existing;
     }
+    const existing = store.entries[key];
 
     const entry = createSnapshotSessionEntry(resolveSnapshotPageIdentity(binding));
     store.entries[key] = entry;
     return entry;
 };
 
-export const markSnapshotSessionDirty = (binding: PageBinding, source: string) => {
+export const markSnapshotSessionDirty = (binding: PageBinding, source: string): void => {
     const entry = ensureSnapshotSessionEntry(binding);
     entry.dirty = true;
     entry.lastDirtyAt = Date.now();
@@ -276,8 +277,9 @@ export const readSnapshotDiffBaseline = (
     entry: SnapshotSessionEntry,
     key: string,
 ): SnapshotDiffBaselineEntry | undefined => {
-    const baseline = ensureDiffBaselineMap(entry)[key];
-    if (!baseline) {return undefined;}
+    const map = ensureDiffBaselineMap(entry);
+    if (!Object.prototype.hasOwnProperty.call(map, key)) {return undefined;}
+    const baseline = map[key];
     return {
         snapshotId: baseline.snapshotId,
         root: cloneTreeWithRuntime(baseline.root),
@@ -295,7 +297,7 @@ export const writeSnapshotDiffBaseline = (
     entry: SnapshotSessionEntry,
     key: string,
     baseline: SnapshotDiffBaselineEntry,
-) => {
+): void => {
     const map = ensureDiffBaselineMap(entry);
     map[key] = {
         snapshotId: baseline.snapshotId,
@@ -448,8 +450,8 @@ const trimDiffBaselineMap = (map: Record<string, SnapshotDiffBaselineEntry>, max
     if (keys.length <= maxCount) {return;}
 
     const sorted = keys.sort((left, right) => {
-        const leftAt = map[left]?.createdAt || 0;
-        const rightAt = map[right]?.createdAt || 0;
+        const leftAt = map[left].createdAt || 0;
+        const rightAt = map[right].createdAt || 0;
         return leftAt - rightAt;
     });
     const overflow = sorted.length - maxCount;
@@ -461,5 +463,5 @@ const trimDiffBaselineMap = (map: Record<string, SnapshotDiffBaselineEntry>, max
 const isSnapshotSessionStore = (value: unknown): value is SnapshotSessionStore => {
     if (!value || typeof value !== 'object') {return false;}
     const store = value as SnapshotSessionStore;
-    return typeof store.version === 'number' && store.entries && typeof store.entries === 'object';
+    return typeof store.version === 'number' && typeof store.entries === 'object';
 };
