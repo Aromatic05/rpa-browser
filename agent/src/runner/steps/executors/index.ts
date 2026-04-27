@@ -23,14 +23,7 @@ import { executeBrowserScroll } from './scroll';
 import { executeBrowserPressKey } from './press_key';
 import { executeBrowserDragAndDrop } from './drag_and_drop';
 import { executeBrowserMouse } from './mouse';
-import { executeBrowserListEntities } from './list_entities';
-import { executeBrowserGetEntity } from './get_entity';
-import { executeBrowserFindEntities } from './find_entities';
-import { executeBrowserQueryEntity } from './query_entity';
-import { executeBrowserResolveEntityTarget } from './resolve_entity_target';
-import { executeBrowserAddEntity } from './add_entity';
-import { executeBrowserDeleteEntity } from './delete_entity';
-import { executeBrowserRenameEntity } from './rename_entity';
+import { executeBrowserEntity } from './entity';
 import { executeBrowserAssert } from './assert';
 import { executeBrowserQuery } from './query';
 import { executeBrowserCompute } from './compute';
@@ -62,14 +55,7 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.press_key': executeBrowserPressKey as ExecutorFn,
     'browser.drag_and_drop': executeBrowserDragAndDrop as ExecutorFn,
     'browser.mouse': executeBrowserMouse as ExecutorFn,
-    'browser.list_entities': executeBrowserListEntities as ExecutorFn,
-    'browser.get_entity': executeBrowserGetEntity as ExecutorFn,
-    'browser.find_entities': executeBrowserFindEntities as ExecutorFn,
-    'browser.query_entity': executeBrowserQueryEntity as ExecutorFn,
-    'browser.resolve_entity_target': executeBrowserResolveEntityTarget as ExecutorFn,
-    'browser.add_entity': executeBrowserAddEntity as ExecutorFn,
-    'browser.delete_entity': executeBrowserDeleteEntity as ExecutorFn,
-    'browser.rename_entity': executeBrowserRenameEntity as ExecutorFn,
+    'browser.entity': executeBrowserEntity as ExecutorFn,
     'browser.assert': executeBrowserAssert as ExecutorFn,
     'browser.query': executeBrowserQuery as ExecutorFn,
     'browser.compute': executeBrowserCompute as ExecutorFn,

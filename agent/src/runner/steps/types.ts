@@ -33,14 +33,7 @@ export type StepName =
     | 'browser.press_key'
     | 'browser.drag_and_drop'
     | 'browser.mouse'
-    | 'browser.list_entities'
-    | 'browser.get_entity'
-    | 'browser.find_entities'
-    | 'browser.query_entity'
-    | 'browser.resolve_entity_target'
-    | 'browser.add_entity'
-    | 'browser.delete_entity'
-    | 'browser.rename_entity'
+    | 'browser.entity'
     | 'browser.assert'
     | 'browser.query'
     | 'browser.compute'
@@ -246,72 +239,41 @@ export type StepArgsMap = {
         deltaY?: number;
         button?: 'left' | 'right' | 'middle';
     };
-    'browser.list_entities': {
-        kind?: EntityKind | EntityKind[];
-        businessTag?: string | string[];
-        query?: string;
-    };
-    'browser.get_entity': {
-        nodeId: string;
-    };
-    'browser.find_entities': {
-        query: string;
-        kind?: EntityKind | EntityKind[];
-        businessTag?: string | string[];
-    };
-    'browser.query_entity': {
-        businessTag: string;
-        query:
-            | 'table.row_count'
-            | 'table.headers'
-            | 'table.primary_key'
-            | 'table.columns'
-            | 'table.current_rows'
-            | 'form.fields'
-            | 'form.actions';
-    };
-    'browser.resolve_entity_target': {
-        businessTag: string;
-        target:
-            | {
-                  kind: 'form.field';
-                  fieldKey: string;
-              }
-            | {
-                  kind: 'form.action';
-                  actionIntent: string;
-              }
-            | {
-                  kind: 'table.row';
-                  primaryKey: {
-                      fieldKey: string;
-                      value: string;
-                  };
-              }
-            | {
-                  kind: 'table.row_action';
-                  primaryKey: {
-                      fieldKey: string;
-                      value: string;
-                  };
-                  actionIntent: string;
-              };
-    };
-    'browser.add_entity': {
-        nodeId: string;
-        kind: EntityKind;
-        name?: string;
-        businessTag?: string;
-    };
-    'browser.delete_entity': {
-        nodeId: string;
-        kind?: EntityKind;
-        businessTag?: string;
-    };
-    'browser.rename_entity': {
-        nodeId: string;
-        name: string;
-    };
+    'browser.entity':
+        | {
+              op: 'list';
+              kind?: EntityKind | EntityKind[];
+              businessTag?: string | string[];
+              query?: string;
+          }
+        | {
+              op: 'get';
+              nodeId: string;
+          }
+        | {
+              op: 'find';
+              kind?: EntityKind | EntityKind[];
+              businessTag?: string | string[];
+              query?: string;
+          }
+        | {
+              op: 'add';
+              nodeId: string;
+              kind: EntityKind;
+              name?: string;
+              businessTag?: string;
+          }
+        | {
+              op: 'delete';
+              nodeId: string;
+              kind?: EntityKind;
+              businessTag?: string;
+          }
+        | {
+              op: 'rename';
+              nodeId: string;
+              name: string;
+          };
     'browser.assert': {
         urlIncludes?: string;
         textVisible?: string;
@@ -321,19 +283,60 @@ export type StepArgsMap = {
             businessTag?: string | string[];
         };
     };
-    'browser.query': {
-        from: QueryFromRef;
-        where?: {
-            role?: string;
-            tag?: string;
-            text?: {
-                contains?: string;
-            };
-            attrs?: Record<string, string>;
-        };
-        relation?: 'child' | 'descendant';
-        limit?: number;
-    };
+    'browser.query':
+        | {
+              from: QueryFromRef;
+              where?: {
+                  role?: string;
+                  tag?: string;
+                  text?: {
+                      contains?: string;
+                  };
+                  attrs?: Record<string, string>;
+              };
+              relation?: 'child' | 'descendant';
+              limit?: number;
+          }
+        | {
+              op: 'entity';
+              businessTag: string;
+              query:
+                  | 'table.row_count'
+                  | 'table.headers'
+                  | 'table.primary_key'
+                  | 'table.columns'
+                  | 'table.current_rows'
+                  | 'form.fields'
+                  | 'form.actions';
+          }
+        | {
+              op: 'entity.target';
+              businessTag: string;
+              target:
+                  | {
+                        kind: 'form.field';
+                        fieldKey: string;
+                    }
+                  | {
+                        kind: 'form.action';
+                        actionIntent: string;
+                    }
+                  | {
+                        kind: 'table.row';
+                        primaryKey: {
+                            fieldKey: string;
+                            value: string;
+                        };
+                    }
+                  | {
+                        kind: 'table.row_action';
+                        primaryKey: {
+                            fieldKey: string;
+                            value: string;
+                        };
+                        actionIntent: string;
+                    };
+          };
     'browser.compute': {
         expr: ComputeExpr;
     };
