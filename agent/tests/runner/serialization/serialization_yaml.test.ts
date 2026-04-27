@@ -37,7 +37,20 @@ steps:
 });
 
 test('steps.yaml rejects resolve and inline hint payloads', () => {
-    const stepFile = parse(`
+    const resolveStepFile = parse(`
+version: 1
+steps:
+  - id: fillBuyer
+    name: browser.fill
+    args:
+      id: buyer-input
+      value: 张三
+    resolve:
+      hint:
+        entity:
+          businessTag: order.form.main
+`) as StepFile;
+    const rawContextStepFile = parse(`
 version: 1
 steps:
   - id: fillBuyer
@@ -47,13 +60,36 @@ steps:
       value: 张三
       rawContext:
         url: /orders
-    resolve:
-      hint:
-        entity:
-          businessTag: order.form.main
+`) as StepFile;
+    const nestedRawContextStepFile = parse(`
+version: 1
+steps:
+  - id: fillBuyer
+    name: browser.fill
+    args:
+      target:
+        id: buyer-input
+        rawContext:
+          source: recorder
+      value: 张三
+`) as StepFile;
+    const locatorCandidatesStepFile = parse(`
+version: 1
+steps:
+  - id: fillBuyer
+    name: browser.fill
+    args:
+      id: buyer-input
+      value: 张三
+      locatorCandidates:
+        - kind: css
+          selector: "#buyer"
 `) as StepFile;
 
-    assert.throws(() => validateStepFileForSerialization(stepFile), /must not include resolve|must not include rawContext/);
+    assert.throws(() => validateStepFileForSerialization(resolveStepFile), /steps\[0\]\.resolve/);
+    assert.throws(() => validateStepFileForSerialization(rawContextStepFile), /steps\[0\]\.args\.rawContext/);
+    assert.throws(() => validateStepFileForSerialization(nestedRawContextStepFile), /steps\[0\]\.args\.target\.rawContext/);
+    assert.throws(() => validateStepFileForSerialization(locatorCandidatesStepFile), /steps\[0\]\.args\.locatorCandidates/);
 });
 
 test('step_hints.yaml schema stores sidecar hints by stepId', () => {
@@ -137,6 +173,78 @@ checkpoints:
     assert.throws(() => validateCheckpointFileForSerialization(withPolicyTrigger), /policy\.trigger\.matchRules/);
 });
 
+test('checkpoints.yaml rejects nested rawContext, hint, and locatorCandidates in core content', () => {
+    const rawContextCheckpointFile = parse(`
+version: 1
+checkpoints:
+  - id: recover-order-form-submit
+    trigger:
+      matchRules:
+        - stepName: browser.click
+    content:
+      - id: resolveSubmit
+        name: browser.query
+        args:
+          op: entity.target
+          businessTag: order.form.main
+          rawContext:
+            source: recorder
+          target:
+            kind: form.action
+            actionIntent: submit
+`) as CheckpointFile;
+    const hintCheckpointFile = parse(`
+version: 1
+checkpoints:
+  - id: recover-order-form-submit
+    trigger:
+      matchRules:
+        - stepName: browser.click
+    content:
+      - type: act
+        step:
+          name: browser.click
+          args:
+            hint:
+              target:
+                role: button
+                name: 提交
+            id:
+              ref: local.submitTarget.nodeId
+`) as CheckpointFile;
+    const locatorCandidatesCheckpointFile = parse(`
+version: 1
+checkpoints:
+  - id: recover-order-form-submit
+    trigger:
+      matchRules:
+        - stepName: browser.click
+    content:
+      - type: act
+        step:
+          name: browser.click
+          args:
+            locatorCandidates:
+              - kind: css
+                selector: "#submit"
+            id:
+              ref: local.submitTarget.nodeId
+`) as CheckpointFile;
+
+    assert.throws(
+        () => validateCheckpointFileForSerialization(rawContextCheckpointFile),
+        /checkpoints\[0\]\.content\[0\]\.args\.rawContext/,
+    );
+    assert.throws(
+        () => validateCheckpointFileForSerialization(hintCheckpointFile),
+        /checkpoints\[0\]\.content\[0\]\.step\.args\.hint/,
+    );
+    assert.throws(
+        () => validateCheckpointFileForSerialization(locatorCandidatesCheckpointFile),
+        /checkpoints\[0\]\.content\[0\]\.step\.args\.locatorCandidates/,
+    );
+});
+
 test('checkpoint_hints.yaml schema stores sidecar hints by checkpointId', () => {
     const hintFile = parse(`
 version: 1
@@ -152,11 +260,15 @@ hints:
       - kind: role
         role: button
         name: 提交
+    notes:
+      - use business entity fallback first
 `) as CheckpointHintFile;
 
     assert.equal(hintFile.version, 1);
     assert.equal(hintFile.hints['recover-order-form-submit']?.scope?.businessTag, 'order.form.main');
     assert.equal(Array.isArray(hintFile.hints['recover-order-form-submit']?.fallbacks), true);
+    assert.equal(Array.isArray(hintFile.hints['recover-order-form-submit']?.preferredEntityRules), true);
+    assert.equal(Array.isArray(hintFile.hints['recover-order-form-submit']?.notes), true);
 });
 
 test('checkpoint example yaml files round-trip without leaking hints into core files', async () => {

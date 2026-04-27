@@ -1,5 +1,5 @@
 import type { Checkpoint } from '../checkpoint/types';
-import type { StepResolve, StepUnion } from '../steps/types';
+import type { StepUnion } from '../steps/types';
 
 export type StepFile = {
     version: 1;
@@ -74,14 +74,14 @@ export const validateStepFileForSerialization = (file: StepFile): void => {
     if (!Array.isArray(file.steps)) {
         throw new Error('step file must contain a steps array');
     }
-    for (const step of file.steps) {
+    for (const [index, step] of file.steps.entries()) {
         if (!step || typeof step !== 'object') {
             throw new Error('step entry must be an object');
         }
         if (!step.id || !step.name || !('args' in step)) {
             throw new Error('step entry must include id, name, and args');
         }
-        assertNoSerializedStepHints(step);
+        assertNoCoreHintFields(step, `steps[${index}]`);
     }
 };
 
@@ -92,7 +92,7 @@ export const validateCheckpointFileForSerialization = (file: CheckpointFile): vo
     if (!Array.isArray(file.checkpoints)) {
         throw new Error('checkpoint file must contain a checkpoints array');
     }
-    for (const checkpoint of file.checkpoints) {
+    for (const [index, checkpoint] of file.checkpoints.entries()) {
         if (!checkpoint || typeof checkpoint !== 'object') {
             throw new Error('checkpoint entry must be an object');
         }
@@ -108,25 +108,29 @@ export const validateCheckpointFileForSerialization = (file: CheckpointFile): vo
         if (checkpoint.policy && 'trigger' in checkpoint.policy) {
             throw new Error(`checkpoint ${checkpoint.id} must not include policy.trigger.matchRules`);
         }
+        assertNoCoreHintFields(checkpoint, `checkpoints[${index}]`);
     }
 };
 
-const assertNoSerializedStepHints = (step: StepUnion): void => {
-    if (step.resolve) {
-        throw new Error(`step ${step.id} must not include resolve in steps.yaml`);
-    }
-    assertResolveHintAbsent(step.resolve, step.id);
-    const argsObject = step.args as Record<string, unknown>;
-    for (const key of ['hint', 'rawContext', 'locatorCandidates', 'replayHints']) {
-        if (key in argsObject) {
-            throw new Error(`step ${step.id} must not include ${key} in steps.yaml`);
+const CORE_FORBIDDEN_FIELDS = new Set(['resolve', 'hint', 'rawContext', 'locatorCandidates', 'replayHints']);
+
+const assertNoCoreHintFields = (value: unknown, currentPath: string): void => {
+    if (Array.isArray(value)) {
+        for (const [index, item] of value.entries()) {
+            assertNoCoreHintFields(item, `${currentPath}[${index}]`);
         }
+        return;
     }
-};
 
-const assertResolveHintAbsent = (resolve: StepResolve | undefined, stepId: string): void => {
-    if (!resolve) {return;}
-    if (resolve.hint) {
-        throw new Error(`step ${stepId} must not include resolve.hint in steps.yaml`);
+    if (!value || typeof value !== 'object') {
+        return;
+    }
+
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+        const nextPath = `${currentPath}.${key}`;
+        if (CORE_FORBIDDEN_FIELDS.has(key)) {
+            throw new Error(`core yaml must not include ${nextPath}`);
+        }
+        assertNoCoreHintFields(child, nextPath);
     }
 };
