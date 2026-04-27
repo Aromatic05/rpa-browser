@@ -52,22 +52,10 @@ import {
     type BrowserDragAndDropInput,
     browserMouseInputSchema,
     type BrowserMouseInput,
-    browserListEntitiesInputSchema,
-    type BrowserListEntitiesInput,
-    browserGetEntityInputSchema,
-    type BrowserGetEntityInput,
-    browserFindEntitiesInputSchema,
-    type BrowserFindEntitiesInput,
-    browserQueryEntityInputSchema,
-    type BrowserQueryEntityInput,
-    browserResolveEntityTargetInputSchema,
-    type BrowserResolveEntityTargetInput,
-    browserAddEntityInputSchema,
-    type BrowserAddEntityInput,
-    browserDeleteEntityInputSchema,
-    type BrowserDeleteEntityInput,
-    browserRenameEntityInputSchema,
-    type BrowserRenameEntityInput,
+    browserEntityInputSchema,
+    type BrowserEntityInput,
+    browserQueryInputSchema,
+    type BrowserQueryInput,
     browserBatchInputSchema,
     type BrowserBatchInput,
 } from './schemas';
@@ -510,126 +498,28 @@ const handleSnapshot = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     });
 };
 
-const handleListEntities = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserListEntitiesInput>(browserListEntitiesInputSchema, args);
+const handleEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserEntityInput>(browserEntityInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    const { tabToken, ...stepArgs } = input;
+    return await runSingleStep(deps, tabToken, {
         id: crypto.randomUUID(),
-        name: 'browser.list_entities',
-        args: {
-            kind: input.kind,
-            businessTag: input.businessTag,
-            query: input.query,
-        },
+        name: 'browser.entity',
+        args: stepArgs,
         meta: { source: 'mcp' },
     });
 };
 
-const handleGetEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserGetEntityInput>(browserGetEntityInputSchema, args);
+const handleQuery = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserQueryInput>(browserQueryInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    const { tabToken, ...stepArgs } = input;
+    return await runSingleStep(deps, tabToken, {
         id: crypto.randomUUID(),
-        name: 'browser.get_entity',
-        args: {
-            nodeId: input.nodeId,
-        },
-        meta: { source: 'mcp' },
-    });
-};
-
-const handleFindEntities = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserFindEntitiesInput>(browserFindEntitiesInputSchema, args);
-    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
-    const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.find_entities',
-        args: {
-            query: input.query,
-            kind: input.kind,
-            businessTag: input.businessTag,
-        },
-        meta: { source: 'mcp' },
-    });
-};
-
-const handleQueryEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserQueryEntityInput>(browserQueryEntityInputSchema, args);
-    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
-    const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.query_entity',
-        args: {
-            businessTag: input.businessTag,
-            query: input.query,
-        },
-        meta: { source: 'mcp' },
-    });
-};
-
-const handleResolveEntityTarget = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserResolveEntityTargetInput>(browserResolveEntityTargetInputSchema, args);
-    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
-    const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.resolve_entity_target',
-        args: {
-            businessTag: input.businessTag,
-            target: input.target,
-        },
-        meta: { source: 'mcp' },
-    });
-};
-
-const handleAddEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserAddEntityInput>(browserAddEntityInputSchema, args);
-    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
-    const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.add_entity',
-        args: {
-            nodeId: input.nodeId,
-            kind: input.kind,
-            name: input.name,
-            businessTag: input.businessTag,
-        },
-        meta: { source: 'mcp' },
-    });
-};
-
-const handleDeleteEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserDeleteEntityInput>(browserDeleteEntityInputSchema, args);
-    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
-    const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.delete_entity',
-        args: {
-            nodeId: input.nodeId,
-            kind: input.kind,
-            businessTag: input.businessTag,
-        },
-        meta: { source: 'mcp' },
-    });
-};
-
-const handleRenameEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
-    const parsed = parseInput<BrowserRenameEntityInput>(browserRenameEntityInputSchema, args);
-    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
-    const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
-        id: crypto.randomUUID(),
-        name: 'browser.rename_entity',
-        args: {
-            nodeId: input.nodeId,
-            name: input.name,
-        },
+        name: 'browser.query',
+        args: stepArgs,
         meta: { source: 'mcp' },
     });
 };
@@ -884,14 +774,8 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.list_tabs': handleListTabs(deps),
     'browser.click': handleClick(deps),
     'browser.snapshot': handleSnapshot(deps),
-    'browser.list_entities': handleListEntities(deps),
-    'browser.get_entity': handleGetEntity(deps),
-    'browser.find_entities': handleFindEntities(deps),
-    'browser.query_entity': handleQueryEntity(deps),
-    'browser.resolve_entity_target': handleResolveEntityTarget(deps),
-    'browser.add_entity': handleAddEntity(deps),
-    'browser.delete_entity': handleDeleteEntity(deps),
-    'browser.rename_entity': handleRenameEntity(deps),
+    'browser.entity': handleEntity(deps),
+    'browser.query': handleQuery(deps),
     'browser.get_content': handleGetContent(deps),
     'browser.read_console': handleReadConsole(deps),
     'browser.read_network': handleReadNetwork(deps),

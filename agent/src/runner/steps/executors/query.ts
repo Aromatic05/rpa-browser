@@ -2,6 +2,8 @@ import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import type { SnapshotResult, UnifiedNode } from './snapshot/core/types';
 import { normalizeText } from './snapshot/core/runtime_store';
+import { ensureFreshEntityContext } from './entity_context';
+import { queryBusinessEntity, resolveBusinessEntityTarget } from './snapshot/core/business_entity_resolver';
 
 const MAX_LIMIT = 500;
 const ROOT_FROM_REFS = new Set(['snapshot', 'snapshot.latest']);
@@ -11,6 +13,62 @@ export const executeBrowserQuery = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
+    if ('op' in step.args) {
+        if (step.args.op === 'entity') {
+            const context = await ensureFreshEntityContext(deps, workspaceId, 'browser.query.entity');
+            const queried = queryBusinessEntity(
+                context.snapshot,
+                context.finalEntityView,
+                step.args.businessTag,
+                step.args.query,
+            );
+            if (!queried.ok) {
+                return {
+                    stepId: step.id,
+                    ok: false,
+                    error: queried.error,
+                };
+            }
+            return {
+                stepId: step.id,
+                ok: true,
+                data: queried.data,
+            };
+        }
+
+        if (step.args.op === 'entity.target') {
+            const context = await ensureFreshEntityContext(deps, workspaceId, 'browser.query.entity.target');
+            const resolved = resolveBusinessEntityTarget(
+                context.snapshot,
+                context.finalEntityView,
+                step.args.businessTag,
+                step.args.target,
+            );
+            if (!resolved.ok) {
+                return {
+                    stepId: step.id,
+                    ok: false,
+                    error: resolved.error,
+                };
+            }
+            return {
+                stepId: step.id,
+                ok: true,
+                data: resolved.data,
+            };
+        }
+
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: 'unsupported browser.query op',
+            },
+        };
+    }
+
+    const args = step.args as Extract<Step<'browser.query'>['args'], { from: unknown }>;
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const snapshot = readLatestSnapshot(binding.traceCtx.cache);
     if (!snapshot) {
@@ -24,11 +82,21 @@ export const executeBrowserQuery = async (
         };
     }
 
-    const relation = step.args.relation || 'descendant';
+    const relation = args.relation || 'descendant';
+    if (relation !== 'child' && relation !== 'descendant') {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: 'relation must be child or descendant',
+            },
+        };
+    }
 
     if (
-        step.args.limit !== undefined &&
-        (!Number.isInteger(step.args.limit) || step.args.limit <= 0 || step.args.limit > MAX_LIMIT)
+        args.limit !== undefined &&
+        (!Number.isInteger(args.limit) || args.limit <= 0 || args.limit > MAX_LIMIT)
     ) {
         return {
             stepId: step.id,
@@ -40,7 +108,7 @@ export const executeBrowserQuery = async (
         };
     }
 
-    const sourceNodes = resolveSourceNodes(snapshot, step.args.from);
+    const sourceNodes = resolveSourceNodes(snapshot, args.from);
     if (!sourceNodes.ok) {
         return {
             stepId: step.id,
@@ -49,9 +117,9 @@ export const executeBrowserQuery = async (
         };
     }
 
-    const limit = step.args.limit || MAX_LIMIT;
+    const limit = args.limit || MAX_LIMIT;
     const nodes = collectCandidates(sourceNodes.data, relation)
-        .filter((node) => matchesWhere(node, snapshot, step.args.where))
+        .filter((node) => matchesWhere(node, snapshot, args.where))
         .slice(0, limit)
         .map((node) => toNodeLike(node, snapshot));
 
@@ -78,7 +146,7 @@ const readLatestSnapshot = (cache: unknown): SnapshotResult | null => {
 
 const resolveSourceNodes = (
     snapshot: SnapshotResult,
-    from: Step<'browser.query'>['args']['from'],
+    from: Extract<Step<'browser.query'>['args'], { from: unknown }>['from'],
 ): { ok: true; data: UnifiedNode[] } | { ok: false; error: StepResult['error'] } => {
     if (typeof from === 'string') {
         const normalized = normalizeText(from);
@@ -158,7 +226,7 @@ const getDescendants = (source: UnifiedNode): UnifiedNode[] => {
 const matchesWhere = (
     node: UnifiedNode,
     snapshot: SnapshotResult,
-    where: Step<'browser.query'>['args']['where'],
+    where: Extract<Step<'browser.query'>['args'], { from: unknown }>['where'],
 ): boolean => {
     if (!where) {return true;}
     if (where.role && normalizeLower(node.role) !== normalizeLower(where.role)) {return false;}

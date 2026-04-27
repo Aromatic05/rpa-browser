@@ -69,19 +69,16 @@ Use `browser.snapshot({ diff: true })` after meaningful actions when checking lo
 
 Use these on tables, forms, dialogs, cards, lists, and other business-heavy pages:
 
-- `browser.list_entities`
-- `browser.get_entity`
-- `browser.find_entities`
-- `browser.add_entity`
-- `browser.delete_entity`
-- `browser.rename_entity`
+- `browser.entity`
+- `browser.query` with `op: 'entity'`
+- `browser.query` with `op: 'entity.target'`
 
 Rules:
 
-- on large business pages, prefer `browser.list_entities` before reading raw tree details
-- use `browser.find_entities` when searching by name, kind, or business tag
-- use `browser.get_entity` when you already have a `nodeId`
-- use add/delete/rename only when entity interpretation itself needs correction
+- on large business pages, prefer `browser.entity` with `op: 'list'` before reading raw tree details
+- use `browser.entity` with `op: 'find'` when searching by name, kind, or business tag
+- use `browser.entity` with `op: 'get'` when you already have a `nodeId`
+- use `browser.entity` with `op: 'add'|'delete'|'rename'` only when entity interpretation itself needs correction
 
 Entity kinds include:
 
@@ -204,7 +201,7 @@ Use the sequence: overview first, subtree second, action third.
 ### Work on a form
 
 1. open page
-2. locate the form via `snapshot` or `list_entities`
+2. locate the form via `snapshot` or `browser.entity(op='list')`
 3. narrow using `contain`
 4. act with `fill`, `select_option`, `press_key`, or `click`
 5. verify with `snapshot`
@@ -214,8 +211,8 @@ Use the sequence: overview first, subtree second, action third.
 
 1. open page
 2. take a shallow `snapshot`
-3. call `browser.list_entities`
-4. use `browser.find_entities` or `browser.get_entity`
+3. call `browser.entity` with `op: 'list'`
+4. use `browser.entity` with `op: 'find'` or `op: 'get'`
 5. inspect only the relevant subtree
 6. act by `nodeId` first when possible
 
