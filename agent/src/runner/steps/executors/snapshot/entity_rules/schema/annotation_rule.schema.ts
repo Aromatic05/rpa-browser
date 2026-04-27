@@ -11,10 +11,19 @@ const pageSchema = z
     })
     .strict();
 
+const actionSchema = z
+    .object({
+        actionIntent: nonEmptyString,
+        text: nonEmptyString.optional(),
+    })
+    .strict();
+
 const columnSchema = z
     .object({
         fieldKey: nonEmptyString,
         name: nonEmptyString.optional(),
+        kind: z.enum(['text', 'number', 'date', 'status', 'action_column']).optional(),
+        actions: z.array(actionSchema).nonempty().optional(),
     })
     .strict();
 
@@ -25,6 +34,32 @@ const primaryKeySchema = z
     })
     .strict();
 
+const optionSourceSchema = z
+    .object({
+        kind: z.enum(['inline', 'popup']),
+        optionRuleId: nonEmptyString.optional(),
+    })
+    .strict();
+
+const fieldSchema = z
+    .object({
+        fieldKey: nonEmptyString,
+        name: nonEmptyString.optional(),
+        kind: z.enum(['input', 'textarea', 'select', 'radio', 'checkbox', 'date']).optional(),
+        controlRuleId: nonEmptyString.optional(),
+        labelRuleId: nonEmptyString.optional(),
+        optionSource: optionSourceSchema.optional(),
+    })
+    .strict();
+
+const formActionSchema = z
+    .object({
+        actionIntent: nonEmptyString,
+        text: nonEmptyString.optional(),
+        nodeRuleId: nonEmptyString.optional(),
+    })
+    .strict();
+
 const annotationRuleSchema = z
     .object({
         ruleId: nonEmptyString,
@@ -32,6 +67,8 @@ const annotationRuleSchema = z
         businessName: nonEmptyString.optional(),
         primaryKey: primaryKeySchema.optional(),
         columns: z.array(columnSchema).nonempty().optional(),
+        fields: z.array(fieldSchema).nonempty().optional(),
+        actions: z.array(formActionSchema).nonempty().optional(),
         fieldKey: nonEmptyString.optional(),
         actionIntent: nonEmptyString.optional(),
     })
@@ -43,6 +80,8 @@ const annotationRuleSchema = z
                     value.businessName ||
                     value.primaryKey ||
                     value.columns ||
+                    value.fields ||
+                    value.actions ||
                     value.fieldKey ||
                     value.actionIntent,
             ),

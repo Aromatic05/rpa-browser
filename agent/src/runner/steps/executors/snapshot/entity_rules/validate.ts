@@ -55,9 +55,61 @@ export const validateEntityRules = (
             errors.push(`annotation.ruleId not found in match rules: ${rule.ruleId}`);
         }
 
-        const columnFieldKeys = new Set((rule.columns || []).map((column) => column.fieldKey));
+        const columnFieldKeys = new Set<string>();
+        const columnActionIntents = new Set<string>();
+        for (const column of rule.columns || []) {
+            if (columnFieldKeys.has(column.fieldKey)) {
+                errors.push(`duplicate column fieldKey for ruleId=${rule.ruleId}: ${column.fieldKey}`);
+            }
+            columnFieldKeys.add(column.fieldKey);
+
+            if ((column.actions?.length || 0) > 0 && column.kind !== 'action_column') {
+                errors.push(`column.actions requires kind=action_column for ruleId=${rule.ruleId}: ${column.fieldKey}`);
+            }
+
+            const columnActionIntentSet = new Set<string>();
+            for (const action of column.actions || []) {
+                if (columnActionIntentSet.has(action.actionIntent)) {
+                    errors.push(`duplicate column actionIntent for ruleId=${rule.ruleId}: ${action.actionIntent}`);
+                }
+                columnActionIntentSet.add(action.actionIntent);
+                if (columnActionIntents.has(action.actionIntent)) {
+                    errors.push(`duplicate column actionIntent for ruleId=${rule.ruleId}: ${action.actionIntent}`);
+                }
+                columnActionIntents.add(action.actionIntent);
+            }
+        }
         if (rule.primaryKey?.fieldKey && columnFieldKeys.size > 0 && !columnFieldKeys.has(rule.primaryKey.fieldKey)) {
             errors.push(`primaryKey.fieldKey must appear in columns for ruleId=${rule.ruleId}`);
+        }
+
+        const fieldKeys = new Set<string>();
+        for (const field of rule.fields || []) {
+            if (fieldKeys.has(field.fieldKey)) {
+                errors.push(`duplicate fieldKey for ruleId=${rule.ruleId}: ${field.fieldKey}`);
+            }
+            fieldKeys.add(field.fieldKey);
+
+            if (field.controlRuleId && !matchRuleById.has(field.controlRuleId)) {
+                errors.push(`field.controlRuleId not found for ruleId=${rule.ruleId}: ${field.controlRuleId}`);
+            }
+            if (field.labelRuleId && !matchRuleById.has(field.labelRuleId)) {
+                errors.push(`field.labelRuleId not found for ruleId=${rule.ruleId}: ${field.labelRuleId}`);
+            }
+            if (field.optionSource?.optionRuleId && !matchRuleById.has(field.optionSource.optionRuleId)) {
+                errors.push(`field.optionSource.optionRuleId not found for ruleId=${rule.ruleId}: ${field.optionSource.optionRuleId}`);
+            }
+        }
+
+        const actionIntents = new Set<string>();
+        for (const action of rule.actions || []) {
+            if (actionIntents.has(action.actionIntent)) {
+                errors.push(`duplicate actionIntent for ruleId=${rule.ruleId}: ${action.actionIntent}`);
+            }
+            actionIntents.add(action.actionIntent);
+            if (action.nodeRuleId && !matchRuleById.has(action.nodeRuleId)) {
+                errors.push(`action.nodeRuleId not found for ruleId=${rule.ruleId}: ${action.nodeRuleId}`);
+            }
         }
     }
 

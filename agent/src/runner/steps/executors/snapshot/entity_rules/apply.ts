@@ -1,6 +1,6 @@
 import { mergeNodeSemanticHints, setNodeAttr } from '../core/runtime_store';
 import { getLogger } from '../../../../../logging/logger';
-import type { EntityBusinessInfo, EntityIndex, EntityRecord, NodeEntityRef, UnifiedNode } from '../core/types';
+import type { EntityBusinessInfo, EntityFormAction, EntityFormField, EntityIndex, EntityRecord, NodeEntityRef, UnifiedNode } from '../core/types';
 import { createEmptyBusinessEntityOverlay, mergeEntityBusinessInfo, mergeNodeBusinessHint } from './overlay';
 import { matchEntityRules } from './matcher';
 import type {
@@ -9,6 +9,7 @@ import type {
     NodeBusinessHint,
     NormalizedEntityRuleBundle,
     ResolvedRuleBinding,
+    RuleBindingEntityRef,
 } from './types';
 
 const log = getLogger('entity');
@@ -58,7 +59,15 @@ export const applyEntityRuleBindings = (
         if (!annotation) {continue;}
 
         applyEntityInfoAnnotation(overlay, binding, annotation);
-        applyNodeHintAnnotation(overlay, binding, annotation, entityIndex);
+        applyLegacyNodeHintAnnotation(overlay, binding, annotation, entityIndex);
+    }
+
+    for (const rule of bundle.matchRules) {
+        const binding = bindings[rule.ruleId];
+        if (!binding?.ok) {continue;}
+        const annotation = bundle.annotationByRuleId[rule.ruleId];
+        if (!annotation) {continue;}
+        applyFormBindingAnnotations(overlay, annotation, binding, bindings, entityIndex);
     }
 
     materializeOverlayToNodeHints(overlay, nodeById);
@@ -70,6 +79,12 @@ const applyEntityInfoAnnotation = (
     binding: ResolvedRuleBinding,
     annotation: EntityAnnotationRule,
 ) => {
+    const formFields = annotation.fields?.map((field) => ({
+        ...field,
+        optionSource: field.optionSource ? { ...field.optionSource } : undefined,
+    }));
+    const formActions = annotation.actions?.map((action) => ({ ...action }));
+
     const patch: EntityBusinessInfo = {
         businessTag: annotation.businessTag,
         businessName: annotation.businessName,
@@ -77,12 +92,26 @@ const applyEntityInfoAnnotation = (
             ? {
                 fieldKey: annotation.primaryKey.fieldKey,
                 columns: annotation.primaryKey.columns ? [...annotation.primaryKey.columns] : undefined,
+                source: 'annotation',
             }
             : undefined,
-        columns: annotation.columns?.map((column) => ({ ...column })),
+        columns: annotation.columns?.map((column) => ({
+            ...column,
+            source: 'annotation',
+            actions: column.actions?.map((action) => ({ ...action })),
+        })),
+        formFields,
+        formActions,
     };
 
-    const hasEntityPatch = Boolean(patch.businessTag || patch.businessName || patch.primaryKey || patch.columns);
+    const hasEntityPatch = Boolean(
+        patch.businessTag ||
+            patch.businessName ||
+            patch.primaryKey ||
+            patch.columns ||
+            patch.formFields ||
+            patch.formActions,
+    );
     if (!hasEntityPatch) {return;}
 
     for (const entityRef of binding.matchedEntityRefs) {
@@ -90,7 +119,7 @@ const applyEntityInfoAnnotation = (
     }
 };
 
-const applyNodeHintAnnotation = (
+const applyLegacyNodeHintAnnotation = (
     overlay: BusinessEntityOverlay,
     binding: ResolvedRuleBinding,
     annotation: EntityAnnotationRule,
@@ -115,6 +144,155 @@ const applyNodeHintAnnotation = (
     }
 };
 
+const applyFormBindingAnnotations = (
+    overlay: BusinessEntityOverlay,
+    annotation: EntityAnnotationRule,
+    binding: ResolvedRuleBinding,
+    bindings: Record<string, ResolvedRuleBinding>,
+    entityIndex: EntityIndex,
+) => {
+    if ((annotation.fields?.length || 0) === 0 && (annotation.actions?.length || 0) === 0) {
+        return;
+    }
+
+    for (const entityRef of binding.matchedEntityRefs) {
+        bindFormFieldsForEntity(overlay, annotation.fields || [], entityRef, bindings, entityIndex);
+        bindFormActionsForEntity(overlay, annotation.actions || [], entityRef, bindings, entityIndex);
+    }
+};
+
+const bindFormFieldsForEntity = (
+    overlay: BusinessEntityOverlay,
+    fields: EntityFormField[],
+    entityRef: RuleBindingEntityRef,
+    bindings: Record<string, ResolvedRuleBinding>,
+    entityIndex: EntityIndex,
+) => {
+    if (fields.length === 0) {return;}
+    const base = overlay.byEntityId[entityRef.entityId];
+    const nextFormFields = (base?.formFields || []).map((field) => ({ ...field }));
+    const fieldIndexByKey = new Map(nextFormFields.map((field, index) => [field.fieldKey, index]));
+
+    for (const field of fields) {
+        const controlNodeId = pickFirstBoundNodeId(field.controlRuleId, bindings);
+        const labelNodeId = pickFirstBoundNodeId(field.labelRuleId, bindings);
+
+        const normalizedField: EntityFormField = {
+            ...field,
+            optionSource: field.optionSource ? { ...field.optionSource } : undefined,
+            controlNodeId: controlNodeId || field.controlNodeId,
+            labelNodeId: labelNodeId || field.labelNodeId,
+        };
+
+        const existedIndex = fieldIndexByKey.get(field.fieldKey);
+        if (existedIndex === undefined) {
+            nextFormFields.push(normalizedField);
+            fieldIndexByKey.set(field.fieldKey, nextFormFields.length - 1);
+        } else {
+            nextFormFields[existedIndex] = {
+                ...nextFormFields[existedIndex],
+                ...normalizedField,
+            };
+        }
+
+        if (controlNodeId) {
+            patchNodeHint(overlay, controlNodeId, {
+                entityNodeId: entityRef.nodeId,
+                entityKind: entityRef.kind,
+                fieldKey: field.fieldKey,
+                fieldRole: 'control',
+                controlKind: field.kind,
+            });
+        }
+
+        if (labelNodeId) {
+            patchNodeHint(overlay, labelNodeId, {
+                entityNodeId: entityRef.nodeId,
+                entityKind: entityRef.kind,
+                fieldKey: field.fieldKey,
+                fieldRole: 'label',
+            });
+        }
+
+        if (field.optionSource?.optionRuleId) {
+            const optionBinding = bindings[field.optionSource.optionRuleId];
+            for (const nodeId of optionBinding?.matchedNodeIds || []) {
+                patchNodeHint(overlay, nodeId, {
+                    entityNodeId: entityRef.nodeId,
+                    entityKind: entityRef.kind,
+                    fieldKey: field.fieldKey,
+                    fieldRole: 'option',
+                    controlKind: field.kind,
+                });
+            }
+        }
+    }
+
+    overlay.byEntityId[entityRef.entityId] = mergeEntityBusinessInfo(overlay.byEntityId[entityRef.entityId], {
+        formFields: nextFormFields,
+    });
+};
+
+const bindFormActionsForEntity = (
+    overlay: BusinessEntityOverlay,
+    actions: EntityFormAction[],
+    entityRef: RuleBindingEntityRef,
+    bindings: Record<string, ResolvedRuleBinding>,
+    entityIndex: EntityIndex,
+) => {
+    if (actions.length === 0) {return;}
+    const base = overlay.byEntityId[entityRef.entityId];
+    const nextFormActions = (base?.formActions || []).map((action) => ({ ...action }));
+    const actionIndexByIntent = new Map(nextFormActions.map((action, index) => [action.actionIntent, index]));
+
+    for (const action of actions) {
+        const nodeId = pickFirstBoundNodeId(action.nodeRuleId, bindings);
+        const normalizedAction: EntityFormAction = {
+            ...action,
+            nodeId: nodeId || action.nodeId,
+        };
+
+        const existedIndex = actionIndexByIntent.get(action.actionIntent);
+        if (existedIndex === undefined) {
+            nextFormActions.push(normalizedAction);
+            actionIndexByIntent.set(action.actionIntent, nextFormActions.length - 1);
+        } else {
+            nextFormActions[existedIndex] = {
+                ...nextFormActions[existedIndex],
+                ...normalizedAction,
+            };
+        }
+
+        if (nodeId) {
+            const preferredEntity = pickPreferredEntityRef(entityIndex, nodeId);
+            const resolvedEntity = preferredEntity ? entityIndex.entities[preferredEntity.entityId] : undefined;
+            patchNodeHint(overlay, nodeId, {
+                entityNodeId: resolvedEntity ? getEntityNodeId(resolvedEntity) : entityRef.nodeId,
+                entityKind: resolvedEntity?.kind || entityRef.kind,
+                actionIntent: action.actionIntent,
+            });
+        }
+    }
+
+    overlay.byEntityId[entityRef.entityId] = mergeEntityBusinessInfo(overlay.byEntityId[entityRef.entityId], {
+        formActions: nextFormActions,
+    });
+};
+
+const pickFirstBoundNodeId = (
+    ruleId: string | undefined,
+    bindings: Record<string, ResolvedRuleBinding>,
+): string | undefined => {
+    if (!ruleId) {return undefined;}
+    const binding = bindings[ruleId];
+    if (!binding?.ok) {return undefined;}
+    return binding.matchedNodeIds[0];
+};
+
+const patchNodeHint = (overlay: BusinessEntityOverlay, nodeId: string, patch: NodeBusinessHint) => {
+    overlay.nodeHintsByNodeId[nodeId] = mergeNodeBusinessHint(overlay.nodeHintsByNodeId[nodeId], patch);
+};
+
 const materializeOverlayToNodeHints = (
     overlay: BusinessEntityOverlay,
     nodeById: Map<string, UnifiedNode>,
@@ -126,6 +304,8 @@ const materializeOverlayToNodeHints = (
 
         mergeNodeSemanticHints(node, hint);
         setNodeAttr(node, 'fieldKey', hint.fieldKey);
+        setNodeAttr(node, 'fieldRole', hint.fieldRole);
+        setNodeAttr(node, 'controlKind', hint.controlKind);
         setNodeAttr(node, 'actionIntent', hint.actionIntent);
         setNodeAttr(node, 'entityNodeId', hint.entityNodeId);
         setNodeAttr(node, 'entityKind', hint.entityKind);

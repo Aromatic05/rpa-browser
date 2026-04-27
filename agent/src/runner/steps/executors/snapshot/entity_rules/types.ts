@@ -1,6 +1,8 @@
 import type {
     EntityBusinessInfo,
     EntityColumn,
+    EntityFormAction,
+    EntityFormField,
     EntityIndex,
     EntityKind,
     EntityPrimaryKey,
@@ -50,6 +52,8 @@ export type EntityRuleSet = {
 
 export type EntityColumnAnnotation = EntityColumn;
 export type EntityPrimaryKeyAnnotation = EntityPrimaryKey;
+export type EntityFormFieldAnnotation = EntityFormField;
+export type EntityFormActionAnnotation = EntityFormAction;
 
 export type EntityAnnotationRule = {
     ruleId: string;
@@ -57,6 +61,8 @@ export type EntityAnnotationRule = {
     businessName?: string;
     primaryKey?: EntityPrimaryKeyAnnotation;
     columns?: EntityColumnAnnotation[];
+    fields?: EntityFormFieldAnnotation[];
+    actions?: EntityFormActionAnnotation[];
     fieldKey?: string;
     actionIntent?: string;
 };
@@ -67,7 +73,10 @@ export type EntityAnnotationSet = {
     annotations: EntityAnnotationRule[];
 };
 
-export type NodeBusinessHint = Pick<NodeSemanticHints, 'entityNodeId' | 'entityKind' | 'actionIntent'> & {
+export type NodeBusinessHint = Pick<
+    NodeSemanticHints,
+    'entityNodeId' | 'entityKind' | 'actionIntent' | 'fieldRole' | 'controlKind'
+> & {
     fieldKey?: string;
 };
 
@@ -92,6 +101,7 @@ export type BusinessEntityOverlay = {
     byEntityId: Record<string, EntityBusinessInfo | undefined>;
     nodeHintsByNodeId: Record<string, NodeBusinessHint | undefined>;
 };
+export type RuleEntityOverlay = BusinessEntityOverlay;
 
 export type NormalizedEntityRule = EntityMatchRule & {
     order: number;
