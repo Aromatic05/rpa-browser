@@ -9,7 +9,7 @@ type StubCall = {
     args: Record<string, unknown>;
 };
 
-const createDeps = (calls: StubCall[]): RunStepsDeps => {
+const createDeps = (calls: StubCall[], opts?: { noActivePage?: boolean }): RunStepsDeps => {
     const binding = {
         workspaceId: 'ws-ref',
         tabId: 'tab-ref',
@@ -19,7 +19,12 @@ const createDeps = (calls: StubCall[]): RunStepsDeps => {
 
     return {
         runtime: {
-            ensureActivePage: async () => binding,
+            ensureActivePage: async () => {
+                if (opts?.noActivePage) {
+                    throw new Error('active page not found');
+                }
+                return binding;
+            },
         } as any,
         config: {} as any,
         pluginHost: {
@@ -102,6 +107,14 @@ const runWithSteps = async (steps: StepUnion[], opts?: { stopOnError?: boolean }
         stopOnError: opts?.stopOnError,
     });
     return { checkpoint, calls, results: pipe.items };
+};
+
+const runWithCustomDeps = async (steps: StepUnion[], deps: RunStepsDeps, opts?: { stopOnError?: boolean }) => {
+    const { checkpoint, pipe } = await runStepList('ws-ref', steps, deps, {
+        runId: 'run-ref-1',
+        stopOnError: opts?.stopOnError,
+    });
+    return { checkpoint, results: pipe.items };
 };
 
 test('runner resolves query result refs for nodeId/value/nodeIds and composes action steps', async () => {
@@ -291,4 +304,21 @@ test('runner returns ERR_BAD_ARGS for partial interpolation strings', async () =
     assert.equal(checkpoint.status, 'failed');
     assert.equal(results[1].ok, false);
     assert.equal(results[1].error?.code, 'ERR_BAD_ARGS');
+});
+
+test('runner does not require active page for no-ref step args', async () => {
+    const deps = createDeps([], { noActivePage: true });
+    const { checkpoint, results } = await runWithCustomDeps([
+        {
+            id: 'qRows',
+            name: 'browser.query',
+            args: {
+                op: 'rows',
+            },
+        } as StepUnion,
+    ], deps);
+
+    assert.equal(checkpoint.status, 'completed');
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ok, true);
 });

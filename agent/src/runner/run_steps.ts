@@ -86,7 +86,7 @@ const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) =
 const executeOne = async (
     step: StepUnion,
     workspaceId: string,
-    runId: string,
+    runLocalStepResults: Record<string, { ok: boolean; data?: unknown; error?: unknown }>,
     deps: RunStepsDeps,
 ): Promise<ExecStepResult> => {
     const executors = deps.pluginHost.getExecutors();
@@ -98,25 +98,12 @@ const executeOne = async (
             error: { code: 'ERR_NOT_FOUND', message: `executor not found for step: ${step.name}` },
         };
     }
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const cache = binding.traceCtx.cache as {
-        runnerStepResults?: Record<string, unknown>;
-        runnerStepResultsRunId?: string;
-    };
-    const stepResults =
-        cache.runnerStepResultsRunId === runId && cache.runnerStepResults && typeof cache.runnerStepResults === 'object'
-            ? (cache.runnerStepResults as Record<string, unknown>)
-            : undefined;
     const resolvedStep = resolveStepArgsRefs(step, {
         getResult: (stepId) => {
-            if (!stepResults || !Object.prototype.hasOwnProperty.call(stepResults, stepId)) {
+            if (!Object.prototype.hasOwnProperty.call(runLocalStepResults, stepId)) {
                 return undefined;
             }
-            const item = stepResults[stepId];
-            if (!item || typeof item !== 'object') {
-                return undefined;
-            }
-            return item as { ok: boolean; data?: unknown; error?: unknown };
+            return runLocalStepResults[stepId];
         },
     });
     if (!resolvedStep.ok) {
@@ -238,6 +225,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     const checkpointEnabled = req.checkpointEnabled ?? true;
     const checkpointMaxAttempts = req.checkpointMaxAttempts ?? 1;
     const checkpointAttempts = new Map<string, number>();
+    const runLocalStepResults: Record<string, { ok: boolean; data?: unknown; error?: unknown }> = {};
     let status: RunStatus = 'running';
     setCheckpoints(req.checkpoints || []);
 
@@ -284,7 +272,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 argsSummary: step.args,
             });
 
-            const result = await executeOne(step, req.workspaceId, req.runId, resolvedDeps);
+            const result = await executeOne(step, req.workspaceId, runLocalStepResults, resolvedDeps);
             if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
                     const binding = await resolvedDeps.runtime.ensureActivePage(req.workspaceId);
@@ -324,7 +312,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpointMaxAttempts,
                     inCheckpointFlow: false,
                     deps: resolvedDeps,
-                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, req.runId, resolvedDeps),
+                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, runLocalStepResults, resolvedDeps),
                     checkpoints: req.checkpoints,
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
@@ -341,6 +329,11 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 data: finalResult.data,
                 error: finalResult.error,
                 ts: Date.now(),
+            };
+            runLocalStepResults[finalResult.stepId] = {
+                ok: finalResult.ok,
+                data: finalResult.data,
+                error: finalResult.error,
             };
             await writeRunnerStepResultCache(resolvedDeps, req.workspaceId, req.runId, finalResult);
             req.resultPipe.items.push(output);
