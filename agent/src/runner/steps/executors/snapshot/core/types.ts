@@ -197,6 +197,37 @@ export type EntityFormAction = {
     nodeId?: string;
 };
 
+export type EntityRuleDiagnosticLevel = 'info' | 'warning' | 'error';
+
+export type EntityRuleDiagnosticCode =
+    | 'RULE_MATCHED_ZERO'
+    | 'RULE_MATCHED_MULTIPLE'
+    | 'ANNOTATION_RULE_REF_NOT_FOUND'
+    | 'FIELD_CONTROL_UNRESOLVED'
+    | 'FIELD_LABEL_UNRESOLVED'
+    | 'FORM_ACTION_UNRESOLVED'
+    | 'OPTION_RULE_UNRESOLVED'
+    | 'TABLE_COLUMN_HEADER_UNRESOLVED'
+    | 'TABLE_ACTION_COLUMN_UNRESOLVED'
+    | 'TABLE_ROW_NOT_FOUND'
+    | 'TABLE_ROW_ACTION_NOT_FOUND';
+
+export type EntityRuleDiagnostic = {
+    code: EntityRuleDiagnosticCode;
+    level: EntityRuleDiagnosticLevel;
+    message: string;
+    profile?: string;
+    ruleId?: string;
+    annotationId?: string;
+    entityId?: string;
+    businessTag?: string;
+    fieldKey?: string;
+    actionIntent?: string;
+    columnName?: string;
+    nodeIds?: string[];
+    details?: Record<string, unknown>;
+};
+
 export type EntityTableMeta = {
     rowCount: number;
     columnCount: number;
@@ -268,6 +299,7 @@ export type SnapshotResult = {
         byRuleId: Record<string, unknown>;
         byEntityId: Record<string, EntityBusinessInfo | undefined>;
         nodeHintsByNodeId: Record<string, NodeSemanticHints | undefined>;
+        diagnostics?: EntityRuleDiagnostic[];
     };
     /**
      * @deprecated Use `ruleEntityOverlay` instead.
@@ -276,6 +308,7 @@ export type SnapshotResult = {
         byRuleId: Record<string, unknown>;
         byEntityId: Record<string, EntityBusinessInfo | undefined>;
         nodeHintsByNodeId: Record<string, NodeSemanticHints | undefined>;
+        diagnostics?: EntityRuleDiagnostic[];
     };
 };
 
@@ -363,6 +396,7 @@ export type FinalEntityView = {
     entities: FinalEntityRecord[];
     byNodeId: Record<string, FinalEntityRecord[] | undefined>;
     bindingIndex: BusinessBindingIndex;
+    diagnostics?: EntityRuleDiagnostic[];
 };
 
 export type SnapshotPageIdentity = {

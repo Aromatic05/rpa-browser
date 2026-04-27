@@ -1,6 +1,7 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { ensureFreshEntityContext } from './entity_context';
+import { filterEntityDiagnostics, summarizeEntityRuleDiagnostics } from './snapshot/core/diagnostics';
 import { filterFinalEntities } from './snapshot/core/entity_query';
 import { normalizeText } from './snapshot/core/runtime_store';
 import { updateSnapshotOverlays } from './snapshot/core/session_store';
@@ -21,6 +22,7 @@ export const executeBrowserEntity = async (
             businessTag: args.businessTag,
             query: args.query,
         });
+        const diagnostics = summarizeEntityRuleDiagnostics(context.finalEntityView.diagnostics || []);
 
         return {
             stepId: step.id,
@@ -28,6 +30,7 @@ export const executeBrowserEntity = async (
             data: {
                 total: filtered.length,
                 entities: filtered.map((entity) => toEntityOutputRecord(entity)),
+                diagnostics,
             },
         };
     }
@@ -52,6 +55,7 @@ export const executeBrowserEntity = async (
                 entities: entities.map((entity) => toEntityOutputRecord(entity)),
                 total: entities.length,
                 table_meta: buildTableMeta(context.snapshot, nodeId) || undefined,
+                diagnostics: entities.flatMap((entity) => filterEntityDiagnostics(entity, context.finalEntityView.diagnostics || [])),
             },
         };
     }

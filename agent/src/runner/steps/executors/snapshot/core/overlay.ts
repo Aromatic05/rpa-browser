@@ -1,5 +1,6 @@
 import { buildExternalIndexes } from '../indexes/external_indexes';
 import { snapshotDebugLog } from './debug';
+import { dedupeEntityRuleDiagnostics } from './diagnostics';
 import { buildBusinessBindingIndex } from './entity_query';
 import { cloneTreeWithRuntime, getNodeContent, normalizeText } from './runtime_store';
 import { buildTableStructureModel } from './table_model';
@@ -8,6 +9,7 @@ import type {
     EntityBusinessInfo,
     EntityKind,
     EntityRecord,
+    EntityRuleDiagnostic,
     FinalEntityRecord,
     FinalEntityView,
     GroupEntity,
@@ -68,10 +70,13 @@ export const buildFinalEntityViewFromSnapshot = (
         composedFromBase,
     });
 
+    const diagnostics = buildFinalEntityDiagnostics(finalSnapshot, entities);
+
     return {
         entities,
         byNodeId,
         bindingIndex: buildBusinessBindingIndex(entities),
+        diagnostics,
     };
 };
 
@@ -228,6 +233,72 @@ const cloneSnapshot = (baseSnapshot: SnapshotResult): SnapshotResult => {
         ruleEntityOverlay: baseSnapshot.ruleEntityOverlay || baseSnapshot.businessEntityOverlay,
         businessEntityOverlay: baseSnapshot.businessEntityOverlay || baseSnapshot.ruleEntityOverlay,
     };
+};
+
+const buildFinalEntityDiagnostics = (snapshot: SnapshotResult, entities: FinalEntityRecord[]): EntityRuleDiagnostic[] | undefined => {
+    const baseDiagnostics = [
+        ...((snapshot.ruleEntityOverlay?.diagnostics || snapshot.businessEntityOverlay?.diagnostics || []).map((item) => ({
+            ...item,
+            nodeIds: item.nodeIds ? [...item.nodeIds] : undefined,
+            details: item.details ? { ...item.details } : undefined,
+        }))),
+    ];
+    const derivedDiagnostics = entities.flatMap((entity) => deriveEntityDiagnostics(snapshot, entity));
+    const diagnostics = dedupeEntityRuleDiagnostics([...baseDiagnostics, ...derivedDiagnostics]);
+    return diagnostics.length > 0 ? diagnostics : undefined;
+};
+
+const deriveEntityDiagnostics = (snapshot: SnapshotResult, entity: FinalEntityRecord): EntityRuleDiagnostic[] => {
+    if (entity.kind !== 'table' || !entity.columns || entity.columns.length === 0) {
+        return [];
+    }
+
+    const model = buildTableStructureModel(snapshot, entity.nodeId);
+    if (!model) {return [];}
+
+    const diagnostics: EntityRuleDiagnostic[] = [];
+    for (const column of entity.columns) {
+        const headerMatched = resolveColumnIndexAgainstModel(model, column) >= 0;
+        if (!headerMatched) {
+            diagnostics.push({
+                code: 'TABLE_COLUMN_HEADER_UNRESOLVED',
+                level: 'warning',
+                message: `table column header unresolved: ${column.name || column.fieldKey}`,
+                entityId: entity.id,
+                businessTag: entity.businessTag,
+                fieldKey: column.fieldKey,
+                columnName: column.name,
+                nodeIds: [entity.nodeId],
+            });
+            if (column.kind === 'action_column') {
+                for (const action of column.actions || []) {
+                    diagnostics.push({
+                        code: 'TABLE_ACTION_COLUMN_UNRESOLVED',
+                        level: 'warning',
+                        message: `table action column unresolved: ${action.actionIntent}`,
+                        entityId: entity.id,
+                        businessTag: entity.businessTag,
+                        fieldKey: column.fieldKey,
+                        columnName: column.name,
+                        actionIntent: action.actionIntent,
+                        nodeIds: [entity.nodeId],
+                    });
+                }
+            }
+        }
+    }
+    return diagnostics;
+};
+
+const resolveColumnIndexAgainstModel = (
+    model: NonNullable<ReturnType<typeof buildTableStructureModel>>,
+    column: { columnIndex?: number; name?: string },
+): number => {
+    if (typeof column.columnIndex === 'number' && column.columnIndex >= 0 && column.columnIndex < model.headers.length) {
+        return column.columnIndex;
+    }
+    if (!column.name) {return -1;}
+    return model.headers.findIndex((header) => normalizeLower(header) === normalizeLower(column.name));
 };
 
 const cloneEntityIndex = (entityIndex: EntityIndex): EntityIndex => {

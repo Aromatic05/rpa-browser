@@ -5,6 +5,7 @@ export const createEmptyBusinessEntityOverlay = (): BusinessEntityOverlay => ({
     byRuleId: {},
     byEntityId: {},
     nodeHintsByNodeId: {},
+    diagnostics: [],
 });
 
 export const mergeEntityBusinessInfo = (

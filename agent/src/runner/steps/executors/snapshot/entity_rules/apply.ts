@@ -1,6 +1,16 @@
 import { mergeNodeSemanticHints, setNodeAttr } from '../core/runtime_store';
 import { getLogger } from '../../../../../logging/logger';
-import type { EntityBusinessInfo, EntityFormAction, EntityFormField, EntityIndex, EntityRecord, NodeEntityRef, UnifiedNode } from '../core/types';
+import { createEntityRuleDiagnosticCollector } from '../core/diagnostics';
+import type {
+    EntityBusinessInfo,
+    EntityFormAction,
+    EntityFormField,
+    EntityIndex,
+    EntityRecord,
+    EntityRuleDiagnostic,
+    NodeEntityRef,
+    UnifiedNode,
+} from '../core/types';
 import { createEmptyBusinessEntityOverlay, mergeEntityBusinessInfo, mergeNodeBusinessHint } from './overlay';
 import { matchEntityRules } from './matcher';
 import type {
@@ -47,13 +57,27 @@ export const applyEntityRuleBindings = (
     bindings: Record<string, ResolvedRuleBinding>,
 ): BusinessEntityOverlay => {
     const overlay = createEmptyBusinessEntityOverlay();
+    const diagnostics = createEntityRuleDiagnosticCollector();
     const nodeById = buildNodeById(root);
 
     for (const rule of bundle.matchRules) {
         const binding = bindings[rule.ruleId];
         if (!binding) {continue;}
         overlay.byRuleId[rule.ruleId] = binding;
-        if (!binding.ok) {continue;}
+        if (!binding.ok) {
+            diagnostics.add({
+                code: binding.matchedNodeIds.length === 0 ? 'RULE_MATCHED_ZERO' : 'RULE_MATCHED_MULTIPLE',
+                level: binding.matchedNodeIds.length === 0 ? 'warning' : 'warning',
+                message:
+                    binding.matchedNodeIds.length === 0
+                        ? `rule matched zero nodes: ${rule.ruleId}`
+                        : `rule matched multiple nodes: ${rule.ruleId}`,
+                profile: bundle.id,
+                ruleId: rule.ruleId,
+                nodeIds: binding.matchedNodeIds,
+            });
+            continue;
+        }
 
         const annotation = bundle.annotationByRuleId[rule.ruleId];
         if (!annotation) {continue;}
@@ -67,9 +91,10 @@ export const applyEntityRuleBindings = (
         if (!binding?.ok) {continue;}
         const annotation = bundle.annotationByRuleId[rule.ruleId];
         if (!annotation) {continue;}
-        applyFormBindingAnnotations(overlay, annotation, binding, bindings);
+        applyFormBindingAnnotations(overlay, annotation, binding, bindings, diagnostics, bundle.id);
     }
 
+    overlay.diagnostics = diagnostics.list();
     materializeOverlayToNodeHints(overlay, nodeById);
     return overlay;
 };
@@ -139,22 +164,27 @@ const applyFormBindingAnnotations = (
     annotation: EntityAnnotationRule,
     binding: ResolvedRuleBinding,
     bindings: Record<string, ResolvedRuleBinding>,
+    diagnostics: { add: (diagnostic: EntityRuleDiagnostic) => void },
+    profile: string,
 ) => {
     if ((annotation.fields?.length || 0) === 0 && (annotation.actions?.length || 0) === 0) {
         return;
     }
 
     for (const entityRef of binding.matchedEntityRefs) {
-        bindFormFieldsForEntity(overlay, annotation.fields || [], entityRef, bindings);
-        bindFormActionsForEntity(overlay, annotation.actions || [], entityRef, bindings);
+        bindFormFieldsForEntity(overlay, annotation, annotation.fields || [], entityRef, bindings, diagnostics, profile);
+        bindFormActionsForEntity(overlay, annotation, annotation.actions || [], entityRef, bindings, diagnostics, profile);
     }
 };
 
 const bindFormFieldsForEntity = (
     overlay: BusinessEntityOverlay,
+    annotation: EntityAnnotationRule,
     fields: EntityFormField[],
     entityRef: RuleBindingEntityRef,
     bindings: Record<string, ResolvedRuleBinding>,
+    diagnostics: { add: (diagnostic: EntityRuleDiagnostic) => void },
+    profile: string,
 ) => {
     if (fields.length === 0) {return;}
     const base = overlay.byEntityId[entityRef.entityId];
@@ -162,8 +192,66 @@ const bindFormFieldsForEntity = (
     const fieldIndexByKey = new Map(nextFormFields.map((field, index) => [field.fieldKey, index]));
 
     for (const field of fields) {
+        const businessTag = annotation.businessTag;
+        if (field.controlRuleId && !Object.prototype.hasOwnProperty.call(bindings, field.controlRuleId)) {
+            diagnostics.add({
+                code: 'ANNOTATION_RULE_REF_NOT_FOUND',
+                level: 'error',
+                message: `annotation rule ref not found: ${field.controlRuleId}`,
+                profile,
+                ruleId: field.controlRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag,
+                fieldKey: field.fieldKey,
+                nodeIds: [entityRef.nodeId],
+            });
+        }
+        if (field.labelRuleId && !Object.prototype.hasOwnProperty.call(bindings, field.labelRuleId)) {
+            diagnostics.add({
+                code: 'ANNOTATION_RULE_REF_NOT_FOUND',
+                level: 'error',
+                message: `annotation rule ref not found: ${field.labelRuleId}`,
+                profile,
+                ruleId: field.labelRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag,
+                fieldKey: field.fieldKey,
+                nodeIds: [entityRef.nodeId],
+            });
+        }
         const controlNodeId = pickFirstBoundNodeId(field.controlRuleId, bindings);
         const labelNodeId = pickFirstBoundNodeId(field.labelRuleId, bindings);
+
+        if (field.controlRuleId && !controlNodeId) {
+            diagnostics.add({
+                code: 'FIELD_CONTROL_UNRESOLVED',
+                level: 'warning',
+                message: `field control node unresolved: ${field.fieldKey}`,
+                profile,
+                ruleId: field.controlRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag,
+                fieldKey: field.fieldKey,
+                nodeIds: [entityRef.nodeId],
+            });
+        }
+        if (field.labelRuleId && !labelNodeId) {
+            diagnostics.add({
+                code: 'FIELD_LABEL_UNRESOLVED',
+                level: 'info',
+                message: `field label node unresolved: ${field.fieldKey}`,
+                profile,
+                ruleId: field.labelRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag,
+                fieldKey: field.fieldKey,
+                nodeIds: [entityRef.nodeId],
+            });
+        }
 
         const normalizedField: EntityFormField = {
             ...field,
@@ -204,7 +292,35 @@ const bindFormFieldsForEntity = (
         }
 
         if (field.optionSource?.optionRuleId) {
+            if (!Object.prototype.hasOwnProperty.call(bindings, field.optionSource.optionRuleId)) {
+                diagnostics.add({
+                    code: 'ANNOTATION_RULE_REF_NOT_FOUND',
+                    level: 'error',
+                    message: `annotation rule ref not found: ${field.optionSource.optionRuleId}`,
+                    profile,
+                    ruleId: field.optionSource.optionRuleId,
+                    annotationId: annotation.ruleId,
+                    entityId: entityRef.entityId,
+                    businessTag,
+                    fieldKey: field.fieldKey,
+                    nodeIds: [entityRef.nodeId],
+                });
+            }
             const optionBinding = bindings[field.optionSource.optionRuleId];
+            if (!optionBinding?.ok || optionBinding.matchedNodeIds.length === 0) {
+                diagnostics.add({
+                    code: 'OPTION_RULE_UNRESOLVED',
+                    level: 'info',
+                    message: `field option rule unresolved: ${field.fieldKey}`,
+                    profile,
+                    ruleId: field.optionSource.optionRuleId,
+                    annotationId: annotation.ruleId,
+                    entityId: entityRef.entityId,
+                    businessTag,
+                    fieldKey: field.fieldKey,
+                    nodeIds: [entityRef.nodeId],
+                });
+            }
             for (const nodeId of optionBinding?.matchedNodeIds || []) {
                 patchNodeHint(overlay, nodeId, {
                     entityNodeId: entityRef.nodeId,
@@ -224,9 +340,12 @@ const bindFormFieldsForEntity = (
 
 const bindFormActionsForEntity = (
     overlay: BusinessEntityOverlay,
+    annotation: EntityAnnotationRule,
     actions: EntityFormAction[],
     entityRef: RuleBindingEntityRef,
     bindings: Record<string, ResolvedRuleBinding>,
+    diagnostics: { add: (diagnostic: EntityRuleDiagnostic) => void },
+    profile: string,
 ) => {
     if (actions.length === 0) {return;}
     const base = overlay.byEntityId[entityRef.entityId];
@@ -234,7 +353,35 @@ const bindFormActionsForEntity = (
     const actionIndexByIntent = new Map(nextFormActions.map((action, index) => [action.actionIntent, index]));
 
     for (const action of actions) {
+        if (action.nodeRuleId && !Object.prototype.hasOwnProperty.call(bindings, action.nodeRuleId)) {
+            diagnostics.add({
+                code: 'ANNOTATION_RULE_REF_NOT_FOUND',
+                level: 'error',
+                message: `annotation rule ref not found: ${action.nodeRuleId}`,
+                profile,
+                ruleId: action.nodeRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag: annotation.businessTag,
+                actionIntent: action.actionIntent,
+                nodeIds: [entityRef.nodeId],
+            });
+        }
         const nodeId = pickFirstBoundNodeId(action.nodeRuleId, bindings);
+        if (action.nodeRuleId && !nodeId) {
+            diagnostics.add({
+                code: 'FORM_ACTION_UNRESOLVED',
+                level: 'warning',
+                message: `form action node unresolved: ${action.actionIntent}`,
+                profile,
+                ruleId: action.nodeRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag: annotation.businessTag,
+                actionIntent: action.actionIntent,
+                nodeIds: [entityRef.nodeId],
+            });
+        }
         const normalizedAction: EntityFormAction = {
             ...action,
             nodeId: nodeId || action.nodeId,

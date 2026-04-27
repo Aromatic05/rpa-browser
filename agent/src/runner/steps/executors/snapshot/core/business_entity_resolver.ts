@@ -1,8 +1,9 @@
 import type { BrowserQueryResult } from '../../../types';
+import { filterEntityDiagnostics } from './diagnostics';
 import { normalizeText } from './runtime_store';
 import { buildTableStructureModel } from './table_model';
 import { resolveTableRowAction, resolveTableRowByPrimaryKey } from './entity_query';
-import type { FinalEntityRecord, FinalEntityView, SnapshotResult } from './types';
+import type { EntityRuleDiagnostic, FinalEntityRecord, FinalEntityView, SnapshotResult } from './types';
 
 export type ResolverError = {
     code: 'ERR_BAD_ARGS' | 'ERR_NOT_FOUND' | 'ERR_AMBIGUOUS' | 'ERR_UNRESOLVED_TARGET';
@@ -20,7 +21,11 @@ export type ResolverResult<T> =
           error: ResolverError;
       };
 
-// TODO(entity-rules-diagnostics): expose diagnostics for unmatched/ambiguous rule bindings.
+type ResolverDiagnosticDetails = {
+    diagnostic: EntityRuleDiagnostic;
+    relatedDiagnostics?: EntityRuleDiagnostic[];
+};
+
 // TODO(entity-rules-pagination): add table.hasNextPage query once pagination annotations stabilize.
 export type BusinessEntityQuery =
     | 'table.row_count'
@@ -400,18 +405,27 @@ export const resolveBusinessEntityTarget = (
             value: target.primaryKey.value,
         });
         if (!row) {
-            return {
-                ok: false,
-                error: {
-                    code: 'ERR_NOT_FOUND',
-                    message: 'table row not found by primary key',
-                    details: {
-                        businessTag,
-                        primaryKey: {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'table row not found by primary key',
+                    details: withDiagnosticDetails(
+                        {
+                            code: 'TABLE_ROW_NOT_FOUND',
+                            level: 'warning',
+                            message: 'table row not found by primary key',
+                            entityId: entity.id,
+                            businessTag: entity.businessTag,
                             fieldKey: target.primaryKey.fieldKey,
-                            value: target.primaryKey.value,
+                            nodeIds: [entity.nodeId],
+                            details: {
+                                value: target.primaryKey.value,
+                            },
                         },
-                    },
+                        entity,
+                        finalEntityView,
+                    ),
                 },
             };
         }
@@ -435,6 +449,35 @@ export const resolveBusinessEntityTarget = (
         };
     }
 
+    const resolvedRow = resolveTableRowByPrimaryKey(snapshot, entity, {
+        fieldKey: target.primaryKey.fieldKey,
+        value: target.primaryKey.value,
+    });
+    if (!resolvedRow) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'table row not found by primary key',
+                details: withDiagnosticDetails(
+                    {
+                        code: 'TABLE_ROW_NOT_FOUND',
+                        level: 'warning',
+                        message: 'table row not found by primary key',
+                        entityId: entity.id,
+                        businessTag: entity.businessTag,
+                        fieldKey: target.primaryKey.fieldKey,
+                        nodeIds: [entity.nodeId],
+                        details: {
+                            value: target.primaryKey.value,
+                        },
+                    },
+                    entity,
+                    finalEntityView,
+                ),
+            },
+        };
+    }
     const rowAction = resolveTableRowAction(snapshot, entity, {
         primaryKey: {
             fieldKey: target.primaryKey.fieldKey,
@@ -446,16 +489,26 @@ export const resolveBusinessEntityTarget = (
         return {
             ok: false,
             error: {
-                code: 'ERR_NOT_FOUND',
+                code: 'ERR_UNRESOLVED_TARGET',
                 message: 'table row action not found',
-                details: {
-                    businessTag,
-                    primaryKey: {
-                        fieldKey: target.primaryKey.fieldKey,
-                        value: target.primaryKey.value,
+                details: withDiagnosticDetails(
+                    {
+                        code: 'TABLE_ROW_ACTION_NOT_FOUND',
+                        level: 'warning',
+                        message: 'table row action not found',
+                        entityId: entity.id,
+                        businessTag: entity.businessTag,
+                        actionIntent: target.actionIntent,
+                        nodeIds: [entity.nodeId, resolvedRow.rowNodeId, resolvedRow.cellNodeId],
+                        details: {
+                            rowNodeId: resolvedRow.rowNodeId,
+                            cellNodeId: resolvedRow.cellNodeId,
+                            value: target.primaryKey.value,
+                        },
                     },
-                    actionIntent: target.actionIntent,
-                },
+                    entity,
+                    finalEntityView,
+                ),
             },
         };
     }
@@ -511,4 +564,13 @@ const mapFieldKeyByColumnIndex = (
 
 const buildEntityTargetLocator = (snapshot: SnapshotResult, nodeId: string) => {
     return snapshot.locatorIndex[nodeId];
+};
+
+const withDiagnosticDetails = (
+    diagnostic: EntityRuleDiagnostic,
+    entity: FinalEntityRecord,
+    finalEntityView: FinalEntityView,
+): ResolverDiagnosticDetails => {
+    const relatedDiagnostics = filterEntityDiagnostics(entity, finalEntityView.diagnostics || []);
+    return relatedDiagnostics.length > 0 ? { diagnostic, relatedDiagnostics } : { diagnostic };
 };

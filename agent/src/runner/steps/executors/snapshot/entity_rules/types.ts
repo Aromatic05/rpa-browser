@@ -7,6 +7,7 @@ import type {
     EntityKind,
     EntityPrimaryKey,
     GroupEntity,
+    EntityRuleDiagnostic,
     NodeSemanticHints,
     RegionEntity,
 } from '../core/types';
@@ -100,6 +101,7 @@ export type BusinessEntityOverlay = {
     byRuleId: Record<string, ResolvedRuleBinding | undefined>;
     byEntityId: Record<string, EntityBusinessInfo | undefined>;
     nodeHintsByNodeId: Record<string, NodeBusinessHint | undefined>;
+    diagnostics: EntityRuleDiagnostic[];
 };
 export type RuleEntityOverlay = BusinessEntityOverlay;
 
