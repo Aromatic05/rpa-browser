@@ -1,0 +1,25 @@
+version: 1
+checkpoints:
+  - id: recover-order-form-submit
+    kind: recovery
+    name: 恢复订单表单提交按钮
+    trigger:
+      matchRules:
+        - stepName: browser.click
+        - errorCode: ERR_NOT_FOUND
+    content:
+      - id: resolveSubmit
+        name: browser.query
+        args:
+          op: entity.target
+          businessTag: order.form.main
+          target:
+            kind: form.action
+            actionIntent: submit
+      - id: clickSubmit
+        name: browser.click
+        args:
+          id: "{{resolveSubmit.data.nodeId}}"
+    policy:
+      maxAttempts: 1
+      retryOriginal: false

@@ -1,0 +1,28 @@
+version: 1
+checkpoints:
+  - id: recover-order-row-action
+    kind: recovery
+    name: 恢复订单列表行内操作
+    trigger:
+      matchRules:
+        - stepName: browser.click
+        - errorCode: ERR_NOT_FOUND
+    content:
+      - id: resolveAction
+        name: browser.query
+        args:
+          op: entity.target
+          businessTag: order.list.main
+          target:
+            kind: table.row_action
+            primaryKey:
+              fieldKey: orderNo
+              value: ORD-2026-001
+            actionIntent: edit
+      - id: clickAction
+        name: browser.click
+        args:
+          id: "{{resolveAction.data.nodeId}}"
+    policy:
+      maxAttempts: 1
+      retryOriginal: false

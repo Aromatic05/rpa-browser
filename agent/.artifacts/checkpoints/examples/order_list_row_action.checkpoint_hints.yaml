@@ -1,0 +1,15 @@
+version: 1
+hints:
+  recover-order-row-action:
+    why: 行内按钮在表格重渲染后 nodeId 失效时，通过主键重新定位当前行 action
+    scope:
+      businessTag: order.list.main
+    preferredEntityRules:
+      - order_list_main
+      - order_list_actions
+    fallbacks:
+      - kind: text
+        text: 编辑
+      - kind: role
+        role: button
+        name: 编辑
