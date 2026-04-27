@@ -9,6 +9,10 @@ annotations:
       fieldKey: orderNo
       columns:
         - orderNo
+    pagination:
+      nextAction:
+        actionIntent: nextPage
+        nodeRuleId: order_table_next_page
     columns:
       - fieldKey: orderNo
         name: 订单编号

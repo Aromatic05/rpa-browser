@@ -24,3 +24,17 @@ entities:
     match:
       classContains: ant-btn
       textContains: 删除
+
+  - ruleId: order_table_next_page_item
+    source: node
+    expect: unique
+    match:
+      relation: pagination
+      classContains: ant-pagination-next
+
+  - ruleId: order_table_next_page
+    source: node
+    expect: unique
+    within: order_table_next_page_item
+    match:
+      classContains: ant-pagination-item-link
