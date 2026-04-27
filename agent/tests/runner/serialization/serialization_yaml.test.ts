@@ -12,7 +12,7 @@ import {
     validateStepFileForSerialization,
 } from '../../../src/runner/serialization/types';
 
-const examplesDir = path.resolve(process.cwd(), '.artifacts/checkpoints/examples');
+const examplesDir = path.resolve(process.cwd(), 'tests/fixtures/checkpoints');
 
 test('steps.yaml schema keeps execution semantics only', () => {
     const stepFile = parse(`
