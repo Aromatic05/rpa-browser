@@ -50,7 +50,7 @@ Checkpoint 核心结构定义在 [agent/src/runner/checkpoint/types.ts](/home/ar
 - `name`：可读名称。
 - `trigger.matchRules`：唯一触发规则入口。
 - `prepare`：内容前置动作列表。
-- `content`：主体内容，允许 `StepUnion` 与 `CheckpointAction`。
+- `content`：主体内容，允许序列化 step（`id` / `name` / `args` / `resolveId`）与 `CheckpointAction`。
 - `output`：结束时从 scope 取值并落入最终输出。
 - `policy`：重试与失败策略。
 - `enabled`：关闭后不参与匹配。
@@ -140,11 +140,11 @@ checkpoint core YAML 示例使用 scoped ref。checkpoint core YAML 不使用 ru
 - 允许 runner step ref
 - 禁止 `resolve`、`hint`、`rawContext`、`locatorCandidates`、`replayHints`
 
-### `step_hints.yaml`
+### `step_resolve.yaml`
 
-- 保存 step 的辅助信息
-- 允许 `entity`、`target`、`locatorCandidates`、`rawContext`、`recordedAt`
-- 不参与核心执行语义
+- 保存 step 的 resolve sidecar
+- 允许 `hint`、`policy`
+- 通过 `resolveId` 关联，不参与核心执行语义
 
 ### `checkpoints.yaml`
 

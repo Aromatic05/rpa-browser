@@ -1,5 +1,6 @@
 import { getLogger } from '../../logging/logger';
 import type { StepUnion } from '../steps/types';
+import type { SerializedStepUnion } from '../serialization/types';
 import type { CheckpointCtx } from './types';
 
 const log = getLogger('step');
@@ -75,7 +76,7 @@ export const maybeBindCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
     try {
         const boundContent = ctx.checkpoint.content.map((item) => ({
             ...item,
-            args: bindValue((item as StepUnion).args, bag) as StepUnion['args'],
+            args: bindValue((item as SerializedStepUnion).args, bag) as StepUnion['args'],
         })) as StepUnion[];
         log.info('checkpoint.bind', { checkpointId: ctx.checkpoint.id, ok: true });
         return { ...ctx, boundContent };

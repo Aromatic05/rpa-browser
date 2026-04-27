@@ -81,15 +81,15 @@ Snapshot 的实体相关主链路为：
 
 目标型 step 的协议边界固定为三层：
 
-- `args`：业务参数（`id` / `selector` / value 等）
+- `args`：业务参数（`nodeId` / `selector` / `resolveId` / value 等）
 - `meta`：来源、时序、workspace/tab 元信息
 - `resolve`：目标解析辅助信息（`hint` + `policy`）
 
 执行链路：
 
-1. executor 收集 `args.id` / `args.selector` / `step.resolve.hint`
+1. executor 收集 `args.nodeId` / `args.selector` / `step.resolve`
 2. 调用 `resolveTarget(...)` 收敛为最终 `selector`
-3. trace 仅接收 `selector` 执行，不承担 id/hint/replay 语义
+3. trace 仅接收 `selector` 执行，不承担 nodeId/resolve/replay 语义
 
 约束：
 
