@@ -178,7 +178,7 @@ test('maybePickCheckpoint: candidates but no match', async () => {
         {
             id: 'cp-1',
             name: 'cp',
-            matchRules: [{ errorCode: 'ERR_TIMEOUT' }],
+            trigger: { matchRules: [{ errorCode: 'ERR_TIMEOUT' }] },
             content: [],
         },
     ]);
@@ -192,7 +192,7 @@ test('maybePickCheckpoint: single matched checkpoint', async () => {
         {
             id: 'cp-1',
             name: 'cp',
-            matchRules: [{ errorCode: 'ERR_NOT_FOUND' }, { stepName: 'browser.click' }],
+            trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }, { stepName: 'browser.click' }] },
             content: [],
         },
     ]);
@@ -207,14 +207,14 @@ test('maybePickCheckpoint: priority wins', async () => {
             id: 'cp-low',
             name: 'low',
             priority: 1,
-            matchRules: [{ errorCode: 'ERR_NOT_FOUND' }],
+            trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }] },
             content: [],
         },
         {
             id: 'cp-high',
             name: 'high',
             priority: 10,
-            matchRules: [{ errorCode: 'ERR_NOT_FOUND' }],
+            trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }] },
             content: [],
         },
     ]);
@@ -222,12 +222,36 @@ test('maybePickCheckpoint: priority wins', async () => {
     assert.equal(result.checkpoint?.id, 'cp-high');
 });
 
+test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async () => {
+    setCheckpoints([
+        {
+            id: 'cp-limited',
+            name: 'limited',
+            trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }] },
+            policy: {
+                maxAttempts: 1,
+            },
+            content: [],
+        },
+    ]);
+    const result = await maybePickCheckpoint(
+        createCtx({
+            failedCtx: createFailedCtx({
+                checkpointAttempt: 1,
+                checkpointMaxAttempts: 3,
+            }),
+        }),
+    );
+    assert.equal(result.active, false);
+    assert.equal(result.stopReason, 'checkpoint_not_found');
+});
+
 test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
     setCheckpoints([
         {
             id: 'cp-entity-tag',
             name: 'entity-tag',
-            matchRules: [
+            trigger: { matchRules: [
                 {
                     entityExists: {
                         query: 'Order',
@@ -235,7 +259,7 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
                         businessTag: 'order.list.main',
                     },
                 },
-            ],
+            ] },
             content: [],
         },
     ]);
@@ -262,7 +286,7 @@ test('maybeBindCheckpoint: binds variables', async () => {
         checkpoint: {
             id: 'cp-1',
             name: 'cp',
-            matchRules: [{ errorCode: 'ERR_NOT_FOUND' }],
+            trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }] },
             content: [
                 {
                     id: 'content-1',
@@ -282,7 +306,7 @@ test('maybeBindCheckpoint: missing variable fails', async () => {
         checkpoint: {
             id: 'cp-1',
             name: 'cp',
-            matchRules: [{ errorCode: 'ERR_NOT_FOUND' }],
+            trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }] },
             content: [
                 {
                     id: 'content-1',
@@ -300,7 +324,7 @@ test('maybeBindCheckpoint: missing variable fails', async () => {
 
 test('maybeRunCheckpoint: content steps all success', async () => {
     const ctx = createCtx({
-        checkpoint: { id: 'cp', name: 'cp', matchRules: [], content: [] },
+        checkpoint: { id: 'cp', name: 'cp', trigger: { matchRules: [] }, content: [] },
         boundContent: [{ id: 'content-1', name: 'browser.click', args: { target: { selector: '#x' } } } as StepUnion],
     });
     const result = await maybeRunCheckpoint(ctx);
@@ -309,7 +333,7 @@ test('maybeRunCheckpoint: content steps all success', async () => {
 
 test('maybeRunCheckpoint: assert step success', async () => {
     const ctx = createCtx({
-        checkpoint: { id: 'cp', name: 'cp', matchRules: [], content: [] },
+        checkpoint: { id: 'cp', name: 'cp', trigger: { matchRules: [] }, content: [] },
         boundContent: [{ id: 'assert-1', name: 'browser.assert', args: { textVisible: 'ok' } } as StepUnion],
     });
     const result = await maybeRunCheckpoint(ctx);
@@ -326,7 +350,7 @@ test('maybeRunCheckpoint: assert step failure stops immediately', async () => {
                 return { stepId: step.id, ok: true };
             },
         }),
-        checkpoint: { id: 'cp', name: 'cp', matchRules: [], content: [] },
+        checkpoint: { id: 'cp', name: 'cp', trigger: { matchRules: [] }, content: [] },
         boundContent: [{ id: 'assert-1', name: 'browser.assert', args: { textVisible: 'bad' } } as StepUnion],
     });
     const result = await maybeRunCheckpoint(ctx);
@@ -340,7 +364,7 @@ test('maybeRunCheckpoint: normal step failure stops checkpoint', async () => {
         failedCtx: createFailedCtx({
             executeStep: async () => ({ stepId: 'content-1', ok: false, error: { code: 'ERR_NOT_FOUND', message: 'fail' } }),
         }),
-        checkpoint: { id: 'cp', name: 'cp', matchRules: [], content: [] },
+        checkpoint: { id: 'cp', name: 'cp', trigger: { matchRules: [] }, content: [] },
         boundContent: [{ id: 'content-1', name: 'browser.fill', args: { value: 'x', target: { selector: '#a' } } } as StepUnion],
     });
     const result = await maybeRunCheckpoint(ctx);
@@ -364,6 +388,39 @@ test('foldCheckpointResult: checkpoint success uses retryResult', () => {
     const folded = foldCheckpointResult(ctx);
     assert.equal(folded.finalResult.ok, true);
     assert.deepEqual(folded.finalResult.data, { retried: true });
+});
+
+test('foldCheckpointResult: checkpoint success can return checkpoint result without retry', () => {
+    const ctx = createCtx({
+        active: true,
+        checkpoint: {
+            id: 'cp-1',
+            name: 'cp-1',
+            trigger: { matchRules: [] },
+            policy: {
+                retryOriginal: false,
+            },
+            content: [],
+        },
+        runResult: {
+            stepId: 's1',
+            ok: true,
+            data: {
+                checkpointId: 'cp-1',
+                output: {
+                    clicked: true,
+                },
+            },
+        },
+    });
+    const folded = foldCheckpointResult(ctx);
+    assert.equal(folded.finalResult.ok, true);
+    assert.deepEqual(folded.finalResult.data, {
+        checkpointId: 'cp-1',
+        output: {
+            clicked: true,
+        },
+    });
 });
 
 test('foldCheckpointResult: suspend path', () => {

@@ -3,7 +3,7 @@ import { ensureFreshSnapshot } from '../steps/executors/snapshot/core/session_st
 import { generateSemanticSnapshot } from '../steps/executors/snapshot/pipeline/snapshot';
 import { filterFinalEntities } from '../steps/executors/snapshot/core/entity_query';
 import type { EntityKind } from '../steps/executors/snapshot/core/types';
-import type { Checkpoint, CheckpointCtx, MatchRule } from './types';
+import { getCheckpointMatchRules, type Checkpoint, type CheckpointCtx, type MatchRule } from './types';
 
 const log = getLogger('step');
 
@@ -19,12 +19,12 @@ export const setCheckpoints = (checkpoints: Checkpoint[]) => {
 export const listCheckpoints = (injected?: Checkpoint[]) => (injected ? [...injected] : [...checkpointStore]);
 
 const firstRuleStepName = (checkpoint: Checkpoint) => {
-    const matched = (checkpoint.matchRules || checkpoint.policy?.trigger?.matchRules || []).find((rule) => 'stepName' in rule);
+    const matched = getCheckpointMatchRules(checkpoint).find((rule) => 'stepName' in rule);
     return matched && 'stepName' in matched ? matched.stepName : undefined;
 };
 
 const firstRuleErrorCode = (checkpoint: Checkpoint) => {
-    const matched = (checkpoint.matchRules || checkpoint.policy?.trigger?.matchRules || []).find((rule) => 'errorCode' in rule);
+    const matched = getCheckpointMatchRules(checkpoint).find((rule) => 'errorCode' in rule);
     return matched && 'errorCode' in matched ? matched.errorCode : undefined;
 };
 
@@ -32,7 +32,7 @@ export const maybeEnterCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoi
     const { failedCtx } = ctx;
     const code = failedCtx.rawResult.error?.code;
 
-    if (!failedCtx.checkpointEnabled || failedCtx.inCheckpointFlow || failedCtx.checkpointAttempt >= failedCtx.checkpointMaxAttempts) {
+    if (!failedCtx.checkpointEnabled || failedCtx.inCheckpointFlow) {
         log.info('checkpoint.enter', { entered: false, reason: 'checkpoint_not_entered', stepId: failedCtx.step.id });
         return { ...ctx, active: false, stopReason: 'checkpoint_not_entered' };
     }
@@ -51,6 +51,7 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
 
     const candidates = listCheckpoints(ctx.failedCtx.checkpoints)
         .filter((item) => item.enabled !== false)
+        .filter((item) => ctx.failedCtx.checkpointAttempt < getEffectiveMaxAttempts(item, ctx.failedCtx.checkpointMaxAttempts))
         .filter((item) => {
             const scopedStepName = firstRuleStepName(item);
             return !scopedStepName || scopedStepName === ctx.failedCtx.step.name;
@@ -63,7 +64,7 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
 
     for (const candidate of candidates) {
         let hit = true;
-        const rules = candidate.matchRules || candidate.policy?.trigger?.matchRules || [];
+        const rules = getCheckpointMatchRules(candidate);
         for (const rule of rules) {
             if (!(await evalMatchRule(rule, ctx))) {
                 hit = false;
@@ -149,4 +150,12 @@ export const evalMatchRule = async (rule: MatchRule, ctx: CheckpointCtx): Promis
         return await evalEntityExistsRule(rule.entityExists, ctx);
     }
     return false;
+};
+
+const getEffectiveMaxAttempts = (checkpoint: Checkpoint, fallbackMaxAttempts: number): number => {
+    const candidateMaxAttempts = checkpoint.policy?.maxAttempts;
+    if (typeof candidateMaxAttempts === 'number' && Number.isFinite(candidateMaxAttempts) && candidateMaxAttempts >= 0) {
+        return Math.min(candidateMaxAttempts, fallbackMaxAttempts);
+    }
+    return fallbackMaxAttempts;
 };

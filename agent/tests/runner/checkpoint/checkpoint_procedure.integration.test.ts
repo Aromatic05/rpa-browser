@@ -84,12 +84,17 @@ const createDeps = () => {
                         ok: true,
                         data: { url: 'https://example.test/table' },
                     }),
+                    'browser.click': async (step: StepUnion) => ({
+                        stepId: step.id,
+                        ok: true,
+                        data: { clickedId: (step.args as { id?: unknown }).id },
+                    }),
                 }) as any,
         } as any,
     };
 };
 
-const runWithCheckpoints = async (step: StepUnion, checkpoints: Checkpoint[]) => {
+const runWithCheckpoints = async (step: StepUnion, checkpoints: Checkpoint[], deps = createDeps() as any) => {
     const queue = createStepsQueue([step]);
     closeStepsQueue(queue);
     const pipe = createResultPipe();
@@ -104,7 +109,7 @@ const runWithCheckpoints = async (step: StepUnion, checkpoints: Checkpoint[]) =>
             checkpoints,
             stopOnError: true,
         },
-        createDeps() as any,
+        deps,
     );
     return {
         checkpoint,
@@ -177,58 +182,56 @@ test('browser.checkpoint fails on missing ref and invalid output path', async ()
     assert.equal(results[0].error?.code, 'ERR_CHECKPOINT_OUTPUT_PATH_INVALID');
 });
 
-test('browser.checkpoint supports query and compute actions for table probing', async () => {
+test('browser.checkpoint supports query compute act and local/output data flow', async () => {
     const step: StepUnion = {
         id: 'cp-step-3',
         name: 'browser.checkpoint',
         args: {
-            checkpointId: 'cp-table-probe',
+            checkpointId: 'cp-query-compute-act',
         },
     } as StepUnion;
     const checkpoints: Checkpoint[] = [
         {
-            id: 'cp-table-probe',
+            id: 'cp-query-compute-act',
             kind: 'procedure',
             prepare: [{ type: 'wait', args: { ms: 0 } }],
             content: [
-                { type: 'snapshot', args: {}, saveAs: 'snap' },
+                { type: 'snapshot', args: {}, saveAs: 'snapshot' },
                 {
                     type: 'query',
-                    args: { from: 'snapshot', where: { role: 'table' }, limit: 1 },
-                    saveAs: 'tables',
-                },
-                {
-                    type: 'query',
-                    args: {
-                        from: { nodes: { ref: 'local.tables.nodes' } as any },
-                        relation: 'descendant',
-                        where: { role: 'row' },
-                    },
+                    args: { from: 'snapshot', where: { role: 'row' }, limit: 10 },
                     saveAs: 'rows',
                 },
                 {
                     type: 'compute',
                     args: {
-                        expr: { op: 'len', args: [{ literal: { ref: 'local.rows.nodes' } }] },
+                        expr: { op: 'len', args: [{ literal: { ref: 'local.rows.nodeIds' } }] },
                     },
                     saveAs: 'rowCount',
                 },
                 {
                     type: 'query',
-                    args: { from: 'snapshot', where: { role: 'button', text: { contains: 'next' } }, limit: 1 },
-                    saveAs: 'nextPage',
+                    args: {
+                        from: 'snapshot',
+                        where: { role: 'button', text: { contains: 'next' } },
+                        limit: 1,
+                    },
+                    saveAs: 'actionTarget',
                 },
                 {
-                    type: 'compute',
-                    args: {
-                        expr: { op: 'exists', args: [{ literal: { ref: 'local.nextPage.nodes' } }] },
+                    type: 'act',
+                    step: {
+                        name: 'browser.click',
+                        args: {
+                            id: { ref: 'local.actionTarget.nodeIds.0' },
+                        },
                     },
-                    saveAs: 'hasNextPage',
+                    saveAs: 'clickResult',
                 },
             ],
             output: {
                 rowCount: { ref: 'local.rowCount.value' },
-                hasNextPage: { ref: 'local.hasNextPage.value' },
+                clickedId: { ref: 'local.clickResult.clickedId' },
             },
         },
     ];
@@ -237,7 +240,7 @@ test('browser.checkpoint supports query and compute actions for table probing', 
     assert.equal(checkpoint.status, 'completed');
     assert.equal(results[0].ok, true);
     assert.equal((results[0].data as any).output.rowCount, 2);
-    assert.equal((results[0].data as any).output.hasNextPage, true);
+    assert.equal((results[0].data as any).output.clickedId, 'next_page');
 });
 
 test('browser.checkpoint fails on invalid compute ref in content action', async () => {

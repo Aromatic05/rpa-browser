@@ -5,6 +5,12 @@ const log = getLogger('step');
 
 export const maybeRetryOriginalStep = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
     if (!ctx.active || !ctx.runResult?.ok) {return ctx;}
+    if (ctx.checkpoint?.policy?.retryOriginal === false) {
+        return {
+            ...ctx,
+            stopReason: 'checkpoint_completed',
+        };
+    }
 
     const retryResult = await ctx.failedCtx.executeStep(ctx.failedCtx.step);
     log.info('checkpoint.retry', {
@@ -55,10 +61,10 @@ export const foldCheckpointResult = (ctx: CheckpointCtx): CheckpointCtx => {
     }
 
     if (ctx.runResult?.ok) {
-        const finalResult = ctx.retryResult || ctx.failedCtx.rawResult;
+        const finalResult = ctx.retryResult || ctx.runResult;
         log.info('checkpoint.fold', {
             stepId: ctx.failedCtx.step.id,
-            foldedBy: 'retry_result',
+            foldedBy: ctx.retryResult ? 'retry_result' : 'checkpoint_result',
             ok: finalResult.ok,
             stopReason: ctx.stopReason,
         });
@@ -67,7 +73,7 @@ export const foldCheckpointResult = (ctx: CheckpointCtx): CheckpointCtx => {
             finalResult,
             meta: {
                 ...(ctx.meta || {}),
-                foldedBy: 'retry_result',
+                foldedBy: ctx.retryResult ? 'retry_result' : 'checkpoint_result',
                 stopReason: ctx.stopReason,
             },
         };
