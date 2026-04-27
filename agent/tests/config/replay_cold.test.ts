@@ -4,7 +4,6 @@ import { replayRecording } from '../../src/play/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
-import { getReplayEnhancementForStep } from '../../src/runner/steps/helpers/replay_ctx';
 
 test('replayRecording creates and switches tab when recorded tabToken is missing (cold replay)', async () => {
     const executed: StepUnion[] = [];
@@ -38,14 +37,14 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
             s1: {
                 version: 1,
                 eventType: 'click',
-                rawContext: { selector: '#a' },
-                replayHints: { preferDirect: true },
+                resolveHint: { raw: { selector: '#a' } },
+                resolvePolicy: { preferDirect: true },
             },
             s2: {
                 version: 1,
                 eventType: 'click',
-                rawContext: { selector: '#b' },
-                replayHints: { preferDirect: true },
+                resolveHint: { raw: { selector: '#b' } },
+                resolvePolicy: { preferDirect: true },
             },
         },
         stopOnError: true,
@@ -59,8 +58,8 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
                 getExecutors: () =>
                     ({
                         'browser.click': async (step: StepUnion) => {
-                            const enhancement = getReplayEnhancementForStep('ws-now', step.id);
-                            assert.ok(enhancement, `missing replay enhancement for ${step.id}`);
+                            assert.equal(step.resolve?.hint?.raw?.selector === '#a' || step.resolve?.hint?.raw?.selector === '#b', true);
+                            assert.equal(step.resolve?.policy?.preferDirect, true);
                             executed.push(step);
                             return { stepId: step.id, ok: true };
                         },

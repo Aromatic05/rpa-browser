@@ -33,24 +33,135 @@ export type StepName =
     | 'browser.press_key'
     | 'browser.drag_and_drop'
     | 'browser.mouse'
-    | 'browser.list_entities'
-    | 'browser.get_entity'
-    | 'browser.find_entities'
-    | 'browser.add_entity'
-    | 'browser.delete_entity'
-    | 'browser.rename_entity';
-
-export type A11yHint = {
-    role?: string;
-    name?: string;
-    text?: string;
-};
+    | 'browser.entity'
+    | 'browser.assert'
+    | 'browser.query'
+    | 'browser.compute'
+    | 'browser.checkpoint';
 
 export type Target = {
     id?: string;
     selector?: string;
-    a11yNodeId?: string;
-    a11yHint?: A11yHint;
+};
+
+export type ResolvePolicy = {
+    preferDirect?: boolean;
+    preferScoped?: boolean;
+    requireVisible?: boolean;
+    allowFuzzy?: boolean;
+    allowIndexDrift?: boolean;
+};
+
+export type QueryNodeLike = {
+    id: string;
+    role?: string;
+    tag?: string;
+    text?: string;
+    attrs?: Record<string, string>;
+    children?: string[];
+    handle?: {
+        nodeId: string;
+    };
+};
+
+export type BrowserQueryResult =
+    | {
+          kind: 'value';
+          value: unknown;
+          meta?: Record<string, unknown>;
+      }
+    | {
+          kind: 'nodeId';
+          nodeId: string;
+          meta?: Record<string, unknown>;
+      }
+    | {
+          kind: 'nodeIds';
+          nodeIds: string[];
+          count: number;
+          meta?: Record<string, unknown>;
+      };
+
+export type QueryFromRef =
+    | 'snapshot'
+    | 'snapshot.latest'
+    | {
+          nodeIds: string[];
+      }
+    | {
+          nodes: Array<
+              | {
+                    id: string;
+                }
+              | {
+                    handle: {
+                        nodeId: string;
+                    };
+                }
+          >;
+      };
+
+export type ComputeRef = {
+    path: string;
+};
+
+export type ComputeExpr = {
+    op: 'len' | 'exists' | 'first' | 'get' | 'eq' | 'not' | 'and' | 'or';
+    args: ComputeValue[];
+};
+
+export type ComputeValue = { literal: unknown } | { ref: ComputeRef } | ComputeExpr;
+
+export type ResolveHint = {
+    entity?: {
+        businessTag?: string;
+        fieldKey?: string;
+        actionIntent?: string;
+    };
+    target?: {
+        nodeId?: string;
+        primaryDomId?: string;
+        sourceDomIds?: string[];
+        role?: string;
+        tag?: string;
+        name?: string;
+        text?: string;
+    };
+    locator?: {
+        direct?: {
+            kind: string;
+            query: string;
+            fallback?: string;
+        };
+        scope?: {
+            id: string;
+            kind?: string;
+        };
+        origin?: {
+            primaryDomId?: string;
+            sourceDomIds?: string[];
+        };
+    };
+    raw?: {
+        selector?: string;
+        locatorCandidates?: Array<{
+            kind: string;
+            selector?: string;
+            testId?: string;
+            role?: string;
+            name?: string;
+            text?: string;
+            exact?: boolean;
+            note?: string;
+        }>;
+        scopeHint?: string;
+        targetHint?: string;
+    };
+};
+
+export type StepResolve = {
+    hint?: ResolveHint;
+    policy?: ResolvePolicy;
 };
 
 export type StepArgsMap = {
@@ -81,8 +192,6 @@ export type StepArgsMap = {
         target?: Target;
         full_page?: boolean;
         inline?: boolean;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.click': {
         id?: string;
@@ -91,8 +200,6 @@ export type StepArgsMap = {
         coord?: { x: number; y: number };
         options?: { button?: 'left' | 'right' | 'middle'; double?: boolean };
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.fill': {
         id?: string;
@@ -100,8 +207,6 @@ export type StepArgsMap = {
         target?: Target;
         value: string;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.type': {
         id?: string;
@@ -110,8 +215,6 @@ export type StepArgsMap = {
         text: string;
         delay_ms?: number;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.select_option': {
         id?: string;
@@ -119,16 +222,12 @@ export type StepArgsMap = {
         target?: Target;
         values: string[];
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.hover': {
         id?: string;
         selector?: string;
         target?: Target;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.scroll': {
         id?: string;
@@ -137,8 +236,6 @@ export type StepArgsMap = {
         direction?: 'up' | 'down';
         amount?: number;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.press_key': {
         key: string;
@@ -146,8 +243,6 @@ export type StepArgsMap = {
         selector?: string;
         target?: Target;
         timeout?: number;
-        a11yNodeId?: string;
-        a11yHint?: A11yHint;
     };
     'browser.drag_and_drop': {
         source: Target;
@@ -162,33 +257,112 @@ export type StepArgsMap = {
         deltaY?: number;
         button?: 'left' | 'right' | 'middle';
     };
-    'browser.list_entities': {
-        kind?: EntityKind | EntityKind[];
-        businessTag?: string | string[];
-        query?: string;
+    'browser.entity':
+        | {
+              op: 'list';
+              kind?: EntityKind | EntityKind[];
+              businessTag?: string | string[];
+              query?: string;
+          }
+        | {
+              op: 'get';
+              nodeId: string;
+          }
+        | {
+              op: 'find';
+              kind?: EntityKind | EntityKind[];
+              businessTag?: string | string[];
+              query?: string;
+          }
+        | {
+              op: 'add';
+              nodeId: string;
+              kind: EntityKind;
+              name?: string;
+              businessTag?: string;
+          }
+        | {
+              op: 'delete';
+              nodeId: string;
+              kind?: EntityKind;
+              businessTag?: string;
+          }
+        | {
+              op: 'rename';
+              nodeId: string;
+              name: string;
+          };
+    'browser.assert': {
+        urlIncludes?: string;
+        textVisible?: string;
+        entityExists?: {
+            query: string;
+            kind?: EntityKind | EntityKind[];
+            businessTag?: string | string[];
+        };
     };
-    'browser.get_entity': {
-        nodeId: string;
+    'browser.query':
+        | {
+              from: QueryFromRef;
+              where?: {
+                  role?: string;
+                  tag?: string;
+                  text?: {
+                      contains?: string;
+                  };
+                  attrs?: Record<string, string>;
+              };
+              relation?: 'child' | 'descendant';
+              limit?: number;
+          }
+        | {
+              op: 'entity';
+              businessTag: string;
+              query:
+                  | 'table.row_count'
+                  | 'table.headers'
+                  | 'table.primary_key'
+                  | 'table.columns'
+                  | 'table.current_rows'
+                  | 'table.hasNextPage'
+                  | 'table.nextPageTarget'
+                  | 'form.fields'
+                  | 'form.actions';
+          }
+        | {
+              op: 'entity.target';
+              businessTag: string;
+              target:
+                  | {
+                        kind: 'form.field';
+                        fieldKey: string;
+                    }
+                  | {
+                        kind: 'form.action';
+                        actionIntent: string;
+                    }
+                  | {
+                        kind: 'table.row';
+                        primaryKey: {
+                            fieldKey: string;
+                            value: string;
+                        };
+                    }
+                  | {
+                        kind: 'table.row_action';
+                        primaryKey: {
+                            fieldKey: string;
+                            value: string;
+                        };
+                        actionIntent: string;
+                    };
+          };
+    'browser.compute': {
+        expr: ComputeExpr;
     };
-    'browser.find_entities': {
-        query: string;
-        kind?: EntityKind | EntityKind[];
-        businessTag?: string | string[];
-    };
-    'browser.add_entity': {
-        nodeId: string;
-        kind: EntityKind;
-        name?: string;
-        businessTag?: string;
-    };
-    'browser.delete_entity': {
-        nodeId: string;
-        kind?: EntityKind;
-        businessTag?: string;
-    };
-    'browser.rename_entity': {
-        nodeId: string;
-        name: string;
+    'browser.checkpoint': {
+        checkpointId: string;
+        input?: Record<string, unknown>;
     };
 };
 
@@ -208,6 +382,10 @@ export type Step<TName extends StepName = StepName> = {
     name: TName;
     args: StepArgsMap[TName];
     meta?: StepMeta;
+    /**
+     * @deprecated Store hints in StepHintFile sidecar instead.
+     */
+    resolve?: StepResolve;
 };
 
 export type StepUnion = {

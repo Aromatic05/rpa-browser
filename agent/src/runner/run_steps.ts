@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
+import { resolveStepArgsRefs } from './step_refs';
+import { runCheckpoint, setCheckpoints } from './checkpoint';
+import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {
     markSnapshotSessionDirty,
@@ -37,7 +40,7 @@ const stepLogger = getLogger('step');
 
 export class MemoryStepSink implements StepSink {
     events: StepEvent[] = [];
-    write(event: StepEvent) {
+    write(event: StepEvent): void {
         this.events.push(event);
     }
 }
@@ -62,31 +65,41 @@ let defaultDeps: RunStepsDeps | null = null;
 const queueWaiters = new WeakMap<StepsQueue, Set<() => void>>();
 const signalWaiters = new WeakMap<SignalChannel, Set<() => void>>();
 
-const getWaiters = <T extends object>(map: WeakMap<T, Set<() => void>>, key: T) => {
+const getWaiters = <T extends object>(map: WeakMap<T, Set<() => void>>, key: T): Set<() => void> => {
     const existing = map.get(key);
-    if (existing) return existing;
+    if (existing) {return existing;}
     const created = new Set<() => void>();
     map.set(key, created);
     return created;
 };
 
 const notifyAll = (waiters: Set<() => void>) => {
-    for (const wake of waiters) wake();
+    for (const wake of waiters) {wake();}
     waiters.clear();
 };
 
 const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) => {
-    if (!sinks || sinks.length === 0) return;
+    if (!sinks || sinks.length === 0) {return;}
     await Promise.all(sinks.map((sink) => sink.write(event)));
 };
+
+export type RunLocalStepResults = Record<
+    string,
+    {
+        ok: boolean;
+        data?: unknown;
+        error?: unknown;
+    }
+>;
 
 const executeOne = async (
     step: StepUnion,
     workspaceId: string,
+    runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
 ): Promise<ExecStepResult> => {
-    const fn = deps.pluginHost.getExecutors()[step.name];
-    if (!fn) {
+    const executors = deps.pluginHost.getExecutors();
+    if (!Object.prototype.hasOwnProperty.call(executors, step.name)) {
         stepLogger('[runner] missing executor', step.name);
         return {
             stepId: step.id,
@@ -94,10 +107,54 @@ const executeOne = async (
             error: { code: 'ERR_NOT_FOUND', message: `executor not found for step: ${step.name}` },
         };
     }
-    return fn(step, deps, workspaceId);
+    const resolvedStep = resolveStepArgsRefs(step, {
+        getResult: (stepId) => {
+            if (!Object.prototype.hasOwnProperty.call(runLocalStepResults, stepId)) {
+                return undefined;
+            }
+            return runLocalStepResults[stepId];
+        },
+    });
+    if (!resolvedStep.ok) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: resolvedStep.error,
+        };
+    }
+
+    const fn = executors[step.name];
+    return await fn(resolvedStep.step, deps, workspaceId);
 };
 
-const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel) =>
+const writeRunnerStepResultCache = async (
+    deps: RunStepsDeps,
+    workspaceId: string,
+    runId: string,
+    result: ExecStepResult,
+) => {
+    try {
+        const binding = await deps.runtime.ensureActivePage(workspaceId);
+        const cache = binding.traceCtx.cache as {
+            runnerStepResults?: Record<string, unknown>;
+            runnerStepResultsRunId?: string;
+        };
+        if (cache.runnerStepResultsRunId !== runId) {
+            cache.runnerStepResultsRunId = runId;
+            cache.runnerStepResults = {};
+        }
+        cache.runnerStepResults = cache.runnerStepResults || {};
+        cache.runnerStepResults[result.stepId] = {
+            ok: result.ok,
+            data: result.data,
+            error: result.error,
+        };
+    } catch {
+        // best effort only
+    }
+};
+
+const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel): Promise<void> =>
     new Promise<void>((resolve) => {
         getWaiters(queueWaiters, queue).add(resolve);
         getWaiters(signalWaiters, signalChannel).add(resolve);
@@ -117,21 +174,21 @@ export const createStepsQueue = (steps: StepUnion[] = [], opts?: { closed?: bool
     closed: opts?.closed === true,
 });
 
-export const enqueueSteps = (queue: StepsQueue, steps: StepUnion[]) => {
-    if (queue.closed) throw new Error('steps queue is closed');
-    if (steps.length === 0) return;
+export const enqueueSteps = (queue: StepsQueue, steps: StepUnion[]): void => {
+    if (queue.closed) {throw new Error('steps queue is closed');}
+    if (steps.length === 0) {return;}
     queue.items.push(...steps);
     notifyAll(getWaiters(queueWaiters, queue));
 };
 
-export const closeStepsQueue = (queue: StepsQueue) => {
+export const closeStepsQueue = (queue: StepsQueue): void => {
     queue.closed = true;
     notifyAll(getWaiters(queueWaiters, queue));
 };
 
 export const createResultPipe = (): ResultPipe => ({ items: [] });
 
-export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100) => {
+export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100): { items: StepResult[]; nextCursor: number } => {
     const start = cursor >= 0 ? cursor : 0;
     const max = limit > 0 ? limit : 100;
     const items = pipe.items.slice(start, start + max);
@@ -141,14 +198,14 @@ export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100) => {
 export const createSignalChannel = (): SignalChannel => ({ items: [], cursor: 0 });
 
 const signalPriority = (signal: RunSignal): number => {
-    if (signal === 'halt') return 100;
-    if (signal === 'flush') return 80;
-    if (signal === 'suspend') return 60;
-    if (signal === 'continue') return 40;
+    if (signal === 'halt') {return 100;}
+    if (signal === 'flush') {return 80;}
+    if (signal === 'suspend') {return 60;}
+    if (signal === 'continue') {return 40;}
     return 10;
 };
 
-export const sendSignal = (signalChannel: SignalChannel, signal: RunSignal) => {
+export const sendSignal = (signalChannel: SignalChannel, signal: RunSignal): void => {
     const event = { signal, ts: Date.now(), priority: signalPriority(signal) };
     const unreadStart = signalChannel.cursor;
     let insertAt = signalChannel.items.length;
@@ -163,7 +220,7 @@ export const sendSignal = (signalChannel: SignalChannel, signal: RunSignal) => {
     notifyAll(getWaiters(signalWaiters, signalChannel));
 };
 
-export const setRunStepsDeps = (deps: RunStepsDeps) => {
+export const setRunStepsDeps = (deps: RunStepsDeps): void => {
     defaultDeps = deps;
 };
 
@@ -174,7 +231,12 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     }
 
     const stopOnError = req.stopOnError ?? true;
+    const checkpointEnabled = req.checkpointEnabled ?? true;
+    const checkpointMaxAttempts = req.checkpointMaxAttempts ?? 1;
+    const checkpointAttempts = new Map<string, number>();
+    const runLocalStepResults: RunLocalStepResults = {};
     let status: RunStatus = 'running';
+    setCheckpoints(req.checkpoints || []);
 
     while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
@@ -219,8 +281,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 argsSummary: step.args,
             });
 
-            const result = await executeOne(step, req.workspaceId, resolvedDeps);
-            if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args as Record<string, unknown>)) {
+            const result = await executeOne(step, req.workspaceId, runLocalStepResults, resolvedDeps);
+            if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
                     const binding = await resolvedDeps.runtime.ensureActivePage(req.workspaceId);
                     markSnapshotSessionDirty(binding, `step:${step.name}`);
@@ -243,22 +305,57 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 error: result.ok ? undefined : result.error,
             });
 
+            let finalResult = result;
+            let nextStatus: RunStatus | undefined;
+            if (!result.ok) {
+                const attempt = checkpointAttempts.get(step.id) ?? 0;
+                const failedCtx = await getFailedCtx({
+                    runId: req.runId,
+                    workspaceId: req.workspaceId,
+                    stepIndex,
+                    step,
+                    rawResult: result,
+                    stopOnError,
+                    checkpointEnabled,
+                    checkpointAttempt: attempt,
+                    checkpointMaxAttempts,
+                    inCheckpointFlow: false,
+                    deps: resolvedDeps,
+                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, runLocalStepResults, resolvedDeps),
+                    checkpoints: req.checkpoints,
+                });
+                const checkpointOutput = await runCheckpoint(failedCtx);
+                finalResult = checkpointOutput.finalResult;
+                nextStatus = checkpointOutput.nextStatus;
+                checkpointAttempts.set(step.id, attempt + 1);
+            }
+
             const output: StepResult = {
                 runId: req.runId,
                 cursor: stepIndex,
-                stepId: result.stepId,
-                ok: result.ok,
-                data: result.data,
-                error: result.error,
+                stepId: finalResult.stepId,
+                ok: finalResult.ok,
+                data: finalResult.data,
+                error: finalResult.error,
                 ts: Date.now(),
             };
+            runLocalStepResults[finalResult.stepId] = {
+                ok: finalResult.ok,
+                data: finalResult.data,
+                error: finalResult.error,
+            };
+            await writeRunnerStepResultCache(resolvedDeps, req.workspaceId, req.runId, finalResult);
             req.resultPipe.items.push(output);
-            await req.onCheckpoint?.(checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor));
 
-            if (!result.ok && stopOnError) {
+            if (nextStatus === 'suspended') {
+                status = 'suspended';
+            } else if (!finalResult.ok && stopOnError) {
                 status = 'failed';
-                const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
-                await req.onCheckpoint?.(checkpoint);
+            }
+
+            const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+            await req.onCheckpoint?.(checkpoint);
+            if (status === 'failed') {
                 return checkpoint;
             }
             continue;
@@ -280,7 +377,7 @@ export const runStepList = async (
     steps: StepUnion[],
     deps?: RunStepsDeps,
     opts?: { stopOnError?: boolean; runId?: string },
-) => {
+): Promise<{ checkpoint: Checkpoint; pipe: ResultPipe }> => {
     const queue = createStepsQueue(steps, { closed: true });
     const pipe = createResultPipe();
     const signals = createSignalChannel();

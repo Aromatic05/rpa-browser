@@ -78,7 +78,7 @@ type CaptureListItem = {
 };
 
 const countNodes = (node: unknown): number => {
-  if (!node || typeof node !== 'object') return 0;
+  if (!node || typeof node !== 'object') {return 0;}
   const children = Array.isArray((node as { children?: unknown[] }).children)
     ? ((node as { children?: unknown[] }).children as unknown[])
     : [];
@@ -118,7 +118,7 @@ const ensureCaptureStore = async () => {
 
 const sanitizeCaptureLabel = (value: string): string => {
   const normalized = value.trim().replace(/\s+/g, ' ');
-  if (!normalized) return 'capture';
+  if (!normalized) {return 'capture';}
   return normalized.slice(0, 120);
 };
 
@@ -134,7 +134,7 @@ const writeCaptureEnvelope = async (envelope: CaptureEnvelope) => {
 
 const readCaptureEnvelope = async (id: string): Promise<CaptureEnvelope | null> => {
   const safeId = id.trim().replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!safeId) return null;
+  if (!safeId) {return null;}
   try {
     const text = await fs.readFile(captureFilePath(safeId), 'utf8');
     return JSON.parse(text) as CaptureEnvelope;
@@ -149,10 +149,10 @@ const listCaptureEnvelopes = async (): Promise<CaptureListItem[]> => {
   const items: CaptureListItem[] = [];
 
   for (const file of files) {
-    if (!file.endsWith('.json')) continue;
+    if (!file.endsWith('.json')) {continue;}
     const id = file.slice(0, -'.json'.length);
     const envelope = await readCaptureEnvelope(id);
-    if (!envelope) continue;
+    if (!envelope) {continue;}
     items.push({
       id: envelope.id,
       label: envelope.label,
@@ -170,7 +170,7 @@ const listCaptureEnvelopes = async (): Promise<CaptureListItem[]> => {
 const buildCaptureEnvelope = (request: CaptureIngestRequest): CaptureEnvelope | null => {
   const hasRaw = Boolean(request.raw?.domTree && request.raw?.a11yTree);
   const hasSnapshot = Boolean(request.snapshot);
-  if (!hasRaw && !hasSnapshot) return null;
+  if (!hasRaw && !hasSnapshot) {return null;}
 
   const nowIso = new Date().toISOString();
   return {

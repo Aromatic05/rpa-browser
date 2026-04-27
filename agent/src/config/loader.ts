@@ -17,7 +17,7 @@ const defaultConfigPath = () =>
 
 const readJsonIfExists = (filePath: string): Partial<RunnerConfig> | null => {
     try {
-        if (!fs.existsSync(filePath)) return null;
+        if (!fs.existsSync(filePath)) {return null;}
         const raw = fs.readFileSync(filePath, 'utf-8');
         return JSON.parse(raw) as Partial<RunnerConfig>;
     } catch {
@@ -25,12 +25,15 @@ const readJsonIfExists = (filePath: string): Partial<RunnerConfig> | null => {
     }
 };
 
-const mergeDeep = <T extends Record<string, any>>(base: T, patch?: Partial<T>): T => {
-    if (!patch) return base;
-    const out: any = Array.isArray(base) ? [...base] : { ...base };
+const asRecord = (value: unknown): Record<string, unknown> =>
+    (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+
+const mergeDeep = <T extends Record<string, unknown>>(base: T, patch?: Partial<T>): T => {
+    if (!patch) {return base;}
+    const out: Record<string, unknown> = Array.isArray(base) ? [...base] : { ...base };
     for (const [key, value] of Object.entries(patch)) {
         if (value && typeof value === 'object' && !Array.isArray(value)) {
-            out[key] = mergeDeep(out[key] || {}, value as any);
+            out[key] = mergeDeep(asRecord(out[key]), value as Record<string, unknown>);
         } else if (value !== undefined) {
             out[key] = value;
         }
@@ -46,7 +49,7 @@ const envBool = (name: string) =>
 
 const envCsv = (name: string) =>
     process.env[name] !== undefined
-        ? String(process.env[name])
+        ? process.env[name]
               .split(',')
               .map((item) => item.trim())
               .filter((item) => item.length > 0)
@@ -55,12 +58,14 @@ const envCsv = (name: string) =>
 const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     const patch: Partial<RunnerConfig> = {};
     const set = (path: string[], value: unknown) => {
-        if (value === undefined) return;
-        let cursor: any = patch;
+        if (value === undefined) {return;}
+        let cursor: Record<string, unknown> = patch;
         for (let i = 0; i < path.length - 1; i += 1) {
             const key = path[i];
-            cursor[key] = cursor[key] || {};
-            cursor = cursor[key];
+            const next = cursor[key];
+            const nextObject = next && typeof next === 'object' ? next as Record<string, unknown> : {};
+            cursor[key] = nextObject;
+            cursor = nextObject;
         }
         cursor[path[path.length - 1]] = value;
     };

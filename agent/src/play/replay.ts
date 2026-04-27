@@ -12,7 +12,6 @@ import type { RunStepsDeps } from '../runner/run_steps';
 import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from '../record/recording';
 import type { RecordingEnhancementMap } from '../record/types';
-import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../runner/steps/helpers/replay_ctx';
 
 export type ReplayOptions = {
     clickDelayMs: number;
@@ -65,6 +64,27 @@ export type ReplayEvent =
           total: number;
       };
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+    (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+
+const readStepStringArg = (step: StepUnion, key: string): string | undefined => {
+    const args = asRecord(step.args);
+    return typeof args[key] === 'string' ? args[key] : undefined;
+};
+
+const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnhancementMap[string]): StepUnion => {
+    if (!enhancement) {return step;}
+    const nextResolve = {
+        hint: enhancement.resolveHint,
+        policy: enhancement.resolvePolicy,
+    };
+    if (!nextResolve.hint && !nextResolve.policy) {return step;}
+    return {
+        ...step,
+        resolve: nextResolve,
+    };
+};
+
 /**
  * replayRecording：执行已录制的 Step 列表。
  */
@@ -91,9 +111,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (!switched.ok) {
             return false;
         }
-        currentTabId = tabId;
         if (desiredToken) {
-            currentToken = desiredToken;
             tokenToTab.set(desiredToken, tabId);
         }
         if (desiredTabRef) {
@@ -107,19 +125,13 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     if (req.recordingManifest?.entryTabRef) {
         refToTab.set(req.recordingManifest.entryTabRef, req.initialTabId);
     }
-    let currentTabId = req.initialTabId;
-    let currentToken = req.initialTabToken;
     const stepResults: RunStepsResult['results'] = [];
 
-    const replayEnhancements = req.enrichments || {};
-    const hasReplayEnhancements = Object.keys(replayEnhancements).length > 0;
-    if (hasReplayEnhancements) {
-        setReplayEnhancementContext(req.workspaceId, replayEnhancements);
-    }
-
-    try {
     for (let index = 0; index < req.steps.length; index += 1) {
-        const originalStep = req.steps[index];
+        const originalStep = withResolveFromEnhancement(
+            req.steps[index],
+            req.enrichments?.[req.steps[index].id],
+        );
         if (req.isCanceled?.()) {
             return { ok: false, results: stepResults, error: { code: 'ERR_CANCELED', message: 'replay canceled' } };
         }
@@ -153,12 +165,14 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 if (!targetTabId) {
                     const fallbackUrl =
                         originalStep.meta?.urlAtRecord ||
-                        (originalStep.name === 'browser.goto' ? String((originalStep.args as any)?.url || '') : undefined) ||
+                        (originalStep.name === 'browser.goto'
+                            ? readStepStringArg(originalStep, 'url')
+                            : undefined) ||
                         (originalStep.name === 'browser.switch_tab'
-                            ? String((originalStep.args as any)?.tab_url || '')
+                            ? readStepStringArg(originalStep, 'tab_url')
                             : undefined) ||
                         req.recordingManifest?.tabs.find((tab) => {
-                            if (!desiredTabRef) return false;
+                            if (!desiredTabRef) {return false;}
                             return tab.tabRef === desiredTabRef;
                         })?.lastSeenUrl ||
                         undefined;
@@ -172,15 +186,17 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                     if (!created.ok) {
                         return { ok: false, results: stepResults };
                     }
-                    const createdTabId = created.results[0]?.data && (created.results[0].data as any).tab_id;
-                    if (!createdTabId) {
+                    const createdFirst = created.results[0];
+                    const createdData = asRecord(createdFirst.data);
+                    const createdTabId = typeof createdData.tab_id === 'string' ? createdData.tab_id : undefined;
+                    if (createdTabId === undefined) {
                         return {
                             ok: false,
                             results: stepResults,
                             error: { code: 'ERR_ASSERTION_FAILED', message: 'failed to create replay tab' },
                         };
                     }
-                    targetTabId = String(createdTabId);
+                    targetTabId = createdTabId;
                 }
                 tokenToTab.set(desiredToken, targetTabId);
                 if (desiredTabRef) {
@@ -194,8 +210,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (targetTabId) {
                 remappedStep = {
                     ...originalStep,
-                    args: { ...(originalStep.args as any), tab_id: targetTabId },
-                } as StepUnion;
+                    args: { ...asRecord(originalStep.args), tab_id: targetTabId },
+                };
             }
         } else if (targetTabId) {
             const activated = await forceActivateTab(targetTabId, desiredToken, desiredTabRef);
@@ -214,8 +230,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             stepId: remappedStep.id,
             stepName: remappedStep.name,
             ok: response.ok,
-            data: primary?.data,
-            error: primary?.error,
+            data: primary.data,
+            error: primary.error,
         });
         await req.onEvent?.({
             type: 'progress',
@@ -226,18 +242,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             return { ok: false, results: stepResults };
         }
         if (remappedStep.name === 'browser.switch_tab') {
-            const switchedTo = String((remappedStep.args as any)?.tab_id || '');
-            if (switchedTo) {
-                currentTabId = switchedTo;
-            }
-            if (desiredToken) {
-                currentToken = desiredToken;
-            }
+            const switchedTo = readStepStringArg(remappedStep, 'tab_id') || '';
             if (desiredTabRef && switchedTo) {
                 refToTab.set(desiredTabRef, switchedTo);
             }
-        } else if (desiredToken) {
-            currentToken = desiredToken;
         }
         if (stepDelayMs > 0) {
             await wait(stepDelayMs);
@@ -248,9 +256,4 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         ok: stepResults.every((item) => item.ok),
         results: stepResults,
     };
-    } finally {
-        if (hasReplayEnhancements) {
-            clearReplayEnhancementContext(req.workspaceId);
-        }
-    }
 };

@@ -65,9 +65,9 @@ export const executeAction = async (ctx: ActionContext, action: Action): Promise
     if (!handler) {
         return failedAction(action, ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
     }
-    let pageUrl: string | null = null;
+    let pageUrl: string | null;
     try {
-        pageUrl = typeof (ctx.page as any)?.url === 'function' ? String((ctx.page as any).url()) : null;
+        pageUrl = ctx.page.url();
     } catch {
         pageUrl = null;
     }

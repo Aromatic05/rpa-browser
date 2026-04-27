@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import crypto from 'node:crypto';
 import type { Step, StepResult } from '../../../types';
 import type { RunStepsDeps } from '../../../../run_steps';
+import type { EntityRuleConfig } from '../../../../../config/entity_rules';
 import { collectRawData } from '../stages/collect';
 import type { SnapshotWaitMode } from '../stages/collect';
 import { fuseDomAndA11y } from '../stages/fusion';
@@ -14,6 +15,7 @@ import { buildEntityIndex } from '../indexes/entity';
 import { buildBackendDomSelectorMap } from '../indexes/dom_backend_selector';
 import { buildLocatorIndex } from '../indexes/locator';
 import { buildExternalIndexes } from '../indexes/external_indexes';
+import { applyBusinessEntityRules, loadEntityRules } from '../entity_rules';
 import {
     computeBucketHash,
     computeBucketKey,
@@ -37,6 +39,7 @@ import {
     computeMinimalChangedSubtree,
 } from './scoped_diff';
 import type {
+    EntityKind,
     RawData,
     SnapshotDiffSkippedReason,
     SnapshotMeta,
@@ -56,9 +59,10 @@ export const executeBrowserSnapshot = async (
         forceRefresh: step.args.refresh === true,
         refreshReason: 'browser.snapshot',
         collectBaseSnapshot: async (context) =>
-            generateSemanticSnapshot(binding.page, {
+            await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 waitMode: resolveSnapshotWaitMode(context.fromDirty, context.staleReason),
+                entityRuleConfig: deps.config.entityRules,
             }),
     });
 
@@ -148,6 +152,7 @@ export const executeBrowserSnapshot = async (
 type GenerateSemanticSnapshotOptions = {
     captureRuntimeState?: boolean;
     waitMode?: SnapshotWaitMode;
+    entityRuleConfig?: EntityRuleConfig;
 };
 
 export const generateSemanticSnapshot = async (
@@ -171,14 +176,20 @@ export const generateSemanticSnapshot = async (
         });
 
         // 2) 融合构建 unified graph。
-        return generateSemanticSnapshotFromRaw(raw);
+        return generateSemanticSnapshotFromRaw(raw, {
+            pageUrl: currentUrl,
+            entityRuleConfig: options.entityRuleConfig,
+        });
     } finally {
         // 3) 无论成功失败都清理页面临时 state-id，清理失败不阻塞主流程。
         await raw.runtimeStateCleanup?.().catch(() => undefined);
     }
 };
 
-export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult => {
+export const generateSemanticSnapshotFromRaw = (
+    raw: RawData,
+    options: { pageUrl?: string; entityRuleConfig?: EntityRuleConfig } = {},
+): SnapshotResult => {
     const cacheStats = createCacheStats();
     const backendSelectorByDomId = buildBackendDomSelectorMap(raw.domTree);
     const graph = stageFuseGraph(raw);
@@ -189,7 +200,7 @@ export const generateSemanticSnapshotFromRaw = (raw: RawData): SnapshotResult =>
     stageLinkGlobalRelations(root);
     stageAssignStableIds(root);
 
-    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId);
+    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId, options.pageUrl, options.entityRuleConfig);
 };
 
 type CacheStats = ReturnType<typeof createCacheStats>;
@@ -222,7 +233,7 @@ const stageAttachLayers = (layeredGraph: ReturnType<typeof stageBuildSpatialGrap
     }
 
     for (const overlay of overlays) {
-        if (isNoiseLayer(overlay)) continue;
+        if (isNoiseLayer(overlay)) {continue;}
         root.children.push(overlay);
     }
 
@@ -300,8 +311,23 @@ const stageBuildSnapshot = (
     root: UnifiedNode,
     cacheStats: CacheStats,
     backendSelectorByDomId?: Record<string, string>,
+    pageUrl?: string,
+    entityRuleConfig?: EntityRuleConfig,
 ): SnapshotResult => {
     const entityIndex = buildEntityIndex(root);
+    const loadedRules = loadEntityRules({
+        pageKind: inferSnapshotPageKind(entityIndex),
+        pageUrl,
+        config: entityRuleConfig,
+    });
+    if (loadedRules.errors.length > 0) {
+        throw new Error(`entity rules load failed: ${loadedRules.errors.join('; ')}`);
+    }
+    const ruleEntityOverlay = applyBusinessEntityRules({
+        root,
+        entityIndex,
+        bundle: loadedRules.bundle,
+    });
     const locatorIndex = buildLocatorIndex({
         root,
         entityIndex,
@@ -317,12 +343,31 @@ const stageBuildSnapshot = (
         attrIndex,
         contentStore,
         cacheStats,
+        ruleEntityOverlay,
     });
     snapshotDebugLog('done', {
         snapshotCount: countTreeNodes(snapshot.root),
         topNodes: summarizeTopNodes(snapshot.root),
     });
     return snapshot;
+};
+
+const inferSnapshotPageKind = (entityIndex: SnapshotResult['entityIndex']): EntityKind | undefined => {
+    const scoreByKind = new Map<EntityKind, number>();
+    for (const entity of Object.values(entityIndex.entities)) {
+        const weight = entity.type === 'region' ? 2 : 1;
+        scoreByKind.set(entity.kind, (scoreByKind.get(entity.kind) || 0) + weight);
+    }
+
+    let picked: EntityKind | undefined;
+    let maxScore = Number.NEGATIVE_INFINITY;
+    for (const [kind, score] of scoreByKind.entries()) {
+        if (score > maxScore) {
+            maxScore = score;
+            picked = kind;
+        }
+    }
+    return picked;
 };
 
 const createVirtualRoot = (): UnifiedNode => ({
@@ -334,18 +379,18 @@ const createVirtualRoot = (): UnifiedNode => ({
 const isNonPerceivableLayer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName') || '');
-    if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) return true;
-    if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) return true;
+    if (NON_PERCEIVABLE_LAYER_ROLES.has(role)) {return true;}
+    if (NON_PERCEIVABLE_LAYER_TAGS.has(tag)) {return true;}
     return false;
 };
 
 const resolveSnapshotWaitMode = (fromDirty: boolean, staleReason: string | undefined): SnapshotWaitMode => {
-    if (!fromDirty) return 'interaction';
+    if (!fromDirty) {return 'interaction';}
     const reason = normalizeLower(staleReason);
     if (reason.includes('browser.goto') || reason.includes('browser.reload') || reason.includes('browser.go_back')) {
         return 'navigation';
     }
-    if (reason.includes('page-identity-changed')) return 'navigation';
+    if (reason.includes('page-identity-changed')) {return 'navigation';}
     return 'interaction';
 };
 
@@ -358,7 +403,7 @@ const hasPageIdentityChanged = (
     previousIdentity: SnapshotPageIdentity | undefined,
     nextIdentity: SnapshotPageIdentity,
 ): boolean => {
-    if (!previousIdentity) return false;
+    if (!previousIdentity) {return false;}
     return !(
         previousIdentity.workspaceId === nextIdentity.workspaceId &&
         previousIdentity.tabId === nextIdentity.tabId &&
@@ -368,7 +413,7 @@ const hasPageIdentityChanged = (
 };
 
 const clonePageIdentity = (identity: SnapshotPageIdentity | undefined): SnapshotPageIdentity | undefined => {
-    if (!identity) return undefined;
+    if (!identity) {return undefined;}
     return {
         workspaceId: identity.workspaceId,
         tabId: identity.tabId,

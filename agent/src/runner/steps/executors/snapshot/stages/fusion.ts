@@ -5,7 +5,7 @@ import { setNodeAttrs, setNodeBbox, setNodeContent } from '../core/runtime_store
 export const fuseDomAndA11y = (
     domTree: unknown,
     a11yTree: unknown,
-    runtimeStateMap: RuntimeStateMap | undefined = undefined,
+    runtimeStateMap?: RuntimeStateMap  ,
 ): NodeGraph => {
     const domRoot = asDomNode(domTree);
     if (!domRoot) {
@@ -140,13 +140,13 @@ type MatchByBackendResult =
     | { type: 'not_found' };
 
 const asDomNode = (value: unknown): DomNodeInput | null => {
-    if (!value || typeof value !== 'object') return null;
-    return value as DomNodeInput;
+    if (!value || typeof value !== 'object') {return null;}
+    return value;
 };
 
 const asA11yNode = (value: unknown): A11yNodeInput | null => {
-    if (!value || typeof value !== 'object') return null;
-    return value as A11yNodeInput;
+    if (!value || typeof value !== 'object') {return null;}
+    return value;
 };
 
 const indexA11yTree = (
@@ -154,7 +154,7 @@ const indexA11yTree = (
     a11yByBackendDomId: Map<string, IndexedA11yNode[]>,
     onEach: () => void,
 ) => {
-    if (!node) return;
+    if (!node) {return;}
 
     onEach();
     const backendDomId = normalizeBackendDomId(node.backendDOMNodeId);
@@ -177,14 +177,14 @@ const matchByBackendDomId = (
     a11yByBackendDomId: Map<string, IndexedA11yNode[]>,
 ): MatchByBackendResult => {
     const backendDomId = normalizeBackendDomId(node.backendDOMNodeId || node.attrs?.backendDOMNodeId);
-    if (!backendDomId) return { type: 'no_backend' };
+    if (!backendDomId) {return { type: 'no_backend' };}
 
     const bucket = a11yByBackendDomId.get(backendDomId) || [];
-    if (bucket.length === 0) return { type: 'not_found' };
+    if (bucket.length === 0) {return { type: 'not_found' };}
 
     const strong = bucket.filter((item) => !isWeakA11yRole(item.role));
-    if (strong.length === 1) return { type: 'matched', node: strong[0].node };
-    if (strong.length === 0) return { type: 'not_found' };
+    if (strong.length === 1) {return { type: 'matched', node: strong[0].node };}
+    if (strong.length === 0) {return { type: 'not_found' };}
     // 严格模式：同一 backendDOMNodeId 出现多个强语义候选时直接判歧义，不做猜测消歧。
     return { type: 'ambiguous' };
 };
@@ -192,13 +192,13 @@ const matchByBackendDomId = (
 const pickRole = (node: DomNodeInput, matched: A11yNodeInput | undefined): string => {
     const domRole = normalizeRole(pickDomBaseRole(node));
     const tag = normalizeRole(node.tag).toLowerCase();
-    if (tag && STRUCTURAL_TAGS.has(tag)) return tag;
+    if (tag && STRUCTURAL_TAGS.has(tag)) {return tag;}
 
     // 稳定标签使用 DOM role，避免浏览器 a11y role 摇摆造成不必要抖动。
-    if (tag && DOM_STABLE_ROLE_TAGS.has(tag)) return domRole;
+    if (tag && DOM_STABLE_ROLE_TAGS.has(tag)) {return domRole;}
 
     const a11yRole = normalizeRole(matched?.role).toLowerCase();
-    if (a11yRole && !isWeakA11yRole(a11yRole)) return a11yRole;
+    if (a11yRole && !isWeakA11yRole(a11yRole)) {return a11yRole;}
 
     return domRole;
 };
@@ -215,13 +215,13 @@ const pickName = (
     }
 
     const explicit = pickExplicitDomLabel(node);
-    if (explicit) return explicit;
+    if (explicit) {return explicit;}
 
     const ownText = normalizeText(node.text);
     const tag = normalizeRole(node.tag).toLowerCase();
-    if (!ownText) return undefined;
+    if (!ownText) {return undefined;}
     if (NAME_FROM_OWN_TEXT_ROLES.has(normalizedRole) || NAME_FROM_OWN_TEXT_TAGS.has(tag)) {
-        if (isLikelyShortLabel(ownText)) return ownText;
+        if (isLikelyShortLabel(ownText)) {return ownText;}
     }
     return undefined;
 };
@@ -233,16 +233,16 @@ const pickContent = (
     name: string | undefined,
 ): string | undefined => {
     const ownText = normalizeText(node.text);
-    if (ownText) return ownText;
+    if (ownText) {return ownText;}
 
     const a11yNameParts = splitA11yName(normalizeText(matched?.name));
-    if (a11yNameParts.content) return a11yNameParts.content;
+    if (a11yNameParts.content) {return a11yNameParts.content;}
 
     const normalizedRole = normalizeRole(role).toLowerCase();
     if (CONTENT_BY_A11Y_NAME_ROLES.has(normalizedRole)) {
         return a11yNameParts.name || normalizeText(matched?.name);
     }
-    if (normalizedRole === 'link') return a11yNameParts.name || name;
+    if (normalizedRole === 'link') {return a11yNameParts.name || name;}
     return undefined;
 };
 
@@ -252,10 +252,10 @@ const pickTarget = (
 ): UnifiedNode['target'] | undefined => {
     const tag = normalizeRole(node.tag).toLowerCase();
     const normalizedRole = normalizeRole(role).toLowerCase();
-    if (normalizedRole !== 'link' && tag !== 'a') return undefined;
+    if (normalizedRole !== 'link' && tag !== 'a') {return undefined;}
 
     const href = normalizeText(node.attrs?.href);
-    if (!href) return undefined;
+    if (!href) {return undefined;}
 
     return {
         ref: href,
@@ -265,33 +265,33 @@ const pickTarget = (
 
 const classifyTargetKind = (ref: string, node: DomNodeInput): NonNullable<UnifiedNode['target']>['kind'] => {
     const lowered = ref.toLowerCase();
-    if (lowered.startsWith('#')) return 'hash';
-    if (lowered.startsWith('mailto:')) return 'mailto';
-    if (lowered.startsWith('tel:')) return 'tel';
-    if (lowered.startsWith('javascript:')) return 'javascript';
+    if (lowered.startsWith('#')) {return 'hash';}
+    if (lowered.startsWith('mailto:')) {return 'mailto';}
+    if (lowered.startsWith('tel:')) {return 'tel';}
+    if (lowered.startsWith('javascript:')) {return 'javascript';}
 
     const hasDownload = typeof node.attrs?.download === 'string';
-    if (hasDownload) return 'download';
+    if (hasDownload) {return 'download';}
 
-    if (lowered.startsWith('http://') || lowered.startsWith('https://') || lowered.startsWith('/')) return 'url';
+    if (lowered.startsWith('http://') || lowered.startsWith('https://') || lowered.startsWith('/')) {return 'url';}
     return 'unknown';
 };
 
 const pickDomBaseRole = (node: DomNodeInput): string => {
     const domRole = normalizeRole(node.attrs?.role);
-    if (domRole) return domRole;
+    if (domRole) {return domRole;}
 
     const tag = normalizeRole(node.tag).toLowerCase();
-    if (!tag) return 'generic';
+    if (!tag) {return 'generic';}
 
     if (tag === 'input') {
         const inputType = normalizeRole(node.attrs?.type || node.type).toLowerCase();
         const mappedInputRole = DOM_SEMANTIC_ROLE_BY_INPUT_TYPE.get(inputType);
-        if (mappedInputRole) return mappedInputRole;
+        if (mappedInputRole) {return mappedInputRole;}
     }
 
     const mapped = DOM_SEMANTIC_ROLE_BY_TAG.get(tag);
-    if (mapped) return mapped;
+    if (mapped) {return mapped;}
     return tag;
 };
 
@@ -307,13 +307,13 @@ const mergeDomAttrs = (
 ): Record<string, string> | undefined => {
     const next: Record<string, string> = {};
     for (const [key, value] of Object.entries(node.attrs || {})) {
-        if (key === RUNTIME_STATE_ID_ATTR) continue;
+        if (key === RUNTIME_STATE_ID_ATTR) {continue;}
         next[key] = value;
     }
 
     const setAttr = (key: string, value: string | undefined) => {
         const normalized = normalizeText(value);
-        if (!normalized) return;
+        if (!normalized) {return;}
         next[key] = normalized;
     };
 
@@ -352,7 +352,7 @@ const mergeDomAttrs = (
     );
     setAttr('focused', resolveDynamicState(runtimeState?.focused, normalizeA11yStateValue(matched?.focused), node.attrs?.focused));
 
-    if (Object.keys(next).length === 0) return undefined;
+    if (Object.keys(next).length === 0) {return undefined;}
     return next;
 };
 
@@ -360,9 +360,9 @@ const resolveRuntimeStateByStateId = (
     node: DomNodeInput,
     runtimeStateMap: RuntimeStateMap | undefined,
 ): RuntimeStateMap[string] | undefined => {
-    if (!runtimeStateMap) return undefined;
+    if (!runtimeStateMap) {return undefined;}
     const stateId = normalizeText(node.attrs?.[RUNTIME_STATE_ID_ATTR]);
-    if (!stateId) return undefined;
+    if (!stateId) {return undefined;}
     return runtimeStateMap[stateId];
 };
 
@@ -372,24 +372,24 @@ const resolveDynamicState = (
     domValue: string | undefined,
 ): string | undefined => {
     const normalizedRuntime = normalizeText(runtimeValue);
-    if (normalizedRuntime) return normalizedRuntime;
+    if (normalizedRuntime) {return normalizedRuntime;}
     const normalizedA11y = normalizeText(a11yValue);
-    if (normalizedA11y) return normalizedA11y;
+    if (normalizedA11y) {return normalizedA11y;}
     return normalizeText(domValue);
 };
 
 const normalizeA11yStateValue = (value: string | undefined): string | undefined => {
     const normalized = normalizeRole(value).toLowerCase();
-    if (!normalized) return undefined;
-    if (normalized === 'mixed') return 'mixed';
-    if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') return 'true';
-    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') return 'false';
+    if (!normalized) {return undefined;}
+    if (normalized === 'mixed') {return 'mixed';}
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {return 'true';}
+    if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {return 'false';}
     return normalized;
 };
 
 const splitA11yName = (value: string | undefined): { name?: string; content?: string } => {
     const text = normalizeText(value);
-    if (!text) return {};
+    if (!text) {return {};}
     if (isLikelyShortLabel(text)) {
         return { name: text };
     }
@@ -398,34 +398,34 @@ const splitA11yName = (value: string | undefined): { name?: string; content?: st
 
 const pickExplicitDomLabel = (node: DomNodeInput): string | undefined => {
     const ariaLabel = normalizeText(node.attrs?.['aria-label']);
-    if (ariaLabel) return ariaLabel;
+    if (ariaLabel) {return ariaLabel;}
 
     const title = normalizeText(node.attrs?.title);
-    if (title) return title;
+    if (title) {return title;}
 
     const alt = normalizeText(node.attrs?.alt);
-    if (alt) return alt;
+    if (alt) {return alt;}
 
     return undefined;
 };
 
 const isLikelyShortLabel = (value: string): boolean => {
     const text = value.trim();
-    if (!text) return false;
+    if (!text) {return false;}
 
     const charCount = text.length;
-    if (charCount > 72) return false;
+    if (charCount > 72) {return false;}
 
     const wordCount = text.split(/\s+/).filter(Boolean).length;
-    if (wordCount > 9) return false;
+    if (wordCount > 9) {return false;}
 
     const sentencePunctuation = (text.match(/[.!?。！？]/g) || []).length;
-    if (sentencePunctuation >= 2) return false;
+    if (sentencePunctuation >= 2) {return false;}
 
     const punctuationCount = (text.match(/[,:;，；、]/g) || []).length;
-    if (punctuationCount >= 4) return false;
+    if (punctuationCount >= 4) {return false;}
 
-    if (/\b(and|or|but|because|which|that)\b/i.test(text) && wordCount >= 8) return false;
+    if (/\b(and|or|but|because|which|that)\b/i.test(text) && wordCount >= 8) {return false;}
     return true;
 };
 
@@ -438,7 +438,7 @@ const normalizeText = (value: string | undefined): string | undefined => {
 
 const normalizeBackendDomId = (value: string | undefined): string | undefined => {
     const normalized = normalizeText(value);
-    if (!normalized) return undefined;
+    if (!normalized) {return undefined;}
     return /^\d+$/.test(normalized) ? normalized : undefined;
 };
 

@@ -144,7 +144,7 @@ const runTasks = async (input: {
     const worker = async () => {
         while (queue.length > 0) {
             const task = queue.shift();
-            if (!task) break;
+            if (!task) {break;}
             const record = await collectTask(context, task, {
                 rawDir,
                 snapshotDir,
@@ -278,15 +278,15 @@ const loadUrlsFromSitemap = async (sitemapUrl: string): Promise<string[]> => {
 
     while (queue.length > 0) {
         const current = queue.shift();
-        if (!current) break;
-        if (visited.has(current.url)) continue;
+        if (!current) {break;}
+        if (visited.has(current.url)) {continue;}
         visited.add(current.url);
 
         const xml = await fetchText(current.url);
         const locs = extractXmlLocs(xml);
         for (const loc of locs) {
             const normalized = normalizeUrl(loc);
-            if (!normalized) continue;
+            if (!normalized) {continue;}
             if (normalized.endsWith('.xml') && current.depth < 2) {
                 queue.push({ url: normalized, depth: current.depth + 1 });
                 continue;
@@ -311,7 +311,7 @@ const extractXmlLocs = (xml: string): string[] => {
     const urls: string[] = [];
     for (const match of matches) {
         const value = decodeXml(match[1] || '');
-        if (value) urls.push(value);
+        if (value) {urls.push(value);}
     }
     return urls;
 };
@@ -332,7 +332,7 @@ const buildCaptureId = (index: number, url: string, round: number): string => {
 
 const normalizeUrl = (value: string): string | undefined => {
     const text = value.trim();
-    if (!text) return undefined;
+    if (!text) {return undefined;}
     try {
         const parsed = new URL(text);
         parsed.hash = '';
@@ -347,8 +347,8 @@ const dedupUrls = (urls: string[]): string[] => {
     const deduped: string[] = [];
     for (const url of urls) {
         const normalized = normalizeUrl(url);
-        if (!normalized) continue;
-        if (seen.has(normalized)) continue;
+        if (!normalized) {continue;}
+        if (seen.has(normalized)) {continue;}
         seen.add(normalized);
         deduped.push(normalized);
     }

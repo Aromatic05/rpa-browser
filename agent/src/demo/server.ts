@@ -22,17 +22,17 @@ const STATIC_DIR = path.resolve(__dirname, '../../static');
 const HOST = '127.0.0.1';
 const PORT = 17334;
 const TAB_TOKEN_KEY = '__rpa_tab_token';
-const CLICK_DELAY_MS = 300;
-const REPLAY_STEP_DELAY_MS = 900;
+const _CLICK_DELAY_MS = 300;
+const _REPLAY_STEP_DELAY_MS = 900;
 const NAV_DEDUPE_WINDOW_MS = 1200;
-const SCROLL_CONFIG = { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 };
+const _SCROLL_CONFIG = { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 };
 
 const readJsonBody = async (req: http.IncomingMessage) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) {
         chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     }
-    if (!chunks.length) return null;
+    if (!chunks.length) {return null;}
     const raw = Buffer.concat(chunks).toString('utf8');
     return JSON.parse(raw);
 };
@@ -62,7 +62,6 @@ const contextManager = createContextManager({
         void pageRegistry.bindPage(page);
     },
 });
-let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const pageRegistry = createPageRegistry({
     tabTokenKey: TAB_TOKEN_KEY,
@@ -75,7 +74,7 @@ const pageRegistry = createPageRegistry({
             runtimeRegistry.bindPage(page, token);
         }
     },
-    onTokenClosed: (token) => cleanupRecording(recordingState, token),
+    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
 
 const workspaceManager = createWorkspaceManager({
@@ -94,7 +93,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
-runtimeRegistry = createRuntimeRegistry({
+const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
@@ -121,7 +120,7 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
     if (url.pathname === '/api/config') {
         if (req.method === 'GET') {
-            void getMaskedConfig().then((cfg) => sendJson(res, 200, cfg));
+            void getMaskedConfig().then((cfg) => { sendJson(res, 200, cfg); });
             return;
         }
         if (req.method === 'PUT') {
@@ -156,7 +155,7 @@ const server = http.createServer((req, res) => {
         return;
     }
     if (url.pathname === '/api/env/status' && req.method === 'GET') {
-        void workspaceManager.getActiveWorkspacePublicInfo().then((info) => sendJson(res, 200, info));
+        void workspaceManager.getActiveWorkspacePublicInfo().then((info) => { sendJson(res, 200, info); });
         return;
     }
     if (url.pathname === '/api/chat' && req.method === 'POST') {

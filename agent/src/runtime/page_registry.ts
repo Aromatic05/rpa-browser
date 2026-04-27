@@ -71,10 +71,10 @@ const randomId = () => crypto.randomUUID();
 
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
     const actionLog = getLogger('action');
-    const log = (...args: unknown[]) => actionLog.info('[RPA:page_registry]', ...args);
-    const logDebug = (...args: unknown[]) => actionLog.debug('[RPA:page_registry]', ...args);
-    const logWarning = (...args: unknown[]) => actionLog.warning('[RPA:page_registry]', ...args);
-    const logError = (...args: unknown[]) => actionLog.error('[RPA:page_registry]', ...args);
+    const log = (...args: unknown[]) => { actionLog.info('[RPA:page_registry]', ...args); };
+    const logDebug = (...args: unknown[]) => { actionLog.debug('[RPA:page_registry]', ...args); };
+    const logWarning = (...args: unknown[]) => { actionLog.warning('[RPA:page_registry]', ...args); };
+    const logError = (...args: unknown[]) => { actionLog.error('[RPA:page_registry]', ...args); };
     const tokenToPage = new Map<string, Page>();
     const tokenToTab = new Map<string, { workspaceId: WorkspaceId; tabId: TabId }>();
     const workspaces = new Map<WorkspaceId, Workspace>();
@@ -85,7 +85,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     };
     const removeTabRef = (workspaceId: WorkspaceId, tabId: TabId) => {
         const ws = workspaces.get(workspaceId);
-        if (!ws) return;
+        if (!ws) {return;}
         ws.tabs.delete(tabId);
         if (ws.activeTabId === tabId) {
             ws.activeTabId = ws.tabs.keys().next().value;
@@ -105,7 +105,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const attachTokenToRuntime = (tabToken: string, page: Page) => {
         tokenToPage.set(tabToken, page);
         page.on('close', () => {
-            if (tokenToPage.get(tabToken) !== page) return;
+            if (tokenToPage.get(tabToken) !== page) {return;}
             tokenToPage.delete(tabToken);
             const ref = tokenToTab.get(tabToken);
             tokenToTab.delete(tabToken);
@@ -119,10 +119,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const waitForToken = async (page: Page, attempts = 20, delayMs = 200) => {
         for (let i = 0; i < attempts; i += 1) {
-            if (page.isClosed()) return null;
+            if (page.isClosed()) {return null;}
             try {
                 const token = await page.evaluate((key) => sessionStorage.getItem(key), options.tabTokenKey);
-                if (token) return token;
+                if (token) {return token;}
             } catch {
                 // ignore
             }
@@ -167,7 +167,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             createdAt: Date.now(),
             updatedAt: Date.now(),
         });
-        if (!workspace.activeTabId) workspace.activeTabId = tabId;
+        if (!workspace.activeTabId) {workspace.activeTabId = tabId;}
         tokenToTab.set(tabToken, { workspaceId: workspace.workspaceId, tabId });
         touchWorkspace(workspace);
         log('attach_tab', { workspaceId: workspace.workspaceId, tabId, tabToken, pageUrl: page.url() });
@@ -183,13 +183,13 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const moveTokenToWorkspace = (tabToken: string, workspaceId: WorkspaceId) => {
         const ref = tokenToTab.get(tabToken);
-        if (!ref) return null;
-        if (ref.workspaceId === workspaceId) return { workspaceId, tabId: ref.tabId };
+        if (!ref) {return null;}
+        if (ref.workspaceId === workspaceId) {return { workspaceId, tabId: ref.tabId };}
 
         const sourceWorkspace = workspaces.get(ref.workspaceId);
         const sourceTab = sourceWorkspace?.tabs.get(ref.tabId);
         const targetWorkspace = workspaces.get(workspaceId);
-        if (!sourceWorkspace || !sourceTab || !targetWorkspace) return null;
+        if (!sourceWorkspace || !sourceTab || !targetWorkspace) {return null;}
 
         sourceWorkspace.tabs.delete(ref.tabId);
         if (sourceWorkspace.activeTabId === ref.tabId) {
@@ -239,15 +239,15 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const bindPage = async (page: Page, hintedToken?: string) => {
         try {
-            if (page.isClosed()) return null;
+            if (page.isClosed()) {return null;}
             const token = hintedToken || (await waitForToken(page));
-            if (!token) return null;
+            if (!token) {return null;}
 
             log('bind_page.start', { hintedToken: hintedToken || null, resolvedToken: token, pageUrl: page.url() });
             attachTokenToRuntime(token, page);
             if (!tokenToTab.has(token)) {
                 const active = getActiveWorkspace();
-                if (active && active.tabs.size === 0) {
+                if (active?.tabs.size === 0) {
                     const attached = attachTokenToWorkspace(active, token, page);
                     activeWorkspaceId = active.workspaceId;
                     log('bind_page.auto_bound_shell_workspace', {
@@ -266,7 +266,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                     tab.page = page;
                     tab.updatedAt = Date.now();
                     const ws = workspaces.get(ref.workspaceId);
-                    if (ws) touchWorkspace(ws);
+                    if (ws) {touchWorkspace(ws);}
                 }
             }
             options.onPageBound?.(page, token);
@@ -308,22 +308,22 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         logDebug('rebuild_token_map.start', { pageCount: pages.length });
         for (const page of pages) {
             const token = await waitForToken(page, 3, 100);
-            if (!token) continue;
+            if (!token) {continue;}
             attachTokenToRuntime(token, page);
             logDebug('rebuild_token_map.bound', { token, pageUrl: page.url() });
         }
     };
 
     const getPage = async (tabToken: string, urlHint?: string) => {
-        if (!tabToken) throw new Error('missing tabToken');
+        if (!tabToken) {throw new Error('missing tabToken');}
         logDebug('get_page.start', { tabToken, urlHint: urlHint || null });
 
         let page = tokenToPage.get(tabToken);
-        if (page && !page.isClosed()) return page;
+        if (page && !page.isClosed()) {return page;}
 
         await rebuildTokenMap();
         page = tokenToPage.get(tabToken);
-        if (page && !page.isClosed()) return page;
+        if (page && !page.isClosed()) {return page;}
 
         page = await openPageWithToken(tabToken);
         if (urlHint) {
@@ -336,26 +336,26 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const resolveScope = (scope?: WorkspaceScope) => {
         const workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
-        if (!workspace) throw new Error('workspace not found');
+        if (!workspace) {throw new Error('workspace not found');}
         const tabId = scope?.tabId || workspace.activeTabId;
-        if (!tabId || !workspace.tabs.has(tabId)) throw new Error('tab not found');
+        if (!tabId || !workspace.tabs.has(tabId)) {throw new Error('tab not found');}
         return { workspaceId: workspace.workspaceId, tabId };
     };
 
     const resolveTabToken = (scope?: WorkspaceScope) => {
         const resolved = resolveScope(scope);
         const tab = workspaces.get(resolved.workspaceId)?.tabs.get(resolved.tabId);
-        if (!tab) throw new Error('tab not found');
+        if (!tab) {throw new Error('tab not found');}
         return tab.tabToken;
     };
 
     const resolvePage = async (scope?: WorkspaceScope) => {
         const workspace = scope?.workspaceId ? workspaces.get(scope.workspaceId) : getActiveWorkspace();
-        if (!workspace) throw new Error('workspace not found');
+        if (!workspace) {throw new Error('workspace not found');}
         const tabId = scope?.tabId || workspace.activeTabId;
-        if (!tabId) throw new Error('tab not found');
+        if (!tabId) {throw new Error('tab not found');}
         const tab = workspace.tabs.get(tabId);
-        if (!tab) throw new Error('tab not found');
+        if (!tab) {throw new Error('tab not found');}
         return tab.page;
     };
 
@@ -369,7 +369,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const createWorkspaceShell = (workspaceId?: WorkspaceId) => {
         const id = workspaceId || randomId();
-        if (workspaces.has(id)) return { workspaceId: id };
+        if (workspaces.has(id)) {return { workspaceId: id };}
         const now = Date.now();
         workspaces.set(id, {
             workspaceId: id,
@@ -378,13 +378,13 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             createdAt: now,
             updatedAt: now,
         });
-        if (!activeWorkspaceId) activeWorkspaceId = id;
+        if (!activeWorkspaceId) {activeWorkspaceId = id;}
         return { workspaceId: id };
     };
 
     const createTab = async (workspaceId: WorkspaceId) => {
         const workspace = workspaces.get(workspaceId);
-        if (!workspace) throw new Error('workspace not found');
+        if (!workspace) {throw new Error('workspace not found');}
         const tabToken = randomId();
         const page = await openPageWithToken(tabToken);
         const tabId = randomId();
@@ -397,9 +397,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const closeTab = async (workspaceId: WorkspaceId, tabId: TabId) => {
         const workspace = workspaces.get(workspaceId);
-        if (!workspace) return;
+        if (!workspace) {return;}
         const tab = workspace.tabs.get(tabId);
-        if (!tab) return;
+        if (!tab) {return;}
         tokenToPage.delete(tab.tabToken);
         tokenToTab.delete(tab.tabToken);
         if (!tab.page.isClosed()) {
@@ -409,21 +409,21 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     };
 
     const setActiveWorkspace = (workspaceId: WorkspaceId) => {
-        if (workspaces.has(workspaceId)) activeWorkspaceId = workspaceId;
+        if (workspaces.has(workspaceId)) {activeWorkspaceId = workspaceId;}
     };
 
     const setActiveTab = (workspaceId: WorkspaceId, tabId: TabId) => {
         const workspace = workspaces.get(workspaceId);
-        if (!workspace || !workspace.tabs.has(tabId)) return;
+        if (!workspace?.tabs.has(tabId)) {return;}
         workspace.activeTabId = tabId;
         touchWorkspace(workspace);
     };
 
     const listTabs = async (workspaceId: WorkspaceId) => {
         const workspace = workspaces.get(workspaceId);
-        if (!workspace) return [];
+        if (!workspace) {return [];}
         const tabs = Array.from(workspace.tabs.values());
-        return Promise.all(
+        return await Promise.all(
             tabs.map(async (tab) => ({
                 tabId: tab.tabId,
                 url: tab.page.url(),
@@ -447,7 +447,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const cleanupToken = (tabToken: string) => {
         tokenToPage.delete(tabToken);
         const ref = tokenToTab.get(tabToken);
-        if (ref) removeTabRef(ref.workspaceId, ref.tabId);
+        if (ref) {removeTabRef(ref.workspaceId, ref.tabId);}
         tokenToTab.delete(tabToken);
     };
 
@@ -467,10 +467,10 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const touchTabToken = (tabToken: string, at?: number) => {
         const ref = tokenToTab.get(tabToken);
-        if (!ref) return null;
+        if (!ref) {return null;}
         const ws = workspaces.get(ref.workspaceId);
         const tab = ws?.tabs.get(ref.tabId);
-        if (!ws || !tab) return null;
+        if (!ws || !tab) {return null;}
         tab.updatedAt = typeof at === 'number' ? at : Date.now();
         touchWorkspace(ws);
         return { workspaceId: ref.workspaceId, tabId: ref.tabId };
@@ -478,11 +478,11 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
 
     const bindTokenToWorkspace = (tabToken: string, workspaceId: WorkspaceId) => {
         const existing = tokenToTab.get(tabToken);
-        if (existing) return { workspaceId: existing.workspaceId, tabId: existing.tabId };
+        if (existing) {return { workspaceId: existing.workspaceId, tabId: existing.tabId };}
         const page = tokenToPage.get(tabToken);
-        if (!page || page.isClosed()) return null;
+        if (!page || page.isClosed()) {return null;}
         const workspace = workspaces.get(workspaceId);
-        if (!workspace) return null;
+        if (!workspace) {return null;}
         const attached = attachTokenToWorkspace(workspace, tabToken, page);
         activeWorkspaceId = workspaceId;
         return attached;
@@ -492,7 +492,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         const timedOut: Array<{ tabToken: string; workspaceId: WorkspaceId; tabId: TabId; lastSeenAt: number }> = [];
         for (const workspace of workspaces.values()) {
             for (const tab of workspace.tabs.values()) {
-                if (now - tab.updatedAt <= timeoutMs) continue;
+                if (now - tab.updatedAt <= timeoutMs) {continue;}
                 timedOut.push({
                     tabToken: tab.tabToken,
                     workspaceId: workspace.workspaceId,
@@ -516,7 +516,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const rebindTokenToTab = (tabToken: string, workspaceId: WorkspaceId, tabId: TabId) => {
         const workspace = workspaces.get(workspaceId);
         const tab = workspace?.tabs.get(tabId);
-        if (!workspace || !tab) return null;
+        if (!workspace || !tab) {return null;}
 
         const targetPrevToken = tab.tabToken;
         if (targetPrevToken && targetPrevToken !== tabToken) {

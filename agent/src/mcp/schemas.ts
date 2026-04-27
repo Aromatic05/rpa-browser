@@ -5,7 +5,7 @@ const coordSchema = z.object({
     y: z.number(),
 });
 
-const ensureIdOrSelector = <T extends { id?: string; selector?: string }>(value: T) => {
+const ensureIdOrSelector = (value: { id?: string; selector?: string }) => {
     return Boolean(value.id || value.selector);
 };
 
@@ -107,45 +107,133 @@ export const browserSnapshotInputSchema = z.object({
     diff: z.boolean().optional(),
 });
 
-export const browserListEntitiesInputSchema = z.object({
-    tabToken: z.string().optional(),
-    kind: entityKindOrArraySchema.optional(),
-    businessTag: textOrArraySchema.optional(),
-    query: z.string().optional(),
-});
+export const browserEntityInputSchema = z.discriminatedUnion('op', [
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('list'),
+        kind: entityKindOrArraySchema.optional(),
+        businessTag: textOrArraySchema.optional(),
+        query: z.string().optional(),
+    }),
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('get'),
+        nodeId: z.string(),
+    }),
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('find'),
+        kind: entityKindOrArraySchema.optional(),
+        businessTag: textOrArraySchema.optional(),
+        query: z.string().optional(),
+    }),
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('add'),
+        nodeId: z.string(),
+        kind: entityKindSchema,
+        name: z.string().optional(),
+        businessTag: z.string().optional(),
+    }),
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('delete'),
+        nodeId: z.string(),
+        kind: entityKindSchema.optional(),
+        businessTag: z.string().optional(),
+    }),
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('rename'),
+        nodeId: z.string(),
+        name: z.string(),
+    }),
+]);
 
-export const browserGetEntityInputSchema = z.object({
-    tabToken: z.string().optional(),
-    nodeId: z.string(),
-});
+const browserQueryWhereSchema = z
+    .object({
+        role: z.string().optional(),
+        tag: z.string().optional(),
+        text: z
+            .object({
+                contains: z.string().optional(),
+            })
+            .optional(),
+        attrs: z.record(z.string(), z.string()).optional(),
+    })
+    .strict();
 
-export const browserFindEntitiesInputSchema = z.object({
-    tabToken: z.string().optional(),
-    query: z.string(),
-    kind: entityKindOrArraySchema.optional(),
-    businessTag: textOrArraySchema.optional(),
-});
+const browserQueryFromSchema = z.union([
+    z.literal('snapshot'),
+    z.literal('snapshot.latest'),
+    z.object({
+        nodeIds: z.array(z.string()).nonempty(),
+    }),
+    z.object({
+        nodes: z
+            .array(
+                z.union([
+                    z.object({ id: z.string() }).strict(),
+                    z.object({ handle: z.object({ nodeId: z.string() }).strict() }).strict(),
+                ]),
+            )
+            .nonempty(),
+    }),
+]);
 
-export const browserAddEntityInputSchema = z.object({
-    tabToken: z.string().optional(),
-    nodeId: z.string(),
-    kind: entityKindSchema,
-    name: z.string().optional(),
-    businessTag: z.string().optional(),
-});
-
-export const browserDeleteEntityInputSchema = z.object({
-    tabToken: z.string().optional(),
-    nodeId: z.string(),
-    kind: entityKindSchema.optional(),
-    businessTag: z.string().optional(),
-});
-
-export const browserRenameEntityInputSchema = z.object({
-    tabToken: z.string().optional(),
-    nodeId: z.string(),
-    name: z.string(),
-});
+export const browserQueryInputSchema = z.union([
+    z.object({
+        tabToken: z.string().optional(),
+        from: browserQueryFromSchema,
+        where: browserQueryWhereSchema.optional(),
+        relation: z.enum(['child', 'descendant']).optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+    }),
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('entity'),
+        businessTag: z.string(),
+        query: z.enum([
+            'table.row_count',
+            'table.headers',
+            'table.primary_key',
+            'table.columns',
+            'table.current_rows',
+            'form.fields',
+            'form.actions',
+        ]),
+    }),
+    z.object({
+        tabToken: z.string().optional(),
+        op: z.literal('entity.target'),
+        businessTag: z.string(),
+        target: z.discriminatedUnion('kind', [
+            z.object({
+                kind: z.literal('form.field'),
+                fieldKey: z.string(),
+            }),
+            z.object({
+                kind: z.literal('form.action'),
+                actionIntent: z.string(),
+            }),
+            z.object({
+                kind: z.literal('table.row'),
+                primaryKey: z.object({
+                    fieldKey: z.string(),
+                    value: z.string(),
+                }),
+            }),
+            z.object({
+                kind: z.literal('table.row_action'),
+                primaryKey: z.object({
+                    fieldKey: z.string(),
+                    value: z.string(),
+                }),
+                actionIntent: z.string(),
+            }),
+        ]),
+    }),
+]);
 
 export const browserGetContentInputSchema = z.object({
     tabToken: z.string().optional(),
@@ -289,7 +377,7 @@ export const browserBatchInputSchema = z
     .superRefine((value, ctx) => {
         value.actions.forEach((action, index) => {
             const hasTarget = Boolean(action.id || action.selector || action.label || action.op === 'click' && action.coord);
-            if (hasTarget) return;
+            if (hasTarget) {return;}
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 message:
@@ -324,12 +412,8 @@ export type BrowserScrollInput = z.infer<typeof browserScrollInputSchema>;
 export type BrowserPressKeyInput = z.infer<typeof browserPressKeyInputSchema>;
 export type BrowserDragAndDropInput = z.infer<typeof browserDragAndDropInputSchema>;
 export type BrowserMouseInput = z.infer<typeof browserMouseInputSchema>;
-export type BrowserListEntitiesInput = z.infer<typeof browserListEntitiesInputSchema>;
-export type BrowserGetEntityInput = z.infer<typeof browserGetEntityInputSchema>;
-export type BrowserFindEntitiesInput = z.infer<typeof browserFindEntitiesInputSchema>;
-export type BrowserAddEntityInput = z.infer<typeof browserAddEntityInputSchema>;
-export type BrowserDeleteEntityInput = z.infer<typeof browserDeleteEntityInputSchema>;
-export type BrowserRenameEntityInput = z.infer<typeof browserRenameEntityInputSchema>;
+export type BrowserEntityInput = z.infer<typeof browserEntityInputSchema>;
+export type BrowserQueryInput = z.infer<typeof browserQueryInputSchema>;
 export type BrowserBatchInput = z.infer<typeof browserBatchInputSchema>;
 
 export const toolInputJsonSchemas = {
@@ -430,89 +514,258 @@ export const toolInputJsonSchemas = {
         },
         additionalProperties: false,
     },
-    'browser.list_entities': {
-        type: 'object',
-        required: [],
-        properties: {
-            tabToken: { type: 'string' },
-            kind: {
-                anyOf: [
-                    { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
-                    { type: 'array', items: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] } },
-                ],
+    'browser.entity': {
+        oneOf: [
+            {
+                type: 'object',
+                required: ['op'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['list'] },
+                    kind: {
+                        anyOf: [
+                            { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+                            { type: 'array', items: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] } },
+                        ],
+                    },
+                    businessTag: {
+                        anyOf: [
+                            { type: 'string' },
+                            { type: 'array', items: { type: 'string' } },
+                        ],
+                    },
+                    query: { type: 'string' },
+                },
+                additionalProperties: false,
             },
-            businessTag: {
-                anyOf: [
-                    { type: 'string' },
-                    { type: 'array', items: { type: 'string' } },
-                ],
+            {
+                type: 'object',
+                required: ['op', 'nodeId'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['get'] },
+                    nodeId: { type: 'string' },
+                },
+                additionalProperties: false,
             },
-            query: { type: 'string' },
-        },
-        additionalProperties: false,
-    },
-    'browser.get_entity': {
-        type: 'object',
-        required: ['nodeId'],
-        properties: {
-            tabToken: { type: 'string' },
-            nodeId: { type: 'string' },
-        },
-        additionalProperties: false,
-    },
-    'browser.find_entities': {
-        type: 'object',
-        required: ['query'],
-        properties: {
-            tabToken: { type: 'string' },
-            query: { type: 'string' },
-            kind: {
-                anyOf: [
-                    { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
-                    { type: 'array', items: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] } },
-                ],
+            {
+                type: 'object',
+                required: ['op'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['find'] },
+                    kind: {
+                        anyOf: [
+                            { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+                            { type: 'array', items: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] } },
+                        ],
+                    },
+                    businessTag: {
+                        anyOf: [
+                            { type: 'string' },
+                            { type: 'array', items: { type: 'string' } },
+                        ],
+                    },
+                    query: { type: 'string' },
+                },
+                additionalProperties: false,
             },
-            businessTag: {
-                anyOf: [
-                    { type: 'string' },
-                    { type: 'array', items: { type: 'string' } },
-                ],
+            {
+                type: 'object',
+                required: ['op', 'nodeId', 'kind'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['add'] },
+                    nodeId: { type: 'string' },
+                    kind: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+                    name: { type: 'string' },
+                    businessTag: { type: 'string' },
+                },
+                additionalProperties: false,
             },
-        },
-        additionalProperties: false,
+            {
+                type: 'object',
+                required: ['op', 'nodeId'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['delete'] },
+                    nodeId: { type: 'string' },
+                    kind: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
+                    businessTag: { type: 'string' },
+                },
+                additionalProperties: false,
+            },
+            {
+                type: 'object',
+                required: ['op', 'nodeId', 'name'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['rename'] },
+                    nodeId: { type: 'string' },
+                    name: { type: 'string' },
+                },
+                additionalProperties: false,
+            },
+        ],
     },
-    'browser.add_entity': {
-        type: 'object',
-        required: ['nodeId', 'kind'],
-        properties: {
-            tabToken: { type: 'string' },
-            nodeId: { type: 'string' },
-            kind: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
-            name: { type: 'string' },
-            businessTag: { type: 'string' },
-        },
-        additionalProperties: false,
-    },
-    'browser.delete_entity': {
-        type: 'object',
-        required: ['nodeId'],
-        properties: {
-            tabToken: { type: 'string' },
-            nodeId: { type: 'string' },
-            kind: { type: 'string', enum: ['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'] },
-            businessTag: { type: 'string' },
-        },
-        additionalProperties: false,
-    },
-    'browser.rename_entity': {
-        type: 'object',
-        required: ['nodeId', 'name'],
-        properties: {
-            tabToken: { type: 'string' },
-            nodeId: { type: 'string' },
-            name: { type: 'string' },
-        },
-        additionalProperties: false,
+    'browser.query': {
+        oneOf: [
+            {
+                type: 'object',
+                required: ['from'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    from: {
+                        anyOf: [
+                            { type: 'string', enum: ['snapshot', 'snapshot.latest'] },
+                            { type: 'object', required: ['nodeIds'], properties: { nodeIds: { type: 'array', items: { type: 'string' }, minItems: 1 } }, additionalProperties: false },
+                            {
+                                type: 'object',
+                                required: ['nodes'],
+                                properties: {
+                                    nodes: {
+                                        type: 'array',
+                                        minItems: 1,
+                                        items: {
+                                            oneOf: [
+                                                { type: 'object', required: ['id'], properties: { id: { type: 'string' } }, additionalProperties: false },
+                                                {
+                                                    type: 'object',
+                                                    required: ['handle'],
+                                                    properties: {
+                                                        handle: {
+                                                            type: 'object',
+                                                            required: ['nodeId'],
+                                                            properties: { nodeId: { type: 'string' } },
+                                                            additionalProperties: false,
+                                                        },
+                                                    },
+                                                    additionalProperties: false,
+                                                },
+                                            ],
+                                        },
+                                    },
+                                },
+                                additionalProperties: false,
+                            },
+                        ],
+                    },
+                    where: {
+                        type: 'object',
+                        required: [],
+                        properties: {
+                            role: { type: 'string' },
+                            tag: { type: 'string' },
+                            text: {
+                                type: 'object',
+                                required: [],
+                                properties: {
+                                    contains: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                            attrs: {
+                                type: 'object',
+                                additionalProperties: { type: 'string' },
+                            },
+                        },
+                        additionalProperties: false,
+                    },
+                    relation: { type: 'string', enum: ['child', 'descendant'] },
+                    limit: { type: 'integer', minimum: 1, maximum: 500 },
+                },
+                additionalProperties: false,
+            },
+            {
+                type: 'object',
+                required: ['op', 'businessTag', 'query'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['entity'] },
+                    businessTag: { type: 'string' },
+                    query: {
+                        type: 'string',
+                        enum: [
+                            'table.row_count',
+                            'table.headers',
+                            'table.primary_key',
+                            'table.columns',
+                            'table.current_rows',
+                            'form.fields',
+                            'form.actions',
+                        ],
+                    },
+                },
+                additionalProperties: false,
+            },
+            {
+                type: 'object',
+                required: ['op', 'businessTag', 'target'],
+                properties: {
+                    tabToken: { type: 'string' },
+                    op: { type: 'string', enum: ['entity.target'] },
+                    businessTag: { type: 'string' },
+                    target: {
+                        oneOf: [
+                            {
+                                type: 'object',
+                                required: ['kind', 'fieldKey'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['form.field'] },
+                                    fieldKey: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                            {
+                                type: 'object',
+                                required: ['kind', 'actionIntent'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['form.action'] },
+                                    actionIntent: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                            {
+                                type: 'object',
+                                required: ['kind', 'primaryKey'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['table.row'] },
+                                    primaryKey: {
+                                        type: 'object',
+                                        required: ['fieldKey', 'value'],
+                                        properties: {
+                                            fieldKey: { type: 'string' },
+                                            value: { type: 'string' },
+                                        },
+                                        additionalProperties: false,
+                                    },
+                                },
+                                additionalProperties: false,
+                            },
+                            {
+                                type: 'object',
+                                required: ['kind', 'primaryKey', 'actionIntent'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['table.row_action'] },
+                                    primaryKey: {
+                                        type: 'object',
+                                        required: ['fieldKey', 'value'],
+                                        properties: {
+                                            fieldKey: { type: 'string' },
+                                            value: { type: 'string' },
+                                        },
+                                        additionalProperties: false,
+                                    },
+                                    actionIntent: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                        ],
+                    },
+                },
+                additionalProperties: false,
+            },
+        ],
     },
     'browser.get_content': {
         type: 'object',

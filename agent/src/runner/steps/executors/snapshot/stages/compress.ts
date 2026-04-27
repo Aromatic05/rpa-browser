@@ -131,7 +131,7 @@ const countNodes = (root: UnifiedNode): number => {
     const stack: UnifiedNode[] = [root];
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
         count += 1;
         for (let index = current.children.length - 1; index >= 0; index -= 1) {
             stack.push(current.children[index]);
@@ -192,7 +192,7 @@ const collapseRepeatedTemplates = (root: UnifiedNode, budget: ResolvedRegionBudg
     const stack: UnifiedNode[] = [root];
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
 
         collapseRepeatedTemplateChildren(current, budget);
         for (let index = current.children.length - 1; index >= 0; index -= 1) {
@@ -202,7 +202,7 @@ const collapseRepeatedTemplates = (root: UnifiedNode, budget: ResolvedRegionBudg
 };
 
 const collapseRepeatedTemplateChildren = (node: UnifiedNode, budget: ResolvedRegionBudget) => {
-    if (node.children.length < budget.minTemplateRun) return;
+    if (node.children.length < budget.minTemplateRun) {return;}
 
     const indexesBySignature = new Map<string, number[]>();
     for (let index = 0; index < node.children.length; index += 1) {
@@ -215,7 +215,7 @@ const collapseRepeatedTemplateChildren = (node: UnifiedNode, budget: ResolvedReg
 
     const removeIndexes = new Set<number>();
     for (const indexes of indexesBySignature.values()) {
-        if (indexes.length <= budget.siblingTemplateCap) continue;
+        if (indexes.length <= budget.siblingTemplateCap) {continue;}
         const keepIndexes = pickTemplateSampleIndexes(node.children, indexes, budget.siblingTemplateCap);
         for (const index of indexes) {
             if (!keepIndexes.has(index)) {
@@ -224,7 +224,7 @@ const collapseRepeatedTemplateChildren = (node: UnifiedNode, budget: ResolvedReg
         }
     }
 
-    if (removeIndexes.size === 0) return;
+    if (removeIndexes.size === 0) {return;}
     node.children = node.children.filter((_, index) => !removeIndexes.has(index));
 };
 
@@ -242,7 +242,7 @@ const buildTemplateSignature = (node: UnifiedNode): string => {
 };
 
 const normalizeTemplateClass = (className: string): string => {
-    if (!className) return '';
+    if (!className) {return '';}
     return className
         .split(/\s+/)
         .filter((token) => token.length > 0)
@@ -276,7 +276,7 @@ const pickTemplateSampleIndexes = (
             .sort((left, right) => scoreNodeImportance(children[right], 1) - scoreNodeImportance(children[left], 1));
         const bounded = new Set<number>([first, last]);
         for (const index of ranked) {
-            if (bounded.size >= cap) break;
+            if (bounded.size >= cap) {break;}
             bounded.add(index);
         }
         return bounded;
@@ -294,17 +294,17 @@ const pickTemplateSampleIndexes = (
 };
 
 const sampleIndexesEvenly = (indexes: number[], count: number, exclude: Set<number>): number[] => {
-    if (count <= 0) return [];
+    if (count <= 0) {return [];}
 
     const available = indexes.filter((index) => !exclude.has(index));
-    if (available.length <= count) return available;
+    if (available.length <= count) {return available;}
 
     const sampled: number[] = [];
     const sampledSet = new Set<number>();
     for (let step = 1; step <= count; step += 1) {
         const ratio = step / (count + 1);
         const pick = available[Math.round((available.length - 1) * ratio)];
-        if (pick === undefined || sampledSet.has(pick)) continue;
+        if (pick === undefined || sampledSet.has(pick)) {continue;}
         sampled.push(pick);
         sampledSet.add(pick);
     }
@@ -314,28 +314,28 @@ const sampleIndexesEvenly = (indexes: number[], count: number, exclude: Set<numb
     }
 
     for (const index of available) {
-        if (sampledSet.has(index)) continue;
+        if (sampledSet.has(index)) {continue;}
         sampled.push(index);
         sampledSet.add(index);
-        if (sampled.length >= count) break;
+        if (sampled.length >= count) {break;}
     }
     return sampled;
 };
 
 const isTemplateAnchorNode = (node: UnifiedNode): boolean => {
-    if (isInteractiveNode(node)) return true;
-    if (node.target) return true;
-    if (hasSemanticPayload(node)) return true;
-    if (hasInteractiveDescendant(node, 2)) return true;
-    if (isTruthyAttr(getNodeAttr(node, 'aria-current'))) return true;
-    if (isTruthyAttr(getNodeAttr(node, 'aria-selected'))) return true;
-    if (isTruthyAttr(getNodeAttr(node, 'data-active'))) return true;
-    if (isTruthyAttr(getNodeAttr(node, 'active'))) return true;
+    if (isInteractiveNode(node)) {return true;}
+    if (node.target) {return true;}
+    if (hasSemanticPayload(node)) {return true;}
+    if (hasInteractiveDescendant(node, 2)) {return true;}
+    if (isTruthyAttr(getNodeAttr(node, 'aria-current'))) {return true;}
+    if (isTruthyAttr(getNodeAttr(node, 'aria-selected'))) {return true;}
+    if (isTruthyAttr(getNodeAttr(node, 'data-active'))) {return true;}
+    if (isTruthyAttr(getNodeAttr(node, 'active'))) {return true;}
     return false;
 };
 
 const hasInteractiveDescendant = (node: UnifiedNode, maxDepth: number): boolean => {
-    if (maxDepth <= 0) return false;
+    if (maxDepth <= 0) {return false;}
     const stack: Array<{ node: UnifiedNode; depth: number }> = [];
     for (const child of node.children) {
         stack.push({ node: child, depth: 1 });
@@ -343,9 +343,9 @@ const hasInteractiveDescendant = (node: UnifiedNode, maxDepth: number): boolean 
 
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
-        if (isInteractiveNode(current.node)) return true;
-        if (current.depth >= maxDepth) continue;
+        if (!current) {break;}
+        if (isInteractiveNode(current.node)) {return true;}
+        if (current.depth >= maxDepth) {continue;}
         for (const child of current.node.children) {
             stack.push({
                 node: child,
@@ -371,7 +371,7 @@ const enforceInformationBudget = (root: UnifiedNode, maxNodes: number) => {
 
     while (stack.length > 0) {
         const current = stack.pop();
-        if (!current) break;
+        if (!current) {break;}
         totalNodes += 1;
         candidatesById.set(current.node.id, {
             node: current.node,
@@ -388,7 +388,7 @@ const enforceInformationBudget = (root: UnifiedNode, maxNodes: number) => {
         }
     }
 
-    if (totalNodes <= maxNodes) return;
+    if (totalNodes <= maxNodes) {return;}
 
     const alwaysKeepIds = new Set<string>();
     for (const candidate of candidatesById.values()) {
@@ -399,70 +399,70 @@ const enforceInformationBudget = (root: UnifiedNode, maxNodes: number) => {
 
     const heap: NodeBudgetCandidate[] = [];
     for (const candidate of candidatesById.values()) {
-        if (alwaysKeepIds.has(candidate.node.id)) continue;
-        if (candidate.node.children.length > 0) continue;
+        if (alwaysKeepIds.has(candidate.node.id)) {continue;}
+        if (candidate.node.children.length > 0) {continue;}
         pushBudgetHeap(heap, candidate);
     }
 
     const removed = new Set<string>();
     while (totalNodes > maxNodes) {
         const next = popBudgetHeap(heap);
-        if (!next) break;
-        if (removed.has(next.node.id)) continue;
-        if (alwaysKeepIds.has(next.node.id)) continue;
-        if (next.node.children.length > 0) continue;
-        if (!next.parent) continue;
+        if (!next) {break;}
+        if (removed.has(next.node.id)) {continue;}
+        if (alwaysKeepIds.has(next.node.id)) {continue;}
+        if (next.node.children.length > 0) {continue;}
+        if (!next.parent) {continue;}
 
         const childIndex = next.parent.children.findIndex((child) => child.id === next.node.id);
-        if (childIndex < 0) continue;
+        if (childIndex < 0) {continue;}
 
         next.parent.children.splice(childIndex, 1);
         removed.add(next.node.id);
         totalNodes -= 1;
 
         const parentCandidate = candidatesById.get(next.parent.id);
-        if (!parentCandidate) continue;
-        if (alwaysKeepIds.has(parentCandidate.node.id)) continue;
-        if (parentCandidate.node.children.length !== 0) continue;
+        if (!parentCandidate) {continue;}
+        if (alwaysKeepIds.has(parentCandidate.node.id)) {continue;}
+        if (parentCandidate.node.children.length !== 0) {continue;}
         pushBudgetHeap(heap, parentCandidate);
     }
 };
 
 const shouldAlwaysKeepForBudget = (candidate: NodeBudgetCandidate): boolean => {
-    if (candidate.depth <= 1) return true;
-    if (candidate.score >= IMPORTANCE_HARD_KEEP_SCORE) return true;
+    if (candidate.depth <= 1) {return true;}
+    if (candidate.score >= IMPORTANCE_HARD_KEEP_SCORE) {return true;}
 
     const role = nodeRole(candidate.node);
-    if (BUDGET_CRITICAL_ROLES.has(role)) return true;
-    if (isInteractiveNode(candidate.node)) return true;
-    if (candidate.node.target) return true;
-    if (hasSemanticPayload(candidate.node)) return true;
-    if (isTemplateAnchorNode(candidate.node) && candidate.depth <= 3) return true;
+    if (BUDGET_CRITICAL_ROLES.has(role)) {return true;}
+    if (isInteractiveNode(candidate.node)) {return true;}
+    if (candidate.node.target) {return true;}
+    if (hasSemanticPayload(candidate.node)) {return true;}
+    if (isTemplateAnchorNode(candidate.node) && candidate.depth <= 3) {return true;}
     return false;
 };
 
 const scoreNodeImportance = (node: UnifiedNode, depth: number): number => {
     let score = 0;
-    if (isInteractiveNode(node)) score += 3;
-    if (node.target) score += 2;
-    if (hasSemanticPayload(node)) score += 2.6;
-    if (PRESERVE_ROLES.has(nodeRole(node))) score += 1.4;
-    if (BUDGET_CRITICAL_ROLES.has(nodeRole(node))) score += 1.1;
+    if (isInteractiveNode(node)) {score += 3;}
+    if (node.target) {score += 2;}
+    if (hasSemanticPayload(node)) {score += 2.6;}
+    if (PRESERVE_ROLES.has(nodeRole(node))) {score += 1.4;}
+    if (BUDGET_CRITICAL_ROLES.has(nodeRole(node))) {score += 1.1;}
 
     const name = normalizeText(node.name);
     const content = normalizeText(getNodeContent(node));
-    if (name) score += 1.2;
-    if (content) score += Math.min(1.2, content.length / 48);
+    if (name) {score += 1.2;}
+    if (content) {score += Math.min(1.2, content.length / 48);}
 
-    if (node.tier === 'A') score += 1.8;
-    else if (node.tier === 'B') score += 1;
-    else if (node.tier === 'C') score += 0.35;
-    else if (node.tier === 'D') score -= 1;
+    if (node.tier === 'A') {score += 1.8;}
+    else if (node.tier === 'B') {score += 1;}
+    else if (node.tier === 'C') {score += 0.35;}
+    else if (node.tier === 'D') {score -= 1;}
 
-    if (isNodeHiddenFromView(node)) score -= 4;
-    if (isPseudoNode(node)) score -= 2;
-    if (isDecorativeNoise(node)) score -= 1.8;
-    if (isWrapperRoleOrTag(node) && !hasVisibleSemanticPayload(node)) score -= 1;
+    if (isNodeHiddenFromView(node)) {score -= 4;}
+    if (isPseudoNode(node)) {score -= 2;}
+    if (isDecorativeNoise(node)) {score -= 1.8;}
+    if (isWrapperRoleOrTag(node) && !hasVisibleSemanticPayload(node)) {score -= 1;}
 
     const depthPenalty = Math.max(0, depth - 8) * 0.18;
     score -= depthPenalty;
@@ -474,7 +474,7 @@ const pushBudgetHeap = (heap: NodeBudgetCandidate[], candidate: NodeBudgetCandid
     let index = heap.length - 1;
     while (index > 0) {
         const parentIndex = Math.floor((index - 1) / 2);
-        if (!isHigherPrunePriority(heap[index], heap[parentIndex])) break;
+        if (!isHigherPrunePriority(heap[index], heap[parentIndex])) {break;}
         const tmp = heap[index];
         heap[index] = heap[parentIndex];
         heap[parentIndex] = tmp;
@@ -483,7 +483,7 @@ const pushBudgetHeap = (heap: NodeBudgetCandidate[], candidate: NodeBudgetCandid
 };
 
 const popBudgetHeap = (heap: NodeBudgetCandidate[]): NodeBudgetCandidate | undefined => {
-    if (heap.length === 0) return undefined;
+    if (heap.length === 0) {return undefined;}
     const top = heap[0];
     const last = heap.pop();
     if (heap.length === 0 || !last) {
@@ -503,7 +503,7 @@ const popBudgetHeap = (heap: NodeBudgetCandidate[]): NodeBudgetCandidate | undef
         if (right < heap.length && isHigherPrunePriority(heap[right], heap[smallest])) {
             smallest = right;
         }
-        if (smallest === index) break;
+        if (smallest === index) {break;}
 
         const tmp = heap[index];
         heap[index] = heap[smallest];
@@ -515,8 +515,8 @@ const popBudgetHeap = (heap: NodeBudgetCandidate[]): NodeBudgetCandidate | undef
 };
 
 const isHigherPrunePriority = (left: NodeBudgetCandidate, right: NodeBudgetCandidate): boolean => {
-    if (left.score !== right.score) return left.score < right.score;
-    if (left.depth !== right.depth) return left.depth > right.depth;
+    if (left.score !== right.score) {return left.score < right.score;}
+    if (left.depth !== right.depth) {return left.depth > right.depth;}
     return left.node.id < right.node.id;
 };
 
@@ -524,46 +524,46 @@ const shouldDropSubtree = (node: UnifiedNode, isRoot: boolean): boolean => {
     const tag = nodeTag(node);
     const role = nodeRole(node);
     // head 分支必须强制裁掉，即使它正好是当前 region 根。
-    if (FORCE_DROP_SUBTREE_TAGS.has(tag) || FORCE_DROP_SUBTREE_ROLES.has(role)) return true;
+    if (FORCE_DROP_SUBTREE_TAGS.has(tag) || FORCE_DROP_SUBTREE_ROLES.has(role)) {return true;}
 
-    if (isRoot) return false;
-    if (isNodeHiddenFromView(node)) return true;
-    if (isProtectedNode(node)) return false;
+    if (isRoot) {return false;}
+    if (isNodeHiddenFromView(node)) {return true;}
+    if (isProtectedNode(node)) {return false;}
 
-    if (DROP_SUBTREE_TAGS.has(tag) || DROP_SUBTREE_ROLES.has(role)) return true;
-    if (VECTOR_SUBTREE_TAGS.has(tag) && !isMeaningfulImageNode(node)) return true;
+    if (DROP_SUBTREE_TAGS.has(tag) || DROP_SUBTREE_ROLES.has(role)) {return true;}
+    if (VECTOR_SUBTREE_TAGS.has(tag) && !isMeaningfulImageNode(node)) {return true;}
     return false;
 };
 
 const isDeleteNode = (node: UnifiedNode, isRoot: boolean): boolean => {
-    if (isRoot) return false;
-    if (isNodeHiddenFromView(node)) return true;
-    if (isProtectedNode(node)) return false;
-    if (node.tier === 'D') return true;
-    if (isPseudoNode(node)) return true;
+    if (isRoot) {return false;}
+    if (isNodeHiddenFromView(node)) {return true;}
+    if (isProtectedNode(node)) {return false;}
+    if (node.tier === 'D') {return true;}
+    if (isPseudoNode(node)) {return true;}
 
     const tag = nodeTag(node);
-    if (DELETE_TAGS.has(tag)) return true;
-    if (isDecorativeNoise(node)) return true;
-    if (isMeaninglessEmptyShell(node)) return true;
+    if (DELETE_TAGS.has(tag)) {return true;}
+    if (isDecorativeNoise(node)) {return true;}
+    if (isMeaninglessEmptyShell(node)) {return true;}
     return false;
 };
 
 const isCollapsibleShell = (node: UnifiedNode, parent: UnifiedNode | null): boolean => {
-    if (isProtectedNode(node)) return false;
-    if (!isWrapperRoleOrTag(node)) return false;
-    if (node.children.length === 0) return false;
+    if (isProtectedNode(node)) {return false;}
+    if (!isWrapperRoleOrTag(node)) {return false;}
+    if (node.children.length === 0) {return false;}
 
     const ownTexts = collectOwnLiftableTexts(node);
-    if (ownTexts.length > 0 && !(parent && canReceiveLiftedText(parent))) return false;
+    if (ownTexts.length > 0 && !(parent && canReceiveLiftedText(parent))) {return false;}
     return true;
 };
 
 const isAtomicSemanticNode = (node: UnifiedNode): boolean => {
     const role = nodeRole(node);
     const tag = nodeTag(node);
-    if (!ATOMIC_ROLES.has(role) && !ATOMIC_TAGS.has(tag)) return false;
-    if (node.name || getNodeContent(node) || node.target) return true;
+    if (!ATOMIC_ROLES.has(role) && !ATOMIC_TAGS.has(tag)) {return false;}
+    if (node.name || getNodeContent(node) || node.target) {return true;}
     return isInteractiveNode(node);
 };
 
@@ -597,7 +597,7 @@ const removeRedundantTextChildren = (node: UnifiedNode) => {
 
 const applyLiftedText = (node: UnifiedNode, rawTexts: string[]) => {
     const candidates = compactLiftTexts(rawTexts);
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) {return;}
 
     if (!node.name && shouldAttachName(node)) {
         const primary = candidates[0];
@@ -608,7 +608,7 @@ const applyLiftedText = (node: UnifiedNode, rawTexts: string[]) => {
 
     let mergedContent = normalizeText(getNodeContent(node));
     for (const picked of candidates) {
-        if (!picked) continue;
+        if (!picked) {continue;}
         if (!mergedContent) {
             mergedContent = picked;
             continue;
@@ -625,28 +625,28 @@ const applyLiftedText = (node: UnifiedNode, rawTexts: string[]) => {
 };
 
 const shouldAttachName = (node: UnifiedNode): boolean => {
-    if (isInteractiveNode(node)) return true;
+    if (isInteractiveNode(node)) {return true;}
     return NAME_RECEIVER_ROLES.has(nodeRole(node));
 };
 
 const canReceiveLiftedText = (node: UnifiedNode): boolean => {
-    if (isInteractiveNode(node)) return true;
-    if (hasSemanticPayload(node)) return true;
+    if (isInteractiveNode(node)) {return true;}
+    if (hasSemanticPayload(node)) {return true;}
     return TEXT_RECEIVER_ROLES.has(nodeRole(node));
 };
 
 const hasSemanticPayload = (node: UnifiedNode): boolean => {
     const hints = getNodeSemanticHints(node);
-    if (!hints) return false;
+    if (!hints) {return false;}
     return Boolean(hints.entityNodeId || hints.fieldLabel || hints.actionIntent || hints.actionTargetNodeId);
 };
 
 const isProtectedNode = (node: UnifiedNode): boolean => {
-    if (isInteractiveNode(node)) return true;
-    if (node.target) return true;
-    if (hasSemanticPayload(node)) return true;
-    if (PRESERVE_ROLES.has(nodeRole(node))) return true;
-    if (isMeaningfulImageNode(node)) return true;
+    if (isInteractiveNode(node)) {return true;}
+    if (node.target) {return true;}
+    if (hasSemanticPayload(node)) {return true;}
+    if (PRESERVE_ROLES.has(nodeRole(node))) {return true;}
+    if (isMeaningfulImageNode(node)) {return true;}
     return false;
 };
 
@@ -654,31 +654,31 @@ const isInteractiveNode = (node: UnifiedNode): boolean => {
     const profile = getNodeStaticProfile(node);
     const role = profile.role;
     const tag = profile.tag;
-    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) return true;
-    if (node.target) return true;
-    if (profile.hasOnclickAttr || profile.hasHrefAttr || profile.hasTabindexAttr) return true;
+    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) {return true;}
+    if (node.target) {return true;}
+    if (profile.hasOnclickAttr || profile.hasHrefAttr || profile.hasTabindexAttr) {return true;}
     return false;
 };
 
 const isMeaningfulImageNode = (node: UnifiedNode): boolean => {
     const role = nodeRole(node);
     const tag = nodeTag(node);
-    if (role !== 'image' && role !== 'img' && tag !== 'img') return false;
-    if (normalizeText(node.name) || normalizeText(getNodeContent(node))) return true;
-    if (normalizeText(getNodeAttr(node, 'alt')) || normalizeText(getNodeAttr(node, 'src'))) return true;
+    if (role !== 'image' && role !== 'img' && tag !== 'img') {return false;}
+    if (normalizeText(node.name) || normalizeText(getNodeContent(node))) {return true;}
+    if (normalizeText(getNodeAttr(node, 'alt')) || normalizeText(getNodeAttr(node, 'src'))) {return true;}
     return false;
 };
 
 const isNodeHiddenFromView = (node: UnifiedNode): boolean => {
-    if (isTruthyAttr(getNodeAttr(node, 'hidden'))) return true;
-    if (isTruthyAttr(getNodeAttr(node, 'inert'))) return true;
-    if (isTruthyAttr(getNodeAttr(node, 'aria-hidden'))) return true;
+    if (isTruthyAttr(getNodeAttr(node, 'hidden'))) {return true;}
+    if (isTruthyAttr(getNodeAttr(node, 'inert'))) {return true;}
+    if (isTruthyAttr(getNodeAttr(node, 'aria-hidden'))) {return true;}
 
     const style = normalizeText(getNodeAttr(node, 'style'))?.toLowerCase() || '';
-    if (HIDDEN_STYLE_PATTERN.test(style)) return true;
+    if (HIDDEN_STYLE_PATTERN.test(style)) {return true;}
 
     const cls = nodeClassName(node);
-    if (cls && HIDDEN_CLASS_PATTERN.test(cls)) return true;
+    if (cls && HIDDEN_CLASS_PATTERN.test(cls)) {return true;}
 
     const bbox = getNodeBbox(node);
     if (bbox && (bbox.width <= 0 || bbox.height <= 0) && !hasVisibleSemanticPayload(node)) {
@@ -689,37 +689,37 @@ const isNodeHiddenFromView = (node: UnifiedNode): boolean => {
 };
 
 const hasVisibleSemanticPayload = (node: UnifiedNode): boolean => {
-    if (normalizeText(node.name) || normalizeText(getNodeContent(node))) return true;
-    if (node.target) return true;
-    if (hasSemanticPayload(node)) return true;
-    if (isInteractiveNode(node)) return true;
-    if (isMeaningfulImageNode(node)) return true;
+    if (normalizeText(node.name) || normalizeText(getNodeContent(node))) {return true;}
+    if (node.target) {return true;}
+    if (hasSemanticPayload(node)) {return true;}
+    if (isInteractiveNode(node)) {return true;}
+    if (isMeaningfulImageNode(node)) {return true;}
     return false;
 };
 
 const isTruthyAttr = (raw: string | undefined): boolean => {
     const value = normalizeText(raw)?.toLowerCase();
-    if (!value) return false;
+    if (!value) {return false;}
     return value === 'true' || value === '1' || value === 'yes' || value === 'hidden';
 };
 
 const isDecorativeNoise = (node: UnifiedNode): boolean => {
-    if (node.children.length > 0) return false;
-    if (node.name || getNodeContent(node)) return false;
-    if (node.target) return false;
+    if (node.children.length > 0) {return false;}
+    if (node.name || getNodeContent(node)) {return false;}
+    if (node.target) {return false;}
 
     const role = nodeRole(node);
     const tag = nodeTag(node);
     const cls = nodeClassName(node);
-    if (DECORATIVE_ROLES.has(role) || DECORATIVE_TAGS.has(tag)) return true;
-    if (cls && DECORATIVE_CLASS_PATTERN.test(cls)) return true;
+    if (DECORATIVE_ROLES.has(role) || DECORATIVE_TAGS.has(tag)) {return true;}
+    if (cls && DECORATIVE_CLASS_PATTERN.test(cls)) {return true;}
     return false;
 };
 
 const isMeaninglessEmptyShell = (node: UnifiedNode): boolean => {
-    if (node.children.length > 0) return false;
-    if (node.name || getNodeContent(node)) return false;
-    if (node.target) return false;
+    if (node.children.length > 0) {return false;}
+    if (node.name || getNodeContent(node)) {return false;}
+    if (node.target) {return false;}
     return isWrapperRoleOrTag(node);
 };
 
@@ -756,9 +756,9 @@ const compactLiftTexts = (values: Array<string | undefined>): string[] => {
     const dedup: string[] = [];
     for (const value of values) {
         const normalized = normalizeText(value);
-        if (!normalized) continue;
-        if (!isLightweightText(normalized)) continue;
-        if (dedup.some((item) => isNearDuplicateText(item, normalized))) continue;
+        if (!normalized) {continue;}
+        if (!isLightweightText(normalized)) {continue;}
+        if (dedup.some((item) => isNearDuplicateText(item, normalized))) {continue;}
         dedup.push(normalized);
     }
     return dedup;
@@ -767,18 +767,18 @@ const compactLiftTexts = (values: Array<string | undefined>): string[] => {
 const isNearDuplicateText = (leftRaw: string | undefined, rightRaw: string | undefined): boolean => {
     const left = normalizeText(leftRaw);
     const right = normalizeText(rightRaw);
-    if (!left || !right) return false;
-    if (left === right) return true;
+    if (!left || !right) {return false;}
+    if (left === right) {return true;}
 
     const leftCanonical = canonicalizeText(left);
     const rightCanonical = canonicalizeText(right);
-    if (!leftCanonical || !rightCanonical) return false;
-    if (leftCanonical === rightCanonical) return true;
+    if (!leftCanonical || !rightCanonical) {return false;}
+    if (leftCanonical === rightCanonical) {return true;}
 
     const shorter = leftCanonical.length <= rightCanonical.length ? leftCanonical : rightCanonical;
     const longer = shorter === leftCanonical ? rightCanonical : leftCanonical;
-    if (shorter.length < 4) return false;
-    if (!longer.includes(shorter)) return false;
+    if (shorter.length < 4) {return false;}
+    if (!longer.includes(shorter)) {return false;}
     const ratio = shorter.length / longer.length;
     return ratio >= 0.78;
 };
@@ -791,10 +791,10 @@ const canonicalizeText = (value: string): string => {
 };
 
 const isLightweightText = (value: string): boolean => {
-    if (value.length > 64) return false;
+    if (value.length > 64) {return false;}
     const tokens = value.split(' ').filter((token) => token.length > 0);
-    if (tokens.length > 10) return false;
-    if (!HAS_TEXT_CHAR_PATTERN.test(value)) return false;
+    if (tokens.length > 10) {return false;}
+    if (!HAS_TEXT_CHAR_PATTERN.test(value)) {return false;}
     return true;
 };
 
@@ -810,7 +810,7 @@ const getNodeStaticProfile = (node: UnifiedNode): NodeStaticProfile => {
     }
 
     const cached = activeNodeProfileCache.get(node);
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const profile: NodeStaticProfile = {
         role: normalizeRole(node.role),

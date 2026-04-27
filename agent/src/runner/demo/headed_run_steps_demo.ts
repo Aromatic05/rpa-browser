@@ -24,11 +24,11 @@ const fixtureUrl = () =>
     ).toString();
 
 const findNodeId = (tree: any, role: string, name: string): string | null => {
-    if (!tree) return null;
-    if (tree.role === role && tree.name === name) return tree.id;
+    if (!tree) {return null;}
+    if (tree.role === role && tree.name === name) {return tree.id;}
     for (const child of tree.children || []) {
         const found = findNodeId(child, role, name);
-        if (found) return found;
+        if (found) {return found;}
     }
     return null;
 };
@@ -79,7 +79,7 @@ const run = async () => {
     const first = { ok: true, results: firstResp.pipe.items as any[] };
 
     const snap = first.results.find((r) => r.stepId === 'demo-snap');
-    const tree = JSON.parse((snap?.data as any)?.a11y || '{}');
+    const tree = JSON.parse((snap?.data)?.a11y || '{}');
     const buttonId = findNodeId(tree, 'button', 'Action A');
     const inputId = findNodeId(tree, 'textbox', 'Name A');
     if (!buttonId || !inputId) {
@@ -94,13 +94,15 @@ const run = async () => {
             {
                 id: 'demo-click',
                 name: 'browser.click',
-                args: { a11yNodeId: buttonId },
+                args: {},
+                resolve: { hint: { target: { nodeId: buttonId } } },
                 meta: { source: 'script' },
             },
             {
                 id: 'demo-fill',
                 name: 'browser.fill',
-                args: { a11yNodeId: inputId, value: 'headed demo' },
+                args: { value: 'headed demo' },
+                resolve: { hint: { target: { nodeId: inputId } } },
                 meta: { source: 'script' },
             },
         ],

@@ -28,7 +28,7 @@ export const executeBrowserMouse = async (
                 ? deps.config.humanPolicy.scrollDelayMsRange
                 : deps.config.humanPolicy.clickDelayMsRange;
         const delayMs = pickDelayMs(range.min, range.max);
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };

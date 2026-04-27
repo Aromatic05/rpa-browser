@@ -1,0 +1,15 @@
+version: 1
+hints:
+  recover-order-form-submit:
+    why: 订单提交按钮 DOM 结构不稳定时，通过业务实体重新定位 submit action
+    scope:
+      businessTag: order.form.main
+    preferredEntityRules:
+      - order_form_main
+      - order_form_submit
+    fallbacks:
+      - kind: role
+        role: button
+        name: 提交
+      - kind: text
+        text: 提交

@@ -7,7 +7,7 @@ import { classifyActionType } from '../../dist/shared/action_types.js';
 const log = async (name, fn) => {
     try {
         await fn();
-        console.log(`ok - ${name}`);
+        console.warn(`ok - ${name}`);
     } catch (error) {
         console.error(`fail - ${name}`);
         throw error;
@@ -70,7 +70,7 @@ class FakeWebSocket {
 
     emit(name, event) {
         const list = this.listeners.get(name) || [];
-        for (const cb of list) cb(event);
+        for (const cb of list) {cb(event);}
     }
 }
 

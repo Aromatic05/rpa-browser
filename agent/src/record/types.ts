@@ -1,4 +1,4 @@
-import type { A11yHint } from '../runner/steps/types';
+import type { ResolveHint, ResolvePolicy } from '../runner/steps/types';
 
 export type RecordedTargetFingerprint = {
     nodeId: string;
@@ -29,13 +29,7 @@ export type RecordedEntityBinding = {
     slotIndex?: number;
 };
 
-export type RecordedReplayHints = {
-    preferDirect?: boolean;
-    preferScopedSearch?: boolean;
-    requireVisible?: boolean;
-    allowIndexDrift?: boolean;
-    allowFuzzy?: boolean;
-};
+export type RecordedReplayHints = ResolvePolicy;
 
 export type RecordedStepEnhancement = {
     version: 1;
@@ -53,27 +47,9 @@ export type RecordedStepEnhancement = {
     };
     target?: RecordedTargetFingerprint;
     entityBindings?: RecordedEntityBinding[];
-    locator?: {
-        direct?: { kind: string; query: string; source: string; fallback?: string };
-        scope?: { id: string; kind: string };
-        origin?: { primaryDomId: string; sourceDomIds?: string[] };
-    };
-    replayHints?: RecordedReplayHints;
+    resolveHint?: ResolveHint;
+    resolvePolicy?: ResolvePolicy;
     rawContext?: {
-        selector?: string;
-        a11yHint?: A11yHint;
-        locatorCandidates?: Array<{
-            kind: string;
-            selector?: string;
-            testId?: string;
-            role?: string;
-            name?: string;
-            text?: string;
-            exact?: boolean;
-            note?: string;
-        }>;
-        scopeHint?: string;
-        targetHint?: string;
         pageUrl?: string;
         recorderVersion?: string;
     };

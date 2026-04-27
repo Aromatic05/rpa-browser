@@ -1,6 +1,5 @@
-import type { A11yHint } from '../types';
-
 type A11yLike = { role?: string; name?: string; text?: string };
+type ResolveTextHint = { role?: string; name?: string; text?: string };
 
 export type ConfidencePolicy = {
     enabled: boolean;
@@ -30,14 +29,14 @@ const normalizeForConfidence = (value?: string) =>
         .trim();
 
 const includesNormalized = (value: string, needle: string) => {
-    if (!needle) return true;
-    if (!value) return false;
+    if (!needle) {return true;}
+    if (!value) {return false;}
     return value.includes(needle);
 };
 
 export const scoreA11yConfidence = (
     candidate: A11yLike,
-    hint: A11yHint | undefined,
+    hint: ResolveTextHint | undefined,
     policy: ConfidencePolicy,
     hasSelector: boolean,
 ): { ok: boolean; details: ConfidenceDetails } => {
@@ -60,10 +59,10 @@ export const scoreA11yConfidence = (
     const textMatch = !hintText || includesNormalized(candidateText, hintText);
 
     let score = 0;
-    if (roleMatch) score += policy.roleWeight;
-    if (nameMatch) score += policy.nameWeight;
-    if (textMatch) score += policy.textWeight;
-    if (hasSelector) score += policy.selectorBonus;
+    if (roleMatch) {score += policy.roleWeight;}
+    if (nameMatch) {score += policy.nameWeight;}
+    if (textMatch) {score += policy.textWeight;}
+    if (hasSelector) {score += policy.selectorBonus;}
 
     return {
         ok: score >= policy.minScore,

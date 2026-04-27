@@ -31,7 +31,7 @@ const getLatestSnapshot = async (runner: Awaited<ReturnType<typeof setupStepRunn
 
 const findNodeIdByAttr = (snapshot: SnapshotResult, attrName: string, attrValue: string): string | undefined => {
     for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-        if (attrs?.[attrName] === attrValue) return nodeId;
+        if (attrs?.[attrName] === attrValue) {return nodeId;}
     }
     return undefined;
 };

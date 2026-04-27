@@ -37,7 +37,7 @@ const waitForPort = async (host: string, port: number, timeoutMs = 30000) => {
                 resolve(false);
             });
         });
-        if (ok) return;
+        if (ok) {return;}
         await new Promise((resolve) => setTimeout(resolve, 200));
     }
     throw new Error(`timeout waiting for tcp port ${host}:${port}`);
@@ -84,19 +84,19 @@ const waitForWsReady = async (url: string, timeoutMs = 45000) => {
             });
             ws.on('close', () => clearTimeout(timer));
         });
-        if (result) return;
+        if (result) {return;}
         await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error(`timeout waiting for ws ready: ${url}`);
 };
 
 const pipeProcLogs = (proc: ChildProcess, prefix: string, enabled: boolean) => {
-    if (!enabled) return;
+    if (!enabled) {return;}
     const write = (stream: NodeJS.WriteStream, chunk: Buffer | string) => {
         const text = String(chunk);
         const lines = text.split('\n');
         for (const line of lines) {
-            if (!line.trim()) continue;
+            if (!line.trim()) {continue;}
             stream.write(`${prefix} ${line}\n`);
         }
     };
@@ -119,9 +119,9 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
     const verbose =
         String(process.env.RPA_INTEGRATION_VERBOSE || (opts?.headed ? 'true' : 'false')).toLowerCase() === 'true';
 
-    const mockProc = spawn('node', ['mock/server.js'], {
+    const mockProc = spawn('pnpm', ['-C', 'mock', '--filter', '@mock/ant-app', 'exec', 'vite', '--host', '127.0.0.1', '--port', String(mockPort), '--strictPort'], {
         cwd: repoRoot,
-        env: { ...process.env, MOCK_PORT: String(mockPort) },
+        env: { ...process.env },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
     pipeProcLogs(mockProc, '[integration:mock]', verbose);
@@ -132,6 +132,8 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
         RPA_HEADLESS: opts?.headed ? 'false' : 'true',
         RPA_WS_PORT: String(wsPort),
         RPA_USER_DATA_DIR: userDataDir,
+        RPA_START_URL: `http://127.0.0.1:${mockPort}/entity-rules`,
+        RPA_NEWTAB_URL: `http://127.0.0.1:${mockPort}/entity-rules`,
     } as Record<string, string>;
     if (opts?.fixtureBaseUrl) {
         env.RPA_START_URL = `${opts.fixtureBaseUrl}/run_steps_fixture_a.html`;
@@ -161,11 +163,11 @@ export const startAgentStack = async (opts?: { headed?: boolean; fixtureBaseUrl?
         stop: async () => {
             const killOne = (proc: ChildProcess) =>
                 new Promise<void>((resolve) => {
-                    if (proc.killed || proc.exitCode != null) return resolve();
+                    if (proc.killed || proc.exitCode != null) {return resolve();}
                     proc.once('exit', () => resolve());
                     proc.kill('SIGTERM');
                     setTimeout(() => {
-                        if (proc.exitCode == null) proc.kill('SIGKILL');
+                        if (proc.exitCode == null) {proc.kill('SIGKILL');}
                     }, 5000);
                 });
             await killOne(agentProc);

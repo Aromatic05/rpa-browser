@@ -9,13 +9,19 @@
 import { send } from '../shared/send.js';
 import type { Action } from '../shared/types.js';
 
+declare global {
+    interface Window {
+        __TAB_TOKEN__?: string;
+    }
+}
+
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
 
-const readTokenFromWindowName = () => {
+const readTokenFromWindowName = (): string | null => {
     try {
-        const raw = window.name || '';
-        if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) return null;
+        const raw = window.name;
+        if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) {return null;}
         const token = raw.slice(TAB_TOKEN_WIN_NAME_PREFIX.length).trim();
         return token || null;
     } catch {
@@ -31,16 +37,16 @@ const writeTokenToWindowName = (tabToken: string) => {
     }
 };
 
-export const ensureTabToken = () => {
-    const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) || readTokenFromWindowName() || '';
-    if (!tabToken) return '';
+export const ensureTabToken = (): string => {
+    const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? readTokenFromWindowName() ?? '';
+    if (!tabToken) {return '';}
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
     writeTokenToWindowName(tabToken);
-    (window as any).__TAB_TOKEN__ = tabToken;
+    window.__TAB_TOKEN__ = tabToken;
     return tabToken;
 };
 
-export const ensureTabTokenAsync = async () => {
+export const ensureTabTokenAsync = async (): Promise<string> => {
     let tabToken = ensureTabToken();
     if (!tabToken) {
         const response = await send.action({
@@ -54,9 +60,9 @@ export const ensureTabTokenAsync = async () => {
             },
             scope: {},
         } satisfies Action);
-        const payload = (response.payload || {}) as { tabToken?: string };
+        const payload = (response.payload ?? {}) as { tabToken?: string };
         if (response.type === 'tab.init.result' && payload.tabToken) {
-            tabToken = String(payload.tabToken);
+            tabToken = payload.tabToken;
         }
         if (!tabToken) {
             throw new Error('tab token init failed');
@@ -64,27 +70,27 @@ export const ensureTabTokenAsync = async () => {
     }
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
     writeTokenToWindowName(tabToken);
-    (window as any).__TAB_TOKEN__ = tabToken;
+    window.__TAB_TOKEN__ = tabToken;
     return tabToken;
 };
 
-export const bindHello = (tabToken: string, onHello?: () => void) => {
+export const bindHello = (tabToken: string, onHello?: () => void): () => void => {
     const sendHello = () => {
         void send.hello({ tabToken, url: location.href });
         onHello?.();
     };
 
     // 监听历史与哈希变化，保证页面切换后也能通知 SW
-    const originalPush = history.pushState;
-    const originalReplace = history.replaceState;
-    const wrap = (method: typeof history.pushState) =>
-        function (...args: Parameters<typeof history.pushState>) {
-            const result = method.apply(history, args as unknown as [any, any, any]);
+    const originalPush = history.pushState.bind(history);
+    const originalReplace = history.replaceState.bind(history);
+    const wrap = (method: typeof originalPush) =>
+        (...args: Parameters<typeof history.pushState>) => {
+            method(...args);
             sendHello();
-            return result;
+            return undefined;
         };
-    history.pushState = wrap(history.pushState);
-    history.replaceState = wrap(history.replaceState);
+    history.pushState = wrap(originalPush) as History['pushState'];
+    history.replaceState = wrap(originalReplace) as History['replaceState'];
 
     window.addEventListener('popstate', sendHello);
     window.addEventListener('hashchange', sendHello);

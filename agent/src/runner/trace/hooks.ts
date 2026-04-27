@@ -6,7 +6,7 @@
  * - 后续可在此层做观测/告警/审计
  */
 
-import type { ToolError, TraceEvent, TraceHooks, ToolResult } from './types';
+import type { TraceEvent, TraceHooks } from './types';
 import { getLogger } from '../../logging/logger';
 
 const traceLog = getLogger('trace');
@@ -40,7 +40,7 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
     const formatArgs = (args: unknown) => safeJson(args, maxStringLength, maxJsonLength);
 
     const formatResult = (event: TraceEvent) => {
-        if (event.type !== 'op.end') return 'null';
+        if (event.type !== 'op.end') {return 'null';}
         if (!event.ok) {
             return `error=${safeJson(event.error, maxStringLength, maxJsonLength)}`;
         }
@@ -48,7 +48,7 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
     };
 
     const formatTags = (event: TraceEvent) => {
-        if (!event.tags) return '';
+        if (!event.tags) {return '';}
         const ws = event.tags.workspaceId ? ` ws=${event.tags.workspaceId}` : '';
         const tab = event.tags.tabToken ? ` tab=${event.tags.tabToken}` : '';
         return `${ws}${tab}`;
@@ -57,7 +57,7 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
     return {
         beforeOp: async () => {},
         afterOp: async (event) => {
-            if (event.type !== 'op.end') return;
+            if (event.type !== 'op.end') {return;}
             const args = formatArgs(event.args ?? null);
             const result = formatResult(event);
             const ms = event.durationMs;
@@ -68,7 +68,7 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
             );
         },
         onError: async (event, error) => {
-            if (event.type !== 'op.end') return;
+            if (event.type !== 'op.end') {return;}
             // afterOp 已打印失败路径，这里只补充一次 error（可选）
             traceLog(
                 `[trace]${formatTags(event)} op=${event.op} ok=false ms=${event.durationMs} error=${safeJson(
@@ -89,7 +89,7 @@ const safeJson = (value: unknown, maxStringLength: number, maxJsonLength: number
             }
             return v;
         });
-        if (!json) return 'null';
+        if (!json) {return 'null';}
         if (json.length > maxJsonLength) {
             return JSON.stringify({
                 len: json.length,
@@ -106,6 +106,6 @@ const safeJson = (value: unknown, maxStringLength: number, maxJsonLength: number
 };
 
 const truncateString = (value: string, maxLen: number) => {
-    if (value.length <= maxLen) return value;
+    if (value.length <= maxLen) {return value;}
     return `${value.slice(0, maxLen)}...`;
 };

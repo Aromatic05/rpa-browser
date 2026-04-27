@@ -3,6 +3,7 @@
  */
 
 import type { RunnerConfig } from './config_schema';
+import { defaultEntityRuleConfig } from './entity_rules';
 
 export const defaultRunnerConfig: RunnerConfig = {
     waitPolicy: {
@@ -68,4 +69,5 @@ export const defaultRunnerConfig: RunnerConfig = {
             'browser.mouse',
         ],
     },
+    entityRules: defaultEntityRuleConfig,
 };

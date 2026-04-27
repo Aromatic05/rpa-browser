@@ -75,28 +75,28 @@ const isNamedDomain = (domain: string) => domain.split('.').every((part) => SEGM
 
 export const isRequestActionType = (value: string): value is RequestActionType => requestTypes.has(value);
 
-export const isReplyActionType = (value: string) => {
+export const isReplyActionType = (value: string): boolean => {
     const match = value.match(resultOrFailureTypeRe);
-    if (!match) return false;
+    if (!match) {return false;}
     return isRequestActionType(match[1]);
 };
 
-export const isDerivedEventActionType = (value: string) => {
-    if (fixedEventTypes.has(value)) return true;
+export const isDerivedEventActionType = (value: string): boolean => {
+    if (fixedEventTypes.has(value)) {return true;}
     const eventMatch = value.match(eventTypeRe);
     if (eventMatch) {
         const domain = eventMatch[1];
         return isNamedDomain(domain) && hasAllowedPrefix(domain);
     }
     const stepMatch = value.match(stepEventTypeRe);
-    if (!stepMatch) return false;
+    if (!stepMatch) {return false;}
     const domain = stepMatch[1];
     return isNamedDomain(domain) && hasAllowedPrefix(domain);
 };
 
 export const classifyActionType = (value: string): ActionMessageKind => {
-    if (isRequestActionType(value)) return 'command';
-    if (isReplyActionType(value)) return 'reply';
-    if (isDerivedEventActionType(value)) return 'event';
+    if (isRequestActionType(value)) {return 'command';}
+    if (isReplyActionType(value)) {return 'reply';}
+    if (isDerivedEventActionType(value)) {return 'event';}
     return 'invalid';
 };

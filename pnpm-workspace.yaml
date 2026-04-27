@@ -3,3 +3,6 @@ packages:
   - extension
   - start_extension
   - agent/debug/snapshot-viewer
+  - mock
+  - mock/ant-app
+  - mock/element-app

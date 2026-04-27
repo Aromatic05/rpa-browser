@@ -1,11 +1,9 @@
 import type { Locator, Page } from 'playwright';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { normalizeTarget, mapTraceError, matchesA11yHint } from '../helpers/target';
+import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { scoreA11yConfidence } from '../helpers/confidence';
-import { describeSelector } from '../helpers/selector';
-import { resolveTargetNodeId, type ResolvedLocatorTarget } from '../helpers/resolve_target';
+import { resolveTarget } from '../helpers/resolve_target';
 
 type ChoiceControlType = 'native-select' | 'combobox' | 'popup-choice' | 'autocomplete' | 'unknown';
 
@@ -22,23 +20,12 @@ type ChoiceState = {
 
 const ensureVisible = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
-    target: ResolvedLocatorTarget,
+    selector: string,
     timeout?: number,
 ) => {
-    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-    });
-    if (!scroll.ok) return scroll;
-    return binding.traceTools['trace.locator.waitForVisible']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-        timeout,
-    });
+    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector });
+    if (!scroll.ok) {return scroll;}
+    return await binding.traceTools['trace.locator.waitForVisible']({ selector, timeout });
 };
 
 const canResolvePageLocator = (page: unknown): page is Page => {
@@ -46,13 +33,13 @@ const canResolvePageLocator = (page: unknown): page is Page => {
 };
 
 const normalizeChoiceToken = (value: unknown): string | undefined => {
-    if (typeof value !== 'string') return undefined;
+    if (typeof value !== 'string') {return undefined;}
     const normalized = value.replace(/\s+/g, ' ').trim();
     return normalized || undefined;
 };
 
 const normalizeChoiceList = (values: unknown): string[] => {
-    if (!Array.isArray(values)) return [];
+    if (!Array.isArray(values)) {return [];}
     const normalized = values
         .map((item) => normalizeChoiceToken(item))
         .filter((item): item is string => Boolean(item));
@@ -118,16 +105,16 @@ const readChoiceState = async (locator: Locator): Promise<ChoiceState> => {
             selectedValues.push(value);
             selectedLabels.push(value);
         }
-        if (text) selectedLabels.push(text);
+        if (text) {selectedLabels.push(text);}
 
         const activeId = (element.getAttribute('aria-activedescendant') || '').trim();
         if (activeId) {
             const active = document.getElementById(activeId);
             const activeText = (active?.textContent || '').trim();
-            if (activeText) selectedLabels.push(activeText);
+            if (activeText) {selectedLabels.push(activeText);}
             const activeValue =
                 (active?.getAttribute('data-value') || active?.getAttribute('value') || active?.getAttribute('aria-label') || '').trim();
-            if (activeValue) selectedValues.push(activeValue);
+            if (activeValue) {selectedValues.push(activeValue);}
         }
 
         if (popup) {
@@ -136,14 +123,14 @@ const readChoiceState = async (locator: Locator): Promise<ChoiceState> => {
             );
             for (const selectedNode of Array.from(selectedNodes)) {
                 const nodeText = (selectedNode.textContent || '').trim();
-                if (nodeText) selectedLabels.push(nodeText);
+                if (nodeText) {selectedLabels.push(nodeText);}
                 const nodeValue =
                     (selectedNode.getAttribute('data-value') ||
                         selectedNode.getAttribute('value') ||
                         selectedNode.getAttribute('aria-label') ||
                         selectedNode.getAttribute('title') ||
                         '').trim();
-                if (nodeValue) selectedValues.push(nodeValue);
+                if (nodeValue) {selectedValues.push(nodeValue);}
             }
         }
 
@@ -177,11 +164,11 @@ const readChoiceState = async (locator: Locator): Promise<ChoiceState> => {
             raw.controlType === 'autocomplete'
                 ? raw.controlType
                 : 'unknown',
-        expanded: raw.expanded === true,
+        expanded: raw.expanded,
         selectedValues: normalizeChoiceList(raw.selectedValues),
         selectedLabels: normalizeChoiceList(raw.selectedLabels),
         displayText: normalizeChoiceToken(raw.displayText),
-        multiple: raw.multiple === true,
+        multiple: raw.multiple,
         popupRole: normalizeChoiceToken(raw.popupRole),
         popupId: normalizeChoiceToken(raw.popupId),
     };
@@ -242,48 +229,28 @@ const validateExpectedAndChanged = (
 
 const resolvePageLocator = async (
     page: Page,
-    resolved: ResolvedLocatorTarget,
+    selector: string,
 ): Promise<{ ok: true; locator: Locator } | { ok: false; error: StepResult['error'] }> => {
-    if (resolved.selector) {
-        const locator = page.locator(resolved.selector);
-        const count = await locator.count();
-        if (count === 0) {
-            return {
-                ok: false,
-                error: { code: 'ERR_NOT_FOUND', message: 'selector not found', details: { selector: resolved.selector } },
-            };
-        }
-        if (count > 1) {
-            return {
-                ok: false,
-                error: { code: 'ERR_AMBIGUOUS', message: 'selector matches multiple elements', details: { selector: resolved.selector, count } },
-            };
-        }
-        return { ok: true, locator: locator.first() };
+    const locator = page.locator(selector);
+    const count = await locator.count();
+    if (count === 0) {
+        return {
+            ok: false,
+            error: { code: 'ERR_NOT_FOUND', message: 'selector not found', details: { selector } },
+        };
     }
-    if (resolved.role) {
-        const locator = page.getByRole(resolved.role as any, resolved.name ? { name: resolved.name } : undefined);
-        const count = await locator.count();
-        if (count === 0) {
-            return {
-                ok: false,
-                error: { code: 'ERR_NOT_FOUND', message: 'role locator not found', details: { role: resolved.role, name: resolved.name } },
-            };
-        }
-        if (count > 1) {
-            return {
-                ok: false,
-                error: { code: 'ERR_AMBIGUOUS', message: 'role locator matches multiple elements', details: { role: resolved.role, name: resolved.name, count } },
-            };
-        }
-        return { ok: true, locator: locator.first() };
+    if (count > 1) {
+        return {
+            ok: false,
+            error: { code: 'ERR_AMBIGUOUS', message: 'selector matches multiple elements', details: { selector, count } },
+        };
     }
-    return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'missing selector/role for custom choice path' } };
+    return { ok: true, locator: locator.first() };
 };
 
 const isLocatorVisible = async (locator: Locator): Promise<boolean> => {
     const count = await locator.count();
-    if (count === 0) return false;
+    if (count === 0) {return false;}
     try {
         return await locator.first().isVisible();
     } catch {
@@ -297,9 +264,9 @@ const listVisiblePopupIds = async (page: Page): Promise<string[]> => {
     const ids: string[] = [];
     for (let i = 0; i < count; i += 1) {
         const candidate = candidates.nth(i);
-        if (!(await isLocatorVisible(candidate))) continue;
+        if (!(await isLocatorVisible(candidate))) {continue;}
         const id = normalizeChoiceToken(await candidate.getAttribute('id'));
-        if (id) ids.push(id);
+        if (id) {ids.push(id);}
     }
     return ids;
 };
@@ -329,7 +296,7 @@ const openChoicePopup = async (
     const popupId = normalizeChoiceToken(relation.popupId);
     if (popupId) {
         const linked = page.locator(`#${escapeCssId(popupId)}`);
-        if ((await linked.count()) === 1 && (await isLocatorVisible(linked.first()))) return linked.first();
+        if ((await linked.count()) === 1 && (await isLocatorVisible(linked.first()))) {return linked.first();}
     }
 
     const candidates = page.locator('[role="listbox"], [role="menu"], [role="dialog"]');
@@ -338,10 +305,10 @@ const openChoicePopup = async (
     let fallback: Locator | null = null;
     for (let i = 0; i < count; i += 1) {
         const candidate = candidates.nth(i);
-        if (!(await isLocatorVisible(candidate))) continue;
+        if (!(await isLocatorVisible(candidate))) {continue;}
         const id = normalizeChoiceToken(await candidate.getAttribute('id'));
-        if (id && !beforeSet.has(id)) return candidate;
-        if (!fallback) fallback = candidate;
+        if (id && !beforeSet.has(id)) {return candidate;}
+        if (!fallback) {fallback = candidate;}
     }
     return fallback;
 };
@@ -351,8 +318,8 @@ const findUniqueVisible = async (locator: Locator): Promise<Locator | null> => {
     let found: Locator | null = null;
     for (let i = 0; i < count; i += 1) {
         const current = locator.nth(i);
-        if (!(await isLocatorVisible(current))) continue;
-        if (found) return null;
+        if (!(await isLocatorVisible(current))) {continue;}
+        if (found) {return null;}
         found = current;
     }
     return found;
@@ -375,7 +342,7 @@ const findOptionInPopup = async (popup: Locator, value: string): Promise<Locator
     ];
     for (const selector of prioritySelectors) {
         const located = await findUniqueVisible(popup.locator(selector));
-        if (located) return located;
+        if (located) {return located;}
     }
     return null;
 };
@@ -407,59 +374,31 @@ export const executeBrowserSelectOption = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const target = normalizeTarget(step.args);
-    const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
-    if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
-
-    if (resolved.target.selector && target?.a11yHint) {
-        const described = await describeSelector(binding.page, resolved.target.selector);
-        if (!described.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(described.error) };
-        }
-        if (!matchesA11yHint(described.data, target.a11yHint)) {
-            const confidence = scoreA11yConfidence(described.data, target.a11yHint, deps.config.confidencePolicy, true);
-            if (!confidence.ok) {
-                return {
-                    stepId: step.id,
-                    ok: false,
-                    error: {
-                        code: 'ERR_NOT_FOUND',
-                        message: 'selector matched element but a11y hint mismatch',
-                        details: {
-                            selector: resolved.target.selector,
-                            hint: target.a11yHint,
-                            candidate: described.data,
-                            confidence: confidence.details,
-                        },
-                    },
-                };
-            }
-        }
-    }
+    const resolved = await resolveTarget(binding, {
+        id: step.args.id || step.args.target?.id,
+        selector: step.args.selector || step.args.target?.selector,
+        hint: step.resolve?.hint,
+        policy: step.resolve?.policy,
+    });
+    if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
-    const visible = await ensureVisible(binding, resolved.target, timeout);
+    const visible = await ensureVisible(binding, resolved.target.selector, timeout);
     if (!visible.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
     }
 
     if (!canResolvePageLocator(binding.page)) {
         const select = await binding.traceTools['trace.locator.selectOption']({
-            a11yNodeId: resolved.target.a11yNodeId,
             selector: resolved.target.selector,
-            role: resolved.target.role,
-            name: resolved.target.name,
             values: step.args.values,
             timeout,
         });
-        if (!select.ok) return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
+        if (!select.ok) {return { stepId: step.id, ok: false, error: mapTraceError(select.error) };}
         const state = await binding.traceTools['trace.locator.readSelectState']({
-            a11yNodeId: resolved.target.a11yNodeId,
             selector: resolved.target.selector,
-            role: resolved.target.role,
-            name: resolved.target.name,
         });
-        if (!state.ok) return { stepId: step.id, ok: false, error: mapTraceError(state.error) };
+        if (!state.ok) {return { stepId: step.id, ok: false, error: mapTraceError(state.error) };}
         const result = validateExpectedAndChanged(
             step.id,
             { controlType: 'unknown', expanded: false, selectedValues: [], selectedLabels: [], multiple: false },
@@ -474,9 +413,9 @@ export const executeBrowserSelectOption = async (
             step.args.values,
             { target: resolved.target, path: 'trace-fallback' },
         );
-        if (result) return result;
+        if (result) {return result;}
     } else {
-        const pageLocatorResolved = await resolvePageLocator(binding.page, resolved.target);
+        const pageLocatorResolved = await resolvePageLocator(binding.page, resolved.target.selector);
         if (!pageLocatorResolved.ok) {
             return { stepId: step.id, ok: false, error: pageLocatorResolved.error };
         }
@@ -486,8 +425,6 @@ export const executeBrowserSelectOption = async (
         if (before.controlType === 'native-select') {
             const select = await binding.traceTools['trace.locator.selectOption']({
                 selector: resolved.target.selector,
-                role: resolved.target.role,
-                name: resolved.target.name,
                 values: step.args.values,
                 timeout,
             });
@@ -516,12 +453,12 @@ export const executeBrowserSelectOption = async (
             target: resolved.target,
             controlType: before.controlType,
         });
-        if (result) return result;
+        if (result) {return result;}
     }
 
     if (deps.config.humanPolicy.enabled) {
         const delayMs = pickDelayMs(deps.config.humanPolicy.typeDelayMsRange.min, deps.config.humanPolicy.typeDelayMsRange.max);
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };

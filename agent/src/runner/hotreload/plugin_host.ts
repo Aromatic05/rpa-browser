@@ -49,7 +49,7 @@ export class RunnerPluginHost {
         try {
             const files = await fs.readdir(outDir);
             const candidates = files.filter((file) => file.startsWith('plugin.') && file.endsWith('.mjs')).sort();
-            if (candidates.length <= keepCount) return;
+            if (candidates.length <= keepCount) {return;}
             const stale = candidates.slice(0, candidates.length - keepCount);
             await Promise.all(stale.map((file) => fs.rm(path.join(outDir, file), { force: true })));
         } catch {
@@ -121,7 +121,7 @@ export class RunnerPluginHost {
         let timer: NodeJS.Timeout | null = null;
 
         const schedule = () => {
-            if (timer) clearTimeout(timer);
+            if (timer) {clearTimeout(timer);}
             timer = setTimeout(() => {
                 void this.reload();
             }, 80);
@@ -132,7 +132,7 @@ export class RunnerPluginHost {
         watcher.on('unlink', schedule);
 
         return async () => {
-            if (timer) clearTimeout(timer);
+            if (timer) {clearTimeout(timer);}
             await watcher.close();
         };
     }

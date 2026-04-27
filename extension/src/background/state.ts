@@ -62,7 +62,7 @@ export const createRouterState = (logger?: Logger): RouterState => {
 
     const findTabIdByToken = (tabToken: string) => {
         for (const [tabId, state] of tabState.entries()) {
-            if (state.tabToken === tabToken) return tabId;
+            if (state.tabToken === tabToken) {return tabId;}
         }
         return null;
     };
@@ -81,11 +81,11 @@ export const createRouterState = (logger?: Logger): RouterState => {
 
     const bindWorkspaceToWindowIfKnown = (tabToken: string) => {
         const scope = tokenToScope.get(tabToken);
-        if (!scope) return;
+        if (!scope) {return;}
         const tabId = findTabIdByToken(tabToken);
-        if (tabId == null) return;
+        if (tabId === null) {return;}
         const windowId = tabState.get(tabId)?.windowId;
-        if (typeof windowId !== 'number') return;
+        if (typeof windowId !== 'number') {return;}
         windowToWorkspace.set(windowId, scope.workspaceId);
     };
 

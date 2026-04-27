@@ -118,6 +118,14 @@ export type McpPolicy = {
     disableTools: string[];
 };
 
+export type EntityRuleConfig = {
+    enabled: boolean;
+    rootDir: string;
+    selection: 'disabled' | 'explicit' | 'auto';
+    profiles: string[];
+    strict: boolean;
+};
+
 export type RunnerConfig = {
     waitPolicy: WaitPolicy;
     retryPolicy: RetryPolicy;
@@ -126,4 +134,5 @@ export type RunnerConfig = {
     confidencePolicy: ConfidencePolicy;
     checkpointPolicy: CheckpointPolicy;
     mcpPolicy: McpPolicy;
+    entityRules: EntityRuleConfig;
 };

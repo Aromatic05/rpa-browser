@@ -60,29 +60,29 @@ export const detectGroups = (root: UnifiedNode): GroupDetection[] => {
     const dedup = new Set<string>();
 
     walk(root, (parent) => {
-        if (codeLikeSubtree.has(parent.id)) return;
-        if (parent.children.length < 2) return;
-        if (isTooNoisyGroupContainer(parent)) return;
+        if (codeLikeSubtree.has(parent.id)) {return;}
+        if (parent.children.length < 2) {return;}
+        if (isTooNoisyGroupContainer(parent)) {return;}
 
         const buckets = detectSiblingBuckets(parent);
-        if (buckets.length === 0) return;
+        if (buckets.length === 0) {return;}
 
         for (const bucket of buckets) {
             const shrunk = shrinkGroupContainer(parent, bucket.nodes, parentById);
-            if (shrunk.items.length < 2) continue;
-            if (isPaginationLikeContainer(shrunk.container)) continue;
+            if (shrunk.items.length < 2) {continue;}
+            if (isPaginationLikeContainer(shrunk.container)) {continue;}
 
             const slotMap = buildItemSlotMap(shrunk.items);
             const itemIds = shrunk.items.map((item) => item.id);
             const dedupKey = `${shrunk.container.id}|${itemIds.join(',')}`;
-            if (dedup.has(dedupKey)) continue;
+            if (dedup.has(dedupKey)) {continue;}
             dedup.add(dedupKey);
 
             const kind = classifyGroupKind(shrunk.container, shrunk.items, slotMap, parentById);
             const keySlot = kind === 'kv' ? 0 : selectKeySlot(kind, shrunk.items, slotMap);
             const signal = buildGroupSignal(kind, shrunk.container, shrunk.items, slotMap, keySlot, parentById, shrunk.wrapperDepth);
             const evidence = buildGroupEvidence(shrunk.container);
-            if (!passesGroupDetectionFloor(kind, signal, evidence)) continue;
+            if (!passesGroupDetectionFloor(kind, signal, evidence)) {continue;}
 
             const slotByItemId: Record<string, string[]> = {};
             for (const [itemId, slots] of slotMap) {
@@ -157,27 +157,27 @@ const passesGroupDetectionFloor = (
     signal: GroupSignal,
     evidence: GroupEvidence,
 ): boolean => {
-    if (signal.itemCount < 2) return false;
-    if (evidence.shellLike || evidence.codeLike) return false;
+    if (signal.itemCount < 2) {return false;}
+    if (evidence.shellLike || evidence.codeLike) {return false;}
     if (kind === 'table') {
-        if (signal.itemCount < 3) return false;
-        if (signal.slotCount < 2) return false;
-        if (!signal.hasTableSemantic && signal.stableRate < 0.5) return false;
-        if (!signal.hasTableSemantic && signal.keyCoverage < 0.5) return false;
+        if (signal.itemCount < 3) {return false;}
+        if (signal.slotCount < 2) {return false;}
+        if (!signal.hasTableSemantic && signal.stableRate < 0.5) {return false;}
+        if (!signal.hasTableSemantic && signal.keyCoverage < 0.5) {return false;}
         return true;
     }
     if (kind === 'kv') {
-        if (signal.itemCount < 3) return false;
-        if (signal.slotCount !== 2) return false;
-        if (signal.keyCoverage < 0.5) return false;
+        if (signal.itemCount < 3) {return false;}
+        if (signal.slotCount !== 2) {return false;}
+        if (signal.keyCoverage < 0.5) {return false;}
         return true;
     }
-    if (signal.itemCount < 3) return false;
-    if (signal.headingRate >= 0.82) return false;
+    if (signal.itemCount < 3) {return false;}
+    if (signal.headingRate >= 0.82) {return false;}
     if (!evidence.explicitListSemantic && !signal.hasListSemantic) {
-        if (signal.stableRate < 0.58) return false;
-        if (signal.keyCoverage < 0.55) return false;
-        if (signal.interactiveItemRate < 0.2) return false;
+        if (signal.stableRate < 0.58) {return false;}
+        if (signal.keyCoverage < 0.55) {return false;}
+        if (signal.interactiveItemRate < 0.2) {return false;}
     }
     return signal.keyCoverage >= 0.4;
 };
@@ -189,14 +189,14 @@ const evaluateKeyQuality = (
 ): { coverage: number; uniqueness: number } => {
     const keyTexts: string[] = [];
     for (const item of items) {
-        const slot = (slotMap.get(item.id) || [])[keySlot];
+        const slot = (slotMap.get(item.id) ?? []).at(keySlot);
         const text = slot ? readSlotText(slot) : undefined;
         if (text) {
             keyTexts.push(text);
             continue;
         }
         const fallback = firstReadableText(item, 1);
-        if (fallback) keyTexts.push(fallback);
+        if (fallback) {keyTexts.push(fallback);}
     }
 
     const nonEmpty = keyTexts.filter((text) => text.trim().length > 0);
@@ -218,7 +218,7 @@ const detectSiblingBuckets = (parent: UnifiedNode): SignatureBucket[] => {
     const strictBuckets = [...bySignature.values()]
         .filter((bucket) => bucket.nodes.length >= 2)
         .sort((a, b) => b.nodes.length - a.nodes.length);
-    if (strictBuckets.length > 0) return strictBuckets;
+    if (strictBuckets.length > 0) {return strictBuckets;}
 
     const fuzzyBuckets: SignatureBucket[] = [];
     const byRole = new Map<string, UnifiedNode[]>();
@@ -230,7 +230,7 @@ const detectSiblingBuckets = (parent: UnifiedNode): SignatureBucket[] => {
     }
 
     for (const siblings of byRole.values()) {
-        if (siblings.length < 2) continue;
+        if (siblings.length < 2) {continue;}
         const clusters: Array<{ shape: NodeShape; nodes: UnifiedNode[] }> = [];
         for (const candidate of siblings) {
             const shape = buildNodeShape(candidate);
@@ -242,7 +242,7 @@ const detectSiblingBuckets = (parent: UnifiedNode): SignatureBucket[] => {
             clusters.push({ shape, nodes: [candidate] });
         }
         for (const cluster of clusters) {
-            if (cluster.nodes.length < 2) continue;
+            if (cluster.nodes.length < 2) {continue;}
             fuzzyBuckets.push({
                 shape: cluster.shape,
                 nodes: cluster.nodes,
@@ -263,13 +263,13 @@ const shrinkGroupContainer = (
     let wrapperDepth = 0;
 
     for (let i = 0; i < 2; i += 1) {
-        if (!isWrapperContainer(container)) break;
+        if (!isWrapperContainer(container)) {break;}
         const dominantChild = pickDominantChild(container, items, parentById);
-        if (!dominantChild) break;
+        if (!dominantChild) {break;}
 
         const nextBuckets = detectSiblingBuckets(dominantChild);
-        const largest = nextBuckets[0];
-        if (!largest || largest.nodes.length < 2) break;
+        const largest = nextBuckets.at(0);
+        if (!largest || largest.nodes.length < 2) {break;}
 
         container = dominantChild;
         items = largest.nodes;
@@ -284,23 +284,23 @@ const pickDominantChild = (
     items: UnifiedNode[],
     parentById: Map<string, UnifiedNode | null>,
 ): UnifiedNode | undefined => {
-    if (container.children.length === 0) return undefined;
+    if (container.children.length === 0) {return undefined;}
     const topById = new Map<string, number>();
     for (const item of items) {
         const top = findTopChild(container, item, parentById);
-        if (!top) return undefined;
+        if (!top) {return undefined;}
         topById.set(top.id, (topById.get(top.id) || 0) + 1);
     }
 
     const sorted = [...topById.entries()].sort((a, b) => b[1] - a[1]);
-    const first = sorted[0];
-    const second = sorted[1];
-    if (!first) return undefined;
-    if ((second?.[1] || 0) > 0) return undefined;
-    if (first[1] !== items.length) return undefined;
+    const first = sorted.at(0);
+    const second = sorted.at(1);
+    if (!first) {return undefined;}
+    if ((second?.[1] || 0) > 0) {return undefined;}
+    if (first[1] !== items.length) {return undefined;}
 
     const target = container.children.find((child) => child.id === first[0]);
-    if (!target || target.children.length === 0) return undefined;
+    if (!target || target.children.length === 0) {return undefined;}
     return target;
 };
 
@@ -311,11 +311,11 @@ const findTopChild = (
 ): UnifiedNode | undefined => {
     let cursor: UnifiedNode | null = node;
     let parent = parentById.get(cursor.id) || null;
-    while (cursor && parent && parent.id !== container.id) {
+    while (parent && parent.id !== container.id) {
         cursor = parent;
         parent = parentById.get(cursor.id) || null;
     }
-    if (!cursor || !parent || parent.id !== container.id) return undefined;
+    if (parent?.id !== container.id) {return undefined;}
     return cursor;
 };
 
@@ -351,12 +351,12 @@ const estimateSlotCount = (items: UnifiedNode[], slotMap: Map<string, UnifiedNod
         .map((item) => slotMap.get(item.id)?.length || 0)
         .filter((count) => count > 0)
         .sort((a, b) => a - b);
-    if (counts.length === 0) return 1;
+    if (counts.length === 0) {return 1;}
     return counts[Math.floor(counts.length / 2)] || 1;
 };
 
 const calcStableMultiSlotRate = (items: UnifiedNode[], slotMap: Map<string, UnifiedNode[]>, slotCount: number): number => {
-    if (slotCount <= 1) return 0;
+    if (slotCount <= 1) {return 0;}
     let matched = 0;
     for (const item of items) {
         const count = slotMap.get(item.id)?.length || 0;
@@ -373,10 +373,10 @@ const looksLikeKv = (items: UnifiedNode[], slotMap: Map<string, UnifiedNode[]>):
     let samples = 0;
 
     for (const item of items) {
-        const slots = slotMap.get(item.id) || [];
-        const keySlot = slots[0];
-        const valueSlot = slots[1];
-        if (!keySlot || !valueSlot) continue;
+        const slots = slotMap.get(item.id) ?? [];
+        const keySlot = slots.at(0);
+        const valueSlot = slots.at(1);
+        if (!keySlot || !valueSlot) {continue;}
         samples += 1;
         const keyText = readSlotText(keySlot);
         if (keyText && isKvLabelLikeText(keyText)) {
@@ -388,7 +388,7 @@ const looksLikeKv = (items: UnifiedNode[], slotMap: Map<string, UnifiedNode[]>):
         }
     }
 
-    if (samples === 0) return false;
+    if (samples === 0) {return false;}
     return labelHit / samples >= 0.55 && valueHit / samples >= 0.55;
 };
 
@@ -401,14 +401,14 @@ const selectKeySlot = (kind: 'table' | 'list', items: UnifiedNode[], slotMap: Ma
         const sampleNodes: UnifiedNode[] = [];
         const sampleTexts: string[] = [];
         for (const item of items) {
-            const slot = (slotMap.get(item.id) || [])[slotIndex];
-            if (!slot) continue;
+            const slot = (slotMap.get(item.id) ?? []).at(slotIndex);
+            if (!slot) {continue;}
             sampleNodes.push(slot);
             const text = readSlotText(slot);
-            if (text) sampleTexts.push(text);
+            if (text) {sampleTexts.push(text);}
         }
 
-        if (sampleTexts.length < 2) continue;
+        if (sampleTexts.length < 2) {continue;}
         const score =
             uniqueRatio(sampleTexts) * 3 +
             averageTextQuality(sampleTexts) +
@@ -428,24 +428,24 @@ const selectKeySlot = (kind: 'table' | 'list', items: UnifiedNode[], slotMap: Ma
 };
 
 const iconLikePenalty = (texts: string[]): number => {
-    if (texts.length === 0) return 0;
+    if (texts.length === 0) {return 0;}
     let hits = 0;
     for (const text of texts) {
-        if (isIconLikeText(text)) hits += 1;
+        if (isIconLikeText(text)) {hits += 1;}
     }
     return hits / texts.length;
 };
 
 const isIconLikeText = (text: string): boolean => {
     const value = text.trim().toLowerCase();
-    if (!value) return false;
+    if (!value) {return false;}
     if (ICON_TEXT_PATTERN.test(value)) {
         const parts = value.split(/[-_]/).filter((part) => part.length > 0);
         if (parts.length <= 4 && parts.some((part) => ICON_TEXT_TERMS.has(part))) {
             return true;
         }
     }
-    if (ICON_TEXT_TERMS.has(value)) return true;
+    if (ICON_TEXT_TERMS.has(value)) {return true;}
     return false;
 };
 
@@ -456,7 +456,7 @@ const uniqueRatio = (texts: string[]): number => {
 };
 
 const averageTextQuality = (texts: string[]): number => {
-    if (texts.length === 0) return 0;
+    if (texts.length === 0) {return 0;}
     let total = 0;
     for (const text of texts) {
         total += textQuality(text);
@@ -466,10 +466,10 @@ const averageTextQuality = (texts: string[]): number => {
 
 const textQuality = (text: string): number => {
     const value = text.trim();
-    if (value.length < 2 || value.length > 64) return 0;
-    if (!HAS_TEXT_PATTERN.test(value)) return 0;
-    if (/^[\d\s\-:/.%]+$/.test(value)) return 0.15;
-    if (/[A-Za-z\u4E00-\u9FFF]/.test(value)) return 1;
+    if (value.length < 2 || value.length > 64) {return 0;}
+    if (!HAS_TEXT_PATTERN.test(value)) {return 0;}
+    if (/^[\d\s\-:/.%]+$/.test(value)) {return 0.15;}
+    if (/[A-Za-z\u4E00-\u9FFF]/.test(value)) {return 1;}
     return 0.5;
 };
 
@@ -513,7 +513,7 @@ const semanticBonus = (kind: 'table' | 'list', nodes: UnifiedNode[], texts: stri
 };
 
 const actionPenalty = (nodes: UnifiedNode[], texts: string[]): number => {
-    if (nodes.length === 0) return 0;
+    if (nodes.length === 0) {return 0;}
     let hit = 0;
     for (const node of nodes) {
         if (isActionLikeNode(node)) {
@@ -526,25 +526,25 @@ const actionPenalty = (nodes: UnifiedNode[], texts: string[]): number => {
         }
     }
     for (const text of texts) {
-        if (isActionWordText(text)) hit += 0.5;
+        if (isActionWordText(text)) {hit += 0.5;}
     }
     return Math.min(hit / nodes.length, 1);
 };
 
 const volatilityPenalty = (texts: string[]): number => {
-    if (texts.length === 0) return 0;
+    if (texts.length === 0) {return 0;}
     let volatileCount = 0;
     for (const text of texts) {
-        if (isVolatileText(text)) volatileCount += 1;
+        if (isVolatileText(text)) {volatileCount += 1;}
     }
     return volatileCount / texts.length;
 };
 
 const sparsePenalty = (samples: number, total: number): number => {
-    if (total <= 0) return 0;
+    if (total <= 0) {return 0;}
     const coverage = samples / total;
-    if (coverage >= 0.75) return 0;
-    if (coverage >= 0.5) return 0.2;
+    if (coverage >= 0.75) {return 0;}
+    if (coverage >= 0.5) {return 0.2;}
     return 0.45;
 };
 
@@ -569,7 +569,7 @@ const buildNodeShape = (node: UnifiedNode): NodeShape => {
 };
 
 const shallowSimilarity = (left: NodeShape, right: NodeShape): number => {
-    if (left.role !== right.role) return 0;
+    if (left.role !== right.role) {return 0;}
     const leftTokens = new Set<string>([
         left.role,
         ...splitShapeTokens(left.childRoleShape),
@@ -587,10 +587,10 @@ const shallowSimilarity = (left: NodeShape, right: NodeShape): number => {
 
     let intersect = 0;
     for (const token of leftTokens) {
-        if (rightTokens.has(token)) intersect += 1;
+        if (rightTokens.has(token)) {intersect += 1;}
     }
     const union = new Set<string>([...leftTokens, ...rightTokens]).size;
-    if (union === 0) return 0;
+    if (union === 0) {return 0;}
     return intersect / union;
 };
 
@@ -600,7 +600,7 @@ const collectShallowActionTokens = (node: UnifiedNode): string[] => {
     const dedup = new Set<string>();
     const targets = [node, ...node.children];
     for (const candidate of targets) {
-        if (!isActionLikeNode(candidate)) continue;
+        if (!isActionLikeNode(candidate)) {continue;}
         const text = readSlotText(candidate);
         if (text) {
             const matched = ACTION_WORDS.find((word) => text.toLowerCase().includes(word));
@@ -618,7 +618,7 @@ const countShallowTextSignal = (node: UnifiedNode): number => {
     let count = 0;
     const texts = [readSlotText(node), ...node.children.map((child) => readSlotText(child))];
     for (const text of texts) {
-        if (!text) continue;
+        if (!text) {continue;}
         count += 1;
     }
     return count;
@@ -627,31 +627,31 @@ const countShallowTextSignal = (node: UnifiedNode): number => {
 const countShallowInteractiveSignal = (node: UnifiedNode): number => {
     let count = hasInteractiveSignal(node, 0) ? 1 : 0;
     for (const child of node.children) {
-        if (hasInteractiveSignal(child, 0)) count += 1;
+        if (hasInteractiveSignal(child, 0)) {count += 1;}
     }
     return count;
 };
 
 const bucketizeCount = (count: number): string => {
-    if (count <= 0) return '0';
-    if (count === 1) return '1';
-    if (count <= 3) return '2-3';
+    if (count <= 0) {return '0';}
+    if (count === 1) {return '1';}
+    if (count <= 3) {return '2-3';}
     return '4+';
 };
 
 const extractSlots = (rawItem: UnifiedNode): UnifiedNode[] => {
     let item = rawItem;
     for (let i = 0; i < 2; i += 1) {
-        if (!isWrapperItem(item)) break;
-        if (item.children.length !== 1) break;
-        const next = item.children[0];
-        if (!next) break;
+        if (!isWrapperItem(item)) {break;}
+        if (item.children.length !== 1) {break;}
+        const next = item.children.at(0);
+        if (!next) {break;}
         item = next;
     }
 
-    if (item.children.length === 0) return [item];
+    if (item.children.length === 0) {return [item];}
     const candidates = item.children.filter((child) => !isNoiseNode(child));
-    if (candidates.length === 0) return [item];
+    if (candidates.length === 0) {return [item];}
     return candidates.slice(0, 8);
 };
 
@@ -665,7 +665,7 @@ const readSlotText = (node: UnifiedNode): string | undefined => {
     ]
         .map((value) => normalizeText(value))
         .find((value): value is string => Boolean(value));
-    if (direct) return direct;
+    if (direct) {return direct;}
     return firstReadableText(node, 2);
 };
 
@@ -673,12 +673,12 @@ const firstReadableText = (node: UnifiedNode, depthLimit: number): string | unde
     const queue: Array<{ node: UnifiedNode; depth: number }> = [{ node, depth: 0 }];
     while (queue.length > 0) {
         const current = queue.shift();
-        if (!current) break;
+        if (!current) {break;}
 
         const text = normalizeText(current.node.name || getNodeContent(current.node));
-        if (text && text.length <= 64) return text;
+        if (text && text.length <= 64) {return text;}
 
-        if (current.depth >= depthLimit) continue;
+        if (current.depth >= depthLimit) {continue;}
         for (const child of current.node.children) {
             queue.push({ node: child, depth: current.depth + 1 });
         }
@@ -704,31 +704,31 @@ const hasListSemantic = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const cls = normalizeLower(getNodeAttr(node, 'class'));
-    if (LIST_ROLES.has(role) || LIST_TAGS.has(tag)) return true;
-    if (cls.includes('list') || cls.includes('menu')) return true;
+    if (LIST_ROLES.has(role) || LIST_TAGS.has(tag)) {return true;}
+    if (cls.includes('list') || cls.includes('menu')) {return true;}
     return false;
 };
 
 const isRowLikeNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (role === 'row' || role === 'listitem') return true;
-    if (tag === 'tr' || tag === 'li') return true;
+    if (role === 'row' || role === 'listitem') {return true;}
+    if (tag === 'tr' || tag === 'li') {return true;}
     return false;
 };
 
 const headingLikeRate = (items: UnifiedNode[]): number => {
-    if (items.length === 0) return 0;
+    if (items.length === 0) {return 0;}
     let hits = 0;
     for (const item of items) {
-        if (isHeadingLikeNode(item)) hits += 1;
+        if (isHeadingLikeNode(item)) {hits += 1;}
     }
     return hits / items.length;
 };
 
 const isHeadingLikeNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
-    if (role === 'heading') return true;
+    if (role === 'heading') {return true;}
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     if (tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') {
         return true;
@@ -738,19 +738,19 @@ const isHeadingLikeNode = (node: UnifiedNode): boolean => {
 
 const isKvLabelLikeText = (text: string): boolean => {
     const value = text.trim();
-    if (!value) return false;
-    if (isActionWordText(value)) return false;
-    if (value.length > 32) return false;
-    if (value.includes(':') || value.includes('：')) return true;
-    if (VOLATILE_PATTERN.test(value)) return false;
+    if (!value) {return false;}
+    if (isActionWordText(value)) {return false;}
+    if (value.length > 32) {return false;}
+    if (value.includes(':') || value.includes('：')) {return true;}
+    if (VOLATILE_PATTERN.test(value)) {return false;}
     return /[A-Za-z\u4E00-\u9FFF]/.test(value);
 };
 
 const isActionLikeNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (ACTION_ROLES.has(role) || ACTION_TAGS.has(tag)) return true;
-    if (getNodeAttr(node, 'onclick')) return true;
+    if (ACTION_ROLES.has(role) || ACTION_TAGS.has(tag)) {return true;}
+    if (getNodeAttr(node, 'onclick')) {return true;}
     return false;
 };
 
@@ -758,9 +758,9 @@ const hasInteractiveSignal = (node: UnifiedNode, depthLimit: number): boolean =>
     const queue: Array<{ node: UnifiedNode; depth: number }> = [{ node, depth: 0 }];
     while (queue.length > 0) {
         const current = queue.shift();
-        if (!current) break;
-        if (isInteractiveNode(current.node)) return true;
-        if (current.depth >= depthLimit) continue;
+        if (!current) {break;}
+        if (isInteractiveNode(current.node)) {return true;}
+        if (current.depth >= depthLimit) {continue;}
         for (const child of current.node.children) {
             queue.push({ node: child, depth: current.depth + 1 });
         }
@@ -771,53 +771,53 @@ const hasInteractiveSignal = (node: UnifiedNode, depthLimit: number): boolean =>
 const isInteractiveNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) return true;
-    if (node.target) return true;
-    if (getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex') || getNodeAttr(node, 'onclick')) return true;
+    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) {return true;}
+    if (node.target) {return true;}
+    if (getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex') || getNodeAttr(node, 'onclick')) {return true;}
     return false;
 };
 
 const isWrapperContainer = (node: UnifiedNode): boolean => {
-    if (node.children.length === 0) return false;
-    if (normalizeText(node.name || getNodeContent(node))) return false;
-    if (hasInteractiveSignal(node, 0)) return false;
+    if (node.children.length === 0) {return false;}
+    if (normalizeText(node.name || getNodeContent(node))) {return false;}
+    if (hasInteractiveSignal(node, 0)) {return false;}
     const role = normalizeLower(node.role);
     return WRAPPER_ROLES.has(role);
 };
 
 const isWrapperItem = (node: UnifiedNode): boolean => {
-    if (node.children.length === 0) return false;
-    if (normalizeText(node.name || getNodeContent(node))) return false;
-    if (hasInteractiveSignal(node, 0)) return false;
+    if (node.children.length === 0) {return false;}
+    if (normalizeText(node.name || getNodeContent(node))) {return false;}
+    if (hasInteractiveSignal(node, 0)) {return false;}
     return WRAPPER_ROLES.has(normalizeLower(node.role));
 };
 
 const isTooNoisyGroupContainer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
-    if (isCodeLikeNode(node)) return true;
-    if (SHELL_ROLES.has(role)) return true;
-    if (role === 'none' || role === 'presentation') return true;
-    if (node.children.length < 2) return true;
+    if (isCodeLikeNode(node)) {return true;}
+    if (SHELL_ROLES.has(role)) {return true;}
+    if (role === 'none' || role === 'presentation') {return true;}
+    if (node.children.length < 2) {return true;}
     return false;
 };
 
 const isGroupCandidateChild = (node: UnifiedNode): boolean => {
-    if (isCodeLikeNode(node)) return false;
-    if (isNoiseNode(node)) return false;
-    if (hasInteractiveSignal(node, 1)) return true;
-    if (readSlotText(node)) return true;
-    if (countCandidateChildren(node) >= 2) return true;
+    if (isCodeLikeNode(node)) {return false;}
+    if (isNoiseNode(node)) {return false;}
+    if (hasInteractiveSignal(node, 1)) {return true;}
+    if (readSlotText(node)) {return true;}
+    if (countCandidateChildren(node) >= 2) {return true;}
     return false;
 };
 
 const isNoiseNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (isCodeLikeNode(node)) return true;
-    if (NOISE_ROLES.has(role) || NOISE_TAGS.has(tag)) return true;
+    if (isCodeLikeNode(node)) {return true;}
+    if (NOISE_ROLES.has(role) || NOISE_TAGS.has(tag)) {return true;}
     const text = readSlotText(node);
-    if (text && isCodeTokenText(text)) return true;
-    if (node.children.length === 0 && !text && !hasInteractiveSignal(node, 0)) return true;
+    if (text && isCodeTokenText(text)) {return true;}
+    if (node.children.length === 0 && !text && !hasInteractiveSignal(node, 0)) {return true;}
     return false;
 };
 
@@ -828,8 +828,8 @@ const isActionWordText = (text: string): boolean => {
 
 const isVolatileText = (text: string): boolean => {
     const lower = text.toLowerCase();
-    if (VOLATILE_PATTERN.test(lower)) return true;
-    if (VOLATILE_KEYWORDS.some((word) => lower.includes(word))) return true;
+    if (VOLATILE_PATTERN.test(lower)) {return true;}
+    if (VOLATILE_KEYWORDS.some((word) => lower.includes(word))) {return true;}
     return false;
 };
 
@@ -873,8 +873,8 @@ const isCodeLikeNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const cls = normalizeLower(getNodeAttr(node, 'class'));
-    if (CODE_ROLES.has(role) || CODE_TAGS.has(tag)) return true;
-    if (CODE_CLASS_HINTS.some((hint) => cls.includes(hint))) return true;
+    if (CODE_ROLES.has(role) || CODE_TAGS.has(tag)) {return true;}
+    if (CODE_CLASS_HINTS.some((hint) => cls.includes(hint))) {return true;}
     return false;
 };
 
@@ -887,22 +887,22 @@ const isPaginationLikeContainer = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const cls = normalizeLower(getNodeAttr(node, 'class'));
-    if (!PAGINATION_CLASS_HINTS.some((hint) => cls.includes(hint))) return false;
-    if (PAGINATION_TAGS.has(tag)) return true;
-    if (PAGINATION_ROLES.has(role)) return true;
+    if (!PAGINATION_CLASS_HINTS.some((hint) => cls.includes(hint))) {return false;}
+    if (PAGINATION_TAGS.has(tag)) {return true;}
+    if (PAGINATION_ROLES.has(role)) {return true;}
     return false;
 };
 
 const isCodeTokenText = (text: string): boolean => {
     const value = text.trim();
-    if (!value) return true;
-    if (value.length <= 2 && !HAS_TEXT_PATTERN.test(value)) return true;
-    if (CODE_TOKEN_PATTERN.test(value)) return true;
+    if (!value) {return true;}
+    if (value.length <= 2 && !HAS_TEXT_PATTERN.test(value)) {return true;}
+    if (CODE_TOKEN_PATTERN.test(value)) {return true;}
     return false;
 };
 
 const HAS_TEXT_PATTERN = /[A-Za-z0-9\u4E00-\u9FFF]/;
-const CODE_TOKEN_PATTERN = /^(<|>|\/>|<\/|=>|=|{|}|\(|\)|\[|\]|:|,|;|\"|'|`)+$/;
+const CODE_TOKEN_PATTERN = /^(<|>|\/>|<\/|=>|=|{|}|\(|\)|\[|\]|:|,|;|"|'|`)+$/;
 const VOLATILE_PATTERN = /(^\d+$)|(\d{4}[-/]\d{1,2}[-/]\d{1,2})|(\d{1,2}:\d{2})|(%$)|(^[#№]?\d+)/;
 const ICON_TEXT_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+){0,3}$/;
 const VOLATILE_KEYWORDS = ['today', 'yesterday', 'now', 'pending', 'failed', 'success', '状态', '时间', '数量', '总数', 'percent'];

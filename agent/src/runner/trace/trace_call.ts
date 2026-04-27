@@ -84,7 +84,7 @@ const mapTraceError = (error: unknown): ToolError => {
 };
 
 const isToolErrorLike = (error: unknown): error is ToolError => {
-    if (!error || typeof error !== 'object') return false;
+    if (!error || typeof error !== 'object') {return false;}
     const candidate = error as ToolError;
     return typeof candidate.code === 'string' && typeof candidate.message === 'string' && candidate.phase === 'trace';
 };

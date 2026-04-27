@@ -1,33 +1,12 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { normalizeTarget, mapTraceError } from '../helpers/target';
-import { resolveTargetNodeId, type ResolvedLocatorTarget } from '../helpers/resolve_target';
+import { mapTraceError } from '../helpers/target';
+import { resolveTarget } from '../helpers/resolve_target';
 
 const pickDelayMs = (min: number, max: number) => {
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
-    if (max <= min) return Math.max(0, min);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {return 0;}
+    if (max <= min) {return Math.max(0, min);}
     return Math.floor(min + Math.random() * (max - min + 1));
-};
-
-const ensureVisible = async (
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
-    target: ResolvedLocatorTarget,
-    timeout?: number,
-) => {
-    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-    });
-    if (!scroll.ok) return scroll;
-    return binding.traceTools['trace.locator.waitForVisible']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-        timeout,
-    });
 };
 
 export const executeBrowserType = async (
@@ -36,21 +15,23 @@ export const executeBrowserType = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const target = normalizeTarget(step.args);
-    const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
-    if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+    const resolved = await resolveTarget(binding, {
+        id: step.args.id || step.args.target?.id,
+        selector: step.args.selector || step.args.target?.selector,
+        hint: step.resolve?.hint,
+        policy: step.resolve?.policy,
+    });
+    if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
-    const visible = await ensureVisible(binding, resolved.target, timeout);
+    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
+    if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
+
+    const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: resolved.target.selector, timeout });
     if (!visible.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
     }
-    const focus = await binding.traceTools['trace.locator.focus']({
-        a11yNodeId: resolved.target.a11yNodeId,
-        selector: resolved.target.selector,
-        role: resolved.target.role,
-        name: resolved.target.name,
-    });
+    const focus = await binding.traceTools['trace.locator.focus']({ selector: resolved.target.selector });
     if (!focus.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
     }
@@ -64,10 +45,7 @@ export const executeBrowserType = async (
                 )
               : undefined;
     const typed = await binding.traceTools['trace.locator.type']({
-        a11yNodeId: resolved.target.a11yNodeId,
         selector: resolved.target.selector,
-        role: resolved.target.role,
-        name: resolved.target.name,
         text: step.args.text,
         delayMs,
     });

@@ -1,10 +1,15 @@
 import { buildExternalIndexes } from '../indexes/external_indexes';
 import { snapshotDebugLog } from './debug';
+import { dedupeEntityRuleDiagnostics } from './diagnostics';
+import { buildBusinessBindingIndex } from './entity_query';
 import { cloneTreeWithRuntime, getNodeContent, normalizeText } from './runtime_store';
+import { buildTableStructureModel } from './table_model';
 import type {
     EntityIndex,
+    EntityBusinessInfo,
     EntityKind,
     EntityRecord,
+    EntityRuleDiagnostic,
     FinalEntityRecord,
     FinalEntityView,
     GroupEntity,
@@ -47,8 +52,8 @@ export const buildFinalEntityViewFromSnapshot = (
         .map((entity) => toFinalEntityRecord(finalSnapshot, entity, renamedByNodeId, addedNameByNodeId))
         .filter((entity): entity is FinalEntityRecord => Boolean(entity))
         .sort((left, right) => {
-            if (left.nodeId !== right.nodeId) return left.nodeId.localeCompare(right.nodeId);
-            if (left.kind !== right.kind) return left.kind.localeCompare(right.kind);
+            if (left.nodeId !== right.nodeId) {return left.nodeId.localeCompare(right.nodeId);}
+            if (left.kind !== right.kind) {return left.kind.localeCompare(right.kind);}
             return left.id.localeCompare(right.id);
         });
 
@@ -65,9 +70,13 @@ export const buildFinalEntityViewFromSnapshot = (
         composedFromBase,
     });
 
+    const diagnostics = buildFinalEntityDiagnostics(finalSnapshot, entities);
+
     return {
         entities,
         byNodeId,
+        bindingIndex: buildBusinessBindingIndex(entities),
+        diagnostics,
     };
 };
 
@@ -79,8 +88,8 @@ const applyRenameOverlay = (
     let applied = 0;
 
     for (const [nodeId, renamed] of Object.entries(renamedByNodeId)) {
+        if (!Object.prototype.hasOwnProperty.call(snapshot.nodeIndex, nodeId)) {continue;}
         const node = snapshot.nodeIndex[nodeId];
-        if (!node) continue;
         node.name = renamed;
         applied += 1;
     }
@@ -88,12 +97,12 @@ const applyRenameOverlay = (
     for (const entity of Object.values(snapshot.entityIndex.entities)) {
         if (entity.type === 'region') {
             const renamed = renamedByNodeId[entity.nodeId];
-            if (!renamed) continue;
+            if (!renamed) {continue;}
             entity.name = renamed;
             continue;
         }
         const renamed = renamedByNodeId[entity.containerId];
-        if (!renamed) continue;
+        if (!renamed) {continue;}
         entity.name = renamed;
     }
 
@@ -104,22 +113,22 @@ const applyDeleteEntityOverlay = (
     snapshot: SnapshotResult,
     deletedEntities: SnapshotOverlayDeleteEntity[],
 ): number => {
-    if (deletedEntities.length === 0) return 0;
+    if (deletedEntities.length === 0) {return 0;}
 
     const deletions = normalizeDeletions(deletedEntities);
-    if (deletions.length === 0) return 0;
+    if (deletions.length === 0) {return 0;}
 
     const toDeleteEntityIds = new Set<string>();
     for (const entity of Object.values(snapshot.entityIndex.entities)) {
         const entityNodeId = getEntityNodeId(entity);
-        if (!entityNodeId) continue;
+        if (!entityNodeId) {continue;}
 
         if (deletions.some((item) => matchesDeletion(entity, entityNodeId, item))) {
             toDeleteEntityIds.add(entity.id);
         }
     }
 
-    if (toDeleteEntityIds.size === 0) return 0;
+    if (toDeleteEntityIds.size === 0) {return 0;}
 
     for (const entityId of toDeleteEntityIds) {
         delete snapshot.entityIndex.entities[entityId];
@@ -141,7 +150,7 @@ const applyAddEntityOverlay = (
     snapshot: SnapshotResult,
     addedEntities: SnapshotOverlayAddEntity[],
 ): { applied: number; skipped: number } => {
-    if (addedEntities.length === 0) return { applied: 0, skipped: 0 };
+    if (addedEntities.length === 0) {return { applied: 0, skipped: 0 };}
 
     let applied = 0;
     let skipped = 0;
@@ -150,7 +159,7 @@ const applyAddEntityOverlay = (
     for (let index = 0; index < addedEntities.length; index += 1) {
         const added = addedEntities[index];
         const nodeId = normalizeText(added.nodeId);
-        if (!nodeId || !snapshot.nodeIndex[nodeId]) {
+        if (!nodeId || !Object.prototype.hasOwnProperty.call(snapshot.nodeIndex, nodeId)) {
             skipped += 1;
             continue;
         }
@@ -221,7 +230,75 @@ const cloneSnapshot = (baseSnapshot: SnapshotResult): SnapshotResult => {
         attrIndex: external.attrIndex,
         contentStore: external.contentStore,
         cacheStats: baseSnapshot.cacheStats,
+        ruleEntityOverlay: baseSnapshot.ruleEntityOverlay || baseSnapshot.businessEntityOverlay,
+        businessEntityOverlay: baseSnapshot.businessEntityOverlay || baseSnapshot.ruleEntityOverlay,
     };
+};
+
+const buildFinalEntityDiagnostics = (snapshot: SnapshotResult, entities: FinalEntityRecord[]): EntityRuleDiagnostic[] | undefined => {
+    const baseDiagnostics = [
+        ...((snapshot.ruleEntityOverlay?.diagnostics || snapshot.businessEntityOverlay?.diagnostics || []).map((item) => ({
+            ...item,
+            nodeIds: item.nodeIds ? [...item.nodeIds] : undefined,
+            details: item.details ? { ...item.details } : undefined,
+        }))),
+    ];
+    const derivedDiagnostics = entities.flatMap((entity) => deriveEntityDiagnostics(snapshot, entity));
+    const diagnostics = dedupeEntityRuleDiagnostics([...baseDiagnostics, ...derivedDiagnostics]);
+    return diagnostics.length > 0 ? diagnostics : undefined;
+};
+
+const deriveEntityDiagnostics = (snapshot: SnapshotResult, entity: FinalEntityRecord): EntityRuleDiagnostic[] => {
+    if (entity.kind !== 'table' || !entity.columns || entity.columns.length === 0) {
+        return [];
+    }
+
+    const model = buildTableStructureModel(snapshot, entity.nodeId);
+    if (!model) {return [];}
+
+    const diagnostics: EntityRuleDiagnostic[] = [];
+    for (const column of entity.columns) {
+        const headerMatched = resolveColumnIndexAgainstModel(model, column) >= 0;
+        if (!headerMatched) {
+            diagnostics.push({
+                code: 'TABLE_COLUMN_HEADER_UNRESOLVED',
+                level: 'warning',
+                message: `table column header unresolved: ${column.name || column.fieldKey}`,
+                entityId: entity.id,
+                businessTag: entity.businessTag,
+                fieldKey: column.fieldKey,
+                columnName: column.name,
+                nodeIds: [entity.nodeId],
+            });
+            if (column.kind === 'action_column') {
+                for (const action of column.actions || []) {
+                    diagnostics.push({
+                        code: 'TABLE_ACTION_COLUMN_UNRESOLVED',
+                        level: 'warning',
+                        message: `table action column unresolved: ${action.actionIntent}`,
+                        entityId: entity.id,
+                        businessTag: entity.businessTag,
+                        fieldKey: column.fieldKey,
+                        columnName: column.name,
+                        actionIntent: action.actionIntent,
+                        nodeIds: [entity.nodeId],
+                    });
+                }
+            }
+        }
+    }
+    return diagnostics;
+};
+
+const resolveColumnIndexAgainstModel = (
+    model: NonNullable<ReturnType<typeof buildTableStructureModel>>,
+    column: { columnIndex?: number; name?: string },
+): number => {
+    if (typeof column.columnIndex === 'number' && column.columnIndex >= 0 && column.columnIndex < model.headers.length) {
+        return column.columnIndex;
+    }
+    if (!column.name) {return -1;}
+    return model.headers.findIndex((header) => normalizeLower(header) === normalizeLower(column.name));
 };
 
 const cloneEntityIndex = (entityIndex: EntityIndex): EntityIndex => {
@@ -232,7 +309,7 @@ const cloneEntityIndex = (entityIndex: EntityIndex): EntityIndex => {
 
     const byNodeId: EntityIndex['byNodeId'] = {};
     for (const [nodeId, refs] of Object.entries(entityIndex.byNodeId)) {
-        if (!refs || refs.length === 0) continue;
+        if (!refs || refs.length === 0) {continue;}
         byNodeId[nodeId] = refs.map((ref) => ({ ...ref }));
     }
 
@@ -272,7 +349,7 @@ const normalizeDeletions = (items: SnapshotOverlayDeleteEntity[]): SnapshotOverl
     const normalized: SnapshotOverlayDeleteEntity[] = [];
     for (const item of items) {
         const nodeId = normalizeText(item.nodeId);
-        if (!nodeId) continue;
+        if (!nodeId) {continue;}
         normalized.push({
             nodeId,
             kind: item.kind,
@@ -284,10 +361,10 @@ const normalizeDeletions = (items: SnapshotOverlayDeleteEntity[]): SnapshotOverl
 
 const buildRenamedByNodeId = (renamedNodes: Record<string, string>): Record<string, string> => {
     const next: Record<string, string> = {};
-    for (const [nodeIdRaw, renamedRaw] of Object.entries(renamedNodes || {})) {
+    for (const [nodeIdRaw, renamedRaw] of Object.entries(renamedNodes)) {
         const nodeId = normalizeText(nodeIdRaw);
         const renamed = normalizeText(renamedRaw);
-        if (!nodeId || !renamed) continue;
+        if (!nodeId || !renamed) {continue;}
         next[nodeId] = renamed;
     }
     return next;
@@ -298,7 +375,7 @@ const buildAddedNameByNodeId = (addedEntities: SnapshotOverlayAddEntity[]): Map<
     for (const added of addedEntities) {
         const nodeId = normalizeText(added.nodeId);
         const name = normalizeText(added.name);
-        if (!nodeId || !name) continue;
+        if (!nodeId || !name) {continue;}
         addedNameByNodeId.set(nodeId, name);
     }
     return addedNameByNodeId;
@@ -311,8 +388,9 @@ const toFinalEntityRecord = (
     addedNameByNodeId: Map<string, string>,
 ): FinalEntityRecord | null => {
     const nodeId = getEntityNodeId(entity);
-    if (!nodeId) return null;
+    if (!nodeId) {return null;}
     const name = resolveEntityName(snapshot, entity, nodeId, renamedByNodeId, addedNameByNodeId);
+    const businessInfo = resolveEntityBusinessInfo(snapshot, entity);
     const source = entity.source === 'overlay_add' ? 'overlay_add' : 'auto';
 
     if (entity.type === 'group') {
@@ -323,7 +401,47 @@ const toFinalEntityRecord = (
             kind: entity.kind,
             type: 'group',
             name,
-            businessTag: normalizeText(entity.businessTag),
+            businessTag: normalizeText(businessInfo.businessTag),
+            businessName: normalizeText(businessInfo.businessName),
+            primaryKey: businessInfo.primaryKey
+                ? {
+                    fieldKey: businessInfo.primaryKey.fieldKey,
+                    columns: businessInfo.primaryKey.columns ? [...businessInfo.primaryKey.columns] : undefined,
+                    source: businessInfo.primaryKey.source,
+                }
+                : undefined,
+            columns: businessInfo.columns?.map((column) => ({
+                ...column,
+                actions: column.actions?.map((action) => ({ ...action })),
+            })),
+            formFields: businessInfo.formFields?.map((field) => ({
+                ...field,
+                optionSource: field.optionSource ? { ...field.optionSource } : undefined,
+            })),
+            formActions: businessInfo.formActions?.map((action) => ({ ...action })),
+            pagination: businessInfo.pagination
+                ? {
+                    nextAction: businessInfo.pagination.nextAction
+                        ? { ...businessInfo.pagination.nextAction }
+                        : undefined,
+                }
+                : undefined,
+            tableMeta: businessInfo.tableMeta
+                ? {
+                    ...businessInfo.tableMeta,
+                    headers: [...businessInfo.tableMeta.headers],
+                    rowNodeIds: [...businessInfo.tableMeta.rowNodeIds],
+                    cellNodeIdsByRowNodeId: { ...businessInfo.tableMeta.cellNodeIdsByRowNodeId },
+                    columnCellNodeIdsByHeader: { ...businessInfo.tableMeta.columnCellNodeIdsByHeader },
+                    primaryKeyCandidates: businessInfo.tableMeta.primaryKeyCandidates.map((item) => ({
+                        ...item,
+                        columns: [...item.columns],
+                    })),
+                    recommendedPrimaryKey: businessInfo.tableMeta.recommendedPrimaryKey
+                        ? [...businessInfo.tableMeta.recommendedPrimaryKey]
+                        : undefined,
+                }
+                : undefined,
             source,
             itemIds: [...entity.itemIds],
             keySlot: entity.keySlot,
@@ -337,10 +455,281 @@ const toFinalEntityRecord = (
         kind: entity.kind,
         type: 'region',
         name,
-        businessTag: normalizeText(entity.businessTag),
+        businessTag: normalizeText(businessInfo.businessTag),
+        businessName: normalizeText(businessInfo.businessName),
+        primaryKey: businessInfo.primaryKey
+            ? {
+                fieldKey: businessInfo.primaryKey.fieldKey,
+                columns: businessInfo.primaryKey.columns ? [...businessInfo.primaryKey.columns] : undefined,
+                source: businessInfo.primaryKey.source,
+            }
+            : undefined,
+        columns: businessInfo.columns?.map((column) => ({
+            ...column,
+            actions: column.actions?.map((action) => ({ ...action })),
+        })),
+        formFields: businessInfo.formFields?.map((field) => ({
+            ...field,
+            optionSource: field.optionSource ? { ...field.optionSource } : undefined,
+        })),
+        formActions: businessInfo.formActions?.map((action) => ({ ...action })),
+        pagination: businessInfo.pagination
+            ? {
+                nextAction: businessInfo.pagination.nextAction
+                    ? { ...businessInfo.pagination.nextAction }
+                    : undefined,
+            }
+            : undefined,
+        tableMeta: businessInfo.tableMeta
+            ? {
+                ...businessInfo.tableMeta,
+                headers: [...businessInfo.tableMeta.headers],
+                rowNodeIds: [...businessInfo.tableMeta.rowNodeIds],
+                cellNodeIdsByRowNodeId: { ...businessInfo.tableMeta.cellNodeIdsByRowNodeId },
+                columnCellNodeIdsByHeader: { ...businessInfo.tableMeta.columnCellNodeIdsByHeader },
+                primaryKeyCandidates: businessInfo.tableMeta.primaryKeyCandidates.map((item) => ({
+                    ...item,
+                    columns: [...item.columns],
+                })),
+                recommendedPrimaryKey: businessInfo.tableMeta.recommendedPrimaryKey
+                    ? [...businessInfo.tableMeta.recommendedPrimaryKey]
+                    : undefined,
+            }
+            : undefined,
         source,
     };
 };
+
+const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecord): EntityBusinessInfo => {
+    const autoInfo = resolveAutoEntityBusinessInfo(snapshot, entity);
+    const ruleOverlay = snapshot.ruleEntityOverlay || snapshot.businessEntityOverlay;
+    const ruleInfo = ruleOverlay?.byEntityId[entity.id];
+    const columns = ruleInfo?.columns
+        ? ruleInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
+        : autoInfo.columns
+          ? autoInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
+          : undefined;
+    const formFields = ruleInfo?.formFields
+        ? ruleInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
+        : autoInfo.formFields
+          ? autoInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
+          : inferFormFieldsFromColumns(snapshot, entity, columns);
+    const formActions = ruleInfo?.formActions
+        ? ruleInfo.formActions.map((action) => ({ ...action }))
+        : autoInfo.formActions
+          ? autoInfo.formActions.map((action) => ({ ...action }))
+          : inferFormActions(snapshot, entity);
+    return {
+        businessTag: ruleInfo?.businessTag || autoInfo.businessTag || entity.businessTag,
+        businessName: ruleInfo?.businessName ?? autoInfo.businessName,
+        primaryKey: ruleInfo?.primaryKey
+            ? {
+                fieldKey: ruleInfo.primaryKey.fieldKey,
+                columns: ruleInfo.primaryKey.columns ? [...ruleInfo.primaryKey.columns] : undefined,
+                source: ruleInfo.primaryKey.source,
+            }
+            : autoInfo.primaryKey
+              ? {
+                  fieldKey: autoInfo.primaryKey.fieldKey,
+                  columns: autoInfo.primaryKey.columns ? [...autoInfo.primaryKey.columns] : undefined,
+                  source: autoInfo.primaryKey.source,
+              }
+              : undefined,
+        columns,
+        formFields,
+        formActions,
+        pagination: ruleInfo?.pagination
+            ? {
+                nextAction: ruleInfo.pagination.nextAction
+                    ? { ...ruleInfo.pagination.nextAction }
+                    : undefined,
+            }
+            : autoInfo.pagination
+              ? {
+                  nextAction: autoInfo.pagination.nextAction
+                      ? { ...autoInfo.pagination.nextAction }
+                      : undefined,
+              }
+              : undefined,
+        tableMeta: ruleInfo?.tableMeta
+            ? {
+                ...ruleInfo.tableMeta,
+                headers: [...ruleInfo.tableMeta.headers],
+                rowNodeIds: [...ruleInfo.tableMeta.rowNodeIds],
+                cellNodeIdsByRowNodeId: { ...ruleInfo.tableMeta.cellNodeIdsByRowNodeId },
+                columnCellNodeIdsByHeader: { ...ruleInfo.tableMeta.columnCellNodeIdsByHeader },
+                primaryKeyCandidates: ruleInfo.tableMeta.primaryKeyCandidates.map((item) => ({ ...item, columns: [...item.columns] })),
+                recommendedPrimaryKey: ruleInfo.tableMeta.recommendedPrimaryKey ? [...ruleInfo.tableMeta.recommendedPrimaryKey] : undefined,
+            }
+            : autoInfo.tableMeta,
+    };
+};
+
+const resolveAutoEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecord): EntityBusinessInfo => {
+    const nodeId = getEntityNodeId(entity);
+    if (!nodeId || entity.kind !== 'table') {
+        return {};
+    }
+
+    const model = buildTableStructureModel(snapshot, nodeId);
+    if (!model) {return {};}
+
+    const headers = model.headers;
+    const columns = headers.map((header, index) => ({
+        fieldKey: header,
+        name: header,
+        source: 'table_meta' as const,
+        columnIndex: index,
+        headerNodeId: model.headerNodeIds[index],
+    }));
+    const recommendedHeader = model.recommendedPrimaryKey?.[0];
+    const primaryKey = recommendedHeader
+        ? {
+            fieldKey: recommendedHeader,
+            columns: [recommendedHeader],
+            source: 'table_meta' as const,
+        }
+        : undefined;
+
+    return {
+        primaryKey,
+        columns,
+        tableMeta: {
+            rowCount: model.rows.length,
+            columnCount: model.columnCount,
+            headers: [...model.headers],
+            rowNodeIds: model.rows.map((row) => row.nodeId),
+            cellNodeIdsByRowNodeId: Object.fromEntries(
+                model.rows.map((row) => [row.nodeId, row.cells.map((cell) => cell.nodeId)]),
+            ),
+            columnCellNodeIdsByHeader: { ...model.columnCellNodeIdsByHeader },
+            primaryKeyCandidates: model.primaryKeyCandidates.map((item) => ({
+                columns: [...item.columns],
+                unique: item.unique,
+                duplicateCount: item.duplicateCount,
+            })),
+            recommendedPrimaryKey: model.recommendedPrimaryKey ? [...model.recommendedPrimaryKey] : undefined,
+        },
+    };
+};
+
+const inferFormFieldsFromColumns = (
+    snapshot: SnapshotResult,
+    entity: EntityRecord,
+    columns: EntityBusinessInfo['columns'],
+): EntityBusinessInfo['formFields'] | undefined => {
+    if (entity.kind !== 'form' || !columns || columns.length === 0) {return undefined;}
+    const formNode = snapshot.nodeIndex[getEntityNodeId(entity)];
+    if (!formNode) {return undefined;}
+
+    const remainingControls = walkDescendants(formNode)
+        .filter((node) => isFormControl(node, snapshot))
+        .map((node) => ({
+            node,
+            label: readFormControlLabel(node, snapshot),
+        }));
+    if (remainingControls.length === 0) {return undefined;}
+
+    const fields: NonNullable<EntityBusinessInfo['formFields']> = [];
+    for (const column of columns) {
+        const matchedIndex = remainingControls.findIndex((candidate) => matchesFormFieldCandidate(candidate.label, column));
+        const picked = matchedIndex >= 0 ? remainingControls.splice(matchedIndex, 1)[0] : remainingControls.shift();
+        if (!picked) {continue;}
+        fields.push({
+            fieldKey: column.fieldKey,
+            name: column.name,
+            kind: inferFormFieldKind(picked.node, snapshot),
+            controlNodeId: picked.node.id,
+        });
+    }
+
+    return fields.length > 0 ? fields : undefined;
+};
+
+const inferFormActions = (
+    snapshot: SnapshotResult,
+    entity: EntityRecord,
+): EntityBusinessInfo['formActions'] | undefined => {
+    if (entity.kind !== 'form') {return undefined;}
+    const formNode = snapshot.nodeIndex[getEntityNodeId(entity)];
+    if (!formNode) {return undefined;}
+
+    const actions: NonNullable<EntityBusinessInfo['formActions']> = [];
+    for (const node of walkDescendants(formNode)) {
+        if (normalizeLower(node.role) !== 'button') {continue;}
+        const text = normalizeText(node.name || getNodeContent(node));
+        const actionIntent = inferFormActionIntent(text);
+        if (!actionIntent) {continue;}
+        actions.push({
+            actionIntent,
+            text,
+            nodeId: node.id,
+        });
+    }
+
+    return actions.length > 0 ? actions : undefined;
+};
+
+const walkDescendants = (root: SnapshotResult['root']): SnapshotResult['root'][] => {
+    const out: SnapshotResult['root'][] = [];
+    const stack = [...root.children].reverse();
+    while (stack.length > 0) {
+        const node = stack.pop();
+        if (!node) {break;}
+        out.push(node);
+        for (let index = node.children.length - 1; index >= 0; index -= 1) {
+            stack.push(node.children[index]);
+        }
+    }
+    return out;
+};
+
+const isFormControl = (node: SnapshotResult['root'], snapshot: SnapshotResult): boolean => {
+    const role = normalizeLower(node.role);
+    if (role === 'textbox' || role === 'spinbutton' || role === 'combobox') {return true;}
+    const attrs = snapshot.attrIndex[node.id] || {};
+    const tag = normalizeLower(attrs.tag || attrs.tagName);
+    return tag === 'input' || tag === 'textarea' || tag === 'select';
+};
+
+const readFormControlLabel = (node: SnapshotResult['root'], snapshot: SnapshotResult): string => {
+    const attrs = snapshot.attrIndex[node.id] || {};
+    return [
+        normalizeText(node.name),
+        normalizeText(attrs.placeholder),
+        normalizeText(getNodeContent(node)),
+    ]
+        .filter((value): value is string => Boolean(value))
+        .join(' ');
+};
+
+const matchesFormFieldCandidate = (label: string, column: NonNullable<EntityBusinessInfo['columns']>[number]): boolean => {
+    const haystack = normalizeLower(label);
+    return haystack.includes(normalizeLower(column.name)) || haystack.includes(normalizeLower(column.fieldKey));
+};
+
+const inferFormFieldKind = (
+    node: SnapshotResult['root'],
+    snapshot: SnapshotResult,
+): NonNullable<EntityBusinessInfo['formFields']>[number]['kind'] => {
+    const role = normalizeLower(node.role);
+    if (role === 'combobox') {return 'select';}
+    const attrs = snapshot.attrIndex[node.id] || {};
+    const tag = normalizeLower(attrs.tag || attrs.tagName);
+    if (tag === 'textarea') {return 'textarea';}
+    return 'input';
+};
+
+const inferFormActionIntent = (text: string | undefined): string | undefined => {
+    const normalized = normalizeLower(text);
+    if (!normalized) {return undefined;}
+    if (normalized.includes('提交')) {return 'submit';}
+    if (normalized.includes('重置')) {return 'reset';}
+    if (normalized.includes('取消')) {return 'cancel';}
+    return undefined;
+};
+
+const normalizeLower = (value: string | undefined): string => normalizeText(value)?.toLowerCase().replace(/\s+/g, '') || '';
 
 const resolveEntityName = (
     snapshot: SnapshotResult,
@@ -350,19 +739,19 @@ const resolveEntityName = (
     addedNameByNodeId: Map<string, string>,
 ): string | undefined => {
     const renamed = renamedByNodeId[nodeId];
-    if (renamed) return renamed;
+    if (renamed) {return renamed;}
 
     const addedName = addedNameByNodeId.get(nodeId);
-    if (addedName) return addedName;
+    if (addedName) {return addedName;}
 
     const entityName = normalizeText(entity.name);
-    if (entityName) return entityName;
+    if (entityName) {return entityName;}
 
     const node = snapshot.nodeIndex[nodeId];
-    const nodeName = normalizeText(node?.name);
-    if (nodeName) return nodeName;
+    const nodeName = normalizeText(node.name);
+    if (nodeName) {return nodeName;}
 
-    return normalizeText(node ? getNodeContent(node) : undefined);
+    return normalizeText(getNodeContent(node));
 };
 
 const getEntityNodeId = (entity: EntityRecord): string => {
@@ -370,8 +759,8 @@ const getEntityNodeId = (entity: EntityRecord): string => {
 };
 
 const nextOverlayEntityId = (usedIds: Set<string>, kind: EntityKind, index: number): string => {
-    const normalizedKind = String(kind).replace(/[^a-zA-Z0-9_]/g, '_');
-    let suffix = `${String(index + 1).padStart(4, '0')}`;
+    const normalizedKind = kind.replace(/[^a-zA-Z0-9_]/g, '_');
+    let suffix = String(index + 1).padStart(4, '0');
     let candidate = `ent_overlay_${normalizedKind}_${suffix}`;
     while (usedIds.has(candidate)) {
         suffix = `${suffix}_x`;
@@ -390,12 +779,12 @@ const matchesDeletion = (
     entityNodeId: string,
     deletion: SnapshotOverlayDeleteEntity,
 ): boolean => {
-    if (entityNodeId !== deletion.nodeId) return false;
-    if (deletion.kind && deletion.kind !== entity.kind) return false;
+    if (entityNodeId !== deletion.nodeId) {return false;}
+    if (deletion.kind && deletion.kind !== entity.kind) {return false;}
 
     const entityBusinessTag = normalizeText(entity.businessTag);
     const deletionBusinessTag = normalizeText(deletion.businessTag);
-    if (deletionBusinessTag && deletionBusinessTag !== entityBusinessTag) return false;
+    if (deletionBusinessTag && deletionBusinessTag !== entityBusinessTag) {return false;}
 
     return true;
 };
@@ -432,10 +821,10 @@ const resolveAddedEntityType = (
     const refs = snapshot.entityIndex.byNodeId[nodeId] || [];
     for (const ref of refs) {
         const entity = snapshot.entityIndex.entities[ref.entityId];
-        if (!entity || entity.kind !== kind) continue;
+        if (entity.kind !== kind) {continue;}
         return entity.type;
     }
-    if (GROUP_ONLY_KINDS.has(kind)) return 'group';
+    if (GROUP_ONLY_KINDS.has(kind)) {return 'group';}
     return 'region';
 };
 

@@ -13,12 +13,38 @@ export type CmdRouterOptions = {
     logger?: Logger;
 };
 
-export const createCmdRouter = (options: CmdRouterOptions) => {
-    const log = options.logger || createLogger('sw');
+type TypedRuntimeMessage = {
+    type: string;
+    tabToken?: string;
+    url?: string;
+    action?: unknown;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+export const createCmdRouter = (options: CmdRouterOptions): {
+    handleInboundAction: (action: Action) => void;
+    resolveActionTargetTabId: (action: Action) => number | null;
+    handleMessage: (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (payload?: unknown) => void) => boolean | undefined;
+    onActivated: (info: chrome.tabs.TabActiveInfo) => void;
+    onRemoved: (tabId: number) => void;
+    onUpdated: (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab?: chrome.tabs.Tab) => void;
+    onCreated: (tab: chrome.tabs.Tab) => void;
+    onAttached: (tabId: number, info: chrome.tabs.TabAttachInfo) => void;
+    onFocusChanged: (windowId: number) => void;
+    onWindowRemoved: (windowId: number) => void;
+    onStartup: () => void;
+    onInstalled: () => void;
+    bootstrapState: () => Promise<void>;
+} => {
+    const log = options.logger ?? createLogger('sw');
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
     const state = createRouterState(log);
+    const toStringValue = (value: unknown): string | null =>
+        typeof value === 'string' ? value : typeof value === 'number' ? String(value) : null;
 
-    const sendAction = async (action: Action): Promise<Action> => options.wsClient.sendAction(withActionBase(action));
+    const sendAction = async (action: Action): Promise<Action> => await options.wsClient.sendAction(withActionBase(action));
 
     const life = createLifecycleRuntime({
         state,
@@ -27,38 +53,41 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     });
 
     const resolveActionTargetTabId = (action: Action) => {
-        const token = action.tabToken || action.scope?.tabToken;
+        const token = action.tabToken ?? action.scope?.tabToken;
         const targetTabId = token ? state.findTabIdByToken(token) : state.getActiveTabId();
         return typeof targetTabId === 'number' ? targetTabId : null;
     };
 
     const handleInboundAction = (action: Action) => {
-        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) return;
+        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) {return;}
 
         if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
-            const data = (action.payload || {}) as Record<string, unknown>;
-            const activeId = data.activeWorkspaceId ? String(data.activeWorkspaceId) : null;
-            if (activeId) state.setActiveWorkspaceId(activeId);
+            const data = (action.payload ?? {}) as Record<string, unknown>;
+            const activeId = toStringValue(data.activeWorkspaceId);
+            if (activeId) {state.setActiveWorkspaceId(activeId);}
             options.onRefresh();
             return;
         }
 
         if (action.type === ACTION_TYPES.TAB_BOUND) {
-            const data = (action.payload || {}) as Record<string, unknown>;
-            if (data.tabToken && data.workspaceId && data.tabId) {
-                state.upsertTokenScope(String(data.tabToken), String(data.workspaceId), String(data.tabId));
-                state.bindWorkspaceToWindowIfKnown(String(data.tabToken));
+            const data = (action.payload ?? {}) as Record<string, unknown>;
+            const tabToken = toStringValue(data.tabToken);
+            const workspaceId = toStringValue(data.workspaceId);
+            const tabId = toStringValue(data.tabId);
+            if (tabToken && workspaceId && tabId) {
+                state.upsertTokenScope(tabToken, workspaceId, tabId);
+                state.bindWorkspaceToWindowIfKnown(tabToken);
             }
-            if (!state.getActiveWorkspaceId() && data.workspaceId) {
-                state.setActiveWorkspaceId(String(data.workspaceId));
+            if (!state.getActiveWorkspaceId() && workspaceId) {
+                state.setActiveWorkspaceId(workspaceId);
             }
             options.onRefresh();
             return;
         }
 
         if (action.type === ACTION_TYPES.WORKSPACE_CHANGED) {
-            const data = (action.payload || {}) as Record<string, unknown>;
-            const workspaceId = data.workspaceId ? String(data.workspaceId) : action.scope?.workspaceId || null;
+            const data = (action.payload ?? {}) as Record<string, unknown>;
+            const workspaceId = toStringValue(data.workspaceId) ?? action.scope?.workspaceId ?? null;
             if (workspaceId) {
                 state.setActiveWorkspaceId(workspaceId);
                 const activeWindowId = state.getActiveWindowId();
@@ -79,23 +108,27 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             scope: {},
         });
         if (isFailedReply(reply)) {
-            const error = payloadOf<{ code?: string; message?: string }>(reply);
-            throw new Error(`bootstrap.workspace_list_failed: ${error?.code || 'UNKNOWN'}:${error?.message || 'unknown'}`);
+            const error = payloadOf(reply);
+            const code = typeof error.code === 'string' ? error.code : 'UNKNOWN';
+            const message = typeof error.message === 'string' ? error.message : 'unknown';
+            throw new Error(`bootstrap.workspace_list_failed: ${code}:${message}`);
         }
         const data = payloadOf(reply);
-        const activeId = (data as any).activeWorkspaceId ? String((data as any).activeWorkspaceId) : null;
-        if (activeId) state.setActiveWorkspaceId(activeId);
+        const activeId = toStringValue(data.activeWorkspaceId);
+        if (activeId) {state.setActiveWorkspaceId(activeId);}
     };
 
-    const handleMessage = (message: any, sender: chrome.runtime.MessageSender, sendResponse: (payload?: any) => void) => {
-        if (!message?.type) return;
+    const handleMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (payload?: unknown) => void) => {
+        if (!isRecord(message) || typeof message.type !== 'string') {return;}
+        const typedMessage = message as TypedRuntimeMessage;
 
-        if (message.type === MSG.HELLO) {
+        if (typedMessage.type === MSG.HELLO) {
             const tabId = sender.tab?.id;
-            if (tabId == null) return;
-            const tabToken = String(message.tabToken || '');
+            if (typeof tabId !== 'number') {return;}
+            const tabToken = typeof typedMessage.tabToken === 'string' ? typedMessage.tabToken : '';
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
-            state.upsertTab(tabId, tabToken, message.url || sender.tab?.url || '', windowId);
+            const url = typeof typedMessage.url === 'string' ? typedMessage.url : sender.tab?.url ?? '';
+            state.upsertTab(tabId, tabToken, url, windowId);
             const scope = state.getTokenScope(tabToken);
             if (scope && typeof windowId === 'number') {
                 state.setWindowWorkspace(windowId, scope.workspaceId);
@@ -107,16 +140,17 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             return;
         }
 
-        if (message.type === MSG.ACTION) {
+        if (typedMessage.type === MSG.ACTION) {
             (async () => {
-                const reply = await dispatchIncomingAction((message.action || {}) as Action, sender, {
+                const incomingAction = (typedMessage.action ?? {}) as Action;
+                const reply = await dispatchIncomingAction(incomingAction, sender, {
                     state,
                     ensureTabToken: life.ensureTabToken,
                     getActiveTabTokenForWindow: life.getActiveTabTokenForWindow,
                     sendAction,
                 });
                 sendResponse(reply);
-            })().catch((error) => {
+            })().catch((error: unknown) => {
                 const text = error instanceof Error ? error.message : String(error);
                 sendResponse({
                     v: 1,

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
+import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
@@ -36,11 +37,11 @@ const REPLAY_OPTIONS = {
 const NAV_DEDUPE_WINDOW_MS = 1200;
 
 const actionLog = getLogger('action');
-const log = (...args: unknown[]) => actionLog.info('[RPA:agent]', ...args);
-const logWarning = (...args: unknown[]) => actionLog.warning('[RPA:agent]', ...args);
-const logError = (...args: unknown[]) => actionLog.error('[RPA:agent]', ...args);
+const log = (...args: unknown[]) => { actionLog.info('[RPA:agent]', ...args); };
+const logWarning = (...args: unknown[]) => { actionLog.warning('[RPA:agent]', ...args); };
+const logError = (...args: unknown[]) => { actionLog.error('[RPA:agent]', ...args); };
 const logTabReportDebug = (stage: string, data: Record<string, unknown>) =>
-    actionLog.debug('[RPA:tab.report]', { ts: Date.now(), stage, ...data });
+    { actionLog.debug('[RPA:tab.report]', { ts: Date.now(), stage, ...data }); };
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -48,7 +49,7 @@ const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.jso
 await loadRecordingStateFromFile(recordingState, recordingStatePath);
 const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
     intervalMs: 1500,
-    onError: (error) => actionLog.error('[RPA:agent]', 'recording persistence error', String(error)),
+    onError: (error) => { actionLog.error('[RPA:agent]', 'recording persistence error', String(error)); },
 });
 
 const contextManager = createContextManager({
@@ -59,7 +60,6 @@ const contextManager = createContextManager({
     },
 });
 
-let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 const config = getRunnerConfig();
 initLogger(config);
 const actionLogger = getLogger('action');
@@ -77,7 +77,7 @@ const broadcast = (action: Action) => {
     const payload = JSON.stringify(action);
     wsClients.forEach((client) => {
         try {
-            if (client.readyState === client.OPEN) client.send(payload);
+            if (client.readyState === client.OPEN) {client.send(payload);}
         } catch {
             // ignore
         }
@@ -94,6 +94,13 @@ const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
     ACTION_TYPES.TAB_REASSIGN,
 ]);
 const staleNotifiedTokens = new Set<string>();
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+    typeof value === 'object' && value !== null;
+
+const getStringField = (value: UnknownRecord, key: string): string | null =>
+    typeof value[key] === 'string' ? value[key] : null;
 
 const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
     broadcast({
@@ -107,7 +114,7 @@ const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
 };
 
 const broadcastWorkspaceList = (reason: string) => {
-    const active = pageRegistry.getActiveWorkspace?.();
+    const active = pageRegistry.getActiveWorkspace();
     broadcast({
         v: 1,
         id: crypto.randomUUID(),
@@ -129,12 +136,10 @@ const pageRegistry = createPageRegistry({
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
-        if (runtimeRegistry) {
-            try {
-                runtimeRegistry.bindPage(page, token);
-            } catch {
-                // runtime trace binding is best-effort during early token/workspace races
-            }
+        try {
+            runtimeRegistry.bindPage(page, token);
+        } catch {
+            // runtime trace binding is best-effort during early token/workspace races
         }
         try {
             const scope = pageRegistry.resolveScopeFromToken(token);
@@ -150,11 +155,11 @@ const pageRegistry = createPageRegistry({
             // ignore
         }
     },
-    onTokenClosed: (token) => cleanupRecording(recordingState, token),
+    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
 
 const runnerScope = createRunnerScopeRegistry(2);
-runtimeRegistry = createRuntimeRegistry({
+const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
@@ -167,7 +172,7 @@ setRunStepsDeps({
     pluginHost: runnerPluginHost,
 });
 
-const createActionContext = (page: any, tabToken: string): ActionContext => {
+const createActionContext = (page: Page, tabToken: string): ActionContext => {
     const ctx: ActionContext = {
         page,
         tabToken,
@@ -188,8 +193,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const retryClaim = async <T>(fn: () => T | null, attempts = 10, intervalMs = 60): Promise<T | null> => {
     for (let i = 0; i < attempts; i += 1) {
         const result = fn();
-        if (result) return result;
-        if (i < attempts - 1) await sleep(intervalMs);
+        if (result) {return result;}
+        if (i < attempts - 1) {await sleep(intervalMs);}
     }
     return null;
 };
@@ -208,9 +213,9 @@ const runAction = async (
         extra: extra || null,
     });
     const page = await pageRegistry.getPage(target.tabToken, urlHint);
-    return runnerScope.run(target.scope.workspaceId, async () => {
+    return await runnerScope.run(target.scope.workspaceId, async () => {
         actionLogger('action', { type: action.type, tabToken: target.tabToken, id: action.id, ...(extra || {}) });
-        return executeAction(createActionContext(page, target.tabToken), action);
+        return await executeAction(createActionContext(page, target.tabToken), action);
     });
 };
 
@@ -222,28 +227,34 @@ const runPagelessAction = async (action: Action, tabToken = '') => {
                 throw new Error(`action '${action.type}' accessed page.${String(prop)} without target`);
             },
         },
-    ) as any;
+    ) as unknown as Page;
     actionLogger('action', { type: action.type, tabToken: tabToken || null, id: action.id, mode: 'pageless' });
-    return executeAction(createActionContext(pageStub, tabToken), action);
+    return await executeAction(createActionContext(pageStub, tabToken), action);
 };
 
 const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
-    const token = String(action.scope?.tabToken || action.tabToken || '');
-    if (!token) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');
+    const token =
+        typeof action.scope?.tabToken === 'string'
+            ? action.scope.tabToken
+            : typeof action.tabToken === 'string'
+              ? action.tabToken
+              : '';
+    if (!token) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');}
     const payload = (action.payload || {}) as Record<string, unknown>;
     const workspaceId =
         (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
         (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
-    if (!workspaceId) return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');
+    if (!workspaceId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');}
     const scoped = await retryClaim(() => pageRegistry.bindTokenToWorkspace(token, workspaceId), 80, 50);
     if (!scoped) {
         return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `failed to bind tab.opened to workspace (${workspaceId}, ${token})`);
     }
-    return runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
+    return await runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
 };
 
 const handleAction = async (action: Action) => {
-    const urlHint = typeof (action.payload as any)?.url === 'string' ? ((action.payload as any).url as string) : undefined;
+    const payload = isRecord(action.payload) ? action.payload : null;
+    const urlHint = payload && typeof payload.url === 'string' ? payload.url : undefined;
     log('action.inbound', {
         id: action.id,
         type: action.type,
@@ -270,7 +281,7 @@ const handleAction = async (action: Action) => {
         }
         return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing action target');
     } catch (error) {
-        if (!(error instanceof ActionTargetError)) throw error;
+        if (!(error instanceof ActionTargetError)) {throw error;}
 
         logWarning('action.target.error', {
             id: action.id,
@@ -282,11 +293,11 @@ const handleAction = async (action: Action) => {
         });
 
         if (PAGELESS_ACTIONS.has(action.type)) {
-            return runPagelessAction(action);
+            return await runPagelessAction(action);
         }
 
         if (error.message === 'workspace scope not found for tabToken' && action.type === ACTION_TYPES.TAB_OPENED) {
-            return bindTabOpenedAction(action, urlHint);
+            return await bindTabOpenedAction(action, urlHint);
         }
 
         return failedAction(action, error.code, error.message);
@@ -312,7 +323,7 @@ const parseInboundAction = (raw: unknown): Action => {
         throw new Error('invalid action: missing or invalid fields');
     }
     if (!isRequestActionType(rec.type)) {
-        throw new Error(`invalid action: unsupported type '${String(rec.type)}'`);
+        throw new Error(`invalid action: unsupported type '${rec.type}'`);
     }
     return rec as Action;
 };
@@ -350,9 +361,19 @@ wss.on('listening', () => {
 wss.on('connection', (socket) => {
     wsClients.add(socket);
     socket.on('message', (data) => {
-        let raw: any;
+        let raw: unknown;
         try {
-            raw = JSON.parse(data.toString());
+            const rawText =
+                typeof data === 'string'
+                    ? data
+                    : Buffer.isBuffer(data)
+                      ? data.toString('utf8')
+                      : Array.isArray(data)
+                        ? Buffer.concat(data).toString('utf8')
+                        : data instanceof ArrayBuffer
+                          ? Buffer.from(data).toString('utf8')
+                          : '';
+            raw = JSON.parse(rawText);
         } catch {
             socket.send(
                 JSON.stringify({
@@ -366,47 +387,56 @@ wss.on('connection', (socket) => {
             return;
         }
 
-        (async () => {
+        void (async () => {
             try {
                 const action = parseInboundAction(raw);
                 const response = await handleAction(action);
                 if (action.type === ACTION_TYPES.TAB_REPORTED) {
+                    const responsePayload = isRecord(response.payload) ? response.payload : null;
                     logTabReportDebug('agent.reply', {
                         id: action.id,
                         ok: !isFailedAction(response),
-                        workspaceId: (response.payload as any)?.workspaceId || null,
-                        tabId: (response.payload as any)?.tabId || null,
-                        tabToken: (response.payload as any)?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                        workspaceId: responsePayload ? getStringField(responsePayload, 'workspaceId') : null,
+                        tabId: responsePayload ? getStringField(responsePayload, 'tabId') : null,
+                        tabToken:
+                            (responsePayload ? getStringField(responsePayload, 'tabToken') : null) ??
+                            action.tabToken ??
+                            action.scope?.tabToken ??
+                            null,
                     });
                 }
                 socket.send(JSON.stringify(response));
 
                 if (!isFailedAction(response) && isMutatingAction(action.type)) {
-                    const data = response.payload as any;
+                    const data = isRecord(response.payload) ? response.payload : null;
+                    const workspaceId = data ? getStringField(data, 'workspaceId') : null;
+                    const tabId = data ? getStringField(data, 'tabId') : null;
                     broadcast({
                         v: 1,
                         id: crypto.randomUUID(),
                         type: ACTION_TYPES.WORKSPACE_CHANGED,
-                        payload: { workspaceId: data?.workspaceId, tabId: data?.tabId, sourceType: action.type },
-                        scope: data?.workspaceId
-                            ? { workspaceId: String(data.workspaceId), ...(data?.tabId ? { tabId: String(data.tabId) } : {}) }
+                        payload: { workspaceId, tabId, sourceType: action.type },
+                        scope: workspaceId
+                            ? { workspaceId, ...(tabId ? { tabId } : {}) }
                             : {},
                         at: Date.now(),
                     });
                 }
                 if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
-                    const data = response.payload as any;
+                    const data = isRecord(response.payload) ? response.payload : null;
+                    const workspaceId = (data ? getStringField(data, 'workspaceId') : null) ?? action.scope?.workspaceId ?? null;
+                    const tabToken = (data ? getStringField(data, 'tabToken') : null) ?? action.tabToken ?? action.scope?.tabToken ?? null;
                     if (action.type === ACTION_TYPES.TAB_REPORTED) {
                         logTabReportDebug('agent.emit.state_sync', {
                             id: action.id,
                             reason: `report:${action.type}`,
-                            workspaceId: data?.workspaceId || action.scope?.workspaceId || null,
-                            tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                            workspaceId,
+                            tabToken,
                         });
                     }
                     broadcastStateSync(`report:${action.type}`, {
-                        workspaceId: data?.workspaceId || action.scope?.workspaceId || null,
-                        tabToken: data?.tabToken || action.tabToken || action.scope?.tabToken || null,
+                        workspaceId,
+                        tabToken,
                     });
                     broadcastWorkspaceList(`report:${action.type}`);
                 }
@@ -433,7 +463,7 @@ wss.on('connection', (socket) => {
 setInterval(() => {
     const staleTabs = pageRegistry.listTimedOutTokens(TAB_PING_TIMEOUT_MS, Date.now());
     for (const stale of staleTabs) {
-        if (staleNotifiedTokens.has(stale.tabToken)) continue;
+        if (staleNotifiedTokens.has(stale.tabToken)) {continue;}
         staleNotifiedTokens.add(stale.tabToken);
         broadcastStateSync('ping-timeout', {
             workspaceId: stale.workspaceId,

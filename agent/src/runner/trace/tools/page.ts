@@ -1,17 +1,17 @@
 import crypto from 'crypto';
-import type { Page } from 'playwright';
+import type { AriaRole, Page } from 'playwright';
 import { adoptA11yNode } from '../a11y/adopt';
 import { invalidateA11yCache } from '../a11y/cache';
 import { getA11yTree } from '../a11y/getA11yTree';
 import type { ConsoleEntry, NetworkEntry } from '../types';
 import type { ToolsBuildContext } from './context';
 
-export const createPageTools = (base: ToolsBuildContext) => ({
+export const createPageTools = (base: ToolsBuildContext): Record<string, (args?: unknown) => Promise<unknown>> => ({
     'trace.page.goto': async (args: { url: string; timeout?: number }) => {
         const result = await base.run('trace.page.goto', args, async () => {
             await base.getCurrentPage().goto(args.url, { timeout: args.timeout });
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'navigate', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'navigate', base.ctx.tags);}
         return result;
     },
 
@@ -19,7 +19,7 @@ export const createPageTools = (base: ToolsBuildContext) => ({
         const result = await base.run('trace.page.goBack', args, async () => {
             await base.getCurrentPage().goBack({ timeout: args.timeout });
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'navigate', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'navigate', base.ctx.tags);}
         return result;
     },
 
@@ -27,15 +27,15 @@ export const createPageTools = (base: ToolsBuildContext) => ({
         const result = await base.run('trace.page.reload', args, async () => {
             await base.getCurrentPage().reload({ timeout: args.timeout });
         });
-        if (result.ok) invalidateA11yCache(base.ctx.cache, 'navigate', base.ctx.tags);
+        if (result.ok) {invalidateA11yCache(base.ctx.cache, 'navigate', base.ctx.tags);}
         return result;
     },
 
     'trace.page.getInfo': async () =>
-        base.run('trace.page.getInfo', undefined, async () => {
+        await base.run('trace.page.getInfo', undefined, async () => {
             const currentPage = base.getCurrentPage();
             const info = { url: currentPage.url(), title: await currentPage.title() };
-            if (!base.opts.pageRegistry || !base.opts.workspaceId) return info;
+            if (!base.opts.pageRegistry || !base.opts.workspaceId) {return info;}
             const tabs = await base.opts.pageRegistry.listTabs(base.opts.workspaceId);
             const active = base.opts.pageRegistry.resolveScope({ workspaceId: base.opts.workspaceId });
             return {
@@ -46,7 +46,7 @@ export const createPageTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.page.snapshotA11y': async (args: { includeA11y: boolean; focusOnly: boolean }) =>
-        base.run('trace.page.snapshotA11y', args, async () => {
+        await base.run('trace.page.snapshotA11y', args, async () => {
             const snapshotId = crypto.randomUUID();
             base.ctx.cache.lastSnapshotId = snapshotId;
             if (!args.includeA11y) {
@@ -57,7 +57,7 @@ export const createPageTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.page.getContent': async (args: { ref: string }) =>
-        base.run('trace.page.getContent', args, async () => {
+        await base.run('trace.page.getContent', args, async () => {
             const snapshot = base.ctx.cache.latestSnapshot as
                 | { contentStore?: Record<string, string> }
                 | undefined;
@@ -74,35 +74,36 @@ export const createPageTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.page.readConsole': async (args?: { limit?: number }) =>
-        base.run('trace.page.readConsole', args, async () => {
+        await base.run('trace.page.readConsole', args, async () => {
             const records = ensurePageDiagnostics(base.getCurrentPage(), base.ctx.cache).consoleEntries;
             return takeLast(records, args?.limit);
         }),
 
     'trace.page.readNetwork': async (args?: { limit?: number }) =>
-        base.run('trace.page.readNetwork', args, async () => {
+        await base.run('trace.page.readNetwork', args, async () => {
             const records = ensurePageDiagnostics(base.getCurrentPage(), base.ctx.cache).networkEntries;
             return takeLast(records, args?.limit);
         }),
 
     'trace.page.evaluate': async (args: { expression: string; arg?: unknown }) =>
-        base.run('trace.page.evaluate', args, async () => {
-            return base.getCurrentPage().evaluate(
+        await base.run('trace.page.evaluate', args, async () => {
+            const evaluated = await base.getCurrentPage().evaluate(
                 ({ expression, arg }) => {
                     try {
-                        const fn = new Function('arg', `return (${expression});`);
+                        const fn = new Function('arg', `return (${expression});`) as (arg: unknown) => unknown;
                         return fn(arg);
                     } catch {
-                        const fn = new Function('arg', expression);
+                        const fn = new Function('arg', expression) as (arg: unknown) => unknown;
                         return fn(arg);
                     }
                 },
                 { expression: args.expression, arg: args.arg },
             );
+            return evaluated;
         }),
 
-    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: string; name?: string }) =>
-        base.run('trace.page.screenshot', args, async () => {
+    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: AriaRole; name?: string }) =>
+        await base.run('trace.page.screenshot', args, async () => {
             const currentPage = base.getCurrentPage();
             ensurePageDiagnostics(currentPage, base.ctx.cache);
             if (args.selector) {
@@ -111,17 +112,23 @@ export const createPageTools = (base: ToolsBuildContext) => ({
                 return buffer.toString('base64');
             }
             if (args.role) {
-                const locator = currentPage.getByRole(args.role as any, args.name ? { name: args.name } : undefined);
+                const escapedRole = String(args.role).replace(/"/g, '\\"');
+                let locator = currentPage.locator(`[role="${escapedRole}"]`);
+                if (args.name) {
+                    locator = locator.filter({ hasText: args.name });
+                }
                 const count = await locator.count();
+                const detailRole = typeof args.role === 'string' ? args.role : undefined;
+                const detailName = typeof args.name === 'string' ? args.name : undefined;
                 if (count === 0) {
-                    throw { code: 'ERR_NOT_FOUND', message: 'role locator not found', phase: 'trace', details: { role: args.role, name: args.name } };
+                    throw { code: 'ERR_NOT_FOUND', message: 'role locator not found', phase: 'trace', details: { role: detailRole, name: detailName } };
                 }
                 if (count > 1) {
                     throw {
                         code: 'ERR_AMBIGUOUS',
                         message: 'role locator matches multiple elements',
                         phase: 'trace',
-                        details: { role: args.role, name: args.name, count },
+                        details: { role: detailRole, name: detailName, count },
                     };
                 }
                 const buffer = await locator.first().screenshot();
@@ -130,7 +137,7 @@ export const createPageTools = (base: ToolsBuildContext) => ({
             if (args.a11yNodeId) {
                 await base.ensureA11yCache();
                 const adopted = await adoptA11yNode(currentPage, args.a11yNodeId, base.ctx.cache);
-                if (!adopted.ok) throw adopted.error;
+                if (!adopted.ok) {throw adopted.error;}
                 const buffer = await adopted.data!.screenshot();
                 return buffer.toString('base64');
             }
@@ -139,7 +146,7 @@ export const createPageTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.page.scrollTo': async (args: { x: number; y: number }) =>
-        base.run('trace.page.scrollTo', args, async () => {
+        await base.run('trace.page.scrollTo', args, async () => {
             await base.getCurrentPage().evaluate(
                 ({ x, y }) => {
                     window.scrollTo(x, y);
@@ -149,7 +156,7 @@ export const createPageTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.page.scrollBy': async (args: { direction: 'up' | 'down'; amount: number }) =>
-        base.run('trace.page.scrollBy', args, async () => {
+        await base.run('trace.page.scrollBy', args, async () => {
             const deltaY = args.direction === 'up' ? -Math.abs(args.amount) : Math.abs(args.amount);
             await base.getCurrentPage().evaluate(
                 ({ deltaY }) => {

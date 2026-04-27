@@ -29,15 +29,15 @@ export const createWsActionClient = async (url = 'ws://127.0.0.1:17333'): Promis
                 const waiters = eventWaiters.get(packet.event as string);
                 if (waiters?.length) {
                     eventWaiters.delete(packet.event as string);
-                    for (const waiter of waiters) waiter(data);
+                    for (const waiter of waiters) {waiter(data);}
                 }
                 return;
             }
             const replyTo = packet?.replyTo as string | undefined;
             const payload = packet?.payload as ActionOk<any> | ActionErr | undefined;
-            if (!replyTo || !payload) return;
+            if (!replyTo || !payload) {return;}
             const resolver = pending.get(replyTo);
-            if (!resolver) return;
+            if (!resolver) {return;}
             pending.delete(replyTo);
             resolver(payload);
         } catch {
@@ -87,7 +87,7 @@ export const createWsActionClient = async (url = 'ws://127.0.0.1:17333'): Promis
                 eventWaiters.set(event, waiters);
             }),
         close: async () => {
-            if (ws.readyState === WebSocket.CLOSED) return;
+            if (ws.readyState === WebSocket.CLOSED) {return;}
             await new Promise<void>((resolve) => {
                 const timer = setTimeout(() => resolve(), 2000);
                 ws.once('close', () => resolve());

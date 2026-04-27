@@ -40,7 +40,7 @@ export const writeConfig = async (next: DemoConfig): Promise<void> => {
 };
 
 export const maskApiKey = (apiKey?: string) => {
-    if (!apiKey) return '';
+    if (!apiKey) {return '';}
     const tail = apiKey.slice(-4);
     return `${'*'.repeat(Math.max(0, apiKey.length - 4))}${tail}`;
 };
@@ -52,10 +52,10 @@ export const getMaskedConfig = async (): Promise<DemoConfig> => {
 
 export const mergeConfig = (current: DemoConfig, patch: DemoConfig): DemoConfig => {
     const next: DemoConfig = { ...current };
-    if (typeof patch.apiBase === 'string') next.apiBase = patch.apiBase;
-    if (typeof patch.model === 'string') next.model = patch.model;
-    if (typeof patch.temperature === 'number') next.temperature = patch.temperature;
-    if (typeof patch.maxTokens === 'number') next.maxTokens = patch.maxTokens;
+    if (typeof patch.apiBase === 'string') {next.apiBase = patch.apiBase;}
+    if (typeof patch.model === 'string') {next.model = patch.model;}
+    if (typeof patch.temperature === 'number') {next.temperature = patch.temperature;}
+    if (typeof patch.maxTokens === 'number') {next.maxTokens = patch.maxTokens;}
     if (typeof patch.apiKey === 'string' && patch.apiKey.length > 0) {
         next.apiKey = patch.apiKey;
     }

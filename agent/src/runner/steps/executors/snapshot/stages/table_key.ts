@@ -26,11 +26,11 @@ export const deriveGroupTableKeyHint = (
     nodeById: NodeById,
     parentById: ParentById,
 ): EntityKeyHint | undefined => {
-    if (group.kind !== 'table') return undefined;
+    if (group.kind !== 'table') {return undefined;}
 
     const keySlot = group.keySlot;
     const sampleValues = collectGroupSlotSamples(group, keySlot, nodeById);
-    if (sampleValues.length === 0) return undefined;
+    if (sampleValues.length === 0) {return undefined;}
 
     const header =
         pickHeaderFromNearestTable(group.containerId, keySlot, nodeById, parentById) ||
@@ -65,16 +65,16 @@ export const deriveRegionTableKeyHint = (
     const bestGroup = findBestTableGroupUnderRegion(regionNodeId, selectedGroups, parentById);
     if (bestGroup) {
         const fromGroup = groupKeyByContainerId.get(bestGroup.containerId);
-        if (fromGroup) return { ...fromGroup };
+        if (fromGroup) {return { ...fromGroup };}
     }
 
     const regionNode = nodeById.get(regionNodeId);
-    if (!regionNode) return undefined;
+    if (!regionNode) {return undefined;}
     const rows = collectTableRows(regionNode);
-    if (rows.length < 2) return undefined;
+    if (rows.length < 2) {return undefined;}
 
     const slotScore = pickBestRegionSlot(rows);
-    if (!slotScore) return undefined;
+    if (!slotScore) {return undefined;}
 
     const header = pickHeaderFromNearestTable(regionNodeId, slotScore.slot, nodeById, parentById);
     const confidence = clamp01(
@@ -105,7 +105,7 @@ const findBestTableGroupUnderRegion = (
         .filter((group) => group.kind === 'table' && isDescendantOrSelf(regionNodeId, group.containerId, parentById))
         .sort((left, right) => {
             const depthDelta = depthOfNode(right.containerId, parentById) - depthOfNode(left.containerId, parentById);
-            if (depthDelta !== 0) return depthDelta;
+            if (depthDelta !== 0) {return depthDelta;}
             return right.itemIds.length - left.itemIds.length;
         })[0];
 };
@@ -124,9 +124,9 @@ const collectGroupSlotSamples = (group: GroupDetection, slot: number, nodeById: 
             value = readNodeText(nodeById.get(itemId), 2);
         }
         const normalized = normalizeText(value);
-        if (!normalized) continue;
+        if (!normalized) {continue;}
         const key = normalized.toLowerCase();
-        if (dedupe.has(key)) continue;
+        if (dedupe.has(key)) {continue;}
         dedupe.add(key);
         out.push(normalized);
     }
@@ -138,7 +138,7 @@ const calcGroupSlotCoverage = (
     slot: number,
     nodeById: NodeById,
 ): number => {
-    if (group.itemIds.length === 0) return 0;
+    if (group.itemIds.length === 0) {return 0;}
     let covered = 0;
     for (const itemId of group.itemIds) {
         const slotNodeId = group.slotByItemId[itemId]?.[slot];
@@ -149,7 +149,7 @@ const calcGroupSlotCoverage = (
             continue;
         }
         const fallback = readNodeText(nodeById.get(itemId), 1);
-        if (fallback) covered += 1;
+        if (fallback) {covered += 1;}
     }
     return covered / group.itemIds.length;
 };
@@ -162,21 +162,21 @@ const pickHeaderFromGroupSlot = (
     const scoreByHeader = new Map<string, { count: number; raw: string; nodeId?: string }>();
     for (const itemId of group.itemIds.slice(0, 10)) {
         const slotNodeId = group.slotByItemId[itemId]?.[slot];
-        if (!slotNodeId) continue;
+        if (!slotNodeId) {continue;}
         const slotNode = nodeById.get(slotNodeId);
-        if (!slotNode || !isHeaderLikeNode(slotNode)) continue;
+        if (!slotNode || !isHeaderLikeNode(slotNode)) {continue;}
         const text = normalizeText(readNodeText(slotNode, 1));
-        if (!text) continue;
+        if (!text) {continue;}
         const key = text.toLowerCase();
         const current = scoreByHeader.get(key) || { count: 0, raw: text, nodeId: slotNode.id };
         current.count += 1;
-        if (!current.nodeId) current.nodeId = slotNode.id;
+        if (!current.nodeId) {current.nodeId = slotNode.id;}
         scoreByHeader.set(key, current);
     }
 
     const sorted = [...scoreByHeader.values()].sort((a, b) => b.count - a.count);
     const top = sorted[0];
-    if (!top) return undefined;
+    if (!top) {return undefined;}
     return {
         name: top.raw,
         nodeId: top.nodeId,
@@ -190,24 +190,24 @@ const pickHeaderFromNearestTable = (
     parentById: ParentById,
 ): HeaderPick | undefined => {
     const tableNode = findNearestTableNode(startNodeId, nodeById, parentById);
-    if (!tableNode) return undefined;
+    if (!tableNode) {return undefined;}
 
     const explicit = pickHeaderFromThead(tableNode, slot);
-    if (explicit) return explicit;
+    if (explicit) {return explicit;}
 
     return pickHeaderFromHeaderLikeRow(tableNode, slot);
 };
 
 const pickHeaderFromThead = (tableNode: UnifiedNode, slot: number): HeaderPick | undefined => {
     const thead = findDescendant(tableNode, (node) => isTheadNode(node), 3);
-    if (!thead) return undefined;
+    if (!thead) {return undefined;}
     const row = findDescendant(thead, (node) => isRowNode(node), 2);
-    if (!row) return undefined;
+    if (!row) {return undefined;}
     const cells = row.children.filter((child) => isCellNode(child));
     const target = cells[slot];
-    if (!target) return undefined;
+    if (!target) {return undefined;}
     const text = normalizeText(readNodeText(target, 2));
-    if (!text) return undefined;
+    if (!text) {return undefined;}
     return {
         name: text,
         nodeId: target.id,
@@ -218,12 +218,12 @@ const pickHeaderFromHeaderLikeRow = (tableNode: UnifiedNode, slot: number): Head
     const rows = collectTableRows(tableNode).slice(0, 6);
     for (const row of rows) {
         const cells = row.children.filter((child) => isCellNode(child));
-        if (cells.length <= slot) continue;
+        if (cells.length <= slot) {continue;}
         const headerLikeCells = cells.filter((cell) => isHeaderLikeNode(cell));
-        if (headerLikeCells.length < Math.max(1, Math.floor(cells.length / 2))) continue;
+        if (headerLikeCells.length < Math.max(1, Math.floor(cells.length / 2))) {continue;}
         const target = cells[slot];
         const text = normalizeText(readNodeText(target, 2));
-        if (!text) continue;
+        if (!text) {continue;}
         return {
             name: text,
             nodeId: target.id,
@@ -236,21 +236,21 @@ const pickBestRegionSlot = (rows: UnifiedNode[]): SlotScore | undefined => {
     const rowCells = rows
         .map((row) => row.children.filter((child) => isCellNode(child)))
         .filter((cells) => cells.length > 1);
-    if (rowCells.length < 2) return undefined;
+    if (rowCells.length < 2) {return undefined;}
 
     const maxSlot = Math.max(...rowCells.map((cells) => cells.length), 0) - 1;
-    if (maxSlot < 0) return undefined;
+    if (maxSlot < 0) {return undefined;}
 
     let best: SlotScore | undefined;
     for (let slot = 0; slot <= maxSlot; slot += 1) {
         const values: string[] = [];
         for (const cells of rowCells) {
             const cell = cells[slot];
-            if (!cell) continue;
+            if (!cell) {continue;}
             const text = normalizeText(readNodeText(cell, 2));
-            if (text) values.push(text);
+            if (text) {values.push(text);}
         }
-        if (values.length === 0) continue;
+        if (values.length === 0) {continue;}
 
         const coverage = values.length / rowCells.length;
         const uniq = uniqueRatio(values);
@@ -287,12 +287,12 @@ const collectTableRows = (root: UnifiedNode): UnifiedNode[] => {
     const queue: Array<{ node: UnifiedNode; depth: number }> = [{ node: root, depth: 0 }];
     while (queue.length > 0 && rows.length < 120) {
         const current = queue.shift();
-        if (!current) break;
+        if (!current) {break;}
         if (isRowNode(current.node)) {
             rows.push(current.node);
             continue;
         }
-        if (current.depth >= 8) continue;
+        if (current.depth >= 8) {continue;}
         for (const child of current.node.children) {
             queue.push({ node: child, depth: current.depth + 1 });
         }
@@ -307,7 +307,7 @@ const findNearestTableNode = (
 ): UnifiedNode | undefined => {
     let cursor = nodeById.get(startNodeId);
     while (cursor) {
-        if (isTableNode(cursor)) return cursor;
+        if (isTableNode(cursor)) {return cursor;}
         cursor = parentById.get(cursor.id) || undefined;
     }
     return undefined;
@@ -320,7 +320,7 @@ const isDescendantOrSelf = (
 ): boolean => {
     let cursor: string | undefined = nodeId;
     while (cursor) {
-        if (cursor === ancestorId) return true;
+        if (cursor === ancestorId) {return true;}
         const parentNode: UnifiedNode | null = parentById.get(cursor) || null;
         cursor = parentNode ? parentNode.id : undefined;
     }
@@ -332,7 +332,7 @@ const depthOfNode = (nodeId: string, parentById: ParentById): number => {
     let cursor: string | undefined = nodeId;
     while (cursor) {
         const parentNode: UnifiedNode | null = parentById.get(cursor) || null;
-        if (!parentNode) break;
+        if (!parentNode) {break;}
         depth += 1;
         cursor = parentNode.id;
     }
@@ -347,10 +347,10 @@ const findDescendant = (
     const queue: Array<{ node: UnifiedNode; depth: number }> = [{ node: root, depth: 0 }];
     while (queue.length > 0) {
         const current = queue.shift();
-        if (!current) break;
-        if (current.depth > depthLimit) continue;
-        if (current.node !== root && predicate(current.node)) return current.node;
-        if (current.depth >= depthLimit) continue;
+        if (!current) {break;}
+        if (current.depth > depthLimit) {continue;}
+        if (current.node !== root && predicate(current.node)) {return current.node;}
+        if (current.depth >= depthLimit) {continue;}
         for (const child of current.node.children) {
             queue.push({ node: child, depth: current.depth + 1 });
         }
@@ -386,18 +386,18 @@ const isHeaderLikeNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const cls = normalizeLower(getNodeAttr(node, 'class'));
-    if (role === 'columnheader' || role === 'rowheader' || role === 'heading') return true;
-    if (tag === 'th') return true;
-    if (cls.includes('header') || cls.includes('column-title') || cls.includes('thead')) return true;
+    if (role === 'columnheader' || role === 'rowheader' || role === 'heading') {return true;}
+    if (tag === 'th') {return true;}
+    if (cls.includes('header') || cls.includes('column-title') || cls.includes('thead')) {return true;}
     return false;
 };
 
 const readNodeText = (node: UnifiedNode | undefined, depthLimit = 1): string => {
-    if (!node) return '';
+    if (!node) {return '';}
     const queue: Array<{ node: UnifiedNode; depth: number }> = [{ node, depth: 0 }];
     while (queue.length > 0) {
         const current = queue.shift();
-        if (!current) break;
+        if (!current) {break;}
         const direct = normalizeText(
             current.node.name ||
                 getNodeContent(current.node) ||
@@ -406,8 +406,8 @@ const readNodeText = (node: UnifiedNode | undefined, depthLimit = 1): string => 
                 getNodeAttr(current.node, 'placeholder') ||
                 getNodeAttr(current.node, 'value'),
         );
-        if (direct) return direct;
-        if (current.depth >= depthLimit) continue;
+        if (direct) {return direct;}
+        if (current.depth >= depthLimit) {continue;}
         for (const child of current.node.children) {
             queue.push({ node: child, depth: current.depth + 1 });
         }
@@ -420,9 +420,9 @@ const dedupeTexts = (values: string[]): string[] => {
     const out: string[] = [];
     for (const value of values) {
         const normalized = normalizeText(value);
-        if (!normalized) continue;
+        if (!normalized) {continue;}
         const key = normalized.toLowerCase();
-        if (dedupe.has(key)) continue;
+        if (dedupe.has(key)) {continue;}
         dedupe.add(key);
         out.push(normalized);
     }
@@ -430,39 +430,39 @@ const dedupeTexts = (values: string[]): string[] => {
 };
 
 const uniqueRatio = (values: string[]): number => {
-    if (values.length === 0) return 0;
+    if (values.length === 0) {return 0;}
     const unique = new Set(values.map((value) => value.toLowerCase()));
     return unique.size / values.length;
 };
 
 const isIconLikeText = (value: string): boolean => {
     const text = normalizeText(value);
-    if (!text) return false;
+    if (!text) {return false;}
     const lowered = text.toLowerCase();
-    if (ICON_TERMS.has(lowered)) return true;
-    if (!ICON_PATTERN.test(lowered)) return false;
+    if (ICON_TERMS.has(lowered)) {return true;}
+    if (!ICON_PATTERN.test(lowered)) {return false;}
     const parts = lowered.split(/[-_]/).filter(Boolean);
-    if (parts.length === 0 || parts.length > 4) return false;
+    if (parts.length === 0 || parts.length > 4) {return false;}
     return parts.some((part) => ICON_TERMS.has(part));
 };
 
 const isNumericLikeText = (value: string): boolean => {
     const text = normalizeText(value);
-    if (!text) return false;
+    if (!text) {return false;}
     return NUMERIC_PATTERN.test(text);
 };
 
 const isActionText = (value: string): boolean => {
     const text = normalizeText(value);
-    if (!text) return false;
+    if (!text) {return false;}
     const lowered = text.toLowerCase();
     return ACTION_WORDS.some((word) => lowered.includes(word));
 };
 
 const clamp01 = (value: number): number => {
-    if (Number.isNaN(value)) return 0;
-    if (value <= 0) return 0;
-    if (value >= 1) return 1;
+    if (Number.isNaN(value)) {return 0;}
+    if (value <= 0) {return 0;}
+    if (value >= 1) {return 1;}
     return value;
 };
 

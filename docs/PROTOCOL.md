@@ -231,10 +231,45 @@ ERR_WORKSPACE_RESTORE_FAILED
 - `browser.press_key`
 - `browser.drag_and_drop`
 - `browser.mouse`
+- `browser.query`
+- `browser.compute`
+- `browser.checkpoint`
 
 完整参数定义见：`agent/src/runner/steps/types.ts`。
 
-### 3.2 runSteps 请求/结果
+### 3.2 Query / Compute 最小合同
+
+- `browser.query`
+  - 输入：`from`、`where`、`relation`、`limit`
+  - 输出：`{ nodes: NodeLike[], count: number }`
+  - 约束：只做结构查询，不内置 count/exists 语义分支，不做计算
+- `browser.compute`
+  - 输入：结构化 `expr`（`op + args`），禁止字符串 eval
+  - 支持 op：`len`、`exists`、`first`、`get`、`eq`、`not`、`and`、`or`
+  - 输出：`{ value: unknown }`
+  - 约束：纯函数、无副作用
+
+### 3.3 Checkpoint Procedure 最小合同
+
+Checkpoint 支持过程模板结构：
+
+- `id`
+- `kind`: `procedure | recovery | guard`
+- `input`
+- `prepare`
+- `content`
+- `output`
+- `policy`（最小预留）
+
+运行时最小作用域：
+
+- `input`
+- `local`
+- `output`
+
+ref/path 仅支持 `input.xxx` / `local.xxx` / `output.xxx`。
+
+### 3.4 runSteps 请求/结果
 
 请求：
 
@@ -414,8 +449,37 @@ handler 会返回 `runSteps` 风格结果，并序列化到 MCP `content[].text`
 - 行式 DSL：
   - `goto <url>`
   - `snapshot`
-  - `click <a11yNodeId>`
-  - `fill <a11yNodeId> <value>`
+  - `click <id>`
+  - `fill <id> <value>`
+
+Step 协议收敛（target 解析）：
+
+- `args`：业务参数（如 `id`、`selector`、`value`）
+- `meta`：来源和时序信息
+- `resolve`：解析辅助信息
+  - `resolve.hint?: ResolveHint`
+  - `resolve.policy?: ResolvePolicy`
+
+`resolve` 示例：
+
+```json
+{
+  "id": "step-1",
+  "name": "browser.click",
+  "args": {},
+  "meta": { "source": "play" },
+  "resolve": {
+    "hint": {
+      "target": { "nodeId": "node_btn_1" },
+      "raw": { "selector": "#submit" }
+    },
+    "policy": {
+      "preferDirect": true,
+      "requireVisible": true
+    }
+  }
+}
+```
 
 说明：
 

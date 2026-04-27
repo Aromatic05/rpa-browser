@@ -48,8 +48,14 @@ pnpm pw:install
 # Extension + agent 热更新主链路（推荐）
 pnpm dev
 
-# 本地 mock 夹具站点
+# 本地 mock workspace（两个子应用并行）
 pnpm mock:dev
+
+# 仅启动 Ant fixture app
+pnpm mock:dev:ant
+
+# 仅启动 Element fixture app
+pnpm mock:dev:element
 
 # MCP 面板（HTTP UI）
 pnpm mcp
@@ -72,7 +78,7 @@ pnpm -C agent mcp:hot
 
 ## 4. mock 的作用
 
-`mock/` 提供可控且稳定的本地页面夹具，用于测试和人工验收。
+`mock/` 提供可控且稳定的本地 workspace 夹具（`mock/ant-app`、`mock/element-app`），用于测试和人工验收。
 
 价值：
 
@@ -92,7 +98,11 @@ pnpm -C agent mcp:hot
 ### 5.1 增加类型契约
 
 - 在 `agent/src/runner/steps/types.ts` 更新 `StepName` 与 `StepArgsMap`
-- 如有需要补充子类型
+- 目标型 step 必须遵守三层边界：
+  - `args`：业务参数（可包含 `id` / `selector`）
+  - `meta`：来源和运行时元信息
+  - `resolve`：`{ hint?: ResolveHint; policy?: ResolvePolicy }`
+- 不允许再把解析 hint/policy 放进 `meta` 或旧兼容字段
 
 ### 5.2 实现 executor
 
@@ -171,6 +181,31 @@ pnpm -C agent mcp:hot
 - 不要在新层复制执行逻辑
 - 新层应是“协议翻译器”，不是“第二套执行引擎”
 
+### 7.2 Checkpoint 过程模板（最小版）
+
+checkpoint 运行时位于：`agent/src/runner/checkpoint/runtime.ts`。
+
+当前模型：
+
+- `kind`: `procedure | recovery | guard`
+- `input` / `prepare` / `content` / `output`
+- 作用域：`input`、`local`、`output`
+- ref/path：`input.xxx`、`local.xxx`、`output.xxx`
+
+动作层最小能力：
+
+- `snapshot`
+- `query`
+- `compute`
+- `act`
+- `wait`
+
+约束：
+
+- step executor 不持有变量名
+- 变量回写与导出由 checkpoint runtime 负责（`saveAs` + `output`）
+- `query` 只做查询、`compute` 只做纯计算
+
 ### 7.1 DSL 预留：流式 Step 协议（最小版）
 
 为避免在 agent 侧提前引入完整 DSL VM（循环/分支/变量），当前采用“流式 step 执行”边界：
@@ -228,6 +263,37 @@ Agent 测试分层：
 Extension 测试：
 
 - `extension/src/__tests__/*.test.mjs`
+
+## 9. Entity Rules（业务实体规则）
+
+规则目录（agent 内部产物目录）：
+
+- `agent/.artifacts/entity_rules/profiles/<profile>/match.yaml`
+- `agent/.artifacts/entity_rules/profiles/<profile>/annotation.yaml`
+
+运行时加载链路（snapshot）：
+
+1. 解析 YAML
+2. schema 校验（单文件）
+3. cross-file 校验（`within`/`ruleId`/`page.kind` 等）
+4. 规范化为 `NormalizedEntityRuleBundle`
+5. 在 snapshot pipeline 的 `applyBusinessEntityRules` 阶段生成 `BusinessEntityOverlay`
+
+测试入口（agent）：
+
+- `tests/runner/steps/snapshot_entity_rules_schema.test.ts`
+- `tests/runner/steps/snapshot_entity_rules_validate.test.ts`
+- `tests/runner/steps/snapshot_entity_rules_matcher_apply.test.ts`
+- `tests/runner/steps/snapshot_entity_rules_pipeline.test.ts`
+- `tests/config/resolve_target_enrichment.test.ts`（entity hint）
+- `tests/runner/checkpoint/checkpoint.test.ts`（businessTag entityExists）
+- `tests/entity_rules/**/*.test.ts`（golden verify）
+
+运行命令：
+
+```bash
+pnpm -C agent test:entity-rules
+```
 
 当前命令：
 
@@ -369,3 +435,12 @@ PR 检查项：
 - 协议文档与代码一致
 - 相关测试已补齐或更新
 - 已删除不可信或过时文档
+
+### 8.2 Target 解析测试约束
+
+涉及 target 解析重构时，至少补齐：
+
+- `resolveTarget` 的 selector / id / hint 三路径单测
+- `ResolvePolicy`（`preferDirect`、`preferScoped`、`requireVisible`、`allowFuzzy`、`allowIndexDrift`）分支覆盖
+- `click` + 一个 `fill` 类 + 一个 `select` 类 executor 走统一解析链路
+- replay 显式写入 `step.resolve` 的回归测试（禁止全局隐式 sidecar 查询）

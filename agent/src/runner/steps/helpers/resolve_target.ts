@@ -1,246 +1,393 @@
-/**
- * 统一目标解析：优先 id/selector，新协议失败时再回退旧 a11y 兼容路径。
- */
-
 import type { PageBinding } from '../../../runtime/runtime_registry';
-import type { A11yHint, Target } from '../types';
-import type { StepResult } from '../types';
+import type { ResolveHint, ResolvePolicy, StepResult } from '../types';
 import type { SnapshotResult } from '../executors/snapshot/core/types';
-import { getNodeAttr } from '../executors/snapshot/core/runtime_store';
-import { mapTraceError } from './target';
-import type { RecordedStepEnhancement } from '../../../record/types';
-import { getReplayEnhancementForStep } from './replay_ctx';
+import { getNodeAttr, getNodeSemanticHints, normalizeText } from '../executors/snapshot/core/runtime_store';
 
-export type ResolvedLocatorTarget = {
+export type ResolveTargetInput = {
+    id?: string;
     selector?: string;
-    role?: string;
-    name?: string;
-    a11yNodeId?: string;
-    resolution?: {
+    hint?: ResolveHint;
+    policy?: ResolvePolicy;
+};
+
+export type ResolvedTarget = {
+    selector: string;
+    resolution: {
+        source: 'selector' | 'id' | 'hint';
         path: string;
-        usedEnhancement?: boolean;
-        usedFallback?: boolean;
-        replayHintsApplied?: string[];
+        appliedPolicy?: string[];
     };
 };
 
-type ResolveTargetOptions = {
-    stepId?: string;
-    enhancement?: RecordedStepEnhancement;
-};
+type ResolveResult = { ok: true; target: ResolvedTarget } | { ok: false; error: StepResult['error'] };
 
-type ResolveResult = { ok: true; target: ResolvedLocatorTarget } | { ok: false; error: StepResult['error'] };
-
-const buildNotFound = (hint?: A11yHint): StepResult['error'] => ({
-    code: 'ERR_NOT_FOUND',
-    message: 'target not found',
-    details: hint ? { hint } : undefined,
-});
-
-const buildAmbiguous = (hint: A11yHint, candidates: unknown[]): StepResult['error'] => ({
-    code: 'ERR_AMBIGUOUS',
-    message: 'target ambiguous',
-    details: { hint, candidates },
-});
-
-export const resolveTargetNodeId = async (
-    binding: PageBinding,
-    target: Target | undefined,
-    options?: ResolveTargetOptions,
-): Promise<ResolveResult> => {
-    const enhancement = options?.enhancement || getReplayEnhancementForStep(binding.workspaceId, options?.stepId);
-    let primaryError: StepResult['error'] | undefined;
-
-    if (!target && !enhancement) {
-        return { ok: false, error: { code: 'ERR_INTERNAL', message: 'missing target' } };
+export const resolveTarget = async (binding: PageBinding, input: ResolveTargetInput): Promise<ResolveResult> => {
+    const { id, selector, hint, policy } = input;
+    if (!id && !selector && !hint) {
+        return { ok: false, error: { code: 'ERR_INTERNAL', message: 'missing target input' } };
     }
 
-    if (target?.id) {
-        const resolved = resolveBySnapshotNodeId(binding, target.id);
+    if (selector) {
+        return {
+            ok: true,
+            target: {
+                selector: withVisibilityConstraint(withHintScope(binding, hint, selector, policy), policy?.requireVisible),
+                resolution: {
+                    source: 'selector',
+                    path: 'input.selector',
+                    appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
+                },
+            },
+        };
+    }
+
+    if (id) {
+        const resolved = resolveBySnapshotNodeId(binding, id, hint, policy);
         if (resolved.ok) {
-            return { ok: true, target: withResolution(resolved.target, 'target.id') };
-        }
-        primaryError = resolved.error;
-    }
-
-    if (target?.selector) {
-        return { ok: true, target: withResolution({ selector: target.selector }, 'target.selector') };
-    }
-
-    // 旧协议兼容：a11yNodeId/a11yHint 仅在 step 层兜底，不再作为 MCP 主协议。
-    if (target?.a11yNodeId) {
-        const resolved = await binding.traceTools['trace.a11y.resolveByNodeId']({
-            a11yNodeId: target.a11yNodeId,
-        });
-        if (resolved.ok) {
-            return { ok: true, target: withResolution({ a11yNodeId: target.a11yNodeId }, 'target.a11yNodeId') };
-        }
-        primaryError = mapTraceError(resolved.error);
-    }
-    if (target?.a11yHint) {
-        const found = await binding.traceTools['trace.a11y.findByA11yHint']({
-            hint: target.a11yHint,
-        });
-        if (found.ok) {
-            const candidates = found.data || [];
-            if (candidates.length > 0) {
-                if (candidates.length > 1) {
-                    primaryError = buildAmbiguous(target.a11yHint, candidates);
-                } else {
-                    return {
-                        ok: true,
-                        target: withResolution({ a11yNodeId: candidates[0].nodeId }, 'target.a11yHint'),
-                    };
-                }
-            } else {
-                primaryError = buildNotFound(target.a11yHint);
-            }
-        } else {
-            primaryError = mapTraceError(found.error);
-        }
-    }
-
-    if (enhancement) {
-        const fromEnhancement = await resolveByEnhancement(binding, enhancement);
-        if (fromEnhancement.ok) {
             return {
                 ok: true,
-                target: withResolution(
-                    fromEnhancement.target,
-                    fromEnhancement.target.resolution?.path || 'enhancement',
-                    true,
-                    true,
-                    fromEnhancement.target.resolution?.replayHintsApplied,
-                ),
+                target: {
+                    selector: resolved.selector,
+                    resolution: {
+                        source: 'id',
+                        path: resolved.path,
+                        appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
+                    },
+                },
             };
         }
-        if (!primaryError) primaryError = fromEnhancement.error;
+        return { ok: false, error: resolved.error };
     }
 
-    return { ok: false, error: primaryError || buildNotFound() };
+    const byHint = resolveByHint(binding, hint!, policy || {});
+    if (byHint.ok) {
+        return {
+            ok: true,
+            target: {
+                selector: byHint.selector,
+                resolution: {
+                    source: 'hint',
+                    path: byHint.path,
+                    appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
+                },
+            },
+        };
+    }
+
+    return { ok: false, error: byHint.error };
 };
 
-const resolveByEnhancement = async (
+const resolveByHint = (
     binding: PageBinding,
-    enhancement: RecordedStepEnhancement,
-): Promise<ResolveResult> => {
-    const hints = enhancement.replayHints || {};
+    hint: ResolveHint,
+    policy: ResolvePolicy,
+): { ok: true; selector: string; path: string } | { ok: false; error: StepResult['error'] } => {
+    const preferDirect = policy.preferDirect === true;
 
-    if (hints.preferDirect) {
-        const directPreferred = resolveFromEnhancedLocator(binding, enhancement, true);
-        if (directPreferred) {
-            return { ok: true, target: withResolution(directPreferred, 'enhancement.locator.direct', true, true) };
-        }
+    if (preferDirect) {
+        const directFirst = resolveFromHintLocator(binding, hint, policy);
+        if (directFirst) {return { ok: true, selector: directFirst, path: 'hint.locator.direct' };}
     }
 
-    if (enhancement.target?.nodeId) {
-        const byNodeId = resolveBySnapshotNodeId(binding, enhancement.target.nodeId);
-        if (byNodeId.ok) {
-            return {
-                ok: true,
-                target: withResolution(byNodeId.target, 'enhancement.target.nodeId', true, true),
-            };
-        }
+    const byEntity = resolveByEntityHint(binding, hint, policy);
+    if (byEntity) {return { ok: true, selector: byEntity, path: 'hint.entity' };}
+
+    if (hint.target?.nodeId) {
+        const byNode = resolveBySnapshotNodeId(binding, hint.target.nodeId, hint, policy);
+        if (byNode.ok) {return { ok: true, selector: byNode.selector, path: 'hint.target.nodeId' };}
     }
 
-    const byDomId = resolveByDomId(binding, enhancement, hints.allowIndexDrift === true);
-    if (byDomId.ok) {
-        return { ok: true, target: withResolution(byDomId.target, 'enhancement.target.primaryDomId', true, true) };
-    }
+    const byDom = resolveByDomFingerprint(binding, hint, policy);
+    if (byDom) {return { ok: true, selector: byDom, path: 'hint.target.primaryDomId' };}
 
-    const byLocator = resolveFromEnhancedLocator(binding, enhancement, false);
-    if (byLocator) {
-        return { ok: true, target: withResolution(byLocator, 'enhancement.locator.direct', true, true) };
-    }
+    const byLocator = resolveFromHintLocator(binding, hint, policy);
+    if (byLocator) {return { ok: true, selector: byLocator, path: 'hint.locator.direct' };}
 
-    const byRawSelector = resolveFromRawSelector(enhancement);
-    if (byRawSelector) {
-        return { ok: true, target: withResolution(byRawSelector, 'enhancement.raw.selector', true, true) };
-    }
+    const byRaw = resolveFromHintRaw(binding, hint, policy);
+    if (byRaw) {return { ok: true, selector: byRaw, path: 'hint.raw' };}
 
-    const byRawCandidate = resolveFromRawCandidates(enhancement);
-    if (byRawCandidate) {
-        return { ok: true, target: withResolution(byRawCandidate, 'enhancement.raw.candidate', true, true) };
-    }
-
-    if (enhancement.rawContext?.a11yHint) {
-        const found = await binding.traceTools['trace.a11y.findByA11yHint']({ hint: enhancement.rawContext.a11yHint });
-        if (found.ok) {
-            const candidates = found.data || [];
-            if (candidates.length === 1) {
-                return {
-                    ok: true,
-                    target: withResolution({ a11yNodeId: candidates[0].nodeId }, 'enhancement.raw.a11yHint', true, true),
-                };
-            }
-            if (candidates.length > 1 && enhancement.replayHints?.allowFuzzy) {
-                return {
-                    ok: true,
-                    target: withResolution(
-                        { a11yNodeId: candidates[0].nodeId },
-                        'enhancement.raw.a11yHint.fuzzy',
-                        true,
-                        true,
-                        ['allowFuzzy'],
-                    ),
-                };
-            }
-            if (candidates.length > 1) {
-                return { ok: false, error: buildAmbiguous(enhancement.rawContext.a11yHint, candidates) };
-            }
-        }
+    if (policy.allowFuzzy) {
+        const byFuzzy = resolveByHintFuzzy(binding, hint, policy);
+        if (byFuzzy) {return { ok: true, selector: byFuzzy, path: 'hint.fuzzy' };}
     }
 
     return {
         ok: false,
         error: {
             code: 'ERR_NOT_FOUND',
-            message: 'enhancement fallback failed',
+            message: 'target hint not resolvable to selector',
             details: {
-                hasTargetNodeId: Boolean(enhancement.target?.nodeId),
-                hasPrimaryDomId: Boolean(enhancement.target?.primaryDomId),
-                hasLocatorDirect: Boolean(enhancement.locator?.direct?.query),
-                hasRawSelector: Boolean(enhancement.rawContext?.selector),
+                hasTargetNodeId: Boolean(hint.target?.nodeId),
+                hasPrimaryDomId: Boolean(hint.target?.primaryDomId),
+                hasLocatorDirect: Boolean(hint.locator?.direct?.query),
+                hasRawSelector: Boolean(hint.raw?.selector),
+                hasEntityHint: Boolean(hint.entity?.businessTag || hint.entity?.fieldKey || hint.entity?.actionIntent),
             },
         },
     };
 };
 
-const resolveByDomId = (
-    binding: PageBinding,
-    enhancement: RecordedStepEnhancement,
-    allowIndexDrift: boolean,
-): ResolveResult => {
-    const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
-    const snapshot = cache.latestSnapshot as SnapshotResult | undefined;
-    if (!snapshot || !snapshot.nodeIndex) {
-        return { ok: false, error: buildNotFound() };
+const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+    const entityHint = hint.entity;
+    if (!entityHint) {return undefined;}
+
+    const businessTag = normalizeTag(entityHint.businessTag);
+    const fieldKey = normalizeTag(entityHint.fieldKey);
+    const actionIntent = normalizeTag(entityHint.actionIntent);
+    if (!businessTag && !fieldKey && !actionIntent) {return undefined;}
+
+    const snapshot = getSnapshot(binding);
+    if (!snapshot) {return undefined;}
+
+    const parentById = buildNodeParentById(snapshot.root);
+    const scopeNodeIds = businessTag
+        ? collectEntityScopeNodeIds(snapshot, businessTag)
+        : undefined;
+
+    const matchedNodeIds: string[] = [];
+    for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
+        if (scopeNodeIds && scopeNodeIds.size > 0 && !isInAnyScope(nodeId, scopeNodeIds, parentById)) {
+            continue;
+        }
+
+        const semantic = getNodeSemanticHints(node);
+        const attr = snapshot.attrIndex[nodeId];
+        const nodeFieldKey = normalizeTag(semantic?.fieldKey || attr.fieldKey);
+        const nodeActionIntent = normalizeTag(semantic?.actionIntent || attr.actionIntent);
+
+        if (fieldKey && fieldKey !== nodeFieldKey) {continue;}
+        if (actionIntent && actionIntent !== nodeActionIntent) {continue;}
+
+        matchedNodeIds.push(nodeId);
     }
 
-    const domIds = [enhancement.target?.primaryDomId, ...(enhancement.target?.sourceDomIds || [])].filter(
-        Boolean,
-    ) as string[];
+    if (matchedNodeIds.length > 0) {
+        const resolved = resolveBySnapshotNodeId(binding, matchedNodeIds[0], hint, policy);
+        return resolved.ok ? resolved.selector : undefined;
+    }
+
+    if (scopeNodeIds && scopeNodeIds.size > 0) {
+        const candidate = Array.from(scopeNodeIds).sort((left, right) => left.localeCompare(right))[0];
+        if (candidate) {
+            const resolved = resolveBySnapshotNodeId(binding, candidate, hint, policy);
+            return resolved.ok ? resolved.selector : undefined;
+        }
+    }
+
+    return undefined;
+};
+
+const collectEntityScopeNodeIds = (snapshot: SnapshotResult, businessTag: string): Set<string> => {
+    const out = new Set<string>();
+    const ruleOverlay = snapshot.ruleEntityOverlay || snapshot.businessEntityOverlay;
+    for (const entity of Object.values(snapshot.entityIndex.entities)) {
+        const overlayTag = normalizeTag(ruleOverlay?.byEntityId[entity.id]?.businessTag);
+        const entityTag = normalizeTag(entity.businessTag);
+        if (businessTag !== overlayTag && businessTag !== entityTag) {continue;}
+        if (entity.type === 'region') {
+            out.add(entity.nodeId);
+            continue;
+        }
+        out.add(entity.containerId);
+    }
+    return out;
+};
+
+const buildNodeParentById = (root: SnapshotResult['root']): Map<string, string | null> => {
+    const parentById = new Map<string, string | null>();
+    const stack: Array<{ node: SnapshotResult['root']; parentId: string | null }> = [{ node: root, parentId: null }];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) {break;}
+        parentById.set(current.node.id, current.parentId);
+        for (let index = current.node.children.length - 1; index >= 0; index -= 1) {
+            stack.push({ node: current.node.children[index], parentId: current.node.id });
+        }
+    }
+    return parentById;
+};
+
+const isInAnyScope = (nodeId: string, scopeNodeIds: Set<string>, parentById: Map<string, string | null>): boolean => {
+    let cursor: string | null = nodeId;
+    while (cursor) {
+        if (scopeNodeIds.has(cursor)) {return true;}
+        cursor = parentById.get(cursor) || null;
+    }
+    return false;
+};
+
+const resolveBySnapshotNodeId = (
+    binding: PageBinding,
+    nodeId: string,
+    hint: ResolveHint | undefined,
+    policy: ResolvePolicy | undefined,
+): { ok: true; selector: string; path: string } | { ok: false; error: StepResult['error'] } => {
+    const snapshot = getSnapshot(binding);
+    if (!snapshot?.locatorIndex) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'snapshot cache missing, call browser.snapshot before targeting by id',
+                details: { id: nodeId },
+            },
+        };
+    }
+
+    const locator = snapshot.locatorIndex[nodeId];
+
+    const direct = locator.direct;
+    if (direct?.kind === 'css' && direct.query) {
+        const scoped = applyScopeConstraint(snapshot, locator, direct.query, hint, policy);
+        const path = direct.source === 'backend-path' ? 'id.direct.backend-path' : 'id.direct.css';
+        return { ok: true, selector: withVisibilityConstraint(scoped, policy?.requireVisible), path };
+    }
+
+    if (direct?.fallback) {
+        const scopedFallback = applyScopeConstraint(snapshot, locator, direct.fallback, hint, policy);
+        return { ok: true, selector: withVisibilityConstraint(scopedFallback, policy?.requireVisible), path: 'id.direct.fallback' };
+    }
+
+    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
+    if (structuralSelector) {
+        return {
+            ok: true,
+            selector: withVisibilityConstraint(withHintScope(binding, hint, structuralSelector, policy), policy?.requireVisible),
+            path: 'id.structural',
+        };
+    }
+
+    return {
+        ok: false,
+        error: {
+            code: 'ERR_NOT_FOUND',
+            message: 'node id has no executable selector',
+            details: { id: nodeId, locator },
+        },
+    };
+};
+
+const resolveByDomFingerprint = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+    const snapshot = getSnapshot(binding);
+    if (!snapshot || !hint.target) {return undefined;}
+
+    const domIds = [hint.target.primaryDomId, ...(hint.target.sourceDomIds || [])].filter(Boolean) as string[];
     for (const domId of domIds) {
         const matchedNodeId = findNodeIdByDomId(snapshot, domId);
-        if (!matchedNodeId) continue;
-        const resolved = resolveBySnapshotNodeId(binding, matchedNodeId);
-        if (resolved.ok) return resolved;
+        if (!matchedNodeId) {continue;}
+        const resolved = resolveBySnapshotNodeId(binding, matchedNodeId, hint, policy);
+        if (resolved.ok) {return resolved.selector;}
     }
 
-    if (!allowIndexDrift || !enhancement.target) {
-        return { ok: false, error: buildNotFound() };
+    if (!policy.allowIndexDrift) {return undefined;}
+    const fuzzyNodeId = findNodeIdByFuzzyFingerprint(snapshot, hint);
+    if (!fuzzyNodeId) {return undefined;}
+    const fuzzy = resolveBySnapshotNodeId(binding, fuzzyNodeId, hint, policy);
+    return fuzzy.ok ? fuzzy.selector : undefined;
+};
+
+const resolveByHintFuzzy = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+    const snapshot = getSnapshot(binding);
+    if (!snapshot || !hint.target) {return undefined;}
+    const fuzzyNodeId = findNodeIdByFuzzyFingerprint(snapshot, hint);
+    if (!fuzzyNodeId) {return undefined;}
+    const resolved = resolveBySnapshotNodeId(binding, fuzzyNodeId, hint, policy);
+    return resolved.ok ? resolved.selector : undefined;
+};
+
+const resolveFromHintLocator = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+    const direct = hint.locator?.direct;
+    if (!direct) {return undefined;}
+
+    if (direct.kind === 'css' && direct.query) {
+        return withVisibilityConstraint(withHintScope(binding, hint, direct.query, policy), policy.requireVisible);
     }
 
-    const fuzzyNodeId = findNodeIdByFuzzyFingerprint(snapshot, enhancement.target);
-    if (!fuzzyNodeId) {
-        return { ok: false, error: buildNotFound() };
+    if (direct.fallback) {
+        return withVisibilityConstraint(withHintScope(binding, hint, direct.fallback, policy), policy.requireVisible);
     }
-    const fuzzyResolved = resolveBySnapshotNodeId(binding, fuzzyNodeId);
-    if (!fuzzyResolved.ok) return fuzzyResolved;
-    return {
-        ok: true,
-        target: withResolution(fuzzyResolved.target, 'enhancement.target.domIdDrift', true, true, ['allowIndexDrift']),
-    };
+
+    return undefined;
+};
+
+const resolveFromHintRaw = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+    if (hint.raw?.selector) {
+        return withVisibilityConstraint(withHintScope(binding, hint, hint.raw.selector, policy), policy.requireVisible);
+    }
+
+    for (const candidate of hint.raw?.locatorCandidates || []) {
+        if (candidate.kind === 'css' && candidate.selector) {
+            return withVisibilityConstraint(withHintScope(binding, hint, candidate.selector, policy), policy.requireVisible);
+        }
+        if (candidate.kind === 'testid' && candidate.testId) {
+            return withVisibilityConstraint(
+                withHintScope(binding, hint, `[data-testid="${escapeCssText(candidate.testId)}"]`, policy),
+                policy.requireVisible,
+            );
+        }
+    }
+
+    return undefined;
+};
+
+const getSnapshot = (binding: PageBinding): SnapshotResult | undefined => {
+    const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
+    return cache.latestSnapshot as SnapshotResult | undefined;
+};
+
+const withHintScope = (binding: PageBinding, hint: ResolveHint | undefined, selector: string, policy: ResolvePolicy | undefined): string => {
+    if (!selector) {return selector;}
+    if (!policy?.preferScoped) {return selector;}
+    if (!hint?.locator?.scope?.id) {return selector;}
+
+    const snapshot = getSnapshot(binding);
+    if (!snapshot) {return selector;}
+
+    const scopeNodeId = resolveScopeNodeId(snapshot, hint.locator.scope.id);
+    if (!scopeNodeId) {return selector;}
+    const scopeSelector = buildStructuralSelectorFallback(snapshot, scopeNodeId);
+    if (!scopeSelector) {return selector;}
+
+    const trimmed = selector.trim();
+    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) {return selector;}
+    if (isAbsoluteDomSelector(trimmed)) {return selector;}
+    return `${scopeSelector} ${trimmed}`;
+};
+
+const applyScopeConstraint = (
+    snapshot: SnapshotResult,
+    locator: SnapshotResult['locatorIndex'][string],
+    selector: string,
+    hint: ResolveHint | undefined,
+    policy: ResolvePolicy | undefined,
+): string => {
+    if (!selector) {return selector;}
+    const preferScoped = policy?.preferScoped === true || locator.policy?.preferScopedSearch === true;
+    if (!preferScoped) {return selector;}
+
+    const scopeId = hint?.locator?.scope?.id || locator.scope?.id;
+    if (!scopeId) {return selector;}
+
+    const scopeNodeId = resolveScopeNodeId(snapshot, scopeId);
+    if (!scopeNodeId) {return selector;}
+
+    const scopeSelector = buildStructuralSelectorFallback(snapshot, scopeNodeId);
+    if (!scopeSelector) {return selector;}
+
+    const trimmed = selector.trim();
+    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) {return selector;}
+    if (isAbsoluteDomSelector(trimmed)) {return selector;}
+
+    return `${scopeSelector} ${trimmed}`;
+};
+
+const resolveScopeNodeId = (snapshot: SnapshotResult, scopeId: string): string | undefined => {
+    if (Object.prototype.hasOwnProperty.call(snapshot.nodeIndex, scopeId)) {return scopeId;}
+
+    if (!Object.prototype.hasOwnProperty.call(snapshot.entityIndex.entities, scopeId)) {return undefined;}
+    const entity = snapshot.entityIndex.entities[scopeId];
+    if (entity.type === 'region') {return entity.nodeId;}
+    return entity.containerId;
 };
 
 const findNodeIdByDomId = (snapshot: SnapshotResult, domId: string): string | undefined => {
@@ -253,318 +400,52 @@ const findNodeIdByDomId = (snapshot: SnapshotResult, domId: string): string | un
     return undefined;
 };
 
-const findNodeIdByFuzzyFingerprint = (
-    snapshot: SnapshotResult,
-    target: NonNullable<RecordedStepEnhancement['target']>,
-): string | undefined => {
-    const expectedRole = (target.role || '').trim().toLowerCase();
-    const expectedName = (target.name || '').trim().toLowerCase();
-    const expectedTag = (target.tag || '').trim().toLowerCase();
+const findNodeIdByFuzzyFingerprint = (snapshot: SnapshotResult, hint: ResolveHint): string | undefined => {
+    const expectedRole = normalizeTag(hint.target?.role);
+    const expectedName = normalizeTag(hint.target?.name);
+    const expectedTag = normalizeTag(hint.target?.tag);
+    const expectedText = normalizeTag(hint.target?.text);
+
     for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
-        const attrs = snapshot.attrIndex[nodeId] || {};
-        const role = (node.role || '').trim().toLowerCase();
-        const name = (node.name || '').trim().toLowerCase();
-        const tag = ((attrs.tag || attrs.tagName || '') as string).trim().toLowerCase();
-        if (expectedRole && role && expectedRole !== role) continue;
-        if (expectedTag && tag && expectedTag !== tag) continue;
-        if (expectedName && name && !name.includes(expectedName)) continue;
+        const attrs = snapshot.attrIndex[nodeId];
+        const role = normalizeTag(node.role);
+        const name = normalizeTag(node.name);
+        const text = normalizeTag(typeof node.content === 'string' ? node.content : undefined);
+        const tag = normalizeTag((attrs.tag || attrs.tagName || ''));
+
+        if (expectedRole && role && expectedRole !== role) {continue;}
+        if (expectedTag && tag && expectedTag !== tag) {continue;}
+        if (expectedName && name && !name.includes(expectedName)) {continue;}
+        if (expectedText && text && !text.includes(expectedText)) {continue;}
         return nodeId;
     }
-    return undefined;
-};
-
-const resolveFromEnhancedLocator = (
-    binding: PageBinding,
-    enhancement: RecordedStepEnhancement,
-    directOnly: boolean,
-): ResolvedLocatorTarget | undefined => {
-    const direct = enhancement.locator?.direct;
-    const replayHints = enhancement.replayHints || {};
-    if (!direct) return undefined;
-
-    if (direct.kind === 'css' && direct.query) {
-        const scoped = applyEnhancedScope(binding, enhancement, direct.query);
-        return {
-            selector: withVisibilityConstraint(scoped, replayHints.requireVisible),
-            resolution: {
-                path: 'enhancement.locator.direct',
-                usedEnhancement: true,
-                usedFallback: true,
-                replayHintsApplied: collectAppliedHints(replayHints, Boolean(enhancement.locator?.scope?.id)),
-            },
-        };
-    }
-
-    if (direct.kind === 'role' && direct.query) {
-        const parsed = parseRoleQuery(direct.query);
-        if (!parsed) return undefined;
-        const fallbackSelector = direct.fallback
-            ? withVisibilityConstraint(applyEnhancedScope(binding, enhancement, direct.fallback), replayHints.requireVisible)
-            : undefined;
-        return {
-            ...parsed,
-            selector: fallbackSelector,
-            resolution: {
-                path: 'enhancement.locator.direct.role',
-                usedEnhancement: true,
-                usedFallback: true,
-                replayHintsApplied: collectAppliedHints(replayHints, Boolean(enhancement.locator?.scope?.id)),
-            },
-        };
-    }
-
-    if (!directOnly && direct.fallback) {
-        return {
-            selector: withVisibilityConstraint(applyEnhancedScope(binding, enhancement, direct.fallback), replayHints.requireVisible),
-            resolution: {
-                path: 'enhancement.locator.direct.fallback',
-                usedEnhancement: true,
-                usedFallback: true,
-                replayHintsApplied: collectAppliedHints(replayHints, Boolean(enhancement.locator?.scope?.id)),
-            },
-        };
-    }
 
     return undefined;
 };
 
-const applyEnhancedScope = (binding: PageBinding, enhancement: RecordedStepEnhancement, selector: string): string => {
-    if (!selector) return selector;
-    if (!enhancement.replayHints?.preferScopedSearch) return selector;
-    const scopeId = enhancement.locator?.scope?.id;
-    if (!scopeId) return selector;
-
-    const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
-    const snapshot = cache.latestSnapshot as SnapshotResult | undefined;
-    if (!snapshot) return selector;
-
-    const scopeNodeId = resolveScopeNodeId(snapshot, scopeId);
-    if (!scopeNodeId) return selector;
-    const scopeSelector = buildStructuralSelectorFallback(snapshot, scopeNodeId);
-    if (!scopeSelector) return selector;
-
-    const trimmed = selector.trim();
-    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) return selector;
-    if (isAbsoluteDomSelector(trimmed)) return selector;
-    return `${scopeSelector} ${trimmed}`;
+const collectAppliedPolicy = (policy: ResolvePolicy | undefined, hasScope: boolean): string[] | undefined => {
+    if (!policy) {return undefined;}
+    const applied: string[] = [];
+    if (policy.preferDirect) {applied.push('preferDirect');}
+    if (policy.preferScoped && hasScope) {applied.push('preferScoped');}
+    if (policy.requireVisible) {applied.push('requireVisible');}
+    if (policy.allowFuzzy) {applied.push('allowFuzzy');}
+    if (policy.allowIndexDrift) {applied.push('allowIndexDrift');}
+    return applied.length > 0 ? applied : undefined;
 };
 
-const resolveFromRawSelector = (enhancement: RecordedStepEnhancement): ResolvedLocatorTarget | undefined => {
-    const selector = enhancement.rawContext?.selector;
-    if (!selector) return undefined;
-    return {
-        selector: withVisibilityConstraint(selector, enhancement.replayHints?.requireVisible),
-    };
-};
-
-const resolveFromRawCandidates = (enhancement: RecordedStepEnhancement): ResolvedLocatorTarget | undefined => {
-    const candidates = enhancement.rawContext?.locatorCandidates || [];
-    const replayHints = enhancement.replayHints || {};
-    for (const candidate of candidates) {
-        if (candidate.kind === 'css' && candidate.selector) {
-            return {
-                selector: withVisibilityConstraint(candidate.selector, replayHints.requireVisible),
-            };
-        }
-        if (candidate.kind === 'testid' && candidate.testId) {
-            return {
-                selector: withVisibilityConstraint(`[data-testid="${escapeCssText(candidate.testId)}"]`, replayHints.requireVisible),
-            };
-        }
-        if (candidate.kind === 'role' && candidate.role) {
-            return {
-                role: candidate.role,
-                name: candidate.name,
-            };
-        }
-    }
-    return undefined;
-};
-
-const collectAppliedHints = (
-    hints: NonNullable<RecordedStepEnhancement['replayHints']>,
-    hasScope: boolean,
-): string[] | undefined => {
-    const flags: string[] = [];
-    if (hints.preferDirect) flags.push('preferDirect');
-    if (hints.preferScopedSearch && hasScope) flags.push('preferScopedSearch');
-    if (hints.requireVisible) flags.push('requireVisible');
-    if (hints.allowFuzzy) flags.push('allowFuzzy');
-    if (hints.allowIndexDrift) flags.push('allowIndexDrift');
-    return flags.length ? flags : undefined;
-};
-
-const withResolution = (
-    target: ResolvedLocatorTarget,
-    path: string,
-    usedEnhancement?: boolean,
-    usedFallback?: boolean,
-    replayHintsApplied?: string[],
-): ResolvedLocatorTarget => ({
-    ...target,
-    resolution: {
-        path,
-        usedEnhancement,
-        usedFallback,
-        replayHintsApplied,
-    },
-});
-
-const resolveBySnapshotNodeId = (
-    binding: PageBinding,
-    nodeId: string,
-): { ok: true; target: ResolvedLocatorTarget } | { ok: false; error: StepResult['error'] } => {
-    const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
-    const snapshot = cache.latestSnapshot as SnapshotResult | undefined;
-    if (!snapshot || !snapshot.locatorIndex) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_NOT_FOUND',
-                message: 'snapshot cache missing, call browser.snapshot before targeting by id',
-                details: { id: nodeId },
-            },
-        };
-    }
-
-    const locator = snapshot.locatorIndex[nodeId];
-    if (!locator) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_NOT_FOUND',
-                message: 'node id not found in snapshot locator index',
-                details: { id: nodeId },
-            },
-        };
-    }
-
-    const direct = locator.direct;
-    if (direct?.kind === 'css' && direct.query) {
-        const directSelector = applyScopeConstraint(snapshot, locator, direct.query);
-        if (direct.source === 'backend-path') {
-            return { ok: true, target: { selector: withVisibilityConstraint(directSelector, locator.policy?.requireVisible) } };
-        }
-        const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
-        if (structuralSelector && shouldPreferStructuralSelector(direct.source, structuralSelector)) {
-            return { ok: true, target: { selector: withVisibilityConstraint(structuralSelector, locator.policy?.requireVisible) } };
-        }
-        return { ok: true, target: { selector: withVisibilityConstraint(directSelector, locator.policy?.requireVisible) } };
-    }
-    if (direct?.kind === 'role' && direct.query) {
-        const parsed = parseRoleQuery(direct.query);
-        if (parsed) {
-            return {
-                ok: true,
-                target: {
-                    ...parsed,
-                    selector: direct.fallback
-                        ? withVisibilityConstraint(
-                              applyScopeConstraint(snapshot, locator, direct.fallback),
-                              locator.policy?.requireVisible,
-                          )
-                        : undefined,
-                },
-            };
-        }
-        if (direct.fallback) {
-            return {
-                ok: true,
-                target: {
-                    selector: withVisibilityConstraint(
-                        applyScopeConstraint(snapshot, locator, direct.fallback),
-                        locator.policy?.requireVisible,
-                    ),
-                },
-            };
-        }
-    }
-    if (direct?.fallback) {
-        return {
-            ok: true,
-            target: {
-                selector: withVisibilityConstraint(
-                    applyScopeConstraint(snapshot, locator, direct.fallback),
-                    locator.policy?.requireVisible,
-                ),
-            },
-        };
-    }
-    const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
-    if (structuralSelector) {
-        return { ok: true, target: { selector: withVisibilityConstraint(structuralSelector, locator.policy?.requireVisible) } };
-    }
-
-    return {
-        ok: false,
-        error: {
-            code: 'ERR_NOT_FOUND',
-            message: 'node id has no executable direct locator',
-            details: { id: nodeId, locator },
-        },
-    };
-};
-
-const shouldPreferStructuralSelector = (directSource: string | undefined, structuralSelector: string | undefined): boolean => {
-    if (!structuralSelector) return false;
-    return directSource === 'aria-label';
-};
-
-const applyScopeConstraint = (snapshot: SnapshotResult, locator: SnapshotResult['locatorIndex'][string], selector: string): string => {
-    if (!selector) return selector;
-    if (!locator.policy?.preferScopedSearch || !locator.scope?.id) return selector;
-
-    const scopeNodeId = resolveScopeNodeId(snapshot, locator.scope.id);
-    if (!scopeNodeId) return selector;
-
-    const scopeSelector = buildStructuralSelectorFallback(snapshot, scopeNodeId);
-    if (!scopeSelector) return selector;
-
-    const trimmed = selector.trim();
-    if (!trimmed || trimmed.startsWith('xpath=') || trimmed.startsWith('text=')) return selector;
-    if (isAbsoluteDomSelector(trimmed)) return selector;
-
-    return `${scopeSelector} ${trimmed}`;
-};
-
-const resolveScopeNodeId = (snapshot: SnapshotResult, scopeId: string): string | undefined => {
-    if (snapshot.nodeIndex?.[scopeId]) return scopeId;
-
-    const entity = snapshot.entityIndex?.entities?.[scopeId];
-    if (!entity) return undefined;
-    if (entity.type === 'region') return entity.nodeId;
-    return entity.containerId;
-};
-
-const parseRoleQuery = (query: string): ResolvedLocatorTarget | null => {
-    const index = query.indexOf(':');
-    if (index <= 0) return null;
-    const role = query.slice(0, index).trim();
-    const name = query.slice(index + 1).trim();
-    if (!role) return null;
-    return { role, name: name || undefined };
-};
-
-const buildStructuralSelectorFallback = (
-    snapshot: SnapshotResult,
-    nodeId: string,
-): string | undefined => {
-    const targetNode = snapshot.nodeIndex?.[nodeId];
-    if (!targetNode || !snapshot.root) return undefined;
-
+const buildStructuralSelectorFallback = (snapshot: SnapshotResult, nodeId: string): string | undefined => {
     const parentById = new Map<string, string | null>();
     buildParentById(snapshot.root, null, parentById);
 
     const startNodeId = snapshot.root.id;
-
     const chain = buildIdChain(parentById, startNodeId, nodeId);
-    if (chain.length === 0) return undefined;
+    if (chain.length === 0) {return undefined;}
 
     const segments: string[] = [];
     for (const currentId of chain) {
         const node = snapshot.nodeIndex[currentId];
-        if (!node) continue;
-        if (!isStructuralDomNode(node)) continue;
+        if (!isStructuralDomNode(node)) {continue;}
 
         const stable = buildStableSegment(node);
         if (stable) {
@@ -573,9 +454,8 @@ const buildStructuralSelectorFallback = (
         }
 
         const parentId = parentById.get(currentId);
-        if (!parentId) continue;
+        if (!parentId) {continue;}
         const parent = snapshot.nodeIndex[parentId];
-        if (!parent) continue;
 
         const tag = resolveElementTag(node);
         if (tag) {
@@ -586,13 +466,11 @@ const buildStructuralSelectorFallback = (
             }
         }
         const nthChild = nthChildIndex(parent.children, currentId);
-        if (!nthChild) continue;
+        if (!nthChild) {continue;}
         segments.push(`*:nth-child(${nthChild})`);
     }
 
-    if (segments.length === 0) return undefined;
-    // Use strict parent-child chain so dynamic pages do not collapse different controls
-    // into one broad descendant selector (a common source of ERR_AMBIGUOUS).
+    if (segments.length === 0) {return undefined;}
     return trimLeadingWildcardSegments(segments).join(' > ');
 };
 
@@ -604,51 +482,52 @@ const buildParentById = (node: SnapshotResult['root'], parentId: string | null, 
 };
 
 const buildIdChain = (parentById: Map<string, string | null>, startId: string, targetId: string): string[] => {
-    if (startId === targetId) return [targetId];
+    if (startId === targetId) {return [targetId];}
     const reversed: string[] = [];
     let cursor = targetId;
     while (cursor) {
         reversed.push(cursor);
-        if (cursor === startId) break;
+        if (cursor === startId) {break;}
         cursor = parentById.get(cursor) || '';
     }
-    if (reversed[reversed.length - 1] !== startId) return [];
+    if (reversed[reversed.length - 1] !== startId) {return [];}
     return reversed.reverse();
 };
 
 const buildStableSegment = (node: SnapshotResult['root']): string | undefined => {
     const testId = getNodeAttr(node, 'data-testid') || getNodeAttr(node, 'data-test-id');
-    if (testId) return `[data-testid="${escapeCssText(testId)}"]`;
+    if (testId) {return `[data-testid="${escapeCssText(testId)}"]`;}
 
     const id = getNodeAttr(node, 'id');
-    if (id) return `#${escapeCssIdentifier(id)}`;
+    if (id) {return `#${escapeCssIdentifier(id)}`;}
 
     const tag = resolveElementTag(node);
-    if (tag) {
-        const name = getNodeAttr(node, 'name');
-        if (name) return `${tag}[name="${escapeCssText(name)}"]`;
+    if (!tag) {return undefined;}
 
-        const placeholder = getNodeAttr(node, 'placeholder');
-        if (placeholder) return `${tag}[placeholder="${escapeCssText(placeholder)}"]`;
-    }
+    const name = getNodeAttr(node, 'name');
+    if (name) {return `${tag}[name="${escapeCssText(name)}"]`;}
+
+    const placeholder = getNodeAttr(node, 'placeholder');
+    if (placeholder) {return `${tag}[placeholder="${escapeCssText(placeholder)}"]`;}
+
     return undefined;
 };
 
 const resolveElementTag = (node: SnapshotResult['root']): string | undefined => {
     const rawTag = normalizeTag(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (rawTag && !rawTag.startsWith('::')) return rawTag;
+    if (rawTag && !rawTag.startsWith('::')) {return rawTag;}
 
     const role = normalizeTag(node.role);
-    if (role === 'body') return 'body';
-    if (role === 'main') return 'main';
-    if (role === 'banner') return 'header';
-    if (role === 'contentinfo') return 'footer';
-    if (role === 'complementary') return 'aside';
-    if (role === 'region') return 'section';
-    if (role === 'textbox') return 'input';
-    if (role === 'button') return 'button';
-    if (role === 'link') return 'a';
-    if (role === 'select') return 'select';
+    if (role === 'body') {return 'body';}
+    if (role === 'main') {return 'main';}
+    if (role === 'banner') {return 'header';}
+    if (role === 'contentinfo') {return 'footer';}
+    if (role === 'complementary') {return 'aside';}
+    if (role === 'region') {return 'section';}
+    if (role === 'textbox') {return 'input';}
+    if (role === 'button') {return 'button';}
+    if (role === 'link') {return 'a';}
+    if (role === 'select') {return 'select';}
     return undefined;
 };
 
@@ -661,17 +540,16 @@ const nthOfTypeIndex = (
     let index = 0;
     for (const sibling of siblings) {
         const siblingNode = snapshot.nodeIndex[sibling.id];
-        if (!siblingNode) continue;
-        if (resolveElementTag(siblingNode) !== tag) continue;
+        if (resolveElementTag(siblingNode) !== tag) {continue;}
         index += 1;
-        if (sibling.id === currentId) return index;
+        if (sibling.id === currentId) {return index;}
     }
     return undefined;
 };
 
 const nthChildIndex = (siblings: SnapshotResult['root']['children'], currentId: string): number | undefined => {
     const idx = siblings.findIndex((sibling) => sibling.id === currentId);
-    if (idx < 0) return undefined;
+    if (idx < 0) {return undefined;}
     return idx + 1;
 };
 
@@ -685,21 +563,16 @@ const trimLeadingWildcardSegments = (segments: string[]): string[] => {
 
 const isStructuralDomNode = (node: SnapshotResult['root']): boolean => {
     const tag = normalizeTag(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (tag && !tag.startsWith('::')) return true;
+    if (tag && !tag.startsWith('::')) {return true;}
     const domId = (getNodeAttr(node, 'backendDOMNodeId') || '').trim();
-    if (domId) return true;
-    const role = normalizeTag(node.role);
-    return role === 'body';
+    if (domId) {return true;}
+    return normalizeTag(node.role) === 'body';
 };
 
-const normalizeTag = (value: string | undefined): string => (value || '').trim().toLowerCase();
-const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
-const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
-
 const withVisibilityConstraint = (selector: string, requireVisible: boolean | undefined): string => {
-    if (!requireVisible) return selector;
+    if (!requireVisible) {return selector;}
     const trimmed = selector.trim();
-    if (!trimmed || trimmed.includes(':visible')) return selector;
+    if (!trimmed || trimmed.includes(':visible')) {return selector;}
     return `${trimmed}:visible`;
 };
 
@@ -707,3 +580,7 @@ const isAbsoluteDomSelector = (selector: string): boolean => {
     const normalized = selector.trim().toLowerCase();
     return normalized.startsWith('html') || normalized.startsWith('body') || normalized.startsWith(':root');
 };
+
+const normalizeTag = (value: string | undefined): string => normalizeText(value)?.toLowerCase() || '';
+const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
+const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');

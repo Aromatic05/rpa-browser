@@ -19,9 +19,9 @@ if (!process.env.RPA_USER_DATA_DIR) {
 }
 
 const actionLog = getLogger('action');
-const log = (...args: unknown[]) => actionLog.info('[RPA:mcp]', ...args);
-const logNotice = (...args: unknown[]) => actionLog.warning('[RPA:mcp]', ...args);
-const logError = (...args: unknown[]) => actionLog.error('[RPA:mcp]', ...args);
+const log = (...args: unknown[]) => { actionLog.info('[RPA:mcp]', ...args); };
+const logNotice = (...args: unknown[]) => { actionLog.warning('[RPA:mcp]', ...args); };
+const logError = (...args: unknown[]) => { actionLog.error('[RPA:mcp]', ...args); };
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -33,8 +33,6 @@ const contextManager = createContextManager({
         void pageRegistry.bindPage(page);
     },
 });
-
-let runtimeRegistry: ReturnType<typeof createRuntimeRegistry>;
 
 const config = getRunnerConfig();
 initLogger(config);
@@ -77,9 +75,9 @@ const pageRegistry = createPageRegistry({
             runtimeRegistry.bindPage(page, token);
         }
     },
-    onTokenClosed: (token) => cleanupRecording(recordingState, token),
+    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
-runtimeRegistry = createRuntimeRegistry({
+const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
@@ -106,7 +104,7 @@ if (hotReloadEnabled) {
     logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
 }
 
-(async () => {
+void (async () => {
     try {
         await contextManager.getContext();
         logNotice('Playwright Chromium launched with extension.');

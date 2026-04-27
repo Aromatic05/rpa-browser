@@ -3,7 +3,7 @@ import type { ToolsBuildContext } from './context';
 
 export const createTabsTools = (base: ToolsBuildContext) => ({
     'trace.tabs.create': async (args: { workspaceId: WorkspaceId; url?: string; timeout?: number }) =>
-        base.run('trace.tabs.create', args, async () => {
+        await base.run('trace.tabs.create', args, async () => {
             if (!base.opts.pageRegistry || !base.opts.workspaceId) {
                 throw new Error('missing page registry');
             }
@@ -19,7 +19,7 @@ export const createTabsTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.tabs.switch': async (args: { workspaceId: WorkspaceId; tabId: string }) =>
-        base.run('trace.tabs.switch', args, async () => {
+        await base.run('trace.tabs.switch', args, async () => {
             if (!base.opts.pageRegistry) {
                 throw new Error('missing page registry');
             }
@@ -37,7 +37,7 @@ export const createTabsTools = (base: ToolsBuildContext) => ({
         }),
 
     'trace.tabs.close': async (args: { workspaceId: WorkspaceId; tabId?: string }) =>
-        base.run('trace.tabs.close', args, async () => {
+        await base.run('trace.tabs.close', args, async () => {
             if (!base.opts.pageRegistry || !base.opts.workspaceId) {
                 throw new Error('missing page registry');
             }

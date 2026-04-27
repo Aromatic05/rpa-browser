@@ -9,7 +9,7 @@
 
 另外：
 
-- `mock/`：本地页面夹具。
+- `mock/`：本地 workspace 夹具（`ant-app` + `element-app`）。
 - `agent/src/demo/*`：本地 MCP 面板服务。
 - `agent/src/mcp/*`：MCP HTTP(SSE) 服务。
 
@@ -26,7 +26,34 @@
 - Step 统一入口：`agent/src/runner/run_steps.ts`
 - Step 执行器：`agent/src/runner/steps/executors/*`
 - Trace 原子层：`agent/src/runner/trace/*`
+- Checkpoint 模板运行时：`agent/src/runner/checkpoint/runtime.ts`
 - 运行时绑定：`agent/src/runtime/*`
+
+Checkpoint 在当前版本支持两种路径：
+
+- recovery：失败后匹配 `kind=recovery` checkpoint 执行恢复内容
+- procedure：通过 `browser.checkpoint` 显式调用模板，执行 `prepare/content/output` 并导出结构化 output
+
+## Snapshot Entity Pipeline
+
+Snapshot 的实体相关主链路为：
+
+1. `detectStructure`
+2. `buildStructureEntityIndex`
+3. `applyBusinessEntityRules`
+4. `buildLocatorIndex`
+5. `buildFinalEntityView`（session compose 阶段）
+
+约束：
+
+- 通用结构识别只在 `buildStructureEntityIndex` 做一次。
+- 业务规则产物通过 `BusinessEntityOverlay` 叠加，不污染通用 `EntityIndex`。
+- checkpoint / resolve 只消费最终视图与 overlay，不直接改动 runSteps 主循环。
+
+规则与样例沉淀目录：
+
+- 规则包：`agent/.artifacts/entity_rules/profiles/*`
+- 文档：`docs/Entity/*`
 
 ## WS（extension -> agent）
 
@@ -49,3 +76,23 @@
 - 开发模式 watcher：`agent/src/runner/hotreload/plugin_host.ts`
 
 `dev:hot` 与 `mcp:hot` 会自动启动 bundle watcher。
+
+## Target 解析协议
+
+目标型 step 的协议边界固定为三层：
+
+- `args`：业务参数（`id` / `selector` / value 等）
+- `meta`：来源、时序、workspace/tab 元信息
+- `resolve`：目标解析辅助信息（`hint` + `policy`）
+
+执行链路：
+
+1. executor 收集 `args.id` / `args.selector` / `step.resolve.hint`
+2. 调用 `resolveTarget(...)` 收敛为最终 `selector`
+3. trace 仅接收 `selector` 执行，不承担 id/hint/replay 语义
+
+约束：
+
+- 不保留 `A11yHint` 作为公开 Step 协议字段
+- replay 不再通过全局 stepId sidecar 隐式读取增强信息
+- replay 必须在构造 step 时显式写入 `step.resolve`

@@ -19,6 +19,17 @@ type MinimalA11yNode = {
     children?: MinimalA11yNode[];
 };
 
+type SnapshotAccessibilityNode = {
+    role?: unknown;
+    name?: unknown;
+    children?: unknown;
+};
+
+const asSnapshotNode = (value: unknown): SnapshotAccessibilityNode | null =>
+    value && typeof value === 'object' ? value : null;
+const isSnapshotFn = (value: unknown): value is (options: { interestingOnly: boolean }) => Promise<unknown> =>
+    typeof value === 'function';
+
 export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11ySnapshotNode | null> => {
     // 优先 CDP：保留 backendDOMNodeId，实现与 DOM 树的稳定对齐。
     const targetCache: TraceCache = cache || {};
@@ -31,7 +42,7 @@ export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11yS
         try {
             await cdp.send('Accessibility.enable');
             const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-            const tree = buildA11yTreeFromCdp(nodes as CdpAXNode[]);
+            const tree = buildA11yTreeFromCdp(nodes);
             return cacheA11ySnapshot(targetCache, JSON.stringify(tree));
         } finally {
             await cdp.detach().catch(() => undefined);
@@ -41,12 +52,21 @@ export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11yS
     }
 
     try {
-        const snapshot = await (page as any).accessibility?.snapshot?.({
-            interestingOnly: false,
-        });
+        const pageRecord = page as unknown as Record<string, unknown>;
+        const accessibility = pageRecord.accessibility;
+        const snapshotFn =
+            accessibility && typeof accessibility === 'object'
+                ? (accessibility as Record<string, unknown>).snapshot
+                : undefined;
+        const snapshot =
+            isSnapshotFn(snapshotFn)
+                ? await snapshotFn({
+                      interestingOnly: false,
+                  })
+                : null;
         if (snapshot) {
             const normalized = normalizeFromSnapshot(snapshot);
-            if (!normalized) return null;
+            if (!normalized) {return null;}
             return cacheA11ySnapshot(targetCache, JSON.stringify(normalized));
         }
     } catch {
@@ -55,13 +75,14 @@ export const getA11yTree = async (page: Page, cache?: TraceCache): Promise<A11yS
     return null;
 };
 
-const normalizeFromSnapshot = (node: any): MinimalA11yNode | null => {
-    if (!node || typeof node !== 'object') return null;
-    const role = typeof node.role === 'string' ? node.role : undefined;
-    const name = typeof node.name === 'string' ? node.name : undefined;
-    const children = Array.isArray(node.children)
-        ? node.children
-              .map((child: any) => normalizeFromSnapshot(child))
+const normalizeFromSnapshot = (node: unknown): MinimalA11yNode | null => {
+    const source = asSnapshotNode(node);
+    if (!source) {return null;}
+    const role = typeof source.role === 'string' ? source.role : undefined;
+    const name = typeof source.name === 'string' ? source.name : undefined;
+    const children = Array.isArray(source.children)
+        ? source.children
+              .map((child: unknown) => normalizeFromSnapshot(child))
               .filter((child: MinimalA11yNode | null): child is MinimalA11yNode => Boolean(child))
         : [];
     return {
@@ -80,13 +101,13 @@ const buildA11yTreeFromCdp = (nodes: CdpAXNode[]): MinimalA11yNode => {
     const root =
         nodes.find((node) => !node.parentId && !node.ignored) ||
         nodes.find((node) => !node.parentId) ||
-        nodes[0];
+        nodes.at(0);
 
     const visited = new Set<string>();
     const walk = (id: string): MinimalA11yNode | null => {
-        if (visited.has(id)) return null;
+        if (visited.has(id)) {return null;}
         const node = map.get(id);
-        if (!node) return null;
+        if (!node) {return null;}
         visited.add(id);
 
         const children = (node.childIds || [])
@@ -101,5 +122,6 @@ const buildA11yTreeFromCdp = (nodes: CdpAXNode[]): MinimalA11yNode => {
         };
     };
 
-    return root ? walk(root.nodeId) || { role: 'document' } : { role: 'document' };
+    if (!root) {return { role: 'document' };}
+    return walk(root.nodeId) || { role: 'document' };
 };

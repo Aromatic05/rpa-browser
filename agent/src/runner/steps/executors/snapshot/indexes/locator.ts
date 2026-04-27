@@ -14,9 +14,9 @@ export const buildLocatorIndex = (input: BuildLocatorIndexInput): LocatorIndex =
 
     const locatorIndex: LocatorIndex = {};
     walk(root, (node) => {
-        if (!isLocatorTarget(node)) return;
+        if (!isLocatorTarget(node)) {return;}
         const primaryDomId = normalizeText(getNodeAttr(node, 'backendDOMNodeId'));
-        if (!primaryDomId) return;
+        if (!primaryDomId) {return;}
 
         const scopeEntity = resolveScopeEntity(node, parentById, entityIndex);
         const direct = buildDirectLocator(node, parentById);
@@ -98,7 +98,7 @@ const pickScopeRef = (
 
     for (const ref of refs) {
         const entity = entities[ref.entityId];
-        if (!entity) continue;
+        if (!entity) {continue;}
         const nextScore = scoreScopeRef(ref, entity);
         if (nextScore > score) {
             score = nextScore;
@@ -111,10 +111,10 @@ const pickScopeRef = (
 
 const scoreScopeRef = (ref: NodeEntityRef, entity: EntityRecord): number => {
     let score = 0;
-    if (entity.type === 'region') score += 5;
-    if (ref.role === 'container') score += 3;
-    if (ref.role === 'item') score += 2;
-    if (ref.role === 'descendant') score += 1;
+    if (entity.type === 'region') {score += 5;}
+    if (ref.role === 'container') {score += 3;}
+    if (ref.role === 'item') {score += 2;}
+    if (ref.role === 'descendant') {score += 1;}
     return score;
 };
 
@@ -204,8 +204,8 @@ const buildDirectLocator = (
 const isLocatorTarget = (node: UnifiedNode): boolean => {
     const role = normalizeRole(node.role);
     const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (LOCATOR_TARGET_ROLES.has(role)) return true;
-    if (LOCATOR_TARGET_TAGS.has(tag)) return true;
+    if (LOCATOR_TARGET_ROLES.has(role)) {return true;}
+    if (LOCATOR_TARGET_TAGS.has(tag)) {return true;}
     return false;
 };
 
@@ -229,9 +229,9 @@ const escapeCssId = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, 
 const escapeSelectorText = (value: string): string => value.replace(/"/g, '\\"');
 const isNavigableHref = (href: string): boolean => {
     const normalized = href.trim().toLowerCase();
-    if (!normalized) return false;
-    if (normalized === '#') return false;
-    if (normalized.startsWith('javascript:')) return false;
+    if (!normalized) {return false;}
+    if (normalized === '#') {return false;}
+    if (normalized.startsWith('javascript:')) {return false;}
     return true;
 };
 
@@ -241,14 +241,14 @@ const buildScopedTextSelector = (
     label: string,
 ): string | undefined => {
     const normalizedLabel = normalizeText(label);
-    if (!normalizedLabel) return undefined;
+    if (!normalizedLabel) {return undefined;}
 
     const nodeTag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     const leafSelector = nodeTag || roleToTagSelector(node.role);
     const useLeafText = supportsLeafTextSelector(node);
     const leafTarget = useLeafText ? `${leafSelector}:has-text("${escapeSelectorText(normalizedLabel)}")` : leafSelector;
     const labelWrapped = buildLabelWrappedSelector(node, parentById, normalizedLabel, leafSelector);
-    if (labelWrapped) return labelWrapped;
+    if (labelWrapped) {return labelWrapped;}
 
     let cursor = parentById.get(node.id) || null;
     while (cursor) {
@@ -277,22 +277,22 @@ const buildScopedTextSelector = (
 const supportsLeafTextSelector = (node: UnifiedNode): boolean => {
     const role = normalizeRole(node.role);
     const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return false;
-    if (role === 'textbox' || role === 'combobox' || role === 'checkbox' || role === 'radio' || role === 'spinbutton') return false;
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') {return false;}
+    if (role === 'textbox' || role === 'combobox' || role === 'checkbox' || role === 'radio' || role === 'spinbutton') {return false;}
     return true;
 };
 
 const resolveNodeLabel = (node: UnifiedNode, parentById: Map<string, UnifiedNode | null>): string => {
     const fromAncestor = deriveLabelFromAncestor(node, parentById);
-    if (shouldPreferAncestorLabel(node) && fromAncestor) return fromAncestor;
+    if (shouldPreferAncestorLabel(node) && fromAncestor) {return fromAncestor;}
     const own = normalizeText(node.name);
-    if (own) return own;
+    if (own) {return own;}
     return fromAncestor || '';
 };
 
 const shouldPreferAncestorLabel = (node: UnifiedNode): boolean => {
     const role = normalizeRole(node.role);
-    if (FORM_FIELD_ROLES.has(role)) return true;
+    if (FORM_FIELD_ROLES.has(role)) {return true;}
     const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
     return tag === 'input' || tag === 'textarea' || tag === 'select';
 };
@@ -304,11 +304,11 @@ const deriveLabelFromAncestor = (node: UnifiedNode, parentById: Map<string, Unif
         const tag = normalizeRole(getNodeAttr(cursor, 'tag') || getNodeAttr(cursor, 'tagName'));
         if (role === 'label' || tag === 'label') {
             const fromName = normalizeText(cursor.name || getNodeContent(cursor));
-            if (fromName) return fromName;
+            if (fromName) {return fromName;}
             for (const child of cursor.children) {
-                if (child.id === node.id) continue;
+                if (child.id === node.id) {continue;}
                 const text = normalizeText(child.name || getNodeContent(child));
-                if (text) return text;
+                if (text) {return text;}
             }
             return undefined;
         }
@@ -323,20 +323,20 @@ const buildLabelWrappedSelector = (
     label: string,
     leafSelector: string,
 ): string | undefined => {
-    if (supportsLeafTextSelector(node)) return undefined;
+    if (supportsLeafTextSelector(node)) {return undefined;}
     const parent = parentById.get(node.id);
-    if (!parent) return undefined;
+    if (!parent) {return undefined;}
     const role = normalizeRole(parent.role);
     const tag = normalizeRole(getNodeAttr(parent, 'tag') || getNodeAttr(parent, 'tagName'));
-    if (role !== 'label' && tag !== 'label') return undefined;
+    if (role !== 'label' && tag !== 'label') {return undefined;}
     return `label:has-text("${escapeSelectorText(label)}") ${leafSelector}`;
 };
 
 const roleToTagSelector = (role: string): string => {
     const normalized = normalizeRole(role);
-    if (normalized === 'link') return 'a';
-    if (normalized === 'button') return 'button';
-    if (normalized === 'textbox') return 'input,textarea';
+    if (normalized === 'link') {return 'a';}
+    if (normalized === 'button') {return 'button';}
+    if (normalized === 'textbox') {return 'input,textarea';}
     return '*';
 };
 
@@ -356,12 +356,12 @@ const pickRowKeyText = (rowNode: UnifiedNode): string | undefined => {
     let firstCellText: string | undefined;
 
     walk(rowNode, (node) => {
-        if (matchedOrderNo) return;
+        if (matchedOrderNo) {return;}
         const role = normalizeRole(node.role);
-        if (role !== 'cell' && role !== 'gridcell') return;
+        if (role !== 'cell' && role !== 'gridcell') {return;}
         const text = normalizeText(node.name || getNodeContent(node));
-        if (!text) return;
-        if (!firstCellText) firstCellText = text;
+        if (!text) {return;}
+        if (!firstCellText) {firstCellText = text;}
         if (/^U\\d{6,}$/.test(text)) {
             matchedOrderNo = text;
         }

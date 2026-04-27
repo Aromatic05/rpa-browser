@@ -98,7 +98,7 @@ export const buildStructureCandidates = (
 
     for (const region of input.regions) {
         const node = context.nodeById.get(region.nodeId);
-        if (!node) continue;
+        if (!node) {continue;}
         const signal = context.signalById.get(region.nodeId) || region.signal;
         const depth = context.depthById.get(region.nodeId) || 0;
         const features = scoreRegionFeatures(region, node, signal, depth);
@@ -119,7 +119,7 @@ export const buildStructureCandidates = (
 
     for (const group of input.groups) {
         const node = context.nodeById.get(group.containerId);
-        if (!node) continue;
+        if (!node) {continue;}
         const containerSignal = context.signalById.get(group.containerId);
         const depth = context.depthById.get(group.containerId) || 0;
         const signal: CandidateSignal = {
@@ -198,7 +198,7 @@ const runSelection = (
             }
         }
 
-        if (dropped) continue;
+        if (dropped) {continue;}
         kept.push(candidate);
     }
 
@@ -293,18 +293,16 @@ const scoreRegionFeatures = (
             (region.name ? 0.16 : 0),
     );
 
-    let dominantStructureScore = 0;
-    if (region.kind === 'table') {
-        dominantStructureScore = clamp01(safeRatio(signal.row, signal.size) * 4 + (signal.row >= 2 ? 0.25 : 0));
-    } else if (region.kind === 'list') {
-        dominantStructureScore = clamp01(safeRatio(signal.listItem, signal.size) * 3.5 + (signal.listItem >= 4 ? 0.2 : 0));
-    } else if (region.kind === 'form') {
-        dominantStructureScore = clamp01(safeRatio(signal.field, signal.size) * 4 + (signal.field >= 2 ? 0.25 : 0));
-    } else if (region.kind === 'panel') {
-        dominantStructureScore = clamp01(structuralDensity * 1.4 + interactiveDensity * 0.8);
-    } else {
-        dominantStructureScore = clamp01(interactiveDensity * 2.2 + explicitness * 0.2);
-    }
+    const dominantStructureScore =
+        region.kind === 'table'
+            ? clamp01(safeRatio(signal.row, signal.size) * 4 + (signal.row >= 2 ? 0.25 : 0))
+            : region.kind === 'list'
+              ? clamp01(safeRatio(signal.listItem, signal.size) * 3.5 + (signal.listItem >= 4 ? 0.2 : 0))
+              : region.kind === 'form'
+                ? clamp01(safeRatio(signal.field, signal.size) * 4 + (signal.field >= 2 ? 0.25 : 0))
+                : region.kind === 'panel'
+                  ? clamp01(structuralDensity * 1.4 + interactiveDensity * 0.8)
+                  : clamp01(interactiveDensity * 2.2 + explicitness * 0.2);
 
     const interactionScore = clamp01(interactiveDensity * 2.5 + safeRatio(signal.field, signal.size) * 1.1);
 
@@ -380,14 +378,12 @@ const scoreGroupFeatures = (
             (group.name ? 0.14 : 0),
     );
 
-    let dominantStructureScore = 0;
-    if (group.kind === 'table') {
-        dominantStructureScore = clamp01(stableRate * 0.48 + Math.min(1, slotCount / 4) * 0.26 + Math.min(1, itemCount / 8) * 0.26);
-    } else if (group.kind === 'kv') {
-        dominantStructureScore = clamp01((slotCount === 2 ? 0.45 : 0) + keyCoverage * 0.28 + keyUniqueness * 0.27);
-    } else {
-        dominantStructureScore = clamp01(stableRate * 0.44 + keyCoverage * 0.26 + Math.min(1, itemCount / 8) * 0.3);
-    }
+    const dominantStructureScore =
+        group.kind === 'table'
+            ? clamp01(stableRate * 0.48 + Math.min(1, slotCount / 4) * 0.26 + Math.min(1, itemCount / 8) * 0.26)
+            : group.kind === 'kv'
+              ? clamp01((slotCount === 2 ? 0.45 : 0) + keyCoverage * 0.28 + keyUniqueness * 0.27)
+              : clamp01(stableRate * 0.44 + keyCoverage * 0.26 + Math.min(1, itemCount / 8) * 0.3);
 
     const interactionScore = clamp01(
         (group.signal.interactiveItemRate || 0) * 0.65 +
@@ -512,15 +508,15 @@ const resolveConflict = (
             const region = candidate.source === 'region' ? candidate : existing.source === 'region' ? existing : undefined;
             const group = candidate.source === 'group' ? candidate : existing.source === 'group' ? existing : undefined;
             if (region && group && region.evidence.explicitness >= group.evidence.explicitness - 0.05) {
-                if (candidate === region) return { dropExisting: true, note: 'same-node-table-region-over-group' };
+                if (candidate === region) {return { dropExisting: true, note: 'same-node-table-region-over-group' };}
                 return { dropCandidate: true, note: 'same-node-table-group-under-region' };
             }
         }
         if (candidate.source === 'group' && existing.source === 'region' && candidate.kind === existing.kind) {
-            if (candidate.score >= existing.score - 0.15) return { dropExisting: true, note: 'same-node-group-over-region-score' };
+            if (candidate.score >= existing.score - 0.15) {return { dropExisting: true, note: 'same-node-group-over-region-score' };}
         }
         if (existing.source === 'group' && candidate.source === 'region' && candidate.kind === existing.kind) {
-            if (existing.score >= candidate.score - 0.15) return { dropCandidate: true, note: 'same-node-region-under-group-score' };
+            if (existing.score >= candidate.score - 0.15) {return { dropCandidate: true, note: 'same-node-region-under-group-score' };}
         }
         return candidate.score >= existing.score
             ? { dropExisting: true, note: 'same-node-higher-score-kept' }
@@ -545,11 +541,11 @@ const resolveConflict = (
 
     if (outer.kind === inner.kind) {
         if (outer.kind === 'table' && isTableSectionCandidate(inner, context) && !isTableSectionCandidate(outer, context)) {
-            if (outer === candidate) return { dropExisting: true, note: 'table-section-under-table' };
+            if (outer === candidate) {return { dropExisting: true, note: 'table-section-under-table' };}
             return { dropCandidate: true, note: 'table-section-preferred-over-ancestor-section' };
         }
         if (SAME_KIND_NEST_DROP.has(outer.kind)) {
-            if (outer === candidate) return { dropCandidate: true, note: 'same-kind-nested-drop-ancestor' };
+            if (outer === candidate) {return { dropCandidate: true, note: 'same-kind-nested-drop-ancestor' };}
             return { dropExisting: true, note: 'same-kind-nested-drop-existing-ancestor' };
         }
         if (outer === candidate) {
@@ -564,32 +560,32 @@ const resolveConflict = (
     }
 
     if (outer.kind === 'panel' && inner.kind !== 'panel') {
-        if (outer === candidate) return { dropCandidate: true, note: 'panel-vs-structured-drop-panel' };
+        if (outer === candidate) {return { dropCandidate: true, note: 'panel-vs-structured-drop-panel' };}
         return { dropExisting: true, note: 'panel-vs-structured-drop-existing-panel' };
     }
 
     if (outer.kind === 'list' && (inner.kind === 'table' || inner.kind === 'kv')) {
-        if (outer === candidate) return { dropCandidate: true, note: 'list-vs-table-drop-list' };
+        if (outer === candidate) {return { dropCandidate: true, note: 'list-vs-table-drop-list' };}
         return { dropExisting: true, note: 'list-vs-table-drop-existing-list' };
     }
 
     if (outer.kind === 'table' && inner.kind === 'list' && outer.features.docNoisePenalty >= 0.4) {
-        if (outer === candidate) return { dropCandidate: true, note: 'noisy-table-vs-list-drop-table' };
+        if (outer === candidate) {return { dropCandidate: true, note: 'noisy-table-vs-list-drop-table' };}
         return { dropExisting: true, note: 'noisy-table-vs-list-drop-existing-table' };
     }
 
     if (outer.source === 'group' && inner.source === 'group' && isDocumentCandidate(outer) && inner.features.dominantStructureScore >= 0.35) {
-        if (outer === candidate) return { dropCandidate: true, note: 'group-doc-vs-structured-drop-doc-group' };
+        if (outer === candidate) {return { dropCandidate: true, note: 'group-doc-vs-structured-drop-doc-group' };}
         return { dropExisting: true, note: 'group-doc-vs-structured-drop-existing-doc-group' };
     }
 
     if (outer.kind === 'table' && inner.kind === 'table') {
-        if (outer === candidate) return { dropCandidate: true, note: 'table-vs-table-descendant-preferred' };
+        if (outer === candidate) {return { dropCandidate: true, note: 'table-vs-table-descendant-preferred' };}
         return { dropExisting: true, note: 'table-vs-table-drop-existing-ancestor' };
     }
 
     if (isDocumentCandidate(outer) && inner.score >= outer.score - 0.4) {
-        if (outer === candidate) return { dropCandidate: true, note: 'doc-noise-under-inner' };
+        if (outer === candidate) {return { dropCandidate: true, note: 'doc-noise-under-inner' };}
         return { dropExisting: true, note: 'doc-noise-existing-under-candidate' };
     }
 
@@ -602,9 +598,9 @@ const resolveConflict = (
 const pickByKindPriority = (candidate: StructureCandidate, existing: StructureCandidate): ConflictDecision => {
     const candidatePriority = kindPriority(candidate.kind);
     const existingPriority = kindPriority(existing.kind);
-    if (candidatePriority > existingPriority) return { dropExisting: true };
-    if (candidatePriority < existingPriority) return { dropCandidate: true };
-    if (candidate.score >= existing.score) return { dropExisting: true };
+    if (candidatePriority > existingPriority) {return { dropExisting: true };}
+    if (candidatePriority < existingPriority) {return { dropCandidate: true };}
+    if (candidate.score >= existing.score) {return { dropExisting: true };}
     return { dropCandidate: true };
 };
 
@@ -658,13 +654,13 @@ const resolveAdaptiveLimits = (
     };
 
     const strongTableCandidates = candidates.filter((candidate) => {
-        if (candidate.kind !== 'table') return false;
-        if (candidate.features.docNoisePenalty >= 0.68) return false;
-        if (candidate.features.dominantStructureScore < 0.28) return false;
-        if (candidate.features.confidence < 0.42) return false;
-        if (candidate.evidence.explicitRole || candidate.evidence.explicitTag) return true;
-        if ((candidate.signal.row || 0) >= 2) return true;
-        if ((candidate.signal.itemCount || 0) >= 3 && (candidate.signal.slotCount || 0) >= 2) return true;
+        if (candidate.kind !== 'table') {return false;}
+        if (candidate.features.docNoisePenalty >= 0.68) {return false;}
+        if (candidate.features.dominantStructureScore < 0.28) {return false;}
+        if (candidate.features.confidence < 0.42) {return false;}
+        if (candidate.evidence.explicitRole || candidate.evidence.explicitTag) {return true;}
+        if ((candidate.signal.row || 0) >= 2) {return true;}
+        if ((candidate.signal.itemCount || 0) >= 3 && (candidate.signal.slotCount || 0) >= 2) {return true;}
         return false;
     });
 
@@ -730,7 +726,7 @@ const applyPenalty = (
 };
 
 const compareCandidatePriority = (left: StructureCandidate, right: StructureCandidate): number => {
-    if (right.score !== left.score) return right.score - left.score;
+    if (right.score !== left.score) {return right.score - left.score;}
     if (right.features.confidence !== left.features.confidence) {
         return right.features.confidence - left.features.confidence;
     }
@@ -742,16 +738,16 @@ const compareCandidatePriority = (left: StructureCandidate, right: StructureCand
 
 const passesScoreThreshold = (candidate: StructureCandidate): boolean => {
     const threshold = MIN_SCORE_BY_KIND[candidate.kind] || 1.3;
-    if (candidate.score < threshold) return false;
+    if (candidate.score < threshold) {return false;}
     if (candidate.kind === 'list') {
-        if (candidate.features.confidence < 0.38) return false;
+        if (candidate.features.confidence < 0.38) {return false;}
         if (candidate.source === 'region' && !candidate.evidence.explicitRole && !candidate.evidence.explicitTag) {
-            if ((candidate.signal.listItem || 0) < 5) return false;
+            if ((candidate.signal.listItem || 0) < 5) {return false;}
         }
     }
     if (candidate.kind === 'panel') {
-        if (!candidate.evidence.hasName && candidate.features.confidence < 0.5) return false;
-        if (candidate.features.docNoisePenalty >= 0.65 && candidate.features.dominantStructureScore < 0.35) return false;
+        if (!candidate.evidence.hasName && candidate.features.confidence < 0.5) {return false;}
+        if (candidate.features.docNoisePenalty >= 0.65 && candidate.features.dominantStructureScore < 0.35) {return false;}
     }
     return true;
 };
@@ -761,12 +757,12 @@ const isDocumentCandidate = (candidate: StructureCandidate): boolean => {
 };
 
 const isTableSectionCandidate = (candidate: StructureCandidate, context: TreeContext): boolean => {
-    if (candidate.kind !== 'table') return false;
+    if (candidate.kind !== 'table') {return false;}
     const node = context.nodeById.get(candidate.nodeId);
-    if (!node) return false;
+    if (!node) {return false;}
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (role === 'rowgroup') return true;
+    if (role === 'rowgroup') {return true;}
     return tag === 'tbody' || tag === 'thead' || tag === 'tfoot';
 };
 
@@ -785,12 +781,12 @@ const groupItemOverlap = (
     left: GroupDetection | undefined,
     right: GroupDetection | undefined,
 ): number => {
-    if (!left || !right) return 0;
-    if (left.itemIds.length === 0 || right.itemIds.length === 0) return 0;
+    if (!left || !right) {return 0;}
+    if (left.itemIds.length === 0 || right.itemIds.length === 0) {return 0;}
     const rightSet = new Set(right.itemIds);
     let intersect = 0;
     for (const itemId of left.itemIds) {
-        if (rightSet.has(itemId)) intersect += 1;
+        if (rightSet.has(itemId)) {intersect += 1;}
     }
     return intersect / Math.min(left.itemIds.length, right.itemIds.length);
 };
@@ -800,13 +796,13 @@ const kindPriority = (kind: EntityKind): number => {
 };
 
 const matchesKindSemantic = (kind: EntityKind, role: string, tag: string): boolean => {
-    if (kind === 'table') return role === 'table' || role === 'grid' || tag === 'table';
-    if (kind === 'list') return role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol' || tag === 'menu';
-    if (kind === 'form') return role === 'form' || tag === 'form';
-    if (kind === 'dialog') return role === 'dialog' || role === 'alertdialog';
-    if (kind === 'toolbar') return role === 'toolbar';
-    if (kind === 'panel') return PANEL_ROLES.has(role) || PANEL_TAGS.has(tag);
-    if (kind === 'kv') return role === 'table' || tag === 'dl' || tag === 'table';
+    if (kind === 'table') {return role === 'table' || role === 'grid' || tag === 'table';}
+    if (kind === 'list') {return role === 'list' || role === 'listbox' || tag === 'ul' || tag === 'ol' || tag === 'menu';}
+    if (kind === 'form') {return role === 'form' || tag === 'form';}
+    if (kind === 'dialog') {return role === 'dialog' || role === 'alertdialog';}
+    if (kind === 'toolbar') {return role === 'toolbar';}
+    if (kind === 'panel') {return PANEL_ROLES.has(role) || PANEL_TAGS.has(tag);}
+    if (kind === 'kv') {return role === 'table' || tag === 'dl' || tag === 'table';}
     return false;
 };
 
@@ -815,21 +811,21 @@ const calcExplicitness = (explicitRole: boolean, explicitTag: boolean, explicitC
 };
 
 const clamp01 = (value: number): number => {
-    if (value <= 0) return 0;
-    if (value >= 1) return 1;
+    if (value <= 0) {return 0;}
+    if (value >= 1) {return 1;}
     return value;
 };
 
 const safeRatio = (numerator: number, denominator: number): number => {
-    if (!denominator || denominator <= 0) return 0;
+    if (!denominator || denominator <= 0) {return 0;}
     return numerator / denominator;
 };
 
 const normalizeLower = (value: string | undefined): string => (value || '').trim().toLowerCase();
 
 const isDocumentContainer = (role: string, tag: string): boolean => {
-    if (DOC_CONTAINER_ROLES.has(role)) return true;
-    if (DOC_CONTAINER_TAGS.has(tag)) return true;
+    if (DOC_CONTAINER_ROLES.has(role)) {return true;}
+    if (DOC_CONTAINER_TAGS.has(tag)) {return true;}
     return false;
 };
 
@@ -854,9 +850,9 @@ const isHeadingNode = (node: UnifiedNode): boolean => {
 const isProseNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (PROSE_ROLES.has(role) || PROSE_TAGS.has(tag)) return true;
+    if (PROSE_ROLES.has(role) || PROSE_TAGS.has(tag)) {return true;}
     const text = normalizeText(node.name || getNodeContent(node));
-    if (!text) return false;
+    if (!text) {return false;}
     return text.length >= 56 && text.split(' ').length >= 10;
 };
 
@@ -869,9 +865,9 @@ const isFieldNode = (node: UnifiedNode): boolean => {
 const isInteractiveNode = (node: UnifiedNode): boolean => {
     const role = normalizeLower(node.role);
     const tag = normalizeLower(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) return true;
-    if (node.target) return true;
-    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) return true;
+    if (INTERACTIVE_ROLES.has(role) || INTERACTIVE_TAGS.has(tag)) {return true;}
+    if (node.target) {return true;}
+    if (getNodeAttr(node, 'onclick') || getNodeAttr(node, 'href') || getNodeAttr(node, 'tabindex')) {return true;}
     return false;
 };
 
@@ -895,8 +891,8 @@ const MIN_SCORE_BY_KIND: Record<EntityKind, number> = {
     panel: 1.9,
 };
 const clampRange = (value: number, min: number, max: number): number => {
-    if (value <= min) return min;
-    if (value >= max) return max;
+    if (value <= min) {return min;}
+    if (value >= max) {return max;}
     return value;
 };
 

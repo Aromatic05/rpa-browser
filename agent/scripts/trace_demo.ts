@@ -1,14 +1,14 @@
 import { chromium } from 'playwright';
 import { ConsoleSink, MemorySink, createTraceTools } from '../src/runner/trace';
 
-const START_URL = process.env.RPA_START_URL || 'http://localhost:4173/pages/start.html#beta';
+const START_URL = process.env.RPA_START_URL || 'http://127.0.0.1:5173/entity-rules';
 
 const pickFirstByRole = (tree: any, role: string): string | null => {
-    if (!tree) return null;
-    if (tree.role === role && tree.id) return tree.id;
+    if (!tree) {return null;}
+    if (tree.role === role && tree.id) {return tree.id;}
     for (const child of tree.children || []) {
         const found = pickFirstByRole(child, role);
-        if (found) return found;
+        if (found) {return found;}
     }
     return null;
 };

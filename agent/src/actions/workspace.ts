@@ -3,9 +3,9 @@
  */
 
 import crypto from 'node:crypto';
-import type { Action, ActionScope } from './action_protocol';
+import type { Action } from './action_protocol';
 import { failedAction, replyAction } from './action_protocol';
-import type { ActionHandler } from './execute';
+import type { ActionContext, ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
 import { ACTION_TYPES } from './action_types';
 import {
@@ -39,19 +39,25 @@ const logPageEvent = (event: string, payload: Record<string, unknown>) => {
     actionLog('[page]', event, payload);
 };
 
+const resolveSwitchTabIdArg = (step: StepUnion | undefined): string | null => {
+    if (step?.name !== 'browser.switch_tab') {return null;}
+    const args = step.args as Record<string, unknown>;
+    return typeof args.tab_id === 'string' ? args.tab_id : null;
+};
+
 const resolveWorkspaceId = (
-    ctx: { pageRegistry: any },
-    action: { scope?: ActionScope },
+    ctx: ActionContext,
+    action: Action,
     argWorkspaceId?: string,
-) => {
-    if (argWorkspaceId) return argWorkspaceId;
-    if (action.scope?.workspaceId) return action.scope.workspaceId;
-    const active = ctx.pageRegistry.getActiveWorkspace?.();
-    return active?.workspaceId || null;
+) : string | null => {
+    if (argWorkspaceId) {return argWorkspaceId;}
+    if (action.scope?.workspaceId) {return action.scope.workspaceId;}
+    const active = ctx.pageRegistry.getActiveWorkspace();
+    return active?.workspaceId ?? null;
 };
 
 const bringWorkspaceTabToFront = async (
-    ctx: { pageRegistry: any },
+    ctx: ActionContext,
     scope: { workspaceId: string; tabId?: string },
 ) => {
     try {
@@ -63,23 +69,19 @@ const bringWorkspaceTabToFront = async (
 };
 
 const ensureRecorderForTabIfRecording = async (
-    ctx: {
-        pageRegistry: any;
-        recordingState?: any;
-        navDedupeWindowMs: number;
-    },
+    ctx: ActionContext,
     params: {
         workspaceId: string;
         tabId: string;
         tabToken: string | null;
     },
 ) => {
-    if (!ctx.recordingState || !params.tabToken) return;
-    const recordingTokens = Array.from(ctx.recordingState.recordingEnabled || []);
-    if (recordingTokens.length === 0) return;
+    if (!params.tabToken) {return;}
+    const recordingTokens = Array.from(ctx.recordingState.recordingEnabled);
+    if (recordingTokens.length === 0) {return;}
     const shouldInstall =
         ctx.recordingState.recordingEnabled.has(params.tabToken) || recordingTokens.length === 1;
-    if (!shouldInstall) return;
+    if (!shouldInstall) {return;}
     try {
         const page = await ctx.pageRegistry.resolvePage({ workspaceId: params.workspaceId, tabId: params.tabId });
         await ensureRecorder(ctx.recordingState, page, params.tabToken, ctx.navDedupeWindowMs);
@@ -94,11 +96,11 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'workspace.list': async (ctx, action) => {
         const list = ctx.pageRegistry.listWorkspaces();
-        const active = ctx.pageRegistry.getActiveWorkspace?.();
-        return replyAction(action, { workspaces: list, activeWorkspaceId: active?.workspaceId || null });
+        const active = ctx.pageRegistry.getActiveWorkspace();
+        return replyAction(action, { workspaces: list, activeWorkspaceId: active?.workspaceId ?? null });
     },
     'workspace.create': async (ctx, action) => {
-        const payload = (action.payload || {}) as WorkspaceCreatePayload;
+        const payload = (action.payload ?? {}) as WorkspaceCreatePayload;
         if (payload.workspaceId) {
             const created = ctx.pageRegistry.createWorkspaceShell(payload.workspaceId);
             return replyAction(action, { workspaceId: created.workspaceId, tabId: null, tabToken: null });
@@ -108,13 +110,13 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { workspaceId: created.workspaceId, tabId: created.tabId, tabToken });
     },
     'workspace.setActive': async (ctx, action) => {
-        const payload = (action.payload || {}) as WorkspaceSetActivePayload;
+        const payload = (action.payload ?? {}) as WorkspaceSetActivePayload;
         ctx.pageRegistry.setActiveWorkspace(payload.workspaceId);
         await bringWorkspaceTabToFront(ctx, { workspaceId: payload.workspaceId });
         return replyAction(action, { workspaceId: payload.workspaceId });
     },
     'workspace.save': async (ctx, action) => {
-        const payload = (action.payload || {}) as WorkspaceSavePayload;
+        const payload = (action.payload ?? {}) as WorkspaceSavePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
@@ -122,7 +124,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         ctx.log('workspace.save.start', { workspaceId, tabToken: ctx.tabToken });
         const tabs = await ctx.pageRegistry.listTabs(workspaceId);
         const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId });
-        const recordingToken = bundle.recordingToken || null;
+        const recordingToken = bundle.recordingToken;
         const snapshot = saveWorkspaceSnapshot(ctx.recordingState, {
             workspaceId,
             tabs: tabs.map((tab) => ({
@@ -160,7 +162,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         });
     },
     'workspace.restore': async (ctx, action) => {
-        const payload = (action.payload || {}) as WorkspaceRestorePayload;
+        const payload = (action.payload ?? {}) as WorkspaceRestorePayload;
         const sourceWorkspaceId = payload.workspaceId || action.scope?.workspaceId;
         if (!sourceWorkspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
@@ -168,7 +170,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         ctx.log('workspace.restore.start', { sourceWorkspaceId, tabToken: ctx.tabToken || null });
 
         const snapshot = getWorkspaceSnapshot(ctx.recordingState, sourceWorkspaceId);
-        if (!snapshot?.tabs?.length) {
+        if (!snapshot || snapshot.tabs.length === 0) {
             return failedAction(action, ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND, 'no saved workspace snapshot to restore');
         }
 
@@ -189,7 +191,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             tabId: created.tabId,
             url: first.url || '',
             title: first.title || '',
-            active: first.active !== false,
+            active: first.active,
             tabToken: ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: created.tabId }),
         });
 
@@ -204,35 +206,33 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 tabId,
                 url: tab.url || '',
                 title: tab.title || '',
-                active: !!tab.active,
+                active: tab.active,
                 tabToken: ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId }),
             });
         }
         const activeTab = restoredTabs.find((tab) => tab.active) || restoredTabs[0];
         ctx.pageRegistry.setActiveWorkspace(targetWorkspaceId);
-        if (activeTab) {
-            ctx.pageRegistry.setActiveTab(targetWorkspaceId, activeTab.tabId);
-            await bringWorkspaceTabToFront(ctx, { workspaceId: targetWorkspaceId, tabId: activeTab.tabId });
-        }
+        ctx.pageRegistry.setActiveTab(targetWorkspaceId, activeTab.tabId);
+        await bringWorkspaceTabToFront(ctx, { workspaceId: targetWorkspaceId, tabId: activeTab.tabId });
 
         let recordingToken: string | null = null;
-        const sourceSteps = snapshot.recording.steps || [];
+        const sourceSteps = snapshot.recording.steps;
         if (sourceSteps.length > 0) {
             recordingToken = crypto.randomUUID();
-            ctx.recordingState.recordings.set(recordingToken, [...(sourceSteps as StepUnion[])]);
+            ctx.recordingState.recordings.set(recordingToken, [...sourceSteps]);
             ctx.recordingState.recordingEnhancements.set(recordingToken, {
-                ...(snapshot.recording.enrichments || {}),
+                ...(snapshot.recording.enrichments ?? {}),
             });
         }
 
         if (recordingToken) {
             ctx.recordingState.workspaceLatestRecording.set(targetWorkspaceId, recordingToken);
-            const entry = activeTab || restoredTabs[0];
+            const entry = activeTab;
             ctx.recordingState.recordingManifests.set(recordingToken, {
                 recordingToken,
                 workspaceId: targetWorkspaceId,
-                entryTabRef: entry?.tabId,
-                entryUrl: entry?.url || snapshot.recording.manifest?.entryUrl,
+                entryTabRef: entry.tabId,
+                entryUrl: entry.url || snapshot.recording.manifest?.entryUrl,
                 startedAt: snapshot.recording.manifest?.startedAt || Date.now(),
                 tabs: restoredTabs.map((tab) => ({
                     tabToken: tab.tabToken,
@@ -254,16 +254,16 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 title: tab.title,
                 active: tab.active,
             })),
-            recordingToken: recordingToken || null,
-            steps: sourceSteps as StepUnion[],
+            recordingToken,
+            steps: sourceSteps,
             manifest: recordingToken ? ctx.recordingState.recordingManifests.get(recordingToken) : undefined,
-            enrichments: snapshot.recording.enrichments || undefined,
+            enrichments: snapshot.recording.enrichments ?? undefined,
         });
 
         ctx.log('workspace.restore.end', {
             sourceWorkspaceId,
             workspaceId: targetWorkspaceId,
-            recordingToken: recordingToken || null,
+            recordingToken,
             tabCount: savedSnapshot.tabs.length,
             stepCount: savedSnapshot.recording.steps.length,
             restoredAt: Date.now(),
@@ -281,17 +281,15 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             restored: true,
             sourceWorkspaceId,
             workspaceId: targetWorkspaceId,
-            tabId: activeTab?.tabId || created.tabId,
-            tabToken: activeTab
-                ? ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: activeTab.tabId })
-                : ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: created.tabId }),
-            recordingToken: recordingToken || null,
+            tabId: activeTab.tabId,
+            tabToken: ctx.pageRegistry.resolveTabToken({ workspaceId: targetWorkspaceId, tabId: activeTab.tabId }),
+            recordingToken,
             tabCount: savedSnapshot.tabs.length,
             stepCount: savedSnapshot.recording.steps.length,
         });
     },
     'tab.list': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabListPayload;
+        const payload = (action.payload ?? {}) as TabListPayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
@@ -300,7 +298,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { workspaceId, tabs });
     },
     'tab.create': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabCreatePayload;
+        const payload = (action.payload ?? {}) as TabCreatePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
@@ -309,14 +307,14 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const createdTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId, tabId });
         if (payload.startUrl) {
             const page = await ctx.pageRegistry.resolvePage({ workspaceId, tabId });
-            await page.goto(payload.startUrl, { waitUntil: payload.waitUntil || 'domcontentloaded' });
+            await page.goto(payload.startUrl, { waitUntil: payload.waitUntil ?? 'domcontentloaded' });
             await page.bringToFront();
         }
         logPageEvent('tab.create', { workspaceId, tabId, tabToken: createdTabToken, startUrl: payload.startUrl });
         return replyAction(action, { workspaceId, tabId, tabToken: createdTabToken });
     },
     'tab.close': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabClosePayload;
+        const payload = (action.payload ?? {}) as TabClosePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
@@ -326,7 +324,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { workspaceId, tabId: payload.tabId });
     },
     'tab.setActive': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabSetActivePayload;
+        const payload = (action.payload ?? {}) as TabSetActivePayload;
         const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceId);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
@@ -338,10 +336,10 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveTab(workspaceId, payload.tabId);
         await bringWorkspaceTabToFront(ctx, { workspaceId, tabId: payload.tabId });
         const isCrossTab = sourceScope.workspaceId === workspaceId && sourceScope.tabId !== payload.tabId;
-        const recordingTokens = Array.from(ctx.recordingState?.recordingEnabled || []);
-        if (isCrossTab && recordingTokens.length > 0 && ctx.recordingState) {
+        const recordingTokens = Array.from(ctx.recordingState.recordingEnabled);
+        if (isCrossTab && recordingTokens.length > 0) {
             const sourceRecording = ctx.recordingState.recordingEnabled.has(ctx.tabToken);
-            const targetRecording = !!targetTabToken && ctx.recordingState.recordingEnabled.has(targetTabToken);
+            const targetRecording = targetTabToken !== '' && ctx.recordingState.recordingEnabled.has(targetTabToken);
             const effectiveRecordingToken =
                 (sourceRecording && ctx.tabToken) ||
                 (targetRecording && targetTabToken) ||
@@ -350,7 +348,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                 const list = ctx.recordingState.recordings.get(effectiveRecordingToken) || [];
                 const last = list[list.length - 1] as StepUnion | undefined;
                 const duplicateSwitch =
-                    last?.name === 'browser.switch_tab' && String((last.args as any)?.tab_id || '') === payload.tabId;
+                    last?.name === 'browser.switch_tab' && resolveSwitchTabIdArg(last) === payload.tabId;
                 if (!duplicateSwitch) {
                     recordStep(
                         ctx.recordingState,
@@ -379,7 +377,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { workspaceId, tabId: payload.tabId });
     },
     'tab.opened': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabOpenedPayload;
+        const payload = (action.payload ?? {}) as TabOpenedPayload;
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         ctx.pageRegistry.setActiveWorkspace(scope.workspaceId);
         ctx.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
@@ -415,8 +413,8 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         });
     },
     'tab.report': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabReportPayload;
-        const touched = ctx.pageRegistry.touchTabToken?.(ctx.tabToken, payload.at);
+        const payload = (action.payload ?? {}) as TabReportPayload;
+        const touched = ctx.pageRegistry.touchTabToken(ctx.tabToken, payload.at);
         if (!touched) {
             logPageEvent('tab.report', {
                 tabToken: ctx.tabToken,
@@ -449,8 +447,8 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, output);
     },
     'tab.activated': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabActivatedPayload;
-        const isReplayRunning = (ctx.recordingState?.replaying?.size || 0) > 0;
+        const payload = (action.payload ?? {}) as TabActivatedPayload;
+        const isReplayRunning = ctx.recordingState.replaying.size > 0;
         const isExtensionLifecycle = typeof payload.source === 'string' && payload.source.startsWith('extension.');
         if (isReplayRunning && isExtensionLifecycle) {
             logPageEvent('tab.activated.ignored', {
@@ -474,7 +472,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
         // If exactly one recording session is active, treat cross-tab activation
         // as an implicit switch step in that session.
-        const recordingTokens = Array.from(ctx.recordingState?.recordingEnabled || []);
+        const recordingTokens = Array.from(ctx.recordingState.recordingEnabled);
         if (recordingTokens.length === 1) {
             const recordingToken = recordingTokens[0];
             try {
@@ -487,11 +485,11 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                         tabId: scope.tabId,
                         tabToken: ctx.tabToken,
                     });
-                    const list = ctx.recordingState?.recordings.get(recordingToken) || [];
+                    const list = ctx.recordingState.recordings.get(recordingToken) || [];
                     const last = list[list.length - 1] as StepUnion | undefined;
                     const duplicateSwitch =
-                        last?.name === 'browser.switch_tab' && String((last.args as any)?.tab_id || '') === scope.tabId;
-                    if (!duplicateSwitch && ctx.recordingState) {
+                        last?.name === 'browser.switch_tab' && resolveSwitchTabIdArg(last) === scope.tabId;
+                    if (!duplicateSwitch) {
                         recordStep(
                             ctx.recordingState,
                             ctx.tabToken,
@@ -546,7 +544,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         });
     },
     'tab.closed': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabClosedPayload;
+        const payload = (action.payload ?? {}) as TabClosedPayload;
         const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
         ctx.log('tab.closed', {
             workspaceId: scope.workspaceId,
@@ -571,8 +569,8 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         });
     },
     'tab.ping': async (ctx, action) => {
-        const payload = (action.payload || {}) as TabPingPayload;
-        const touched = ctx.pageRegistry.touchTabToken?.(ctx.tabToken, payload.at);
+        const payload = (action.payload ?? {}) as TabPingPayload;
+        const touched = ctx.pageRegistry.touchTabToken(ctx.tabToken, payload.at);
         if (!touched) {
             logPageEvent('tab.ping', {
                 tabToken: ctx.tabToken,
@@ -601,11 +599,11 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, output);
     },
     [ACTION_TYPES.TAB_REASSIGN]: async (ctx, action) => {
-        const payload = (action.payload || {}) as TabReassignPayload;
+        const payload = (action.payload ?? {}) as TabReassignPayload;
         if (!payload.workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
         }
-        const moved = ctx.pageRegistry.moveTokenToWorkspace?.(ctx.tabToken, payload.workspaceId);
+        const moved = ctx.pageRegistry.moveTokenToWorkspace(ctx.tabToken, payload.workspaceId);
         if (!moved) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'failed to reassign tab workspace');
         }

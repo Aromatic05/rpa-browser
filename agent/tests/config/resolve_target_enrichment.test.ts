@@ -1,21 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTargetNodeId } from '../../src/runner/steps/helpers/resolve_target';
-import { clearReplayEnhancementContext, setReplayEnhancementContext } from '../../src/runner/steps/helpers/replay_ctx';
+import { resolveTarget } from '../../src/runner/steps/helpers/resolve_target';
 import { executeBrowserClick } from '../../src/runner/steps/executors/click';
 import { executeBrowserFill } from '../../src/runner/steps/executors/fill';
+import { executeBrowserSelectOption } from '../../src/runner/steps/executors/select_option';
 import type { Step } from '../../src/runner/steps/types';
-import type { RecordedStepEnhancement } from '../../src/record/types';
+import { setNodeAttr } from '../../src/runner/steps/executors/snapshot/core/runtime_store';
 
-const createBinding = () => {
+const createBinding = (snapshot?: Record<string, unknown>) => {
     const calls: Array<{ name: string; payload: Record<string, unknown> }> = [];
     const binding = {
         workspaceId: 'ws-test',
         page: {},
-        traceCtx: { cache: {} },
+        traceCtx: { cache: { latestSnapshot: snapshot } },
         traceTools: {
-            'trace.a11y.resolveByNodeId': async () => ({ ok: true, data: {} }),
-            'trace.a11y.findByA11yHint': async () => ({ ok: true, data: [] }),
             'trace.locator.waitForVisible': async (payload: Record<string, unknown>) => {
                 calls.push({ name: 'waitForVisible', payload });
                 return { ok: true, data: {} };
@@ -36,6 +34,14 @@ const createBinding = () => {
                 calls.push({ name: 'fill', payload });
                 return { ok: true, data: {} };
             },
+            'trace.locator.selectOption': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'selectOption', payload });
+                return { ok: true, data: { selected: ['v'] } };
+            },
+            'trace.locator.readSelectState': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'readSelectState', payload });
+                return { ok: true, data: { selectedValues: ['v'], selectedLabels: ['审批中'] } };
+            },
         },
     } as any;
 
@@ -54,104 +60,260 @@ const createBinding = () => {
                 typeDelayMsRange: { min: 0, max: 0 },
                 scrollDelayMsRange: { min: 0, max: 0 },
             },
-            confidencePolicy: {},
+            confidencePolicy: {
+                enabled: false,
+                minScore: 0,
+                roleWeight: 0,
+                nameWeight: 0,
+                textWeight: 0,
+                selectorBonus: 0,
+            },
         },
     } as any;
 
     return { binding, deps, calls };
 };
 
-const withReplayEnhancement = async (stepId: string, enhancement: RecordedStepEnhancement, run: () => Promise<void>) => {
-    setReplayEnhancementContext('ws-test', { [stepId]: enhancement });
-    try {
-        await run();
-    } finally {
-        clearReplayEnhancementContext('ws-test');
-    }
+const createSnapshotForId = () => {
+    const root = { id: 'root', role: 'root', children: [] as any[] };
+    const form = { id: 'form_1', role: 'form', children: [] as any[] };
+    const node = { id: 'node_1', role: 'button', children: [] as any[] };
+    const deleteNode = { id: 'node_delete', role: 'button', children: [] as any[] };
+    root.children.push(form);
+    form.children.push(node, deleteNode);
+    setNodeAttr(form as any, 'tag', 'form');
+    setNodeAttr(node as any, 'tag', 'button');
+    setNodeAttr(node as any, 'id', 'submit-btn');
+    setNodeAttr(node as any, 'backendDOMNodeId', '42');
+    setNodeAttr(deleteNode as any, 'tag', 'button');
+    setNodeAttr(deleteNode as any, 'id', 'delete-btn');
+    setNodeAttr(deleteNode as any, 'backendDOMNodeId', '43');
+    setNodeAttr(node as any, 'fieldKey', 'submit');
+    setNodeAttr(node as any, 'actionIntent', 'submit');
+    setNodeAttr(deleteNode as any, 'fieldKey', 'operation');
+    setNodeAttr(deleteNode as any, 'actionIntent', 'delete');
+
+    return {
+        root,
+        nodeIndex: {
+            root,
+            form_1: form,
+            node_1: node,
+            node_delete: deleteNode,
+        },
+        attrIndex: {
+            form_1: {},
+            node_1: { fieldKey: 'submit', actionIntent: 'submit' },
+            node_delete: { fieldKey: 'operation', actionIntent: 'delete' },
+        },
+        entityIndex: {
+            entities: {
+                ent_form_1: {
+                    id: 'ent_form_1',
+                    type: 'region',
+                    kind: 'form',
+                    nodeId: 'form_1',
+                    name: 'Main Form',
+                },
+            },
+            byNodeId: {
+                form_1: [{ type: 'region', entityId: 'ent_form_1', role: 'container' }],
+                node_1: [{ type: 'region', entityId: 'ent_form_1', role: 'descendant' }],
+                node_delete: [{ type: 'region', entityId: 'ent_form_1', role: 'descendant' }],
+            },
+        },
+        locatorIndex: {
+            node_1: {
+                origin: { primaryDomId: '42' },
+                direct: { kind: 'css', query: '#submit-btn', source: 'id' },
+            },
+            node_delete: {
+                origin: { primaryDomId: '43' },
+                direct: { kind: 'css', query: '#delete-btn', source: 'id' },
+            },
+            form_1: {
+                origin: { primaryDomId: '40' },
+                direct: { kind: 'css', query: '#form-main', source: 'id' },
+            },
+        },
+        businessEntityOverlay: {
+            byRuleId: {},
+            byEntityId: {
+                ent_form_1: {
+                    businessTag: 'order.form.main',
+                    businessName: 'Order Form',
+                },
+            },
+            nodeHintsByNodeId: {
+                node_1: {
+                    entityNodeId: 'form_1',
+                    entityKind: 'form',
+                    fieldKey: 'submit',
+                    actionIntent: 'submit',
+                },
+                node_delete: {
+                    entityNodeId: 'form_1',
+                    entityKind: 'form',
+                    fieldKey: 'operation',
+                    actionIntent: 'delete',
+                },
+            },
+        },
+    };
 };
 
-test('resolve_target keeps legacy direct selector path without enhancement', async () => {
+test('resolveTarget selector path keeps direct source', async () => {
     const { binding } = createBinding();
-    const resolved = await resolveTargetNodeId(binding, { selector: '#legacy' });
+    const resolved = await resolveTarget(binding, { selector: '#legacy' });
     assert.equal(resolved.ok, true);
-    if (!resolved.ok) return;
+    if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#legacy');
-    assert.equal(resolved.target.resolution?.usedEnhancement, undefined);
+    assert.equal(resolved.target.resolution.source, 'selector');
 });
 
-test('resolve_target uses enhancement fallback when direct target path fails', async () => {
+test('resolveTarget id path resolves from snapshot locator index', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, { id: 'node_1' });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.selector, '#submit-btn');
+    assert.equal(resolved.target.resolution.source, 'id');
+});
+
+test('resolveTarget hint path resolves from hint.raw.selector', async () => {
     const { binding } = createBinding();
-    await withReplayEnhancement(
-        'step-fallback',
-        {
-            version: 1,
-            eventType: 'click',
-            rawContext: { selector: '#enhanced-fallback' },
-            replayHints: { requireVisible: true },
-        },
-        async () => {
-            const resolved = await resolveTargetNodeId(binding, { id: 'unknown-node' }, { stepId: 'step-fallback' });
-            assert.equal(resolved.ok, true);
-            if (!resolved.ok) return;
-            assert.equal(resolved.target.selector, '#enhanced-fallback:visible');
-            assert.equal(resolved.target.resolution?.usedEnhancement, true);
-            assert.equal(resolved.target.resolution?.usedFallback, true);
-        },
-    );
+    const resolved = await resolveTarget(binding, {
+        hint: { raw: { selector: '#from-hint' } },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.selector, '#from-hint');
+    assert.equal(resolved.target.resolution.source, 'hint');
 });
 
-test('click executor consumes enhancement-aware resolve fallback', async () => {
+test('resolveTarget applies ResolvePolicy preferScoped + requireVisible', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            locator: {
+                direct: { kind: 'css', query: 'button.submit' },
+                scope: { id: 'form_1', kind: 'form' },
+            },
+        },
+        policy: {
+            preferScoped: true,
+            requireVisible: true,
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.selector, 'form:nth-of-type(1) button.submit:visible');
+});
+
+test('resolveTarget no longer supports A11yHint-only fallback path', async () => {
+    const { binding } = createBinding();
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            target: { role: 'button', name: 'Save', text: 'Save' },
+        },
+    });
+    assert.equal(resolved.ok, false);
+    if (resolved.ok) {return;}
+    assert.equal(resolved.error?.code, 'ERR_NOT_FOUND');
+});
+
+test('resolveTarget resolves from resolve.hint.entity.businessTag', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            entity: {
+                businessTag: 'order.form.main',
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.selector, '#form-main');
+});
+
+test('resolveTarget resolves from resolve.hint.entity.fieldKey', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            entity: {
+                fieldKey: 'submit',
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.selector, '#submit-btn');
+});
+
+test('resolveTarget resolves from resolve.hint.entity.actionIntent', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        hint: {
+            entity: {
+                actionIntent: 'delete',
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.selector, '#delete-btn');
+});
+
+test('click executor resolves from step.resolve.hint', async () => {
     const { deps, calls } = createBinding();
     const step: Step<'browser.click'> = {
-        id: 'click-enhanced',
+        id: 'click-hint',
         name: 'browser.click',
         args: {},
         meta: { source: 'play', ts: Date.now() },
+        resolve: { hint: { raw: { selector: '#click-from-resolve' } } },
     };
 
-    await withReplayEnhancement(
-        step.id,
-        {
-            version: 1,
-            eventType: 'click',
-            rawContext: { selector: '#click-from-enhancement' },
-            replayHints: { requireVisible: true },
-        },
-        async () => {
-            const result = await executeBrowserClick(step, deps, 'ws-test');
-            assert.equal(result.ok, true);
-        },
-    );
+    const result = await executeBrowserClick(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
 
     const clickCall = calls.find((call) => call.name === 'click');
     assert.ok(clickCall);
-    assert.equal(clickCall?.payload.selector, '#click-from-enhancement:visible');
+    assert.equal(clickCall?.payload.selector, '#click-from-resolve');
 });
 
-test('fill executor consumes enhancement-aware resolve fallback', async () => {
+test('fill executor resolves from step.resolve.hint', async () => {
     const { deps, calls } = createBinding();
     const step: Step<'browser.fill'> = {
-        id: 'fill-enhanced',
+        id: 'fill-hint',
         name: 'browser.fill',
         args: { value: 'hello' },
         meta: { source: 'play', ts: Date.now() },
+        resolve: { hint: { raw: { selector: '#fill-from-resolve' } } },
     };
 
-    await withReplayEnhancement(
-        step.id,
-        {
-            version: 1,
-            eventType: 'input',
-            rawContext: { selector: '#fill-from-enhancement' },
-            replayHints: { requireVisible: true },
-        },
-        async () => {
-            const result = await executeBrowserFill(step, deps, 'ws-test');
-            assert.equal(result.ok, true);
-        },
-    );
+    const result = await executeBrowserFill(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
 
     const fillCall = calls.find((call) => call.name === 'fill');
     assert.ok(fillCall);
-    assert.equal(fillCall?.payload.selector, '#fill-from-enhancement:visible');
+    assert.equal(fillCall?.payload.selector, '#fill-from-resolve');
+});
+
+test('select_option executor resolves from step.resolve.hint', async () => {
+    const { deps, calls } = createBinding();
+    const step: Step<'browser.select_option'> = {
+        id: 'select-hint',
+        name: 'browser.select_option',
+        args: { values: ['审批中'] },
+        meta: { source: 'play', ts: Date.now() },
+        resolve: { hint: { raw: { selector: '#select-from-resolve' } } },
+    };
+
+    const result = await executeBrowserSelectOption(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
+
+    const selectCall = calls.find((call) => call.name === 'selectOption');
+    assert.ok(selectCall);
+    assert.equal(selectCall?.payload.selector, '#select-from-resolve');
 });

@@ -38,7 +38,7 @@ const toPersistedState = (state: RecordingState): PersistedRecordingStateV1 => {
     };
 };
 
-const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV1) => {
+const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV1): void => {
     state.recordings.clear();
     state.recordingEnhancements.clear();
     state.recordingManifests.clear();
@@ -53,7 +53,7 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
         }
     }
 
-    for (const [workspaceId, recordingToken] of Object.entries(persisted.workspaceLatestRecording || {})) {
+    for (const [workspaceId, recordingToken] of Object.entries(persisted.workspaceLatestRecording)) {
         if (
             typeof workspaceId === 'string' &&
             typeof recordingToken === 'string' &&
@@ -64,29 +64,34 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
         }
     }
 
-    for (const [workspaceId, snapshot] of Object.entries(persisted.workspaceSnapshots || {})) {
-        if (!workspaceId || !snapshot || typeof snapshot !== 'object') continue;
-        if (!Array.isArray(snapshot.tabs)) continue;
-        if (!snapshot.recording || !Array.isArray(snapshot.recording.steps)) continue;
+    for (const [workspaceId, snapshot] of Object.entries(persisted.workspaceSnapshots)) {
+        if (!workspaceId || typeof snapshot !== 'object') {continue;}
+        if (!Array.isArray(snapshot.tabs)) {continue;}
+        if (!Array.isArray(snapshot.recording.steps)) {continue;}
         state.workspaceSnapshots.set(workspaceId, snapshot);
     }
 };
 
-export const loadRecordingStateFromFile = async (state: RecordingState, filePath: string) => {
+export const loadRecordingStateFromFile = async (state: RecordingState, filePath: string): Promise<boolean> => {
     try {
         const raw = await fs.readFile(filePath, 'utf8');
-        const parsed = JSON.parse(raw) as PersistedRecordingStateV1;
-        if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.bundles)) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (
+            !parsed ||
+            typeof parsed !== 'object' ||
+            !('bundles' in parsed) ||
+            !Array.isArray((parsed as { bundles?: unknown }).bundles)
+        ) {
             return false;
         }
-        hydrateState(state, parsed);
+        hydrateState(state, parsed as PersistedRecordingStateV1);
         return true;
     } catch {
         return false;
     }
 };
 
-export const saveRecordingStateToFile = async (state: RecordingState, filePath: string) => {
+export const saveRecordingStateToFile = async (state: RecordingState, filePath: string): Promise<void> => {
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
     const tmpPath = `${filePath}.tmp`;
@@ -99,15 +104,15 @@ export const startRecordingStateAutoSave = (
     state: RecordingState,
     filePath: string,
     opts?: { intervalMs?: number; onError?: (error: unknown) => void },
-) => {
+) : { flush: () => Promise<void>; stop: () => void } => {
     const intervalMs = opts?.intervalMs && opts.intervalMs > 0 ? Math.floor(opts.intervalMs) : 1500;
     let lastSnapshot = '';
     let writing = false;
 
     const flushIfChanged = async () => {
-        if (writing) return;
+        if (writing) {return;}
         const snapshot = JSON.stringify(toPersistedState(state));
-        if (snapshot === lastSnapshot) return;
+        if (snapshot === lastSnapshot) {return;}
         writing = true;
         try {
             await saveRecordingStateToFile(state, filePath);
@@ -122,10 +127,10 @@ export const startRecordingStateAutoSave = (
     const timer = setInterval(() => {
         void flushIfChanged();
     }, intervalMs);
-    timer.unref?.();
+    timer.unref();
 
     return {
         flush: flushIfChanged,
-        stop: () => clearInterval(timer),
+        stop: () => { clearInterval(timer); },
     };
 };

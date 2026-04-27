@@ -148,8 +148,125 @@ export type NodeSemanticHints = {
     entityNodeId?: string;
     entityKind?: EntityKind;
     fieldLabel?: string;
+    fieldKey?: string;
+    fieldRole?: 'control' | 'label' | 'option' | 'message';
+    controlKind?: string;
     actionIntent?: string;
+    actionRole?: string;
     actionTargetNodeId?: string;
+};
+
+export type EntityColumnAction = {
+    actionIntent: string;
+    text?: string;
+};
+
+export type EntityColumn = {
+    fieldKey: string;
+    name?: string;
+    kind?: 'text' | 'number' | 'date' | 'status' | 'action_column';
+    actions?: EntityColumnAction[];
+    source?: 'annotation' | 'table_meta';
+    columnIndex?: number;
+    headerNodeId?: string;
+};
+
+export type EntityPrimaryKey = {
+    fieldKey: string;
+    columns?: string[];
+    source?: 'annotation' | 'table_meta';
+};
+
+export type EntityFormField = {
+    fieldKey: string;
+    name?: string;
+    kind?: 'input' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date';
+    controlRuleId?: string;
+    labelRuleId?: string;
+    optionSource?: {
+        kind: 'inline' | 'popup';
+        optionRuleId?: string;
+    };
+    controlNodeId?: string;
+    labelNodeId?: string;
+};
+
+export type EntityFormAction = {
+    actionIntent: string;
+    text?: string;
+    nodeRuleId?: string;
+    nodeId?: string;
+};
+
+export type TablePaginationActionBinding = {
+    actionIntent: string;
+    nodeRuleId: string;
+    nodeId?: string;
+    disabledRuleId?: string;
+    disabledNodeId?: string;
+};
+
+export type TablePaginationBinding = {
+    nextAction?: TablePaginationActionBinding;
+};
+
+export type EntityRuleDiagnosticLevel = 'info' | 'warning' | 'error';
+
+export type EntityRuleDiagnosticCode =
+    | 'RULE_MATCHED_ZERO'
+    | 'RULE_MATCHED_MULTIPLE'
+    | 'ANNOTATION_RULE_REF_NOT_FOUND'
+    | 'FIELD_CONTROL_UNRESOLVED'
+    | 'FIELD_LABEL_UNRESOLVED'
+    | 'FORM_ACTION_UNRESOLVED'
+    | 'OPTION_RULE_UNRESOLVED'
+    | 'TABLE_COLUMN_HEADER_UNRESOLVED'
+    | 'TABLE_ACTION_COLUMN_UNRESOLVED'
+    | 'TABLE_PAGINATION_NEXT_UNRESOLVED'
+    | 'TABLE_PAGINATION_NEXT_AMBIGUOUS'
+    | 'TABLE_ROW_NOT_FOUND'
+    | 'TABLE_ROW_ACTION_NOT_FOUND';
+
+export type EntityRuleDiagnostic = {
+    code: EntityRuleDiagnosticCode;
+    level: EntityRuleDiagnosticLevel;
+    message: string;
+    profile?: string;
+    ruleId?: string;
+    annotationId?: string;
+    entityId?: string;
+    businessTag?: string;
+    fieldKey?: string;
+    actionIntent?: string;
+    columnName?: string;
+    nodeIds?: string[];
+    details?: Record<string, unknown>;
+};
+
+export type EntityTableMeta = {
+    rowCount: number;
+    columnCount: number;
+    headers: string[];
+    rowNodeIds: string[];
+    cellNodeIdsByRowNodeId: Record<string, string[] | undefined>;
+    columnCellNodeIdsByHeader: Record<string, string[] | undefined>;
+    primaryKeyCandidates: Array<{
+        columns: string[];
+        unique: boolean;
+        duplicateCount: number;
+    }>;
+    recommendedPrimaryKey?: string[];
+};
+
+export type EntityBusinessInfo = {
+    businessTag?: string;
+    businessName?: string;
+    primaryKey?: EntityPrimaryKey;
+    columns?: EntityColumn[];
+    formFields?: EntityFormField[];
+    formActions?: EntityFormAction[];
+    pagination?: TablePaginationBinding;
+    tableMeta?: EntityTableMeta;
 };
 
 export type SnapshotCacheStats = {
@@ -194,6 +311,21 @@ export type SnapshotResult = {
     contentStore: ContentStore;
     cacheStats?: SnapshotCacheStats;
     snapshotMeta?: SnapshotMeta;
+    ruleEntityOverlay?: {
+        byRuleId: Record<string, unknown>;
+        byEntityId: Record<string, EntityBusinessInfo | undefined>;
+        nodeHintsByNodeId: Record<string, NodeSemanticHints | undefined>;
+        diagnostics?: EntityRuleDiagnostic[];
+    };
+    /**
+     * @deprecated Use `ruleEntityOverlay` instead.
+     */
+    businessEntityOverlay?: {
+        byRuleId: Record<string, unknown>;
+        byEntityId: Record<string, EntityBusinessInfo | undefined>;
+        nodeHintsByNodeId: Record<string, NodeSemanticHints | undefined>;
+        diagnostics?: EntityRuleDiagnostic[];
+    };
 };
 
 export type SnapshotDiffBaselineKey = {
@@ -222,11 +354,12 @@ export type SnapshotOverlayDeleteEntity = {
     businessTag?: string;
 };
 
-export type SnapshotOverlays = {
+export type SnapshotManualOverlayPatch = {
     renamedNodes: Record<string, string>;
     addedEntities: SnapshotOverlayAddEntity[];
     deletedEntities: SnapshotOverlayDeleteEntity[];
 };
+export type SnapshotOverlays = SnapshotManualOverlayPatch;
 
 export type FinalEntityRecord = {
     id: string;
@@ -236,14 +369,51 @@ export type FinalEntityRecord = {
     type: 'region' | 'group';
     name?: string;
     businessTag?: string;
+    businessName?: string;
+    primaryKey?: EntityPrimaryKey;
+    columns?: EntityColumn[];
+    formFields?: EntityFormField[];
+    formActions?: EntityFormAction[];
+    pagination?: TablePaginationBinding;
+    tableMeta?: EntityTableMeta;
     source: 'auto' | 'overlay_add';
     itemIds?: string[];
     keySlot?: number;
 };
 
+export type FieldBinding = {
+    fieldKey: string;
+    name?: string;
+    controlNodeId?: string;
+    labelNodeId?: string;
+    kind?: string;
+};
+
+export type ActionBinding = {
+    actionIntent: string;
+    nodeId?: string;
+    text?: string;
+};
+
+export type ColumnBinding = {
+    fieldKey: string;
+    name?: string;
+    kind?: string;
+    columnIndex?: number;
+    headerNodeId?: string;
+};
+
+export type BusinessBindingIndex = {
+    fieldsByEntity: Record<string, Record<string, FieldBinding | undefined> | undefined>;
+    actionsByEntity: Record<string, Record<string, ActionBinding | undefined> | undefined>;
+    columnsByEntity: Record<string, Record<string, ColumnBinding | undefined> | undefined>;
+};
+
 export type FinalEntityView = {
     entities: FinalEntityRecord[];
     byNodeId: Record<string, FinalEntityRecord[] | undefined>;
+    bindingIndex: BusinessBindingIndex;
+    diagnostics?: EntityRuleDiagnostic[];
 };
 
 export type SnapshotPageIdentity = {
@@ -259,7 +429,7 @@ export type SnapshotSessionEntry = {
     finalSnapshot?: SnapshotResult;
     finalEntityView?: FinalEntityView;
     diffBaselines?: Record<string, SnapshotDiffBaselineEntry>;
-    overlays: SnapshotOverlays;
+    overlays: SnapshotManualOverlayPatch;
     lastRefreshAt?: number;
     lastDirtyAt?: number;
     dirty: boolean;

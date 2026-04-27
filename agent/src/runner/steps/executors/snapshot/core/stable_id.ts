@@ -28,14 +28,14 @@ export const assignStableIds = (root: UnifiedNode) => {
     for (const [candidate, bucket] of bucketByCandidate.entries()) {
         if (bucket.length === 1) {
             const only = bucket[0];
-            if (only) only.node.id = candidate;
+            if (only) {only.node.id = candidate;}
             continue;
         }
 
         bucket.sort((left, right) => left.tieKey.localeCompare(right.tieKey));
         for (let i = 0; i < bucket.length; i += 1) {
             const item = bucket[i];
-            if (!item) continue;
+            if (!item) {continue;}
             item.node.id = i === 0 ? candidate : `${candidate}_${i + 1}`;
         }
     }
@@ -109,7 +109,7 @@ const collectBackendLineage = (
     let cursor: UnifiedNode | null = node;
     for (let depth = 0; cursor && depth < 4; depth += 1) {
         const backendId = normalizeBackendDomId(getNodeAttr(cursor, 'backendDOMNodeId'));
-        if (backendId) ids.push(backendId);
+        if (backendId) {ids.push(backendId);}
         cursor = parentByNode.get(cursor) || null;
     }
     return ids.join('/');
@@ -123,7 +123,7 @@ const collectAncestorRoles = (
     let cursor = parentByNode.get(node) || null;
     for (let depth = 0; cursor && depth < 5; depth += 1) {
         const role = normalizeRole(cursor.role);
-        if (role) roles.push(role);
+        if (role) {roles.push(role);}
         cursor = parentByNode.get(cursor) || null;
     }
     return roles.join('/');
@@ -146,7 +146,7 @@ const shortHash = (value: string): string => {
 
 const sanitizePrefix = (role: string): string => {
     const normalized = normalizeRole(role).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    if (!normalized) return 'node';
+    if (!normalized) {return 'node';}
     return normalized.slice(0, 16);
 };
 
@@ -156,7 +156,7 @@ const normalizeName = (value: string | undefined): string => {
 };
 const normalizeNameForId = (value: string | undefined): string => {
     const normalized = normalizeName(value);
-    if (!normalized) return '';
+    if (!normalized) {return '';}
     return normalized
         // reduce small textual drifts (counts, dates, dynamic ids)
         .replace(/\d+/g, '#')
@@ -169,8 +169,8 @@ const normalizeNameForId = (value: string | undefined): string => {
 
 const normalizeBackendDomId = (value: string | undefined): string | undefined => {
     const normalized = normalizeText(value);
-    if (!normalized) return undefined;
-    if (!/^\d+$/.test(normalized)) return undefined;
+    if (!normalized) {return undefined;}
+    if (!/^\d+$/.test(normalized)) {return undefined;}
     return normalized;
 };
 

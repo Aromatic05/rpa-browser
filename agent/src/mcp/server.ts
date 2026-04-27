@@ -13,7 +13,7 @@ import type { McpToolDeps, McpToolHandler } from './tool_handlers';
 import { getToolHandlers, getToolSpecs, resolveEnabledToolNames, type ToolSpec } from './tool_registry';
 
 export type McpToolRuntime = {
-    handlers: Record<string, McpToolHandler>;
+    handlers: Partial<Record<string, McpToolHandler>>;
     tools: ToolSpec[];
 };
 
@@ -29,7 +29,30 @@ const createDefaultRuntime = (deps: McpToolDeps): McpToolRuntime => {
     };
 };
 
-const isDebugMode = (): boolean => /^(1|true|on)$/i.test(String(process.env.RPA_MCP_DEBUG || '').trim());
+const isDebugMode = (): boolean => /^(1|true|on)$/i.test((process.env.RPA_MCP_DEBUG ?? '').trim());
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+type InitializeRequest = { params: { protocolVersion: string } };
+type CallToolRequest = { params: { name: string; arguments?: unknown } };
+
+const parseInitializeRequest = (request: unknown): InitializeRequest => {
+    if (!isRecord(request)) {throw new Error('invalid initialize request');}
+    const params = request.params;
+    if (!isRecord(params) || typeof params.protocolVersion !== 'string') {
+        throw new Error('invalid initialize request params');
+    }
+    return { params: { protocolVersion: params.protocolVersion } };
+};
+
+const parseCallToolRequest = (request: unknown): CallToolRequest => {
+    if (!isRecord(request)) {throw new Error('invalid call_tool request');}
+    const params = request.params;
+    if (!isRecord(params) || typeof params.name !== 'string') {
+        throw new Error('invalid call_tool request params');
+    }
+    return { params: { name: params.name, arguments: params.arguments } };
+};
 
 const compactError = (raw: unknown): { code: string; message: string; details?: unknown } => {
     const value = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -46,24 +69,23 @@ const compactToolResult = (
     result: { ok: boolean; results: unknown[]; error?: unknown },
 ): { ok: boolean; data?: unknown; error?: { code: string; message: string; details?: unknown } } => {
     if (!result.ok) {
-        const failed = (result.results || []).find((item) => (item as { ok?: boolean })?.ok === false) as
-            | { error?: unknown }
-            | undefined;
-        return { ok: false, error: compactError(result.error || failed?.error) };
+        const failed = result.results.find((item) => isRecord(item) && item.ok === false);
+        const failedError = failed && isRecord(failed) ? failed.error : undefined;
+        return { ok: false, error: compactError(result.error ?? failedError) };
     }
 
     if (name === 'browser.batch') {
         return { ok: true, data: result.results };
     }
 
-    const first = (result.results || [])[0] as { data?: unknown } | undefined;
-    if (!first || first.data === undefined) {
+    const first = result.results[0];
+    if (!isRecord(first) || first.data === undefined) {
         return { ok: true };
     }
     return { ok: true, data: first.data };
 };
 
-export const createMcpServer = (deps: McpServerDeps) => {
+export const createMcpServer = (deps: McpServerDeps): Server => {
     const server = new Server(
         { name: 'rpa-agent', version: '0.1.0' },
         { capabilities: { tools: {} } },
@@ -78,19 +100,25 @@ export const createMcpServer = (deps: McpServerDeps) => {
         }
     };
 
-    server.setRequestHandler(InitializeRequestSchema, async (request: any) => ({
-        protocolVersion: request.params.protocolVersion,
-        capabilities: { tools: {} },
-        serverInfo: { name: 'rpa-agent', version: '0.1.0' },
-    }));
+    server.setRequestHandler(InitializeRequestSchema, async (request: unknown) => {
+        const parsed = parseInitializeRequest(request);
+        return {
+            protocolVersion: parsed.params.protocolVersion,
+            capabilities: { tools: {} },
+            serverInfo: { name: 'rpa-agent', version: '0.1.0' },
+        };
+    });
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: resolveRuntime().tools,
     }));
 
-    server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
-        const name = request.params.name;
-        const args = request.params.arguments ?? {};
+    server.setRequestHandler(CallToolRequestSchema, async (request: unknown) => {
+        const parsed = parseCallToolRequest(request);
+        const name = parsed.params.name;
+        const args = (parsed.params.arguments && isRecord(parsed.params.arguments))
+            ? parsed.params.arguments
+            : {};
         const handler = resolveRuntime().handlers[name];
         if (!handler) {
             const error = errorResult('', ERROR_CODES.ERR_UNSUPPORTED, `unknown tool: ${name}`);
@@ -129,7 +157,7 @@ type McpHttpOptions = {
 };
 
 const normalizePath = (value: string): string => {
-    if (!value) return '/';
+    if (!value) {return '/';}
     return value.startsWith('/') ? value : `/${value}`;
 };
 
@@ -141,8 +169,20 @@ const writeJson = (res: http.ServerResponse, status: number, payload: unknown) =
 
 const readJsonBody = async (req: http.IncomingMessage): Promise<unknown> => {
     const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    for await (const chunk of req as AsyncIterable<unknown>) {
+        if (Buffer.isBuffer(chunk)) {
+            chunks.push(chunk);
+            continue;
+        }
+        if (chunk instanceof Uint8Array) {
+            chunks.push(Buffer.from(chunk));
+            continue;
+        }
+        if (typeof chunk === 'string') {
+            chunks.push(Buffer.from(chunk));
+            continue;
+        }
+        chunks.push(Buffer.from(String(chunk)));
     }
     const raw = Buffer.concat(chunks).toString('utf8').trim();
     if (!raw) {
@@ -192,14 +232,13 @@ class HttpPostServerTransport implements Transport {
 
     async handlePostMessage(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
         const payload = await readJsonBody(req);
-        const message = payload as JSONRPCMessage;
-        const isRequest = Boolean(
-            message &&
-                typeof message === 'object' &&
-                'jsonrpc' in message &&
-                'method' in message &&
-                'id' in message,
-        );
+        const messageValue = payload;
+        const isRequest =
+            isRecord(messageValue) &&
+            'jsonrpc' in messageValue &&
+            'method' in messageValue &&
+            'id' in messageValue;
+        const message = messageValue as JSONRPCMessage;
         if (isRequest) {
             this.pendingResponses.set(String((message as { id: unknown }).id), res);
         }
@@ -221,7 +260,7 @@ class HttpPostServerTransport implements Transport {
     }
 }
 
-export const startMcpServer = async (deps: McpServerDeps, options: McpHttpOptions = {}) => {
+export const startMcpServer = async (deps: McpServerDeps, options: McpHttpOptions = {}): Promise<void> => {
     const host = options.host || process.env.RPA_MCP_HOST || '127.0.0.1';
     const port = options.port ?? Number(process.env.RPA_MCP_PORT || 17654);
     const mcpPath = normalizePath(options.mcpPath || process.env.RPA_MCP_PATH || '/mcp');

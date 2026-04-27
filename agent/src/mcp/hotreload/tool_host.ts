@@ -46,7 +46,7 @@ export class McpToolHost {
         let timer: NodeJS.Timeout | null = null;
 
         const schedule = () => {
-            if (timer) clearTimeout(timer);
+            if (timer) {clearTimeout(timer);}
             timer = setTimeout(() => {
                 void this.reload(deps);
             }, 80);
@@ -57,7 +57,7 @@ export class McpToolHost {
         watcher.on('unlink', schedule);
 
         return async () => {
-            if (timer) clearTimeout(timer);
+            if (timer) {clearTimeout(timer);}
             await watcher.close();
         };
     }
@@ -107,7 +107,7 @@ export class McpToolHost {
         try {
             const files = await fs.readdir(outDir);
             const candidates = files.filter((file) => file.startsWith('mcp.') && file.endsWith('.mjs')).sort();
-            if (candidates.length <= keepCount) return;
+            if (candidates.length <= keepCount) {return;}
             const stale = candidates.slice(0, candidates.length - keepCount);
             await Promise.all(stale.map((file) => fs.rm(path.join(outDir, file), { force: true })));
         } catch {

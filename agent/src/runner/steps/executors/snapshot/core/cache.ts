@@ -31,8 +31,8 @@ export const computeBucketHash = (region: UnifiedNode): string => {
 
 export const readBucketCache = (bucketKey: string, hash: string): UnifiedNode | null => {
     const cached = bucketCache.get(bucketKey);
-    if (!cached) return null;
-    if (cached.hash !== hash) return null;
+    if (!cached) {return null;}
+    if (cached.hash !== hash) {return null;}
     return cloneTreeWithRuntime(cached.subtree);
 };
 
@@ -49,7 +49,7 @@ const collectRegionSignature = (root: UnifiedNode): string => {
     const chunks: string[] = [];
     walk(root, (node, depth) => {
         const state = collectInteractiveStateSignature(node);
-        if (depth > 3 && !isStatefulNode(node, state)) return;
+        if (depth > 3 && !isStatefulNode(node, state)) {return;}
         const role = normalizeRole(node.role);
         const name = normalizeName(node.name || getNodeContent(node));
         const domId = normalizeText(getNodeAttr(node, 'backendDOMNodeId')) || '';
@@ -79,16 +79,16 @@ const collectInteractiveStateSignature = (node: UnifiedNode): string => {
 
 const normalizeStateText = (value: string | undefined): string => {
     const normalized = normalizeText(value);
-    if (!normalized) return '';
+    if (!normalized) {return '';}
     return normalized.toLowerCase().replace(/;/g, ',').slice(0, 48);
 };
 
 const isStatefulNode = (node: UnifiedNode, stateSignature: string): boolean => {
-    if (stateSignature && stateSignature !== EMPTY_STATE_SIGNATURE) return true;
+    if (stateSignature && stateSignature !== EMPTY_STATE_SIGNATURE) {return true;}
     const role = normalizeRole(node.role);
-    if (STATEFUL_ROLES.has(role)) return true;
+    if (STATEFUL_ROLES.has(role)) {return true;}
     const tag = normalizeRole(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName'));
-    if (STATEFUL_TAGS.has(tag)) return true;
+    if (STATEFUL_TAGS.has(tag)) {return true;}
     return false;
 };
 

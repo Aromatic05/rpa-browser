@@ -15,31 +15,31 @@ const specialKeys = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', '
 const handledEvents = new WeakSet<Event>();
 
 const markEventHandled = (event: Event) => {
-    if (handledEvents.has(event)) return true;
+    if (handledEvents.has(event)) {return true;}
     handledEvents.add(event);
     return false;
 };
 
 const inPanel = (path: EventTarget[] | null) => {
-    if (!path) return false;
+    if (!path) {return false;}
     for (const node of path) {
-        if (node && (node as HTMLElement).id === 'rpa-floating-panel') return true;
+        if (node instanceof HTMLElement && node.id === 'rpa-floating-panel') {return true;}
     }
     return false;
 };
 
-export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
+export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void => {
     const handleClick = (event: MouseEvent) => {
-        if (markEventHandled(event)) return;
-        const path = event.composedPath ? event.composedPath() : null;
-        let target = (path && path[0]) || event.target;
-        if (target && (target as Node).nodeType === 3) target = (target as Node).parentElement;
+        if (markEventHandled(event)) {return;}
+        const path = event.composedPath();
+        let target = path[0] || event.target;
+        if (target instanceof Node && target.nodeType === 3) {target = target.parentElement;}
         const element = target instanceof Element ? target : null;
-        if (!element) return;
-        if (inPanel(path) || (element.closest && element.closest('#rpa-floating-panel'))) return;
-        if (isCheckboxOrRadio(element) || element.closest('label input[type="checkbox"], label input[type="radio"]')) return;
+        if (!element) {return;}
+        if (inPanel(path) || element.closest('#rpa-floating-panel')) {return;}
+        if (isCheckboxOrRadio(element) || element.closest('label input[type="checkbox"], label input[type="radio"]')) {return;}
         const checkboxInput = findCheckboxInput(element);
-        if (checkboxInput) return;
+        if (checkboxInput) {return;}
         const interactive = element.closest('button, a, input, select, textarea, [role]') || element;
         const selector = selectorFor(interactive);
         if (selector) {
@@ -53,7 +53,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
             });
             return;
         }
-        const fallback = interactive.closest && interactive.closest('button, a, input, select, textarea, [role]');
+        const fallback = interactive.closest('button, a, input, select, textarea, [role]');
         if (!fallback) {
             debugTarget('click', interactive, 'no selector and no fallback');
             return;
@@ -71,7 +71,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
             return;
         }
         const hintOnly = buildA11yHint(fallback);
-        if (hintOnly && (hintOnly.role || hintOnly.name || hintOnly.text)) {
+        if (hintOnly.role || hintOnly.name || hintOnly.text) {
             emit({
                 type: 'click',
                 targetHint: fallback.tagName.toLowerCase(),
@@ -89,14 +89,14 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
     document.addEventListener(
         'input',
         (event) => {
-            const target = (event.composedPath && event.composedPath()[0]) || event.target;
+            const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
-            if (!element) return;
-            if (element.closest && element.closest('#rpa-floating-panel')) return;
-            if (isCheckboxOrRadio(element)) return;
-            if (element instanceof HTMLSelectElement) return;
+            if (!element) {return;}
+            if (element.closest('#rpa-floating-panel')) {return;}
+            if (isCheckboxOrRadio(element)) {return;}
+            if (element instanceof HTMLSelectElement) {return;}
             const selector = selectorFor(element);
-            if (!selector) return;
+            if (!selector) {return;}
             emit({
                 type: 'input',
                 selector,
@@ -112,12 +112,12 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
     document.addEventListener(
         'change',
         (event) => {
-            const target = (event.composedPath && event.composedPath()[0]) || event.target;
+            const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
-            if (!element) return;
-            if (element.closest && element.closest('#rpa-floating-panel')) return;
+            if (!element) {return;}
+            if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
-            if (!selector) return;
+            if (!selector) {return;}
             if (element instanceof HTMLInputElement) {
                 const inputType = (element.type || '').toLowerCase();
                 if (inputType === 'checkbox' || inputType === 'radio') {
@@ -145,12 +145,12 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
                 }
             }
             if (element instanceof HTMLSelectElement) {
-                const option = element.selectedOptions && element.selectedOptions[0];
+                const option = element.selectedOptions[0];
                 emit({
                     type: 'select',
                     selector,
                     value: element.value,
-                    label: option ? option.label : '',
+                    label: option.label,
                     a11yHint: buildA11yHint(element),
                     locatorCandidates: buildCandidates(element),
                     scopeHint: getScopeHint(element),
@@ -172,10 +172,10 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
     document.addEventListener(
         'keydown',
         (event: KeyboardEvent) => {
-            if (!specialKeys.has(event.key)) return;
-            const target = (event.composedPath && event.composedPath()[0]) || event.target;
+            if (!specialKeys.has(event.key)) {return;}
+            const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
-            if (element && element.closest && element.closest('#rpa-floating-panel')) return;
+            if (element?.closest('#rpa-floating-panel')) {return;}
             const selector = element instanceof Element ? selectorFor(element) : null;
             emit({
                 type: 'keydown',
@@ -192,13 +192,13 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
     document.addEventListener(
         'paste',
         (event) => {
-            const target = (event.composedPath && event.composedPath()[0]) || event.target;
+            const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
-            if (!element) return;
-            if (element.closest && element.closest('#rpa-floating-panel')) return;
+            if (!element) {return;}
+            if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
-            if (!selector) return;
-            if (isPassword(element)) return;
+            if (!selector) {return;}
+            if (isPassword(element)) {return;}
             emit({
                 type: 'paste',
                 selector,
@@ -214,12 +214,12 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
     document.addEventListener(
         'copy',
         (event) => {
-            const target = (event.composedPath && event.composedPath()[0]) || event.target;
+            const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
-            if (!element) return;
-            if (element.closest && element.closest('#rpa-floating-panel')) return;
+            if (!element) {return;}
+            if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
-            if (!selector) return;
+            if (!selector) {return;}
             emit({
                 type: 'copy',
                 selector,
@@ -241,7 +241,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn) => {
             scrolling = true;
             emitScroll();
         }
-        if (scrollTimer) clearTimeout(scrollTimer);
+        if (scrollTimer) {clearTimeout(scrollTimer);}
         scrollTimer = window.setTimeout(() => {
             scrollTimer = null;
             scrolling = false;

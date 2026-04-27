@@ -3,8 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { mapTraceError, normalizeTarget } from '../helpers/target';
-import { resolveTargetNodeId } from '../helpers/resolve_target';
+import { mapTraceError } from '../helpers/target';
+import { resolveTarget } from '../helpers/resolve_target';
 
 export const executeBrowserTakeScreenshot = async (
     step: Step<'browser.take_screenshot'>,
@@ -12,26 +12,23 @@ export const executeBrowserTakeScreenshot = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const target = normalizeTarget(step.args);
-    let resolvedTarget:
-        | {
-              a11yNodeId?: string;
-              selector?: string;
-              role?: string;
-              name?: string;
-          }
-        | undefined;
-    if (target) {
-        const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
-        if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
-        resolvedTarget = resolved.target;
+    let resolvedSelector: string | undefined;
+    const hasTarget = Boolean(step.args.id || step.args.selector || step.args.target || step.resolve?.hint);
+
+    if (hasTarget) {
+        const resolved = await resolveTarget(binding, {
+            id: step.args.id || step.args.target?.id,
+            selector: step.args.selector || step.args.target?.selector,
+            hint: step.resolve?.hint,
+            policy: step.resolve?.policy,
+        });
+        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
+        resolvedSelector = resolved.target.selector;
     }
+
     const shot = await binding.traceTools['trace.page.screenshot']({
         fullPage: step.args.full_page,
-        a11yNodeId: resolvedTarget?.a11yNodeId,
-        selector: resolvedTarget?.selector,
-        role: resolvedTarget?.role,
-        name: resolvedTarget?.name,
+        selector: resolvedSelector,
     });
     if (!shot.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(shot.error) };

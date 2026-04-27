@@ -17,7 +17,7 @@ type DumpPayload = {
 const DEFAULT_VIEWER_API_BASE = 'http://127.0.0.1:5173';
 
 const countNodes = (node: unknown): number => {
-    if (!node || typeof node !== 'object') return 0;
+    if (!node || typeof node !== 'object') {return 0;}
     const children = Array.isArray((node as { children?: unknown[] }).children)
         ? ((node as { children?: unknown[] }).children as unknown[])
         : [];

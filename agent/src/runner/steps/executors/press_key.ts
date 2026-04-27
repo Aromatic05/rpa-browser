@@ -1,29 +1,8 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { normalizeTarget, mapTraceError } from '../helpers/target';
+import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { resolveTargetNodeId, type ResolvedLocatorTarget } from '../helpers/resolve_target';
-
-const ensureVisible = async (
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
-    target: ResolvedLocatorTarget,
-    timeout?: number,
-) => {
-    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-    });
-    if (!scroll.ok) return scroll;
-    return binding.traceTools['trace.locator.waitForVisible']({
-        a11yNodeId: target.a11yNodeId,
-        selector: target.selector,
-        role: target.role,
-        name: target.name,
-        timeout,
-    });
-};
+import { resolveTarget } from '../helpers/resolve_target';
 
 export const executeBrowserPressKey = async (
     step: Step<'browser.press_key'>,
@@ -31,25 +10,32 @@ export const executeBrowserPressKey = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const target = normalizeTarget(step.args);
-    if (target) {
-        const resolved = await resolveTargetNodeId(binding, target, { stepId: step.id });
-        if (!resolved.ok) return { stepId: step.id, ok: false, error: resolved.error };
+    const hasTarget = Boolean(step.args.id || step.args.selector || step.args.target || step.resolve?.hint);
+    if (hasTarget) {
+        const resolved = await resolveTarget(binding, {
+            id: step.args.id || step.args.target?.id,
+            selector: step.args.selector || step.args.target?.selector,
+            hint: step.resolve?.hint,
+            policy: step.resolve?.policy,
+        });
+        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
+
         const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
-        const visible = await ensureVisible(binding, resolved.target, timeout);
+        const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
+        if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
+        const visible = await binding.traceTools['trace.locator.waitForVisible']({
+            selector: resolved.target.selector,
+            timeout,
+        });
         if (!visible.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
         }
-        const focus = await binding.traceTools['trace.locator.focus']({
-            a11yNodeId: resolved.target.a11yNodeId,
-            selector: resolved.target.selector,
-            role: resolved.target.role,
-            name: resolved.target.name,
-        });
+        const focus = await binding.traceTools['trace.locator.focus']({ selector: resolved.target.selector });
         if (!focus.ok) {
             return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
         }
     }
+
     const pressed = await binding.traceTools['trace.keyboard.press']({
         key: normalizeBrowserPressKey(step.args.key),
     });
@@ -61,14 +47,14 @@ export const executeBrowserPressKey = async (
             deps.config.humanPolicy.typeDelayMsRange.min,
             deps.config.humanPolicy.typeDelayMsRange.max,
         );
-        if (delayMs > 0) await waitForHumanDelay(binding.page, delayMs);
+        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
     return { stepId: step.id, ok: true };
 };
 
 export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platform = process.platform): string => {
     const key = String(rawKey || '').trim();
-    if (!key) return key;
+    if (!key) {return key;}
 
     const normalized = key
         .split('+')
@@ -76,15 +62,13 @@ export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platfo
         .filter((part) => part.length > 0)
         .map((part) => {
             const lower = part.toLowerCase();
-            if (lower === 'ctrl') return 'Control';
-            if (lower === 'cmdorctrl') return platform === 'darwin' ? 'Meta' : 'Control';
-            if (lower === 'cmd' || lower === 'command') return 'Meta';
-            if (lower === 'esc') return 'Escape';
+            if (lower === 'ctrl') {return 'Control';}
+            if (lower === 'cmdorctrl') {return platform === 'darwin' ? 'Meta' : 'Control';}
+            if (lower === 'cmd' || lower === 'command') {return 'Meta';}
+            if (lower === 'esc') {return 'Escape';}
             return part.length === 1 ? part.toUpperCase() : part;
         });
 
-    // On macOS, Control+<key> usually does not represent "primary shortcut".
-    // Map to Meta+<key> for common automation expectations (e.g. select-all).
     if (platform === 'darwin') {
         const hasMeta = normalized.some((part) => part.toLowerCase() === 'meta');
         const hasControl = normalized.some((part) => part.toLowerCase() === 'control');

@@ -15,8 +15,11 @@ export type WsClientOptions = {
     logger?: Logger;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
 export const createWsClient = (options: WsClientOptions): WsClient => {
-    const log = options.logger || createLogger('sw');
+    const log = options.logger ?? createLogger('sw');
     let wsRef: WebSocket | null = null;
     let wsReady: Promise<void> | null = null;
     const pending = new Map<string, (reply: Action) => void>();
@@ -32,18 +35,18 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
 
     const connect = () => {
         if (wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
-            return wsReady || Promise.resolve();
+            return wsReady ?? Promise.resolve();
         }
         wsRef = new WebSocket('ws://127.0.0.1:17333');
         wsReady = new Promise((resolve, reject) => {
             let settled = false;
             const settleResolve = () => {
-                if (settled) return;
+                if (settled) {return;}
                 settled = true;
                 resolve();
             };
             const settleReject = (message: string) => {
-                if (settled) return;
+                if (settled) {return;}
                 settled = true;
                 reject(new Error(message));
             };
@@ -64,7 +67,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             });
         });
         wsRef.addEventListener('message', (event) => {
-            let payload: any = event.data;
+            let payload: unknown = event.data;
             if (typeof payload === 'string') {
                 try {
                     payload = JSON.parse(payload);
@@ -72,11 +75,11 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            if (payload?.v !== 1 || typeof payload?.id !== 'string' || typeof payload?.type !== 'string') {
+            if (!isRecord(payload) || payload.v !== 1 || typeof payload.id !== 'string' || typeof payload.type !== 'string') {
                 return;
             }
             const action = payload as Action;
-            const kind = classifyActionType(String(action.type || ''));
+            const kind = classifyActionType(action.type);
             if (kind === 'reply' && action.replyTo) {
                 const resolver = pending.get(action.replyTo);
                 if (resolver) {
@@ -85,14 +88,14 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            if (kind !== 'reply' && isDispatchActionType(String(action.type))) {
+            if (kind !== 'reply' && isDispatchActionType(action.type)) {
                 options.onAction(action);
             }
         });
         wsRef.addEventListener('close', () => {
             wsRef = null;
             wsReady = null;
-            pending.forEach((resolver, requestId) => resolver(mkFailedReply(requestId, 'ERR_CLOSED', 'ws closed')));
+            pending.forEach((resolver, requestId) => { resolver(mkFailedReply(requestId, 'ERR_CLOSED', 'ws closed')); });
             pending.clear();
         });
         wsRef.addEventListener('error', () => {

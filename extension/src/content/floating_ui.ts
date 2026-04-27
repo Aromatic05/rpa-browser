@@ -150,14 +150,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     wrap.append(ball, panel);
     shadow.append(style, wrap);
 
-    const mount = () => {
-        if (!document.documentElement) {
-            setTimeout(mount, 50);
-            return;
-        }
-        document.documentElement.appendChild(host);
-    };
-    mount();
+    document.documentElement.appendChild(host);
 
     let isOpen = false;
     ball.addEventListener('click', () => {
@@ -203,7 +196,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         }
         workspaces.forEach((ws) => {
             const btn = document.createElement('button');
-            btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${ws.tabCount})`;
+            btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${String(ws.tabCount)})`;
             if (activeWorkspaceId === ws.workspaceId) {
                 btn.classList.add('primary');
             }
@@ -253,15 +246,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     newWorkspaceBtn.addEventListener('click', () => {
         void (async () => {
             const action = await sendPanelAction('workspace.create', {});
-            const payload = (action.payload || {}) as { workspaceId?: string };
-            if (payload.workspaceId) activeWorkspaceId = payload.workspaceId;
+            const payload = (action.payload ?? {}) as { workspaceId?: string };
+            if (payload.workspaceId) {activeWorkspaceId = payload.workspaceId;}
             refreshWorkspaces();
             refreshTabs();
         })();
     });
 
     closeTabBtn.addEventListener('click', () => {
-        if (!activeTabId) return;
+        if (!activeTabId) {return;}
         void (async () => {
             if (activeWorkspaceId) {
                 await sendPanelAction('tab.close', { workspaceId: activeWorkspaceId, tabId: activeTabId });
@@ -270,15 +263,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             }
 
             const listed = await sendPanelAction('workspace.list', {});
-            const listPayload = (listed.payload || {}) as {
+            const listPayload = (listed.payload ?? {}) as {
                 workspaces?: Array<{ workspaceId: string }>;
             };
-            const workspaces = listPayload.workspaces || [];
+            const workspaces = listPayload.workspaces ?? [];
 
             if (!workspaces.length) {
                 const created = await sendPanelAction('workspace.create', {});
-                const createdPayload = (created.payload || {}) as { workspaceId?: string };
-                activeWorkspaceId = createdPayload.workspaceId || null;
+                const createdPayload = (created.payload ?? {}) as { workspaceId?: string };
+                activeWorkspaceId = createdPayload.workspaceId ?? null;
                 refreshWorkspaces();
                 refreshTabs();
                 return;
@@ -291,8 +284,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
 
     const interceptAction = (action: Action) => {
-        if (!action || String(action.type || '').endsWith('.failed')) return;
-        const payload = (action.payload || {}) as {
+        if (action.type.endsWith('.failed')) {return;}
+        const payload = (action.payload ?? {}) as {
             activeWorkspaceId?: string;
             workspaces?: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>;
             tabs?: Array<{ tabId: string; url: string; title: string; active: boolean }>;
@@ -318,7 +311,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     let refreshPending = false;
     const scheduleRefresh = () => {
-        if (refreshPending) return;
+        if (refreshPending) {return;}
         refreshPending = true;
         queueMicrotask(() => {
             refreshPending = false;

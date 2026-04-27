@@ -1,32 +1,5 @@
-/**
- * target 解析：统一兼容老的 a11yNodeId/a11yHint 参数。
- */
-
-import type { A11yHint, Target } from '../types';
 import type { StepResult } from '../types';
 import type { ToolError } from '../../trace/types';
-
-type TargetInput = {
-    target?: Target;
-    id?: string;
-    selector?: string;
-    a11yNodeId?: string;
-    a11yHint?: A11yHint;
-};
-
-export const normalizeTarget = (input: TargetInput): Target | undefined => {
-    const merged: Target = {
-        ...(input.target || {}),
-        ...(input.id ? { id: input.id } : {}),
-        ...(input.selector ? { selector: input.selector } : {}),
-        ...(input.a11yNodeId ? { a11yNodeId: input.a11yNodeId } : {}),
-        ...(input.a11yHint ? { a11yHint: input.a11yHint } : {}),
-    };
-    if (merged.id || merged.selector || merged.a11yNodeId || merged.a11yHint) {
-        return merged;
-    }
-    return undefined;
-};
 
 export const mapTraceError = (error: ToolError | undefined): StepResult['error'] => {
     if (!error) {
@@ -41,31 +14,4 @@ export const mapTraceError = (error: ToolError | undefined): StepResult['error']
         return { code: error.code, message: error.message, details: error.details };
     }
     return { code: 'ERR_INTERNAL', message: error.message || 'internal error', details: error.details };
-};
-
-type A11yLike = { role?: string; name?: string; text?: string };
-
-const normalizeText = (value?: string) =>
-    (value || '')
-        .replace(/[“”]/g, '"')
-        .replace(/[‘’]/g, "'")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, ' ');
-
-export const matchesA11yHint = (candidate: A11yLike, hint?: A11yHint) => {
-    if (!hint) return true;
-    const candidateRole = normalizeText(candidate.role);
-    const hintRole = normalizeText(hint.role);
-    if (hintRole && hintRole === 'combobox' && candidateRole === 'combobox') return true;
-    if (hint.role && candidateRole !== hintRole) return false;
-    if (hint.name) {
-        const nodeName = normalizeText(candidate.name || candidate.text);
-        if (!nodeName.includes(normalizeText(hint.name))) return false;
-    }
-    if (hint.text) {
-        const text = normalizeText(candidate.text || candidate.name);
-        if (!text.includes(normalizeText(hint.text))) return false;
-    }
-    return true;
 };
