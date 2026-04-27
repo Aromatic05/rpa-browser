@@ -227,3 +227,45 @@ test('apply binds form fields/actions by referenced ruleId and keeps legacy fiel
     assert.equal(submitSemantic?.actionIntent, 'submit');
     assert.equal(submitSemantic?.fieldKey, 'legacy_submit');
 });
+
+test('form action node hint binds to current form entity instead of unrelated preferred entity', () => {
+    const submitBtn: UnifiedNode = { id: 'submit_btn', role: 'button', name: 'Submit', children: [] };
+    const form: UnifiedNode = { id: 'order_form', role: 'form', name: 'Order Form', children: [submitBtn] };
+    const table: UnifiedNode = { id: 'table_1', role: 'table', name: 'Order Table', children: [] };
+    const root: UnifiedNode = { id: 'root', role: 'root', children: [form, table] };
+
+    const entityIndex: EntityIndex = {
+        entities: {
+            ent_form: { id: 'ent_form', type: 'region', kind: 'form', nodeId: 'order_form' },
+            ent_table: { id: 'ent_table', type: 'region', kind: 'table', nodeId: 'table_1' },
+        },
+        byNodeId: {
+            order_form: [{ type: 'region', entityId: 'ent_form', role: 'container' }],
+            table_1: [{ type: 'region', entityId: 'ent_table', role: 'container' }],
+            submit_btn: [
+                { type: 'region', entityId: 'ent_table', role: 'container' },
+                { type: 'region', entityId: 'ent_form', role: 'descendant' },
+            ],
+        },
+    };
+
+    const bundle: NormalizedEntityRuleBundle = {
+        id: 'order-form',
+        page: { kind: 'form' },
+        matchRules: [
+            { ruleId: 'order_form', source: 'region', expect: 'unique', order: 0, match: { kind: 'form' } },
+            { ruleId: 'submit_rule', source: 'node', expect: 'unique', order: 1, within: 'order_form', match: { textContains: 'Submit' } },
+        ],
+        annotationByRuleId: {
+            order_form: {
+                ruleId: 'order_form',
+                actions: [{ actionIntent: 'submit', nodeRuleId: 'submit_rule' }],
+            },
+        },
+    };
+
+    const bindings = matchEntityRules(bundle, { root, entityIndex });
+    const overlay = applyEntityRuleBindings(bundle, root, entityIndex, bindings);
+    assert.equal(overlay.nodeHintsByNodeId.submit_btn?.entityNodeId, 'order_form');
+    assert.equal(overlay.nodeHintsByNodeId.submit_btn?.entityKind, 'form');
+});

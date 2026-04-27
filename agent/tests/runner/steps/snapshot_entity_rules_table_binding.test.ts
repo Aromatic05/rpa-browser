@@ -134,3 +134,72 @@ test('without annotation primaryKey, table meta still provides candidates and re
     assert.equal(entity.primaryKey?.source, 'table_meta');
     assert.equal((entity.tableMeta?.primaryKeyCandidates.length || 0) > 0, true);
 });
+
+test('resolveTableRowAction matches action text from child text/content', () => {
+    const childTextNode: UnifiedNode = { id: 'approve_text_1', role: 'text', name: '审核', children: [] };
+    const approveBtn1: UnifiedNode = { id: 'approve_btn_1', role: 'button', children: [childTextNode] };
+    const cellOrderNo1: UnifiedNode = { id: 'cell_order_no_1', role: 'cell', name: 'SO-001', children: [] };
+    const cellBuyer1: UnifiedNode = { id: 'cell_buyer_1', role: 'cell', name: 'Alice', children: [] };
+    const cellOperation1: UnifiedNode = { id: 'cell_operation_1', role: 'cell', children: [approveBtn1] };
+    const row1: UnifiedNode = { id: 'row_1', role: 'row', children: [cellOrderNo1, cellBuyer1, cellOperation1] };
+
+    const headerOrderNo: UnifiedNode = { id: 'header_order_no', role: 'columnheader', name: '订单编号', children: [] };
+    const headerBuyer: UnifiedNode = { id: 'header_buyer', role: 'columnheader', name: '采购人', children: [] };
+    const headerOperation: UnifiedNode = { id: 'header_operation', role: 'columnheader', name: '操作', children: [] };
+    const headerRow: UnifiedNode = { id: 'header_row', role: 'row', children: [headerOrderNo, headerBuyer, headerOperation] };
+    const table: UnifiedNode = { id: 'table_1', role: 'table', children: [headerRow, row1] };
+    const root: UnifiedNode = { id: 'root', role: 'root', children: [table] };
+
+    const entityIndex: EntityIndex = {
+        entities: {
+            ent_table: { id: 'ent_table', type: 'region', kind: 'table', nodeId: 'table_1' },
+        },
+        byNodeId: { table_1: [{ type: 'region', entityId: 'ent_table', role: 'container' }] },
+    };
+
+    const { nodeIndex, bboxIndex, attrIndex, contentStore } = buildExternalIndexes(root);
+    const snapshot = buildSnapshot({
+        root,
+        nodeIndex,
+        entityIndex,
+        locatorIndex: {},
+        bboxIndex,
+        attrIndex,
+        contentStore,
+        ruleEntityOverlay: {
+            byRuleId: {},
+            byEntityId: {
+                ent_table: {
+                    primaryKey: { fieldKey: 'buyer', columns: ['采购人'], source: 'annotation' },
+                    columns: [
+                        { fieldKey: 'orderNo', name: '订单编号', kind: 'text', source: 'annotation' },
+                        { fieldKey: 'buyer', name: '采购人', kind: 'text', source: 'annotation' },
+                        {
+                            fieldKey: 'operation',
+                            name: '操作',
+                            kind: 'action_column',
+                            source: 'annotation',
+                            actions: [{ actionIntent: 'approve', text: '审核' }],
+                        },
+                    ],
+                },
+            },
+            nodeHintsByNodeId: {},
+        },
+    });
+    const finalEntityView = buildFinalEntityViewFromSnapshot(snapshot, {
+        renamedNodes: {},
+        addedEntities: [],
+        deletedEntities: [],
+    });
+    const entity = finalEntityView.entities[0];
+
+    const resolved = resolveTableRowAction(snapshot, entity, {
+        primaryKey: { fieldKey: 'buyer', value: 'Alice' },
+        actionIntent: 'approve',
+    });
+
+    assert.equal(resolved?.nodeId, 'approve_btn_1');
+    assert.equal(resolved?.rowNodeId, 'row_1');
+    assert.equal(resolved?.cellNodeId, 'cell_operation_1');
+});
