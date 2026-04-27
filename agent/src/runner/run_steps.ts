@@ -21,6 +21,7 @@ import type {
     StepSink,
     StepsQueue,
 } from './run_steps_types';
+import type { StepResolve } from './steps/types';
 
 export type {
     Checkpoint,
@@ -97,6 +98,7 @@ const executeOne = async (
     workspaceId: string,
     runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
+    stepResolves?: Record<string, StepResolve>,
 ): Promise<ExecStepResult> => {
     const executors = deps.pluginHost.getExecutors();
     if (!Object.prototype.hasOwnProperty.call(executors, step.name)) {
@@ -123,8 +125,93 @@ const executeOne = async (
         };
     }
 
+    const runtimeStep = injectStepResolve(resolvedStep.step, stepResolves);
+    if (!runtimeStep.ok) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: runtimeStep.error,
+        };
+    }
+
     const fn = executors[step.name];
-    return await fn(resolvedStep.step, deps, workspaceId);
+    return await fn(runtimeStep.step, deps, workspaceId);
+};
+
+const STEP_RESOLVE_STEP_NAMES = new Set([
+    'browser.take_screenshot',
+    'browser.click',
+    'browser.fill',
+    'browser.type',
+    'browser.select_option',
+    'browser.hover',
+    'browser.scroll',
+    'browser.press_key',
+    'browser.drag_and_drop',
+] as const);
+
+const injectStepResolve = (
+    step: StepUnion,
+    stepResolves?: Record<string, StepResolve>,
+): { ok: true; step: StepUnion } | { ok: false; error: ExecStepResult['error'] } => {
+    const stepRecord = step as StepUnion & { resolveId?: unknown };
+    const argsRecord = step.args as Record<string, unknown>;
+    const topLevelResolveId = typeof stepRecord.resolveId === 'string' ? stepRecord.resolveId : undefined;
+    const argsResolveId = typeof argsRecord.resolveId === 'string' ? argsRecord.resolveId : undefined;
+    const resolveId = topLevelResolveId ?? argsResolveId;
+
+    if (!resolveId) {
+        return { ok: true, step };
+    }
+    if (topLevelResolveId && argsResolveId) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `step ${step.id} has duplicate resolveId sources`,
+            },
+        };
+    }
+    if (step.resolve) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `step ${step.id} cannot use resolve and resolveId together`,
+            },
+        };
+    }
+    if (!STEP_RESOLVE_STEP_NAMES.has(step.name as any)) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `step ${step.id} does not support resolveId`,
+                details: { stepName: step.name, resolveId },
+            },
+        };
+    }
+    if (!stepResolves || !Object.prototype.hasOwnProperty.call(stepResolves, resolveId)) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `step resolve not found: ${resolveId}`,
+                details: { stepId: step.id, resolveId },
+            },
+        };
+    }
+
+    return {
+        ok: true,
+        step: {
+            id: step.id,
+            name: step.name,
+            args: step.args,
+            meta: step.meta,
+            resolve: stepResolves[resolveId],
+        } as StepUnion,
+    };
 };
 
 const writeRunnerStepResultCache = async (
@@ -281,7 +368,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 argsSummary: step.args,
             });
 
-            const result = await executeOne(step, req.workspaceId, runLocalStepResults, resolvedDeps);
+            const result = await executeOne(step, req.workspaceId, runLocalStepResults, resolvedDeps, req.stepResolves);
             if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
                     const binding = await resolvedDeps.runtime.ensureActivePage(req.workspaceId);
@@ -321,7 +408,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpointMaxAttempts,
                     inCheckpointFlow: false,
                     deps: resolvedDeps,
-                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, runLocalStepResults, resolvedDeps),
+                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, runLocalStepResults, resolvedDeps, req.stepResolves),
                     checkpoints: req.checkpoints,
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
@@ -376,7 +463,7 @@ export const runStepList = async (
     workspaceId: string,
     steps: StepUnion[],
     deps?: RunStepsDeps,
-    opts?: { stopOnError?: boolean; runId?: string },
+    opts?: { stopOnError?: boolean; runId?: string; stepResolves?: Record<string, StepResolve> },
 ): Promise<{ checkpoint: Checkpoint; pipe: ResultPipe }> => {
     const queue = createStepsQueue(steps, { closed: true });
     const pipe = createResultPipe();
@@ -388,6 +475,7 @@ export const runStepList = async (
             stepsQueue: queue,
             resultPipe: pipe,
             signalChannel: signals,
+            stepResolves: opts?.stepResolves,
             stopOnError: opts?.stopOnError,
         },
         deps,

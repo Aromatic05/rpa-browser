@@ -1,4 +1,4 @@
-import type { StepName, StepResult as ExecStepResult, StepUnion } from './steps/types';
+import type { StepName, StepResolve, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import type { Checkpoint as RunnerCheckpoint } from './checkpoint/types';
 import type { RuntimeRegistry } from '../runtime/runtime_registry';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
@@ -77,6 +77,7 @@ export type RunStepsRequest = {
     stepsQueue: StepsQueue;
     resultPipe: ResultPipe;
     signalChannel: SignalChannel;
+    stepResolves?: Record<string, StepResolve>;
     stopOnError?: boolean;
     onCheckpoint?: (checkpoint: Checkpoint) => void | Promise<void>;
     checkpoints?: RunnerCheckpoint[];

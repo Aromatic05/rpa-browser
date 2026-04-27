@@ -127,6 +127,7 @@ const buildActionStep = (
                 id: stepId,
                 name: action.step.name,
                 args: resolved.value as never,
+                ...(action.step.resolveId ? { resolveId: action.step.resolveId } : {}),
             } as StepUnion,
         };
     }
