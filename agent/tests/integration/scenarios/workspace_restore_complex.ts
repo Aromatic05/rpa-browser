@@ -97,7 +97,7 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
                 payload: {
                     id: 'ws1-rec-switch-b',
                     name: 'browser.switch_tab',
-                    args: { tab_id: ws1TabB.tabId },
+                    args: { tabId: ws1TabB.tabId },
                     meta: { source: 'record', ts: Date.now() + 1 },
                 },
             }),

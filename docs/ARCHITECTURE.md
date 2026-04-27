@@ -85,6 +85,14 @@ Snapshot 的实体相关主链路为：
 - `meta`：来源、时序、workspace/tab 元信息
 - `resolve`：目标解析辅助信息（`hint` + `policy`）
 
+持久化边界：
+
+- `SerializedStep` 只包含 `id`、`name`、`args`、`resolveId`
+- `Step.resolve` 不是废弃能力，但它是 runtime-only 字段，不进入 core `steps.yaml`
+- `StepMeta` 也是 runtime-only 字段，不进入 core `steps.yaml`
+- `StepResolveFile` 持久化到 `step_resolve.yaml`
+- 多 tab 持久化使用 `tabRef`；运行时 `tabId` / `tabToken` 不写入 core `steps.yaml`
+
 执行链路：
 
 1. executor 收集 `args.nodeId` / `args.selector` / `step.resolve`

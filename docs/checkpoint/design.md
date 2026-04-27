@@ -145,6 +145,8 @@ checkpoint core YAML 示例使用 scoped ref。checkpoint core YAML 不使用 ru
 - 保存 step 的 resolve sidecar
 - 允许 `hint`、`policy`
 - 通过 `resolveId` 关联，不参与核心执行语义
+- `Step.resolve` 不是废弃功能，但仅作为 runtime-only 字段注入执行态
+- checkpoint content 内的 step-like item 也只保留 `id` / `name` / `args` / `resolveId`
 
 ### `checkpoints.yaml`
 

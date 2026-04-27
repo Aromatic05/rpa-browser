@@ -42,7 +42,7 @@ const logPageEvent = (event: string, payload: Record<string, unknown>) => {
 const resolveSwitchTabIdArg = (step: StepUnion | undefined): string | null => {
     if (step?.name !== 'browser.switch_tab') {return null;}
     const args = step.args as Record<string, unknown>;
-    return typeof args.tab_id === 'string' ? args.tab_id : null;
+    return typeof args.tabId === 'string' ? args.tabId : null;
 };
 
 const resolveWorkspaceId = (
@@ -356,7 +356,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                         {
                             id: crypto.randomUUID(),
                             name: 'browser.switch_tab',
-                            args: { tab_id: payload.tabId, tab_url: targetTabUrl, tab_ref: payload.tabId },
+                            args: { tabId: payload.tabId, tabUrl: targetTabUrl, tabRef: payload.tabId },
                             meta: {
                                 source: 'record',
                                 ts: Date.now(),
@@ -496,7 +496,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
                             {
                                 id: crypto.randomUUID(),
                                 name: 'browser.switch_tab',
-                                args: { tab_id: scope.tabId, tab_url: payload.url, tab_ref: scope.tabId },
+                                args: { tabId: scope.tabId, tabUrl: payload.url, tabRef: scope.tabId },
                                 meta: {
                                     source: 'record',
                                     ts: payload.at || Date.now(),

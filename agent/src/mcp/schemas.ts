@@ -80,12 +80,15 @@ export const browserCreateTabInputSchema = z.object({
 
 export const browserSwitchTabInputSchema = z.object({
     tabToken: z.string().optional(),
-    tab_id: z.string(),
+    tabId: z.string().optional(),
+    tabRef: z.string().optional(),
+    tabUrl: z.string().optional(),
 });
 
 export const browserCloseTabInputSchema = z.object({
     tabToken: z.string().optional(),
-    tab_id: z.string().optional(),
+    tabId: z.string().optional(),
+    tabRef: z.string().optional(),
 });
 
 export const browserGetPageInfoInputSchema = z.object({
@@ -463,10 +466,12 @@ export const toolInputJsonSchemas = {
     },
     'browser.switch_tab': {
         type: 'object',
-        required: ['tab_id'],
+        required: [],
         properties: {
             tabToken: { type: 'string' },
-            tab_id: { type: 'string' },
+            tabId: { type: 'string' },
+            tabRef: { type: 'string' },
+            tabUrl: { type: 'string' },
         },
         additionalProperties: false,
     },
@@ -475,7 +480,8 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabToken: { type: 'string' },
-            tab_id: { type: 'string' },
+            tabId: { type: 'string' },
+            tabRef: { type: 'string' },
         },
         additionalProperties: false,
     },

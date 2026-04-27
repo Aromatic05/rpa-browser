@@ -221,13 +221,15 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const result = await runSingleStep(deps, sourceTabToken, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
-        args: { tab_id: input.tab_id },
+        args: { tabId: input.tabId, tabRef: input.tabRef, tabUrl: input.tabUrl },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
 
+    const targetTabId = input.tabId || input.tabRef;
+    if (!targetTabId) {return result;}
     const scope = deps.pageRegistry.resolveScopeFromToken(sourceTabToken);
-    deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, input.tab_id);
+    deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, targetTabId);
     return result;
 };
 
@@ -238,7 +240,7 @@ const handleCloseTab = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     return await runSingleStep(deps, input.tabToken, {
         id: crypto.randomUUID(),
         name: 'browser.close_tab',
-        args: { tab_id: input.tab_id },
+        args: { tabId: input.tabId, tabRef: input.tabRef },
         meta: { source: 'mcp' },
     });
 };

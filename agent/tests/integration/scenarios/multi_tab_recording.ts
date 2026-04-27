@@ -173,7 +173,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 payload: {
                     id: 'rec-switch-b',
                     name: 'browser.switch_tab',
-                    args: { tab_id: tabB.tabId },
+                    args: { tabId: tabB.tabId },
                     meta: { source: 'record', ts: Date.now() + 4 },
                 },
             }),

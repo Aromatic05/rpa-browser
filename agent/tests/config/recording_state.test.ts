@@ -22,7 +22,7 @@ test('recordStep appends cross-tab step into sole active recording session', () 
     const step: StepUnion = {
         id: 'step-1',
         name: 'browser.switch_tab',
-        args: { tab_id: 'tab-b' },
+        args: { tabId: 'tab-b' },
         meta: { source: 'record', ts: 100, tabToken: 'token-b', workspaceId: 'ws-1', tabId: 'tab-b' },
     };
 
@@ -91,7 +91,7 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
     const switchStep: StepUnion = {
         id: 'switch-1',
         name: 'browser.switch_tab',
-        args: { tab_id: 'tab-b', tab_url: 'https://example.com/b', tab_ref: 'tab-b' },
+        args: { tabId: 'tab-b', tabUrl: 'https://example.com/b', tabRef: 'tab-b' },
         meta: {
             source: 'record',
             ts: 200,

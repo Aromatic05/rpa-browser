@@ -164,8 +164,8 @@ export type StepArgsMap = {
     'browser.go_back': { timeout?: number };
     'browser.reload': { timeout?: number };
     'browser.create_tab': { url?: string };
-    'browser.switch_tab': { tab_id: string; tab_url?: string; tab_ref?: string };
-    'browser.close_tab': { tab_id?: string };
+    'browser.switch_tab': { tabId?: string; tabUrl?: string; tabRef?: string };
+    'browser.close_tab': { tabId?: string; tabRef?: string };
     'browser.get_page_info': Record<string, never>;
     'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
@@ -405,6 +405,7 @@ export type StepResult = {
 export type RunStepsRequest = {
     workspaceId: string;
     steps: StepUnion[];
+    stepResolves?: Record<string, StepResolve>;
     options?: { dryRun?: boolean; stopOnError?: boolean; maxConcurrency?: number };
 };
 

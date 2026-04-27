@@ -364,7 +364,7 @@ const enrichRecordedStep = (
     const stepTabToken = step.meta?.tabToken || sourceTabToken;
     const args = step.args as unknown;
     const gotoUrl = isRecord(args) && typeof args.url === 'string' ? args.url : undefined;
-    const switchTabUrl = isRecord(args) && typeof args.tab_url === 'string' ? args.tab_url : undefined;
+    const switchTabUrl = isRecord(args) && typeof args.tabUrl === 'string' ? args.tabUrl : undefined;
     const stepUrl =
         step.meta?.urlAtRecord ||
         (step.name === 'browser.goto' ? gotoUrl : undefined) ||

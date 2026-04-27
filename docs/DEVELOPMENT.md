@@ -386,6 +386,7 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 - 保存 `tabs`（`tabId/url/title/active`），不保存运行时 `tabToken`。
 - 保存录制 `steps`，并移除 step `meta.tabToken`。
 - 保存录制 `manifest` 的 tab 列表时，移除 `tabs[].tabToken`。
+- 多 tab step 持久化优先写 `args.tabRef`；运行时 `tabId` 与 `tabToken` 不进入 core step YAML。
 
 恢复语义约束：
 - `workspace.restore` 只负责恢复 workspace/tab 与录制上下文，不自动触发 `play.start`。
