@@ -419,6 +419,13 @@ const toFinalEntityRecord = (
                 optionSource: field.optionSource ? { ...field.optionSource } : undefined,
             })),
             formActions: businessInfo.formActions?.map((action) => ({ ...action })),
+            pagination: businessInfo.pagination
+                ? {
+                    nextAction: businessInfo.pagination.nextAction
+                        ? { ...businessInfo.pagination.nextAction }
+                        : undefined,
+                }
+                : undefined,
             tableMeta: businessInfo.tableMeta
                 ? {
                     ...businessInfo.tableMeta,
@@ -466,6 +473,13 @@ const toFinalEntityRecord = (
             optionSource: field.optionSource ? { ...field.optionSource } : undefined,
         })),
         formActions: businessInfo.formActions?.map((action) => ({ ...action })),
+        pagination: businessInfo.pagination
+            ? {
+                nextAction: businessInfo.pagination.nextAction
+                    ? { ...businessInfo.pagination.nextAction }
+                    : undefined,
+            }
+            : undefined,
         tableMeta: businessInfo.tableMeta
             ? {
                 ...businessInfo.tableMeta,
@@ -524,6 +538,19 @@ const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecor
         columns,
         formFields,
         formActions,
+        pagination: ruleInfo?.pagination
+            ? {
+                nextAction: ruleInfo.pagination.nextAction
+                    ? { ...ruleInfo.pagination.nextAction }
+                    : undefined,
+            }
+            : autoInfo.pagination
+              ? {
+                  nextAction: autoInfo.pagination.nextAction
+                      ? { ...autoInfo.pagination.nextAction }
+                      : undefined,
+              }
+              : undefined,
         tableMeta: ruleInfo?.tableMeta
             ? {
                 ...ruleInfo.tableMeta,

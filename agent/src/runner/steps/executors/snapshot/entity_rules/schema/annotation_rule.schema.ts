@@ -60,6 +60,20 @@ const formActionSchema = z
     })
     .strict();
 
+const paginationActionSchema = z
+    .object({
+        actionIntent: nonEmptyString,
+        nodeRuleId: nonEmptyString,
+        disabledRuleId: nonEmptyString.optional(),
+    })
+    .strict();
+
+const paginationSchema = z
+    .object({
+        nextAction: paginationActionSchema,
+    })
+    .strict();
+
 const annotationRuleSchema = z
     .object({
         ruleId: nonEmptyString,
@@ -69,6 +83,7 @@ const annotationRuleSchema = z
         columns: z.array(columnSchema).nonempty().optional(),
         fields: z.array(fieldSchema).nonempty().optional(),
         actions: z.array(formActionSchema).nonempty().optional(),
+        pagination: paginationSchema.optional(),
         fieldKey: nonEmptyString.optional(),
         actionIntent: nonEmptyString.optional(),
     })
@@ -82,6 +97,7 @@ const annotationRuleSchema = z
                     value.columns ||
                     value.fields ||
                     value.actions ||
+                    value.pagination ||
                     value.fieldKey ||
                     value.actionIntent,
             ),

@@ -111,6 +111,24 @@ export const validateEntityRules = (
                 errors.push(`action.nodeRuleId not found for ruleId=${rule.ruleId}: ${action.nodeRuleId}`);
             }
         }
+
+        if (rule.pagination) {
+            if (annotationSet.page.kind !== 'table') {
+                errors.push(`pagination only allowed for table annotations: ${rule.ruleId}`);
+            }
+            const nextAction = rule.pagination.nextAction;
+            if (!nextAction.actionIntent.trim()) {
+                errors.push(`pagination.nextAction.actionIntent must be non-empty for ruleId=${rule.ruleId}`);
+            }
+            if (!matchRuleById.has(nextAction.nodeRuleId)) {
+                errors.push(`pagination.nextAction.nodeRuleId not found for ruleId=${rule.ruleId}: ${nextAction.nodeRuleId}`);
+            }
+            if (nextAction.disabledRuleId && !matchRuleById.has(nextAction.disabledRuleId)) {
+                errors.push(
+                    `pagination.nextAction.disabledRuleId not found for ruleId=${rule.ruleId}: ${nextAction.disabledRuleId}`,
+                );
+            }
+        }
     }
 
     const adjacency = new Map<string, string>();

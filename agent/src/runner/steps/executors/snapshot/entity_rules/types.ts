@@ -10,6 +10,7 @@ import type {
     EntityRuleDiagnostic,
     NodeSemanticHints,
     RegionEntity,
+    TablePaginationBinding,
 } from '../core/types';
 import type { EntityRuleConfig } from '../../../../../config/entity_rules';
 
@@ -64,6 +65,7 @@ export type EntityAnnotationRule = {
     columns?: EntityColumnAnnotation[];
     fields?: EntityFormFieldAnnotation[];
     actions?: EntityFormActionAnnotation[];
+    pagination?: TablePaginationBinding;
     fieldKey?: string;
     actionIntent?: string;
 };
@@ -76,7 +78,7 @@ export type EntityAnnotationSet = {
 
 export type NodeBusinessHint = Pick<
     NodeSemanticHints,
-    'entityNodeId' | 'entityKind' | 'actionIntent' | 'fieldRole' | 'controlKind'
+    'entityNodeId' | 'entityKind' | 'actionIntent' | 'actionRole' | 'fieldRole' | 'controlKind'
 > & {
     fieldKey?: string;
 };

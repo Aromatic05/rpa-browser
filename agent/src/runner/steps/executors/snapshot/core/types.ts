@@ -152,6 +152,7 @@ export type NodeSemanticHints = {
     fieldRole?: 'control' | 'label' | 'option' | 'message';
     controlKind?: string;
     actionIntent?: string;
+    actionRole?: string;
     actionTargetNodeId?: string;
 };
 
@@ -197,6 +198,18 @@ export type EntityFormAction = {
     nodeId?: string;
 };
 
+export type TablePaginationActionBinding = {
+    actionIntent: string;
+    nodeRuleId: string;
+    nodeId?: string;
+    disabledRuleId?: string;
+    disabledNodeId?: string;
+};
+
+export type TablePaginationBinding = {
+    nextAction?: TablePaginationActionBinding;
+};
+
 export type EntityRuleDiagnosticLevel = 'info' | 'warning' | 'error';
 
 export type EntityRuleDiagnosticCode =
@@ -209,6 +222,8 @@ export type EntityRuleDiagnosticCode =
     | 'OPTION_RULE_UNRESOLVED'
     | 'TABLE_COLUMN_HEADER_UNRESOLVED'
     | 'TABLE_ACTION_COLUMN_UNRESOLVED'
+    | 'TABLE_PAGINATION_NEXT_UNRESOLVED'
+    | 'TABLE_PAGINATION_NEXT_AMBIGUOUS'
     | 'TABLE_ROW_NOT_FOUND'
     | 'TABLE_ROW_ACTION_NOT_FOUND';
 
@@ -250,6 +265,7 @@ export type EntityBusinessInfo = {
     columns?: EntityColumn[];
     formFields?: EntityFormField[];
     formActions?: EntityFormAction[];
+    pagination?: TablePaginationBinding;
     tableMeta?: EntityTableMeta;
 };
 
@@ -358,6 +374,7 @@ export type FinalEntityRecord = {
     columns?: EntityColumn[];
     formFields?: EntityFormField[];
     formActions?: EntityFormAction[];
+    pagination?: TablePaginationBinding;
     tableMeta?: EntityTableMeta;
     source: 'auto' | 'overlay_add';
     itemIds?: string[];

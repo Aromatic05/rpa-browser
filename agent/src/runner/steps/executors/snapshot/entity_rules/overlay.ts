@@ -50,6 +50,19 @@ export const mergeEntityBusinessInfo = (
             : base?.formActions
               ? base.formActions.map((action: NonNullable<EntityBusinessInfo['formActions']>[number]) => ({ ...action }))
               : undefined,
+        pagination: patch?.pagination
+            ? {
+                nextAction: patch.pagination.nextAction
+                    ? { ...patch.pagination.nextAction }
+                    : undefined,
+            }
+            : base?.pagination
+              ? {
+                  nextAction: base.pagination.nextAction
+                      ? { ...base.pagination.nextAction }
+                      : undefined,
+              }
+              : undefined,
         tableMeta: patch?.tableMeta
             ? {
                 rowCount: patch.tableMeta.rowCount,
@@ -88,5 +101,6 @@ export const mergeNodeBusinessHint = (
         fieldRole: patch?.fieldRole ?? base?.fieldRole,
         controlKind: patch?.controlKind ?? base?.controlKind,
         actionIntent: patch?.actionIntent ?? base?.actionIntent,
+        actionRole: patch?.actionRole ?? base?.actionRole,
     };
 };

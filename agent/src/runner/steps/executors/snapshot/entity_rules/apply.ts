@@ -92,6 +92,7 @@ export const applyEntityRuleBindings = (
         const annotation = bundle.annotationByRuleId[rule.ruleId];
         if (!annotation) {continue;}
         applyFormBindingAnnotations(overlay, annotation, binding, bindings, diagnostics, bundle.id);
+        applyTablePaginationAnnotations(overlay, annotation, binding, bindings, diagnostics, bundle.id);
     }
 
     overlay.diagnostics = diagnostics.list();
@@ -119,13 +120,21 @@ const applyEntityInfoAnnotation = (
             source: 'annotation',
             actions: column.actions?.map((action) => ({ ...action })),
         })),
+        pagination: annotation.pagination
+            ? {
+                nextAction: annotation.pagination.nextAction
+                    ? { ...annotation.pagination.nextAction }
+                    : undefined,
+            }
+            : undefined,
     };
 
     const hasEntityPatch = Boolean(
         patch.businessTag ||
             patch.businessName ||
             patch.primaryKey ||
-            patch.columns,
+            patch.columns ||
+            patch.pagination,
     );
     if (!hasEntityPatch) {return;}
 
@@ -427,6 +436,91 @@ const patchNodeHint = (overlay: BusinessEntityOverlay, nodeId: string, patch: No
     overlay.nodeHintsByNodeId[nodeId] = mergeNodeBusinessHint(overlay.nodeHintsByNodeId[nodeId], patch);
 };
 
+const applyTablePaginationAnnotations = (
+    overlay: BusinessEntityOverlay,
+    annotation: EntityAnnotationRule,
+    binding: ResolvedRuleBinding,
+    bindings: Record<string, ResolvedRuleBinding>,
+    diagnostics: { add: (diagnostic: EntityRuleDiagnostic) => void },
+    profile: string,
+) => {
+    const nextAction = annotation.pagination?.nextAction;
+    if (!nextAction) {return;}
+
+    for (const entityRef of binding.matchedEntityRefs) {
+        if (entityRef.kind !== 'table') {continue;}
+
+        if (!Object.prototype.hasOwnProperty.call(bindings, nextAction.nodeRuleId)) {
+            diagnostics.add({
+                code: 'ANNOTATION_RULE_REF_NOT_FOUND',
+                level: 'error',
+                message: `annotation rule ref not found: ${nextAction.nodeRuleId}`,
+                profile,
+                ruleId: nextAction.nodeRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag: annotation.businessTag,
+                actionIntent: nextAction.actionIntent,
+                nodeIds: [entityRef.nodeId],
+            });
+            continue;
+        }
+
+        const nextBinding = bindings[nextAction.nodeRuleId];
+        const nextNodeId = nextBinding?.matchedNodeIds[0];
+        if (!nextNodeId) {
+            diagnostics.add({
+                code: 'TABLE_PAGINATION_NEXT_UNRESOLVED',
+                level: 'warning',
+                message: `table pagination next action unresolved: ${nextAction.actionIntent}`,
+                profile,
+                ruleId: nextAction.nodeRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag: annotation.businessTag,
+                actionIntent: nextAction.actionIntent,
+                nodeIds: [entityRef.nodeId],
+            });
+        } else if ((nextBinding?.matchedNodeIds.length || 0) > 1) {
+            diagnostics.add({
+                code: 'TABLE_PAGINATION_NEXT_AMBIGUOUS',
+                level: 'warning',
+                message: `table pagination next action matched multiple nodes: ${nextAction.actionIntent}`,
+                profile,
+                ruleId: nextAction.nodeRuleId,
+                annotationId: annotation.ruleId,
+                entityId: entityRef.entityId,
+                businessTag: annotation.businessTag,
+                actionIntent: nextAction.actionIntent,
+                nodeIds: nextBinding?.matchedNodeIds,
+            });
+        }
+
+        const disabledBinding = nextAction.disabledRuleId ? bindings[nextAction.disabledRuleId] : undefined;
+        const disabledNodeId = disabledBinding?.matchedNodeIds[0];
+        overlay.byEntityId[entityRef.entityId] = mergeEntityBusinessInfo(overlay.byEntityId[entityRef.entityId], {
+            pagination: {
+                nextAction: {
+                    actionIntent: nextAction.actionIntent,
+                    nodeRuleId: nextAction.nodeRuleId,
+                    nodeId: nextNodeId,
+                    disabledRuleId: nextAction.disabledRuleId,
+                    disabledNodeId,
+                },
+            },
+        });
+
+        if (nextNodeId) {
+            patchNodeHint(overlay, nextNodeId, {
+                entityNodeId: entityRef.nodeId,
+                entityKind: entityRef.kind,
+                actionIntent: nextAction.actionIntent,
+                actionRole: 'pagination.next',
+            });
+        }
+    }
+};
+
 const materializeOverlayToNodeHints = (
     overlay: BusinessEntityOverlay,
     nodeById: Map<string, UnifiedNode>,
@@ -441,6 +535,7 @@ const materializeOverlayToNodeHints = (
         setNodeAttr(node, 'fieldRole', hint.fieldRole);
         setNodeAttr(node, 'controlKind', hint.controlKind);
         setNodeAttr(node, 'actionIntent', hint.actionIntent);
+        setNodeAttr(node, 'actionRole', hint.actionRole);
         setNodeAttr(node, 'entityNodeId', hint.entityNodeId);
         setNodeAttr(node, 'entityKind', hint.entityKind);
     }
