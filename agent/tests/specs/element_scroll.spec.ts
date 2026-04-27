@@ -18,7 +18,7 @@ test.describe('element_scroll', () => {
         await page.setContent('<div style="height:2000px"></div>');
         const runner = await setupStepRunner(page, 'scroll-fail');
         const res = await runner.run([
-            createStep('browser.scroll', { target: { a11yHint: { role: 'button', name: 'Missing' } } }),
+            createStep('browser.scroll', { selector: '#missing' }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

@@ -9,7 +9,7 @@ test.describe('element_date', () => {
         const runner = await setupStepRunner(page, 'date-token');
         const res = await runner.run([
             createStep('browser.fill', {
-                target: { a11yHint: { role: 'textbox', name: 'Date' } },
+                selector: '#nativeDate',
                 value: '2025-01-02',
             }),
         ]);
@@ -24,7 +24,7 @@ test.describe('element_date', () => {
         await page.goto(`${fixtureURL}/date.html`);
         const runner = await setupStepRunner(page, 'date-fail');
         const res = await runner.run([
-            createStep('browser.fill', { target: { a11yHint: { name: 'Missing' } }, value: '2025-01-10' }),
+            createStep('browser.fill', { selector: '#missing', value: '2025-01-10' }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

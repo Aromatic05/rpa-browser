@@ -11,7 +11,7 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
         {
             id: 's1',
             name: 'browser.click',
-            args: { target: { selector: '#a' } },
+            args: { selector: '#a' },
             meta: { source: 'record', tabToken: 'token-a', tabId: 'tab-a', workspaceId: 'old-ws' },
         },
         {
@@ -23,7 +23,7 @@ test('replayRecording creates and switches tab when recorded tabToken is missing
         {
             id: 's2',
             name: 'browser.click',
-            args: { target: { selector: '#b' } },
+            args: { selector: '#b' },
             meta: { source: 'record', tabToken: 'token-b', tabId: 'tab-b', workspaceId: 'old-ws' },
         },
     ];
@@ -94,13 +94,13 @@ test('replayRecording force switches when tabToken changes without browser.switc
         {
             id: 's1',
             name: 'browser.click',
-            args: { target: { selector: '#a' } },
+            args: { selector: '#a' },
             meta: { source: 'record', tabToken: 'token-a', tabId: 'tab-a', workspaceId: 'old-ws' },
         },
         {
             id: 's2',
             name: 'browser.click',
-            args: { target: { selector: '#b' } },
+            args: { selector: '#b' },
             meta: { source: 'record', tabToken: 'token-b', tabId: 'tab-b', workspaceId: 'old-ws' },
         },
     ];
@@ -151,7 +151,7 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
         {
             id: 'h1',
             name: 'browser.click',
-            args: { target: { selector: '#from-a' } },
+            args: { selector: '#from-a' },
             meta: { source: 'record', tabToken: 'token-a', workspaceId: 'ws-now' },
         },
         {
@@ -163,7 +163,7 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
         {
             id: 'h2',
             name: 'browser.click',
-            args: { target: { selector: '#from-b' } },
+            args: { selector: '#from-b' },
             meta: { source: 'record', tabToken: 'token-b', workspaceId: 'ws-now' },
         },
     ];

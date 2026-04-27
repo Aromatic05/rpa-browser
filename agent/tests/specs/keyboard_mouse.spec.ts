@@ -10,7 +10,7 @@ test.describe('keyboard_mouse', () => {
         );
         const runner = await setupStepRunner(page, 'key-token');
         const res = await runner.run([
-            createStep('browser.press_key', { key: 'Enter', target: { a11yHint: { name: 'Field' } } }),
+            createStep('browser.press_key', { key: 'Enter', selector: '#field' }),
         ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#out')).toHaveText('ok');
@@ -24,8 +24,8 @@ test.describe('keyboard_mouse', () => {
         const runner = await setupStepRunner(page, 'drag-fail');
         const res = await runner.run([
             createStep('browser.drag_and_drop', {
-                source: { a11yHint: { role: 'button', name: 'Missing' } },
-                dest_target: { a11yHint: { role: 'button', name: 'Drop' } },
+                sourceSelector: '#missing',
+                destSelector: '#target',
             }),
         ]);
         expect(res.ok).toBe(false);

@@ -32,7 +32,7 @@ type PaginationFixtureOptions = {
 };
 
 type ExecutorSpy = {
-    clickIds: string[];
+    clickNodeIds: string[];
 };
 
 const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView): RunStepsDeps => {
@@ -274,7 +274,7 @@ const buildSpyDeps = (deps: RunStepsDeps, spy: ExecutorSpy): RunStepsDeps => ({
             return {
                 ...executors,
                 'browser.click': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
-                    spy.clickIds.push(String((step.args as { id?: unknown }).id || ''));
+                    spy.clickNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
                     return await executors['browser.click'](step, innerDeps, workspaceId);
                 },
             };
@@ -484,7 +484,7 @@ test('diagnostics capture unresolved and ambiguous table pagination bindings', (
 
 test('order list pagination query can resolve next page target', async () => {
     await withAntEntityRuleRunner(async ({ page, workspaceId, deps }) => {
-        const spy: ExecutorSpy = { clickIds: [] };
+        const spy: ExecutorSpy = { clickNodeIds: [] };
         const spyDeps = buildSpyDeps(deps, spy);
         const steps: StepUnion[] = [
             {
@@ -518,7 +518,7 @@ test('order list pagination query can resolve next page target', async () => {
                 id: 'clickNext',
                 name: 'browser.click',
                 args: {
-                    id: '{{nextTarget.data.nodeId}}',
+                    nodeId: '{{nextTarget.data.nodeId}}',
                 },
             } as StepUnion,
             {
@@ -549,8 +549,8 @@ test('order list pagination query can resolve next page target', async () => {
         assert.equal(results[2].data.nodeId.length > 0, true);
 
         assert.equal(results[3].ok, true);
-        assert.equal(spy.clickIds[0], results[2].data.nodeId);
-        assert.equal(spy.clickIds[0].includes('{{'), false);
+        assert.equal(spy.clickNodeIds[0], results[2].data.nodeId);
+        assert.equal(spy.clickNodeIds[0].includes('{{'), false);
 
         assert.equal(results[4].ok, true);
         assert.equal(results[4].data.kind, 'value');

@@ -18,7 +18,7 @@ const createFailedCtx = (overrides?: Partial<FailedCtx>): FailedCtx => ({
     runId: 'run-1',
     workspaceId: 'ws-1',
     stepIndex: 0,
-    step: { id: 's1', name: 'browser.click', args: { target: { selector: '#x' } } } as StepUnion,
+    step: { id: 's1', name: 'browser.click', args: { selector: '#x' } } as StepUnion,
     rawResult: rawFailure,
     stopOnError: true,
     checkpointEnabled: true,
@@ -325,7 +325,7 @@ test('maybeBindCheckpoint: missing variable fails', async () => {
 test('maybeRunCheckpoint: content steps all success', async () => {
     const ctx = createCtx({
         checkpoint: { id: 'cp', name: 'cp', trigger: { matchRules: [] }, content: [] },
-        boundContent: [{ id: 'content-1', name: 'browser.click', args: { target: { selector: '#x' } } } as StepUnion],
+        boundContent: [{ id: 'content-1', name: 'browser.click', args: { selector: '#x' } } as StepUnion],
     });
     const result = await maybeRunCheckpoint(ctx);
     assert.equal(result.runResult?.ok, true);
@@ -365,7 +365,7 @@ test('maybeRunCheckpoint: normal step failure stops checkpoint', async () => {
             executeStep: async () => ({ stepId: 'content-1', ok: false, error: { code: 'ERR_NOT_FOUND', message: 'fail' } }),
         }),
         checkpoint: { id: 'cp', name: 'cp', trigger: { matchRules: [] }, content: [] },
-        boundContent: [{ id: 'content-1', name: 'browser.fill', args: { value: 'x', target: { selector: '#a' } } } as StepUnion],
+        boundContent: [{ id: 'content-1', name: 'browser.fill', args: { value: 'x', selector: '#a' } } as StepUnion],
     });
     const result = await maybeRunCheckpoint(ctx);
     assert.equal(result.active, false);

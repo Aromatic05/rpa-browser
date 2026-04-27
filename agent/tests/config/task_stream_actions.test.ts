@@ -59,7 +59,7 @@ test('task.run lifecycle actions', async () => {
         type: 'task.run.push',
         payload: {
             runId,
-            steps: [{ id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } }],
+            steps: [{ id: 's1', name: 'browser.click', args: { selector: '#a' } }],
         },
     });
     assert.equal(pushed.ok, true);
@@ -108,7 +108,7 @@ test('task.run lifecycle actions', async () => {
         type: 'task.run.resume',
         payload: {
             runId,
-            steps: [{ id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } }],
+            steps: [{ id: 's1', name: 'browser.click', args: { selector: '#a' } }],
             close: true,
         },
     });

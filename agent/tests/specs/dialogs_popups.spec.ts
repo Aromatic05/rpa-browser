@@ -18,7 +18,7 @@ test.describe('dialogs_popups', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'popup-fail');
         const res = await runner.run([
-            createStep('browser.click', { target: { a11yHint: { role: 'button', name: 'Missing' } }, timeout: 300 }),
+            createStep('browser.click', { selector: '#missing', timeout: 300 }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

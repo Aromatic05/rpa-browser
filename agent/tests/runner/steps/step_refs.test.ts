@@ -132,7 +132,7 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
             id: 'fillBuyer',
             name: 'browser.fill',
             args: {
-                id: '{{resolveField.data.nodeId}}',
+                nodeId: '{{resolveField.data.nodeId}}',
                 value: '张三',
             },
         } as StepUnion,
@@ -149,7 +149,7 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
             id: 'clickSubmit',
             name: 'browser.click',
             args: {
-                id: '{{resolveSubmit.data.nodeId}}',
+                nodeId: '{{resolveSubmit.data.nodeId}}',
             },
         } as StepUnion,
         {
@@ -163,7 +163,7 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
             id: 'selectRow',
             name: 'browser.select_option',
             args: {
-                id: '{{queryRows.data.nodeIds.0}}',
+                nodeId: '{{queryRows.data.nodeIds.0}}',
                 values: ['approved'],
             },
         } as StepUnion,
@@ -178,7 +178,7 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
             id: 'clickWithTimeout',
             name: 'browser.click',
             args: {
-                id: 'submit_button',
+                nodeId: 'submit_button',
                 timeout: '{{queryCount.data.value}}',
             },
         } as StepUnion,
@@ -190,27 +190,27 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
         {
             op: 'fill',
             args: {
-                id: 'input_buyer',
+                nodeId: 'input_buyer',
                 value: '张三',
             },
         },
         {
             op: 'click',
             args: {
-                id: 'submit_button',
+                nodeId: 'submit_button',
             },
         },
         {
             op: 'select_option',
             args: {
-                id: 'row_1',
+                nodeId: 'row_1',
                 values: ['approved'],
             },
         },
         {
             op: 'click',
             args: {
-                id: 'submit_button',
+                nodeId: 'submit_button',
                 timeout: 30,
             },
         },
@@ -223,7 +223,7 @@ test('runner returns ERR_BAD_ARGS when referenced step does not exist', async ()
             id: 'clickMissing',
             name: 'browser.click',
             args: {
-                id: '{{missingStep.data.nodeId}}',
+                nodeId: '{{missingStep.data.nodeId}}',
             },
         } as StepUnion,
     ]);
@@ -247,7 +247,7 @@ test('runner returns ERR_DEPENDENCY_FAILED when referenced step is failed', asyn
                 id: 'clickAfterFailedDep',
                 name: 'browser.click',
                 args: {
-                    id: '{{qFail.data.nodeId}}',
+                    nodeId: '{{qFail.data.nodeId}}',
                 },
             } as StepUnion,
         ],
@@ -273,7 +273,7 @@ test('runner returns ERR_BAD_ARGS when ref path is missing', async () => {
             id: 'clickMissingPath',
             name: 'browser.click',
             args: {
-                id: '{{qRows.data.unknownPath}}',
+                nodeId: '{{qRows.data.unknownPath}}',
             },
         } as StepUnion,
     ]);

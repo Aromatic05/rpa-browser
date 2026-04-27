@@ -8,9 +8,9 @@ test.describe('element_choice', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'choice-token');
         const res = await runner.run([
-            createStep('browser.click', { target: { a11yHint: { role: 'checkbox', name: 'Agree' } } }),
+            createStep('browser.click', { selector: '#agree' }),
             createStep('browser.select_option', {
-                target: { a11yHint: { role: 'combobox', name: 'Country' } },
+                selector: '#country',
                 values: ['jp'],
             }),
         ]);
@@ -25,7 +25,7 @@ test.describe('element_choice', () => {
         const runner = await setupStepRunner(page, 'choice-fail');
         const res = await runner.run([
             createStep('browser.select_option', {
-                target: { a11yHint: { role: 'combobox', name: 'Country' } },
+                selector: '#country',
                 values: ['missing'],
                 timeout: 200,
             }),

@@ -10,9 +10,9 @@ import { startMockApp } from '../entity_rules/verify/helper';
 import { setupStepRunner } from '../helpers/steps';
 
 type ExecutorSpy = {
-    fillIds: string[];
-    clickIds: string[];
-    hoverIds: string[];
+    fillNodeIds: string[];
+    clickNodeIds: string[];
+    hoverNodeIds: string[];
 };
 
 const buildSpyDeps = (deps: RunStepsDeps, spy: ExecutorSpy): RunStepsDeps => ({
@@ -24,15 +24,15 @@ const buildSpyDeps = (deps: RunStepsDeps, spy: ExecutorSpy): RunStepsDeps => ({
             return {
                 ...executors,
                 'browser.fill': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
-                    spy.fillIds.push(String((step.args as { id?: unknown }).id || ''));
+                    spy.fillNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
                     return await executors['browser.fill'](step, innerDeps, workspaceId);
                 },
                 'browser.click': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
-                    spy.clickIds.push(String((step.args as { id?: unknown }).id || ''));
+                    spy.clickNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
                     return await executors['browser.click'](step, innerDeps, workspaceId);
                 },
                 'browser.hover': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
-                    spy.hoverIds.push(String((step.args as { id?: unknown }).id || ''));
+                    spy.hoverNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
                     return await executors['browser.hover'](step, innerDeps, workspaceId);
                 },
             };
@@ -107,7 +107,7 @@ test('order form query target can fill field and click submit via result refs', 
             pagePath: '/entity-rules/fixtures/order-form',
         },
         async ({ page, workspaceId, deps }) => {
-            const spy: ExecutorSpy = { fillIds: [], clickIds: [], hoverIds: [] };
+            const spy: ExecutorSpy = { fillNodeIds: [], clickNodeIds: [], hoverNodeIds: [] };
             const spyDeps = buildSpyDeps(deps, spy);
             const steps: StepUnion[] = [
                 {
@@ -126,7 +126,7 @@ test('order form query target can fill field and click submit via result refs', 
                     id: 'fillField',
                     name: 'browser.fill',
                     args: {
-                        id: '{{resolveField.data.nodeId}}',
+                        nodeId: '{{resolveField.data.nodeId}}',
                         value: '张三',
                     },
                 } as StepUnion,
@@ -146,7 +146,7 @@ test('order form query target can fill field and click submit via result refs', 
                     id: 'clickSubmit',
                     name: 'browser.click',
                     args: {
-                        id: '{{resolveSubmit.data.nodeId}}',
+                        nodeId: '{{resolveSubmit.data.nodeId}}',
                     },
                 } as StepUnion,
             ];
@@ -171,9 +171,9 @@ test('order form query target can fill field and click submit via result refs', 
 
             const fillField = results[1];
             assert.equal(fillField.ok, true);
-            assert.equal(spy.fillIds.length, 1);
-            assert.equal(spy.fillIds[0], resolveField.data.nodeId);
-            assert.equal(spy.fillIds[0].includes('{{'), false);
+            assert.equal(spy.fillNodeIds.length, 1);
+            assert.equal(spy.fillNodeIds[0], resolveField.data.nodeId);
+            assert.equal(spy.fillNodeIds[0].includes('{{'), false);
             assert.equal(await page.locator('input[placeholder=\"请输入采购人\"]').inputValue(), '张三');
 
             const resolveSubmit = results[2];
@@ -186,9 +186,9 @@ test('order form query target can fill field and click submit via result refs', 
 
             const clickSubmit = results[3];
             assert.equal(clickSubmit.ok, true);
-            assert.equal(spy.clickIds.length, 1);
-            assert.equal(spy.clickIds[0], resolveSubmit.data.nodeId);
-            assert.equal(spy.clickIds[0].includes('{{'), false);
+            assert.equal(spy.clickNodeIds.length, 1);
+            assert.equal(spy.clickNodeIds[0], resolveSubmit.data.nodeId);
+            assert.equal(spy.clickNodeIds[0].includes('{{'), false);
         },
     );
 });
@@ -200,7 +200,7 @@ test('order list query can resolve row action and click via result refs', async 
             pagePath: '/entity-rules/fixtures/order-list',
         },
         async ({ page, workspaceId, deps }) => {
-            const spy: ExecutorSpy = { fillIds: [], clickIds: [], hoverIds: [] };
+            const spy: ExecutorSpy = { fillNodeIds: [], clickNodeIds: [], hoverNodeIds: [] };
             const spyDeps = buildSpyDeps(deps, spy);
             const steps: StepUnion[] = [
                 {
@@ -241,7 +241,7 @@ test('order list query can resolve row action and click via result refs', async 
                     id: 'clickAction',
                     name: 'browser.click',
                     args: {
-                        id: '{{resolveAction.data.nodeId}}',
+                        nodeId: '{{resolveAction.data.nodeId}}',
                     },
                 } as StepUnion,
             ];
@@ -294,9 +294,9 @@ test('order list query can resolve row action and click via result refs', async 
 
             const clickAction = results[3];
             assert.equal(clickAction.ok, true);
-            assert.equal(spy.clickIds.length, 1);
-            assert.equal(spy.clickIds[0], resolveAction.data.nodeId);
-            assert.equal(spy.clickIds[0].includes('{{'), false);
+            assert.equal(spy.clickNodeIds.length, 1);
+            assert.equal(spy.clickNodeIds[0], resolveAction.data.nodeId);
+            assert.equal(spy.clickNodeIds[0].includes('{{'), false);
             await page.getByRole('dialog').waitFor({ state: 'visible' });
             await page.getByText('订单编号：ORD-2026-001').waitFor({ state: 'visible' });
         },
@@ -310,7 +310,7 @@ test('normal browser query nodeIds can feed hover via result refs', async () => 
             pagePath: '/entity-rules/fixtures/order-list',
         },
         async ({ workspaceId, deps }) => {
-            const spy: ExecutorSpy = { fillIds: [], clickIds: [], hoverIds: [] };
+            const spy: ExecutorSpy = { fillNodeIds: [], clickNodeIds: [], hoverNodeIds: [] };
             const spyDeps = buildSpyDeps(deps, spy);
             const steps: StepUnion[] = [
                 {
@@ -335,7 +335,7 @@ test('normal browser query nodeIds can feed hover via result refs', async () => 
                     id: 'hoverFirstButton',
                     name: 'browser.hover',
                     args: {
-                        id: '{{buttons.data.nodeIds.0}}',
+                        nodeId: '{{buttons.data.nodeIds.0}}',
                     },
                 } as StepUnion,
             ];
@@ -350,9 +350,9 @@ test('normal browser query nodeIds can feed hover via result refs', async () => 
             assert.equal(results[1].data.kind, 'nodeIds');
             assert.equal(results[1].data.nodeIds.length > 0, true);
             assert.equal(results[2].ok, true);
-            assert.equal(spy.hoverIds.length, 1);
-            assert.equal(spy.hoverIds[0], results[1].data.nodeIds[0]);
-            assert.equal(spy.hoverIds[0].includes('{{'), false);
+            assert.equal(spy.hoverNodeIds.length, 1);
+            assert.equal(spy.hoverNodeIds[0], results[1].data.nodeIds[0]);
+            assert.equal(spy.hoverNodeIds[0].includes('{{'), false);
         },
     );
 });

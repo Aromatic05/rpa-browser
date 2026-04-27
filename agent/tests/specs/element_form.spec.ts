@@ -9,7 +9,7 @@ test.describe('element_form', () => {
         const runner = await setupStepRunner(page, 'form-token');
         const res = await runner.run([
             createStep('browser.fill', {
-                target: { a11yHint: { role: 'textbox', name: 'Name' } },
+                selector: '#nameInput',
                 value: 'hello',
             }),
         ]);
@@ -24,7 +24,7 @@ test.describe('element_form', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'form-fail');
         const res = await runner.run([
-            createStep('browser.type', { target: { a11yHint: { name: 'Missing' } }, text: 'x', timeout: 200 }),
+            createStep('browser.type', { selector: '#missing', text: 'x', timeout: 200 }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

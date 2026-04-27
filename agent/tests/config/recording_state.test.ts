@@ -145,7 +145,7 @@ test('getRecordingBundle falls back by workspace when tab token changes', () => 
         {
             id: 'step-workspace',
             name: 'browser.click',
-            args: { target: { selector: '#a' } },
+            args: { selector: '#a' },
             meta: { source: 'record', ts: 2, tabToken: 'token-a', workspaceId: 'ws-2' },
         } as StepUnion,
     ]);
@@ -168,7 +168,7 @@ test('saveWorkspaceSnapshot strips tabToken from persisted steps', () => {
     const sourceStep: StepUnion = {
         id: 'step-save-1',
         name: 'browser.click',
-        args: { target: { selector: '#save' } },
+        args: { selector: '#save' },
         meta: { source: 'record', ts: 10, tabToken: 'token-sensitive', workspaceId: 'ws-save' },
     };
     const snapshot = saveWorkspaceSnapshot(state, {
@@ -208,7 +208,7 @@ test('recording enhancements are stored as sidecar and never mixed into step', (
     const step: StepUnion = {
         id: 'step-sidecar-1',
         name: 'browser.click',
-        args: { target: { selector: '#buy' } },
+        args: { selector: '#buy' },
         meta: { source: 'record', ts: 100, tabToken: 'token-a', workspaceId: 'ws-1' },
     };
     state.recordings.set('token-a', [step]);

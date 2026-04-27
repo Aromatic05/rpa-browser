@@ -92,13 +92,48 @@ test('query naming guard', async () => {
 });
 
 test('serialization guard', async () => {
+    const stepTypesSource = await readAgentFile('src/runner/steps/types.ts');
+    const resolveTargetSource = await readAgentFile('src/runner/steps/helpers/resolve_target.ts');
     const serializationSource = await readAgentFile('src/runner/serialization/types.ts');
     const serializationTestSource = await readAgentFile('tests/runner/serialization/serialization_yaml.test.ts');
 
-    for (const required of ['assertNoCoreHintFields', 'resolve', 'rawContext', 'locatorCandidates', 'replayHints']) {
+    assert.equal(stepTypesSource.includes('export type Target'), false);
+    assert.equal(stepTypesSource.includes('target?: Target'), false);
+    assert.equal(stepTypesSource.includes('@deprecated'), false);
+
+    for (const stepName of [
+        'browser.take_screenshot',
+        'browser.click',
+        'browser.fill',
+        'browser.type',
+        'browser.select_option',
+        'browser.hover',
+        'browser.scroll',
+    ]) {
+        assert.equal(stepTypesSource.includes(`'${stepName}': {\n        id?: string;`), false, `${stepName} should not use id target field`);
+        assert.equal(stepTypesSource.includes(`'${stepName}': {\n        nodeId?: string;`), true, `${stepName} should expose nodeId`);
+        assert.equal(stepTypesSource.includes(`'${stepName}': {\n        nodeId?: string;\n        selector?: string;`), true, `${stepName} should expose selector`);
+        assert.equal(stepTypesSource.includes(`selector?: string;\n        resolveId?: string;`), true, `${stepName} should expose resolveId`);
+    }
+    assert.equal(stepTypesSource.includes(`'browser.press_key': {\n        key: string;\n        id?: string;`), false);
+    assert.equal(stepTypesSource.includes(`'browser.press_key': {\n        key: string;\n        nodeId?: string;`), true);
+    assert.equal(stepTypesSource.includes(`'browser.press_key': {\n        key: string;\n        nodeId?: string;\n        selector?: string;`), true);
+    assert.equal(stepTypesSource.includes(`'browser.press_key': {\n        key: string;\n        nodeId?: string;\n        selector?: string;\n        resolveId?: string;`), true);
+
+    const dragBlock = /'browser\.drag_and_drop': \{[\s\S]*?\n    \}/m.exec(stepTypesSource)?.[0] || '';
+    for (const required of ['sourceNodeId?: string;', 'sourceSelector?: string;', 'sourceResolveId?: string;', 'destNodeId?: string;', 'destSelector?: string;', 'destResolveId?: string;']) {
+        assert.equal(dragBlock.includes(required), true, `drag_and_drop missing ${required}`);
+    }
+
+    assert.equal(resolveTargetSource.includes(`source: 'nodeId' | 'selector' | 'resolve'`), true);
+    assert.equal(resolveTargetSource.includes(`source: 'selector' | 'id' | 'hint'`), false);
+
+    for (const required of ['assertNoCoreHintFields', 'assertNoLegacyActionTargetFields', 'resolve', 'rawContext', 'locatorCandidates', 'replayHints', 'StepResolveFile', 'SerializedStep']) {
         assert.equal(serializationSource.includes(required), true, `serialization types missing ${required}`);
     }
+    assert.equal(serializationSource.includes('StepHintFile'), false);
 
     assert.equal(serializationTestSource.includes('steps\\[0\\]\\.args\\.target\\.rawContext'), true);
     assert.equal(serializationTestSource.includes('checkpoints\\[0\\]\\.content\\[0\\]\\.step\\.args\\.hint'), true);
+    assert.equal(serializationSource.includes('use nodeId instead'), true);
 });

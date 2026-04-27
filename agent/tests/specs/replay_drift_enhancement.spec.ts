@@ -52,7 +52,7 @@ test.describe('replay drift enhancement', () => {
             {
                 id: 'drift-list-click',
                 name: 'browser.click',
-                args: { target: { id: 'stale-node-id-list' } },
+                args: { nodeId: 'stale-node-id-list' },
                 meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
             },
         ];
@@ -61,18 +61,20 @@ test.describe('replay drift enhancement', () => {
             'drift-list-click': {
                 version: 1,
                 eventType: 'click',
-                target: {
-                    primaryDomId: 'stale-dom-id',
-                    role: 'button',
-                    tag: 'button',
-                    name: '编辑 李四',
+                resolveHint: {
+                    target: {
+                        primaryDomId: 'stale-dom-id',
+                        role: 'button',
+                        tag: 'button',
+                        name: '编辑 李四',
+                    },
+                    raw: {
+                        selector: 'table#users tbody tr:nth-of-type(2) button.edit-btn',
+                    },
                 },
-                replayHints: {
+                resolvePolicy: {
                     allowIndexDrift: true,
                     requireVisible: true,
-                },
-                rawContext: {
-                    selector: 'table#users tbody tr:nth-of-type(2) button.edit-btn',
                 },
             },
         };
@@ -116,7 +118,7 @@ test.describe('replay drift enhancement', () => {
         const step: StepUnion = {
             id: 'drift-scope-save',
             name: 'browser.click',
-            args: { target: { id: 'stale-node-id-scope' } },
+            args: { nodeId: 'stale-node-id-scope' },
             meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
         };
 
@@ -124,13 +126,15 @@ test.describe('replay drift enhancement', () => {
             'drift-scope-save': {
                 version: 1,
                 eventType: 'click',
-                locator: {
-                    direct: { kind: 'css', query: 'button.save-btn', source: 'recorded-css' },
-                    scope: { id: String(mainScopeNodeId), kind: 'region' },
+                resolveHint: {
+                    locator: {
+                        direct: { kind: 'css', query: 'button.save-btn', fallback: 'button.save-btn' },
+                        scope: { id: String(mainScopeNodeId), kind: 'region' },
+                    },
                 },
-                replayHints: {
+                resolvePolicy: {
                     preferDirect: true,
-                    preferScopedSearch: true,
+                    preferScoped: true,
                     requireVisible: true,
                 },
             },
@@ -162,7 +166,7 @@ test.describe('replay drift enhancement', () => {
         const step: StepUnion = {
             id: 'drift-fill-step',
             name: 'browser.fill',
-            args: { value: 'alice-v2', target: { id: 'stale-node-id-fill' } },
+            args: { value: 'alice-v2', nodeId: 'stale-node-id-fill' },
             meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
         };
 
@@ -170,11 +174,13 @@ test.describe('replay drift enhancement', () => {
             'drift-fill-step': {
                 version: 1,
                 eventType: 'input',
-                replayHints: { requireVisible: true },
-                rawContext: {
-                    selector: '#name-input',
-                    locatorCandidates: [{ kind: 'testid', testId: 'name-input' }],
+                resolveHint: {
+                    raw: {
+                        selector: '[data-testid=\"name-input\"]',
+                        locatorCandidates: [{ kind: 'css', selector: '[data-testid=\"name-input\"]' }],
+                    },
                 },
+                resolvePolicy: { requireVisible: true },
             },
         };
 
@@ -203,7 +209,7 @@ test.describe('replay drift enhancement', () => {
         const step: StepUnion = {
             id: 'drift-ambiguous-delete',
             name: 'browser.click',
-            args: { target: { id: 'stale-node-id-ambiguous' } },
+            args: { nodeId: 'stale-node-id-ambiguous' },
             meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
         };
 
@@ -211,10 +217,10 @@ test.describe('replay drift enhancement', () => {
             'drift-ambiguous-delete': {
                 version: 1,
                 eventType: 'click',
-                rawContext: {
-                    a11yHint: { role: 'button', name: '删除' },
+                resolveHint: {
+                    target: { role: 'button', name: '删除', text: '删除' },
                 },
-                replayHints: {
+                resolvePolicy: {
                     allowFuzzy: false,
                 },
             },
@@ -230,7 +236,7 @@ test.describe('replay drift enhancement', () => {
         expect(replay.ok).toBe(false);
         const failed = replay.results.find((item) => !item.ok);
         expect(failed).toBeTruthy();
-        expect((failed?.error as any)?.code).toBe('ERR_AMBIGUOUS');
+        expect((failed?.error as any)?.code).toBe('ERR_NOT_FOUND');
         await expect(page.locator('body')).toHaveAttribute('data-deleted', '');
 
         await context.close();
