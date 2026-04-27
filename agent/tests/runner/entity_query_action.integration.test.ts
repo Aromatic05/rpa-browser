@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { runStepList } from '../../../src/runner/run_steps';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
-import { createEntityRuleFixtureRoot } from '../../entity_rules/profile_fixture';
-import { startMockApp } from '../../entity_rules/verify/helper';
-import { setupStepRunner } from '../../helpers/steps';
+import { runStepList } from '../../src/runner/run_steps';
+import type { RunStepsDeps } from '../../src/runner/run_steps';
+import type { StepUnion } from '../../src/runner/steps/types';
+import { createEntityRuleFixtureRoot } from '../entity_rules/profile_fixture';
+import { startMockApp } from '../entity_rules/verify/helper';
+import { setupStepRunner } from '../helpers/steps';
 
 type ExecutorSpy = {
     fillIds: string[];
@@ -111,7 +111,7 @@ test('order form query target can fill field and click submit via result refs', 
             const spyDeps = buildSpyDeps(deps, spy);
             const steps: StepUnion[] = [
                 {
-                    id: 'resolveBuyer',
+                    id: 'resolveField',
                     name: 'browser.query',
                     args: {
                         op: 'entity.target',
@@ -123,10 +123,10 @@ test('order form query target can fill field and click submit via result refs', 
                     },
                 } as StepUnion,
                 {
-                    id: 'fillBuyer',
+                    id: 'fillField',
                     name: 'browser.fill',
                     args: {
-                        id: '{{resolveBuyer.data.nodeId}}',
+                        id: '{{resolveField.data.nodeId}}',
                         value: '张三',
                     },
                 } as StepUnion,
@@ -160,19 +160,19 @@ test('order form query target can fill field and click submit via result refs', 
             assert.equal(checkpoint.status, 'completed');
             assert.equal(results.length, 4);
 
-            const resolveBuyer = results[0];
-            assert.equal(resolveBuyer.ok, true);
-            assert.equal(resolveBuyer.data.kind, 'nodeId');
-            assert.equal(typeof resolveBuyer.data.nodeId, 'string');
-            assert.equal(resolveBuyer.data.nodeId.length > 0, true);
-            assert.equal(resolveBuyer.data.meta.businessTag, 'order.form.main');
-            assert.equal(resolveBuyer.data.meta.targetKind, 'form.field');
-            assert.equal(resolveBuyer.data.meta.fieldKey, 'buyer');
+            const resolveField = results[0];
+            assert.equal(resolveField.ok, true);
+            assert.equal(resolveField.data.kind, 'nodeId');
+            assert.equal(typeof resolveField.data.nodeId, 'string');
+            assert.equal(resolveField.data.nodeId.length > 0, true);
+            assert.equal(resolveField.data.meta.businessTag, 'order.form.main');
+            assert.equal(resolveField.data.meta.targetKind, 'form.field');
+            assert.equal(resolveField.data.meta.fieldKey, 'buyer');
 
-            const fillBuyer = results[1];
-            assert.equal(fillBuyer.ok, true);
+            const fillField = results[1];
+            assert.equal(fillField.ok, true);
             assert.equal(spy.fillIds.length, 1);
-            assert.equal(spy.fillIds[0], resolveBuyer.data.nodeId);
+            assert.equal(spy.fillIds[0], resolveField.data.nodeId);
             assert.equal(spy.fillIds[0].includes('{{'), false);
             assert.equal(await page.locator('input[placeholder=\"请输入采购人\"]').inputValue(), '张三');
 
@@ -222,7 +222,7 @@ test('order list query can resolve row action and click via result refs', async 
                     },
                 } as StepUnion,
                 {
-                    id: 'resolveEdit',
+                    id: 'resolveAction',
                     name: 'browser.query',
                     args: {
                         op: 'entity.target',
@@ -238,10 +238,10 @@ test('order list query can resolve row action and click via result refs', async 
                     },
                 } as StepUnion,
                 {
-                    id: 'clickEdit',
+                    id: 'clickAction',
                     name: 'browser.click',
                     args: {
-                        id: '{{resolveEdit.data.nodeId}}',
+                        id: '{{resolveAction.data.nodeId}}',
                     },
                 } as StepUnion,
             ];
@@ -274,24 +274,28 @@ test('order list query can resolve row action and click via result refs', async 
             assert.equal(typeof currentRows.data.value[0].cells[0].text, 'string');
             assert.equal(typeof currentRows.data.value[0].cells[0].cellNodeId, 'string');
 
-            const resolveEdit = results[2];
-            assert.equal(resolveEdit.ok, true);
-            assert.equal(resolveEdit.data.kind, 'nodeId');
-            assert.equal(typeof resolveEdit.data.nodeId, 'string');
-            assert.equal(resolveEdit.data.nodeId.length > 0, true);
-            assert.equal(resolveEdit.data.meta.targetKind, 'table.row_action');
-            assert.equal(typeof resolveEdit.data.meta.rowNodeId, 'string');
-            assert.equal(typeof resolveEdit.data.meta.cellNodeId, 'string');
-            assert.equal(resolveEdit.data.meta.actionIntent, 'edit');
-            assert.deepEqual(resolveEdit.data.meta.primaryKey, {
+            const resolveAction = results[2];
+            assert.equal(resolveAction.ok, true);
+            assert.equal(resolveAction.data.kind, 'nodeId');
+            assert.equal(typeof resolveAction.data.nodeId, 'string');
+            assert.equal(resolveAction.data.nodeId.length > 0, true);
+            assert.equal(resolveAction.data.meta.targetKind, 'table.row_action');
+            assert.equal(typeof resolveAction.data.meta.rowNodeId, 'string');
+            assert.equal(typeof resolveAction.data.meta.cellNodeId, 'string');
+            assert.equal(resolveAction.data.meta.actionIntent, 'edit');
+            assert.deepEqual(resolveAction.data.meta.primaryKey, {
                 fieldKey: 'orderNo',
                 value: 'ORD-2026-001',
             });
+            assert.equal(
+                currentRows.data.value[0].cells.some((cell: { fieldKey?: string }) => cell.fieldKey === 'orderNo'),
+                true,
+            );
 
-            const clickEdit = results[3];
-            assert.equal(clickEdit.ok, true);
+            const clickAction = results[3];
+            assert.equal(clickAction.ok, true);
             assert.equal(spy.clickIds.length, 1);
-            assert.equal(spy.clickIds[0], resolveEdit.data.nodeId);
+            assert.equal(spy.clickIds[0], resolveAction.data.nodeId);
             assert.equal(spy.clickIds[0].includes('{{'), false);
             await page.getByRole('dialog').waitFor({ state: 'visible' });
             await page.getByText('订单编号：ORD-2026-001').waitFor({ state: 'visible' });
@@ -299,7 +303,7 @@ test('order list query can resolve row action and click via result refs', async 
     );
 });
 
-test('browser.query nodeIds result refs can drive hover actions', async () => {
+test('normal browser query nodeIds can feed hover via result refs', async () => {
     await withAntEntityRuleRunner(
         {
             profile: 'oa-ant-orders',
@@ -353,7 +357,7 @@ test('browser.query nodeIds result refs can drive hover actions', async () => {
     );
 });
 
-test('browser.compute can consume entity query envelope value refs', async () => {
+test('compute can consume browser query value envelope', async () => {
     await withAntEntityRuleRunner(
         {
             profile: 'oa-ant-orders',
