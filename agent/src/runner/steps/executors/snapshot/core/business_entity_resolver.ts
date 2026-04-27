@@ -1,3 +1,4 @@
+import type { BrowserQueryResult } from '../../../types';
 import { normalizeText } from './runtime_store';
 import { buildTableStructureModel } from './table_model';
 import { resolveTableRowAction, resolveTableRowByPrimaryKey } from './entity_query';
@@ -19,6 +20,8 @@ export type ResolverResult<T> =
           error: ResolverError;
       };
 
+// TODO(entity-rules-diagnostics): expose diagnostics for unmatched/ambiguous rule bindings.
+// TODO(entity-rules-pagination): add table.hasNextPage query once pagination annotations stabilize.
 export type BusinessEntityQuery =
     | 'table.row_count'
     | 'table.headers'
@@ -75,7 +78,7 @@ export const resolveUniqueBusinessEntity = (
             error: {
                 code: 'ERR_NOT_FOUND',
                 message: 'business entity not found',
-                details: { business_tag: businessTag },
+                details: { businessTag },
             },
         };
     }
@@ -86,10 +89,10 @@ export const resolveUniqueBusinessEntity = (
                 code: 'ERR_AMBIGUOUS',
                 message: 'business entity is ambiguous',
                 details: {
-                    business_tag: businessTag,
+                    businessTag,
                     candidates: matched.map((entity) => ({
-                        entity_id: entity.id,
-                        node_id: entity.nodeId,
+                        entityId: entity.id,
+                        nodeId: entity.nodeId,
                         kind: entity.kind,
                         name: entity.name,
                     })),
@@ -109,7 +112,7 @@ export const queryBusinessEntity = (
     finalEntityView: FinalEntityView,
     businessTag: string | undefined,
     query: BusinessEntityQuery,
-): ResolverResult<Record<string, unknown>> => {
+): ResolverResult<BrowserQueryResult> => {
     const resolved = resolveUniqueBusinessEntity(finalEntityView, businessTag);
     if (!resolved.ok) {return resolved;}
     const entity = resolved.data;
@@ -120,7 +123,7 @@ export const queryBusinessEntity = (
             error: {
                 code: 'ERR_BAD_ARGS',
                 message: 'table query requires table entity',
-                details: { business_tag: businessTag, entity_kind: entity.kind, query },
+                details: { businessTag, entityKind: entity.kind, query },
             },
         };
     }
@@ -130,15 +133,16 @@ export const queryBusinessEntity = (
             error: {
                 code: 'ERR_BAD_ARGS',
                 message: 'form query requires form entity',
-                details: { business_tag: businessTag, entity_kind: entity.kind, query },
+                details: { businessTag, entityKind: entity.kind, query },
             },
         };
     }
 
-    const base = {
-        business_tag: entity.businessTag,
-        entity_id: entity.id,
-        node_id: entity.nodeId,
+    const metaBase = {
+        query,
+        businessTag: entity.businessTag,
+        entityId: entity.id,
+        nodeId: entity.nodeId,
     };
 
     if (query === 'table.row_count') {
@@ -146,8 +150,9 @@ export const queryBusinessEntity = (
         return {
             ok: true,
             data: {
-                ...base,
-                row_count: entity.tableMeta?.rowCount ?? model?.rows.length ?? 0,
+                kind: 'value',
+                value: entity.tableMeta?.rowCount ?? model?.rows.length ?? 0,
+                meta: metaBase,
             },
         };
     }
@@ -157,8 +162,9 @@ export const queryBusinessEntity = (
         return {
             ok: true,
             data: {
-                ...base,
-                headers: entity.tableMeta?.headers || model?.headers || [],
+                kind: 'value',
+                value: entity.tableMeta?.headers || model?.headers || [],
+                meta: metaBase,
             },
         };
     }
@@ -167,14 +173,15 @@ export const queryBusinessEntity = (
         return {
             ok: true,
             data: {
-                ...base,
-                primary_key: entity.primaryKey
+                kind: 'value',
+                value: entity.primaryKey
                     ? {
-                          field_key: entity.primaryKey.fieldKey,
+                          fieldKey: entity.primaryKey.fieldKey,
                           columns: entity.primaryKey.columns ? [...entity.primaryKey.columns] : undefined,
                           source: entity.primaryKey.source,
                       }
                     : undefined,
+                meta: metaBase,
             },
         };
     }
@@ -183,53 +190,47 @@ export const queryBusinessEntity = (
         return {
             ok: true,
             data: {
-                ...base,
-                columns: (entity.columns || []).map((column) => ({
-                    field_key: column.fieldKey,
+                kind: 'value',
+                value: (entity.columns || []).map((column) => ({
+                    fieldKey: column.fieldKey,
                     name: column.name,
                     kind: column.kind,
                     source: column.source,
-                    column_index: column.columnIndex,
-                    header_node_id: column.headerNodeId,
+                    columnIndex: column.columnIndex,
+                    headerNodeId: column.headerNodeId,
                     actions: column.actions?.map((action) => ({
-                        action_intent: action.actionIntent,
+                        actionIntent: action.actionIntent,
                         text: action.text,
                     })),
                 })),
+                meta: metaBase,
             },
         };
     }
 
     if (query === 'table.current_rows') {
         const model = buildTableStructureModel(snapshot, entity.nodeId);
-        if (!model) {
-            return {
-                ok: true,
-                data: {
-                    ...base,
-                    rows: [],
-                },
-            };
-        }
-
-        const rows = model.rows.map((row) => ({
-            row_node_id: row.nodeId,
-            cells: row.cells.map((cell, columnIndex) => {
-                const mapped = mapFieldKeyByColumnIndex(entity, model.headers, columnIndex);
-                return {
-                    field_key: mapped.fieldKey,
-                    header: mapped.header,
-                    text: cell.value,
-                    cell_node_id: cell.nodeId,
-                };
-            }),
-        }));
+        const rows = !model
+            ? []
+            : model.rows.map((row) => ({
+                  rowNodeId: row.nodeId,
+                  cells: row.cells.map((cell, columnIndex) => {
+                      const mapped = mapFieldKeyByColumnIndex(entity, model.headers, columnIndex);
+                      return {
+                          fieldKey: mapped.fieldKey,
+                          header: mapped.header,
+                          text: cell.value,
+                          cellNodeId: cell.nodeId,
+                      };
+                  }),
+              }));
 
         return {
             ok: true,
             data: {
-                ...base,
-                rows,
+                kind: 'value',
+                value: rows,
+                meta: metaBase,
             },
         };
     }
@@ -238,14 +239,15 @@ export const queryBusinessEntity = (
         return {
             ok: true,
             data: {
-                ...base,
-                fields: (entity.formFields || []).map((field) => ({
-                    field_key: field.fieldKey,
+                kind: 'value',
+                value: (entity.formFields || []).map((field) => ({
+                    fieldKey: field.fieldKey,
                     name: field.name,
                     kind: field.kind,
-                    control_node_id: field.controlNodeId,
-                    label_node_id: field.labelNodeId,
+                    controlNodeId: field.controlNodeId,
+                    labelNodeId: field.labelNodeId,
                 })),
+                meta: metaBase,
             },
         };
     }
@@ -253,12 +255,13 @@ export const queryBusinessEntity = (
     return {
         ok: true,
         data: {
-            ...base,
-            actions: (entity.formActions || []).map((action) => ({
-                action_intent: action.actionIntent,
+            kind: 'value',
+            value: (entity.formActions || []).map((action) => ({
+                actionIntent: action.actionIntent,
                 text: action.text,
-                node_id: action.nodeId,
+                nodeId: action.nodeId,
             })),
+            meta: metaBase,
         },
     };
 };
@@ -268,7 +271,7 @@ export const resolveBusinessEntityTarget = (
     finalEntityView: FinalEntityView,
     businessTag: string | undefined,
     target: BusinessEntityTarget,
-): ResolverResult<Record<string, unknown>> => {
+): ResolverResult<BrowserQueryResult> => {
     const resolved = resolveUniqueBusinessEntity(finalEntityView, businessTag);
     if (!resolved.ok) {return resolved;}
     const entity = resolved.data;
@@ -279,7 +282,7 @@ export const resolveBusinessEntityTarget = (
             error: {
                 code: 'ERR_BAD_ARGS',
                 message: `${target.kind} requires form entity`,
-                details: { business_tag: businessTag, entity_kind: entity.kind },
+                details: { businessTag, entityKind: entity.kind },
             },
         };
     }
@@ -289,7 +292,7 @@ export const resolveBusinessEntityTarget = (
             error: {
                 code: 'ERR_BAD_ARGS',
                 message: `${target.kind} requires table entity`,
-                details: { business_tag: businessTag, entity_kind: entity.kind },
+                details: { businessTag, entityKind: entity.kind },
             },
         };
     }
@@ -302,7 +305,7 @@ export const resolveBusinessEntityTarget = (
                 error: {
                     code: 'ERR_NOT_FOUND',
                     message: 'field binding not found',
-                    details: { business_tag: businessTag, field_key: target.fieldKey },
+                    details: { businessTag, fieldKey: target.fieldKey },
                 },
             };
         }
@@ -312,7 +315,7 @@ export const resolveBusinessEntityTarget = (
                 error: {
                     code: 'ERR_UNRESOLVED_TARGET',
                     message: 'field control node is unresolved',
-                    details: { business_tag: businessTag, field_key: target.fieldKey },
+                    details: { businessTag, fieldKey: target.fieldKey },
                 },
             };
         }
@@ -322,20 +325,23 @@ export const resolveBusinessEntityTarget = (
                 error: {
                     code: 'ERR_NOT_FOUND',
                     message: 'field control node not found in snapshot',
-                    details: { business_tag: businessTag, field_key: target.fieldKey, node_id: field.controlNodeId },
+                    details: { businessTag, fieldKey: target.fieldKey, nodeId: field.controlNodeId },
                 },
             };
         }
         return {
             ok: true,
             data: {
-                business_tag: entity.businessTag,
-                entity_id: entity.id,
-                node_id: field.controlNodeId,
-                kind: 'form.field',
-                field_key: field.fieldKey,
-                control_kind: field.kind,
-                locator: buildEntityTargetLocator(snapshot, field.controlNodeId),
+                kind: 'nodeId',
+                nodeId: field.controlNodeId,
+                meta: {
+                    businessTag: entity.businessTag,
+                    entityId: entity.id,
+                    targetKind: 'form.field',
+                    fieldKey: field.fieldKey,
+                    controlKind: field.kind,
+                    locator: buildEntityTargetLocator(snapshot, field.controlNodeId),
+                },
             },
         };
     }
@@ -348,7 +354,7 @@ export const resolveBusinessEntityTarget = (
                 error: {
                     code: 'ERR_NOT_FOUND',
                     message: 'action binding not found',
-                    details: { business_tag: businessTag, action_intent: target.actionIntent },
+                    details: { businessTag, actionIntent: target.actionIntent },
                 },
             };
         }
@@ -358,7 +364,7 @@ export const resolveBusinessEntityTarget = (
                 error: {
                     code: 'ERR_UNRESOLVED_TARGET',
                     message: 'action node is unresolved',
-                    details: { business_tag: businessTag, action_intent: target.actionIntent },
+                    details: { businessTag, actionIntent: target.actionIntent },
                 },
             };
         }
@@ -368,19 +374,22 @@ export const resolveBusinessEntityTarget = (
                 error: {
                     code: 'ERR_NOT_FOUND',
                     message: 'action node not found in snapshot',
-                    details: { business_tag: businessTag, action_intent: target.actionIntent, node_id: action.nodeId },
+                    details: { businessTag, actionIntent: target.actionIntent, nodeId: action.nodeId },
                 },
             };
         }
         return {
             ok: true,
             data: {
-                business_tag: entity.businessTag,
-                entity_id: entity.id,
-                node_id: action.nodeId,
-                kind: 'form.action',
-                action_intent: action.actionIntent,
-                locator: buildEntityTargetLocator(snapshot, action.nodeId),
+                kind: 'nodeId',
+                nodeId: action.nodeId,
+                meta: {
+                    businessTag: entity.businessTag,
+                    entityId: entity.id,
+                    targetKind: 'form.action',
+                    actionIntent: action.actionIntent,
+                    locator: buildEntityTargetLocator(snapshot, action.nodeId),
+                },
             },
         };
     }
@@ -397,9 +406,9 @@ export const resolveBusinessEntityTarget = (
                     code: 'ERR_NOT_FOUND',
                     message: 'table row not found by primary key',
                     details: {
-                        business_tag: businessTag,
-                        primary_key: {
-                            field_key: target.primaryKey.fieldKey,
+                        businessTag,
+                        primaryKey: {
+                            fieldKey: target.primaryKey.fieldKey,
                             value: target.primaryKey.value,
                         },
                     },
@@ -409,14 +418,18 @@ export const resolveBusinessEntityTarget = (
         return {
             ok: true,
             data: {
-                business_tag: entity.businessTag,
-                entity_id: entity.id,
-                kind: 'table.row',
-                row_node_id: row.rowNodeId,
-                cell_node_id: row.cellNodeId,
-                primary_key: {
-                    field_key: target.primaryKey.fieldKey,
-                    value: target.primaryKey.value,
+                kind: 'nodeId',
+                nodeId: row.rowNodeId,
+                meta: {
+                    businessTag: entity.businessTag,
+                    entityId: entity.id,
+                    targetKind: 'table.row',
+                    rowNodeId: row.rowNodeId,
+                    cellNodeId: row.cellNodeId,
+                    primaryKey: {
+                        fieldKey: target.primaryKey.fieldKey,
+                        value: target.primaryKey.value,
+                    },
                 },
             },
         };
@@ -436,12 +449,12 @@ export const resolveBusinessEntityTarget = (
                 code: 'ERR_NOT_FOUND',
                 message: 'table row action not found',
                 details: {
-                    business_tag: businessTag,
-                    primary_key: {
-                        field_key: target.primaryKey.fieldKey,
+                    businessTag,
+                    primaryKey: {
+                        fieldKey: target.primaryKey.fieldKey,
                         value: target.primaryKey.value,
                     },
-                    action_intent: target.actionIntent,
+                    actionIntent: target.actionIntent,
                 },
             },
         };
@@ -449,14 +462,21 @@ export const resolveBusinessEntityTarget = (
     return {
         ok: true,
         data: {
-            business_tag: entity.businessTag,
-            entity_id: entity.id,
-            kind: 'table.row_action',
-            row_node_id: rowAction.rowNodeId,
-            cell_node_id: rowAction.cellNodeId,
-            node_id: rowAction.nodeId,
-            action_intent: rowAction.actionIntent,
-            locator: buildEntityTargetLocator(snapshot, rowAction.nodeId),
+            kind: 'nodeId',
+            nodeId: rowAction.nodeId,
+            meta: {
+                businessTag: entity.businessTag,
+                entityId: entity.id,
+                targetKind: 'table.row_action',
+                rowNodeId: rowAction.rowNodeId,
+                cellNodeId: rowAction.cellNodeId,
+                actionIntent: rowAction.actionIntent,
+                primaryKey: {
+                    fieldKey: target.primaryKey.fieldKey,
+                    value: target.primaryKey.value,
+                },
+                locator: buildEntityTargetLocator(snapshot, rowAction.nodeId),
+            },
         },
     };
 };

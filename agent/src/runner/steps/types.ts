@@ -64,6 +64,24 @@ export type QueryNodeLike = {
     };
 };
 
+export type BrowserQueryResult =
+    | {
+          kind: 'value';
+          value: unknown;
+          meta?: Record<string, unknown>;
+      }
+    | {
+          kind: 'nodeId';
+          nodeId: string;
+          meta?: Record<string, unknown>;
+      }
+    | {
+          kind: 'nodeIds';
+          nodeIds: string[];
+          count: number;
+          meta?: Record<string, unknown>;
+      };
+
 export type QueryFromRef =
     | 'snapshot'
     | 'snapshot.latest'

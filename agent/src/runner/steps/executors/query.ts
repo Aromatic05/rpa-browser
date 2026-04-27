@@ -127,8 +127,12 @@ export const executeBrowserQuery = async (
         stepId: step.id,
         ok: true,
         data: {
-            nodes,
+            kind: 'nodeIds',
+            nodeIds: nodes.map((node) => node.id),
             count: nodes.length,
+            meta: {
+                nodes,
+            },
         },
     };
 };
