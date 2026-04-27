@@ -118,46 +118,54 @@ test('queryBusinessEntity table and form queries return expected shapes', () => 
     const rowCount = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.row_count');
     assert.equal(rowCount.ok, true);
     if (rowCount.ok) {
-        assert.equal(rowCount.data.row_count, 2);
+        assert.equal(rowCount.data.kind, 'value');
+        assert.equal(rowCount.data.value, 2);
+        assert.equal((rowCount.data.meta as any).businessTag, 'order.table.main');
     }
 
     const headers = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.headers');
     assert.equal(headers.ok, true);
     if (headers.ok) {
-        assert.deepEqual(headers.data.headers, ['订单编号', '采购人', '操作']);
+        assert.equal(headers.data.kind, 'value');
+        assert.deepEqual(headers.data.value, ['订单编号', '采购人', '操作']);
     }
 
     const pk = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.primary_key');
     assert.equal(pk.ok, true);
     if (pk.ok) {
-        assert.equal((pk.data.primary_key as { field_key: string }).field_key, 'orderNo');
+        assert.equal(pk.data.kind, 'value');
+        assert.equal((pk.data.value as { fieldKey: string }).fieldKey, 'orderNo');
     }
 
     const columns = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.columns');
     assert.equal(columns.ok, true);
     if (columns.ok) {
-        assert.equal(Array.isArray(columns.data.columns), true);
-        assert.equal((columns.data.columns as Array<{ field_key: string }>).length, 3);
+        assert.equal(columns.data.kind, 'value');
+        assert.equal(Array.isArray(columns.data.value), true);
+        assert.equal((columns.data.value as Array<{ fieldKey: string }>).length, 3);
     }
 
     const rows = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.current_rows');
     assert.equal(rows.ok, true);
     if (rows.ok) {
-        const firstRow = (rows.data.rows as Array<{ row_node_id: string; cells: Array<{ field_key: string }> }>)[0];
-        assert.equal(firstRow.row_node_id, 'row_1');
-        assert.equal(firstRow.cells[0].field_key, 'orderNo');
+        assert.equal(rows.data.kind, 'value');
+        const firstRow = (rows.data.value as Array<{ rowNodeId: string; cells: Array<{ fieldKey: string }> }>)[0];
+        assert.equal(firstRow.rowNodeId, 'row_1');
+        assert.equal(firstRow.cells[0].fieldKey, 'orderNo');
     }
 
     const formFields = queryBusinessEntity(snapshot, finalEntityView, 'order.form.main', 'form.fields');
     assert.equal(formFields.ok, true);
     if (formFields.ok) {
-        assert.equal((formFields.data.fields as Array<{ field_key: string }>)[0].field_key, 'orderNo');
+        assert.equal(formFields.data.kind, 'value');
+        assert.equal((formFields.data.value as Array<{ fieldKey: string }>)[0].fieldKey, 'orderNo');
     }
 
     const formActions = queryBusinessEntity(snapshot, finalEntityView, 'order.form.main', 'form.actions');
     assert.equal(formActions.ok, true);
     if (formActions.ok) {
-        assert.equal((formActions.data.actions as Array<{ action_intent: string }>)[0].action_intent, 'submit');
+        assert.equal(formActions.data.kind, 'value');
+        assert.equal((formActions.data.value as Array<{ actionIntent: string }>)[0].actionIntent, 'submit');
     }
 });
 
@@ -170,7 +178,9 @@ test('resolveBusinessEntityTarget resolves form and table targets', () => {
     });
     assert.equal(field.ok, true);
     if (field.ok) {
-        assert.equal(field.data.node_id, 'order_no_input');
+        assert.equal(field.data.kind, 'nodeId');
+        assert.equal(field.data.nodeId, 'order_no_input');
+        assert.equal((field.data.meta as any).targetKind, 'form.field');
     }
 
     const action = resolveBusinessEntityTarget(snapshot, finalEntityView, 'order.form.main', {
@@ -179,7 +189,8 @@ test('resolveBusinessEntityTarget resolves form and table targets', () => {
     });
     assert.equal(action.ok, true);
     if (action.ok) {
-        assert.equal(action.data.node_id, 'submit_btn');
+        assert.equal(action.data.kind, 'nodeId');
+        assert.equal(action.data.nodeId, 'submit_btn');
     }
 
     const row = resolveBusinessEntityTarget(snapshot, finalEntityView, 'order.table.main', {
@@ -188,7 +199,9 @@ test('resolveBusinessEntityTarget resolves form and table targets', () => {
     });
     assert.equal(row.ok, true);
     if (row.ok) {
-        assert.equal(row.data.row_node_id, 'row_1');
+        assert.equal(row.data.kind, 'nodeId');
+        assert.equal(row.data.nodeId, 'row_1');
+        assert.equal((row.data.meta as any).rowNodeId, 'row_1');
     }
 
     const rowAction = resolveBusinessEntityTarget(snapshot, finalEntityView, 'order.table.main', {
@@ -198,7 +211,9 @@ test('resolveBusinessEntityTarget resolves form and table targets', () => {
     });
     assert.equal(rowAction.ok, true);
     if (rowAction.ok) {
-        assert.equal(rowAction.data.node_id, 'approve_btn_1');
+        assert.equal(rowAction.data.kind, 'nodeId');
+        assert.equal(rowAction.data.nodeId, 'approve_btn_1');
+        assert.equal((rowAction.data.meta as any).actionIntent, 'approve');
     }
 });
 
@@ -279,5 +294,33 @@ test('business resolver returns expected errors for not found, ambiguous, bad ar
     assert.equal(missingRowAction.ok, false);
     if (!missingRowAction.ok) {
         assert.equal(missingRowAction.error.code, 'ERR_NOT_FOUND');
+    }
+});
+
+test('business resolver outputs camelCase envelope without snake_case keys', () => {
+    const { snapshot, finalEntityView } = createFixture();
+    const queried = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.current_rows');
+    assert.equal(queried.ok, true);
+    if (queried.ok) {
+        const serialized = JSON.stringify(queried.data);
+        assert.equal(serialized.includes('business_tag'), false);
+        assert.equal(serialized.includes('entity_id'), false);
+        assert.equal(serialized.includes('row_node_id'), false);
+        assert.equal(serialized.includes('cell_node_id'), false);
+        assert.equal(serialized.includes('field_key'), false);
+        assert.equal(queried.data.kind, 'value');
+    }
+
+    const targeted = resolveBusinessEntityTarget(snapshot, finalEntityView, 'order.table.main', {
+        kind: 'table.row_action',
+        primaryKey: { fieldKey: 'orderNo', value: 'SO-001' },
+        actionIntent: 'approve',
+    });
+    assert.equal(targeted.ok, true);
+    if (targeted.ok) {
+        const serialized = JSON.stringify(targeted.data);
+        assert.equal(serialized.includes('action_intent'), false);
+        assert.equal(serialized.includes('node_id'), false);
+        assert.equal(targeted.data.kind, 'nodeId');
     }
 });

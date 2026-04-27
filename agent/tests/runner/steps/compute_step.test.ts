@@ -49,7 +49,7 @@ test('browser.compute supports ref path from previous step results', async () =>
         args: {
             expr: {
                 op: 'len',
-                args: [{ ref: { path: 'steps.q1.data.nodes' } }],
+                args: [{ ref: { path: 'steps.q1.data.nodeIds' } }],
             },
         },
     };
@@ -61,7 +61,7 @@ test('browser.compute supports ref path from previous step results', async () =>
                 q1: {
                     ok: true,
                     data: {
-                        nodes: [{ id: 'n1' }, { id: 'n2' }],
+                        nodeIds: ['n1', 'n2'],
                     },
                 },
             },

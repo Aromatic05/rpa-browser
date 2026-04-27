@@ -113,7 +113,7 @@ test('runSteps can consume query rows in compute(len)', async () => {
             args: {
                 expr: {
                     op: 'len',
-                    args: [{ ref: { path: 'steps.q_rows.data.nodes' } }],
+                    args: [{ ref: { path: 'steps.q_rows.data.nodeIds' } }],
                 },
             },
         } as StepUnion,
@@ -145,7 +145,7 @@ test('runSteps supports query next button and compute(exists)', async () => {
             args: {
                 expr: {
                     op: 'exists',
-                    args: [{ ref: { path: 'steps.q_next.data.nodes' } }],
+                    args: [{ ref: { path: 'steps.q_next.data.nodeIds' } }],
                 },
             },
         } as StepUnion,

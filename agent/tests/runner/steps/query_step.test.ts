@@ -71,11 +71,13 @@ test('browser.query can find rows from snapshot descendants', async () => {
     };
     const result = await executeBrowserQuery(step, createDeps(createSnapshot()), 'ws-1');
     assert.equal(result.ok, true);
+    assert.equal((result.data as any).kind, 'nodeIds');
     assert.equal((result.data as any).count, 2);
     assert.deepEqual(
-        (result.data as any).nodes.map((node: any) => node.id),
+        (result.data as any).nodeIds,
         ['row_1', 'row_2'],
     );
+    assert.equal(Array.isArray((result.data as any).meta?.nodes), true);
 });
 
 test('browser.query supports from.nodeIds with child relation', async () => {
@@ -94,8 +96,9 @@ test('browser.query supports from.nodeIds with child relation', async () => {
     };
     const result = await executeBrowserQuery(step, createDeps(createSnapshot()), 'ws-1');
     assert.equal(result.ok, true);
+    assert.equal((result.data as any).kind, 'nodeIds');
     assert.equal((result.data as any).count, 1);
-    assert.equal((result.data as any).nodes[0].id, 'row_1');
+    assert.equal((result.data as any).nodeIds[0], 'row_1');
 });
 
 test('browser.query returns ERR_BAD_ARGS on invalid relation', async () => {

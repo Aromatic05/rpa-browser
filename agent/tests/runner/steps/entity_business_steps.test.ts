@@ -136,7 +136,9 @@ test('executeBrowserQuery supports op=entity and op=entity.target', async () => 
 
     const queryResult = await executeBrowserQuery(queryStep, deps, 'ws-entity');
     assert.equal(queryResult.ok, true);
-    assert.equal((queryResult.data as { row_count: number }).row_count, 1);
+    assert.equal((queryResult.data as { kind: string }).kind, 'value');
+    assert.equal((queryResult.data as { value: number }).value, 1);
+    assert.equal((queryResult.data as { meta?: { businessTag?: string } }).meta?.businessTag, 'order.table.main');
 
     const targetStep: Step<'browser.query'> = {
         id: 'rt-1',
@@ -157,7 +159,9 @@ test('executeBrowserQuery supports op=entity and op=entity.target', async () => 
 
     const targetResult = await executeBrowserQuery(targetStep, deps, 'ws-entity');
     assert.equal(targetResult.ok, true);
-    assert.equal((targetResult.data as { node_id: string }).node_id, 'approve_btn_1');
+    assert.equal((targetResult.data as { kind: string }).kind, 'nodeId');
+    assert.equal((targetResult.data as { nodeId: string }).nodeId, 'approve_btn_1');
+    assert.equal((targetResult.data as { meta?: { targetKind?: string } }).meta?.targetKind, 'table.row_action');
 });
 
 test('executeBrowserEntity supports list/find/get', async () => {
