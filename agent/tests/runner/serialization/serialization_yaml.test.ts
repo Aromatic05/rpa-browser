@@ -146,7 +146,7 @@ checkpoints:
     assert.doesNotThrow(() => validateCheckpointFileForSerialization(checkpointFile));
 });
 
-test('checkpoints.yaml rejects top-level matchRules and policy.trigger.matchRules', () => {
+test('checkpoints.yaml rejects misplaced trigger fields', () => {
     const withTopLevel = parse(`
 version: 1
 checkpoints:
@@ -169,8 +169,8 @@ checkpoints:
     content: []
 `) as CheckpointFile;
 
-    assert.throws(() => validateCheckpointFileForSerialization(withTopLevel), /trigger\.matchRules|top-level matchRules/);
-    assert.throws(() => validateCheckpointFileForSerialization(withPolicyTrigger), /policy\.trigger\.matchRules/);
+    assert.throws(() => validateCheckpointFileForSerialization(withTopLevel), /trigger\.matchRules/);
+    assert.throws(() => validateCheckpointFileForSerialization(withPolicyTrigger), /checkpoint root/);
 });
 
 test('checkpoints.yaml rejects nested rawContext, hint, and locatorCandidates in core content', () => {

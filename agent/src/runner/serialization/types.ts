@@ -103,10 +103,10 @@ export const validateCheckpointFileForSerialization = (file: CheckpointFile): vo
             throw new Error(`checkpoint ${checkpoint.id} must use trigger.matchRules`);
         }
         if ('matchRules' in checkpoint) {
-            throw new Error(`checkpoint ${checkpoint.id} must not include top-level matchRules`);
+            throw new Error(`checkpoint ${checkpoint.id} must use trigger.matchRules`);
         }
         if (checkpoint.policy && 'trigger' in checkpoint.policy) {
-            throw new Error(`checkpoint ${checkpoint.id} must not include policy.trigger.matchRules`);
+            throw new Error(`checkpoint ${checkpoint.id} must keep trigger at checkpoint root`);
         }
         assertNoCoreHintFields(checkpoint, `checkpoints[${index}]`);
     }

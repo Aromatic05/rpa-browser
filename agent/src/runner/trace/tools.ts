@@ -124,7 +124,7 @@ export const createTraceTools = (opts: {
             throw { code: 'ERR_NOT_FOUND', message: 'selector not found', phase: 'trace', details: { selector } };
         }
         if (count > 1) {
-            // TODO: add fuzzy disambiguation.
+            // Ambiguous selectors fail fast in the current trace tool.
             throw { code: 'ERR_AMBIGUOUS', message: 'selector matches multiple elements', phase: 'trace', details: { selector, count } };
         }
         return locator;

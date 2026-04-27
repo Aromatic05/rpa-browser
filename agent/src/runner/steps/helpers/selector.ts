@@ -109,7 +109,7 @@ export const describeSelector = async (page: Page, selector: string): Promise<De
         return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'selector not found', details: { selector }, phase: 'trace' } };
     }
     if (result.status === 'ambiguous') {
-        // TODO: add fuzzy disambiguation.
+        // Ambiguous selectors fail fast in the current resolver.
         return {
             ok: false,
             error: {

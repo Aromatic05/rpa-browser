@@ -246,7 +246,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
         );
     }
     if (event.type === 'check' && (event.selector || event.a11yHint)) {
-        // TODO: ensure checked state matches (recorded checked flag is not enforced).
+        // Current recorder mapping replays check/uncheck as click and does not enforce recorded checked state.
         return createStep(
             'browser.click',
             { selector: event.selector },
@@ -286,7 +286,7 @@ const toStep = (event: RecorderEvent): StepUnion | null => {
             { tabToken: event.tabToken },
         );
     }
-    // TODO: map copy to steps if needed.
+    // Copy events are not mapped to steps in the current recorder output.
     return null;
 };
 
