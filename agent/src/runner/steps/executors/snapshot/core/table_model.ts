@@ -35,7 +35,7 @@ export const buildTableStructureModel = (snapshot: SnapshotResult, tableNodeId: 
 
     const rowNodes = collectRowNodes(tableNode);
     const headerRows = rowNodes.filter((row) => getHeaderCells(row).length > 0);
-    const bodyRows = rowNodes.filter((row) => getDataCells(row).length > 0);
+    const bodyRows = rowNodes.filter((row) => getHeaderCells(row).length === 0 && getDataCells(row).length > 0);
 
     const headers = resolveHeaders(snapshot, headerRows, bodyRows);
     const rows = bodyRows.map((row) => buildRowModel(row)).filter((row) => row.cells.length > 0);
@@ -60,12 +60,15 @@ export const buildTableStructureModel = (snapshot: SnapshotResult, tableNodeId: 
                 item.columns.every((column, index) => column === recommendedPrimaryKey[index]),
         )
     ) {
-        const indices = recommendedPrimaryKey.map((_, index) => index);
-        primaryKeyCandidates.push({
-            columns: recommendedPrimaryKey,
-            unique: countTupleDuplicates(rows, indices) === 0,
-            duplicateCount: countTupleDuplicates(rows, indices),
-        });
+        const indices = resolveHeaderIndices(normalizedHeaders, recommendedPrimaryKey);
+        if (indices.length === recommendedPrimaryKey.length) {
+            const duplicateCount = countTupleDuplicates(rows, indices);
+            primaryKeyCandidates.push({
+                columns: recommendedPrimaryKey,
+                unique: duplicateCount === 0,
+                duplicateCount,
+            });
+        }
     }
 
     return {
@@ -95,9 +98,9 @@ const getHeaderCells = (row: UnifiedNode): UnifiedNode[] => {
 };
 
 const getDataCells = (row: UnifiedNode): UnifiedNode[] => {
-    const direct = row.children.filter((child) => isCellRole(child.role));
+    const direct = row.children.filter((child) => isDataCellRole(child.role));
     if (direct.length > 0) {return direct;}
-    return row.children.filter((child) => !isRowRole(child.role));
+    return row.children.filter((child) => !isRowRole(child.role) && !isHeaderRole(child.role));
 };
 
 const resolveHeaders = (
@@ -218,6 +221,20 @@ const findBestSingleColumn = (rows: TableModelRow[]): number => {
     return bestIndex;
 };
 
+const resolveHeaderIndices = (headers: string[], selectedHeaders: string[]): number[] => {
+    const usedIndices = new Set<number>();
+    const out: number[] = [];
+    for (const header of selectedHeaders) {
+        const matchedIndex = headers.findIndex(
+            (item, index) => !usedIndices.has(index) && normalizeLower(item) === normalizeLower(header),
+        );
+        if (matchedIndex < 0) {return [];}
+        usedIndices.add(matchedIndex);
+        out.push(matchedIndex);
+    }
+    return out;
+};
+
 const readNodeText = (node: UnifiedNode): string => {
     if (node.name) {return normalizeText(node.name) || '';}
     if (typeof node.content === 'string') {return normalizeText(node.content) || '';}
@@ -248,6 +265,11 @@ const isHeaderRole = (role: string): boolean => {
 const isCellRole = (role: string): boolean => {
     const normalized = normalizeLower(role);
     return normalized === 'cell' || normalized === 'gridcell' || normalized === 'columnheader' || normalized === 'rowheader';
+};
+
+const isDataCellRole = (role: string): boolean => {
+    const normalized = normalizeLower(role);
+    return normalized === 'cell' || normalized === 'gridcell';
 };
 
 const isInteractiveNode = (node: UnifiedNode): boolean => {

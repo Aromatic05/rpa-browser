@@ -1,4 +1,4 @@
-import { getNodeAttr, normalizeText } from './runtime_store';
+import { getNodeAttr, getNodeContent, normalizeText } from './runtime_store';
 import { buildTableStructureModel, type TableModelCell, type TableStructureModel } from './table_model';
 import type { BusinessBindingIndex, FinalEntityRecord, SnapshotResult, UnifiedNode } from './types';
 import type { EntityKind } from './types';
@@ -247,7 +247,7 @@ const pickActionNodeFromCell = (
     const normalizedActionText = normalizeLower(actionText);
     for (const node of interactiveNodes) {
         const haystack = [
-            normalizeLower(node.name),
+            normalizeLower(readNodeTextRecursive(node)),
             normalizeLower(getNodeAttr(node, 'aria-label')),
             normalizeLower(getNodeAttr(node, 'class')),
         ].join(' ');
@@ -257,6 +257,27 @@ const pickActionNodeFromCell = (
     }
 
     return null;
+};
+
+const readNodeTextRecursive = (node: UnifiedNode): string => {
+    const parts: string[] = [];
+    const stack: UnifiedNode[] = [node];
+    while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) {break;}
+        const name = normalizeText(current.name);
+        if (name) {parts.push(name);}
+        if (typeof current.content === 'string') {
+            const content = normalizeText(current.content);
+            if (content) {parts.push(content);}
+        }
+        const runtimeContent = normalizeText(getNodeContent(current));
+        if (runtimeContent) {parts.push(runtimeContent);}
+        for (let index = current.children.length - 1; index >= 0; index -= 1) {
+            stack.push(current.children[index]);
+        }
+    }
+    return normalizeText(parts.join(' ')) || '';
 };
 
 const matchesQuery = (entity: FinalEntityRecord, query: string): boolean => {
