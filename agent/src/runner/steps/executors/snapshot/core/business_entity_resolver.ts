@@ -1,5 +1,6 @@
 import { normalizeText } from './runtime_store';
 import { buildTableStructureModel } from './table_model';
+import { resolveTableRowAction, resolveTableRowByPrimaryKey } from './entity_query';
 import type { FinalEntityRecord, FinalEntityView, SnapshotResult } from './types';
 
 export type ResolverError = {
@@ -26,6 +27,31 @@ export type BusinessEntityQuery =
     | 'table.current_rows'
     | 'form.fields'
     | 'form.actions';
+
+export type BusinessEntityTarget =
+    | {
+          kind: 'form.field';
+          fieldKey: string;
+      }
+    | {
+          kind: 'form.action';
+          actionIntent: string;
+      }
+    | {
+          kind: 'table.row';
+          primaryKey: {
+              fieldKey: string;
+              value: string;
+          };
+      }
+    | {
+          kind: 'table.row_action';
+          primaryKey: {
+              fieldKey: string;
+              value: string;
+          };
+          actionIntent: string;
+      };
 
 export const resolveUniqueBusinessEntity = (
     finalEntityView: FinalEntityView,
@@ -237,6 +263,204 @@ export const queryBusinessEntity = (
     };
 };
 
+export const resolveBusinessEntityTarget = (
+    snapshot: SnapshotResult,
+    finalEntityView: FinalEntityView,
+    businessTag: string | undefined,
+    target: BusinessEntityTarget,
+): ResolverResult<Record<string, unknown>> => {
+    const resolved = resolveUniqueBusinessEntity(finalEntityView, businessTag);
+    if (!resolved.ok) {return resolved;}
+    const entity = resolved.data;
+
+    if ((target.kind === 'form.field' || target.kind === 'form.action') && entity.kind !== 'form') {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `${target.kind} requires form entity`,
+                details: { business_tag: businessTag, entity_kind: entity.kind },
+            },
+        };
+    }
+    if ((target.kind === 'table.row' || target.kind === 'table.row_action') && entity.kind !== 'table') {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `${target.kind} requires table entity`,
+                details: { business_tag: businessTag, entity_kind: entity.kind },
+            },
+        };
+    }
+
+    if (target.kind === 'form.field') {
+        const field = finalEntityView.bindingIndex.fieldsByEntity[entity.id]?.[target.fieldKey];
+        if (!field) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'field binding not found',
+                    details: { business_tag: businessTag, field_key: target.fieldKey },
+                },
+            };
+        }
+        if (!field.controlNodeId) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_UNRESOLVED_TARGET',
+                    message: 'field control node is unresolved',
+                    details: { business_tag: businessTag, field_key: target.fieldKey },
+                },
+            };
+        }
+        if (!snapshot.nodeIndex[field.controlNodeId]) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'field control node not found in snapshot',
+                    details: { business_tag: businessTag, field_key: target.fieldKey, node_id: field.controlNodeId },
+                },
+            };
+        }
+        return {
+            ok: true,
+            data: {
+                business_tag: entity.businessTag,
+                entity_id: entity.id,
+                node_id: field.controlNodeId,
+                kind: 'form.field',
+                field_key: field.fieldKey,
+                control_kind: field.kind,
+                locator: buildEntityTargetLocator(snapshot, field.controlNodeId),
+            },
+        };
+    }
+
+    if (target.kind === 'form.action') {
+        const action = finalEntityView.bindingIndex.actionsByEntity[entity.id]?.[target.actionIntent];
+        if (!action) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'action binding not found',
+                    details: { business_tag: businessTag, action_intent: target.actionIntent },
+                },
+            };
+        }
+        if (!action.nodeId) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_UNRESOLVED_TARGET',
+                    message: 'action node is unresolved',
+                    details: { business_tag: businessTag, action_intent: target.actionIntent },
+                },
+            };
+        }
+        if (!snapshot.nodeIndex[action.nodeId]) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'action node not found in snapshot',
+                    details: { business_tag: businessTag, action_intent: target.actionIntent, node_id: action.nodeId },
+                },
+            };
+        }
+        return {
+            ok: true,
+            data: {
+                business_tag: entity.businessTag,
+                entity_id: entity.id,
+                node_id: action.nodeId,
+                kind: 'form.action',
+                action_intent: action.actionIntent,
+                locator: buildEntityTargetLocator(snapshot, action.nodeId),
+            },
+        };
+    }
+
+    if (target.kind === 'table.row') {
+        const row = resolveTableRowByPrimaryKey(snapshot, entity, {
+            fieldKey: target.primaryKey.fieldKey,
+            value: target.primaryKey.value,
+        });
+        if (!row) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_NOT_FOUND',
+                    message: 'table row not found by primary key',
+                    details: {
+                        business_tag: businessTag,
+                        primary_key: {
+                            field_key: target.primaryKey.fieldKey,
+                            value: target.primaryKey.value,
+                        },
+                    },
+                },
+            };
+        }
+        return {
+            ok: true,
+            data: {
+                business_tag: entity.businessTag,
+                entity_id: entity.id,
+                kind: 'table.row',
+                row_node_id: row.rowNodeId,
+                cell_node_id: row.cellNodeId,
+                primary_key: {
+                    field_key: target.primaryKey.fieldKey,
+                    value: target.primaryKey.value,
+                },
+            },
+        };
+    }
+
+    const rowAction = resolveTableRowAction(snapshot, entity, {
+        primaryKey: {
+            fieldKey: target.primaryKey.fieldKey,
+            value: target.primaryKey.value,
+        },
+        actionIntent: target.actionIntent,
+    });
+    if (!rowAction) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'table row action not found',
+                details: {
+                    business_tag: businessTag,
+                    primary_key: {
+                        field_key: target.primaryKey.fieldKey,
+                        value: target.primaryKey.value,
+                    },
+                    action_intent: target.actionIntent,
+                },
+            },
+        };
+    }
+    return {
+        ok: true,
+        data: {
+            business_tag: entity.businessTag,
+            entity_id: entity.id,
+            kind: 'table.row_action',
+            row_node_id: rowAction.rowNodeId,
+            cell_node_id: rowAction.cellNodeId,
+            node_id: rowAction.nodeId,
+            action_intent: rowAction.actionIntent,
+            locator: buildEntityTargetLocator(snapshot, rowAction.nodeId),
+        },
+    };
+};
+
 const mapFieldKeyByColumnIndex = (
     entity: FinalEntityRecord,
     headers: string[],
@@ -263,4 +487,8 @@ const mapFieldKeyByColumnIndex = (
         fieldKey: header,
         header,
     };
+};
+
+const buildEntityTargetLocator = (snapshot: SnapshotResult, nodeId: string) => {
+    return snapshot.locatorIndex[nodeId];
 };

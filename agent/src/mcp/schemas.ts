@@ -140,6 +140,36 @@ export const browserQueryEntityInputSchema = z.object({
     ]),
 });
 
+export const browserResolveEntityTargetInputSchema = z.object({
+    tabToken: z.string().optional(),
+    businessTag: z.string(),
+    target: z.discriminatedUnion('kind', [
+        z.object({
+            kind: z.literal('form.field'),
+            fieldKey: z.string(),
+        }),
+        z.object({
+            kind: z.literal('form.action'),
+            actionIntent: z.string(),
+        }),
+        z.object({
+            kind: z.literal('table.row'),
+            primaryKey: z.object({
+                fieldKey: z.string(),
+                value: z.string(),
+            }),
+        }),
+        z.object({
+            kind: z.literal('table.row_action'),
+            primaryKey: z.object({
+                fieldKey: z.string(),
+                value: z.string(),
+            }),
+            actionIntent: z.string(),
+        }),
+    ]),
+});
+
 export const browserAddEntityInputSchema = z.object({
     tabToken: z.string().optional(),
     nodeId: z.string(),
@@ -342,6 +372,7 @@ export type BrowserListEntitiesInput = z.infer<typeof browserListEntitiesInputSc
 export type BrowserGetEntityInput = z.infer<typeof browserGetEntityInputSchema>;
 export type BrowserFindEntitiesInput = z.infer<typeof browserFindEntitiesInputSchema>;
 export type BrowserQueryEntityInput = z.infer<typeof browserQueryEntityInputSchema>;
+export type BrowserResolveEntityTargetInput = z.infer<typeof browserResolveEntityTargetInputSchema>;
 export type BrowserAddEntityInput = z.infer<typeof browserAddEntityInputSchema>;
 export type BrowserDeleteEntityInput = z.infer<typeof browserDeleteEntityInputSchema>;
 export type BrowserRenameEntityInput = z.infer<typeof browserRenameEntityInputSchema>;
@@ -512,6 +543,72 @@ export const toolInputJsonSchemas = {
                     'table.current_rows',
                     'form.fields',
                     'form.actions',
+                ],
+            },
+        },
+        additionalProperties: false,
+    },
+    'browser.resolve_entity_target': {
+        type: 'object',
+        required: ['businessTag', 'target'],
+        properties: {
+            tabToken: { type: 'string' },
+            businessTag: { type: 'string' },
+            target: {
+                oneOf: [
+                    {
+                        type: 'object',
+                        required: ['kind', 'fieldKey'],
+                        properties: {
+                            kind: { type: 'string', enum: ['form.field'] },
+                            fieldKey: { type: 'string' },
+                        },
+                        additionalProperties: false,
+                    },
+                    {
+                        type: 'object',
+                        required: ['kind', 'actionIntent'],
+                        properties: {
+                            kind: { type: 'string', enum: ['form.action'] },
+                            actionIntent: { type: 'string' },
+                        },
+                        additionalProperties: false,
+                    },
+                    {
+                        type: 'object',
+                        required: ['kind', 'primaryKey'],
+                        properties: {
+                            kind: { type: 'string', enum: ['table.row'] },
+                            primaryKey: {
+                                type: 'object',
+                                required: ['fieldKey', 'value'],
+                                properties: {
+                                    fieldKey: { type: 'string' },
+                                    value: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                        },
+                        additionalProperties: false,
+                    },
+                    {
+                        type: 'object',
+                        required: ['kind', 'primaryKey', 'actionIntent'],
+                        properties: {
+                            kind: { type: 'string', enum: ['table.row_action'] },
+                            primaryKey: {
+                                type: 'object',
+                                required: ['fieldKey', 'value'],
+                                properties: {
+                                    fieldKey: { type: 'string' },
+                                    value: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                            actionIntent: { type: 'string' },
+                        },
+                        additionalProperties: false,
+                    },
                 ],
             },
         },

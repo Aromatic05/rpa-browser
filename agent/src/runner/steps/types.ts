@@ -37,6 +37,7 @@ export type StepName =
     | 'browser.get_entity'
     | 'browser.find_entities'
     | 'browser.query_entity'
+    | 'browser.resolve_entity_target'
     | 'browser.add_entity'
     | 'browser.delete_entity'
     | 'browser.rename_entity'
@@ -268,6 +269,33 @@ export type StepArgsMap = {
             | 'table.current_rows'
             | 'form.fields'
             | 'form.actions';
+    };
+    'browser.resolve_entity_target': {
+        businessTag: string;
+        target:
+            | {
+                  kind: 'form.field';
+                  fieldKey: string;
+              }
+            | {
+                  kind: 'form.action';
+                  actionIntent: string;
+              }
+            | {
+                  kind: 'table.row';
+                  primaryKey: {
+                      fieldKey: string;
+                      value: string;
+                  };
+              }
+            | {
+                  kind: 'table.row_action';
+                  primaryKey: {
+                      fieldKey: string;
+                      value: string;
+                  };
+                  actionIntent: string;
+              };
     };
     'browser.add_entity': {
         nodeId: string;
