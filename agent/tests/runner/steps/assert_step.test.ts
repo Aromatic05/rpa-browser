@@ -54,6 +54,11 @@ const createDeps = (options: {
                         source: 'auto',
                     })),
                     byNodeId: {},
+                    bindingIndex: {
+                        fieldsByEntity: {},
+                        actionsByEntity: {},
+                        columnsByEntity: {},
+                    },
                 },
                 overlays: {
                     renamedNodes: {},

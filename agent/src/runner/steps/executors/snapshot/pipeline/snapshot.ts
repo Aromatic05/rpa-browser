@@ -323,7 +323,7 @@ const stageBuildSnapshot = (
     if (loadedRules.errors.length > 0) {
         throw new Error(`entity rules load failed: ${loadedRules.errors.join('; ')}`);
     }
-    const businessEntityOverlay = applyBusinessEntityRules({
+    const ruleEntityOverlay = applyBusinessEntityRules({
         root,
         entityIndex,
         bundle: loadedRules.bundle,
@@ -343,7 +343,7 @@ const stageBuildSnapshot = (
         attrIndex,
         contentStore,
         cacheStats,
-        businessEntityOverlay,
+        ruleEntityOverlay,
     });
     snapshotDebugLog('done', {
         snapshotCount: countTreeNodes(snapshot.root),

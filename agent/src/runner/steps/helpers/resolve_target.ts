@@ -179,8 +179,9 @@ const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: Re
 
 const collectEntityScopeNodeIds = (snapshot: SnapshotResult, businessTag: string): Set<string> => {
     const out = new Set<string>();
+    const ruleOverlay = snapshot.ruleEntityOverlay || snapshot.businessEntityOverlay;
     for (const entity of Object.values(snapshot.entityIndex.entities)) {
-        const overlayTag = normalizeTag(snapshot.businessEntityOverlay.byEntityId[entity.id]?.businessTag);
+        const overlayTag = normalizeTag(ruleOverlay?.byEntityId[entity.id]?.businessTag);
         const entityTag = normalizeTag(entity.businessTag);
         if (businessTag !== overlayTag && businessTag !== entityTag) {continue;}
         if (entity.type === 'region') {

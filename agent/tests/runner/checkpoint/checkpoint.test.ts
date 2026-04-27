@@ -113,6 +113,11 @@ const createBindingWithBusinessEntity = (businessTag: string) => {
                                         },
                                     ],
                                 },
+                                bindingIndex: {
+                                    fieldsByEntity: {},
+                                    actionsByEntity: {},
+                                    columnsByEntity: {},
+                                },
                             },
                             overlays: { renamedNodes: {}, addedEntities: [], deletedEntities: [] },
                             diffBaselines: {},

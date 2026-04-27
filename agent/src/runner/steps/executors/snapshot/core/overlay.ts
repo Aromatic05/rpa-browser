@@ -1,6 +1,8 @@
 import { buildExternalIndexes } from '../indexes/external_indexes';
 import { snapshotDebugLog } from './debug';
+import { buildBusinessBindingIndex } from './entity_query';
 import { cloneTreeWithRuntime, getNodeContent, normalizeText } from './runtime_store';
+import { buildTableStructureModel } from './table_model';
 import type {
     EntityIndex,
     EntityBusinessInfo,
@@ -69,6 +71,7 @@ export const buildFinalEntityViewFromSnapshot = (
     return {
         entities,
         byNodeId,
+        bindingIndex: buildBusinessBindingIndex(entities),
     };
 };
 
@@ -222,7 +225,8 @@ const cloneSnapshot = (baseSnapshot: SnapshotResult): SnapshotResult => {
         attrIndex: external.attrIndex,
         contentStore: external.contentStore,
         cacheStats: baseSnapshot.cacheStats,
-        businessEntityOverlay: baseSnapshot.businessEntityOverlay,
+        ruleEntityOverlay: baseSnapshot.ruleEntityOverlay || baseSnapshot.businessEntityOverlay,
+        businessEntityOverlay: baseSnapshot.businessEntityOverlay || baseSnapshot.ruleEntityOverlay,
     };
 };
 
@@ -332,9 +336,34 @@ const toFinalEntityRecord = (
                 ? {
                     fieldKey: businessInfo.primaryKey.fieldKey,
                     columns: businessInfo.primaryKey.columns ? [...businessInfo.primaryKey.columns] : undefined,
+                    source: businessInfo.primaryKey.source,
                 }
                 : undefined,
-            columns: businessInfo.columns?.map((column) => ({ ...column })),
+            columns: businessInfo.columns?.map((column) => ({
+                ...column,
+                actions: column.actions?.map((action) => ({ ...action })),
+            })),
+            formFields: businessInfo.formFields?.map((field) => ({
+                ...field,
+                optionSource: field.optionSource ? { ...field.optionSource } : undefined,
+            })),
+            formActions: businessInfo.formActions?.map((action) => ({ ...action })),
+            tableMeta: businessInfo.tableMeta
+                ? {
+                    ...businessInfo.tableMeta,
+                    headers: [...businessInfo.tableMeta.headers],
+                    rowNodeIds: [...businessInfo.tableMeta.rowNodeIds],
+                    cellNodeIdsByRowNodeId: { ...businessInfo.tableMeta.cellNodeIdsByRowNodeId },
+                    columnCellNodeIdsByHeader: { ...businessInfo.tableMeta.columnCellNodeIdsByHeader },
+                    primaryKeyCandidates: businessInfo.tableMeta.primaryKeyCandidates.map((item) => ({
+                        ...item,
+                        columns: [...item.columns],
+                    })),
+                    recommendedPrimaryKey: businessInfo.tableMeta.recommendedPrimaryKey
+                        ? [...businessInfo.tableMeta.recommendedPrimaryKey]
+                        : undefined,
+                }
+                : undefined,
             source,
             itemIds: [...entity.itemIds],
             keySlot: entity.keySlot,
@@ -354,25 +383,132 @@ const toFinalEntityRecord = (
             ? {
                 fieldKey: businessInfo.primaryKey.fieldKey,
                 columns: businessInfo.primaryKey.columns ? [...businessInfo.primaryKey.columns] : undefined,
+                source: businessInfo.primaryKey.source,
             }
             : undefined,
-        columns: businessInfo.columns?.map((column) => ({ ...column })),
+        columns: businessInfo.columns?.map((column) => ({
+            ...column,
+            actions: column.actions?.map((action) => ({ ...action })),
+        })),
+        formFields: businessInfo.formFields?.map((field) => ({
+            ...field,
+            optionSource: field.optionSource ? { ...field.optionSource } : undefined,
+        })),
+        formActions: businessInfo.formActions?.map((action) => ({ ...action })),
+        tableMeta: businessInfo.tableMeta
+            ? {
+                ...businessInfo.tableMeta,
+                headers: [...businessInfo.tableMeta.headers],
+                rowNodeIds: [...businessInfo.tableMeta.rowNodeIds],
+                cellNodeIdsByRowNodeId: { ...businessInfo.tableMeta.cellNodeIdsByRowNodeId },
+                columnCellNodeIdsByHeader: { ...businessInfo.tableMeta.columnCellNodeIdsByHeader },
+                primaryKeyCandidates: businessInfo.tableMeta.primaryKeyCandidates.map((item) => ({
+                    ...item,
+                    columns: [...item.columns],
+                })),
+                recommendedPrimaryKey: businessInfo.tableMeta.recommendedPrimaryKey
+                    ? [...businessInfo.tableMeta.recommendedPrimaryKey]
+                    : undefined,
+            }
+            : undefined,
         source,
     };
 };
 
 const resolveEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecord): EntityBusinessInfo => {
-    const overlayInfo = snapshot.businessEntityOverlay?.byEntityId[entity.id];
+    const autoInfo = resolveAutoEntityBusinessInfo(snapshot, entity);
+    const ruleOverlay = snapshot.ruleEntityOverlay || snapshot.businessEntityOverlay;
+    const ruleInfo = ruleOverlay?.byEntityId[entity.id];
     return {
-        businessTag: overlayInfo?.businessTag || entity.businessTag,
-        businessName: overlayInfo?.businessName,
-        primaryKey: overlayInfo?.primaryKey
+        businessTag: ruleInfo?.businessTag || autoInfo.businessTag || entity.businessTag,
+        businessName: ruleInfo?.businessName ?? autoInfo.businessName,
+        primaryKey: ruleInfo?.primaryKey
             ? {
-                fieldKey: overlayInfo.primaryKey.fieldKey,
-                columns: overlayInfo.primaryKey.columns ? [...overlayInfo.primaryKey.columns] : undefined,
+                fieldKey: ruleInfo.primaryKey.fieldKey,
+                columns: ruleInfo.primaryKey.columns ? [...ruleInfo.primaryKey.columns] : undefined,
+                source: ruleInfo.primaryKey.source,
             }
-            : undefined,
-        columns: overlayInfo?.columns ? overlayInfo.columns.map((column) => ({ ...column })) : undefined,
+            : autoInfo.primaryKey
+              ? {
+                  fieldKey: autoInfo.primaryKey.fieldKey,
+                  columns: autoInfo.primaryKey.columns ? [...autoInfo.primaryKey.columns] : undefined,
+                  source: autoInfo.primaryKey.source,
+              }
+              : undefined,
+        columns: ruleInfo?.columns
+            ? ruleInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
+            : autoInfo.columns
+              ? autoInfo.columns.map((column) => ({ ...column, actions: column.actions?.map((action) => ({ ...action })) }))
+              : undefined,
+        formFields: ruleInfo?.formFields
+            ? ruleInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
+            : autoInfo.formFields
+              ? autoInfo.formFields.map((field) => ({ ...field, optionSource: field.optionSource ? { ...field.optionSource } : undefined }))
+              : undefined,
+        formActions: ruleInfo?.formActions
+            ? ruleInfo.formActions.map((action) => ({ ...action }))
+            : autoInfo.formActions
+              ? autoInfo.formActions.map((action) => ({ ...action }))
+              : undefined,
+        tableMeta: ruleInfo?.tableMeta
+            ? {
+                ...ruleInfo.tableMeta,
+                headers: [...ruleInfo.tableMeta.headers],
+                rowNodeIds: [...ruleInfo.tableMeta.rowNodeIds],
+                cellNodeIdsByRowNodeId: { ...ruleInfo.tableMeta.cellNodeIdsByRowNodeId },
+                columnCellNodeIdsByHeader: { ...ruleInfo.tableMeta.columnCellNodeIdsByHeader },
+                primaryKeyCandidates: ruleInfo.tableMeta.primaryKeyCandidates.map((item) => ({ ...item, columns: [...item.columns] })),
+                recommendedPrimaryKey: ruleInfo.tableMeta.recommendedPrimaryKey ? [...ruleInfo.tableMeta.recommendedPrimaryKey] : undefined,
+            }
+            : autoInfo.tableMeta,
+    };
+};
+
+const resolveAutoEntityBusinessInfo = (snapshot: SnapshotResult, entity: EntityRecord): EntityBusinessInfo => {
+    const nodeId = getEntityNodeId(entity);
+    if (entity.kind !== 'table' || !nodeId) {
+        return {};
+    }
+
+    const model = buildTableStructureModel(snapshot, nodeId);
+    if (!model) {return {};}
+
+    const headers = model.headers;
+    const columns = headers.map((header, index) => ({
+        fieldKey: header,
+        name: header,
+        source: 'table_meta' as const,
+        columnIndex: index,
+        headerNodeId: model.headerNodeIds[index],
+    }));
+    const recommendedHeader = model.recommendedPrimaryKey?.[0];
+    const primaryKey = recommendedHeader
+        ? {
+            fieldKey: recommendedHeader,
+            columns: [recommendedHeader],
+            source: 'table_meta' as const,
+        }
+        : undefined;
+
+    return {
+        primaryKey,
+        columns,
+        tableMeta: {
+            rowCount: model.rows.length,
+            columnCount: model.columnCount,
+            headers: [...model.headers],
+            rowNodeIds: model.rows.map((row) => row.nodeId),
+            cellNodeIdsByRowNodeId: Object.fromEntries(
+                model.rows.map((row) => [row.nodeId, row.cells.map((cell) => cell.nodeId)]),
+            ),
+            columnCellNodeIdsByHeader: { ...model.columnCellNodeIdsByHeader },
+            primaryKeyCandidates: model.primaryKeyCandidates.map((item) => ({
+                columns: [...item.columns],
+                unique: item.unique,
+                duplicateCount: item.duplicateCount,
+            })),
+            recommendedPrimaryKey: model.recommendedPrimaryKey ? [...model.recommendedPrimaryKey] : undefined,
+        },
     };
 };
 
