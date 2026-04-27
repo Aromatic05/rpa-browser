@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
+import { resolveStepArgsRefs } from './step_refs';
 import { runCheckpoint, setCheckpoints } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
@@ -85,6 +86,7 @@ const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) =
 const executeOne = async (
     step: StepUnion,
     workspaceId: string,
+    runId: string,
     deps: RunStepsDeps,
 ): Promise<ExecStepResult> => {
     const executors = deps.pluginHost.getExecutors();
@@ -96,8 +98,37 @@ const executeOne = async (
             error: { code: 'ERR_NOT_FOUND', message: `executor not found for step: ${step.name}` },
         };
     }
+    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const cache = binding.traceCtx.cache as {
+        runnerStepResults?: Record<string, unknown>;
+        runnerStepResultsRunId?: string;
+    };
+    const stepResults =
+        cache.runnerStepResultsRunId === runId && cache.runnerStepResults && typeof cache.runnerStepResults === 'object'
+            ? (cache.runnerStepResults as Record<string, unknown>)
+            : undefined;
+    const resolvedStep = resolveStepArgsRefs(step, {
+        getResult: (stepId) => {
+            if (!stepResults || !Object.prototype.hasOwnProperty.call(stepResults, stepId)) {
+                return undefined;
+            }
+            const item = stepResults[stepId];
+            if (!item || typeof item !== 'object') {
+                return undefined;
+            }
+            return item as { ok: boolean; data?: unknown; error?: unknown };
+        },
+    });
+    if (!resolvedStep.ok) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: resolvedStep.error,
+        };
+    }
+
     const fn = executors[step.name];
-    return await fn(step, deps, workspaceId);
+    return await fn(resolvedStep.step, deps, workspaceId);
 };
 
 const writeRunnerStepResultCache = async (
@@ -253,7 +284,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 argsSummary: step.args,
             });
 
-            const result = await executeOne(step, req.workspaceId, resolvedDeps);
+            const result = await executeOne(step, req.workspaceId, req.runId, resolvedDeps);
             if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
                     const binding = await resolvedDeps.runtime.ensureActivePage(req.workspaceId);
@@ -293,7 +324,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpointMaxAttempts,
                     inCheckpointFlow: false,
                     deps: resolvedDeps,
-                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, resolvedDeps),
+                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, req.runId, resolvedDeps),
                     checkpoints: req.checkpoints,
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
