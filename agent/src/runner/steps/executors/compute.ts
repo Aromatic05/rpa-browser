@@ -1,9 +1,9 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { ComputeExpr, ComputeValue, Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
+import type { RunLocalStepResults, RunStepsDeps } from '../../run_steps';
 
 type EvalScope = {
-    steps?: Record<string, { ok: boolean; data?: unknown; error?: unknown }>;
+    steps?: RunLocalStepResults;
     input?: Record<string, unknown>;
     local?: Record<string, unknown>;
     output?: Record<string, unknown>;
@@ -17,8 +17,8 @@ export const executeBrowserCompute = async (
     const binding = await deps.runtime.ensureActivePage(workspaceId);
     const cache = binding.traceCtx.cache as { computeScope?: unknown; runnerStepResults?: unknown };
     const scope: EvalScope = {
-        steps: asObject(cache.runnerStepResults),
-        ...(asObject(cache.computeScope) as EvalScope),
+        steps: asRecord<RunLocalStepResults>(cache.runnerStepResults),
+        ...(asRecord<EvalScope>(cache.computeScope) || {}),
     };
 
     try {
@@ -161,7 +161,7 @@ const assertArity = (op: string, args: unknown[], expected: number) => {
     }
 };
 
-const asObject = (value: unknown): Record<string, unknown> | undefined => {
+const asRecord = <T extends Record<string, unknown>>(value: unknown): T | undefined => {
     if (!value || typeof value !== 'object') {return undefined;}
-    return value;
+    return value as T;
 };

@@ -83,10 +83,19 @@ const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) =
     await Promise.all(sinks.map((sink) => sink.write(event)));
 };
 
+export type RunLocalStepResults = Record<
+    string,
+    {
+        ok: boolean;
+        data?: unknown;
+        error?: unknown;
+    }
+>;
+
 const executeOne = async (
     step: StepUnion,
     workspaceId: string,
-    runLocalStepResults: Record<string, { ok: boolean; data?: unknown; error?: unknown }>,
+    runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
 ): Promise<ExecStepResult> => {
     const executors = deps.pluginHost.getExecutors();
@@ -225,7 +234,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     const checkpointEnabled = req.checkpointEnabled ?? true;
     const checkpointMaxAttempts = req.checkpointMaxAttempts ?? 1;
     const checkpointAttempts = new Map<string, number>();
-    const runLocalStepResults: Record<string, { ok: boolean; data?: unknown; error?: unknown }> = {};
+    const runLocalStepResults: RunLocalStepResults = {};
     let status: RunStatus = 'running';
     setCheckpoints(req.checkpoints || []);
 
