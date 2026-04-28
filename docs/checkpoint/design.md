@@ -134,11 +134,16 @@ checkpoint core YAML 示例使用 scoped ref。checkpoint core YAML 不使用 ru
 
 当前序列化边界定义在 [agent/src/runner/serialization/types.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/serialization/types.ts)。
 
+workflow artifact 根目录统一为 `agent/.artifacts/workflows/<scene>/`。当前只规定 `steps/` 与 `checkpoints/` 两类一级目录；DSL 目录待 DSL 设计完成后再确定。
+
 ### `steps.yaml`
 
 - 保存普通 step 执行语义
 - 允许 runner step ref
 - 禁止 `resolve`、`hint`、`rawContext`、`locatorCandidates`、`replayHints`
+- 文件位置：`steps/<recording-name>/steps.yaml`
+- 每次录制单独一个目录
+- `resolveId` 只允许出现在 `args.resolveId`
 
 ### `step_resolve.yaml`
 
@@ -146,56 +151,70 @@ checkpoint core YAML 示例使用 scoped ref。checkpoint core YAML 不使用 ru
 - 允许 `hint`、`policy`
 - 通过 `args.resolveId` 关联，不参与核心执行语义
 - `Step.resolve` 不是废弃功能，但仅作为 runtime-only 字段注入执行态
-- checkpoint content 内的 step-like item 也只保留 `id` / `name` / `args`
+- 文件位置：`steps/<recording-name>/step_resolve.yaml`
+- 只服务同目录 `steps.yaml`
 
-### `checkpoints.yaml`
+### `checkpoint.yaml`
 
 - 保存 checkpoint 核心执行语义
 - 使用 `trigger`、`content`、`output`、`policy`
 - 使用 checkpoint scoped ref
 - 禁止 runner string ref
 - 禁止 `resolve`、`hint`、`rawContext`、`locatorCandidates`、`replayHints`
+- 文件位置：`checkpoints/<checkpoint-name>/checkpoint.yaml`
+- 每个 checkpoint 目录只放一个 checkpoint
+- 顶层结构使用 `checkpoint:`，不是 `checkpoints: []`
+- checkpoint content 内的 step-like item 也只保留 `id` / `name` / `args`
+
+### `checkpoint_resolve.yaml`
+
+- 保存 checkpoint 内部 step 的 resolve sidecar
+- 允许 `hint`、`policy`
+- 通过内部 step 的 `args.resolveId` 关联
+- 文件位置：`checkpoints/<checkpoint-name>/checkpoint_resolve.yaml`
+- 只服务同目录 `checkpoint.yaml`
+- 不与录制 `steps.yaml` 的 `step_resolve.yaml` 混用
 
 ### `checkpoint_hints.yaml`
 
 - 保存解释、`fallbacks`、`preferredEntityRules`、`notes`
 - 不参与核心执行语义
+- 文件位置：`checkpoints/<checkpoint-name>/checkpoint_hints.yaml`
 
 core YAML 任意层级禁止 `resolve`、`hint`、`rawContext`、`locatorCandidates`、`replayHints`。sidecar hints YAML 才允许这些内容。`agent/.artifacts` 是运行时产物目录，不保存仓库示例。
 
-## 2.6 checkpoints.yaml 示例
+## 2.6 checkpoint.yaml 示例
 
 ```yaml
 version: 1
-checkpoints:
-  - id: recover-order-form-submit
-    kind: recovery
-    name: 恢复订单表单提交按钮
-    trigger:
-      matchRules:
-        - stepName: browser.click
-        - errorCode: ERR_NOT_FOUND
-    content:
-      - type: query
-        saveAs: submitTarget
+checkpoint:
+  id: recover-order-form-submit
+  kind: recovery
+  name: 恢复订单表单提交按钮
+  trigger:
+    matchRules:
+      - stepName: browser.click
+      - errorCode: ERR_NOT_FOUND
+  content:
+    - type: query
+      saveAs: submitTarget
+      args:
+        op: entity.target
+        businessTag: order.form.main
+        target:
+          kind: form.action
+          actionIntent: submit
+    - type: act
+      step:
+        name: browser.click
         args:
-          op: entity.target
-          businessTag: order.form.main
-          target:
-            kind: form.action
-            actionIntent: submit
-      - type: act
-        step:
-          name: browser.click
-          args:
-            id:
-              ref: local.submitTarget.nodeId
-    policy:
-      maxAttempts: 1
-      retryOriginal: false
+          resolveId: submitButtonInCheckpoint
+  policy:
+    maxAttempts: 1
+    retryOriginal: false
 ```
 
-这个示例与 [agent/tests/fixtures/checkpoints/order_form_submit.checkpoints.yaml](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/fixtures/checkpoints/order_form_submit.checkpoints.yaml) 一致。`resolve submit action` 由 `browser.query` 完成，`click` 仍只消费 `nodeId`。checkpoint runtime 解析 `local.submitTarget.nodeId`，checkpoint 没有让 `browser.click` 理解业务目标对象。
+这个示例对应新的 workflow artifact 目录规范：`checkpoints/order-form-submit/checkpoint.yaml`。同目录下的 `checkpoint_resolve.yaml` 保存 `submitButtonInCheckpoint`，`checkpoint_hints.yaml` 保存 AI / 人工解释性 hints。录制主流程使用 `steps/<recording-name>/steps.yaml` 与 `step_resolve.yaml`，不与 checkpoint sidecar 混用。
 
 ## 2.7 checkpoint_hints.yaml 示例
 
@@ -219,7 +238,7 @@ hints:
       - 优先使用 entity-rules 解析出的 form.action
 ```
 
-`hints` 不参与 checkpoint 核心执行。`hints` 可以被 AI 生成，也可以被人工修改，但不进入 `checkpoints.yaml`。相关类型定义位于 [agent/src/runner/serialization/types.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/serialization/types.ts)，测试夹具位于 [agent/tests/fixtures/checkpoints/order_form_submit.checkpoint_hints.yaml](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/fixtures/checkpoints/order_form_submit.checkpoint_hints.yaml)。
+`hints` 不参与 checkpoint 核心执行。`hints` 可以被 AI 生成，也可以被人工修改，但不进入 `checkpoint.yaml`。相关类型定义位于 [agent/src/runner/serialization/types.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/serialization/types.ts)，新规范测试夹具位于 [agent/tests/fixtures/workflows/order-form/checkpoints/order-form-submit/checkpoint_hints.yaml](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/fixtures/workflows/order-form/checkpoints/order-form-submit/checkpoint_hints.yaml)。
 
 ## 2.8 v1 完工标准
 

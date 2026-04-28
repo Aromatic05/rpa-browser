@@ -91,6 +91,9 @@ Snapshot 的实体相关主链路为：
 - `Step.resolve` 不是废弃能力，但它是 runtime-only 字段，不进入 core `steps.yaml`
 - `StepMeta` 也是 runtime-only 字段，不进入 core `steps.yaml`
 - `StepResolveFile` 持久化到 `step_resolve.yaml`
+- workflow artifact 根目录为 `agent/.artifacts/workflows/<scene>/`
+- `steps/<recording-name>/steps.yaml` 与 `steps/<recording-name>/step_resolve.yaml` 只服务单次录制
+- `checkpoints/<checkpoint-name>/checkpoint.yaml`、`checkpoint_resolve.yaml`、`checkpoint_hints.yaml` 只服务单个 checkpoint
 - 多 tab 持久化使用 `tabRef`；运行时 `tabId` / `tabToken` 不写入 core `steps.yaml`
 
 执行链路：
@@ -117,6 +120,8 @@ Snapshot 的实体相关主链路为：
 1. 录制或编写 step
 2. 执行 `browser.capture_resolve`
 3. 由 AI / 人类修订 `StepResolve` 草稿
-4. 写入 `step_resolve.yaml`
+4. 写入对应录制目录下的 `step_resolve.yaml`
 5. 在 `SerializedStep.args` 中填写 `resolveId`
 6. `runSteps` 运行时注入 `step.resolve`
+
+DSL 目录规范暂不定义，待 DSL 设计完成后再确定。
