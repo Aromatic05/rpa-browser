@@ -63,3 +63,27 @@ test('touchTabToken updates tab timestamp for existing token', async () => {
     assert.equal(touched?.tabId, scope.tabId);
     assert.equal(nextUpdatedAt, now);
 });
+
+test('pending token claim is consumed by bindPage and binds token to workspace', async () => {
+    const pageRegistry = createPageRegistry({
+        tabTokenKey: '__rpa_tab_token',
+        getContext: async () =>
+            ({
+                pages: () => [],
+                newPage: async () => createMockPage('about:blank'),
+            }) as any,
+    });
+
+    pageRegistry.createWorkspaceShell('ws-claim');
+    pageRegistry.createPendingTokenClaim({
+        tabToken: 'token-claim',
+        workspaceId: 'ws-claim',
+        source: 'test',
+        url: 'chrome-extension://start/newtab.html',
+        createdAt: Date.now(),
+    });
+
+    await pageRegistry.bindPage(createMockPage('chrome-extension://start/newtab.html'), 'token-claim');
+    const scope = pageRegistry.resolveScopeFromToken('token-claim');
+    assert.equal(scope.workspaceId, 'ws-claim');
+});

@@ -249,16 +249,26 @@ test('workspace.restore returns ERR_WORKSPACE_SNAPSHOT_NOT_FOUND when no snapsho
 });
 
 test('tab.init returns generated token', async () => {
-    const result = await workspaceHandlers['tab.init']({} as any, {
+    const claims: any[] = [];
+    const result = await workspaceHandlers['tab.init']({
+        pageRegistry: {
+            getActiveWorkspace: () => ({ workspaceId: 'ws-active' }),
+            createPendingTokenClaim: (claim: any) => claims.push(claim),
+        },
+    } as any, {
         v: 1,
         id: 'init-1',
         type: 'tab.init',
-        payload: {},
+        payload: { source: 'start_extension', url: 'chrome-extension://start/newtab.html', at: 123 },
     } as any);
     assert.equal(result.ok, true);
     if (!result.ok) {return;}
     assert.equal(typeof result.data.tabToken, 'string');
     assert.equal(result.data.tabToken.length > 10, true);
+    assert.equal(result.data.workspaceId, 'ws-active');
+    assert.equal(claims.length, 1);
+    assert.equal(claims[0].workspaceId, 'ws-active');
+    assert.equal(claims[0].source, 'start_extension');
 });
 
 test('workspace.create opens workspace with tab when workspaceId is not provided', async () => {

@@ -228,6 +228,13 @@ const renderWorkflowList = (items: WorkflowListItem[]) => {
         openBtn.className = 'primary';
         openBtn.textContent = '打开 workflow';
         openBtn.addEventListener('click', async () => {
+            const currentToken = ensureTabToken();
+            if (!currentToken) {
+                if (restoreStatusEl) {
+                    restoreStatusEl.textContent = 'open failed: current tab token missing';
+                }
+                return;
+            }
             const opened = await sendAction<WorkflowOpenData>('workflow.open', { scene: item.scene });
             if (!opened.ok) {
                 if (restoreStatusEl) {
@@ -237,8 +244,7 @@ const renderWorkflowList = (items: WorkflowListItem[]) => {
             }
             const workspaceId = opened.data?.workspaceId;
             const tabId = opened.data?.tabId;
-            const tabToken = opened.data?.tabToken;
-            if (!workspaceId || !tabToken) {
+            if (!workspaceId) {
                 if (restoreStatusEl) {
                     restoreStatusEl.textContent = 'open failed: invalid workflow.open response';
                 }
@@ -255,7 +261,7 @@ const renderWorkflowList = (items: WorkflowListItem[]) => {
                     ...(tabId ? { tabId } : {}),
                 },
                 {
-                    tabToken,
+                    tabToken: currentToken,
                     workspaceId,
                 },
             );
@@ -265,7 +271,6 @@ const renderWorkflowList = (items: WorkflowListItem[]) => {
                 }
                 return;
             }
-            applyTabToken(tabToken);
             if (restoreStatusEl) {
                 restoreStatusEl.textContent = `open done: ${workspaceId}`;
             }

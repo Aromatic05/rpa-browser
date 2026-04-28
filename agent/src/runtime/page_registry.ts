@@ -65,6 +65,22 @@ export type PageRegistry = {
         now?: number,
     ) => Array<{ tabToken: string; workspaceId: WorkspaceId; tabId: TabId; lastSeenAt: number }>;
     closeTokenPage: (tabToken: string) => Promise<void>;
+    createPendingTokenClaim: (claim: {
+        tabToken: string;
+        workspaceId?: string;
+        source?: string;
+        url?: string;
+        createdAt?: number;
+    }) => void;
+    claimPendingToken: (tabToken: string) => Promise<{ workspaceId: WorkspaceId; tabId: TabId } | null>;
+};
+
+type PendingTokenClaim = {
+    tabToken: string;
+    workspaceId?: string;
+    source?: string;
+    url?: string;
+    createdAt: number;
 };
 
 const randomId = () => crypto.randomUUID();
@@ -77,6 +93,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const logError = (...args: unknown[]) => { actionLog.error('[RPA:page_registry]', ...args); };
     const tokenToPage = new Map<string, Page>();
     const tokenToTab = new Map<string, { workspaceId: WorkspaceId; tabId: TabId }>();
+    const pendingTokenClaims = new Map<string, PendingTokenClaim>();
     const workspaces = new Map<WorkspaceId, Workspace>();
     let activeWorkspaceId: WorkspaceId | null = null;
 
@@ -246,18 +263,42 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             log('bind_page.start', { hintedToken: hintedToken || null, resolvedToken: token, pageUrl: page.url() });
             attachTokenToRuntime(token, page);
             if (!tokenToTab.has(token)) {
-                const active = getActiveWorkspace();
-                if (active?.tabs.size === 0) {
-                    const attached = attachTokenToWorkspace(active, token, page);
-                    activeWorkspaceId = active.workspaceId;
-                    log('bind_page.auto_bound_shell_workspace', {
-                        token,
-                        pageUrl: page.url(),
-                        workspaceId: attached.workspaceId,
-                        tabId: attached.tabId,
-                    });
+                const pending = pendingTokenClaims.get(token);
+                if (pending) {
+                    const targetWorkspaceId = pending.workspaceId || activeWorkspaceId || createWorkspaceShell().workspaceId;
+                    createWorkspaceShell(targetWorkspaceId);
+                    const attached = bindTokenToWorkspace(token, targetWorkspaceId);
+                    if (attached) {
+                        pendingTokenClaims.delete(token);
+                        log('bind_page.claimed_pending_token', {
+                            token,
+                            pageUrl: page.url(),
+                            workspaceId: attached.workspaceId,
+                            tabId: attached.tabId,
+                            source: pending.source || 'unknown',
+                        });
+                    } else {
+                        logWarning('bind_page.pending_claim_failed', {
+                            token,
+                            pageUrl: page.url(),
+                            workspaceId: targetWorkspaceId,
+                            source: pending.source || 'unknown',
+                        });
+                    }
                 } else {
-                    logWarning('bind_page.unbound', { token, pageUrl: page.url() });
+                    const active = getActiveWorkspace();
+                    if (active?.tabs.size === 0) {
+                        const attached = attachTokenToWorkspace(active, token, page);
+                        activeWorkspaceId = active.workspaceId;
+                        log('bind_page.auto_bound_shell_workspace', {
+                            token,
+                            pageUrl: page.url(),
+                            workspaceId: attached.workspaceId,
+                            tabId: attached.tabId,
+                        });
+                    } else {
+                        logWarning('bind_page.unbound', { token, pageUrl: page.url() });
+                    }
                 }
             } else {
                 const ref = tokenToTab.get(token)!;
@@ -380,6 +421,49 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         });
         if (!activeWorkspaceId) {activeWorkspaceId = id;}
         return { workspaceId: id };
+    };
+
+    const createPendingTokenClaim = (claim: {
+        tabToken: string;
+        workspaceId?: string;
+        source?: string;
+        url?: string;
+        createdAt?: number;
+    }) => {
+        if (!claim.tabToken) {return;}
+        if (claim.workspaceId) {
+            createWorkspaceShell(claim.workspaceId);
+        }
+        pendingTokenClaims.set(claim.tabToken, {
+            tabToken: claim.tabToken,
+            workspaceId: claim.workspaceId,
+            source: claim.source,
+            url: claim.url,
+            createdAt: claim.createdAt ?? Date.now(),
+        });
+    };
+
+    const claimPendingToken = async (tabToken: string): Promise<{ workspaceId: WorkspaceId; tabId: TabId } | null> => {
+        if (!tabToken) {return null;}
+        const pending = pendingTokenClaims.get(tabToken);
+        if (!pending) {return null;}
+        if (!tokenToPage.get(tabToken)) {
+            await rebuildTokenMap();
+        }
+        const page = tokenToPage.get(tabToken);
+        if (!page || page.isClosed()) {return null;}
+        const targetWorkspaceId = pending.workspaceId || activeWorkspaceId || createWorkspaceShell().workspaceId;
+        createWorkspaceShell(targetWorkspaceId);
+        const attached = bindTokenToWorkspace(tabToken, targetWorkspaceId);
+        if (!attached) {return null;}
+        pendingTokenClaims.delete(tabToken);
+        log('claim_pending_token.done', {
+            tabToken,
+            workspaceId: attached.workspaceId,
+            tabId: attached.tabId,
+            source: pending.source || 'unknown',
+        });
+        return attached;
     };
 
     const createTab = async (workspaceId: WorkspaceId) => {
@@ -556,5 +640,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         rebindTokenToTab,
         listTimedOutTokens,
         closeTokenPage,
+        createPendingTokenClaim,
+        claimPendingToken,
     };
 };

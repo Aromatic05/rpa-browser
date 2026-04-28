@@ -9,6 +9,7 @@ import { createRecordingState, cleanupRecording, ensureRecorder, setRecorderEven
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { executeAction, type ActionContext } from './actions/execute';
 import { failedAction, isFailedAction, type Action } from './actions/action_protocol';
+import { replyAction } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
@@ -263,9 +264,28 @@ const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
         (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
         (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
     if (!workspaceId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');}
+    pageRegistry.createPendingTokenClaim({
+        tabToken: token,
+        workspaceId,
+        source: typeof payload.source === 'string' ? payload.source : 'tab.opened',
+        url: typeof payload.url === 'string' ? payload.url : urlHint,
+        createdAt: typeof payload.at === 'number' ? payload.at : Date.now(),
+    });
+    await pageRegistry.claimPendingToken(token);
     const scoped = await retryClaim(() => pageRegistry.bindTokenToWorkspace(token, workspaceId), 80, 50);
     if (!scoped) {
-        return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `failed to bind tab.opened to workspace (${workspaceId}, ${token})`);
+        logWarning('tab.opened.defer_claim', {
+            tabToken: token,
+            workspaceId,
+            source: typeof payload.source === 'string' ? payload.source : 'tab.opened',
+            url: typeof payload.url === 'string' ? payload.url : urlHint || null,
+        });
+        return replyAction(action, {
+            workspaceId,
+            tabId: null,
+            tabToken: token,
+            deferred: true,
+        });
     }
     return await runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
 };
@@ -287,6 +307,10 @@ const handleAction = async (action: Action) => {
             scope: action.scope || null,
             urlHint: urlHint || null,
         });
+    }
+
+    if (action.type === ACTION_TYPES.TAB_OPENED) {
+        return await bindTabOpenedAction(action, urlHint);
     }
 
     try {
@@ -312,10 +336,6 @@ const handleAction = async (action: Action) => {
 
         if (PAGELESS_ACTIONS.has(action.type)) {
             return await runPagelessAction(action);
-        }
-
-        if (error.message === 'workspace scope not found for tabToken' && action.type === ACTION_TYPES.TAB_OPENED) {
-            return await bindTabOpenedAction(action, urlHint);
         }
 
         return failedAction(action, error.code, error.message);

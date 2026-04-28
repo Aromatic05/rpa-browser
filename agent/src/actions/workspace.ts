@@ -91,8 +91,23 @@ const ensureRecorderForTabIfRecording = async (
 };
 
 export const workspaceHandlers: Record<string, ActionHandler> = {
-    [ACTION_TYPES.TAB_INIT]: async (_ctx, action) => {
-        return replyAction(action, { tabToken: crypto.randomUUID() });
+    [ACTION_TYPES.TAB_INIT]: async (ctx, action) => {
+        const tabToken = crypto.randomUUID();
+        const payload = (action.payload ?? {}) as { source?: string; url?: string; at?: number; workspaceId?: string };
+        const workspaceId =
+            payload.workspaceId ||
+            action.scope?.workspaceId ||
+            ctx.pageRegistry?.getActiveWorkspace?.()?.workspaceId;
+        if (typeof ctx.pageRegistry?.createPendingTokenClaim === 'function') {
+            ctx.pageRegistry.createPendingTokenClaim({
+                tabToken,
+                workspaceId: workspaceId || undefined,
+                source: payload.source || 'unknown',
+                url: payload.url,
+                createdAt: payload.at,
+            });
+        }
+        return replyAction(action, { tabToken, workspaceId: workspaceId || null });
     },
     'workspace.list': async (ctx, action) => {
         const list = ctx.pageRegistry.listWorkspaces();
