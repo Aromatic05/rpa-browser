@@ -11,6 +11,8 @@ const stepTypesSource = read('src/runner/steps/types.ts');
 const resolveTargetSource = read('src/runner/steps/helpers/resolve_target.ts');
 const serializationSource = read('src/runner/serialization/types.ts');
 const runStepsTypesSource = read('src/runner/run_steps_types.ts');
+const runStepsSource = read('src/runner/run_steps.ts');
+const captureResolveExecutorSource = read('src/runner/steps/executors/capture_resolve.ts');
 
 const readStepArgsBlock = (stepName: string): string => {
     const start = stepTypesSource.indexOf(`'${stepName}':`);
@@ -152,6 +154,11 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
     assert.equal(closeTabBlock.includes('tabRef?: string'), true);
     assert.equal(closeTabBlock.includes('tab_id'), false);
     assert.equal(closeTabBlock.includes('tab_ref'), false);
+
+    const captureResolveBlock = readStepArgsBlock('browser.capture_resolve');
+    assert.equal(captureResolveBlock.includes('resolveId'), false);
+    assert.equal(runStepsSource.includes(`'browser.capture_resolve'`), false);
+    assert.equal(captureResolveExecutorSource.includes('does not support step.resolve'), true);
 });
 
 test('step resolve sidecar validation accepts basic resolve file shape', () => {
