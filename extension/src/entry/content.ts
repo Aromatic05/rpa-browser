@@ -12,6 +12,7 @@ import type * as FloatingUIModule from '../content/floating_ui.js';
 import type * as TokenBridgeModule from '../content/token_bridge.js';
 import type * as ProtocolModule from '../shared/protocol.js';
 import type * as SendModule from '../shared/send.js';
+import type { Action } from '../shared/types.js';
 
 declare global {
     interface Window {
@@ -160,7 +161,7 @@ const loadFloatingUI = (() => {
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
-    let consumeActionEvent: ((action: unknown) => void) | null = null;
+    let consumeActionEvent: ((action: Action) => void) | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
@@ -207,7 +208,7 @@ const loadFloatingUI = (() => {
         });
         chrome.runtime.onMessage.addListener((message: unknown) => {
             if (!isRecord(message) || message.type !== MSG.ACTION_EVENT || !('action' in message)) {return;}
-            consumeActionEvent?.(message.action);
+            consumeActionEvent?.(message.action as Action);
         });
     })();
 
