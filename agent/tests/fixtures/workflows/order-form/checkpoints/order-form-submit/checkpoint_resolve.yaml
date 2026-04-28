@@ -1,0 +1,9 @@
+version: 1
+resolves:
+  submitButtonInCheckpoint:
+    hint:
+      raw:
+        selector: "#submit"
+    policy:
+      requireVisible: true
+

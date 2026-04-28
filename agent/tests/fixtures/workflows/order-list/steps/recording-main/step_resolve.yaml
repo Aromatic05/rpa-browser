@@ -1,0 +1,9 @@
+version: 1
+resolves:
+  rowActionButton:
+    hint:
+      raw:
+        selector: ".order-row [data-action='more']"
+    policy:
+      requireVisible: true
+

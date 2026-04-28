@@ -131,6 +131,9 @@ test('serialization guard', async () => {
     for (const required of ['assertNoCoreHintFields', 'assertNoLegacyActionTargetFields', 'resolve', 'rawContext', 'locatorCandidates', 'replayHints', 'StepResolveFile', 'SerializedStep']) {
         assert.equal(serializationSource.includes(required), true, `serialization types missing ${required}`);
     }
+    for (const required of ['SingleCheckpointFile', 'CheckpointResolveFile', 'validateSingleCheckpointFileForSerialization', 'validateCheckpointResolveFileForSerialization']) {
+        assert.equal(serializationSource.includes(required), true, `serialization types missing ${required}`);
+    }
     assert.equal(serializationSource.includes('StepHintFile'), false);
     assert.equal(serializationSource.includes('resolveId?: string;'), false);
 
