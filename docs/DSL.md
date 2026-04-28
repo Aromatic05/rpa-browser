@@ -78,6 +78,25 @@ click form "order.form" action "submit"
 - Table syntax sugar is not supported.
 - Automatic pagination is not supported.
 
+## Query Syntax Sugar
+
+```dsl
+let rows = query table "order.list" current_rows
+let count = query table "order.list" row_count
+let hasNext = query table "order.list" has_next_page
+let next = query table "order.list" next_page_target
+
+let fields = query form "order.form" fields
+let actions = query form "order.form" actions
+```
+
+- This is normalize-phase syntax sugar only.
+- It is expanded to `query entity ...`.
+- No automatic pagination.
+- No implicit table row loops.
+- Pagination still needs explicit DSL statements:
+  `query has_next_page`, `query next_page_target`, then `click next`.
+
 ### If / Else
 
 ```dsl
