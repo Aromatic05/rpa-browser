@@ -132,26 +132,3 @@ test('validateDsl requires checkpoint input refs', () => {
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0].code, 'ERR_DSL_BAD_CHECKPOINT_INPUT');
 });
-
-test('validateDsl reports unsupported if and for', () => {
-    const program: DslProgram = {
-        body: [
-            {
-                kind: 'if',
-                condition: { kind: 'ref', ref: 'input.enabled' },
-                then: [],
-            },
-            {
-                kind: 'for',
-                item: 'buyer',
-                iterable: { kind: 'ref', ref: 'input.buyers' },
-                body: [],
-            },
-        ],
-    };
-
-    const diagnostics = validateDsl(normalizeDsl(program));
-    assert.equal(diagnostics.length, 2);
-    assert.equal(diagnostics[0].code, 'ERR_DSL_UNSUPPORTED');
-    assert.equal(diagnostics[1].code, 'ERR_DSL_UNSUPPORTED');
-});

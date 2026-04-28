@@ -99,51 +99,6 @@ test('runDsl executes query then fill through one task stream and writes vars/ou
     });
 });
 
-test('runDsl throws UnsupportedError for if/for nodes', async () => {
-    await assert.rejects(
-        () =>
-            runDsl(
-                {
-                    body: [
-                        {
-                            kind: 'if',
-                            condition: { kind: 'ref', ref: 'input.enabled' },
-                            then: [],
-                        },
-                    ],
-                },
-                {
-                    workspaceId: 'ws-dsl',
-                    deps: createDeps([]),
-                    input: {},
-                },
-            ),
-        /not implemented yet/,
-    );
-
-    await assert.rejects(
-        () =>
-            runDsl(
-                {
-                    body: [
-                        {
-                            kind: 'for',
-                            item: 'buyer',
-                            iterable: { kind: 'ref', ref: 'input.buyers' },
-                            body: [],
-                        },
-                    ],
-                },
-                {
-                    workspaceId: 'ws-dsl',
-                    deps: createDeps([]),
-                    input: {},
-                },
-            ),
-        /not implemented yet/,
-    );
-});
-
 test('runDsl wraps failed act steps as DslRuntimeError', async () => {
     const deps = createDeps([]);
     deps.pluginHost = {

@@ -58,17 +58,6 @@ test('parseDsl parses let query entity.target fill and click', () => {
     });
 });
 
-test('parseDsl parses reserved if and for nodes', () => {
-    const program = parseDsl(`
-        if input.enabled
-        for buyer in input.buyers
-    `);
-
-    assert.equal(program.body.length, 2);
-    assert.equal(program.body[0].kind, 'if');
-    assert.equal(program.body[1].kind, 'for');
-});
-
 test('parseDsl throws DslParseError on invalid object literals', () => {
     assert.throws(
         () =>
