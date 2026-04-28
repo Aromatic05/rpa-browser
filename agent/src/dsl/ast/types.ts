@@ -26,9 +26,10 @@ export type QueryExpr = {
 
 export type ActStmt = {
     kind: 'act';
-    action: 'fill' | 'click';
-    target: RefExpr;
+    action: 'fill' | 'click' | 'type' | 'select' | 'wait' | 'snapshot';
+    target?: RefExpr;
     value?: RefExpr;
+    durationMs?: number;
 };
 
 export type CheckpointStmt = {

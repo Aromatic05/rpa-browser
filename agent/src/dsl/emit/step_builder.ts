@@ -66,3 +66,23 @@ export const buildClickStep = (target: unknown): Step<'browser.click'> => {
     const targetArgs = toTargetArgs(target);
     return createStep('browser.click', targetArgs);
 };
+
+export const buildTypeStep = (target: unknown, value: unknown): Step<'browser.type'> => {
+    const targetArgs = toTargetArgs(target);
+    return createStep('browser.type', {
+        ...targetArgs,
+        text: String(value ?? ''),
+    });
+};
+
+export const buildSelectStep = (target: unknown, value: unknown): Step<'browser.select_option'> => {
+    const targetArgs = toTargetArgs(target);
+    return createStep('browser.select_option', {
+        ...targetArgs,
+        values: [String(value ?? '')],
+    });
+};
+
+export const buildSnapshotStep = (): Step<'browser.snapshot'> => {
+    return createStep('browser.snapshot', {});
+};

@@ -193,16 +193,16 @@ const parseStatement = (statement: string): DslStmt => {
     if (statement.startsWith('let ')) {
         return parseLet(statement);
     }
-    if (statement.startsWith('fill ')) {
-        const match = statement.match(/^fill\s+([A-Za-z0-9_.]+)\s+with\s+([A-Za-z0-9_.]+)$/);
+    if (statement.startsWith('fill ') || statement.startsWith('type ') || statement.startsWith('select ')) {
+        const match = statement.match(/^(fill|type|select)\s+([A-Za-z0-9_.]+)\s+with\s+([A-Za-z0-9_.]+)$/);
         if (!match) {
-            throw new DslParseError(`invalid fill statement: ${statement}`);
+            throw new DslParseError(`invalid action statement: ${statement}`);
         }
         return {
             kind: 'act',
-            action: 'fill',
-            target: toRef(match[1]),
-            value: toRef(match[2]),
+            action: match[1] as 'fill' | 'type' | 'select',
+            target: toRef(match[2]),
+            value: toRef(match[3]),
         };
     }
     if (statement.startsWith('click ')) {
@@ -214,6 +214,23 @@ const parseStatement = (statement: string): DslStmt => {
             kind: 'act',
             action: 'click',
             target: toRef(match[1]),
+        };
+    }
+    if (statement.startsWith('wait ')) {
+        const match = statement.match(/^wait\s+(\d+)$/);
+        if (!match) {
+            throw new DslParseError(`invalid wait statement: ${statement}`);
+        }
+        return {
+            kind: 'act',
+            action: 'wait',
+            durationMs: Number(match[1]),
+        };
+    }
+    if (statement === 'snapshot') {
+        return {
+            kind: 'act',
+            action: 'snapshot',
         };
     }
     if (statement.startsWith('use checkpoint ')) {

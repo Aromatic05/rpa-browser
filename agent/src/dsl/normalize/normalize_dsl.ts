@@ -14,8 +14,8 @@ const normalizeStmt = (stmt: DslStmt): DslStmt => {
     if (stmt.kind === 'act') {
         return {
             ...stmt,
-            target: normalizeRef(stmt.target),
-            value: stmt.value ? normalizeRef(stmt.value) : undefined,
+            ...(stmt.target ? { target: normalizeRef(stmt.target) } : {}),
+            ...(stmt.value ? { value: normalizeRef(stmt.value) } : {}),
         };
     }
     if (stmt.kind === 'checkpoint') {
