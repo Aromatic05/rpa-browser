@@ -155,6 +155,16 @@ const validateExpr = (
     diagnostics: DslDiagnostic[],
     path: string,
 ): void => {
+    if (expr.kind === 'query_sugar') {
+        diagnostics.push(
+            createDiagnostic(
+                'ERR_DSL_NOT_NORMALIZED',
+                'query_sugar must be expanded before validation',
+                path,
+            ),
+        );
+        return;
+    }
     if (expr.kind === 'ref') {
         validateRef(expr, scope, diagnostics, path);
     }

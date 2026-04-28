@@ -8,6 +8,7 @@ export type {
     ForStmt,
     IfStmt,
     LetStmt,
+    QuerySugarExpr,
     QueryExpr,
     RefExpr,
 } from './types';

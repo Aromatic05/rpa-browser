@@ -77,6 +77,12 @@ const executeStmt = async (
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(result) });
                 return;
             }
+            if (stmt.expr.kind === 'query_sugar') {
+                throw new DslRuntimeError(
+                    'query_sugar must be expanded before runtime',
+                    'ERR_DSL_NOT_NORMALIZED',
+                );
+            }
             const value = resolveDslValue(stmt.expr, scope);
             setDslValue(scope, `vars.${stmt.name}`, value);
             safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });

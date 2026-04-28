@@ -275,6 +275,41 @@ const parseStatement = (statement: string): DslStmt => {
 };
 
 const parseLet = (statement: string): LetStmt => {
+    const sugarMatch = statement.match(
+        /^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+(table|form)\s+"([^"]+)"\s+([A-Za-z_][A-Za-z0-9_]*)$/,
+    );
+    if (sugarMatch) {
+        const [, name, target, businessTag, op] = sugarMatch;
+        if (target === 'table') {
+            if (!['current_rows', 'row_count', 'has_next_page', 'next_page_target'].includes(op)) {
+                throw new DslParseError(`invalid table query op: ${op}`);
+            }
+            return {
+                kind: 'let',
+                name,
+                expr: {
+                    kind: 'query_sugar',
+                    target: 'table',
+                    businessTag,
+                    op: op as 'current_rows' | 'row_count' | 'has_next_page' | 'next_page_target',
+                },
+            };
+        }
+        if (!['fields', 'actions'].includes(op)) {
+            throw new DslParseError(`invalid form query op: ${op}`);
+        }
+        return {
+            kind: 'let',
+            name,
+            expr: {
+                kind: 'query_sugar',
+                target: 'form',
+                businessTag,
+                op: op as 'fields' | 'actions',
+            },
+        };
+    }
+
     const match = statement.match(
         /^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+(entity(?:\.target)?)\s+"([^"]+)"\s+([\s\S]+)$/,
     );

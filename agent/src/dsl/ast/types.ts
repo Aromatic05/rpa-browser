@@ -10,7 +10,7 @@ export type LetStmt = {
     expr: DslExpr;
 };
 
-export type DslExpr = QueryExpr | RefExpr;
+export type DslExpr = QueryExpr | QuerySugarExpr | RefExpr;
 
 export type RefExpr = {
     kind: 'ref';
@@ -23,6 +23,20 @@ export type QueryExpr = {
     businessTag: string;
     payload: unknown;
 };
+
+export type QuerySugarExpr =
+    | {
+          kind: 'query_sugar';
+          target: 'table';
+          businessTag: string;
+          op: 'current_rows' | 'row_count' | 'has_next_page' | 'next_page_target';
+      }
+    | {
+          kind: 'query_sugar';
+          target: 'form';
+          businessTag: string;
+          op: 'fields' | 'actions';
+      };
 
 export type ActStmt = {
     kind: 'act';

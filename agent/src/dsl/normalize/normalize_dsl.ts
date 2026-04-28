@@ -60,6 +60,9 @@ const normalizeStmt = (stmt: DslStmt, ctx: NormalizeContext): DslStmt[] => {
 };
 
 const normalizeExpr = <T extends DslExpr>(expr: T): T => {
+    if (expr.kind === 'query_sugar') {
+        return expandQuerySugarExpr(expr) as T;
+    }
     if (expr.kind !== 'ref') {return expr;}
     return normalizeRef(expr) as T;
 };
@@ -107,4 +110,24 @@ const expandFormActStmt = (stmt: FormActStmt, ctx: NormalizeContext): DslStmt[] 
               };
 
     return [letStmt, actStmt];
+};
+
+const expandQuerySugarExpr = (expr: Extract<DslExpr, { kind: 'query_sugar' }>): Extract<DslExpr, { kind: 'query' }> => {
+    if (expr.target === 'table') {
+        const query = `table.${expr.op}`;
+        return {
+            kind: 'query',
+            op: 'entity',
+            businessTag: expr.businessTag,
+            payload: { query },
+        };
+    }
+
+    const query = `form.${expr.op}`;
+    return {
+        kind: 'query',
+        op: 'entity',
+        businessTag: expr.businessTag,
+        payload: { query },
+    };
 };
