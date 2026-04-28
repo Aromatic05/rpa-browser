@@ -261,7 +261,7 @@ export const closeStepsQueue = (queue: StepsQueue): void => {
     notifyAll(getWaiters(queueWaiters, queue));
 };
 
-export const createResultPipe = (): ResultPipe => ({ items: [] });
+export const createResultPipe = (): ResultPipe => ({ items: [], waiters: new Set() });
 
 export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100): { items: StepResult[]; nextCursor: number } => {
     const start = cursor >= 0 ? cursor : 0;
@@ -269,6 +269,20 @@ export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100): { ite
     const items = pipe.items.slice(start, start + max);
     return { items, nextCursor: start + items.length };
 };
+
+export const pushResultPipe = (pipe: ResultPipe, result: StepResult): void => {
+    pipe.items.push(result);
+    const waiters = [...pipe.waiters];
+    pipe.waiters.clear();
+    for (const wake of waiters) {
+        wake();
+    }
+};
+
+export const waitForResultPipe = async (pipe: ResultPipe): Promise<void> =>
+    await new Promise<void>((resolve) => {
+        pipe.waiters.add(resolve);
+    });
 
 export const createSignalChannel = (): SignalChannel => ({ items: [], cursor: 0 });
 
@@ -420,7 +434,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 error: finalResult.error,
             };
             await writeRunnerStepResultCache(resolvedDeps, req.workspaceId, req.runId, finalResult);
-            req.resultPipe.items.push(output);
+            pushResultPipe(req.resultPipe, output);
 
             if (nextStatus === 'suspended') {
                 status = 'suspended';
