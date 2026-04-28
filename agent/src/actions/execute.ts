@@ -14,6 +14,7 @@ import { actionHandlers } from './index';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
+import type { RunStepsDeps } from '../runner/run_steps';
 
 export type ActionContext = {
     page: Page;
@@ -25,6 +26,7 @@ export type ActionContext = {
     navDedupeWindowMs: number;
     emit?: (action: Action) => void;
     execute?: (action: Action) => Promise<ActionHandlerResult>;
+    runStepsDeps?: RunStepsDeps;
 };
 
 export type ActionHandlerResult = Action;

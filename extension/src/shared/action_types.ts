@@ -1,4 +1,13 @@
 export const REQUEST_ACTION_TYPES = {
+    WORKFLOW_LIST: 'workflow.list',
+    WORKFLOW_OPEN: 'workflow.open',
+    WORKFLOW_STATUS: 'workflow.status',
+    WORKFLOW_RECORD_SAVE: 'workflow.record.save',
+    WORKFLOW_DSL_GET: 'workflow.dsl.get',
+    WORKFLOW_DSL_SAVE: 'workflow.dsl.save',
+    WORKFLOW_DSL_TEST: 'workflow.dsl.test',
+    WORKFLOW_RELEASE_RUN: 'workflow.releaseRun',
+
     WORKSPACE_LIST: 'workspace.list',
     WORKSPACE_CREATE: 'workspace.create',
     WORKSPACE_SET_ACTIVE: 'workspace.setActive',

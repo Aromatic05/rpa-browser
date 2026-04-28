@@ -62,6 +62,16 @@ const ensureExpectedTabs = async (
 };
 
 const createWorkspace = async (deps: ResolveWorkflowWorkspaceDeps, scene: string): Promise<ResolvedWorkspace> => {
+    const workspaceId = toWorkspaceId(scene);
+    if (typeof deps.pageRegistry.createWorkspaceShell === 'function' && typeof deps.pageRegistry.createTab === 'function') {
+        deps.pageRegistry.createWorkspaceShell(workspaceId);
+        const tabId = await deps.pageRegistry.createTab(workspaceId);
+        return {
+            workspaceId,
+            tabId,
+            tabToken: deps.pageRegistry.resolveTabToken({ workspaceId, tabId }),
+        };
+    }
     const created = await deps.pageRegistry.createWorkspace();
     return {
         workspaceId: created.workspaceId,

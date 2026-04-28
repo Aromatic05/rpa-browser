@@ -106,6 +106,7 @@ setControlActionDispatcher(
             scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
         },
         navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+        runStepsDeps,
     }),
 );
 const controlServer = createControlServer({ deps: runStepsDeps });

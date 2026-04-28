@@ -183,6 +183,7 @@ setControlActionDispatcher(
         replayOptions: REPLAY_OPTIONS,
         navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
         emit: broadcast,
+        runStepsDeps,
     }),
 );
 const controlServer = createControlServer({ deps: runStepsDeps });
@@ -198,6 +199,7 @@ const createActionContext = (page: Page, tabToken: string): ActionContext => {
         replayOptions: REPLAY_OPTIONS,
         navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
         emit: broadcast,
+        runStepsDeps,
         execute: undefined,
     };
     ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);

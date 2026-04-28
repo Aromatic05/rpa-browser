@@ -47,3 +47,35 @@ agent/.artifacts/workflows/<scene>/
 
 Workflow runtime resolves workspace before DSL execution.
 Current implementation validates only the current tab URL against `expectedTabs` (exactUrl/urlIncludes).
+
+## Lifecycle
+
+1. `workflow.open`
+2. `record.start` / `record.stop`
+3. `workflow.record.save`
+4. `workflow.dsl.get` / `workflow.dsl.save`
+5. `workflow.dsl.test`
+6. `workflow.releaseRun`
+
+## Execution Model
+
+- workflow is the project package.
+- workspace is the runtime container.
+- `record.*`, `play.*`, and `task.*` keep their existing action names.
+- those existing actions still run against `action.scope.workspaceId`, now typically `workflow:<scene>`.
+
+## DSL Entry
+
+- default entry is `dsl/main.dsl`.
+- runtime reads `workflow.yaml.entry.dsl`.
+- multi-dsl workflow entry is reserved for later.
+
+## Recording
+
+- save path: `records/<recording-name>/`.
+- default naming: `recording-YYYYMMDD-HHmmss`.
+
+## Compatibility
+
+- `workspace.*`, `record.*`, `play.*`, and `task.*` stay available.
+- legacy `steps/<recording-name>/` remains read-compatible.

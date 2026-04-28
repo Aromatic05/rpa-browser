@@ -6,6 +6,7 @@ import type { PageRegistry } from '../runtime/page_registry';
 import type { RuntimeRegistry } from '../runtime/runtime_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
+import type { RunStepsDeps } from '../runner/run_steps';
 
 export type ActionDispatcherOptions = {
     pageRegistry: PageRegistry;
@@ -15,6 +16,7 @@ export type ActionDispatcherOptions = {
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
     emit?: (action: Action) => void;
+    runStepsDeps?: RunStepsDeps;
 };
 
 export type ActionDispatcher = {
@@ -22,6 +24,14 @@ export type ActionDispatcher = {
 };
 
 const PAGELESS_ACTIONS = new Set<string>([
+    ACTION_TYPES.WORKFLOW_LIST,
+    ACTION_TYPES.WORKFLOW_OPEN,
+    ACTION_TYPES.WORKFLOW_STATUS,
+    ACTION_TYPES.WORKFLOW_RECORD_SAVE,
+    ACTION_TYPES.WORKFLOW_DSL_GET,
+    ACTION_TYPES.WORKFLOW_DSL_SAVE,
+    ACTION_TYPES.WORKFLOW_DSL_TEST,
+    ACTION_TYPES.WORKFLOW_RELEASE_RUN,
     ACTION_TYPES.WORKSPACE_LIST,
     ACTION_TYPES.WORKSPACE_CREATE,
     ACTION_TYPES.WORKSPACE_SET_ACTIVE,
@@ -58,6 +68,7 @@ const createActionContext = (
         replayOptions: options.replayOptions,
         navDedupeWindowMs: options.navDedupeWindowMs,
         emit: options.emit,
+        runStepsDeps: options.runStepsDeps,
         execute: undefined,
     };
     ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);

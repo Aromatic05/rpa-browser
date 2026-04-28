@@ -29,15 +29,34 @@ type WsActionEnvelope = {
     payload?: unknown;
 };
 
-type RestoreItem = {
-    workspaceId?: string;
-    stepCount?: number;
-    updatedAt?: number;
-    entryUrl?: string;
+type WorkflowListItem = {
+    scene: string;
+    id: string;
+    name?: string;
+    entryDsl: string;
+    entryInputs?: string;
+    recordCount: number;
+    checkpointCount: number;
 };
+
+type WorkflowListData = {
+    workflows?: WorkflowListItem[];
+};
+
+type WorkflowOpenData = {
+    workspaceId?: string;
+    tabId?: string;
+    tabToken?: string;
+};
+
+type WorkflowRunData = {
+    ok?: boolean;
+    output?: unknown;
+};
+
 type TabInitData = { tabToken?: string };
+
 type WorkspaceListData = { activeWorkspaceId?: string };
-type RecordListData = { recordings?: unknown };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
@@ -136,69 +155,102 @@ const ensureTabTokenFromAgent = async () => {
 
 const formatTs = (ts: number) => new Date(ts).toLocaleString();
 
-const renderRestoreList = (items: RestoreItem[]) => {
+const runWorkflowAction = async (scene: string, type: string, label: string) => {
+    if (restoreStatusEl) {
+        restoreStatusEl.textContent = `${label}...`;
+    }
+    const result = await sendAction<WorkflowRunData>(type, { scene });
+    if (!result.ok) {
+        if (restoreStatusEl) {
+            restoreStatusEl.textContent = `${label} failed: ${result.error?.message ?? 'unknown'}`;
+        }
+        return;
+    }
+    if (restoreStatusEl) {
+        restoreStatusEl.textContent = `${label} done`;
+    }
+};
+
+const renderWorkflowList = (items: WorkflowListItem[]) => {
     if (!restoreListEl) {return;}
     restoreListEl.innerHTML = '';
     if (!items.length) {
         const empty = document.createElement('div');
         empty.className = 'restore-meta';
-        empty.textContent = '当前没有可恢复的 workspace 录制。';
+        empty.textContent = '当前没有可用 workflow。';
         restoreListEl.appendChild(empty);
         return;
     }
     items.forEach((item) => {
-        const workspaceId = item.workspaceId ?? '-';
-        const stepCount = item.stepCount ?? 0;
-        const updatedAt = item.updatedAt ?? 0;
-        const entryUrl = item.entryUrl ?? '-';
         const row = document.createElement('div');
         row.className = 'restore-item';
+
         const meta = document.createElement('div');
         meta.className = 'restore-meta';
         meta.innerHTML = [
-            `<div><strong>${workspaceId}</strong></div>`,
-            `<div>steps: ${String(stepCount)} | updated: ${formatTs(updatedAt)}</div>`,
-            `<div>${entryUrl}</div>`,
+            `<div><strong>${item.scene}</strong> ${item.name ? `(${item.name})` : ''}</div>`,
+            `<div>id: ${item.id} | records: ${String(item.recordCount)} | checkpoints: ${String(item.checkpointCount)}</div>`,
+            `<div>entry: ${item.entryDsl}${item.entryInputs ? ` | inputs: ${item.entryInputs}` : ''}</div>`,
+            `<div>updated: ${formatTs(Date.now())}</div>`,
         ].join('');
-        const restoreBtn = document.createElement('button');
-        restoreBtn.className = 'primary';
-        restoreBtn.textContent = '恢复 Workspace';
-        restoreBtn.addEventListener('click', () => {
-            void (async () => {
-                if (restoreStatusEl) {restoreStatusEl.textContent = 'restoring...';}
-                const restored = await sendAction('workspace.restore', {
-                    workspaceId: workspaceId === '-' ? '' : workspaceId,
-                });
-                if (!restored.ok) {
-                    if (restoreStatusEl) {
-                        const errorMessage = restored.error?.message ?? 'unknown';
-                        restoreStatusEl.textContent = `restore failed: ${errorMessage}`;
-                    }
-                    return;
+
+        const actions = document.createElement('div');
+        actions.className = 'row';
+
+        const openBtn = document.createElement('button');
+        openBtn.className = 'primary';
+        openBtn.textContent = '打开 workflow';
+        openBtn.addEventListener('click', async () => {
+            const opened = await sendAction<WorkflowOpenData>('workflow.open', { scene: item.scene });
+            if (!opened.ok) {
+                if (restoreStatusEl) {
+                    restoreStatusEl.textContent = `open failed: ${opened.error?.message ?? 'unknown'}`;
                 }
-                if (restoreStatusEl) {restoreStatusEl.textContent = 'restore done';}
-            })();
+                return;
+            }
+            if (restoreStatusEl) {
+                restoreStatusEl.textContent = `open done: ${opened.data?.workspaceId ?? '-'}`;
+            }
         });
-        row.append(meta, restoreBtn);
+
+        const runBtn = document.createElement('button');
+        runBtn.textContent = '运行';
+        runBtn.addEventListener('click', async () => {
+            await runWorkflowAction(item.scene, 'workflow.releaseRun', 'run');
+        });
+
+        const testBtn = document.createElement('button');
+        testBtn.textContent = '测试 DSL';
+        testBtn.addEventListener('click', async () => {
+            await runWorkflowAction(item.scene, 'workflow.dsl.test', 'dsl test');
+        });
+
+        const saveRecordBtn = document.createElement('button');
+        saveRecordBtn.textContent = '保存录制';
+        saveRecordBtn.addEventListener('click', async () => {
+            await runWorkflowAction(item.scene, 'workflow.record.save', 'record save');
+        });
+
+        actions.append(openBtn, runBtn, testBtn, saveRecordBtn);
+        row.append(meta, actions);
         restoreListEl.appendChild(row);
     });
 };
 
-const refreshRestoreList = async () => {
+const refreshWorkflowList = async () => {
     if (restoreStatusEl) {restoreStatusEl.textContent = 'loading...';}
-    const result = await sendAction<RecordListData>('record.list');
+    const result = await sendAction<WorkflowListData>('workflow.list');
     if (!result.ok) {
         if (restoreStatusEl) {
             const errorMessage = result.error?.message ?? 'unknown';
             restoreStatusEl.textContent = `load failed: ${errorMessage}`;
         }
-        renderRestoreList([]);
+        renderWorkflowList([]);
         return;
     }
-    const recordings = result.data?.recordings;
-    const items = Array.isArray(recordings) ? (recordings as RestoreItem[]) : [];
-    renderRestoreList(items);
-    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String(items.length)})`;}
+    const workflows = Array.isArray(result.data?.workflows) ? result.data?.workflows : [];
+    renderWorkflowList(workflows || []);
+    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String((workflows || []).length)})`;}
 };
 
 const bootstrapWorkspaceBinding = async (tabToken: string) => {
@@ -246,6 +298,6 @@ void (async () => {
     }
 })();
 refreshRestoreBtn?.addEventListener('click', () => {
-    void refreshRestoreList();
+    void refreshWorkflowList();
 });
-void refreshRestoreList();
+void refreshWorkflowList();
