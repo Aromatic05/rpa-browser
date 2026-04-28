@@ -25,3 +25,16 @@ export class UnsupportedError extends DslError {
         super('ERR_DSL_UNSUPPORTED', message);
     }
 }
+
+export class DslValidationError extends DslError {
+    diagnostics: Array<{
+        code: string;
+        message: string;
+        path?: string;
+    }>;
+
+    constructor(diagnostics: Array<{ code: string; message: string; path?: string }>) {
+        super('ERR_DSL_VALIDATION', 'DSL validation failed');
+        this.diagnostics = diagnostics;
+    }
+}
