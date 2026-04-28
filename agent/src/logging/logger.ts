@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { RunnerConfig } from '../config';
 
-export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity';
+export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity' | 'dsl';
 export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
 export type Logger = ((...args: unknown[]) => void) & {
     debug: (...args: unknown[]) => void;
@@ -80,6 +80,14 @@ const getTarget = (type: LogType): LogTarget => {
         };
     }
     if (type === 'entity') {
+        return {
+            consoleEnabled: obs.traceConsoleEnabled,
+            fileEnabled: obs.traceFileEnabled,
+            filePath: resolveLogPath(obs.traceFilePath),
+            minLevel: obs.traceLogLevel,
+        };
+    }
+    if (type === 'dsl') {
         return {
             consoleEnabled: obs.traceConsoleEnabled,
             fileEnabled: obs.traceFileEnabled,
