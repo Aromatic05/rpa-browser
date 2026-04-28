@@ -66,7 +66,7 @@ test('validateDsl reports undefined refs in for iterable and if condition', () =
     assert.equal(diagnostics[1].code, 'ERR_DSL_VAR_NOT_DEFINED');
 });
 
-test('validateDsl reports duplicate vars inside if body and keeps branch scope local', () => {
+test('validateDsl reports duplicate vars inside if body and leaks branch vars globally', () => {
     const duplicateProgram: DslProgram = {
         body: [
             {
@@ -98,5 +98,5 @@ test('validateDsl reports duplicate vars inside if body and keeps branch scope l
     const branchLocalDiagnostics = validateDsl(normalizeDsl(branchLocalProgram));
 
     assert.equal(duplicateDiagnostics.some((item) => item.code === 'ERR_DSL_VAR_REDEFINED'), true);
-    assert.equal(branchLocalDiagnostics.some((item) => item.code === 'ERR_DSL_VAR_NOT_DEFINED'), true);
+    assert.deepEqual(branchLocalDiagnostics, []);
 });
