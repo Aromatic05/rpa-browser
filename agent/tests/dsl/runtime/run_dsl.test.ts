@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runDsl, parseDsl, normalizeDsl } from '../../../src/dsl';
-import { setCheckpoints } from '../../../src/runner/checkpoint';
+import { normalizeDsl, parseDsl, runDsl } from '../../../src/dsl';
+import { DslRuntimeError } from '../../../src/dsl/diagnostics/errors';
+import type { DslCheckpointProvider } from '../../../src/dsl/emit';
 import type { RunStepsDeps } from '../../../src/runner/run_steps';
 import type { Checkpoint } from '../../../src/runner/checkpoint';
 import type { StepUnion } from '../../../src/runner/steps/types';
@@ -27,18 +28,10 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                 ({
                     'browser.query': async (step: StepUnion) => {
                         calls.push({ name: step.name, args: step.args as Record<string, unknown> });
-                        const args = step.args as { op?: string; target?: { kind?: string } };
-                        if (args.op === 'entity.target' && args.target?.kind === 'form.field') {
-                            return {
-                                stepId: step.id,
-                                ok: true,
-                                data: { kind: 'nodeId', nodeId: 'buyer-input' },
-                            };
-                        }
                         return {
                             stepId: step.id,
                             ok: true,
-                            data: { kind: 'nodeId', nodeId: 'submit-btn' },
+                            data: { kind: 'nodeId', nodeId: 'buyer-input' },
                         };
                     },
                     'browser.fill': async (step: StepUnion) => {
@@ -53,18 +46,18 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
         } as any,
     }) as RunStepsDeps;
 
-test('runDsl executes sequential query fill and checkpoint calls', async () => {
-    const checkpoints: Checkpoint[] = [
-        {
-            id: 'ensure_logged_in',
-            output: {
-                loginState: { ref: 'input.username' },
-            },
-        },
-    ];
-    setCheckpoints(checkpoints);
-
+test('runDsl executes query then fill through one task stream and writes vars/output', async () => {
     const calls: StubCall[] = [];
+    const checkpoint: Checkpoint = {
+        id: 'ensure_logged_in',
+        output: {
+            loginState: { ref: 'input.username' },
+        },
+    };
+    const checkpointProvider: DslCheckpointProvider = {
+        getCheckpoint: (id) => (id === checkpoint.id ? checkpoint : null),
+    };
+
     const program = normalizeDsl(
         parseDsl(`
             use checkpoint "ensure_logged_in" with {
@@ -83,15 +76,20 @@ test('runDsl executes sequential query fill and checkpoint calls', async () => {
     const result = await runDsl(program, {
         workspaceId: 'ws-dsl',
         deps: createDeps(calls),
+        checkpointProvider,
         input: {
             username: 'root',
             user: { name: 'alice' },
         },
     });
 
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0].name, 'browser.query');
-    assert.equal(calls[1].name, 'browser.fill');
+    assert.deepEqual(
+        calls.map((item) => item.name),
+        ['browser.query', 'browser.fill'],
+    );
+    assert.deepEqual(result.scope.vars, {
+        buyer: { kind: 'nodeId', nodeId: 'buyer-input' },
+    });
     assert.deepEqual(calls[1].args, {
         nodeId: 'buyer-input',
         value: 'alice',
@@ -101,7 +99,7 @@ test('runDsl executes sequential query fill and checkpoint calls', async () => {
     });
 });
 
-test('runDsl throws UnsupportedError for reserved control flow nodes', async () => {
+test('runDsl throws UnsupportedError for if/for nodes', async () => {
     await assert.rejects(
         () =>
             runDsl(
@@ -121,5 +119,74 @@ test('runDsl throws UnsupportedError for reserved control flow nodes', async () 
                 },
             ),
         /not implemented yet/,
+    );
+
+    await assert.rejects(
+        () =>
+            runDsl(
+                {
+                    body: [
+                        {
+                            kind: 'for',
+                            item: 'buyer',
+                            iterable: { kind: 'ref', ref: 'input.buyers' },
+                            body: [],
+                        },
+                    ],
+                },
+                {
+                    workspaceId: 'ws-dsl',
+                    deps: createDeps([]),
+                    input: {},
+                },
+            ),
+        /not implemented yet/,
+    );
+});
+
+test('runDsl wraps failed act steps as DslRuntimeError', async () => {
+    const deps = createDeps([]);
+    deps.pluginHost = {
+        getExecutors: () =>
+            ({
+                'browser.query': async (step: StepUnion) => ({
+                    stepId: step.id,
+                    ok: true,
+                    data: { kind: 'nodeId', nodeId: 'buyer-input' },
+                }),
+                'browser.fill': async (step: StepUnion) => ({
+                    stepId: step.id,
+                    ok: false,
+                    error: {
+                        code: 'ERR_FILL_FAILED',
+                        message: 'fill failed',
+                    },
+                }),
+            }) as any,
+    } as any;
+
+    await assert.rejects(
+        () =>
+            runDsl(
+                normalizeDsl(
+                    parseDsl(`
+                        let buyer = query entity.target "order.form" {
+                          kind: "form.field"
+                          fieldKey: "buyer"
+                        }
+
+                        fill buyer with input.user.name
+                    `),
+                ),
+                {
+                    workspaceId: 'ws-dsl',
+                    deps,
+                    input: { user: { name: 'alice' } },
+                },
+            ),
+        (error: unknown) =>
+            error instanceof DslRuntimeError &&
+            error.code === 'ERR_FILL_FAILED' &&
+            error.message === 'fill failed',
     );
 });
