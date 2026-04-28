@@ -83,6 +83,13 @@ const ensureTabToken = () => {
     return sessionStorage.getItem(TAB_TOKEN_KEY) ?? '';
 };
 
+const applyTabToken = (tabToken: string) => {
+    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
+    window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabToken}`;
+    window.__rpa_tab_token = tabToken;
+    window.__TAB_TOKEN__ = tabToken;
+};
+
 const sendAction = async <TData = unknown>(type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>
     await new Promise<ActionResult<TData>>((resolve) => {
         let settled = false;
@@ -146,9 +153,7 @@ const ensureTabTokenFromAgent = async () => {
         token = initializedToken;
         sessionStorage.setItem(TAB_TOKEN_KEY, token);
     }
-    window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${token}`;
-    window.__rpa_tab_token = token;
-    window.__TAB_TOKEN__ = token;
+    applyTabToken(token);
     log('token.ensure', { token, url: location.href });
     return token;
 };
@@ -208,8 +213,39 @@ const renderWorkflowList = (items: WorkflowListItem[]) => {
                 }
                 return;
             }
+            const workspaceId = opened.data?.workspaceId;
+            const tabId = opened.data?.tabId;
+            const tabToken = opened.data?.tabToken;
+            if (!workspaceId || !tabToken) {
+                if (restoreStatusEl) {
+                    restoreStatusEl.textContent = 'open failed: invalid workflow.open response';
+                }
+                return;
+            }
+            const rebound = await sendAction(
+                'tab.opened',
+                {
+                    source: 'start_extension',
+                    url: location.href,
+                    title: document.title,
+                    at: Date.now(),
+                    workspaceId,
+                    ...(tabId ? { tabId } : {}),
+                },
+                {
+                    tabToken,
+                    workspaceId,
+                },
+            );
+            if (!rebound.ok) {
+                if (restoreStatusEl) {
+                    restoreStatusEl.textContent = `open failed: ${rebound.error?.message ?? 'tab.opened failed'}`;
+                }
+                return;
+            }
+            applyTabToken(tabToken);
             if (restoreStatusEl) {
-                restoreStatusEl.textContent = `open done: ${opened.data?.workspaceId ?? '-'}`;
+                restoreStatusEl.textContent = `open done: ${workspaceId}`;
             }
         });
 

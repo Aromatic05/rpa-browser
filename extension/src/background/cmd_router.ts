@@ -85,6 +85,19 @@ export const createCmdRouter = (options: CmdRouterOptions): {
             return;
         }
 
+        if (action.type === ACTION_TYPES.WORKFLOW_OPEN || action.type === `${ACTION_TYPES.WORKFLOW_OPEN}.result`) {
+            const data = (action.payload ?? {}) as Record<string, unknown>;
+            const workspaceId = toStringValue(data.workspaceId);
+            const tabToken = toStringValue(data.tabToken);
+            const tabId = toStringValue(data.tabId);
+            if (workspaceId && tabToken && tabId) {
+                state.upsertTokenScope(tabToken, workspaceId, tabId);
+                state.setActiveWorkspaceId(workspaceId);
+            }
+            options.onRefresh();
+            return;
+        }
+
         if (action.type === ACTION_TYPES.WORKSPACE_CHANGED) {
             const data = (action.payload ?? {}) as Record<string, unknown>;
             const workspaceId = toStringValue(data.workspaceId) ?? action.scope?.workspaceId ?? null;

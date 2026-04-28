@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { replyAction } from './action_protocol';
 import type { ActionHandler } from './execute';
+import { ERROR_CODES } from './error_codes';
 import { loadWorkflow, runWorkflow } from '../workflow';
 import { resolveWorkflowWorkspace } from '../workflow/workspace_binding';
 import { DslRuntimeError } from '../dsl/diagnostics/errors';
@@ -141,7 +142,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.open': async (ctx, action) => {
         const payload = (action.payload || {}) as { scene?: string };
         if (!payload.scene) {
-            throw new DslRuntimeError('workflow.open requires scene', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError('workflow.open requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const loaded = loadWorkflow(payload.scene, DEFAULT_WORKFLOWS_DIR);
         const resolved = await resolveWorkflowWorkspace(
@@ -168,7 +169,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.status': async (ctx, action) => {
         const payload = (action.payload || {}) as { scene?: string };
         if (!payload.scene) {
-            throw new DslRuntimeError('workflow.status requires scene', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError('workflow.status requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workspaceId = toWorkflowWorkspaceId(payload.scene);
         const exists = ctx.pageRegistry.listWorkspaces().some((item) => item.workspaceId === workspaceId);
@@ -179,7 +180,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.record.save': async (ctx, action) => {
         const payload = (action.payload || {}) as { scene?: string; recordingName?: string };
         if (!payload.scene) {
-            throw new DslRuntimeError('workflow.record.save requires scene', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError('workflow.record.save requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workspaceId = toWorkflowWorkspaceId(payload.scene);
         const currentWorkspaceId = action.scope?.workspaceId || ctx.pageRegistry.getActiveWorkspace()?.workspaceId || '';
@@ -199,6 +200,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             entryUrl: bundle.manifest?.entryUrl,
             tabs: (bundle.manifest?.tabs || []).map((item) => ({ tabId: item.tabId || item.tabRef, url: item.lastSeenUrl || item.firstSeenUrl })),
             steps: bundle.steps,
+            includeStepResolve: false,
         });
         return replyAction(action, { scene: payload.scene, recordingName, stepCount: bundle.steps.length });
     },
@@ -206,7 +208,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.dsl.get': async (_ctx, action) => {
         const payload = (action.payload || {}) as { scene?: string };
         if (!payload.scene) {
-            throw new DslRuntimeError('workflow.dsl.get requires scene', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError('workflow.dsl.get requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const loaded = loadWorkflow(payload.scene, DEFAULT_WORKFLOWS_DIR);
         return replyAction(action, {
@@ -219,7 +221,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.dsl.save': async (_ctx, action) => {
         const payload = (action.payload || {}) as { scene?: string; content?: string };
         if (!payload.scene || typeof payload.content !== 'string') {
-            throw new DslRuntimeError('workflow.dsl.save requires scene and content', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError('workflow.dsl.save requires scene and content', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const loaded = loadWorkflow(payload.scene, DEFAULT_WORKFLOWS_DIR);
         fs.writeFileSync(loaded.dslPath, payload.content, 'utf8');
@@ -229,13 +231,16 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.dsl.test': async (ctx, action) => {
         const payload = (action.payload || {}) as { scene?: string; input?: Record<string, unknown> };
         if (!payload.scene) {
-            throw new DslRuntimeError('workflow.dsl.test requires scene', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError('workflow.dsl.test requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         if (!ctx.runStepsDeps) {
-            throw new DslRuntimeError('run steps deps not initialized for workflow.dsl.test', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError(
+                'run steps deps not initialized for workflow.dsl.test',
+                ERROR_CODES.ERR_WORKFLOW_BAD_ARGS,
+            );
         }
         const loaded = loadWorkflow(payload.scene, DEFAULT_WORKFLOWS_DIR);
-        await resolveWorkflowWorkspace(
+        const resolved = await resolveWorkflowWorkspace(
             {
                 pageRegistry: ctx.pageRegistry,
                 restoreWorkspace: async (workspaceId) => await restoreWorkflowWorkspace(ctx, workspaceId),
@@ -248,7 +253,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         const checkpointProvider = createWorkflowCheckpointProvider(payload.scene, loaded.checkpoints);
         const input = (payload.input || loaded.inputsExample || {}) as Record<string, unknown>;
         const runResult = await runDslSource(loaded.dslSource, {
-            workspaceId: toWorkflowWorkspaceId(payload.scene),
+            workspaceId: resolved.workspaceId,
             deps: ctx.runStepsDeps,
             input,
             checkpointProvider,
@@ -257,17 +262,20 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             ok: true,
             output: runResult.scope.output,
             diagnostics: runResult.diagnostics,
-            workspaceId: toWorkflowWorkspaceId(payload.scene),
+            workspaceId: resolved.workspaceId,
         });
     },
 
     'workflow.releaseRun': async (ctx, action) => {
         const payload = (action.payload || {}) as { scene?: string; input?: Record<string, unknown> };
         if (!payload.scene) {
-            throw new DslRuntimeError('workflow.releaseRun requires scene', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError('workflow.releaseRun requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         if (!ctx.runStepsDeps) {
-            throw new DslRuntimeError('run steps deps not initialized for workflow.releaseRun', 'ERR_BAD_ARGS');
+            throw new DslRuntimeError(
+                'run steps deps not initialized for workflow.releaseRun',
+                ERROR_CODES.ERR_WORKFLOW_BAD_ARGS,
+            );
         }
         const result = await runWorkflow(
             {

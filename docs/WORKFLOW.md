@@ -74,6 +74,8 @@ Current implementation validates only the current tab URL against `expectedTabs`
 
 - save path: `records/<recording-name>/`.
 - default naming: `recording-YYYYMMDD-HHmmss`.
+- `workflow.record.save` writes `steps.yaml` and `manifest.yaml`.
+- first version does not include a resolve sidecar (`step_resolve.yaml` is not emitted by this action yet).
 
 ## Compatibility
 

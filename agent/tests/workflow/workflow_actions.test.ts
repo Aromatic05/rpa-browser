@@ -157,6 +157,10 @@ test('workflow actions list/open/dsl get save/test/release and record save', asy
         fs.existsSync(path.join(sceneDir, 'records', 'rec-main', 'steps.yaml')),
         true,
     );
+    assert.equal(
+        fs.existsSync(path.join(sceneDir, 'records', 'rec-main', 'step_resolve.yaml')),
+        false,
+    );
 
     const dslTest = await workflowHandlers['workflow.dsl.test'](ctx, {
         v: 1,

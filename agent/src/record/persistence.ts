@@ -146,6 +146,7 @@ export type SaveWorkflowRecordingArtifactsOptions = {
     tabs?: Array<{ tabId: string; url?: string }>;
     steps: StepUnion[];
     stepResolves?: Record<string, unknown>;
+    includeStepResolve?: boolean;
 };
 
 const toRecordingManifestFile = (opts: SaveWorkflowRecordingArtifactsOptions) => ({
@@ -170,12 +171,14 @@ export const saveWorkflowRecordingArtifacts = async (opts: SaveWorkflowRecording
             args: step.args,
         })) as StepFile['steps'],
     };
-    const resolvesFile: StepResolveFile = {
-        version: 1,
-        resolves: (opts.stepResolves || {}) as StepResolveFile['resolves'],
-    };
     await fs.writeFile(path.join(recordsDir, 'steps.yaml'), YAML.stringify(stepsFile), 'utf8');
-    await fs.writeFile(path.join(recordsDir, 'step_resolve.yaml'), YAML.stringify(resolvesFile), 'utf8');
+    if (opts.includeStepResolve !== false) {
+        const resolvesFile: StepResolveFile = {
+            version: 1,
+            resolves: (opts.stepResolves || {}) as StepResolveFile['resolves'],
+        };
+        await fs.writeFile(path.join(recordsDir, 'step_resolve.yaml'), YAML.stringify(resolvesFile), 'utf8');
+    }
     await fs.writeFile(path.join(recordsDir, 'manifest.yaml'), YAML.stringify(toRecordingManifestFile(opts)), 'utf8');
     return recordsDir;
 };
