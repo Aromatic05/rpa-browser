@@ -148,7 +148,6 @@ const STEP_RESOLVE_STEP_NAMES = new Set([
     'browser.scroll',
     'browser.press_key',
     'browser.drag_and_drop',
-    'browser.capture_resolve',
 ] as const);
 
 const injectStepResolve = (

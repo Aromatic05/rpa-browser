@@ -274,14 +274,13 @@ export const browserCaptureResolveInputSchema = z
         tabToken: z.string().optional(),
         nodeId: z.string().optional(),
         selector: z.string().optional(),
-        resolveId: z.string().optional(),
         text: z.string().optional(),
         role: z.string().optional(),
         name: z.string().optional(),
         limit: z.number().int().min(1).max(20).optional(),
     })
-    .refine((value) => Boolean(value.nodeId || value.selector || value.resolveId || value.text || value.role || value.name), {
-        message: 'capture_resolve requires nodeId, selector, resolveId, text, role, or name',
+    .refine((value) => Boolean(value.nodeId || value.selector || value.text || value.role || value.name), {
+        message: 'capture_resolve requires nodeId, selector, text, role, or name',
     });
 
 export const browserClickInputSchema = z
@@ -553,7 +552,6 @@ export const toolInputJsonSchemas = {
             tabToken: { type: 'string' },
             nodeId: { type: 'string' },
             selector: { type: 'string' },
-            resolveId: { type: 'string' },
             text: { type: 'string' },
             role: { type: 'string' },
             name: { type: 'string' },

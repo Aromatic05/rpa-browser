@@ -610,7 +610,6 @@ const handleCaptureResolve = (deps: McpToolDeps): McpToolHandler => async (args:
         args: {
             nodeId: input.nodeId,
             selector: input.selector,
-            resolveId: input.resolveId,
             text: input.text,
             role: input.role,
             name: input.name,

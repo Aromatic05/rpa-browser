@@ -157,8 +157,8 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
     assert.equal(closeTabBlock.includes('tab_ref'), false);
 
     const captureResolveBlock = readStepArgsBlock('browser.capture_resolve');
-    assert.equal(captureResolveBlock.includes('resolveId?: string;'), true);
-    assert.equal(runStepsSource.includes(`'browser.capture_resolve'`), true);
+    assert.equal(captureResolveBlock.includes('resolveId?: string;'), false);
+    assert.equal(runStepsSource.includes(`'browser.capture_resolve'`), false);
     assert.equal(captureResolveExecutorSource.includes('does not support step.resolve'), false);
     assert.equal(runStepsSource.includes('topLevelResolveId'), false);
     assert.equal(checkpointRuntimeSource.includes('.resolveId ? { resolveId:'), false);

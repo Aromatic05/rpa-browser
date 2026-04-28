@@ -57,13 +57,13 @@ export const executeBrowserCaptureResolve = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const args = step.args;
-    if (!args.nodeId && !args.selector && !args.resolveId && !args.text && !args.role && !args.name) {
+    if (!args.nodeId && !args.selector && !args.text && !args.role && !args.name) {
         return {
             stepId: step.id,
             ok: false,
             error: {
                 code: 'ERR_BAD_ARGS',
-                message: 'browser.capture_resolve requires nodeId, selector, resolveId, text, role, or name',
+                message: 'browser.capture_resolve requires nodeId, selector, text, role, or name',
             },
         };
     }

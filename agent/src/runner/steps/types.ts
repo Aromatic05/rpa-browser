@@ -189,7 +189,6 @@ export type StepArgsMap = {
     'browser.capture_resolve': {
         nodeId?: string;
         selector?: string;
-        resolveId?: string;
         text?: string;
         role?: string;
         name?: string;
