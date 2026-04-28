@@ -93,6 +93,29 @@ const createWorkflowCheckpointProvider = (
 };
 
 export const workflowHandlers: Record<string, ActionHandler> = {
+    'workflow.init': async (_ctx, action) => {
+        const payload = (action.payload || {}) as { scene?: string };
+        const scene = typeof payload.scene === 'string' ? payload.scene.trim() : '';
+        if (!scene) {
+            throw new DslRuntimeError('workflow.init requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
+        }
+        const workflowRoot = path.join(DEFAULT_WORKFLOWS_DIR, scene);
+        const workflowPath = path.join(workflowRoot, 'workflow.yaml');
+        fs.mkdirSync(path.join(workflowRoot, 'records'), { recursive: true });
+        fs.mkdirSync(path.join(workflowRoot, 'checkpoints'), { recursive: true });
+
+        let created = false;
+        if (!fs.existsSync(workflowPath)) {
+            fs.writeFileSync(
+                workflowPath,
+                ['version: 1', `id: ${scene}`, `name: ${scene}`, 'entry:', '  dsl: main.dsl', 'records: []', 'checkpoints: []'].join('\n') + '\n',
+                'utf8',
+            );
+            created = true;
+        }
+        return replyAction(action, { scene, workflowRoot, workflowPath, created });
+    },
+
     'workflow.list': async (_ctx, action) => {
         const workflows: Array<{
             scene: string;

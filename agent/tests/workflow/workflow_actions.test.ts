@@ -178,3 +178,39 @@ test('workflow actions list/open/dsl get save/test/release and record save', asy
     } as any);
     assert.equal(releaseRun.type, 'workflow.releaseRun.result');
 });
+
+test('workflow.init creates minimal workflow artifacts and is idempotent', async (t) => {
+    const scene = `init-scene-${Date.now()}`;
+    const sceneDir = path.join(workflowsRoot, scene);
+    t.after(() => {
+        fs.rmSync(sceneDir, { recursive: true, force: true });
+    });
+
+    const { ctx } = createCtx();
+    const first = await workflowHandlers['workflow.init'](ctx, {
+        v: 1,
+        id: 'init-1',
+        type: 'workflow.init',
+        payload: { scene },
+    } as any);
+    assert.equal(first.type, 'workflow.init.result');
+    assert.equal((first.payload as any).created, true);
+    assert.equal(fs.existsSync(path.join(sceneDir, 'workflow.yaml')), true);
+    assert.equal(fs.existsSync(path.join(sceneDir, 'records')), true);
+    assert.equal(fs.existsSync(path.join(sceneDir, 'checkpoints')), true);
+
+    const firstManifest = fs.readFileSync(path.join(sceneDir, 'workflow.yaml'), 'utf8');
+    const customManifest = `${firstManifest}# preserve\n`;
+    fs.writeFileSync(path.join(sceneDir, 'workflow.yaml'), customManifest, 'utf8');
+
+    const second = await workflowHandlers['workflow.init'](ctx, {
+        v: 1,
+        id: 'init-2',
+        type: 'workflow.init',
+        payload: { scene },
+    } as any);
+    assert.equal(second.type, 'workflow.init.result');
+    assert.equal((second.payload as any).created, false);
+    const secondManifest = fs.readFileSync(path.join(sceneDir, 'workflow.yaml'), 'utf8');
+    assert.equal(secondManifest, customManifest);
+});
