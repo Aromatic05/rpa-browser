@@ -40,11 +40,31 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
     let cdpLocalStop: (() => Promise<void>) | undefined;
+    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
 
     const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
     const cdpPort = Number(process.env.RPA_CDP_PORT || 9222);
     const cdpAutoLaunch = !['0', 'false', 'no'].includes((process.env.RPA_CDP_AUTO_LAUNCH || 'true').toLowerCase());
     const cdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim() || path.resolve(options.userDataDir, 'cdp-browser');
+
+    const ensureStartPage = async (context: BrowserContext) => {
+        try {
+            const pages = context.pages();
+            const primary = pages[0] || (await context.newPage());
+            if (primary.url() !== startUrl) {
+                await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
+            }
+            await primary.bringToFront();
+            const toClose = context.pages().filter((page) => page !== primary);
+            for (const page of toClose) {
+                if (!page.isClosed()) {
+                    await page.close({ runBeforeUnload: true });
+                }
+            }
+        } catch {
+            // ignore start page navigation failures
+        }
+    };
 
     return async () => {
         if (contextRef) {return contextRef;}
@@ -83,6 +103,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
                     contextPromise = undefined;
                 });
                 bindContextPages(context, options.onPage);
+                await ensureStartPage(context);
                 return context;
             })
             .catch((error) => {

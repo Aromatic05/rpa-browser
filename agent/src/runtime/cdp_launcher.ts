@@ -83,6 +83,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     const timeoutMs = opts.timeoutMs ?? 20000;
     const endpoint = `http://127.0.0.1:${opts.port}`;
     const chromePath = resolveChromeExecutable(opts.chromePath);
+    const startUrl = process.env.RPA_START_URL?.trim() || 'chrome://newtab/';
     fs.mkdirSync(opts.userDataDir, { recursive: true });
 
     const args = [
@@ -90,7 +91,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         `--user-data-dir=${opts.userDataDir}`,
         '--no-first-run',
         '--no-default-browser-check',
-        'chrome://newtab',
+        startUrl,
     ];
     const extensionPaths = (opts.extensionPaths || []).filter(Boolean);
     if (extensionPaths.length > 0) {
