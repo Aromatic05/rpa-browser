@@ -2,41 +2,191 @@ import YAML from 'yaml';
 import type { CheckpointStmt, DslProgram, DslStmt, LetStmt, QueryExpr, RefExpr } from '../ast/types';
 import { DslParseError } from '../diagnostics/errors';
 
+type ParsedLine = {
+    indent: number;
+    content: string;
+};
+
 export const parseDsl = (source: string): DslProgram => {
-    const statements = splitStatements(source);
+    const lines = tokenizeDsl(source);
+    const parsed = parseBlock(lines, 0, 0, { allowElse: false });
+    if (parsed.nextIndex !== lines.length) {
+        throw new DslParseError('unexpected trailing DSL content');
+    }
+    return { body: parsed.body };
+};
+
+const tokenizeDsl = (source: string): ParsedLine[] => {
+    const rawLines = source
+        .split(/\r?\n/)
+        .map((rawLine) => rawLine.replace(/\s+$/, ''))
+        .filter((line) => line.trim().length > 0);
+    const baseIndent = rawLines.reduce((min, line) => {
+        const indent = line.length - line.trimStart().length;
+        return Math.min(min, indent);
+    }, Number.POSITIVE_INFINITY);
+
+    return rawLines.map((line) => {
+            if (line.includes('\t')) {
+                throw new DslParseError('tabs are not supported in DSL indentation');
+            }
+            const indent = line.length - line.trimStart().length - (Number.isFinite(baseIndent) ? baseIndent : 0);
+            if (indent % 2 !== 0) {
+                throw new DslParseError(`invalid DSL indentation: ${line}`);
+            }
+            return {
+                indent,
+                content: line.trimStart(),
+            };
+        });
+};
+
+const parseBlock = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+    opts: { allowElse: boolean },
+): { body: DslStmt[]; nextIndex: number } => {
+    const body: DslStmt[] = [];
+    let index = startIndex;
+
+    while (index < lines.length) {
+        const line = lines[index];
+        if (line.indent < indent) {
+            break;
+        }
+        if (line.indent > indent) {
+            throw new DslParseError(`invalid DSL indentation: ${line.content}`);
+        }
+        if (line.content === 'else:') {
+            if (opts.allowElse) {
+                break;
+            }
+            throw new DslParseError('else without matching if');
+        }
+
+        if (line.content.startsWith('if ')) {
+            const parsedIf = parseIfStmt(lines, index, indent);
+            body.push(parsedIf.stmt);
+            index = parsedIf.nextIndex;
+            continue;
+        }
+
+        if (line.content.startsWith('for ')) {
+            const parsedFor = parseForStmt(lines, index, indent);
+            body.push(parsedFor.stmt);
+            index = parsedFor.nextIndex;
+            continue;
+        }
+
+        const collected = collectStatement(lines, index, indent);
+        body.push(parseStatement(collected.statement));
+        index = collected.nextIndex;
+    }
+
+    return { body, nextIndex: index };
+};
+
+const parseIfStmt = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+): { stmt: DslStmt; nextIndex: number } => {
+    const header = lines[startIndex].content;
+    if (!header.endsWith(':')) {
+        throw new DslParseError(`if statement must end with ":": ${header}`);
+    }
+    const conditionSource = header.slice(3, -1).trim();
+    if (!conditionSource) {
+        throw new DslParseError(`invalid if statement: ${header}`);
+    }
+
+    const thenBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: true });
+    let nextIndex = thenBlock.nextIndex;
+    let elseBody: DslStmt[] | undefined;
+
+    if (nextIndex < lines.length && lines[nextIndex].indent === indent && lines[nextIndex].content === 'else:') {
+        const elseBlock = parseBlock(lines, nextIndex + 1, indent + 2, { allowElse: false });
+        elseBody = elseBlock.body;
+        nextIndex = elseBlock.nextIndex;
+    }
+
     return {
-        body: statements.map(parseStatement),
+        stmt: {
+            kind: 'if',
+            condition: toRef(conditionSource),
+            then: thenBlock.body,
+            else: elseBody,
+        },
+        nextIndex,
     };
 };
 
-const splitStatements = (source: string): string[] => {
-    const lines = source
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
+const parseForStmt = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+): { stmt: DslStmt; nextIndex: number } => {
+    const header = lines[startIndex].content;
+    if (!header.endsWith(':')) {
+        throw new DslParseError(`for statement must end with ":": ${header}`);
+    }
+    const match = header.slice(0, -1).match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([A-Za-z0-9_.]+)$/);
+    if (!match) {
+        throw new DslParseError(`invalid for statement: ${header}`);
+    }
 
-    const statements: string[] = [];
-    let buffer: string[] = [];
+    const bodyBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: false });
+    return {
+        stmt: {
+            kind: 'for',
+            item: match[1],
+            iterable: toRef(match[2]),
+            body: bodyBlock.body,
+        },
+        nextIndex: bodyBlock.nextIndex,
+    };
+};
+
+const collectStatement = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+): { statement: string; nextIndex: number } => {
+    const statementLines: string[] = [];
+    let index = startIndex;
     let depth = 0;
 
-    for (const line of lines) {
-        buffer.push(line);
-        depth += countChar(line, '{');
-        depth -= countChar(line, '}');
+    while (index < lines.length) {
+        const line = lines[index];
+        if (statementLines.length > 0 && depth === 0 && line.indent <= indent) {
+            break;
+        }
+        if (statementLines.length > 0 && depth === 0 && line.indent > indent) {
+            throw new DslParseError(`invalid DSL indentation: ${line.content}`);
+        }
+
+        statementLines.push(line.content);
+        depth += countChar(line.content, '{');
+        depth -= countChar(line.content, '}');
         if (depth < 0) {
             throw new DslParseError('unbalanced braces in DSL source');
         }
+        index += 1;
+
         if (depth === 0) {
-            statements.push(buffer.join('\n'));
-            buffer = [];
+            break;
         }
     }
 
-    if (buffer.length > 0 || depth !== 0) {
+    if (depth !== 0) {
         throw new DslParseError('unterminated DSL statement');
     }
 
-    return statements;
+    return {
+        statement: statementLines.join('\n'),
+        nextIndex: index,
+    };
 };
 
 const parseStatement = (statement: string): DslStmt => {
@@ -69,30 +219,13 @@ const parseStatement = (statement: string): DslStmt => {
     if (statement.startsWith('use checkpoint ')) {
         return parseCheckpoint(statement);
     }
-    if (statement.startsWith('if ')) {
-        return {
-            kind: 'if',
-            condition: toRef(statement.slice(3).trim()),
-            then: [],
-        };
-    }
-    if (statement.startsWith('for ')) {
-        const match = statement.match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([A-Za-z0-9_.]+)$/);
-        if (!match) {
-            throw new DslParseError(`invalid for statement: ${statement}`);
-        }
-        return {
-            kind: 'for',
-            item: match[1],
-            iterable: toRef(match[2]),
-            body: [],
-        };
-    }
     throw new DslParseError(`unsupported DSL statement: ${statement}`);
 };
 
 const parseLet = (statement: string): LetStmt => {
-    const match = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+(entity(?:\.target)?)\s+"([^"]+)"\s+([\s\S]+)$/);
+    const match = statement.match(
+        /^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+(entity(?:\.target)?)\s+"([^"]+)"\s+([\s\S]+)$/,
+    );
     if (!match) {
         throw new DslParseError(`invalid let statement: ${statement}`);
     }

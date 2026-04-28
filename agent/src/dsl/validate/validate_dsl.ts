@@ -20,6 +20,10 @@ export const validateDsl = (program: DslProgram): DslDiagnostic[] => {
     return diagnostics;
 };
 
+const cloneValidateScope = (scope: ValidateScope): ValidateScope => ({
+    vars: new Set(scope.vars),
+});
+
 const validateStmt = (
     stmt: DslStmt,
     scope: ValidateScope,
@@ -48,20 +52,28 @@ const validateStmt = (
             validateCheckpoint(stmt, scope, diagnostics, path);
             return;
         case 'if':
-            diagnostics.push(createDiagnostic('ERR_DSL_UNSUPPORTED', 'DSL if is not supported yet', path));
             validateExpr(stmt.condition, scope, diagnostics, `${path}.condition`);
-            for (let i = 0; i < stmt.then.length; i += 1) {
-                validateStmt(stmt.then[i], scope, diagnostics, `${path}.then.${i}`);
+            {
+                const thenScope = cloneValidateScope(scope);
+                for (let i = 0; i < stmt.then.length; i += 1) {
+                    validateStmt(stmt.then[i], thenScope, diagnostics, `${path}.then.${i}`);
+                }
             }
-            for (let i = 0; i < (stmt.else?.length || 0); i += 1) {
-                validateStmt(stmt.else![i], scope, diagnostics, `${path}.else.${i}`);
+            {
+                const elseScope = cloneValidateScope(scope);
+                for (let i = 0; i < (stmt.else?.length || 0); i += 1) {
+                    validateStmt(stmt.else![i], elseScope, diagnostics, `${path}.else.${i}`);
+                }
             }
             return;
         case 'for':
-            diagnostics.push(createDiagnostic('ERR_DSL_UNSUPPORTED', 'DSL for is not supported yet', path));
             validateExpr(stmt.iterable, scope, diagnostics, `${path}.iterable`);
-            for (let i = 0; i < stmt.body.length; i += 1) {
-                validateStmt(stmt.body[i], scope, diagnostics, `${path}.body.${i}`);
+            {
+                const bodyScope = cloneValidateScope(scope);
+                bodyScope.vars.add(stmt.item);
+                for (let i = 0; i < stmt.body.length; i += 1) {
+                    validateStmt(stmt.body[i], bodyScope, diagnostics, `${path}.body.${i}`);
+                }
             }
             return;
     }
