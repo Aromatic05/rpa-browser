@@ -221,6 +221,7 @@ ERR_WORKSPACE_RESTORE_FAILED
 - `browser.close_tab`
 - `browser.get_page_info`
 - `browser.snapshot`
+- `browser.capture_resolve`
 - `browser.take_screenshot`
 - `browser.click`
 - `browser.fill`
@@ -236,6 +237,12 @@ ERR_WORKSPACE_RESTORE_FAILED
 - `browser.checkpoint`
 
 完整参数定义见：`agent/src/runner/steps/types.ts`。
+
+`browser.capture_resolve` 说明：
+
+- 它是 inspection/query step，不是 action step。
+- 它用于从当前页面采集 `StepResolve` 草稿，供 AI / 人类后续修订。
+- 它不会直接写 `step_resolve.yaml`，也不会改变页面状态。
 
 ### 3.2 Query / Compute 最小合同
 
