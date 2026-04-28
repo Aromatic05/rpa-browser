@@ -6,8 +6,8 @@
  * - hello 在导航变更时发送，确保 SW 侧及时更新映射。
  */
 
+import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
-import type { Action } from '../shared/types.js';
 
 declare global {
     interface Window {
@@ -49,23 +49,21 @@ export const ensureTabToken = (): string => {
 export const ensureTabTokenAsync = async (): Promise<string> => {
     let tabToken = ensureTabToken();
     if (!tabToken) {
-        const response = await send.action({
-            v: 1,
-            id: crypto.randomUUID(),
-            type: 'tab.init',
-            payload: {
-                source: 'extension.content',
-                url: location.href,
-                at: Date.now(),
-            },
-            scope: {},
-        } satisfies Action);
-        const payload = (response.payload ?? {}) as { tabToken?: string };
-        if (response.type === 'tab.init.result' && payload.tabToken) {
-            tabToken = payload.tabToken;
-        }
+        const runtimeReply = await new Promise<{ ok: boolean; tabToken?: string }>((resolve) => {
+            chrome.runtime.sendMessage(
+                { type: MSG.ENSURE_BOUND_TOKEN, source: 'extension.content', url: location.href, title: document.title, at: Date.now() },
+                (response: unknown) => {
+                    if (chrome.runtime.lastError) {
+                        resolve({ ok: false });
+                        return;
+                    }
+                    resolve((response ?? { ok: false }) as { ok: boolean; tabToken?: string });
+                },
+            );
+        });
+        if (runtimeReply.ok && runtimeReply.tabToken) {tabToken = runtimeReply.tabToken;}
         if (!tabToken) {
-            throw new Error('tab token init failed');
+            throw new Error('bound tab token unavailable');
         }
     }
     sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { createCmdRouter } from '../../dist/background/cmd_router.js';
 import { ACTION_TYPES } from '../../dist/shared/action_types.js';
 import { MSG } from '../../dist/shared/protocol.js';
@@ -67,6 +68,15 @@ const createChromeMock = () => ({
     },
     runtime: {
         getURL: (path) => `chrome-extension://start/${(path || '').replace(/^\//, '')}`,
+    },
+    storage: {
+        local: {
+            get: (_keys, cb) => cb({}),
+            set: (_value, cb) => cb?.(),
+        },
+        onChanged: {
+            addListener: () => undefined,
+        },
     },
 });
 
@@ -171,7 +181,7 @@ await log('workspace.create returns workspace shell without opening window', asy
         onRefresh: () => undefined,
     });
 
-    let reply;
+    let reply = null;
     router.handleMessage(
         {
             type: MSG.ACTION,
@@ -242,7 +252,7 @@ await log('tabs.onCreated binds tab to window workspace via tab.opened', async (
     assert.equal(opened?.payload?.workspaceId, 'ws-1');
 });
 
-await log('tabs.onCreated binds workspace from token scope when window mapping is not ready', async () => {
+await log('tabs.onCreated reuses pre-bound token scope when window mapping is not ready', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
@@ -272,9 +282,8 @@ await log('tabs.onCreated binds workspace from token scope when window mapping i
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const opened = sent.find((action) => action.type === ACTION_TYPES.TAB_OPENED);
-    assert.equal(Boolean(opened), true);
-    assert.equal(opened?.payload?.workspaceId, 'ws-url');
+    const openedCount = sent.filter((action) => action.type === ACTION_TYPES.TAB_OPENED).length;
+    assert.equal(openedCount, 0);
 });
 
 await log('tabs.onAttached triggers tab.reassign for cross-window move', async () => {
@@ -410,4 +419,61 @@ await log('router rejects non-request action type from panel ingress', async () 
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(reply?.type, 'action.dispatch.failed');
     assert.equal(reply?.payload?.code, 'ERR_BAD_ARGS');
+});
+
+await log('ENSURE_BOUND_TOKEN de-duplicates inflight bind operations per tab', async () => {
+    globalThis.chrome = createChromeMock();
+    let tokenRequestCount = 0;
+    chrome.tabs.sendMessage = (tabId, message, cb) => {
+        if (message?.type === MSG.GET_TOKEN) {
+            tokenRequestCount += 1;
+            cb({ ok: false });
+            return;
+        }
+        if (message?.type === MSG.SET_TOKEN) {
+            cb({ ok: true });
+            return;
+        }
+        cb({ ok: true });
+    };
+    const sent = [];
+    const router = createCmdRouter({
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
+                return { ok: true, data: { workspaces: [{ workspaceId: 'ws-a', tabCount: 0 }], activeWorkspaceId: 'ws-a' } };
+            }
+            if (action.type === ACTION_TYPES.TAB_INIT) {
+                return { ok: true, data: { tabToken: 'token-dedupe' } };
+            }
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return { ok: true, data: { workspaceId: 'ws-a', tabId: 'tab-dedupe', tabToken: 'token-dedupe' } };
+            }
+            return { ok: true, data: {} };
+        }),
+        onRefresh: () => undefined,
+    });
+
+    const sender = { tab: { id: 55, windowId: 9, url: 'https://example.com' } };
+    const runEnsure = () =>
+        new Promise((resolve) => {
+            router.handleMessage({ type: MSG.ENSURE_BOUND_TOKEN }, sender, (payload) => resolve(payload));
+        });
+
+    const [first, second] = await Promise.all([runEnsure(), runEnsure()]);
+    assert.equal(first?.ok, true);
+    assert.equal(second?.ok, true);
+    assert.equal(first?.tabToken, 'token-dedupe');
+    assert.equal(second?.tabToken, 'token-dedupe');
+    assert.equal(tokenRequestCount >= 1, true);
+    assert.equal(sent.filter((action) => action.type === ACTION_TYPES.TAB_INIT).length, 1);
+    assert.equal(sent.filter((action) => action.type === ACTION_TYPES.TAB_OPENED).length, 1);
+});
+
+await log('source guard: content/start_extension do not directly issue tab.init/tab.opened', async () => {
+    const contentSrc = fs.readFileSync(new URL('../content/token_bridge.ts', import.meta.url), 'utf8');
+    const startSrc = fs.readFileSync(new URL('../../../start_extension/src/entry/newtab.ts', import.meta.url), 'utf8');
+    assert.equal(contentSrc.includes("type: 'tab.init'"), false);
+    assert.equal(startSrc.includes("'tab.init'"), false);
+    assert.equal(startSrc.includes("'tab.opened'"), false);
 });

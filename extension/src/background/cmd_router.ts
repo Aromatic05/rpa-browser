@@ -153,6 +153,33 @@ export const createCmdRouter = (options: CmdRouterOptions): {
             return;
         }
 
+        if (typedMessage.type === MSG.ENSURE_BOUND_TOKEN) {
+            (async () => {
+                const tabId = sender.tab?.id;
+                const windowId = sender.tab?.windowId;
+                if (typeof tabId !== 'number' || typeof windowId !== 'number') {
+                    sendResponse({ ok: false, error: 'sender tab unavailable' });
+                    return;
+                }
+                const bound = await life.ensureBoundTabToken(tabId, windowId);
+                if (!bound) {
+                    sendResponse({ ok: false, error: 'bound token unavailable' });
+                    return;
+                }
+                sendResponse({
+                    ok: true,
+                    tabToken: bound.tabToken,
+                    workspaceId: bound.workspaceId,
+                    tabId: bound.agentTabId,
+                    windowId: bound.windowId,
+                });
+            })().catch((error: unknown) => {
+                const text = error instanceof Error ? error.message : String(error);
+                sendResponse({ ok: false, error: text });
+            });
+            return true;
+        }
+
         if (typedMessage.type === MSG.ACTION) {
             (async () => {
                 const incomingAction = (typedMessage.action ?? {}) as Action;

@@ -36,6 +36,7 @@ type FloatingUIExports = {
 };
 
 type TokenBridgeExports = {
+    ensureTabToken: () => string;
     ensureTabTokenAsync: () => Promise<string>;
     bindHello: (tabToken: string, onHello?: () => void) => () => void;
 };
@@ -145,9 +146,24 @@ const loadFloatingUI = (() => {
             // 消息接收入口：token 查询 + 录制 start/stop
             void (async () => {
                 const { MSG } = await loadProtocol();
-                if (!isRecord(message) || message.type !== MSG.GET_TOKEN) {return;}
-                    const tabToken = await ensureToken();
+                if (!isRecord(message)) {return;}
+                if (message.type === MSG.GET_TOKEN) {
+                    const mod = await loadTokenBridge();
+                    const tabToken = mod.ensureTabToken();
                     sendResponse({ ok: true, tabToken, url: location.href });
+                    return;
+                }
+                if (message.type === MSG.SET_TOKEN) {
+                    const token = typeof message.tabToken === 'string' ? message.tabToken : '';
+                    if (!token) {
+                        sendResponse({ ok: false, error: 'missing tabToken' });
+                        return;
+                    }
+                    sessionStorage.setItem('__rpa_tab_token', token);
+                    window.name = `__RPA_TAB_TOKEN__:${token}`;
+                    (window as any).__TAB_TOKEN__ = token;
+                    sendResponse({ ok: true, tabToken: token, url: location.href });
+                }
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: String(error) });
             });

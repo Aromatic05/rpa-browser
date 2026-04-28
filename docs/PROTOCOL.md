@@ -150,6 +150,7 @@
 ### 2.7 `tab.init` 合同
 
 - `tab.init`：统一 token 初始化握手（替代 `tab.token.init`）。
+- 生命周期 owner 约束：`tab.init` 只能由 extension background 发起；content/start_extension 禁止直接发送。
 - 返回：`{ tabToken: string }`。
 
 ### 2.8 `tab.activated` / `tab.closed` 合同
@@ -160,10 +161,17 @@
 ### 2.9 `tab.ping` 合同
 
 - `tab.ping`：content/newtab 周期上报存活信息，用于 token 同步和断连恢复（`lastSeen` 语义）。
+- content/start_extension 必须先通过 background 获取已绑定 token（`ENSURE_BOUND_TOKEN`）后再发送业务 action。
 - 若 token 可解析，返回对应 `workspaceId/tabId`；否则返回 `stale: true`。
 - orphan `tab.ping` 默认禁止 claim 新 workspace；仅 `source=extension.workspace.create` 允许用于新建 workspace 首 tab 绑定。
 
-### 2.10 `workspace.save` / `workspace.restore` 合同
+### 2.10 token 生命周期 owner
+
+- extension background 是 `tabToken` 的唯一 lifecycle owner（生成 + 绑定）。
+- `tab.opened` 只能由 extension background 发送。
+- content/start_extension 只能向 background 请求已绑定 token，不得自行执行 `tab.init/tab.opened`。
+
+### 2.11 `workspace.save` / `workspace.restore` 合同
 
 - `workspace.save`：将当前（或指定）workspace 保存为可恢复快照。
 - 快照内容：
@@ -172,7 +180,7 @@
   - `recording.manifest`（去除 `tabs[].tabToken`）
 - `workspace.restore`：仅恢复 workspace/tab 与录制上下文；不自动触发 `play.start`。
 
-### 2.11 Action 错误码
+### 2.12 Action 错误码
 
 ```text
 ERR_TIMEOUT
