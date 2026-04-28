@@ -7,6 +7,7 @@ export const REQUEST_ACTION_TYPES = {
     WORKFLOW_DSL_SAVE: 'workflow.dsl.save',
     WORKFLOW_DSL_TEST: 'workflow.dsl.test',
     WORKFLOW_RELEASE_RUN: 'workflow.releaseRun',
+    WORKFLOW_INIT: 'workflow.init',
 
     WORKSPACE_LIST: 'workspace.list',
     WORKSPACE_CREATE: 'workspace.create',

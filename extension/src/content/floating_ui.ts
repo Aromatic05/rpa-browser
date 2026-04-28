@@ -101,14 +101,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     row2.className = 'row';
     const showBtn = document.createElement('button');
     showBtn.textContent = 'Show Rec';
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save WS';
+    const initWorkflowBtn = document.createElement('button');
+    initWorkflowBtn.textContent = 'Init Workflow';
     const clearBtn = document.createElement('button');
     clearBtn.textContent = 'Clear Rec';
     const replayBtn = document.createElement('button');
     replayBtn.className = 'primary';
     replayBtn.textContent = 'Replay';
-    row2.append(showBtn, saveBtn, clearBtn);
+    row2.append(showBtn, initWorkflowBtn, clearBtn);
 
     const row3 = document.createElement('div');
     row3.className = 'row';
@@ -145,8 +145,23 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     tabSection.append(tabTitle, tabList, tabActions);
 
     const out = document.createElement('pre');
+    const workflowSection = document.createElement('div');
+    workflowSection.className = 'panel-section';
+    const workflowTitle = document.createElement('div');
+    workflowTitle.className = 'meta';
+    workflowTitle.textContent = 'Workflow';
+    const sceneInput = document.createElement('input');
+    sceneInput.type = 'text';
+    sceneInput.placeholder = 'scene';
+    sceneInput.style.width = '100%';
+    sceneInput.style.boxSizing = 'border-box';
+    sceneInput.style.padding = '6px 8px';
+    sceneInput.style.fontSize = '12px';
+    sceneInput.style.borderRadius = '8px';
+    sceneInput.style.border = '1px solid #cbd5f5';
+    workflowSection.append(workflowTitle, sceneInput);
 
-    panel.append(meta, row1, row2, row3, wsSection, tabSection, out);
+    panel.append(meta, row1, row2, row3, workflowSection, wsSection, tabSection, out);
     wrap.append(ball, panel);
     shadow.append(style, wrap);
 
@@ -180,9 +195,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     startBtn.addEventListener('click', () => void sendPanelAction('record.start'));
     stopBtn.addEventListener('click', () => void sendPanelAction('record.stop'));
     showBtn.addEventListener('click', () => void sendPanelAction('record.get'));
-    saveBtn.addEventListener('click', () =>
-        void sendPanelAction('workspace.save', activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
-    );
+    initWorkflowBtn.addEventListener('click', () => {
+        const scene = sceneInput.value.trim();
+        if (!scene) {
+            render({ code: 'ERR_BAD_ARGS', message: 'scene is required' });
+            return;
+        }
+        void sendPanelAction('workflow.init', { scene });
+    });
     clearBtn.addEventListener('click', () => void sendPanelAction('record.clear'));
     replayBtn.addEventListener('click', () => void sendPanelAction('play.start'));
     stopReplayBtn.addEventListener('click', () => void sendPanelAction('play.stop'));
