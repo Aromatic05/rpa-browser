@@ -11,6 +11,8 @@ import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { McpToolHost } from './mcp/hotreload/tool_host';
+import { createActionDispatcher } from './actions/dispatcher';
+import { createControlServer, setControlActionDispatcher } from './control';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -92,6 +94,21 @@ const runStepsDeps = {
     pluginHost: runnerPluginHost,
 };
 setRunStepsDeps(runStepsDeps);
+setControlActionDispatcher(
+    createActionDispatcher({
+        pageRegistry,
+        runtime: runtimeRegistry,
+        recordingState,
+        log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
+        replayOptions: {
+            clickDelayMs: 300,
+            stepDelayMs: 900,
+            scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+        },
+        navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    }),
+);
+const controlServer = createControlServer({ deps: runStepsDeps });
 await mcpToolHost.load({
     pageRegistry,
     config,
@@ -107,6 +124,8 @@ if (hotReloadEnabled) {
 void (async () => {
     try {
         await contextManager.getContext();
+        await controlServer.start();
+        logNotice(`Control RPC listening on ${controlServer.endpoint}`);
         logNotice('Playwright Chromium launched with extension.');
         await startMcpServer({
             pageRegistry,
