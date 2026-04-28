@@ -175,3 +175,18 @@ test('validateDsl allows wait/snapshot and validates type/select args', () => {
     assert.deepEqual(validateDsl(normalizeDsl(okProgram)), []);
     assert.equal(validateDsl(normalizeDsl(badProgram)).some((item) => item.code === 'ERR_DSL_BAD_ACT_ARGS'), true);
 });
+
+test('validateDsl rejects non-normalized form_act statements', () => {
+    const program: DslProgram = {
+        body: [
+            {
+                kind: 'form_act',
+                action: 'click',
+                businessTag: 'order.form',
+                target: { kind: 'action', actionIntent: 'submit' },
+            },
+        ],
+    };
+    const diagnostics = validateDsl(program);
+    assert.equal(diagnostics.some((item) => item.code === 'ERR_DSL_NOT_NORMALIZED'), true);
+});
