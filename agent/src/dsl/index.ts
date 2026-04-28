@@ -4,3 +4,4 @@ export * from './emit';
 export * from './normalize';
 export * from './parser';
 export * from './runtime';
+export * from './validate';
