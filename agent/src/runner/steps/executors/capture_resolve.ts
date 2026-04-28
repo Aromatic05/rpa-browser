@@ -3,6 +3,7 @@ import { ensureFreshEntityContext } from './entity_context';
 import type { SnapshotResult, UnifiedNode } from './snapshot/core/types';
 import { normalizeText } from './snapshot/core/runtime_store';
 import type { Step, StepResolve, StepResult } from '../types';
+import { resolveTarget } from '../helpers/resolve_target';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 20;
@@ -55,25 +56,14 @@ export const executeBrowserCaptureResolve = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    if (step.resolve) {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: 'browser.capture_resolve does not support step.resolve',
-            },
-        };
-    }
-
     const args = step.args;
-    if (!args.nodeId && !args.selector && !args.text && !args.role && !args.name) {
+    if (!args.nodeId && !args.selector && !args.resolveId && !args.text && !args.role && !args.name) {
         return {
             stepId: step.id,
             ok: false,
             error: {
                 code: 'ERR_BAD_ARGS',
-                message: 'browser.capture_resolve requires nodeId, selector, text, role, or name',
+                message: 'browser.capture_resolve requires nodeId, selector, resolveId, text, role, or name',
             },
         };
     }
@@ -88,7 +78,7 @@ export const executeBrowserCaptureResolve = async (
     const snapshot =
         cachedSnapshot ||
         (await ensureFreshEntityContext(deps, workspaceId, 'browser.capture_resolve')).snapshot;
-    const candidates = findCandidates(snapshot, args).slice(0, normalizedLimit.value);
+    const candidates = await findCandidates(binding, snapshot, step).then((items) => items.slice(0, normalizedLimit.value));
     if (candidates.length === 0) {
         return {
             stepId: step.id,
@@ -141,10 +131,28 @@ const readLatestSnapshot = (cache: unknown): SnapshotResult | null => {
     return typed as SnapshotResult;
 };
 
-const findCandidates = (
+const findCandidates = async (
+    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
     snapshot: SnapshotResult,
-    args: Step<'browser.capture_resolve'>['args'],
-): CaptureResolveCandidate[] => {
+    step: Step<'browser.capture_resolve'>,
+): Promise<CaptureResolveCandidate[]> => {
+    const args = step.args;
+    if (step.resolve) {
+        const resolved = await resolveTarget(binding, { resolve: step.resolve });
+        if (!resolved.ok) {
+            return [];
+        }
+        return Object.values(snapshot.nodeIndex)
+            .filter((node) => selectorMatchesNode(snapshot, node, resolved.target.selector))
+            .map((node) => ({
+                ...buildCandidate(snapshot, node, { kind: 'resolve' as const, match: () => [] }, 1),
+                selector: resolved.target.selector,
+                confidence: 0.92,
+                reason: ['matched resolveId sidecar'],
+            }))
+            .sort((left, right) => right.confidence - left.confidence || left.nodeId.localeCompare(right.nodeId));
+    }
+
     const strategy = selectStrategy(args);
     const matches = strategy.match(snapshot);
     const count = matches.length;
@@ -218,6 +226,8 @@ const buildCandidate = (
     const confidence =
         strategy.kind === 'nodeId'
             ? 1
+            : strategy.kind === 'resolve'
+              ? 0.92
             : strategy.kind === 'selector'
               ? unique ? 0.95 : 0.65
               : strategy.kind === 'role+name'

@@ -135,3 +135,25 @@ test('capture_resolve accepts limit up to 20 and rejects larger values', async (
     if (badResult.ok) {return;}
     assert.equal(badResult.error?.code, 'ERR_BAD_ARGS');
 });
+
+test('capture_resolve can target via args.resolveId after runtime injection', async () => {
+    const step: Step<'browser.capture_resolve'> = {
+        id: 'capture-resolve-id',
+        name: 'browser.capture_resolve',
+        args: { resolveId: 'resolveOrders' },
+        resolve: {
+            hint: {
+                raw: {
+                    selector: '#target-1',
+                },
+            },
+        },
+    };
+
+    const result = await executeBrowserCaptureResolve(step, createDeps(createSnapshot()), 'ws-1');
+    assert.equal(result.ok, true);
+    if (!result.ok) {return;}
+    const data = result.data as any;
+    assert.equal(data.resolve?.hint?.capture?.source, 'capture_resolve');
+    assert.equal(data.candidates[0]?.nodeId, 'node_1');
+});

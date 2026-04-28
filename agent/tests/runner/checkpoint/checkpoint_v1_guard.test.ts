@@ -132,6 +132,7 @@ test('serialization guard', async () => {
         assert.equal(serializationSource.includes(required), true, `serialization types missing ${required}`);
     }
     assert.equal(serializationSource.includes('StepHintFile'), false);
+    assert.equal(serializationSource.includes('resolveId?: string;'), false);
 
     assert.equal(serializationTestSource.includes('steps\\[0\\]\\.args\\.target\\.rawContext'), true);
     assert.equal(serializationTestSource.includes('checkpoints\\[0\\]\\.content\\[0\\]\\.step\\.args\\.hint'), true);

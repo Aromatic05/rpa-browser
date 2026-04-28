@@ -148,29 +148,18 @@ const STEP_RESOLVE_STEP_NAMES = new Set([
     'browser.scroll',
     'browser.press_key',
     'browser.drag_and_drop',
+    'browser.capture_resolve',
 ] as const);
 
 const injectStepResolve = (
     step: StepUnion,
     stepResolves?: Record<string, StepResolve>,
 ): { ok: true; step: StepUnion } | { ok: false; error: ExecStepResult['error'] } => {
-    const stepRecord = step as StepUnion & { resolveId?: unknown };
     const argsRecord = step.args as Record<string, unknown>;
-    const topLevelResolveId = typeof stepRecord.resolveId === 'string' ? stepRecord.resolveId : undefined;
-    const argsResolveId = typeof argsRecord.resolveId === 'string' ? argsRecord.resolveId : undefined;
-    const resolveId = topLevelResolveId ?? argsResolveId;
+    const resolveId = typeof argsRecord.resolveId === 'string' ? argsRecord.resolveId : undefined;
 
     if (!resolveId) {
         return { ok: true, step };
-    }
-    if (topLevelResolveId && argsResolveId) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step ${step.id} has duplicate resolveId sources`,
-            },
-        };
     }
     if (step.resolve) {
         return {

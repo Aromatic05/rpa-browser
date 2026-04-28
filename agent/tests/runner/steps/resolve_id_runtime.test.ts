@@ -163,8 +163,7 @@ test('checkpoint act step injects resolve from serialized resolveId sidecar', as
                         type: 'act',
                         step: {
                             name: 'browser.click',
-                            args: {},
-                            resolveId: 'resolveSubmit',
+                            args: { resolveId: 'resolveSubmit' },
                         },
                     },
                 ],

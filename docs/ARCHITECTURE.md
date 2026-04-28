@@ -87,7 +87,7 @@ Snapshot 的实体相关主链路为：
 
 持久化边界：
 
-- `SerializedStep` 只包含 `id`、`name`、`args`、`resolveId`
+- `SerializedStep` 只包含 `id`、`name`、`args`
 - `Step.resolve` 不是废弃能力，但它是 runtime-only 字段，不进入 core `steps.yaml`
 - `StepMeta` 也是 runtime-only 字段，不进入 core `steps.yaml`
 - `StepResolveFile` 持久化到 `step_resolve.yaml`
@@ -118,5 +118,5 @@ Snapshot 的实体相关主链路为：
 2. 执行 `browser.capture_resolve`
 3. 由 AI / 人类修订 `StepResolve` 草稿
 4. 写入 `step_resolve.yaml`
-5. 在 `SerializedStep` 中填写 `resolveId`
+5. 在 `SerializedStep.args` 中填写 `resolveId`
 6. `runSteps` 运行时注入 `step.resolve`

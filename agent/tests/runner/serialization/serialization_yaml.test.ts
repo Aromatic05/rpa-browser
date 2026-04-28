@@ -29,8 +29,8 @@ steps:
         fieldKey: buyer
   - id: fillBuyer
     name: browser.fill
-    resolveId: resolveBuyerField
     args:
+      resolveId: resolveBuyerField
       nodeId: "{{resolveBuyer.data.nodeId}}"
       value: 张三
 `) as StepFile;
@@ -106,6 +106,15 @@ steps:
     args:
       id: buyer-input
 `) as StepFile;
+    const topLevelResolveIdStepFile = parse(`
+version: 1
+steps:
+  - id: clickBuyer
+    name: browser.click
+    resolveId: resolveBuyer
+    args:
+      nodeId: buyer-input
+`) as StepFile;
 
     assert.throws(() => validateStepFileForSerialization(resolveStepFile), /steps\[0\]\.resolve/);
     assert.throws(() => validateStepFileForSerialization(rawContextStepFile), /steps\[0\]\.args\.rawContext/);
@@ -113,6 +122,7 @@ steps:
     assert.throws(() => validateStepFileForSerialization(nestedRawContextStepFile), /steps\[0\]\.args\.target\.rawContext/);
     assert.throws(() => validateStepFileForSerialization(locatorCandidatesStepFile), /steps\[0\]\.args\.locatorCandidates/);
     assert.throws(() => validateStepFileForSerialization(legacyIdStepFile), /use nodeId instead/);
+    assert.throws(() => validateStepFileForSerialization(topLevelResolveIdStepFile), /args\.resolveId instead/);
 });
 
 test('step_resolve.yaml schema stores sidecar resolve data by resolveId', () => {
@@ -221,8 +231,8 @@ checkpoints:
       - type: act
         step:
           name: browser.click
-          resolveId: resolveSubmit
           args:
+            resolveId: resolveSubmit
             hint:
               target:
                 role: button
@@ -241,11 +251,27 @@ checkpoints:
       - type: act
         step:
           name: browser.click
-          resolveId: resolveSubmit
           args:
+            resolveId: resolveSubmit
             locatorCandidates:
               - kind: css
                 selector: "#submit"
+            nodeId:
+              ref: local.submitTarget.nodeId
+`) as CheckpointFile;
+    const topLevelResolveIdCheckpointFile = parse(`
+version: 1
+checkpoints:
+  - id: recover-order-form-submit
+    trigger:
+      matchRules:
+        - stepName: browser.click
+    content:
+      - type: act
+        step:
+          name: browser.click
+          resolveId: resolveSubmit
+          args:
             nodeId:
               ref: local.submitTarget.nodeId
 `) as CheckpointFile;
@@ -261,6 +287,10 @@ checkpoints:
     assert.throws(
         () => validateCheckpointFileForSerialization(locatorCandidatesCheckpointFile),
         /checkpoints\[0\]\.content\[0\]\.step\.args\.locatorCandidates/,
+    );
+    assert.throws(
+        () => validateCheckpointFileForSerialization(topLevelResolveIdCheckpointFile),
+        /step\.resolveId; use .*step\.args\.resolveId instead/,
     );
 });
 

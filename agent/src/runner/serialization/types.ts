@@ -5,7 +5,6 @@ export type SerializedStep<TName extends StepName = StepName> = {
     id: string;
     name: TName;
     args: StepArgsMap[TName];
-    resolveId?: string;
 };
 
 export type SerializedStepUnion = {
@@ -74,6 +73,9 @@ export const validateStepFileForSerialization = (file: StepFile): void => {
         }
         if (!step.id || !step.name || !('args' in step)) {
             throw new Error('step entry must include id, name, and args');
+        }
+        if ('resolveId' in step) {
+            throw new Error(`core yaml must not include steps[${index}].resolveId; use steps[${index}].args.resolveId instead`);
         }
         assertNoCoreHintFields(step, `steps[${index}]`);
         assertNoLegacyActionTargetFields(step, `steps[${index}]`);
@@ -164,8 +166,13 @@ const assertCheckpointContentUsesSerializedStepShape = (checkpoint: Checkpoint, 
     for (const [index, item] of (checkpoint.content || []).entries()) {
         if (!item || typeof item !== 'object' || !('name' in item)) {
             if (item && typeof item === 'object' && 'type' in item && (item as { type?: string }).type === 'act') {
-                const step = (item as { step?: { name?: string; args?: unknown; resolveId?: unknown } }).step;
+                const step = (item as { step?: { name?: string; args?: unknown } }).step;
                 if (step && typeof step === 'object') {
+                    if ('resolveId' in step) {
+                        throw new Error(
+                            `core yaml must not include ${currentPath}.content[${index}].step.resolveId; use ${currentPath}.content[${index}].step.args.resolveId instead`,
+                        );
+                    }
                     assertNoCoreHintFields(step, `${currentPath}.content[${index}].step`);
                     assertNoLegacyActionTargetFields(
                         { name: String(step.name || ''), args: step.args },
