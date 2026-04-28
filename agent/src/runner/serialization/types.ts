@@ -26,6 +26,16 @@ export type CheckpointFile = {
     checkpoints: Checkpoint[];
 };
 
+export type SingleCheckpointFile = {
+    version: 1;
+    checkpoint: Checkpoint;
+};
+
+export type CheckpointResolveFile = {
+    version: 1;
+    resolves: Record<string, StepResolve>;
+};
+
 export type CheckpointHint = {
     why?: string;
     scope?: {
@@ -121,6 +131,33 @@ export const validateCheckpointFileForSerialization = (file: CheckpointFile): vo
         }
         assertNoCoreHintFields(checkpoint, `checkpoints[${index}]`);
         assertCheckpointContentUsesSerializedStepShape(checkpoint, `checkpoints[${index}]`);
+    }
+};
+
+export const validateSingleCheckpointFileForSerialization = (file: SingleCheckpointFile): void => {
+    if (file.version !== 1) {
+        throw new Error(`invalid checkpoint file version: ${String(file.version)}`);
+    }
+    if (!file.checkpoint || typeof file.checkpoint !== 'object' || Array.isArray(file.checkpoint)) {
+        throw new Error('single checkpoint file must contain a checkpoint object');
+    }
+    validateCheckpointFileForSerialization({
+        version: file.version,
+        checkpoints: [file.checkpoint],
+    });
+};
+
+export const validateCheckpointResolveFileForSerialization = (file: CheckpointResolveFile): void => {
+    if (file.version !== 1) {
+        throw new Error(`invalid checkpoint resolve file version: ${String(file.version)}`);
+    }
+    if (!file.resolves || typeof file.resolves !== 'object' || Array.isArray(file.resolves)) {
+        throw new Error('checkpoint resolve file must contain a resolves object');
+    }
+    for (const [resolveId, value] of Object.entries(file.resolves)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            throw new Error(`checkpoint resolve ${resolveId} must be an object`);
+        }
     }
 };
 
