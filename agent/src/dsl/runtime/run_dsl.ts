@@ -1,10 +1,10 @@
-import crypto from 'node:crypto';
-import { runStepList, type RunStepsDeps } from '../../runner/run_steps';
-import type { StepResult, StepUnion } from '../../runner/steps/types';
-import { runDslCheckpointCall } from '../emit/checkpoint_call';
+import type { RunStepsDeps, StepResult as TaskStepResult } from '../../runner/run_steps';
+import type { StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
+import { runDslCheckpointCall, type DslCheckpointProvider } from '../emit/checkpoint_call';
 import { buildClickStep, buildFillStep, buildQueryStep } from '../emit/step_builder';
-import { UnsupportedError } from '../diagnostics/errors';
+import { DslRuntimeError, UnsupportedError } from '../diagnostics/errors';
 import type { DslProgram } from '../ast/types';
+import { createDslTaskRunner } from './task_runner';
 import { createDslScope, setDslValue, type DslScope } from './scope';
 import { resolveDslValue } from './refs';
 
@@ -12,6 +12,7 @@ export type RunDslContext = {
     workspaceId: string;
     deps: RunStepsDeps;
     input?: Record<string, unknown>;
+    checkpointProvider?: DslCheckpointProvider;
 };
 
 export type RunDslResult = {
@@ -20,83 +21,75 @@ export type RunDslResult = {
 
 export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<RunDslResult> => {
     const scope = createDslScope(ctx.input);
-    for (const stmt of program.body) {
-        switch (stmt.kind) {
-            case 'let': {
-                if (stmt.expr.kind === 'query') {
-                    const step = buildQueryStep(stmt.expr);
-                    const result = await emitStepAndWait(step, ctx);
-                    setDslValue(scope, `vars.${stmt.name}`, result);
+    const taskRunner = createDslTaskRunner({
+        workspaceId: ctx.workspaceId,
+        deps: ctx.deps,
+        stopOnError: true,
+    });
+
+    await taskRunner.start();
+    try {
+        for (const stmt of program.body) {
+            switch (stmt.kind) {
+                case 'let': {
+                    if (stmt.expr.kind === 'query') {
+                        const step = buildQueryStep(stmt.expr);
+                        const result = await emitStepAndWait(step, taskRunner);
+                        setDslValue(scope, `vars.${stmt.name}`, result);
+                        break;
+                    }
+                    setDslValue(scope, `vars.${stmt.name}`, resolveDslValue(stmt.expr, scope));
                     break;
                 }
-                setDslValue(scope, `vars.${stmt.name}`, resolveDslValue(stmt.expr, scope));
-                break;
-            }
-            case 'act': {
-                const target = resolveDslValue(stmt.target, scope);
-                const step =
-                    stmt.action === 'fill'
-                        ? buildFillStep(target, resolveDslValue(stmt.value, scope))
-                        : buildClickStep(target);
-                await emitStepAndWait(step, ctx);
-                break;
-            }
-            case 'checkpoint': {
-                const output = await runDslCheckpointCall({
-                    stmt,
-                    scope,
-                    executeStep: async (step) => await executeStep(step, ctx),
-                });
-                for (const [key, value] of Object.entries(output)) {
-                    setDslValue(scope, `output.${key}`, value);
+                case 'act': {
+                    const target = resolveDslValue(stmt.target, scope);
+                    const step =
+                        stmt.action === 'fill'
+                            ? buildFillStep(target, resolveDslValue(stmt.value, scope))
+                            : buildClickStep(target);
+                    await emitStepAndWait(step, taskRunner);
+                    break;
                 }
-                break;
+                case 'checkpoint': {
+                    const output = await runDslCheckpointCall({
+                        stmt,
+                        scope,
+                        checkpointProvider: ctx.checkpointProvider,
+                        executeStep: async (step) => toExecutorStepResult(await taskRunner.runStep(step)),
+                    });
+                    for (const [key, value] of Object.entries(output)) {
+                        setDslValue(scope, `output.${key}`, value);
+                    }
+                    break;
+                }
+                case 'if':
+                    throw new UnsupportedError('DSL if is not implemented yet');
+                case 'for':
+                    throw new UnsupportedError('DSL for is not implemented yet');
             }
-            case 'if':
-                throw new UnsupportedError('DSL if is not implemented yet');
-            case 'for':
-                throw new UnsupportedError('DSL for is not implemented yet');
         }
+    } finally {
+        await taskRunner.close();
     }
 
     return { scope };
 };
 
-const emitStepAndWait = async (step: StepUnion, ctx: RunDslContext): Promise<unknown> => {
-    const result = await executeStep(step, ctx);
+const emitStepAndWait = async (
+    step: StepUnion,
+    taskRunner: ReturnType<typeof createDslTaskRunner>,
+): Promise<unknown> => {
+    const result = await taskRunner.runStep(step);
     if (!result.ok) {
-        throw new Error(result.error?.message || `DSL step failed: ${step.name}`);
+        throw new DslRuntimeError(
+            result.error?.message || `DSL step failed: ${step.name}`,
+            result.error?.code || 'ERR_DSL_STEP_FAILED',
+        );
     }
     return result.data;
 };
 
-const executeStep = async (step: StepUnion, ctx: RunDslContext): Promise<StepResult> => {
-    const runId = `dsl:${crypto.randomUUID()}`;
-    const { checkpoint, pipe } = await runStepList(ctx.workspaceId, [step], ctx.deps, {
-        runId,
-        stopOnError: true,
-    });
-    const result = pipe.items[0];
-    if (!result) {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_DSL_STEP_MISSING_RESULT',
-                message: `runner returned no result for step: ${step.name}`,
-            },
-        };
-    }
-    if (checkpoint.status === 'failed' && result.ok) {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_DSL_RUN_FAILED',
-                message: `runner failed while executing step: ${step.name}`,
-            },
-        };
-    }
+const toExecutorStepResult = (result: TaskStepResult): ExecutorStepResult => {
     return {
         stepId: result.stepId,
         ok: result.ok,
