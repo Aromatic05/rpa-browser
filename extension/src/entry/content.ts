@@ -8,16 +8,8 @@
  * - 仅处理 UI 与消息，不做持久化。
  */
 
-import type * as FloatingUIModule from '../content/floating_ui.js';
-import type * as TokenBridgeModule from '../content/token_bridge.js';
-import type * as ProtocolModule from '../shared/protocol.js';
-import type * as SendModule from '../shared/send.js';
-import type { Action } from '../shared/types.js';
-
-declare global {
-    interface Window {
-        __rpaTokenInjected?: boolean;
-    }
+interface Window {
+    __rpaTokenInjected?: boolean;
 }
 
 type ActionScopeInput = {
@@ -26,38 +18,70 @@ type ActionScopeInput = {
     tabToken?: string;
 };
 
+type ActionShape = {
+    v: 1;
+    id: string;
+    type: string;
+    tabToken?: string;
+    scope?: Record<string, unknown>;
+    payload?: unknown;
+};
+
+type FloatingUIExports = {
+    mountFloatingUI: (opts: {
+        tabToken: string;
+        onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
+        onEvent?: (handler: (action: ActionShape) => void) => void;
+    }) => { scheduleRefresh: () => void };
+};
+
+type TokenBridgeExports = {
+    ensureTabTokenAsync: () => Promise<string>;
+    bindHello: (tabToken: string, onHello?: () => void) => () => void;
+};
+
+type ProtocolExports = {
+    MSG: Record<string, string>;
+};
+
+type SendExports = {
+    send: {
+        action: (action: ActionShape) => Promise<unknown>;
+    };
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 
 // 协议与发送模块（动态 import，避免内容脚本模块化限制）
 const loadProtocol = (() => {
-    let cached: Promise<typeof ProtocolModule> | null = null;
+    let cached: Promise<ProtocolExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('shared/protocol.js');
-            cached = import(url) as Promise<typeof ProtocolModule>;
+            cached = import(url) as Promise<ProtocolExports>;
         }
         return cached;
     };
 })();
 
 const loadSend = (() => {
-    let cached: Promise<typeof SendModule> | null = null;
+    let cached: Promise<SendExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('shared/send.js');
-            cached = import(url) as Promise<typeof SendModule>;
+            cached = import(url) as Promise<SendExports>;
         }
         return cached;
     };
 })();
 
 const loadTokenBridge = (() => {
-    let cached: Promise<typeof TokenBridgeModule> | null = null;
+    let cached: Promise<TokenBridgeExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('content/token_bridge.js');
-            cached = import(url) as Promise<typeof TokenBridgeModule>;
+            cached = import(url) as Promise<TokenBridgeExports>;
         }
         return cached;
     };
@@ -65,11 +89,11 @@ const loadTokenBridge = (() => {
 
 
 const loadFloatingUI = (() => {
-    let cached: Promise<typeof FloatingUIModule> | null = null;
+    let cached: Promise<FloatingUIExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('content/floating_ui.js');
-            cached = import(url) as Promise<typeof FloatingUIModule>;
+            cached = import(url) as Promise<FloatingUIExports>;
         }
         return cached;
     };
@@ -161,7 +185,7 @@ const loadFloatingUI = (() => {
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
-    let consumeActionEvent: ((action: Action) => void) | null = null;
+    let consumeActionEvent: ((action: ActionShape) => void) | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
@@ -208,7 +232,7 @@ const loadFloatingUI = (() => {
         });
         chrome.runtime.onMessage.addListener((message: unknown) => {
             if (!isRecord(message) || message.type !== MSG.ACTION_EVENT || !('action' in message)) {return;}
-            consumeActionEvent?.(message.action as Action);
+            consumeActionEvent?.(message.action as ActionShape);
         });
     })();
 

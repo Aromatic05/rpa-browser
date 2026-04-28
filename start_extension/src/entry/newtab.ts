@@ -25,6 +25,7 @@ type ActionResult<TData = unknown> = {
 };
 
 type WsActionEnvelope = {
+    type?: string;
     replyTo?: string;
     payload?: unknown;
 };
@@ -70,6 +71,27 @@ const parseActionResult = <TData = unknown>(value: unknown): ActionResult<TData>
     const error = isRecord(errorRaw) ? { message: asString(errorRaw.message) } : undefined;
     const data = (value.data as TData | undefined);
     return { ok, data, error };
+};
+
+const parseWsReply = <TData = unknown>(value: unknown): ActionResult<TData> => {
+    if (!isRecord(value)) {
+        return { ok: false, error: { message: 'invalid action reply' } };
+    }
+    const type = asString(value.type) || '';
+    const payload = value.payload;
+    if (type.endsWith('.result')) {
+        return { ok: true, data: payload as TData };
+    }
+    if (type.endsWith('.failed')) {
+        const errorPayload = isRecord(payload) ? payload : {};
+        return {
+            ok: false,
+            error: {
+                message: asString(errorPayload.message) || 'action failed',
+            },
+        };
+    }
+    return parseActionResult<TData>(payload);
 };
 
 const setStatus = (text: string, ok = false) => {
@@ -127,7 +149,7 @@ const sendAction = async <TData = unknown>(type: string, payload: Record<string,
             const message = parsed as WsActionEnvelope;
             if (message.replyTo !== requestId) {return;}
             clearTimeout(timeout);
-            const parsedPayload = parseActionResult<TData>(message.payload);
+            const parsedPayload = parseWsReply<TData>(message);
             log('action.reply', { type, requestId, ok: parsedPayload.ok, payload: parsedPayload });
             done(parsedPayload);
         });
