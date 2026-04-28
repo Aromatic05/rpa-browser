@@ -38,6 +38,8 @@ import {
     type BrowserListTabsInput,
     browserTakeScreenshotInputSchema,
     type BrowserTakeScreenshotInput,
+    browserCaptureResolveInputSchema,
+    type BrowserCaptureResolveInput,
     browserTypeInputSchema,
     type BrowserTypeInput,
     browserSelectOptionInputSchema,
@@ -598,6 +600,25 @@ const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args:
     });
 };
 
+const handleCaptureResolve = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+    const parsed = parseInput<BrowserCaptureResolveInput>(browserCaptureResolveInputSchema, args);
+    if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
+    const input = parsed.data;
+    return await runSingleStep(deps, input.tabToken, {
+        id: crypto.randomUUID(),
+        name: 'browser.capture_resolve',
+        args: {
+            nodeId: input.nodeId,
+            selector: input.selector,
+            text: input.text,
+            role: input.role,
+            name: input.name,
+            limit: input.limit,
+        },
+        meta: { source: 'mcp' },
+    });
+};
+
 type SnapshotLikeNode = {
     id?: string;
     role?: string;
@@ -779,6 +800,7 @@ export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHan
     'browser.list_tabs': handleListTabs(deps),
     'browser.click': handleClick(deps),
     'browser.snapshot': handleSnapshot(deps),
+    'browser.capture_resolve': handleCaptureResolve(deps),
     'browser.entity': handleEntity(deps),
     'browser.query': handleQuery(deps),
     'browser.get_content': handleGetContent(deps),

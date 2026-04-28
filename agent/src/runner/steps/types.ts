@@ -7,7 +7,7 @@
  * - 通过强类型映射约束 name 与 args 的对应关系
  */
 
-import type { EntityKind, SnapshotFilter } from './executors/snapshot/core/types';
+import type { BBox, EntityKind, SnapshotFilter } from './executors/snapshot/core/types';
 
 export type StepName =
     | 'browser.goto'
@@ -19,6 +19,7 @@ export type StepName =
     | 'browser.get_page_info'
     | 'browser.list_tabs'
     | 'browser.snapshot'
+    | 'browser.capture_resolve'
     | 'browser.get_content'
     | 'browser.read_console'
     | 'browser.read_network'
@@ -121,6 +122,8 @@ export type ResolveHint = {
         tag?: string;
         name?: string;
         text?: string;
+        attrs?: Record<string, string>;
+        bbox?: BBox;
     };
     locator?: {
         direct?: {
@@ -152,6 +155,12 @@ export type ResolveHint = {
         scopeHint?: string;
         targetHint?: string;
     };
+    capture?: {
+        source: 'capture_resolve';
+        confidence: number;
+        reason: string[];
+        warnings: string[];
+    };
 };
 
 export type StepResolve = {
@@ -176,6 +185,14 @@ export type StepArgsMap = {
         depth?: number;
         filter?: SnapshotFilter;
         diff?: boolean;
+    };
+    'browser.capture_resolve': {
+        nodeId?: string;
+        selector?: string;
+        text?: string;
+        role?: string;
+        name?: string;
+        limit?: number;
     };
     'browser.get_content': { ref: string };
     'browser.read_console': { limit?: number };

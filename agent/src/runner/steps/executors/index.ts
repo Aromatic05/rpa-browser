@@ -4,6 +4,7 @@ import { executeBrowserClick } from './click';
 import { executeBrowserFill } from './fill';
 import { executeBrowserGoto } from './goto';
 import { executeBrowserSnapshot } from './snapshot/pipeline/snapshot';
+import { executeBrowserCaptureResolve } from './capture_resolve';
 import { executeBrowserGoBack } from './go_back';
 import { executeBrowserReload } from './reload';
 import { executeBrowserCreateTab } from './create_tab';
@@ -41,6 +42,7 @@ export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.get_page_info': executeBrowserGetPageInfo as ExecutorFn,
     'browser.list_tabs': executeBrowserListTabs as ExecutorFn,
     'browser.snapshot': executeBrowserSnapshot as ExecutorFn,
+    'browser.capture_resolve': executeBrowserCaptureResolve as ExecutorFn,
     'browser.get_content': executeBrowserGetContent as ExecutorFn,
     'browser.read_console': executeBrowserReadConsole as ExecutorFn,
     'browser.read_network': executeBrowserReadNetwork as ExecutorFn,

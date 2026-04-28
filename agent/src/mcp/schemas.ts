@@ -269,6 +269,20 @@ export const browserTakeScreenshotInputSchema = z.object({
     inline: z.boolean().optional(),
 });
 
+export const browserCaptureResolveInputSchema = z
+    .object({
+        tabToken: z.string().optional(),
+        nodeId: z.string().optional(),
+        selector: z.string().optional(),
+        text: z.string().optional(),
+        role: z.string().optional(),
+        name: z.string().optional(),
+        limit: z.number().int().min(1).max(20).optional(),
+    })
+    .refine((value) => Boolean(value.nodeId || value.selector || value.text || value.role || value.name), {
+        message: 'capture_resolve requires nodeId, selector, text, role, or name',
+    });
+
 export const browserClickInputSchema = z
     .object({
         tabToken: z.string().optional(),
@@ -416,6 +430,7 @@ export type BrowserReadConsoleInput = z.infer<typeof browserReadConsoleInputSche
 export type BrowserReadNetworkInput = z.infer<typeof browserReadNetworkInputSchema>;
 export type BrowserEvaluateInput = z.infer<typeof browserEvaluateInputSchema>;
 export type BrowserTakeScreenshotInput = z.infer<typeof browserTakeScreenshotInputSchema>;
+export type BrowserCaptureResolveInput = z.infer<typeof browserCaptureResolveInputSchema>;
 export type BrowserClickInput = z.infer<typeof browserClickInputSchema>;
 export type BrowserFillInput = z.infer<typeof browserFillInputSchema>;
 export type BrowserTypeInput = z.infer<typeof browserTypeInputSchema>;
@@ -527,6 +542,20 @@ export const toolInputJsonSchemas = {
                 additionalProperties: false,
             },
             diff: { type: 'boolean' },
+        },
+        additionalProperties: false,
+    },
+    'browser.capture_resolve': {
+        type: 'object',
+        required: [],
+        properties: {
+            tabToken: { type: 'string' },
+            nodeId: { type: 'string' },
+            selector: { type: 'string' },
+            text: { type: 'string' },
+            role: { type: 'string' },
+            name: { type: 'string' },
+            limit: { type: 'integer', minimum: 1, maximum: 20 },
         },
         additionalProperties: false,
     },

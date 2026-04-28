@@ -29,6 +29,7 @@ const toolDefinitions: ToolDefinition[] = [
     { name: 'browser.reload', description: 'Reload page.', group: 'tab_navigation' },
     { name: 'browser.get_page_info', description: 'Page info.', group: 'tab_navigation' },
     { name: 'browser.snapshot', description: 'Snapshot view.', group: 'structured_inspection' },
+    { name: 'browser.capture_resolve', description: 'Capture a StepResolve draft from the current page.', group: 'structured_inspection' },
     { name: 'browser.get_content', description: 'Resolve content ref.', group: 'structured_inspection' },
     { name: 'browser.entity', description: 'Manage entities and overlays.', group: 'business_entities' },
     { name: 'browser.query', description: 'Query snapshot or business entities.', group: 'business_entities' },
