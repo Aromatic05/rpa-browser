@@ -139,8 +139,8 @@ type BrowserQueryResult =
 
 当前映射关系如下：
 
-- `browser.query op=entity table.row_count -> kind=value`
-- `browser.query op=entity table.current_rows -> kind=value`
+- `browser.query op=entity table.rowCount -> kind=value`
+- `browser.query op=entity table.currentRows -> kind=value`
 - `browser.query op=entity table.hasNextPage -> kind=value`
 - `browser.query op=entity table.nextPageTarget -> kind=nodeId`
 - `browser.query op=entity.target form.field -> kind=nodeId`

@@ -86,8 +86,8 @@ test('query naming guard', async () => {
     for (const source of [resolverSource, stepTypesSource]) {
         assert.equal(source.includes('table.hasNextPage'), true);
         assert.equal(source.includes('table.nextPageTarget'), true);
-        assert.equal(source.includes('table.has_next_page'), false);
-        assert.equal(source.includes('table.next_page_target'), false);
+        assert.equal(source.includes('table.hasNextPage'), false);
+        assert.equal(source.includes('table.nextPageTarget'), false);
     }
 });
 

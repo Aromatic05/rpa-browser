@@ -245,7 +245,7 @@ hints:
 - runner result ref 不依赖 active page
 - Step YAML / Checkpoint YAML hint 外置
 - order-form 真实链路 `query -> fill/click` 通过
-- order-list 真实链路 `row_count/current_rows/row_action -> click` 通过
+- order-list 真实链路 `rowCount/currentRows/row_action -> click` 通过
 - `matchRules` 支持 `errorCode`、`stepName`、`urlIncludes`、`textVisible`、`entityExists`
 - `content` 支持 `query`、`compute`、`act`、`wait`
 - `input`、`local`、`output` 生效

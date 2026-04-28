@@ -22,7 +22,7 @@
 - entity-rules 支持 `table.hasNextPage`。
 - entity-rules 支持 `table.nextPageTarget`。
 - order-form `query -> fill/click` 集成测试已覆盖。
-- order-list `row_count/current_rows/row_action -> click` 集成测试已覆盖。
+- order-list `rowCount/currentRows/row_action -> click` 集成测试已覆盖。
 - order-list pagination `query -> clickNext` 集成测试已覆盖。
 
 ## 4.2 明确不包含能力
