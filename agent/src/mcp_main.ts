@@ -12,7 +12,7 @@ import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { McpToolHost } from './mcp/hotreload/tool_host';
 import { createActionDispatcher } from './actions/dispatcher';
-import { createControlServer, setControlActionDispatcher } from './control';
+import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -109,6 +109,7 @@ setControlActionDispatcher(
     }),
 );
 const controlServer = createControlServer({ deps: runStepsDeps });
+registerControlShutdown(controlServer, logNotice);
 await mcpToolHost.load({
     pageRegistry,
     config,

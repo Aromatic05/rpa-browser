@@ -15,6 +15,7 @@
         "mcp": "tsx src/mcp_main.ts",
         "mcp:dev": "tsx watch src/mcp_main.ts",
         "mcp:hot": "concurrently -k \"pnpm test:runner:bundle:watch\" \"pnpm mcp:dev\"",
+        "control": "tsx src/control_cli.ts",
         "test:trace:demo": "tsx scripts/trace_demo.ts",
         "test:trace:headed-demo": "node --import tsx src/runner/trace/demo/headed_demo.ts",
         "test:demo:headed-runner": "node --import tsx src/runner/demo/headed_run_steps_demo.ts",

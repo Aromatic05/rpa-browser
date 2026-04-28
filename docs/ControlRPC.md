@@ -70,3 +70,50 @@ Control RPC 是 agent 的本地控制面，用来连接已经运行中的 agent 
 ```json
 {"id":"3","method":"dsl.run","params":{"workspaceId":"ws","source":"click input.submit","input":{"submit":"submit-btn"}}}
 ```
+
+## CLI
+
+内置 control CLI：
+
+```bash
+pnpm -C agent control ping
+```
+
+```bash
+pnpm -C agent control dsl \
+  --workspace ws-demo \
+  --source 'let buyer = query entity.target "order.form" { kind: "form.field" fieldKey: "buyer" }'
+```
+
+```bash
+pnpm -C agent control dsl \
+  --workspace ws-demo \
+  --file ./fixtures/order.dsl \
+  --input '{"user":{"name":"alice"}}'
+```
+
+```bash
+pnpm -C agent control tool click \
+  --workspace ws-demo \
+  --args '{"nodeId":"submit-btn"}'
+```
+
+```bash
+pnpm -C agent control tool browser.snapshot \
+  --workspace ws-demo \
+  --args '{"includeA11y":true}'
+```
+
+```bash
+pnpm -C agent control action workspace.list
+```
+
+```bash
+pnpm -C agent control action task.run.poll \
+  --payload '{"runId":"run-1"}'
+```
+
+可选参数：
+
+- `--endpoint <path>`: 覆盖默认 control endpoint
+- `--timeout-ms <ms>`: 覆盖请求超时

@@ -19,7 +19,7 @@ import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { resolveActionTarget, ActionTargetError } from './runtime/action_target';
 import { ACTION_TYPES, isRequestActionType } from './actions/action_types';
 import { createActionDispatcher } from './actions/dispatcher';
-import { createControlServer, setControlActionDispatcher } from './control';
+import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -186,6 +186,7 @@ setControlActionDispatcher(
     }),
 );
 const controlServer = createControlServer({ deps: runStepsDeps });
+registerControlShutdown(controlServer, log);
 
 const createActionContext = (page: Page, tabToken: string): ActionContext => {
     const ctx: ActionContext = {

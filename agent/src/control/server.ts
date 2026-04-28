@@ -24,10 +24,19 @@ export const createControlServer = (options: ControlServerOptions): ControlServe
         workspaceId: options.workspaceId,
         checkpointProvider: options.checkpointProvider,
     });
+    let started = false;
+    let closed = false;
+    let closePromise: Promise<void> | null = null;
 
     return {
         endpoint: transport.endpoint,
         async start(): Promise<void> {
+            if (started) {
+                return;
+            }
+            if (closed) {
+                throw new Error('control server already closed');
+            }
             await transport.listen((conn) => {
                 conn.onLine((line) => {
                     void (async () => {
@@ -59,9 +68,20 @@ export const createControlServer = (options: ControlServerOptions): ControlServe
                     })();
                 });
             });
+            started = true;
         },
         async close(): Promise<void> {
-            await transport.close();
+            if (closed) {
+                await closePromise;
+                return;
+            }
+            closed = true;
+            if (!started) {
+                closePromise = Promise.resolve();
+                return;
+            }
+            closePromise = transport.close();
+            await closePromise;
         },
     };
 };
