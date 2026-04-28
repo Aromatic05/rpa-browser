@@ -4,6 +4,7 @@ export type {
     DslExpr,
     DslProgram,
     DslStmt,
+    FormActStmt,
     ForStmt,
     IfStmt,
     LetStmt,
