@@ -1,12 +1,12 @@
-# ActionProtocol
+# Action 协议
 
 ## 概述
 
-本文档定义 extension/start_extension/UI 与 agent 的统一 Action 协议。对应实现文件为 `agent/src/actions/*`、`agent/src/index.ts`、`extension/src/shared/action_types.ts`。
+Action 协议是 extension/start_extension/UI 与 agent 之间的主控制协议。实现分布在 `agent/src/actions/*`、`agent/src/index.ts`、`extension/src/shared/action_types.ts`。
 
-## 规范
+## Action envelope
 
-### 1. Action envelope
+请求与事件统一外层：
 
 ```ts
 {
@@ -26,17 +26,14 @@
 }
 ```
 
-字段语义：
+字段规则：
 
-- `id`：请求 ID。
-- `type`：动作类型。
-- `tabToken`：tab 生命周期主锚点。
-- `scope`：workspace/tab 定位信息。
-- `replyTo`：仅回复动作使用。
+- `v` 固定为 `1`。
+- `id` 必须是非空字符串。
+- `type` 必须是注册过的 Action type。
+- `replyTo` 仅用于回复消息。
 
-### 2. 请求类型集合
-
-请求动作域：
+## 请求类型域
 
 - `workflow.*`
 - `workspace.*`
@@ -45,80 +42,106 @@
 - `play.*`
 - `task.run.*`
 
-详表：
+workflow 当前实现：
 
-- workflow: `workflow.list/open/status/record.save/dsl.get/dsl.save/dsl.test/releaseRun`
-- workspace: `workspace.list/create/setActive/save/restore`
-- tab: `tab.init/list/create/close/setActive/opened/report/activated/closed/ping/reassign`
-- record/play: `record.start/stop/get/clear/list/event`、`play.start/stop`
-- task: `task.run.start/push/poll/checkpoint/halt/suspend/continue/flush/resume`
+- `workflow.list`
+- `workflow.open`
+- `workflow.status`
+- `workflow.record.save`
+- `workflow.dsl.get`
+- `workflow.dsl.save`
+- `workflow.dsl.test`
+- `workflow.releaseRun`
 
-### 3. 响应类型规则
+## 成功与失败响应
 
-- 成功：`<request>.result`
-- 失败：`<request>.failed`
-- `replyTo` 必须回指原请求 `id`
+成功：`<action>.result`
 
-失败 payload：
+失败：`<action>.failed`
 
-```ts
+失败体：
+
+```json
 {
-  code: string,
-  message: string,
-  details?: unknown
+  "code": "ERR_*",
+  "message": "...",
+  "details": {}
 }
 ```
 
-### 4. 目标解析规则
+禁止 `type: "error"`。
 
-- 优先使用 `tabToken`（`action.tabToken` 或 `scope.tabToken`）。
-- 当 token 可解析时，`scope.workspaceId/tabId` 必须与解析结果一致。
-- 仅有 scope 时，按 `workspaceId/tabId` 反查 token。
-- 无 token 且无 scope 时，只有 pageless action 可执行。
+## scope 与 tabToken 解析规则
 
-### 5. pageless action
+目标解析优先级：
 
-在 `actions/dispatcher.ts` 中，以下请求可在无目标页时执行：
+1. `action.tabToken`
+2. `scope.tabToken`
+3. `scope.workspaceId + scope.tabId`
+4. active workspace（仅部分路径）
 
-- 全部 `workflow.*`
-- `workspace.list/create/setActive/save`
-- `tab.init/list/create/close/setActive/reassign`
+当 token 可解析时，`scope.workspaceId/tabId` 与映射冲突会返回参数错误。
 
-在 `index.ts` 的 WS 主入口另有最小 pageless 集：
+## pageless 双标准（必须关注）
 
-- `workspace.list`
-- `workspace.create`
-- `record.list`
-- `tab.init`
+### 当前事实
 
-### 6. workflow action 协议
+1. `actions/dispatcher.ts` 的 pageless 集合较宽，包含全部 `workflow.*` 与部分 `workspace.*`、`tab.*`。
+2. `agent/src/index.ts` WS 主入口的 pageless 集合较窄，仅：
+   - `workspace.list`
+   - `workspace.create`
+   - `record.list`
+   - `tab.init`
 
-- `workflow.list`：返回 workflows 列表与 manifest 诊断。
-- `workflow.open`：返回 `workflowRoot/workspaceId/tabId/tabToken/entryUrl`。
-- `workflow.status`：返回 `exists/active`。
-- `workflow.record.save`：要求当前 scope.workspaceId 与 `workflow:<scene>` 一致。
-- `workflow.dsl.get/save/test`：读写 DSL 与测试运行。
-- `workflow.releaseRun`：正式运行，返回 output/diagnostics/workspace 绑定。
+### 风险
 
-### 7. tab 生命周期约束
+start_extension 直接走 WS 调用 `workflow.*` 时，在 scope/tabToken 未绑定或未解析到目标页的时机，可能出现 `missing action target`。
 
-- `tabToken` 生命周期 owner 是 extension background。
-- `tab.init` 用于 token 初始化握手。
-- `tab.opened` 在 token 尚未绑定时必须提供 `workspaceId`。
-- `tab.ping` 用于存活与同步，超时由 watchdog 处理。
+### 处理建议（当前）
 
-### 8. 广播事件
+1. UI 在 `workflow.*` 请求中显式带已绑定 `scope.tabToken` 或 `scope.workspaceId`。
+2. `workflow.open` 成功后立刻缓存返回的 `workspaceId/tabToken/tabId` 作为后续上下文。
+3. 该问题仍是待修项：建议后续统一 WS 主入口 pageless 集与 dispatcher。
 
-固定事件：
+## workflow.open 绑定规则
+
+`workflow.open` 会：
+
+1. 读取 workflow artifact。
+2. 解析 workspace binding。
+3. 返回 `workspaceId=workflow:<scene>`、`tabId`、`tabToken`、`entryUrl`。
+
+注意：`workflow.open` 不执行 DSL，仅完成上下文打开与绑定。
+
+## tab 生命周期要点
+
+- `tabToken` owner 是 extension background。
+- `tab.init` 只能由 background 发起。
+- content/start_extension 需通过 `RPA_ENSURE_BOUND_TOKEN` 获取可用 token。
+- `tab.opened` 在未绑定 token 时会触发 defer-claim 逻辑。
+
+## 广播事件
+
+常见事件：
 
 - `workspace.changed`
 - `workspace.sync`
 - `tab.bound`
-- `play.started/step.started/step.finished/progress/completed/failed/canceled`
+- `play.started`
+- `play.step.started`
+- `play.step.finished`
+- `play.progress`
+- `play.completed`
+- `play.failed`
+- `play.canceled`
 
-广播同样使用 Action envelope。
+## start_extension 与 extension 调用注意事项
 
-### 9. 错误码
+- start_extension 当前是 newtab UI，不直接读取本地 workflow 文件，而是通过 Action 请求 agent。
+- extension content 发送业务 Action 前必须拿到绑定 token。
+- WS reply 需按 `<action>.result/.failed` 解析。
+
+## 错误码语义
 
 基础错误码：
 
@@ -130,21 +153,10 @@
 - `ERR_DIALOG_BLOCKED`
 - `ERR_POPUP_BLOCKED`
 - `ERR_BAD_ARGS`
-- `ERR_WORKFLOW_BAD_ARGS`
-- `ERR_WORKSPACE_SNAPSHOT_NOT_FOUND`
-- `ERR_WORKSPACE_RESTORE_FAILED`
 
-workflow 运行时还会抛出：`ERR_WORKFLOW_*` 系列（manifest、path escape、checkpoint not found 等）。
+workflow 场景还可能出现 `ERR_WORKFLOW_*`。
 
-### 10. extension/start_extension 调用约束
-
-- 内容页与 start_extension 必须通过 `RPA_ENSURE_BOUND_TOKEN` 获取已绑定 token。
-- 发送 action 时，若未显式 scope，则默认带 `scope.tabToken`。
-- `workflow.open` 返回的 `workspaceId/tabId/tabToken` 应成为后续 UI 调用上下文。
-
-## 示例
-
-### 请求
+## 最小调用示例
 
 ```json
 {
@@ -155,8 +167,6 @@ workflow 运行时还会抛出：`ERR_WORKFLOW_*` 系列（manifest、path escap
   "payload": { "scene": "order_scene" }
 }
 ```
-
-### 成功回复
 
 ```json
 {
@@ -173,28 +183,7 @@ workflow 运行时还会抛出：`ERR_WORKFLOW_*` 系列（manifest、path escap
 }
 ```
 
-### 失败回复
-
-```json
-{
-  "v": 1,
-  "id": "resp-2",
-  "type": "workflow.open.failed",
-  "replyTo": "req-1",
-  "payload": {
-    "code": "ERR_WORKFLOW_BAD_ARGS",
-    "message": "workflow.open requires scene"
-  }
-}
-```
-
-## 限制
-
-- WS 主入口与 control dispatcher 的 pageless 范围不完全一致。
-- `tab.ping` stale 语义依赖 pageRegistry token 映射状态。
-
 ## 禁止事项
 
-- 禁止使用 `type: "error"`。
-- 禁止将 `{ok,data}` 作为协议外层。
-- 禁止发送不在 `REQUEST_ACTION_TYPES` 中的请求类型。
+- 禁止使用旧版 `{ok,data}` 作为 Action 外层协议。
+- 禁止忽略 pageless 双标准风险并假装已统一。
