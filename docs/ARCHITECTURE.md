@@ -52,7 +52,8 @@ Snapshot 的实体相关主链路为：
 
 规则与样例沉淀目录：
 
-- 规则包：`agent/.artifacts/entity_rules/profiles/*`
+- 规则包：`agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/*`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/*`
 - 文档：`docs/Entity/*`
 
 ## WS（extension -> agent）
@@ -81,18 +82,47 @@ Snapshot 的实体相关主链路为：
 
 目标型 step 的协议边界固定为三层：
 
-- `args`：业务参数（`id` / `selector` / value 等）
+- `args`：业务参数（`nodeId` / `selector` / `resolveId` / value 等）
 - `meta`：来源、时序、workspace/tab 元信息
 - `resolve`：目标解析辅助信息（`hint` + `policy`）
 
+持久化边界：
+
+- `SerializedStep` 只包含 `id`、`name`、`args`
+- `Step.resolve` 不是废弃能力，但它是 runtime-only 字段，不进入 core `steps.yaml`
+- `StepMeta` 也是 runtime-only 字段，不进入 core `steps.yaml`
+- `StepResolveFile` 持久化到 `step_resolve.yaml`
+- workflow artifact 根目录为 `agent/.artifacts/workflows/<scene>/`
+- `steps/<recording-name>/steps.yaml` 与 `steps/<recording-name>/step_resolve.yaml` 只服务单次录制
+- `checkpoints/<checkpoint-name>/checkpoint.yaml`、`checkpoint_resolve.yaml`、`checkpoint_hints.yaml` 只服务单个 checkpoint
+- 多 tab 持久化使用 `tabRef`；运行时 `tabId` / `tabToken` 不写入 core `steps.yaml`
+
 执行链路：
 
-1. executor 收集 `args.id` / `args.selector` / `step.resolve.hint`
+1. executor 收集 `args.nodeId` / `args.selector` / `step.resolve`
 2. 调用 `resolveTarget(...)` 收敛为最终 `selector`
-3. trace 仅接收 `selector` 执行，不承担 id/hint/replay 语义
+3. trace 仅接收 `selector` 执行，不承担 nodeId/resolve/replay 语义
+
+`browser.capture_resolve` 属于 inspection/query 类 step：
+
+- 输入：`nodeId` / `selector` / `text` / `role` / `name` / `limit`
+- 输出：`StepResolve` 草稿、`candidates`、`confidence`、`warnings`
+- 它只采集当前页面目标证据，不修改页面状态
+- 它不直接写 `step_resolve.yaml`，也不自动修改已有 step
 
 约束：
 
 - 不保留 `A11yHint` 作为公开 Step 协议字段
 - replay 不再通过全局 stepId sidecar 隐式读取增强信息
 - replay 必须在构造 step 时显式写入 `step.resolve`
+
+推荐工作流：
+
+1. 录制或编写 step
+2. 执行 `browser.capture_resolve`
+3. 由 AI / 人类修订 `StepResolve` 草稿
+4. 写入对应录制目录下的 `step_resolve.yaml`
+5. 在 `SerializedStep.args` 中填写 `resolveId`
+6. `runSteps` 运行时注入 `step.resolve`
+
+DSL 目录规范暂不定义，待 DSL 设计完成后再确定。

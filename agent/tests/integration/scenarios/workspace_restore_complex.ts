@@ -83,7 +83,7 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
                 payload: {
                     id: 'ws1-rec-a-fill',
                     name: 'browser.fill',
-                    args: { target: { selector: '#input-a' }, value: 'ws1-a', timeout: 7000 },
+                    args: { selector: '#input-a', value: 'ws1-a', timeout: 7000 },
                     meta: { source: 'record', ts: Date.now() },
                 },
             }),
@@ -97,7 +97,7 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
                 payload: {
                     id: 'ws1-rec-switch-b',
                     name: 'browser.switch_tab',
-                    args: { tab_id: ws1TabB.tabId },
+                    args: { tabId: ws1TabB.tabId },
                     meta: { source: 'record', ts: Date.now() + 1 },
                 },
             }),
@@ -111,7 +111,7 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
                 payload: {
                     id: 'ws1-rec-b-fill',
                     name: 'browser.fill',
-                    args: { target: { selector: '#input-b' }, value: 'ws1-b', timeout: 7000 },
+                    args: { selector: '#input-b', value: 'ws1-b', timeout: 7000 },
                     meta: { source: 'record', ts: Date.now() + 2 },
                 },
             }),

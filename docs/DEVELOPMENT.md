@@ -268,8 +268,10 @@ Extension 测试：
 
 规则目录（agent 内部产物目录）：
 
-- `agent/.artifacts/entity_rules/profiles/<profile>/match.yaml`
-- `agent/.artifacts/entity_rules/profiles/<profile>/annotation.yaml`
+- `agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/match.yaml`
+- `agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/annotation.yaml`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/<profile>/match.yaml`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/<profile>/annotation.yaml`
 
 运行时加载链路（snapshot）：
 
@@ -372,6 +374,12 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 - 多 tab 录制依赖 `tab.activated` 生命周期事件自动落库为 `browser.switch_tab`（同 workspace 下跨 tab）
 - `record.stop/get/clear` 在仅有一个录制会话时允许“错误 tabToken”兜底到该会话，避免 UI 焦点切换导致停错录制
 - 面板 `tab.setActive` 也会直接写入 `browser.switch_tab`，不依赖生命周期回调先到达
+- workflow artifact 根目录统一为 `agent/.artifacts/workflows/<scene>/`
+- `steps/` 下每个录制单独一个目录：`steps/<recording-name>/steps.yaml` 与 `steps/<recording-name>/step_resolve.yaml`
+- `checkpoints/` 下每个 checkpoint 单独一个目录：`checkpoints/<checkpoint-name>/checkpoint.yaml`、`checkpoint_resolve.yaml`、`checkpoint_hints.yaml`
+- `step_resolve.yaml` 只服务同目录 `steps.yaml`；`checkpoint_resolve.yaml` 只服务同目录 `checkpoint.yaml`
+- 当录制出来的目标不稳定时，推荐追加执行 `browser.capture_resolve`，再把修订后的 `StepResolve` 写入对应录制目录下的 `step_resolve.yaml`
+- DSL 目录规范暂不定义，待 DSL 设计完成后再确定
 
 ## 9. A1 持久化契约（workspace restore）
 
@@ -386,6 +394,7 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 - 保存 `tabs`（`tabId/url/title/active`），不保存运行时 `tabToken`。
 - 保存录制 `steps`，并移除 step `meta.tabToken`。
 - 保存录制 `manifest` 的 tab 列表时，移除 `tabs[].tabToken`。
+- 多 tab step 持久化优先写 `args.tabRef`；运行时 `tabId` 与 `tabToken` 不进入 core step YAML。
 
 恢复语义约束：
 - `workspace.restore` 只负责恢复 workspace/tab 与录制上下文，不自动触发 `play.start`。

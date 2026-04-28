@@ -8,7 +8,7 @@ test.describe('element_click', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'click-token');
         const res = await runner.run([
-            createStep('browser.click', { target: { a11yHint: { role: 'button', name: 'Click Me' } } }),
+            createStep('browser.click', { selector: '#clickMe' }),
         ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#clickResult')).toHaveText('clicked');
@@ -21,7 +21,7 @@ test.describe('element_click', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'click-fail');
         const res = await runner.run([
-            createStep('browser.click', { target: { a11yHint: { role: 'button', name: 'Missing' } }, timeout: 200 }),
+            createStep('browser.click', { selector: '#missing', timeout: 200 }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

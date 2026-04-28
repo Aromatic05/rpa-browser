@@ -177,7 +177,7 @@ test('click(id) resolves via snapshot locator index and uses selector path', asy
     const step: Step<'browser.click'> = {
         id: 's2b',
         name: 'browser.click',
-        args: { id: 'node_btn' },
+        args: { nodeId: 'node_btn' },
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');
@@ -249,7 +249,7 @@ test('click(id) falls back to structural selector when direct locator is missing
     const step: Step<'browser.click'> = {
         id: 's2c',
         name: 'browser.click',
-        args: { id: 'textbox_1' },
+        args: { nodeId: 'textbox_1' },
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');
@@ -318,7 +318,7 @@ test('click(id) prefers structural selector for weak aria-label direct locator',
     const step: Step<'browser.click'> = {
         id: 's2c_aria',
         name: 'browser.click',
-        args: { id: 'spin_plus' },
+        args: { nodeId: 'spin_plus' },
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');
@@ -407,7 +407,7 @@ test('click(id) structural selector keeps unknown ancestors via nth-child segmen
     const step: Step<'browser.click'> = {
         id: 's2c_struct',
         name: 'browser.click',
-        args: { id: 'select_2' },
+        args: { nodeId: 'select_2' },
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');

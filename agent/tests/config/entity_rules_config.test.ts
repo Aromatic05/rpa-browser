@@ -23,13 +23,13 @@ test('entity rule selection: explicit', () => {
             strict: true,
         },
         [
-            { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'order-list' },
+            { name: 'order-list/oa-ant-orders', aliases: ['oa-ant-orders'], pageKind: 'table', urlPattern: 'order-list' },
             { name: 'oa-element-users', pageKind: 'table', urlPattern: 'user-list' },
         ],
         { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
 
-    assert.deepEqual(selected.selected, ['oa-ant-orders']);
+    assert.deepEqual(selected.selected, ['order-list/oa-ant-orders']);
     assert.deepEqual(selected.errors, []);
 });
 
@@ -42,7 +42,7 @@ test('entity rule selection: auto', () => {
             strict: true,
         },
         [
-            { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'order-list' },
+            { name: 'order-list/oa-ant-orders', aliases: ['oa-ant-orders'], pageKind: 'table', urlPattern: 'order-list' },
             { name: 'oa-element-users', pageKind: 'table', urlPattern: 'user-list' },
         ],
         { kind: 'table', url: 'http://127.0.0.1:5174/entity-rules/fixtures/user-list' },
@@ -61,8 +61,8 @@ test('entity rule selection: multi-profile conflict', () => {
             strict: true,
         },
         [
-            { name: 'oa-ant-orders', pageKind: 'table', urlPattern: 'order-list' },
-            { name: 'oa-ant-orders-v2', pageKind: 'table', urlPattern: 'order-list' },
+            { name: 'order-list/oa-ant-orders', aliases: ['oa-ant-orders'], pageKind: 'table', urlPattern: 'order-list' },
+            { name: 'order-list/oa-ant-orders-v2', aliases: ['oa-ant-orders-v2'], pageKind: 'table', urlPattern: 'order-list' },
         ],
         { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
@@ -80,7 +80,7 @@ test('entity rule selection: strict/non-strict missing behavior', () => {
             profiles: ['missing-profile'],
             strict: true,
         },
-        [{ name: 'oa-ant-orders', pageKind: 'table' }],
+        [{ name: 'order-list/oa-ant-orders', aliases: ['oa-ant-orders'], pageKind: 'table' }],
         { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
     assert.equal(strictResult.errors.length > 0, true);
@@ -93,9 +93,29 @@ test('entity rule selection: strict/non-strict missing behavior', () => {
             profiles: ['missing-profile'],
             strict: false,
         },
-        [{ name: 'oa-ant-orders', pageKind: 'table' }],
+        [{ name: 'order-list/oa-ant-orders', aliases: ['oa-ant-orders'], pageKind: 'table' }],
         { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
     );
     assert.equal(nonStrictResult.errors.length, 0);
     assert.equal(nonStrictResult.warnings.length > 0, true);
+});
+
+test('entity rule selection: explicit alias conflict across scenes', () => {
+    const selected = selectEntityRuleProfiles(
+        {
+            ...defaultEntityRuleConfig,
+            enabled: true,
+            selection: 'explicit',
+            profiles: ['shared-rule'],
+            strict: true,
+        },
+        [
+            { name: 'order-list/shared-rule', aliases: ['shared-rule'], pageKind: 'table' },
+            { name: 'order-dialog/shared-rule', aliases: ['shared-rule'], pageKind: 'table' },
+        ],
+        { kind: 'table', url: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list' },
+    );
+
+    assert.deepEqual(selected.selected, []);
+    assert.equal(selected.errors.some((item) => item.includes('alias conflict')), true);
 });

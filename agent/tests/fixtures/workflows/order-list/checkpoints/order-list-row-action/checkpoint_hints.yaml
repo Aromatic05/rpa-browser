@@ -1,0 +1,14 @@
+version: 1
+hints:
+  order-list-row-action:
+    why: "行操作菜单入口在列表重排后可能漂移"
+    scope:
+      businessTag: order.list.main
+    preferredEntityRules:
+      - order_list_row
+    fallbacks:
+      - kind: role
+        role: button
+        name: 更多
+    notes:
+      - "AI/human maintained hints only"

@@ -2,6 +2,7 @@ import type { RunStatus, RunStepsDeps } from '../run_steps_types';
 import type { FailedCtx } from '../failed_ctx';
 import type { StepArgsMap, StepName, StepResult, StepUnion } from '../steps/types';
 import type { EntityKind } from '../steps/executors/snapshot/core/types';
+import type { SerializedStepUnion } from '../serialization/types';
 
 export type MatchRule =
     | { errorCode: string }
@@ -19,7 +20,7 @@ export type Checkpoint = {
         matchRules: MatchRule[];
     };
     prepare?: CheckpointAction[];
-    content?: Array<StepUnion | CheckpointAction>;
+    content?: Array<SerializedStepUnion | CheckpointAction>;
     output?: Record<string, CheckpointValue>;
     policy?: {
         maxAttempts?: number;
@@ -51,9 +52,8 @@ export type CheckpointAction =
       })
     | (CheckpointActionBase & {
           type: 'act';
-          step: {
+          step: Omit<SerializedStepUnion, 'id'> & {
               name: Exclude<StepName, 'browser.checkpoint'>;
-              args: unknown;
           };
       })
     | (CheckpointActionBase & {

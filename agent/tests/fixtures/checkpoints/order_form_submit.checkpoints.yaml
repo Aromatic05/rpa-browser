@@ -20,7 +20,7 @@ checkpoints:
         step:
           name: browser.click
           args:
-            id:
+            nodeId:
               ref: local.submitTarget.nodeId
     policy:
       maxAttempts: 1

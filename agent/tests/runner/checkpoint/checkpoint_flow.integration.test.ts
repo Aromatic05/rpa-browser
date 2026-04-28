@@ -38,7 +38,7 @@ const createDeps = (executors: Record<string, (step: StepUnion) => Promise<any>>
     });
 };
 
-const baseStep = (): StepUnion => ({ id: 's1', name: 'browser.click', args: { target: { selector: '#x' } } }) as StepUnion;
+const baseStep = (): StepUnion => ({ id: 's1', name: 'browser.click', args: { selector: '#x' } }) as StepUnion;
 
 const runOne = async (opts: {
     executors: Record<string, (step: StepUnion) => Promise<any>>;
@@ -101,7 +101,7 @@ test('failed step hits checkpoint, content success, original step retry succeeds
                 id: 'cp-1',
                 name: 'recover-click',
                 trigger: { matchRules: [{ stepName: 'browser.click' }, { errorCode: 'ERR_NOT_FOUND' }] },
-                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { target: { selector: '#x' }, value: 'fix' } } as StepUnion],
+                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { selector: '#x', value: 'fix' } } as StepUnion],
             },
         ],
     });
@@ -122,7 +122,7 @@ test('failed step hits checkpoint but content fails, remains failed', async () =
                 id: 'cp-1',
                 name: 'recover-click',
                 trigger: { matchRules: [{ stepName: 'browser.click' }, { errorCode: 'ERR_NOT_FOUND' }] },
-                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { target: { selector: '#x' }, value: 'fix' } } as StepUnion],
+                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { selector: '#x', value: 'fix' } } as StepUnion],
             },
         ],
     });
@@ -174,7 +174,7 @@ test('checkpoint can request suspend and runner enters suspended', async () => {
                 id: 'cp-suspend',
                 name: 'suspend-checkpoint',
                 trigger: { matchRules: [{ stepName: 'browser.click' }, { errorCode: 'ERR_NOT_FOUND' }] },
-                content: [{ id: 'cp-step-suspend', name: 'browser.fill', args: { target: { selector: '#x' }, value: 'fix' } } as StepUnion],
+                content: [{ id: 'cp-step-suspend', name: 'browser.fill', args: { selector: '#x', value: 'fix' } } as StepUnion],
             },
         ],
         onCheckpoint: async (cp) => {
@@ -212,7 +212,7 @@ test('failed step can return checkpoint result without retrying original step', 
                 id: 'cp-no-retry',
                 name: 'recover-click-no-retry',
                 trigger: { matchRules: [{ stepName: 'browser.click' }, { errorCode: 'ERR_NOT_FOUND' }] },
-                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { target: { selector: '#x' }, value: 'fix' } } as StepUnion],
+                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { selector: '#x', value: 'fix' } } as StepUnion],
                 policy: {
                     retryOriginal: false,
                 },
@@ -258,7 +258,7 @@ test('failed step stops re-entering checkpoint after policy maxAttempts', async 
                 id: 'cp-max-attempts',
                 name: 'recover-click-once',
                 trigger: { matchRules: [{ stepName: 'browser.click' }, { errorCode: 'ERR_NOT_FOUND' }] },
-                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { target: { selector: '#x' }, value: 'fix' } } as StepUnion],
+                content: [{ id: 'cp-step-1', name: 'browser.fill', args: { selector: '#x', value: 'fix' } } as StepUnion],
                 policy: {
                     maxAttempts: 1,
                     retryOriginal: false,

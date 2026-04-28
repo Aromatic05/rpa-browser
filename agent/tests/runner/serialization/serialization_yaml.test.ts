@@ -7,9 +7,10 @@ import {
     type CheckpointFile,
     type CheckpointHintFile,
     type StepFile,
-    type StepHintFile,
+    type StepResolveFile,
     validateCheckpointFileForSerialization,
     validateStepFileForSerialization,
+    validateStepResolveFileForSerialization,
 } from '../../../src/runner/serialization/types';
 
 const examplesDir = path.resolve(process.cwd(), 'tests/fixtures/checkpoints');
@@ -29,21 +30,22 @@ steps:
   - id: fillBuyer
     name: browser.fill
     args:
-      id: "{{resolveBuyer.data.nodeId}}"
+      resolveId: resolveBuyerField
+      nodeId: "{{resolveBuyer.data.nodeId}}"
       value: 张三
 `) as StepFile;
 
     assert.doesNotThrow(() => validateStepFileForSerialization(stepFile));
 });
 
-test('steps.yaml rejects resolve and inline hint payloads', () => {
+test('steps.yaml rejects runtime fields and inline hint payloads', () => {
     const resolveStepFile = parse(`
 version: 1
 steps:
   - id: fillBuyer
     name: browser.fill
     args:
-      id: buyer-input
+      nodeId: buyer-input
       value: 张三
     resolve:
       hint:
@@ -56,10 +58,21 @@ steps:
   - id: fillBuyer
     name: browser.fill
     args:
-      id: buyer-input
+      nodeId: buyer-input
       value: 张三
       rawContext:
         url: /orders
+`) as StepFile;
+    const metaStepFile = parse(`
+version: 1
+steps:
+  - id: fillBuyer
+    name: browser.fill
+    args:
+      nodeId: buyer-input
+      value: 张三
+    meta:
+      source: script
 `) as StepFile;
     const nestedRawContextStepFile = parse(`
 version: 1
@@ -68,7 +81,7 @@ steps:
     name: browser.fill
     args:
       target:
-        id: buyer-input
+        nodeId: buyer-input
         rawContext:
           source: recorder
       value: 张三
@@ -85,38 +98,52 @@ steps:
         - kind: css
           selector: "#buyer"
 `) as StepFile;
+    const legacyIdStepFile = parse(`
+version: 1
+steps:
+  - id: clickBuyer
+    name: browser.click
+    args:
+      id: buyer-input
+`) as StepFile;
+    const topLevelResolveIdStepFile = parse(`
+version: 1
+steps:
+  - id: clickBuyer
+    name: browser.click
+    resolveId: resolveBuyer
+    args:
+      nodeId: buyer-input
+`) as StepFile;
 
     assert.throws(() => validateStepFileForSerialization(resolveStepFile), /steps\[0\]\.resolve/);
     assert.throws(() => validateStepFileForSerialization(rawContextStepFile), /steps\[0\]\.args\.rawContext/);
+    assert.throws(() => validateStepFileForSerialization(metaStepFile), /steps\[0\]\.meta/);
     assert.throws(() => validateStepFileForSerialization(nestedRawContextStepFile), /steps\[0\]\.args\.target\.rawContext/);
     assert.throws(() => validateStepFileForSerialization(locatorCandidatesStepFile), /steps\[0\]\.args\.locatorCandidates/);
+    assert.throws(() => validateStepFileForSerialization(legacyIdStepFile), /use nodeId instead/);
+    assert.throws(() => validateStepFileForSerialization(topLevelResolveIdStepFile), /args\.resolveId instead/);
 });
 
-test('step_hints.yaml schema stores sidecar hints by stepId', () => {
-    const hintFile = parse(`
+test('step_resolve.yaml schema stores sidecar resolve data by resolveId', () => {
+    const resolveFile = parse(`
 version: 1
-hints:
-  fillBuyer:
-    entity:
-      businessTag: order.form.main
-      fieldKey: buyer
-    target:
-      role: textbox
-      name: 采购人
-    locatorCandidates:
-      - kind: css
-        query: "[data-testid='buyer-input']"
-    recordedAt:
-      url: http://127.0.0.1:5173/entity-rules/fixtures/order-form
-      timestamp: 1710000000000
-    rawContext:
-      source: recorder
-`) as StepHintFile;
+resolves:
+  resolveBuyerField:
+    hint:
+      entity:
+        businessTag: order.form.main
+        fieldKey: buyer
+      raw:
+        selector: "#buyer-input"
+    policy:
+      requireVisible: true
+`) as StepResolveFile;
 
-    assert.equal(hintFile.version, 1);
-    assert.equal(typeof hintFile.hints.fillBuyer?.entity?.businessTag, 'string');
-    assert.equal(Array.isArray(hintFile.hints.fillBuyer?.locatorCandidates), true);
-    assert.equal(typeof hintFile.hints.fillBuyer?.rawContext, 'object');
+    assert.doesNotThrow(() => validateStepResolveFileForSerialization(resolveFile));
+    assert.equal(resolveFile.version, 1);
+    assert.equal(typeof resolveFile.resolves.resolveBuyerField?.hint?.entity?.businessTag, 'string');
+    assert.equal(resolveFile.resolves.resolveBuyerField?.policy?.requireVisible, true);
 });
 
 test('checkpoints.yaml schema requires trigger.matchRules and keeps hints external', () => {
@@ -205,11 +232,12 @@ checkpoints:
         step:
           name: browser.click
           args:
+            resolveId: resolveSubmit
             hint:
               target:
                 role: button
                 name: 提交
-            id:
+            nodeId:
               ref: local.submitTarget.nodeId
 `) as CheckpointFile;
     const locatorCandidatesCheckpointFile = parse(`
@@ -224,10 +252,27 @@ checkpoints:
         step:
           name: browser.click
           args:
+            resolveId: resolveSubmit
             locatorCandidates:
               - kind: css
                 selector: "#submit"
-            id:
+            nodeId:
+              ref: local.submitTarget.nodeId
+`) as CheckpointFile;
+    const topLevelResolveIdCheckpointFile = parse(`
+version: 1
+checkpoints:
+  - id: recover-order-form-submit
+    trigger:
+      matchRules:
+        - stepName: browser.click
+    content:
+      - type: act
+        step:
+          name: browser.click
+          resolveId: resolveSubmit
+          args:
+            nodeId:
               ref: local.submitTarget.nodeId
 `) as CheckpointFile;
 
@@ -242,6 +287,10 @@ checkpoints:
     assert.throws(
         () => validateCheckpointFileForSerialization(locatorCandidatesCheckpointFile),
         /checkpoints\[0\]\.content\[0\]\.step\.args\.locatorCandidates/,
+    );
+    assert.throws(
+        () => validateCheckpointFileForSerialization(topLevelResolveIdCheckpointFile),
+        /step\.resolveId; use .*step\.args\.resolveId instead/,
     );
 });
 

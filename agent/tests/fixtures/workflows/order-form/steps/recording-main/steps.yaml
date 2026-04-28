@@ -1,0 +1,7 @@
+version: 1
+steps:
+  - id: clickSubmit
+    name: browser.click
+    args:
+      resolveId: submitButton
+

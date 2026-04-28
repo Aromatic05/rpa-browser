@@ -13,7 +13,7 @@ const writeProfile = (
     pageKind: 'form' | 'table',
     urlPattern: string,
 ) => {
-    const profileDir = path.join(rootDir, 'profiles', profile);
+    const profileDir = path.join(rootDir, 'entity_rules', 'profiles', profile);
     fs.mkdirSync(profileDir, { recursive: true });
     fs.writeFileSync(
         path.join(profileDir, 'match.yaml'),
@@ -27,7 +27,72 @@ const writeProfile = (
     );
 };
 
-test('entity rule loader selects explicit profile under profiles dir', () => {
+const writeWorkflowRule = (
+    rootDir: string,
+    scene: string,
+    ruleName: string,
+    pageKind: 'form' | 'table',
+    urlPattern: string,
+) => {
+    const ruleDir = path.join(rootDir, 'workflows', scene, 'entity_rules', ruleName);
+    fs.mkdirSync(ruleDir, { recursive: true });
+    fs.writeFileSync(
+        path.join(ruleDir, 'match.yaml'),
+        `version: 1\npage:\n  kind: ${pageKind}\n  urlPattern: ${urlPattern}\nentities:\n  - ruleId: main\n    source: region\n    expect: unique\n    match:\n      kind: ${pageKind}\n`,
+        'utf-8',
+    );
+    fs.writeFileSync(
+        path.join(ruleDir, 'annotation.yaml'),
+        'version: 1\npage:\n  kind: table\nannotations:\n  - ruleId: main\n    businessTag: sample.main\n'.replace('table', pageKind),
+        'utf-8',
+    );
+};
+
+test('entity rule loader selects explicit workflow-scoped rule by alias', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-rules-loader-'));
+    writeWorkflowRule(tmp, 'order-list', 'oa-ant-orders', 'table', 'ant-order-list');
+
+    const loaded = loadEntityRules({
+        config: {
+            ...defaultEntityRuleConfig,
+            enabled: true,
+            rootDir: tmp,
+            selection: 'explicit',
+            profiles: ['oa-ant-orders'],
+            strict: true,
+        },
+        pageKind: 'table',
+        pageUrl: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list',
+    });
+
+    assert.equal(loaded.errors.length, 0);
+    assert.equal(loaded.selectedProfile, 'order-list/oa-ant-orders');
+    assert.equal(loaded.bundle?.id, 'order-list/oa-ant-orders');
+});
+
+test('entity rule loader selects explicit workflow-scoped rule by scene/rule_name id', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-rules-loader-'));
+    writeWorkflowRule(tmp, 'order-list', 'oa-ant-orders', 'table', 'ant-order-list');
+
+    const loaded = loadEntityRules({
+        config: {
+            ...defaultEntityRuleConfig,
+            enabled: true,
+            rootDir: tmp,
+            selection: 'explicit',
+            profiles: ['order-list/oa-ant-orders'],
+            strict: true,
+        },
+        pageKind: 'table',
+        pageUrl: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list',
+    });
+
+    assert.equal(loaded.errors.length, 0);
+    assert.equal(loaded.selectedProfile, 'order-list/oa-ant-orders');
+    assert.equal(loaded.bundle?.id, 'order-list/oa-ant-orders');
+});
+
+test('entity rule loader falls back to legacy profiles dir', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-rules-loader-'));
     writeProfile(tmp, 'oa-ant-orders', 'table', 'ant-order-list');
 
@@ -49,9 +114,32 @@ test('entity rule loader selects explicit profile under profiles dir', () => {
     assert.equal(loaded.bundle?.id, 'oa-ant-orders');
 });
 
+test('entity rule loader prefers workflow-scoped rule over legacy profile with same rule name', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-rules-loader-'));
+    writeWorkflowRule(tmp, 'order-list', 'oa-ant-orders', 'table', 'ant-order-list');
+    writeProfile(tmp, 'oa-ant-orders', 'table', 'ant-order-list');
+
+    const loaded = loadEntityRules({
+        config: {
+            ...defaultEntityRuleConfig,
+            enabled: true,
+            rootDir: tmp,
+            selection: 'explicit',
+            profiles: ['oa-ant-orders'],
+            strict: true,
+        },
+        pageKind: 'table',
+        pageUrl: 'http://127.0.0.1:5173/entity-rules/fixtures/order-list',
+    });
+
+    assert.equal(loaded.errors.length, 0);
+    assert.equal(loaded.selectedProfile, 'order-list/oa-ant-orders');
+    assert.equal(loaded.bundle?.id, 'order-list/oa-ant-orders');
+});
+
 test('entity rule loader strict=false returns warning when profile missing', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'entity-rules-loader-'));
-    fs.mkdirSync(path.join(tmp, 'profiles'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'entity_rules', 'profiles'), { recursive: true });
 
     const loaded = loadEntityRules({
         config: {
@@ -88,7 +176,7 @@ test('entity rule loader does not access rootDir when disabled', () => {
     assert.equal(loaded.bundle, undefined);
 });
 
-test('entity rule loader reads only config.rootDir/profiles', async () => {
+test('entity rule loader reads only config.rootDir workflow and legacy artifact trees', async () => {
     const fixture = await createEntityRuleFixtureRoot();
     try {
         const loaded = loadEntityRules({
@@ -105,7 +193,7 @@ test('entity rule loader reads only config.rootDir/profiles', async () => {
         });
 
         assert.equal(loaded.errors.length, 0);
-        assert.equal(loaded.bundle?.id, 'oa-ant-orders');
+        assert.equal(loaded.bundle?.id, 'order-list/oa-ant-orders');
     } finally {
         await fixture.cleanup();
     }

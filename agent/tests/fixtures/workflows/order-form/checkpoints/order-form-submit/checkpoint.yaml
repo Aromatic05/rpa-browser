@@ -1,0 +1,17 @@
+version: 1
+checkpoint:
+  id: order-form-submit
+  kind: recovery
+  trigger:
+    matchRules:
+      - stepName: browser.click
+      - errorCode: ERR_NOT_FOUND
+  content:
+    - type: act
+      step:
+        name: browser.click
+        args:
+          resolveId: submitButtonInCheckpoint
+  policy:
+    retryOriginal: false
+

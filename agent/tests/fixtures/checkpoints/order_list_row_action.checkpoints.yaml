@@ -23,7 +23,7 @@ checkpoints:
         step:
           name: browser.click
           args:
-            id:
+            nodeId:
               ref: local.actionTarget.nodeId
     policy:
       maxAttempts: 1

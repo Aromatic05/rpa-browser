@@ -38,8 +38,8 @@ test('shared queue + result pipe', async () => {
     const loop = runSteps({ runId, workspaceId: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
 
     enqueueSteps(queue, [
-        { id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } } as StepUnion,
-        { id: 's2', name: 'browser.click', args: { target: { selector: '#b' } } } as StepUnion,
+        { id: 's1', name: 'browser.click', args: { selector: '#a' } } as StepUnion,
+        { id: 's2', name: 'browser.click', args: { selector: '#b' } } as StepUnion,
     ]);
     closeStepsQueue(queue);
 
@@ -71,9 +71,9 @@ test('flush signal clears not-yet-executed steps', async () => {
     withFakeExecutors();
     const runId = 'run-3';
     const queue = createStepsQueue([
-        { id: 's1', name: 'browser.click', args: { target: { selector: '#a' } } } as StepUnion,
-        { id: 's2', name: 'browser.click', args: { target: { selector: '#b' } } } as StepUnion,
-        { id: 's3', name: 'browser.click', args: { target: { selector: '#c' } } } as StepUnion,
+        { id: 's1', name: 'browser.click', args: { selector: '#a' } } as StepUnion,
+        { id: 's2', name: 'browser.click', args: { selector: '#b' } } as StepUnion,
+        { id: 's3', name: 'browser.click', args: { selector: '#c' } } as StepUnion,
     ]);
     const pipe = createResultPipe();
     const signals = createSignalChannel();

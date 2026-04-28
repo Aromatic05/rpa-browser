@@ -1,19 +1,18 @@
 import type { PageBinding } from '../../../runtime/runtime_registry';
-import type { ResolveHint, ResolvePolicy, StepResult } from '../types';
+import type { ResolveHint, ResolvePolicy, StepResolve, StepResult } from '../types';
 import type { SnapshotResult } from '../executors/snapshot/core/types';
 import { getNodeAttr, getNodeSemanticHints, normalizeText } from '../executors/snapshot/core/runtime_store';
 
 export type ResolveTargetInput = {
-    id?: string;
+    nodeId?: string;
     selector?: string;
-    hint?: ResolveHint;
-    policy?: ResolvePolicy;
+    resolve?: StepResolve;
 };
 
 export type ResolvedTarget = {
     selector: string;
     resolution: {
-        source: 'selector' | 'id' | 'hint';
+        source: 'nodeId' | 'selector' | 'resolve';
         path: string;
         appliedPolicy?: string[];
     };
@@ -22,8 +21,10 @@ export type ResolvedTarget = {
 type ResolveResult = { ok: true; target: ResolvedTarget } | { ok: false; error: StepResult['error'] };
 
 export const resolveTarget = async (binding: PageBinding, input: ResolveTargetInput): Promise<ResolveResult> => {
-    const { id, selector, hint, policy } = input;
-    if (!id && !selector && !hint) {
+    const { nodeId, selector, resolve } = input;
+    const hint = resolve?.hint;
+    const policy = resolve?.policy;
+    if (!nodeId && !selector && !resolve) {
         return { ok: false, error: { code: 'ERR_INTERNAL', message: 'missing target input' } };
     }
 
@@ -41,40 +42,42 @@ export const resolveTarget = async (binding: PageBinding, input: ResolveTargetIn
         };
     }
 
-    if (id) {
-        const resolved = resolveBySnapshotNodeId(binding, id, hint, policy);
+    if (nodeId) {
+        const resolved = resolveBySnapshotNodeId(binding, nodeId, hint, policy);
         if (resolved.ok) {
             return {
                 ok: true,
                 target: {
                     selector: resolved.selector,
                     resolution: {
-                        source: 'id',
+                        source: 'nodeId',
                         path: resolved.path,
                         appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
                     },
                 },
             };
         }
-        return { ok: false, error: resolved.error };
+        if (!resolve) {
+            return { ok: false, error: resolved.error };
+        }
     }
 
-    const byHint = resolveByHint(binding, hint!, policy || {});
-    if (byHint.ok) {
+    const byResolve = resolveByHint(binding, hint!, policy || {});
+    if (byResolve.ok) {
         return {
             ok: true,
             target: {
-                selector: byHint.selector,
+                selector: byResolve.selector,
                 resolution: {
-                    source: 'hint',
-                    path: byHint.path,
+                    source: 'resolve',
+                    path: byResolve.path,
                     appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
                 },
             },
         };
     }
 
-    return { ok: false, error: byHint.error };
+    return { ok: false, error: byResolve.error };
 };
 
 const resolveByHint = (
@@ -86,29 +89,29 @@ const resolveByHint = (
 
     if (preferDirect) {
         const directFirst = resolveFromHintLocator(binding, hint, policy);
-        if (directFirst) {return { ok: true, selector: directFirst, path: 'hint.locator.direct' };}
+        if (directFirst) {return { ok: true, selector: directFirst, path: 'resolve.hint.locator.direct' };}
     }
 
     const byEntity = resolveByEntityHint(binding, hint, policy);
-    if (byEntity) {return { ok: true, selector: byEntity, path: 'hint.entity' };}
+    if (byEntity) {return { ok: true, selector: byEntity, path: 'resolve.hint.entity' };}
 
     if (hint.target?.nodeId) {
         const byNode = resolveBySnapshotNodeId(binding, hint.target.nodeId, hint, policy);
-        if (byNode.ok) {return { ok: true, selector: byNode.selector, path: 'hint.target.nodeId' };}
+        if (byNode.ok) {return { ok: true, selector: byNode.selector, path: 'resolve.hint.target.nodeId' };}
     }
 
     const byDom = resolveByDomFingerprint(binding, hint, policy);
-    if (byDom) {return { ok: true, selector: byDom, path: 'hint.target.primaryDomId' };}
+    if (byDom) {return { ok: true, selector: byDom, path: 'resolve.hint.target.primaryDomId' };}
 
     const byLocator = resolveFromHintLocator(binding, hint, policy);
-    if (byLocator) {return { ok: true, selector: byLocator, path: 'hint.locator.direct' };}
+    if (byLocator) {return { ok: true, selector: byLocator, path: 'resolve.hint.locator.direct' };}
 
     const byRaw = resolveFromHintRaw(binding, hint, policy);
-    if (byRaw) {return { ok: true, selector: byRaw, path: 'hint.raw' };}
+    if (byRaw) {return { ok: true, selector: byRaw, path: 'resolve.hint.raw' };}
 
     if (policy.allowFuzzy) {
         const byFuzzy = resolveByHintFuzzy(binding, hint, policy);
-        if (byFuzzy) {return { ok: true, selector: byFuzzy, path: 'hint.fuzzy' };}
+        if (byFuzzy) {return { ok: true, selector: byFuzzy, path: 'resolve.hint.fuzzy' };}
     }
 
     return {
@@ -228,24 +231,29 @@ const resolveBySnapshotNodeId = (
             ok: false,
             error: {
                 code: 'ERR_NOT_FOUND',
-                message: 'snapshot cache missing, call browser.snapshot before targeting by id',
-                details: { id: nodeId },
+                message: 'snapshot cache missing, call browser.snapshot before targeting by nodeId',
+                details: { nodeId },
             },
         };
     }
 
     const locator = snapshot.locatorIndex[nodeId];
+    if (locator) {
+        const direct = locator.direct;
+        if (direct?.kind === 'css' && direct.query) {
+            const scoped = applyScopeConstraint(snapshot, locator, direct.query, hint, policy);
+            const path = direct.source === 'backend-path' ? 'input.nodeId.direct.backend-path' : 'input.nodeId.direct.css';
+            return { ok: true, selector: withVisibilityConstraint(scoped, policy?.requireVisible), path };
+        }
 
-    const direct = locator.direct;
-    if (direct?.kind === 'css' && direct.query) {
-        const scoped = applyScopeConstraint(snapshot, locator, direct.query, hint, policy);
-        const path = direct.source === 'backend-path' ? 'id.direct.backend-path' : 'id.direct.css';
-        return { ok: true, selector: withVisibilityConstraint(scoped, policy?.requireVisible), path };
-    }
-
-    if (direct?.fallback) {
-        const scopedFallback = applyScopeConstraint(snapshot, locator, direct.fallback, hint, policy);
-        return { ok: true, selector: withVisibilityConstraint(scopedFallback, policy?.requireVisible), path: 'id.direct.fallback' };
+        if (direct?.fallback) {
+            const scopedFallback = applyScopeConstraint(snapshot, locator, direct.fallback, hint, policy);
+            return {
+                ok: true,
+                selector: withVisibilityConstraint(scopedFallback, policy?.requireVisible),
+                path: 'input.nodeId.direct.fallback',
+            };
+        }
     }
 
     const structuralSelector = buildStructuralSelectorFallback(snapshot, nodeId);
@@ -253,7 +261,7 @@ const resolveBySnapshotNodeId = (
         return {
             ok: true,
             selector: withVisibilityConstraint(withHintScope(binding, hint, structuralSelector, policy), policy?.requireVisible),
-            path: 'id.structural',
+            path: 'input.nodeId.structural',
         };
     }
 
@@ -261,8 +269,8 @@ const resolveBySnapshotNodeId = (
         ok: false,
         error: {
             code: 'ERR_NOT_FOUND',
-            message: 'node id has no executable selector',
-            details: { id: nodeId, locator },
+            message: 'nodeId has no executable selector',
+            details: { nodeId, locator },
         },
     };
 };
@@ -407,7 +415,7 @@ const findNodeIdByFuzzyFingerprint = (snapshot: SnapshotResult, hint: ResolveHin
     const expectedText = normalizeTag(hint.target?.text);
 
     for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
-        const attrs = snapshot.attrIndex[nodeId];
+        const attrs = snapshot.attrIndex[nodeId] || {};
         const role = normalizeTag(node.role);
         const name = normalizeTag(node.name);
         const text = normalizeTag(typeof node.content === 'string' ? node.content : undefined);

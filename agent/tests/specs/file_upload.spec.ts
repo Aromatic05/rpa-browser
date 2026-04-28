@@ -9,7 +9,8 @@ test.describe('file_upload', () => {
         const runner = await setupStepRunner(page, 'file-token');
         const res = await runner.run([
             createStep('browser.take_screenshot', {
-                target: { a11yHint: { role: 'textbox', name: 'Upload' } },
+                selector: '#fileInput',
+                inline: true,
             }),
         ]);
         expect(res.ok).toBe(true);
@@ -23,7 +24,7 @@ test.describe('file_upload', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'file-fail');
         const res = await runner.run([
-            createStep('browser.take_screenshot', { target: { a11yHint: { name: 'Missing' } } }),
+            createStep('browser.take_screenshot', { selector: '#missing' }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

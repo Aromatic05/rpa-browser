@@ -1,4 +1,5 @@
 import type { Step, StepResult, StepUnion } from '../steps/types';
+import type { SerializedStepUnion } from '../serialization/types';
 import type { Checkpoint, CheckpointAction, CheckpointProcedureOutput, CheckpointScope, CheckpointValue } from './types';
 
 type RunCheckpointProcedureOptions = {
@@ -50,7 +51,7 @@ export const runCheckpointProcedure = async (options: RunCheckpointProcedureOpti
 };
 
 const executeContentItem = async (
-    item: StepUnion | CheckpointAction,
+    item: SerializedStepUnion | CheckpointAction,
     scope: CheckpointScope,
     executeStep: RunCheckpointProcedureOptions['executeStep'],
     stepIdPrefix: string,
@@ -220,7 +221,7 @@ export const resolveCheckpointValue = (
     return { ok: true, value };
 };
 
-const isCheckpointAction = (value: StepUnion | CheckpointAction): value is CheckpointAction => {
+const isCheckpointAction = (value: SerializedStepUnion | CheckpointAction): value is CheckpointAction => {
     return Boolean(value && typeof value === 'object' && 'type' in value);
 };
 

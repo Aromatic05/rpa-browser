@@ -182,7 +182,7 @@ test('tab.setActive records browser.switch_tab during active recording', async (
     const recorded = getRecording(recordingState, 'token-a');
     assert.equal(recorded.length, 1);
     assert.equal(recorded[0].name, 'browser.switch_tab');
-    assert.equal((recorded[0].args as any).tab_id, 'tab-b');
+    assert.equal((recorded[0].args as any).tabId, 'tab-b');
 });
 
 test('workspace.save writes workspace snapshot and logs lifecycle', async () => {

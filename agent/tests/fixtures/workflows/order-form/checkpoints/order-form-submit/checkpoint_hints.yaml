@@ -1,0 +1,15 @@
+version: 1
+hints:
+  order-form-submit:
+    why: "提交按钮不稳定时使用 fallback"
+    scope:
+      businessTag: order.form.main
+    preferredEntityRules:
+      - order_form_main
+    fallbacks:
+      - kind: role
+        role: button
+        name: 提交
+    notes:
+      - "AI/human maintained hints only"
+

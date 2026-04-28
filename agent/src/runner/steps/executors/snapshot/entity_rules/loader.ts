@@ -9,6 +9,17 @@ import { validateEntityRules } from './validate';
 const log = getLogger('entity');
 const MATCH_FILE = 'match.yaml';
 const ANNOTATION_FILE = 'annotation.yaml';
+const WORKFLOWS_DIR = 'workflows';
+const ENTITY_RULES_DIR = 'entity_rules';
+const LEGACY_PROFILES_DIR = path.join(ENTITY_RULES_DIR, 'profiles');
+
+type BundleSource = 'workflow' | 'legacy';
+
+type LoadedBundleCandidate = {
+    bundle: NormalizedEntityRuleBundle;
+    aliases: string[];
+    source: BundleSource;
+};
 
 export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntityRulesResult => {
     const config = options.config || defaultEntityRuleConfig;
@@ -28,53 +39,56 @@ export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntit
         return { errors: [], warnings: [] };
     }
 
-    const profilesRootDir = path.join(config.rootDir, 'profiles');
-    if (!fs.existsSync(profilesRootDir)) {
-        const issue = `entity rules root not found: ${profilesRootDir}`;
+    const workflowRootDir = path.join(config.rootDir, WORKFLOWS_DIR);
+    const legacyProfilesRootDir = path.join(config.rootDir, LEGACY_PROFILES_DIR);
+    if (!fs.existsSync(workflowRootDir) && !fs.existsSync(legacyProfilesRootDir)) {
+        const issue = `entity rules roots not found: ${workflowRootDir}, ${legacyProfilesRootDir}`;
         const result = resultWithIssue(config.strict, issue);
         log.info('entity.rules.load.end', {
             selectedProfile: null,
-            reason: 'profiles_root_missing',
+            reason: 'rules_root_missing',
             errors: result.errors,
             warnings: result.warnings,
         });
         return result;
     }
 
-    const entries = safeReadDir(profilesRootDir)
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-        .sort((left, right) => left.localeCompare(right));
+    const entries = collectBundleEntries(config.rootDir);
 
-    const loadedBundles: NormalizedEntityRuleBundle[] = [];
+    const loadedBundles: LoadedBundleCandidate[] = [];
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    for (const profileName of entries) {
-        const loaded = loadProfileBundle(profilesRootDir, profileName);
+    for (const entry of entries) {
+        const loaded = loadProfileBundle(entry.bundleDir, entry.bundleId);
         if (loaded.ok) {
-            loadedBundles.push(loaded.bundle);
+            loadedBundles.push({
+                bundle: loaded.bundle,
+                aliases: entry.aliases,
+                source: entry.source,
+            });
             continue;
         }
 
         for (const issue of loaded.issues) {
-            const message = `entity_rules/${profileName}: ${issue}`;
+            const message = `entity_rules/${entry.bundleId}: ${issue}`;
             if (config.strict) {
                 errors.push(message);
             } else {
                 warnings.push(message);
             }
             log.warn('entity.rules.validate.failed', {
-                profile: profileName,
+                profile: entry.bundleId,
                 issue: message,
             });
         }
     }
 
-    const profileMetas: EntityRuleProfileMeta[] = loadedBundles.map((bundle) => ({
-        name: bundle.id,
-        pageKind: bundle.page.kind,
-        urlPattern: bundle.page.urlPattern,
+    const profileMetas: EntityRuleProfileMeta[] = loadedBundles.map((item) => ({
+        name: item.bundle.id,
+        aliases: item.aliases,
+        pageKind: item.bundle.page.kind,
+        urlPattern: item.bundle.page.urlPattern,
     }));
 
     const selected = selectEntityRuleProfiles(config, profileMetas, {
@@ -103,7 +117,7 @@ export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntit
         });
     }
 
-    const bundle = selectedProfile ? loadedBundles.find((item) => item.id === selectedProfile) : undefined;
+    const bundle = selectedProfile ? loadedBundles.find((item) => item.bundle.id === selectedProfile)?.bundle : undefined;
 
     if (selectedProfile && !bundle) {
         const issue = `entity profile not loaded: ${selectedProfile}`;
@@ -129,12 +143,11 @@ export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntit
 };
 
 const loadProfileBundle = (
-    profilesRootDir: string,
-    profileName: string,
+    bundleDir: string,
+    bundleId: string,
 ): { ok: true; bundle: NormalizedEntityRuleBundle } | { ok: false; issues: string[] } => {
-    const profileDir = path.join(profilesRootDir, profileName);
-    const matchPath = path.join(profileDir, MATCH_FILE);
-    const annotationPath = path.join(profileDir, ANNOTATION_FILE);
+    const matchPath = path.join(bundleDir, MATCH_FILE);
+    const annotationPath = path.join(bundleDir, ANNOTATION_FILE);
 
     if (!fs.existsSync(matchPath) || !fs.existsSync(annotationPath)) {
         return {
@@ -159,7 +172,7 @@ const loadProfileBundle = (
         };
     }
 
-    const validated = validateEntityRules(profileName, matchParsed.data, annotationParsed.data);
+    const validated = validateEntityRules(bundleId, matchParsed.data, annotationParsed.data);
     if (!validated.ok) {
         return {
             ok: false,
@@ -171,6 +184,43 @@ const loadProfileBundle = (
         ok: true,
         bundle: validated.bundle,
     };
+};
+
+const collectBundleEntries = (
+    rootDir: string,
+): Array<{ bundleId: string; bundleDir: string; aliases: string[]; source: BundleSource }> => {
+    const workflowRootDir = path.join(rootDir, WORKFLOWS_DIR);
+    const legacyProfilesRootDir = path.join(rootDir, LEGACY_PROFILES_DIR);
+    const workflowEntries: Array<{ bundleId: string; bundleDir: string; aliases: string[]; source: BundleSource }> = [];
+    const workflowRuleNames = new Set<string>();
+
+    for (const sceneEntry of safeReadDir(workflowRootDir).filter((entry) => entry.isDirectory())) {
+        const scene = sceneEntry.name;
+        const rulesDir = path.join(workflowRootDir, scene, ENTITY_RULES_DIR);
+        for (const ruleEntry of safeReadDir(rulesDir).filter((entry) => entry.isDirectory())) {
+            const ruleName = ruleEntry.name;
+            workflowRuleNames.add(ruleName);
+            workflowEntries.push({
+                bundleId: `${scene}/${ruleName}`,
+                bundleDir: path.join(rulesDir, ruleName),
+                aliases: [ruleName],
+                source: 'workflow',
+            });
+        }
+    }
+
+    const legacyEntries = safeReadDir(legacyProfilesRootDir)
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .filter((profileName) => !workflowRuleNames.has(profileName))
+        .map((profileName) => ({
+            bundleId: profileName,
+            bundleDir: path.join(legacyProfilesRootDir, profileName),
+            aliases: [profileName],
+            source: 'legacy' as const,
+        }));
+
+    return [...workflowEntries, ...legacyEntries].sort((left, right) => left.bundleId.localeCompare(right.bundleId));
 };
 
 const parseYamlFile = (filePath: string): { ok: true; data: unknown } | { ok: false; error: string } => {

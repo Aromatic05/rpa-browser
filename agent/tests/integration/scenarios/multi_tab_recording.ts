@@ -91,7 +91,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-fill-a',
                     name: 'browser.fill',
                     args: {
-                        target: { selector: '#input-a' },
+                        selector: '#input-a',
                         value: 'alpha-a',
                         timeout: 7000,
                     },
@@ -110,7 +110,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-select-a',
                     name: 'browser.select_option',
                     args: {
-                        target: { selector: '#select-a' },
+                        selector: '#select-a',
                         values: ['opt-a-2'],
                         timeout: 7000,
                     },
@@ -128,7 +128,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 payload: {
                     id: 'rec-click-a',
                     name: 'browser.click',
-                    args: { target: { selector: '#btn-a' }, timeout: 7000 },
+                    args: { selector: '#btn-a', timeout: 7000 },
                     meta: { source: 'record', ts: Date.now() },
                 },
             }),
@@ -173,7 +173,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 payload: {
                     id: 'rec-switch-b',
                     name: 'browser.switch_tab',
-                    args: { tab_id: tabB.tabId },
+                    args: { tabId: tabB.tabId },
                     meta: { source: 'record', ts: Date.now() + 4 },
                 },
             }),
@@ -238,7 +238,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-fill-b',
                     name: 'browser.fill',
                     args: {
-                        target: { selector: '#input-b' },
+                        selector: '#input-b',
                         value: 'bravo-b',
                         timeout: 7000,
                     },
@@ -257,7 +257,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                     id: 'rec-select-b',
                     name: 'browser.select_option',
                     args: {
-                        target: { selector: '#select-b' },
+                        selector: '#select-b',
                         values: ['opt-b-2'],
                         timeout: 7000,
                     },
@@ -275,7 +275,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 payload: {
                     id: 'rec-fill-b-final',
                     name: 'browser.fill',
-                    args: { target: { selector: '#input-b' }, value: 'bravo-b-final', timeout: 7000 },
+                    args: { selector: '#input-b', value: 'bravo-b-final', timeout: 7000 },
                     meta: { source: 'record', ts: Date.now() + 8 },
                 },
             }),

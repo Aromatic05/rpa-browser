@@ -10,13 +10,12 @@ export const executeBrowserScroll = async (
     workspaceId: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const hasTarget = Boolean(step.args.id || step.args.selector || step.args.target || step.resolve?.hint);
+    const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
     if (hasTarget) {
         const resolved = await resolveTarget(binding, {
-            id: step.args.id || step.args.target?.id,
-            selector: step.args.selector || step.args.target?.selector,
-            hint: step.resolve?.hint,
-            policy: step.resolve?.policy,
+            nodeId: step.args.nodeId,
+            selector: step.args.selector,
+            resolve: step.resolve,
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });

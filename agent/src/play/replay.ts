@@ -104,7 +104,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const switched = await runOne({
             id: `replay-switch-${Date.now()}`,
             name: 'browser.switch_tab',
-            args: { tab_id: tabId },
+            args: { tabId },
             meta: { source: 'play', ts: Date.now() },
         });
         stepResults.push(...switched.results);
@@ -169,7 +169,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                             ? readStepStringArg(originalStep, 'url')
                             : undefined) ||
                         (originalStep.name === 'browser.switch_tab'
-                            ? readStepStringArg(originalStep, 'tab_url')
+                            ? readStepStringArg(originalStep, 'tabUrl')
                             : undefined) ||
                         req.recordingManifest?.tabs.find((tab) => {
                             if (!desiredTabRef) {return false;}
@@ -210,7 +210,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (targetTabId) {
                 remappedStep = {
                     ...originalStep,
-                    args: { ...asRecord(originalStep.args), tab_id: targetTabId },
+                    args: { ...asRecord(originalStep.args), tabId: targetTabId },
                 };
             }
         } else if (targetTabId) {
@@ -242,7 +242,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             return { ok: false, results: stepResults };
         }
         if (remappedStep.name === 'browser.switch_tab') {
-            const switchedTo = readStepStringArg(remappedStep, 'tab_id') || '';
+            const switchedTo = readStepStringArg(remappedStep, 'tabId') || '';
             if (desiredTabRef && switchedTo) {
                 refToTab.set(desiredTabRef, switchedTo);
             }

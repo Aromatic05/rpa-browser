@@ -14,7 +14,7 @@ test.describe('replay self heal', () => {
         const replay = await import('../../src/play/replay');
         const res = await replay.replayRecording({
             workspaceId: runner.workspaceId,
-            steps: [createStep('browser.click', { a11yNodeId: nodeId || undefined })],
+            steps: [createStep('browser.click', { nodeId: nodeId || undefined })],
             stopOnError: true,
             deps: runner.deps,
         });
@@ -35,7 +35,7 @@ test.describe('replay self heal', () => {
         const replay = await import('../../src/play/replay');
         const res = await replay.replayRecording({
             workspaceId: runner.workspaceId,
-            steps: [createStep('browser.click', { a11yNodeId: nodeId || undefined })],
+            steps: [createStep('browser.click', { nodeId: nodeId || undefined })],
             stopOnError: true,
             deps: runner.deps,
         });

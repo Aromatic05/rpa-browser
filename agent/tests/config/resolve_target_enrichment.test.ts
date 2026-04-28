@@ -171,38 +171,40 @@ test('resolveTarget selector path keeps direct source', async () => {
     assert.equal(resolved.target.resolution.source, 'selector');
 });
 
-test('resolveTarget id path resolves from snapshot locator index', async () => {
+test('resolveTarget nodeId path resolves from snapshot locator index', async () => {
     const { binding } = createBinding(createSnapshotForId());
-    const resolved = await resolveTarget(binding, { id: 'node_1' });
+    const resolved = await resolveTarget(binding, { nodeId: 'node_1' });
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#submit-btn');
-    assert.equal(resolved.target.resolution.source, 'id');
+    assert.equal(resolved.target.resolution.source, 'nodeId');
 });
 
-test('resolveTarget hint path resolves from hint.raw.selector', async () => {
+test('resolveTarget resolve path resolves from resolve.hint.raw.selector', async () => {
     const { binding } = createBinding();
     const resolved = await resolveTarget(binding, {
-        hint: { raw: { selector: '#from-hint' } },
+        resolve: { hint: { raw: { selector: '#from-hint' } } },
     });
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#from-hint');
-    assert.equal(resolved.target.resolution.source, 'hint');
+    assert.equal(resolved.target.resolution.source, 'resolve');
 });
 
 test('resolveTarget applies ResolvePolicy preferScoped + requireVisible', async () => {
     const { binding } = createBinding(createSnapshotForId());
     const resolved = await resolveTarget(binding, {
-        hint: {
-            locator: {
-                direct: { kind: 'css', query: 'button.submit' },
-                scope: { id: 'form_1', kind: 'form' },
+        resolve: {
+            hint: {
+                locator: {
+                    direct: { kind: 'css', query: 'button.submit' },
+                    scope: { id: 'form_1', kind: 'form' },
+                },
             },
-        },
-        policy: {
-            preferScoped: true,
-            requireVisible: true,
+            policy: {
+                preferScoped: true,
+                requireVisible: true,
+            },
         },
     });
     assert.equal(resolved.ok, true);
@@ -213,8 +215,10 @@ test('resolveTarget applies ResolvePolicy preferScoped + requireVisible', async 
 test('resolveTarget no longer supports A11yHint-only fallback path', async () => {
     const { binding } = createBinding();
     const resolved = await resolveTarget(binding, {
-        hint: {
-            target: { role: 'button', name: 'Save', text: 'Save' },
+        resolve: {
+            hint: {
+                target: { role: 'button', name: 'Save', text: 'Save' },
+            },
         },
     });
     assert.equal(resolved.ok, false);
@@ -225,9 +229,11 @@ test('resolveTarget no longer supports A11yHint-only fallback path', async () =>
 test('resolveTarget resolves from resolve.hint.entity.businessTag', async () => {
     const { binding } = createBinding(createSnapshotForId());
     const resolved = await resolveTarget(binding, {
-        hint: {
-            entity: {
-                businessTag: 'order.form.main',
+        resolve: {
+            hint: {
+                entity: {
+                    businessTag: 'order.form.main',
+                },
             },
         },
     });
@@ -239,9 +245,11 @@ test('resolveTarget resolves from resolve.hint.entity.businessTag', async () => 
 test('resolveTarget resolves from resolve.hint.entity.fieldKey', async () => {
     const { binding } = createBinding(createSnapshotForId());
     const resolved = await resolveTarget(binding, {
-        hint: {
-            entity: {
-                fieldKey: 'submit',
+        resolve: {
+            hint: {
+                entity: {
+                    fieldKey: 'submit',
+                },
             },
         },
     });
@@ -253,9 +261,11 @@ test('resolveTarget resolves from resolve.hint.entity.fieldKey', async () => {
 test('resolveTarget resolves from resolve.hint.entity.actionIntent', async () => {
     const { binding } = createBinding(createSnapshotForId());
     const resolved = await resolveTarget(binding, {
-        hint: {
-            entity: {
-                actionIntent: 'delete',
+        resolve: {
+            hint: {
+                entity: {
+                    actionIntent: 'delete',
+                },
             },
         },
     });

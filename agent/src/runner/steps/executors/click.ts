@@ -87,7 +87,7 @@ export const executeBrowserClick = async (
 
     return await runWithHardTimeout(step.id, hardTimeoutMs, async () => {
         if (coord) {
-            if (step.args.target || step.args.id || step.args.selector || step.resolve?.hint) {
+            if (step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve) {
                 return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'coord and target are mutually exclusive' } };
             }
             const count = step.args.options?.double ? 2 : 1;
@@ -118,10 +118,9 @@ export const executeBrowserClick = async (
         }
 
         const resolved = await resolveTarget(binding, {
-            id: step.args.id || step.args.target?.id,
-            selector: step.args.selector || step.args.target?.selector,
-            hint: step.resolve?.hint,
-            policy: step.resolve?.policy,
+            nodeId: step.args.nodeId,
+            selector: step.args.selector,
+            resolve: step.resolve,
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 

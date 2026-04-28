@@ -19,7 +19,7 @@ test.describe('waits_asserts', () => {
         await page.setContent('<div id="hidden" style="display:none">hidden</div>');
         const runner = await setupStepRunner(page, 'assert-fail');
         const res = await runner.run([
-            createStep('browser.click', { target: { a11yHint: { role: 'button', name: 'Missing' } } }),
+            createStep('browser.click', { selector: '#missing' }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

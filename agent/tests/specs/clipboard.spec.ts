@@ -10,7 +10,7 @@ test.describe('clipboard', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'clip-token');
         const res = await runner.run([
-            createStep('browser.fill', { target: { a11yHint: { role: 'textbox', name: 'Name' } }, value: 'hello-clip' }),
+            createStep('browser.fill', { selector: '#nameInput', value: 'hello-clip' }),
         ]);
         expect(res.ok).toBe(true);
         await expect(page.locator('#nameInput')).toHaveValue('hello-clip');
@@ -25,7 +25,7 @@ test.describe('clipboard', () => {
         await page.goto(`${fixtureURL}/choices.html`);
         const runner = await setupStepRunner(page, 'clip-fail');
         const res = await runner.run([
-            createStep('browser.fill', { target: { a11yHint: { role: 'textbox', name: 'Missing' } }, value: 'secret' }),
+            createStep('browser.fill', { selector: '#missing', value: 'secret' }),
         ]);
         expect(res.ok).toBe(false);
         await context.close();

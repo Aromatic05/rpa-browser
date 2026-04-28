@@ -1,0 +1,7 @@
+version: 1
+steps:
+  - id: clickRowAction
+    name: browser.click
+    args:
+      resolveId: rowActionButton
+

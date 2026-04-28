@@ -221,6 +221,7 @@ ERR_WORKSPACE_RESTORE_FAILED
 - `browser.close_tab`
 - `browser.get_page_info`
 - `browser.snapshot`
+- `browser.capture_resolve`
 - `browser.take_screenshot`
 - `browser.click`
 - `browser.fill`
@@ -236,6 +237,14 @@ ERR_WORKSPACE_RESTORE_FAILED
 - `browser.checkpoint`
 
 完整参数定义见：`agent/src/runner/steps/types.ts`。
+
+`browser.capture_resolve` 说明：
+
+- 它是 inspection/query step，不是 action step。
+- 它用于从当前页面采集 `StepResolve` 草稿，供 AI / 人类后续修订。
+- 它不会直接写 `step_resolve.yaml`，也不会改变页面状态。
+- 推荐 artifact 流程：`agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/` 保存 scene 内的 entity-rules，`steps/<recording-name>/steps.yaml` 记录核心 step，`step_resolve.yaml` 记录该录制的 resolve sidecar；checkpoint 则单独使用 `checkpoints/<checkpoint-name>/checkpoint.yaml`、`checkpoint_resolve.yaml`、`checkpoint_hints.yaml`。
+- DSL 目录规范暂不定义，待 DSL 设计完成后再确定。
 
 ### 3.2 Query / Compute 最小合同
 

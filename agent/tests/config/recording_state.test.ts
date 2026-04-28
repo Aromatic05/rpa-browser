@@ -22,7 +22,7 @@ test('recordStep appends cross-tab step into sole active recording session', () 
     const step: StepUnion = {
         id: 'step-1',
         name: 'browser.switch_tab',
-        args: { tab_id: 'tab-b' },
+        args: { tabId: 'tab-b' },
         meta: { source: 'record', ts: 100, tabToken: 'token-b', workspaceId: 'ws-1', tabId: 'tab-b' },
     };
 
@@ -91,7 +91,7 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
     const switchStep: StepUnion = {
         id: 'switch-1',
         name: 'browser.switch_tab',
-        args: { tab_id: 'tab-b', tab_url: 'https://example.com/b', tab_ref: 'tab-b' },
+        args: { tabId: 'tab-b', tabUrl: 'https://example.com/b', tabRef: 'tab-b' },
         meta: {
             source: 'record',
             ts: 200,
@@ -145,7 +145,7 @@ test('getRecordingBundle falls back by workspace when tab token changes', () => 
         {
             id: 'step-workspace',
             name: 'browser.click',
-            args: { target: { selector: '#a' } },
+            args: { selector: '#a' },
             meta: { source: 'record', ts: 2, tabToken: 'token-a', workspaceId: 'ws-2' },
         } as StepUnion,
     ]);
@@ -168,7 +168,7 @@ test('saveWorkspaceSnapshot strips tabToken from persisted steps', () => {
     const sourceStep: StepUnion = {
         id: 'step-save-1',
         name: 'browser.click',
-        args: { target: { selector: '#save' } },
+        args: { selector: '#save' },
         meta: { source: 'record', ts: 10, tabToken: 'token-sensitive', workspaceId: 'ws-save' },
     };
     const snapshot = saveWorkspaceSnapshot(state, {
@@ -208,7 +208,7 @@ test('recording enhancements are stored as sidecar and never mixed into step', (
     const step: StepUnion = {
         id: 'step-sidecar-1',
         name: 'browser.click',
-        args: { target: { selector: '#buy' } },
+        args: { selector: '#buy' },
         meta: { source: 'record', ts: 100, tabToken: 'token-a', workspaceId: 'ws-1' },
     };
     state.recordings.set('token-a', [step]);
