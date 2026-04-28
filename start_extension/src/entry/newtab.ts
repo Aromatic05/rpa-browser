@@ -56,7 +56,14 @@ type WorkflowRunData = {
     output?: unknown;
 };
 
-type BoundTokenData = { ok: boolean; tabToken?: string; workspaceId?: string; tabId?: string; error?: string };
+type BoundTokenData = {
+    ok: boolean;
+    tabToken?: string;
+    workspaceId?: string;
+    tabId?: string;
+    pending?: boolean;
+    error?: string;
+};
 type BoundScope = { tabToken: string; workspaceId: string; tabId?: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -109,23 +116,42 @@ const applyTabToken = (tabToken: string) => {
 };
 
 const ensureBoundToken = async (): Promise<BoundScope> => {
-    const reply = await new Promise<BoundTokenData>((resolve) => {
-        chrome.runtime.sendMessage(
-            { type: MSG_ENSURE_BOUND_TOKEN, source: 'start_extension', url: location.href, title: document.title, at: Date.now() },
-            (response: unknown) => {
-                if (chrome.runtime.lastError) {
-                    resolve({ ok: false, error: chrome.runtime.lastError.message });
-                    return;
-                }
-                resolve((response ?? { ok: false }) as BoundTokenData);
-            },
-        );
-    });
-    if (!reply.ok || !reply.tabToken || !reply.workspaceId) {
-        throw new Error(reply.error ?? 'bound token unavailable');
+    let currentToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? '';
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        const reply = await new Promise<BoundTokenData>((resolve) => {
+            chrome.runtime.sendMessage(
+                {
+                    type: MSG_ENSURE_BOUND_TOKEN,
+                    source: 'start_extension',
+                    tabToken: currentToken,
+                    url: location.href,
+                    title: document.title,
+                    at: Date.now(),
+                },
+                (response: unknown) => {
+                    if (chrome.runtime.lastError) {
+                        resolve({ ok: false, error: chrome.runtime.lastError.message });
+                        return;
+                    }
+                    resolve((response ?? { ok: false }) as BoundTokenData);
+                },
+            );
+        });
+        if (!reply.ok || !reply.tabToken || !reply.workspaceId) {
+            throw new Error(reply.error ?? 'bound token unavailable');
+        }
+        currentToken = reply.tabToken;
+        applyTabToken(currentToken);
+        if (!reply.pending) {
+            return {
+                tabToken: reply.tabToken,
+                workspaceId: reply.workspaceId,
+                ...(reply.tabId ? { tabId: reply.tabId } : {}),
+            };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 80));
     }
-    applyTabToken(reply.tabToken);
-    return { tabToken: reply.tabToken, workspaceId: reply.workspaceId, ...(reply.tabId ? { tabId: reply.tabId } : {}) };
+    throw new Error('bound token unavailable');
 };
 
 const sendAction = async <TData = unknown>(type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>

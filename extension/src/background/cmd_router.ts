@@ -161,7 +161,8 @@ export const createCmdRouter = (options: CmdRouterOptions): {
                     sendResponse({ ok: false, error: 'sender tab unavailable' });
                     return;
                 }
-                const bound = await life.ensureBoundTabToken(tabId, windowId);
+                const preferredToken = typeof typedMessage.tabToken === 'string' ? typedMessage.tabToken : undefined;
+                const bound = await life.ensureBoundTabToken(tabId, windowId, preferredToken);
                 if (!bound) {
                     sendResponse({ ok: false, error: 'bound token unavailable' });
                     return;
@@ -170,8 +171,9 @@ export const createCmdRouter = (options: CmdRouterOptions): {
                     ok: true,
                     tabToken: bound.tabToken,
                     workspaceId: bound.workspaceId,
-                    tabId: bound.agentTabId,
+                    tabId: bound.agentTabId || undefined,
                     windowId: bound.windowId,
+                    pending: bound.pending === true,
                 });
             })().catch((error: unknown) => {
                 const text = error instanceof Error ? error.message : String(error);

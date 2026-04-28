@@ -48,10 +48,18 @@ export const ensureTabToken = (): string => {
 
 export const ensureTabTokenAsync = async (): Promise<string> => {
     let tabToken = ensureTabToken();
-    if (!tabToken) {
-        const runtimeReply = await new Promise<{ ok: boolean; tabToken?: string }>((resolve) => {
+    let bound = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const runtimeReply = await new Promise<{ ok: boolean; tabToken?: string; pending?: boolean }>((resolve) => {
             chrome.runtime.sendMessage(
-                { type: MSG.ENSURE_BOUND_TOKEN, source: 'extension.content', url: location.href, title: document.title, at: Date.now() },
+                {
+                    type: MSG.ENSURE_BOUND_TOKEN,
+                    source: 'extension.content',
+                    tabToken,
+                    url: location.href,
+                    title: document.title,
+                    at: Date.now(),
+                },
                 (response: unknown) => {
                     if (chrome.runtime.lastError) {
                         resolve({ ok: false });
@@ -61,14 +69,20 @@ export const ensureTabTokenAsync = async (): Promise<string> => {
                 },
             );
         });
-        if (runtimeReply.ok && runtimeReply.tabToken) {tabToken = runtimeReply.tabToken;}
-        if (!tabToken) {
-            throw new Error('bound tab token unavailable');
+        if (!runtimeReply.ok || !runtimeReply.tabToken) {break;}
+        tabToken = runtimeReply.tabToken;
+        sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
+        writeTokenToWindowName(tabToken);
+        window.__TAB_TOKEN__ = tabToken;
+        if (!runtimeReply.pending) {
+            bound = true;
+            break;
         }
+        await new Promise((resolve) => setTimeout(resolve, 60));
     }
-    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-    writeTokenToWindowName(tabToken);
-    window.__TAB_TOKEN__ = tabToken;
+    if (!tabToken || !bound) {
+        throw new Error('bound tab token unavailable');
+    }
     return tabToken;
 };
 
