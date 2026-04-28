@@ -20,7 +20,7 @@
         "test:demo:headed-runner": "node --import tsx src/runner/demo/headed_run_steps_demo.ts",
         "test:runner:bundle": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --outfile=.runner-dist/plugin.mjs --sourcemap",
         "test:runner:bundle:watch": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --outfile=.runner-dist/plugin.mjs --sourcemap --watch",
-        "test:unit": "node --import tsx --test \"tests/config/**/*.test.ts\" \"tests/mcp/**/*.test.ts\" \"tests/runner/checkpoint/**/*.test.ts\" \"tests/runner/hotreload/**/*.test.ts\" \"tests/runner/steps/**/*.test.ts\" \"tests/runner/trace/runtime/**/*.test.ts\" tests/protocol_stream.test.ts",
+        "test:unit": "node --import tsx --test \"tests/config/**/*.test.ts\" \"tests/dsl/**/*.test.ts\" \"tests/mcp/**/*.test.ts\" \"tests/runner/checkpoint/**/*.test.ts\" \"tests/runner/hotreload/**/*.test.ts\" \"tests/runner/steps/**/*.test.ts\" \"tests/runner/trace/runtime/**/*.test.ts\" tests/protocol_stream.test.ts",
         "test:integration:run": "pnpm test:runner:bundle && pnpm -C .. build:extension && node --import tsx --test --test-concurrency=1 tests/integration/*.test.ts",
         "test:integration": "RPA_INTEGRATION_HEADED=false pnpm test:integration:run",
         "test:integration:headed": "RPA_INTEGRATION_HEADED=true pnpm test:integration:run",
