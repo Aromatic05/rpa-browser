@@ -8,7 +8,7 @@ const createStep = <TName extends StepUnion['name']>(name: TName, args: Step<TNa
     name,
     args,
     meta: {
-        source: 'script',
+        source: 'dsl',
         ts: Date.now(),
     },
 });

@@ -384,7 +384,7 @@ export type StepArgsMap = {
 
 export type StepMeta = {
     requestId?: string;
-    source: 'mcp' | 'play' | 'script' | 'record' | 'control-rpc';
+    source: 'mcp' | 'play' | 'script' | 'record' | 'control-rpc' | 'dsl';
     ts?: number;
     workspaceId?: string;
     tabId?: string;

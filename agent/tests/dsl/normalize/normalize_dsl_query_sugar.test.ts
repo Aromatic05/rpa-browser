@@ -17,25 +17,25 @@ test('normalizeDsl expands table query sugar', () => {
         kind: 'query',
         op: 'entity',
         businessTag: 'order.list',
-        payload: { query: 'table.current_rows' },
+        payload: 'table.current_rows',
     });
     assert.deepEqual((normalized.body[1] as any).expr, {
         kind: 'query',
         op: 'entity',
         businessTag: 'order.list',
-        payload: { query: 'table.row_count' },
+        payload: 'table.row_count',
     });
     assert.deepEqual((normalized.body[2] as any).expr, {
         kind: 'query',
         op: 'entity',
         businessTag: 'order.list',
-        payload: { query: 'table.has_next_page' },
+        payload: 'table.hasNextPage',
     });
     assert.deepEqual((normalized.body[3] as any).expr, {
         kind: 'query',
         op: 'entity',
         businessTag: 'order.list',
-        payload: { query: 'table.next_page_target' },
+        payload: 'table.nextPageTarget',
     });
 });
 
@@ -51,13 +51,13 @@ test('normalizeDsl expands form query sugar and removes query_sugar nodes', () =
         kind: 'query',
         op: 'entity',
         businessTag: 'order.form',
-        payload: { query: 'form.fields' },
+        payload: 'form.fields',
     });
     assert.deepEqual((normalized.body[1] as any).expr, {
         kind: 'query',
         op: 'entity',
         businessTag: 'order.form',
-        payload: { query: 'form.actions' },
+        payload: 'form.actions',
     });
     assert.equal(
         normalized.body.some((stmt) => stmt.kind === 'let' && (stmt as any).expr.kind === 'query_sugar'),

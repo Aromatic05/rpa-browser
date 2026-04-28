@@ -52,7 +52,28 @@ let rows = query table "order.list" current_rows
     assert.deepEqual(calls[0].args, {
         op: 'entity',
         businessTag: 'order.list',
-        query: { query: 'table.current_rows' },
+        query: 'table.current_rows',
     });
     assert.deepEqual(result.scope.vars.rows, [{ id: 'row-1', enabled: true, name: 'alice' }]);
+});
+
+test('runDslSource maps has_next_page sugar to camelCase browser query name', async () => {
+    const calls: StubCall[] = [];
+    await runDslSource(
+        `
+let hasNext = query table "order.list" has_next_page
+        `,
+        {
+            workspaceId: 'ws-dsl-query-sugar',
+            deps: createDeps(calls),
+            input: {},
+        },
+    );
+
+    assert.deepEqual(calls.map((item) => item.name), ['browser.query']);
+    assert.deepEqual(calls[0].args, {
+        op: 'entity',
+        businessTag: 'order.list',
+        query: 'table.hasNextPage',
+    });
 });

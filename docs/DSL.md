@@ -92,6 +92,9 @@ let actions = query form "order.form" actions
 
 - This is normalize-phase syntax sugar only.
 - It is expanded to `query entity ...`.
+- DSL snake_case ops are normalized to browser query names:
+  `has_next_page` -> `table.hasNextPage`,
+  `next_page_target` -> `table.nextPageTarget`.
 - No automatic pagination.
 - No implicit table row loops.
 - Pagination still needs explicit DSL statements:

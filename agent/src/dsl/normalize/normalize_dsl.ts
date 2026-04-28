@@ -1,4 +1,5 @@
 import type { DslExpr, DslProgram, DslStmt, FormActStmt, RefExpr } from '../ast/types';
+import type { StepArgsMap } from '../../runner/steps/types';
 
 type NormalizeContext = {
     nextTempId: number;
@@ -113,21 +114,36 @@ const expandFormActStmt = (stmt: FormActStmt, ctx: NormalizeContext): DslStmt[] 
 };
 
 const expandQuerySugarExpr = (expr: Extract<DslExpr, { kind: 'query_sugar' }>): Extract<DslExpr, { kind: 'query' }> => {
+    const tableQueryMap: Record<
+        Extract<typeof expr, { target: 'table' }>['op'],
+        Extract<StepArgsMap['browser.query'], { op: 'entity' }>['query']
+    > = {
+        current_rows: 'table.current_rows',
+        row_count: 'table.row_count',
+        has_next_page: 'table.hasNextPage',
+        next_page_target: 'table.nextPageTarget',
+    };
+    const formQueryMap: Record<
+        Extract<typeof expr, { target: 'form' }>['op'],
+        Extract<StepArgsMap['browser.query'], { op: 'entity' }>['query']
+    > = {
+        fields: 'form.fields',
+        actions: 'form.actions',
+    };
+
     if (expr.target === 'table') {
-        const query = `table.${expr.op}`;
         return {
             kind: 'query',
             op: 'entity',
             businessTag: expr.businessTag,
-            payload: { query },
+            payload: tableQueryMap[expr.op],
         };
     }
 
-    const query = `form.${expr.op}`;
     return {
         kind: 'query',
         op: 'entity',
         businessTag: expr.businessTag,
-        payload: { query },
+        payload: formQueryMap[expr.op],
     };
 };
