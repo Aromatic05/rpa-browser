@@ -11,6 +11,7 @@ export type EntityRuleConfig = {
 
 export type EntityRuleProfileMeta = {
     name: string;
+    aliases?: string[];
     pageKind?: EntityKind;
     urlPattern?: string;
 };
@@ -21,7 +22,7 @@ export type EntityRuleProfileSelectionResult = {
     warnings: string[];
 };
 
-export const defaultEntityRuleRootDir = () => path.resolve(process.cwd(), '.artifacts/entity_rules');
+export const defaultEntityRuleRootDir = () => path.resolve(process.cwd(), '.artifacts');
 
 export const defaultEntityRuleConfig: EntityRuleConfig = {
     enabled: false,
@@ -48,18 +49,43 @@ export const selectEntityRuleProfiles = (
     }
 
     const candidateNames = new Set(candidates.map((item) => item.name));
+    const candidateNameMap = new Map<string, string[]>();
+    for (const candidate of candidates) {
+        const keys = [candidate.name, ...(candidate.aliases || [])];
+        for (const key of keys) {
+            const normalized = key.trim();
+            if (!normalized) {continue;}
+            const matched = candidateNameMap.get(normalized) || [];
+            matched.push(candidate.name);
+            candidateNameMap.set(normalized, [...new Set(matched)].sort((left, right) => left.localeCompare(right)));
+        }
+    }
     let selected: string[] = [];
 
     if (config.selection === 'explicit') {
-        selected = [...new Set(config.profiles.map((name) => name.trim()).filter(Boolean))];
-        if (selected.length === 0) {
+        const requested = [...new Set(config.profiles.map((name) => name.trim()).filter(Boolean))];
+        if (requested.length === 0) {
             pushStrictIssue(config, errors, warnings, 'entity rules selection is explicit but profiles is empty');
         }
 
-        for (const name of selected) {
-            if (!candidateNames.has(name)) {
-                pushStrictIssue(config, errors, warnings, `entity profile not found: ${name}`);
+        for (const name of requested) {
+            if (candidateNames.has(name)) {
+                selected.push(name);
+                continue;
             }
+
+            const matched = candidateNameMap.get(name) || [];
+            if (matched.length === 1) {
+                selected.push(matched[0]);
+                continue;
+            }
+
+            if (matched.length > 1) {
+                pushStrictIssue(config, errors, warnings, `entity profile alias conflict: ${name} -> ${matched.join(', ')}`);
+                continue;
+            }
+
+            pushStrictIssue(config, errors, warnings, `entity profile not found: ${name}`);
         }
     }
 

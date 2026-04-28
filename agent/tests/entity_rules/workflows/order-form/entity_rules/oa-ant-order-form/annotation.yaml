@@ -1,0 +1,20 @@
+version: 1
+page:
+  kind: form
+annotations:
+  - ruleId: order_form_main
+    businessTag: order.form.main
+    businessName: 订单主表单
+    columns:
+      - fieldKey: orderNo
+        name: 订单编号
+      - fieldKey: buyer
+        name: 采购人
+      - fieldKey: amount
+        name: 订单金额
+      - fieldKey: dept
+        name: 所属部门
+
+  - ruleId: order_form_submit
+    fieldKey: submit
+    actionIntent: submit

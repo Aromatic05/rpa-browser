@@ -268,8 +268,10 @@ Extension 测试：
 
 规则目录（agent 内部产物目录）：
 
-- `agent/.artifacts/entity_rules/profiles/<profile>/match.yaml`
-- `agent/.artifacts/entity_rules/profiles/<profile>/annotation.yaml`
+- `agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/match.yaml`
+- `agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/annotation.yaml`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/<profile>/match.yaml`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/<profile>/annotation.yaml`
 
 运行时加载链路（snapshot）：
 

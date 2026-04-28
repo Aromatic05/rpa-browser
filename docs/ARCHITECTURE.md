@@ -52,7 +52,8 @@ Snapshot 的实体相关主链路为：
 
 规则与样例沉淀目录：
 
-- 规则包：`agent/.artifacts/entity_rules/profiles/*`
+- 规则包：`agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/*`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/*`
 - 文档：`docs/Entity/*`
 
 ## WS（extension -> agent）

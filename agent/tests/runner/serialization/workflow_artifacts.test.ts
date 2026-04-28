@@ -23,21 +23,27 @@ const workflowCases = [
     {
         scene: 'order-form',
         checkpointName: 'order-form-submit',
+        entityRuleName: 'oa-ant-order-form',
     },
     {
         scene: 'order-list',
         checkpointName: 'order-list-row-action',
+        entityRuleName: 'oa-ant-orders',
     },
 ] as const;
 
 test('workflow artifact fixture directories exist', async () => {
-    for (const { scene, checkpointName } of workflowCases) {
+    for (const { scene, checkpointName, entityRuleName } of workflowCases) {
         const sceneDir = path.join(workflowsDir, scene);
+        const entityRulesDir = path.join(sceneDir, 'entity_rules');
+        const entityRuleDir = path.join(entityRulesDir, entityRuleName);
         const stepsDir = path.join(sceneDir, 'steps', 'recording-main');
         const checkpointDir = path.join(sceneDir, 'checkpoints', checkpointName);
 
         for (const target of [
             sceneDir,
+            entityRulesDir,
+            entityRuleDir,
             path.join(sceneDir, 'steps'),
             stepsDir,
             path.join(sceneDir, 'checkpoints'),

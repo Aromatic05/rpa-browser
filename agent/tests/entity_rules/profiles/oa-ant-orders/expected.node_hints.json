@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "actionIntent": "nextPage",
+    "entityKind": "table",
+    "name": "right"
+  }
+]

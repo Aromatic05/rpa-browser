@@ -15,8 +15,8 @@ pnpm -C mock dev
 
 ## 2. 写规则
 
-在 builtin profiles 新建目录，例如：
-`agent/tests/entity_rules/profiles/oa-ant-orders`
+在 scene 下新建规则目录，例如：
+`agent/tests/entity_rules/workflows/order-list/entity_rules/oa-ant-orders`
 
 先写 `match.yaml`（结构匹配），再写 `annotation.yaml`（业务语义）。
 

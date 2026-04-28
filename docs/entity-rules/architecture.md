@@ -36,7 +36,7 @@ generateSemanticSnapshot
 
 当前模块职责如下：
 
-- [agent/src/runner/steps/executors/snapshot/entity_rules/loader.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/entity_rules/loader.ts)：从 `config.rootDir/profiles` 读取 profile，并选择当前页面使用的 bundle。
+- [agent/src/runner/steps/executors/snapshot/entity_rules/loader.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/entity_rules/loader.ts)：优先从 `config.rootDir/workflows/<scene>/entity_rules/<rule_name>` 读取规则，并在缺失时回退到 legacy `config.rootDir/entity_rules/profiles/<profile>`。
 - [agent/src/runner/steps/executors/snapshot/entity_rules/schema/index.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/entity_rules/schema/index.ts)：导出 match 与 annotation 的 schema。
 - [agent/src/runner/steps/executors/snapshot/entity_rules/validate.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/entity_rules/validate.ts)：校验 YAML 结构、rule 引用、字段冲突、pagination 绑定。
 - [agent/src/runner/steps/executors/snapshot/entity_rules/matcher.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/entity_rules/matcher.ts)：执行 match rule，输出 `ResolvedRuleBinding`。
@@ -56,13 +56,13 @@ loader 位于 [agent/src/runner/steps/executors/snapshot/entity_rules/loader.ts]
 
 当前边界很明确：
 
-- loader 只读取 `config.rootDir/profiles`
+- loader 优先读取 `config.rootDir/workflows/*/entity_rules/*`
+- loader 仅在缺失对应 rule 时回退到 legacy `config.rootDir/entity_rules/profiles/*`
 - loader 不读取 `tests` 目录
-- 测试 helper 负责复制 profiles 到临时 `rootDir`
-- runtime loader 不做测试 profile sync
-- profile selection 当前不继续扩展
+- 测试 helper 负责复制 workflow-scoped rules 与 legacy profiles 到临时 `rootDir`
+- runtime loader 不做测试 rule sync
 
-这意味着测试中的 fixture profile 只是测试输入，不是 runtime loader 的隐式搜索路径。
+这意味着测试中的 fixture rule 只是测试输入，不是 runtime loader 的隐式搜索路径。
 
 ## 5.4 matcher 与 apply
 

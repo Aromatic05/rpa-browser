@@ -11,18 +11,22 @@
 ## 规则文件在哪里
 
 源码（可提交）：
-- `agent/tests/entity_rules/profiles/*`
+- `agent/tests/entity_rules/workflows/<scene>/entity_rules/<rule_name>/*`
+- golden/legacy fixtures：`agent/tests/entity_rules/profiles/*`
 
 运行时目录（不可提交，自动生成）：
-- `agent/.artifacts/entity_rules/profiles/*`
+- `agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/*`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/*`
 
-说明：loader 在运行时会把 builtin profiles 同步到 `.artifacts`。
+说明：loader 运行时优先读取 workflow scene 下的 `entity_rules/<rule_name>`，旧 `profiles` 目录只作为 legacy fallback。
 
-## 一个 profile 的结构
+## 一套 rule 的结构
 
-每个 profile 目录必须包含：
+每个 `entity_rules/<rule_name>` 目录必须包含：
 - `match.yaml`
 - `annotation.yaml`
+
+测试 golden 通常与 legacy fixture 目录一起维护：
 - `README.md`
 - `expected.final_entities.json`
 - `expected.node_hints.json`
@@ -51,6 +55,10 @@
 - `selection='explicit'`
 - `profiles=[]`
 - `strict=true`
+
+显式选择建议使用：
+- `scene/rule_name`，例如 `order-list/oa-ant-orders`
+- 兼容纯 `rule_name`，但仅在全局唯一时可安全解析
 
 ## 在主流程的位置
 

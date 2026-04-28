@@ -1,0 +1,40 @@
+version: 1
+page:
+  kind: table
+  urlPattern: "/entity-rules/fixtures/order-list$"
+entities:
+  - ruleId: order_list_main
+    source: region
+    expect: unique
+    match:
+      kind: table
+
+  - ruleId: order_action_edit
+    source: node
+    expect: one_or_more
+    within: order_list_main
+    match:
+      classContains: ant-btn
+      textContains: 编辑
+
+  - ruleId: order_action_delete
+    source: node
+    expect: one_or_more
+    within: order_list_main
+    match:
+      classContains: ant-btn
+      textContains: 删除
+
+  - ruleId: order_table_next_page_item
+    source: node
+    expect: unique
+    match:
+      relation: pagination
+      classContains: ant-pagination-next
+
+  - ruleId: order_table_next_page
+    source: node
+    expect: unique
+    within: order_table_next_page_item
+    match:
+      classContains: ant-pagination-item-link
