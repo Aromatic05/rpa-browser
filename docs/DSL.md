@@ -65,6 +65,19 @@ fill buyer with input.user.name
 click submit
 ```
 
+## Form Syntax Sugar
+
+```dsl
+fill form "order.form" field "buyer" with input.user.name
+click form "order.form" action "submit"
+```
+
+- This is normalize-phase syntax sugar only.
+- It is expanded into `query entity.target` + `fill/click` statements.
+- DSL still does not parse DOM directly.
+- Table syntax sugar is not supported.
+- Automatic pagination is not supported.
+
 ### If / Else
 
 ```dsl
@@ -94,7 +107,7 @@ use checkpoint "ensure_logged_in" with {
 - No functions
 - No expression engine
 - No arbitrary JS evaluation
-- No syntax sugar for forms or tables
+- No syntax sugar for tables
 - No pagination orchestration
 - No module/import system
 - Object literals use YAML syntax
@@ -106,4 +119,5 @@ use checkpoint "ensure_logged_in" with {
 - `ERR_DSL_BAD_ACT_ARGS`
 - `ERR_DSL_BAD_ITERABLE`
 - `ERR_DSL_BAD_CHECKPOINT_INPUT`
+- `ERR_DSL_NOT_NORMALIZED`
 - `ERR_DSL_PARSE`
