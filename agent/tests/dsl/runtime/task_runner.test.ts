@@ -93,6 +93,39 @@ test('task_runner runs multiple steps through one runId and preserves queue orde
     assert.equal(fillResult.stepId, 'step-fill');
 });
 
+test('task_runner matches results by stepId across consecutive steps', async () => {
+    const calls: StubCall[] = [];
+    const runner = createDslTaskRunner({
+        workspaceId: 'ws-dsl-task',
+        deps: createDeps(calls, { delayMs: 1 }),
+    });
+
+    await runner.start();
+    const first = await runner.runStep({
+        id: 'step-query-a',
+        name: 'browser.query',
+        args: {
+            op: 'entity.target',
+            businessTag: 'order.form',
+            target: { kind: 'form.field', fieldKey: 'buyer' },
+        },
+    } as StepUnion);
+    const second = await runner.runStep({
+        id: 'step-query-b',
+        name: 'browser.query',
+        args: {
+            op: 'entity.target',
+            businessTag: 'order.form',
+            target: { kind: 'form.field', fieldKey: 'seller' },
+        },
+    } as StepUnion);
+    await runner.close();
+
+    assert.equal(first.stepId, 'step-query-a');
+    assert.equal(second.stepId, 'step-query-b');
+    assert.equal(calls.length, 2);
+});
+
 test('task_runner returns failed step results without swallowing errors', async () => {
     const runner = createDslTaskRunner({
         workspaceId: 'ws-dsl-task',

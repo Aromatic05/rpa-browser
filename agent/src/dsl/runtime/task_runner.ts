@@ -7,13 +7,13 @@ import {
     enqueueSteps,
     readResultPipe,
     runSteps,
+    waitForResultPipe,
     type Checkpoint,
     type RunStepsDeps,
     type StepResult,
 } from '../../runner/run_steps';
 import type { StepUnion } from '../../runner/steps/types';
 
-const DEFAULT_POLL_INTERVAL_MS = 10;
 const DEFAULT_POLL_LIMIT = 100;
 
 export type DslTaskRunner = {
@@ -26,7 +26,6 @@ export type CreateDslTaskRunnerOptions = {
     workspaceId: string;
     deps: RunStepsDeps;
     stopOnError?: boolean;
-    pollIntervalMs?: number;
 };
 
 export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTaskRunner => {
@@ -34,7 +33,6 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
     const queue = createStepsQueue();
     const pipe = createResultPipe();
     const signals = createSignalChannel();
-    const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 
     let readCursor = 0;
     let started = false;
@@ -107,7 +105,7 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
                 };
             }
 
-            await delay(pollIntervalMs);
+            await waitForResultPipe(pipe);
         }
     };
 
@@ -120,8 +118,3 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
 
 const isTerminal = (status: Checkpoint['status']): boolean =>
     status === 'completed' || status === 'failed' || status === 'halted';
-
-const delay = async (ms: number): Promise<void> =>
-    await new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
