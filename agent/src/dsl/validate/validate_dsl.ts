@@ -20,10 +20,6 @@ export const validateDsl = (program: DslProgram): DslDiagnostic[] => {
     return diagnostics;
 };
 
-const cloneValidateScope = (scope: ValidateScope): ValidateScope => ({
-    vars: new Set(scope.vars),
-});
-
 const validateStmt = (
     stmt: DslStmt,
     scope: ValidateScope,
@@ -53,27 +49,18 @@ const validateStmt = (
             return;
         case 'if':
             validateExpr(stmt.condition, scope, diagnostics, `${path}.condition`);
-            {
-                const thenScope = cloneValidateScope(scope);
-                for (let i = 0; i < stmt.then.length; i += 1) {
-                    validateStmt(stmt.then[i], thenScope, diagnostics, `${path}.then.${i}`);
-                }
+            for (let i = 0; i < stmt.then.length; i += 1) {
+                validateStmt(stmt.then[i], scope, diagnostics, `${path}.then.${i}`);
             }
-            {
-                const elseScope = cloneValidateScope(scope);
-                for (let i = 0; i < (stmt.else?.length || 0); i += 1) {
-                    validateStmt(stmt.else![i], elseScope, diagnostics, `${path}.else.${i}`);
-                }
+            for (let i = 0; i < (stmt.else?.length || 0); i += 1) {
+                validateStmt(stmt.else![i], scope, diagnostics, `${path}.else.${i}`);
             }
             return;
         case 'for':
             validateExpr(stmt.iterable, scope, diagnostics, `${path}.iterable`);
-            {
-                const bodyScope = cloneValidateScope(scope);
-                bodyScope.vars.add(stmt.item);
-                for (let i = 0; i < stmt.body.length; i += 1) {
-                    validateStmt(stmt.body[i], bodyScope, diagnostics, `${path}.body.${i}`);
-                }
+            scope.vars.add(stmt.item);
+            for (let i = 0; i < stmt.body.length; i += 1) {
+                validateStmt(stmt.body[i], scope, diagnostics, `${path}.body.${i}`);
             }
             return;
     }
