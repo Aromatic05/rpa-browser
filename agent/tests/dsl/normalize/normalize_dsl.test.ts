@@ -101,3 +101,46 @@ test('normalizeDsl recurses through if and for bodies', () => {
     assert.equal(forStmt.body[0].action, 'click');
     assert.deepEqual(forStmt.body[0].target, { kind: 'ref', ref: 'vars.buyer' });
 });
+
+test('normalizeDsl keeps wait duration and normalizes type/select refs', () => {
+    const program: DslProgram = {
+        body: [
+            {
+                kind: 'act',
+                action: 'type',
+                target: { kind: 'ref', ref: 'buyer' },
+                value: { kind: 'ref', ref: 'text' },
+            },
+            {
+                kind: 'act',
+                action: 'select',
+                target: { kind: 'ref', ref: 'buyer' },
+                value: { kind: 'ref', ref: 'input.value' },
+            },
+            {
+                kind: 'act',
+                action: 'wait',
+                durationMs: 100,
+            },
+        ],
+    };
+
+    const normalized = normalizeDsl(program);
+    assert.deepEqual(normalized.body[0], {
+        kind: 'act',
+        action: 'type',
+        target: { kind: 'ref', ref: 'vars.buyer' },
+        value: { kind: 'ref', ref: 'vars.text' },
+    });
+    assert.deepEqual(normalized.body[1], {
+        kind: 'act',
+        action: 'select',
+        target: { kind: 'ref', ref: 'vars.buyer' },
+        value: { kind: 'ref', ref: 'input.value' },
+    });
+    assert.deepEqual(normalized.body[2], {
+        kind: 'act',
+        action: 'wait',
+        durationMs: 100,
+    });
+});

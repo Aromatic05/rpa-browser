@@ -70,3 +70,36 @@ test('parseDsl throws DslParseError on invalid object literals', () => {
         (error: unknown) => error instanceof DslParseError,
     );
 });
+
+test('parseDsl parses type/select/wait/snapshot actions', () => {
+    const program = parseDsl(`
+        type buyer with input.text
+        select buyer with input.value
+        wait 500
+        snapshot
+    `);
+
+    assert.deepEqual(program.body, [
+        {
+            kind: 'act',
+            action: 'type',
+            target: { kind: 'ref', ref: 'buyer' },
+            value: { kind: 'ref', ref: 'input.text' },
+        },
+        {
+            kind: 'act',
+            action: 'select',
+            target: { kind: 'ref', ref: 'buyer' },
+            value: { kind: 'ref', ref: 'input.value' },
+        },
+        {
+            kind: 'act',
+            action: 'wait',
+            durationMs: 500,
+        },
+        {
+            kind: 'act',
+            action: 'snapshot',
+        },
+    ]);
+});

@@ -132,3 +132,46 @@ test('validateDsl requires checkpoint input refs', () => {
     assert.equal(diagnostics.length, 1);
     assert.equal(diagnostics[0].code, 'ERR_DSL_BAD_CHECKPOINT_INPUT');
 });
+
+test('validateDsl allows wait/snapshot and validates type/select args', () => {
+    const okProgram: DslProgram = {
+        body: [
+            {
+                kind: 'let',
+                name: 'buyer',
+                expr: {
+                    kind: 'query',
+                    op: 'entity.target',
+                    businessTag: 'order.form',
+                    payload: { kind: 'form.field', fieldKey: 'buyer' },
+                },
+            },
+            { kind: 'act', action: 'wait', durationMs: 10 },
+            { kind: 'act', action: 'snapshot' },
+            {
+                kind: 'act',
+                action: 'type',
+                target: { kind: 'ref', ref: 'buyer' },
+                value: { kind: 'ref', ref: 'input.text' },
+            },
+            {
+                kind: 'act',
+                action: 'select',
+                target: { kind: 'ref', ref: 'buyer' },
+                value: { kind: 'ref', ref: 'input.value' },
+            },
+        ],
+    };
+    const badProgram: DslProgram = {
+        body: [
+            {
+                kind: 'act',
+                action: 'type',
+                target: { kind: 'ref', ref: 'buyer' },
+            },
+        ],
+    };
+
+    assert.deepEqual(validateDsl(normalizeDsl(okProgram)), []);
+    assert.equal(validateDsl(normalizeDsl(badProgram)).some((item) => item.code === 'ERR_DSL_BAD_ACT_ARGS'), true);
+});
