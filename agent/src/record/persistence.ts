@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import YAML from 'yaml';
 import type { RecordingManifest, RecordingState, WorkspaceSavedSnapshot } from './recording';
 import type { StepUnion } from '../runner/steps/types';
 import type { RecordingEnhancementMap } from './types';
+import type { StepFile, StepResolveFile } from '../runner/serialization/types';
 
 type PersistedRecordingBundle = {
     recordingToken: string;
@@ -133,4 +135,71 @@ export const startRecordingStateAutoSave = (
         flush: flushIfChanged,
         stop: () => { clearInterval(timer); },
     };
+};
+
+export type SaveWorkflowRecordingArtifactsOptions = {
+    rootDir: string;
+    scene: string;
+    recordingName: string;
+    workspaceId?: string;
+    entryUrl?: string;
+    tabs?: Array<{ tabId: string; url?: string }>;
+    steps: StepUnion[];
+    stepResolves?: Record<string, unknown>;
+};
+
+const toRecordingManifestFile = (opts: SaveWorkflowRecordingArtifactsOptions) => ({
+    version: 1,
+    recordingName: opts.recordingName,
+    workspaceId: opts.workspaceId || '',
+    entryUrl: opts.entryUrl || '',
+    tabs: opts.tabs || [],
+    createdAt: Date.now(),
+    stepCount: opts.steps.length,
+});
+
+export const saveWorkflowRecordingArtifacts = async (opts: SaveWorkflowRecordingArtifactsOptions): Promise<string> => {
+    const recordsDir = path.resolve(opts.rootDir, 'workflows', opts.scene, 'records', opts.recordingName);
+    await fs.mkdir(recordsDir, { recursive: true });
+
+    const stepsFile: StepFile = {
+        version: 1,
+        steps: opts.steps.map((step) => ({
+            id: step.id,
+            name: step.name,
+            args: step.args,
+        })) as StepFile['steps'],
+    };
+    const resolvesFile: StepResolveFile = {
+        version: 1,
+        resolves: (opts.stepResolves || {}) as StepResolveFile['resolves'],
+    };
+    await fs.writeFile(path.join(recordsDir, 'steps.yaml'), YAML.stringify(stepsFile), 'utf8');
+    await fs.writeFile(path.join(recordsDir, 'step_resolve.yaml'), YAML.stringify(resolvesFile), 'utf8');
+    await fs.writeFile(path.join(recordsDir, 'manifest.yaml'), YAML.stringify(toRecordingManifestFile(opts)), 'utf8');
+    return recordsDir;
+};
+
+export const resolveWorkflowRecordingDir = async (
+    rootDir: string,
+    scene: string,
+    recordingName: string,
+): Promise<string> => {
+    const recordsDir = path.resolve(rootDir, 'workflows', scene, 'records', recordingName);
+    try {
+        const stat = await fs.stat(recordsDir);
+        if (stat.isDirectory()) {
+            return recordsDir;
+        }
+    } catch {}
+
+    const legacyDir = path.resolve(rootDir, 'workflows', scene, 'steps', recordingName);
+    try {
+        const stat = await fs.stat(legacyDir);
+        if (stat.isDirectory()) {
+            return legacyDir;
+        }
+    } catch {}
+
+    throw new Error(`workflow recording not found: scene=${scene} recording=${recordingName}`);
 };
