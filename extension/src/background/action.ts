@@ -2,7 +2,18 @@ import type { Action } from '../shared/types.js';
 import { ACTION_TYPES, deriveFailedActionType, isRequestActionType } from '../shared/action_types.js';
 import type { RouterState, TabRuntimeState } from './state.js';
 
-const PAGELESS_ACTIONS = new Set<string>([ACTION_TYPES.TAB_INIT, ACTION_TYPES.RECORD_LIST]);
+const PAGELESS_ACTIONS = new Set<string>([
+    ACTION_TYPES.TAB_INIT,
+    ACTION_TYPES.RECORD_LIST,
+    ACTION_TYPES.WORKFLOW_LIST,
+    ACTION_TYPES.WORKFLOW_OPEN,
+    ACTION_TYPES.WORKFLOW_STATUS,
+    ACTION_TYPES.WORKFLOW_RECORD_SAVE,
+    ACTION_TYPES.WORKFLOW_DSL_GET,
+    ACTION_TYPES.WORKFLOW_DSL_TEST,
+    ACTION_TYPES.WORKFLOW_RELEASE_RUN,
+    ACTION_TYPES.WORKFLOW_INIT,
+]);
 const toStringOrUndefined = (value: unknown): string | undefined =>
     typeof value === 'string' ? value : typeof value === 'number' ? String(value) : undefined;
 
