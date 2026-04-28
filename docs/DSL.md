@@ -9,6 +9,9 @@ The DSL is a business-flow orchestration language for `rpa-browser`.
 - It resolves business targets through `browser.query`.
 - It performs actions by emitting runner steps.
 - It executes by runtime interpretation, not by compiling the whole script into a static step list.
+- It is loaded as `workflow.yaml.entry.dsl` inside workflow artifacts.
+
+See `docs/WORKFLOW.md` for workflow package structure and workspace binding rules.
 
 ## Execution Model
 
