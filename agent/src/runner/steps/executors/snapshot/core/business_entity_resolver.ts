@@ -28,11 +28,11 @@ type ResolverDiagnosticDetails = {
 };
 
 export type BusinessEntityQuery =
-    | 'table.row_count'
+    | 'table.rowCount'
     | 'table.headers'
-    | 'table.primary_key'
+    | 'table.primaryKey'
     | 'table.columns'
-    | 'table.current_rows'
+    | 'table.currentRows'
     | 'table.hasNextPage'
     | 'table.nextPageTarget'
     | 'form.fields'
@@ -152,7 +152,7 @@ export const queryBusinessEntity = (
         nodeId: entity.nodeId,
     };
 
-    if (query === 'table.row_count') {
+    if (query === 'table.rowCount') {
         const model = entity.tableMeta ? null : buildTableStructureModel(snapshot, entity.nodeId);
         return {
             ok: true,
@@ -176,7 +176,7 @@ export const queryBusinessEntity = (
         };
     }
 
-    if (query === 'table.primary_key') {
+    if (query === 'table.primaryKey') {
         return {
             ok: true,
             data: {
@@ -215,7 +215,7 @@ export const queryBusinessEntity = (
         };
     }
 
-    if (query === 'table.current_rows') {
+    if (query === 'table.currentRows') {
         const model = buildTableStructureModel(snapshot, entity.nodeId);
         const rows = !model
             ? []

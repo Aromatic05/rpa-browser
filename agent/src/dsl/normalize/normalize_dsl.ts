@@ -1,5 +1,4 @@
 import type { DslExpr, DslProgram, DslStmt, FormActStmt, RefExpr } from '../ast/types';
-import type { StepArgsMap } from '../../runner/steps/types';
 
 type NormalizeContext = {
     nextTempId: number;
@@ -61,7 +60,7 @@ const normalizeStmt = (stmt: DslStmt, ctx: NormalizeContext): DslStmt[] => {
 };
 
 const normalizeExpr = <T extends DslExpr>(expr: T): T => {
-    if (expr.kind === 'query_sugar') {
+    if (expr.kind === 'querySugar') {
         return expandQuerySugarExpr(expr) as T;
     }
     if (expr.kind !== 'ref') {return expr;}
@@ -79,7 +78,7 @@ const normalizeRef = (expr: RefExpr): RefExpr => {
 };
 
 const expandFormActStmt = (stmt: FormActStmt, ctx: NormalizeContext): DslStmt[] => {
-    const tempName = `__dsl_form_target_${ctx.nextTempId}`;
+    const tempName = `dslFormTarget${ctx.nextTempId}`;
     ctx.nextTempId += 1;
 
     const letStmt: DslStmt = {
@@ -113,30 +112,13 @@ const expandFormActStmt = (stmt: FormActStmt, ctx: NormalizeContext): DslStmt[] 
     return [letStmt, actStmt];
 };
 
-const expandQuerySugarExpr = (expr: Extract<DslExpr, { kind: 'query_sugar' }>): Extract<DslExpr, { kind: 'query' }> => {
-    const tableQueryMap: Record<
-        Extract<typeof expr, { target: 'table' }>['op'],
-        Extract<StepArgsMap['browser.query'], { op: 'entity' }>['query']
-    > = {
-        current_rows: 'table.current_rows',
-        row_count: 'table.row_count',
-        has_next_page: 'table.hasNextPage',
-        next_page_target: 'table.nextPageTarget',
-    };
-    const formQueryMap: Record<
-        Extract<typeof expr, { target: 'form' }>['op'],
-        Extract<StepArgsMap['browser.query'], { op: 'entity' }>['query']
-    > = {
-        fields: 'form.fields',
-        actions: 'form.actions',
-    };
-
+const expandQuerySugarExpr = (expr: Extract<DslExpr, { kind: 'querySugar' }>): Extract<DslExpr, { kind: 'query' }> => {
     if (expr.target === 'table') {
         return {
             kind: 'query',
             op: 'entity',
             businessTag: expr.businessTag,
-            payload: tableQueryMap[expr.op],
+            payload: `table.${expr.op}`,
         };
     }
 
@@ -144,6 +126,6 @@ const expandQuerySugarExpr = (expr: Extract<DslExpr, { kind: 'query_sugar' }>): 
         kind: 'query',
         op: 'entity',
         businessTag: expr.businessTag,
-        payload: formQueryMap[expr.op],
+        payload: `form.${expr.op}`,
     };
 };

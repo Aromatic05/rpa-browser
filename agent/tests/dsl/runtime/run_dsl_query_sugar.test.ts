@@ -39,7 +39,7 @@ test('runDslSource executes query table sugar and writes vars', async () => {
     const calls: StubCall[] = [];
     const result = await runDslSource(
         `
-let rows = query table "order.list" current_rows
+let rows = query table "order.list" currentRows
         `,
         {
             workspaceId: 'ws-dsl-query-sugar',
@@ -52,16 +52,16 @@ let rows = query table "order.list" current_rows
     assert.deepEqual(calls[0].args, {
         op: 'entity',
         businessTag: 'order.list',
-        query: 'table.current_rows',
+        query: 'table.currentRows',
     });
     assert.deepEqual(result.scope.vars.rows, [{ id: 'row-1', enabled: true, name: 'alice' }]);
 });
 
-test('runDslSource maps has_next_page sugar to camelCase browser query name', async () => {
+test('runDslSource keeps hasNextPage query sugar as-is', async () => {
     const calls: StubCall[] = [];
     await runDslSource(
         `
-let hasNext = query table "order.list" has_next_page
+let hasNext = query table "order.list" hasNextPage
         `,
         {
             workspaceId: 'ws-dsl-query-sugar',

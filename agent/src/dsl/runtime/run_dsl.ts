@@ -77,9 +77,9 @@ const executeStmt = async (
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(result) });
                 return;
             }
-            if (stmt.expr.kind === 'query_sugar') {
+            if (stmt.expr.kind === 'querySugar') {
                 throw new DslRuntimeError(
-                    'query_sugar must be expanded before runtime',
+                    'querySugar must be expanded before runtime',
                     'ERR_DSL_NOT_NORMALIZED',
                 );
             }

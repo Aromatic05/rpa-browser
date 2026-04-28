@@ -3,17 +3,17 @@ import assert from 'node:assert/strict';
 import { validateDsl } from '../../../src/dsl/validate';
 import type { DslProgram } from '../../../src/dsl/ast';
 
-test('validateDsl reports ERR_DSL_NOT_NORMALIZED for query_sugar', () => {
+test('validateDsl reports ERR_DSL_NOT_NORMALIZED for querySugar', () => {
     const program: DslProgram = {
         body: [
             {
                 kind: 'let',
                 name: 'rows',
                 expr: {
-                    kind: 'query_sugar',
+                    kind: 'querySugar',
                     target: 'table',
                     businessTag: 'order.list',
-                    op: 'current_rows',
+                    op: 'currentRows',
                 },
             },
         ],

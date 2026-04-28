@@ -209,7 +209,7 @@ test('order list query can resolve row action and click via result refs', async 
                     args: {
                         op: 'entity',
                         businessTag: 'order.list.main',
-                        query: 'table.row_count',
+                        query: 'table.rowCount',
                     },
                 } as StepUnion,
                 {
@@ -218,7 +218,7 @@ test('order list query can resolve row action and click via result refs', async 
                     args: {
                         op: 'entity',
                         businessTag: 'order.list.main',
-                        query: 'table.current_rows',
+                        query: 'table.currentRows',
                     },
                 } as StepUnion,
                 {
@@ -371,7 +371,7 @@ test('compute can consume browser query value envelope', async () => {
                     args: {
                         op: 'entity',
                         businessTag: 'order.list.main',
-                        query: 'table.row_count',
+                        query: 'table.rowCount',
                     },
                 } as StepUnion,
                 {

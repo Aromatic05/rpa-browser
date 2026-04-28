@@ -26,13 +26,13 @@ export type QueryExpr = {
 
 export type QuerySugarExpr =
     | {
-          kind: 'query_sugar';
+          kind: 'querySugar';
           target: 'table';
           businessTag: string;
-          op: 'current_rows' | 'row_count' | 'has_next_page' | 'next_page_target';
+          op: 'currentRows' | 'rowCount' | 'hasNextPage' | 'nextPageTarget';
       }
     | {
-          kind: 'query_sugar';
+          kind: 'querySugar';
           target: 'form';
           businessTag: string;
           op: 'fields' | 'actions';

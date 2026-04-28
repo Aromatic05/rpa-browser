@@ -335,11 +335,11 @@ export type StepArgsMap = {
               op: 'entity';
               businessTag: string;
               query:
-                  | 'table.row_count'
+                  | 'table.rowCount'
                   | 'table.headers'
-                  | 'table.primary_key'
+                  | 'table.primaryKey'
                   | 'table.columns'
-                  | 'table.current_rows'
+                  | 'table.currentRows'
                   | 'table.hasNextPage'
                   | 'table.nextPageTarget'
                   | 'form.fields'

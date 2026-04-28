@@ -502,7 +502,7 @@ test('order list pagination query can resolve next page target', async () => {
                 args: {
                     op: 'entity',
                     businessTag: 'order.list.main',
-                    query: 'table.current_rows',
+                    query: 'table.currentRows',
                 },
             } as StepUnion,
             {
@@ -527,7 +527,7 @@ test('order list pagination query can resolve next page target', async () => {
                 args: {
                     op: 'entity',
                     businessTag: 'order.list.main',
-                    query: 'table.current_rows',
+                    query: 'table.currentRows',
                 },
             } as StepUnion,
         ];

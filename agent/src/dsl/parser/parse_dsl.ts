@@ -281,17 +281,17 @@ const parseLet = (statement: string): LetStmt => {
     if (sugarMatch) {
         const [, name, target, businessTag, op] = sugarMatch;
         if (target === 'table') {
-            if (!['current_rows', 'row_count', 'has_next_page', 'next_page_target'].includes(op)) {
+            if (!['currentRows', 'rowCount', 'hasNextPage', 'nextPageTarget'].includes(op)) {
                 throw new DslParseError(`invalid table query op: ${op}`);
             }
             return {
                 kind: 'let',
                 name,
                 expr: {
-                    kind: 'query_sugar',
+                    kind: 'querySugar',
                     target: 'table',
                     businessTag,
-                    op: op as 'current_rows' | 'row_count' | 'has_next_page' | 'next_page_target',
+                    op: op as 'currentRows' | 'rowCount' | 'hasNextPage' | 'nextPageTarget',
                 },
             };
         }
@@ -302,7 +302,7 @@ const parseLet = (statement: string): LetStmt => {
             kind: 'let',
             name,
             expr: {
-                kind: 'query_sugar',
+                kind: 'querySugar',
                 target: 'form',
                 businessTag,
                 op: op as 'fields' | 'actions',
@@ -330,6 +330,7 @@ const parseLet = (statement: string): LetStmt => {
         expr,
     };
 };
+
 
 const parseCheckpoint = (statement: string): CheckpointStmt => {
     const match = statement.match(/^use\s+checkpoint\s+"([^"]+)"(?:\s+with\s+([\s\S]+))?$/);

@@ -130,7 +130,7 @@ test('executeBrowserQuery supports op=entity and op=entity.target', async () => 
         args: {
             op: 'entity',
             businessTag: 'order.table.main',
-            query: 'table.row_count',
+            query: 'table.rowCount',
         },
     };
 

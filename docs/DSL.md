@@ -81,10 +81,10 @@ click form "order.form" action "submit"
 ## Query Syntax Sugar
 
 ```dsl
-let rows = query table "order.list" current_rows
-let count = query table "order.list" row_count
-let hasNext = query table "order.list" has_next_page
-let next = query table "order.list" next_page_target
+let rows = query table "order.list" currentRows
+let count = query table "order.list" rowCount
+let hasNext = query table "order.list" hasNextPage
+let next = query table "order.list" nextPageTarget
 
 let fields = query form "order.form" fields
 let actions = query form "order.form" actions
@@ -92,13 +92,11 @@ let actions = query form "order.form" actions
 
 - This is normalize-phase syntax sugar only.
 - It is expanded to `query entity ...`.
-- DSL snake_case ops are normalized to browser query names:
-  `has_next_page` -> `table.hasNextPage`,
-  `next_page_target` -> `table.nextPageTarget`.
+- Query sugar ops use camelCase directly.
 - No automatic pagination.
 - No implicit table row loops.
 - Pagination still needs explicit DSL statements:
-  `query has_next_page`, `query next_page_target`, then `click next`.
+  `query hasNextPage`, `query nextPageTarget`, then `click next`.
 
 ### If / Else
 
