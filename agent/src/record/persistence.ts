@@ -138,7 +138,7 @@ export const startRecordingStateAutoSave = (
 };
 
 export type SaveWorkflowRecordingArtifactsOptions = {
-    rootDir: string;
+    artifactsRootDir: string;
     scene: string;
     recordingName: string;
     workspaceId?: string;
@@ -159,7 +159,7 @@ const toRecordingManifestFile = (opts: SaveWorkflowRecordingArtifactsOptions) =>
 });
 
 export const saveWorkflowRecordingArtifacts = async (opts: SaveWorkflowRecordingArtifactsOptions): Promise<string> => {
-    const recordsDir = path.resolve(opts.rootDir, 'workflows', opts.scene, 'records', opts.recordingName);
+    const recordsDir = path.resolve(opts.artifactsRootDir, 'workflows', opts.scene, 'records', opts.recordingName);
     await fs.mkdir(recordsDir, { recursive: true });
 
     const stepsFile: StepFile = {
@@ -181,11 +181,11 @@ export const saveWorkflowRecordingArtifacts = async (opts: SaveWorkflowRecording
 };
 
 export const resolveWorkflowRecordingDir = async (
-    rootDir: string,
+    artifactsRootDir: string,
     scene: string,
     recordingName: string,
 ): Promise<string> => {
-    const recordsDir = path.resolve(rootDir, 'workflows', scene, 'records', recordingName);
+    const recordsDir = path.resolve(artifactsRootDir, 'workflows', scene, 'records', recordingName);
     try {
         const stat = await fs.stat(recordsDir);
         if (stat.isDirectory()) {
@@ -193,7 +193,7 @@ export const resolveWorkflowRecordingDir = async (
         }
     } catch {}
 
-    const legacyDir = path.resolve(rootDir, 'workflows', scene, 'steps', recordingName);
+    const legacyDir = path.resolve(artifactsRootDir, 'workflows', scene, 'steps', recordingName);
     try {
         const stat = await fs.stat(legacyDir);
         if (stat.isDirectory()) {

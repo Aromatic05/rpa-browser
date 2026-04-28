@@ -35,12 +35,34 @@ const ensureEntryUrl = async (
     }
 };
 
-const createWorkspace = async (deps: ResolveWorkflowWorkspaceDeps, scene: string): Promise<ResolvedWorkspace> => {
-    const desiredWorkspaceId = toWorkspaceId(scene);
-    const created = await deps.pageRegistry.createWorkspace();
-    if (created.workspaceId !== desiredWorkspaceId) {
-        deps.pageRegistry.createWorkspaceShell(desiredWorkspaceId);
+const ensureExpectedTabs = async (
+    deps: ResolveWorkflowWorkspaceDeps,
+    resolved: ResolvedWorkspace,
+    expectedTabs?: WorkflowWorkspaceBinding['workspace']['expectedTabs'],
+): Promise<void> => {
+    if (!expectedTabs || expectedTabs.length === 0) {return;}
+    const page = await deps.pageRegistry.resolvePage({
+        workspaceId: resolved.workspaceId,
+        tabId: resolved.tabId,
+    });
+    const currentUrl = page.url();
+    const activeExpectation = expectedTabs.find((item) => item.ref === 'main') || expectedTabs[0];
+    if (activeExpectation.exactUrl && currentUrl !== activeExpectation.exactUrl) {
+        throw new DslRuntimeError(
+            `workflow expectedTabs exactUrl mismatch: expected=${activeExpectation.exactUrl} actual=${currentUrl}`,
+            'ERR_WORKFLOW_WORKSPACE_RESOLVE_FAILED',
+        );
     }
+    if (activeExpectation.urlIncludes && !currentUrl.includes(activeExpectation.urlIncludes)) {
+        throw new DslRuntimeError(
+            `workflow expectedTabs urlIncludes mismatch: expected*= ${activeExpectation.urlIncludes} actual=${currentUrl}`,
+            'ERR_WORKFLOW_WORKSPACE_RESOLVE_FAILED',
+        );
+    }
+};
+
+const createWorkspace = async (deps: ResolveWorkflowWorkspaceDeps, scene: string): Promise<ResolvedWorkspace> => {
+    const created = await deps.pageRegistry.createWorkspace();
     return {
         workspaceId: created.workspaceId,
         tabId: created.tabId,
@@ -63,20 +85,24 @@ export const resolveWorkflowWorkspace = async (
         if (strategy === 'createOnly') {
             const created = await createWorkspace(deps, input.scene);
             await ensureEntryUrl(deps, created, input.binding?.workspace.entryUrl);
+            await ensureExpectedTabs(deps, created, input.binding?.workspace.expectedTabs);
             return created;
         }
         if (strategy === 'restoreOnly') {
             const restored = await restoreWorkspace(deps, input.scene);
             await ensureEntryUrl(deps, restored, input.binding?.workspace.entryUrl);
+            await ensureExpectedTabs(deps, restored, input.binding?.workspace.expectedTabs);
             return restored;
         }
         try {
             const restored = await restoreWorkspace(deps, input.scene);
             await ensureEntryUrl(deps, restored, input.binding?.workspace.entryUrl);
+            await ensureExpectedTabs(deps, restored, input.binding?.workspace.expectedTabs);
             return restored;
         } catch {
             const created = await createWorkspace(deps, input.scene);
             await ensureEntryUrl(deps, created, input.binding?.workspace.entryUrl);
+            await ensureExpectedTabs(deps, created, input.binding?.workspace.expectedTabs);
             return created;
         }
     } catch (error) {

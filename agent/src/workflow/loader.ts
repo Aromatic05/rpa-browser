@@ -67,10 +67,17 @@ export const loadWorkflow = (scene: string, workflowsDir = DEFAULT_WORKFLOWS_DIR
 
     let inputsPath: string | undefined;
     let inputsExample: unknown;
-    if (manifest.inputs) {
-        inputsPath = resolveWorkflowPath(rootDir, manifest.inputs, scene);
+    if (manifest.entry.inputs) {
+        inputsPath = resolveWorkflowPath(rootDir, manifest.entry.inputs, scene);
         if (fs.existsSync(inputsPath)) {
-            inputsExample = readYamlFile(inputsPath);
+            try {
+                inputsExample = readYamlFile(inputsPath);
+            } catch (error) {
+                throw new DslRuntimeError(
+                    `workflow inputs invalid: scene=${scene} root=${rootDir} rel=${manifest.entry.inputs} error=${error instanceof Error ? error.message : String(error)}`,
+                    'ERR_WORKFLOW_INPUTS_INVALID',
+                );
+            }
         }
     }
 
@@ -96,16 +103,42 @@ export const loadWorkflow = (scene: string, workflowsDir = DEFAULT_WORKFLOWS_DIR
     }
 
     const records = (manifest.records || []).map((item) => {
-        resolveWorkflowPath(rootDir, item, scene);
+        const recordsDir = resolveWorkflowPath(rootDir, item, scene);
+        if (!fs.existsSync(recordsDir) || !fs.statSync(recordsDir).isDirectory()) {
+            throw new DslRuntimeError(
+                `workflow record not found: scene=${scene} root=${rootDir} rel=${item}`,
+                'ERR_WORKFLOW_RECORD_NOT_FOUND',
+            );
+        }
+        const stepsPath = path.join(recordsDir, 'steps.yaml');
+        if (!fs.existsSync(stepsPath)) {
+            throw new DslRuntimeError(
+                `workflow record steps not found: scene=${scene} root=${rootDir} rel=${item}/steps.yaml`,
+                'ERR_WORKFLOW_RECORD_NOT_FOUND',
+            );
+        }
         return item;
     });
 
     const checkpoints: WorkflowCheckpointEntry[] = (manifest.checkpoints || []).map((item) => {
         const checkpointDir = resolveWorkflowPath(rootDir, item, scene);
+        if (!fs.existsSync(checkpointDir) || !fs.statSync(checkpointDir).isDirectory()) {
+            throw new DslRuntimeError(
+                `workflow checkpoint directory not found: scene=${scene} root=${rootDir} rel=${item}`,
+                'ERR_WORKFLOW_CHECKPOINT_NOT_FOUND',
+            );
+        }
+        const checkpointPath = path.join(checkpointDir, 'checkpoint.yaml');
+        if (!fs.existsSync(checkpointPath)) {
+            throw new DslRuntimeError(
+                `workflow checkpoint file not found: scene=${scene} root=${rootDir} rel=${item}/checkpoint.yaml`,
+                'ERR_WORKFLOW_CHECKPOINT_NOT_FOUND',
+            );
+        }
         return {
             id: extractCheckpointId(item),
             directory: item,
-            checkpointPath: path.join(checkpointDir, 'checkpoint.yaml'),
+            checkpointPath,
             checkpointResolvePath: path.join(checkpointDir, 'checkpoint_resolve.yaml'),
             checkpointHintsPath: path.join(checkpointDir, 'checkpoint_hints.yaml'),
         };

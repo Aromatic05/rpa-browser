@@ -19,8 +19,11 @@ export const validateWorkflowManifest = (raw: unknown): ValidationResult<Workflo
     if (!isRecord(raw.entry) || typeof raw.entry.dsl !== 'string' || raw.entry.dsl.length === 0) {
         diagnostics.push('workflow.entry.dsl is required');
     }
-    if (raw.inputs !== undefined && typeof raw.inputs !== 'string') {
-        diagnostics.push('workflow.inputs must be a string path');
+    if (isRecord(raw.entry) && raw.entry.inputs !== undefined && typeof raw.entry.inputs !== 'string') {
+        diagnostics.push('workflow.entry.inputs must be a string path');
+    }
+    if (raw.inputs !== undefined) {
+        diagnostics.push('workflow.inputs is not allowed; use workflow.entry.inputs');
     }
     if (raw.records !== undefined && (!Array.isArray(raw.records) || raw.records.some((item) => typeof item !== 'string'))) {
         diagnostics.push('workflow.records must be an array of string paths');

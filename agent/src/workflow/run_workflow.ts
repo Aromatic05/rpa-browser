@@ -24,7 +24,7 @@ const loadCheckpointRegistry = (scene: string, checkpoints: ReturnType<typeof lo
         if (!fs.existsSync(entry.checkpointPath)) {
             throw new DslRuntimeError(
                 `workflow checkpoint not found: scene=${scene} rel=${entry.directory}/checkpoint.yaml`,
-                'ERR_WORKFLOW_CHECKPOINT_NOT_DECLARED',
+                'ERR_WORKFLOW_CHECKPOINT_NOT_FOUND',
             );
         }
         const checkpointFile = YAML.parse(fs.readFileSync(entry.checkpointPath, 'utf8')) as SingleCheckpointFile;

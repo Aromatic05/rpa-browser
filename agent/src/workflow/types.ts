@@ -7,8 +7,8 @@ export type WorkflowManifest = {
     name?: string;
     entry: {
         dsl: string;
+        inputs?: string;
     };
-    inputs?: string;
     records?: string[];
     checkpoints?: string[];
     workspace?: {

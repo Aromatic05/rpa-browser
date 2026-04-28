@@ -17,7 +17,7 @@ test('saveWorkflowRecordingArtifacts writes into workflow records directory with
         } as StepUnion,
     ];
     const dir = await saveWorkflowRecordingArtifacts({
-        rootDir: tmp,
+        artifactsRootDir: tmp,
         scene: 'order',
         recordingName: 'recording-main',
         workspaceId: 'ws-1',

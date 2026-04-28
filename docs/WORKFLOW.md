@@ -27,8 +27,10 @@ agent/.artifacts/workflows/<scene>/
 ## Rules
 
 - `workflow.yaml` is the manifest entry.
+- `workflow.yaml` uses `entry.dsl` and optional `entry.inputs`.
 - `workspace.yaml` belongs to workflow runtime, not DSL.
 - `dsl/main.dsl` is loaded from `workflow.yaml.entry.dsl`.
+- `dsl/inputs.example.yaml` can be loaded from `workflow.yaml.entry.inputs`.
 - `records/` is the default write path for new recording artifacts.
 - Legacy `steps/<recording-name>/` is still read for compatibility.
 - Checkpoint execution still uses checkpoint runtime.
@@ -44,3 +46,4 @@ agent/.artifacts/workflows/<scene>/
 - `expectedTabs?: [{ ref, urlIncludes?, exactUrl? }]`
 
 Workflow runtime resolves workspace before DSL execution.
+Current implementation validates only the current tab URL against `expectedTabs` (exactUrl/urlIncludes).

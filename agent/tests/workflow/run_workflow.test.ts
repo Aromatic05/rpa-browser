@@ -42,6 +42,7 @@ const createWorkflowScene = (root: string, scene: string, dsl: string, extra = '
 id: order-create
 entry:
   dsl: dsl/main.dsl
+  inputs: dsl/inputs.example.yaml
 workspace:
   binding: workspace.yaml
 ${extra}
@@ -58,6 +59,7 @@ workspace:
         'utf8',
     );
     fs.writeFileSync(path.join(sceneDir, 'dsl/main.dsl'), dsl, 'utf8');
+    fs.writeFileSync(path.join(sceneDir, 'dsl/inputs.example.yaml'), 'user:\n  name: fixture\nusername: fixtureUser\n', 'utf8');
     return sceneDir;
 };
 
@@ -96,6 +98,36 @@ fill buyer with input.user.name
 
     assert.deepEqual(calls.map((item) => item.name), ['browser.query', 'browser.fill']);
     assert.equal(result.scope.input.user?.name, 'alice');
+});
+
+test('runWorkflow injects manifest.entry.inputs when request.input is missing', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-run-'));
+    createWorkflowScene(
+        tmp,
+        'order',
+        `
+let buyer = query entity.target "order.form" {
+  kind: "form.field"
+  fieldKey: "buyer"
+}
+fill buyer with input.user.name
+`,
+    );
+    const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const result = await runWorkflow(
+        { scene: 'order' },
+        {
+            workflowsDir: tmp,
+            runStepsDeps: createDeps(calls),
+            pageRegistry: {
+                createWorkspace: async () => ({ workspaceId: 'ws-1', tabId: 'tab-1' }),
+                resolveTabToken: () => 'tk-1',
+                resolvePage: async () => ({ url: () => 'about:blank', goto: async () => {} }),
+            } as any,
+            restoreWorkspace: async () => ({ workspaceId: 'ws-restore', tabId: 'tab-restore', tabToken: 'tk-restore' }),
+        },
+    );
+    assert.equal(result.scope.input.user?.name, 'fixture');
 });
 
 test('runWorkflow checkpoint call fails when checkpoint is not declared', async () => {
@@ -177,4 +209,35 @@ checkpoint:
     );
 
     assert.equal(result.scope.output.loginState, 'root');
+});
+
+test('runWorkflow declared checkpoint path missing file reports ERR_WORKFLOW_CHECKPOINT_NOT_FOUND', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-run-'));
+    const sceneDir = createWorkflowScene(
+        tmp,
+        'order',
+        `
+snapshot
+`,
+        `checkpoints:
+  - checkpoints/ensure-login`,
+    );
+    fs.mkdirSync(path.join(sceneDir, 'checkpoints/ensure-login'), { recursive: true });
+    await assert.rejects(
+        () =>
+            runWorkflow(
+                { scene: 'order' },
+                {
+                    workflowsDir: tmp,
+                    runStepsDeps: createDeps([]),
+                    pageRegistry: {
+                        createWorkspace: async () => ({ workspaceId: 'ws-1', tabId: 'tab-1' }),
+                        resolveTabToken: () => 'tk-1',
+                        resolvePage: async () => ({ url: () => 'about:blank', goto: async () => {} }),
+                    } as any,
+                    restoreWorkspace: async () => ({ workspaceId: 'ws-restore', tabId: 'tab-restore', tabToken: 'tk-restore' }),
+                },
+            ),
+        /ERR_WORKFLOW_CHECKPOINT_NOT_FOUND|workflow checkpoint file not found/,
+    );
 });

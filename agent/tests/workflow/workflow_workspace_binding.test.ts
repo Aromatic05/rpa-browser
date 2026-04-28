@@ -26,6 +26,7 @@ test('restoreOnly fails when restore errors', async () => {
 
 test('createOnly uses create workspace path', async () => {
     let created = false;
+    let shellCalled = false;
     const result = await resolveWorkflowWorkspace(
         {
             pageRegistry: {
@@ -34,7 +35,10 @@ test('createOnly uses create workspace path', async () => {
                     return { workspaceId: 'ws-1', tabId: 'tab-1' };
                 },
                 resolveTabToken: () => 'tk-1',
-                createWorkspaceShell: () => ({ workspaceId: 'workflow:order' }),
+                createWorkspaceShell: () => {
+                    shellCalled = true;
+                    return { workspaceId: 'workflow:order' };
+                },
                 resolvePage: async () => ({ url: () => 'http://a', goto: async () => {} }),
             } as any,
             restoreWorkspace: async () => ({ workspaceId: 'ws-x', tabId: 'tab-x', tabToken: 'tk-x' }),
@@ -48,6 +52,7 @@ test('createOnly uses create workspace path', async () => {
         },
     );
     assert.equal(created, true);
+    assert.equal(shellCalled, false);
     assert.equal(result.workspaceId, 'ws-1');
 });
 
@@ -62,7 +67,6 @@ test('restoreOrCreate tries restore first then create', async () => {
                     return { workspaceId: 'ws-created', tabId: 'tab-created' };
                 },
                 resolveTabToken: () => 'tk-created',
-                createWorkspaceShell: () => ({ workspaceId: 'workflow:order' }),
                 resolvePage: async () => ({ url: () => 'http://a', goto: async () => {} }),
             } as any,
             restoreWorkspace: async () => {
@@ -81,4 +85,55 @@ test('restoreOrCreate tries restore first then create', async () => {
     assert.equal(restoreCalled, 1);
     assert.equal(createCalled, 1);
     assert.equal(result.workspaceId, 'ws-created');
+});
+
+test('expectedTabs urlIncludes validation succeeds', async () => {
+    const result = await resolveWorkflowWorkspace(
+        {
+            pageRegistry: {
+                createWorkspace: async () => ({ workspaceId: 'ws-created', tabId: 'tab-created' }),
+                resolveTabToken: () => 'tk-created',
+                resolvePage: async () => ({ url: () => 'http://localhost/orders/list', goto: async () => {} }),
+            } as any,
+            restoreWorkspace: async () => ({ workspaceId: 'ws-restore', tabId: 'tab-restore', tabToken: 'tk-restore' }),
+        },
+        {
+            scene: 'order',
+            binding: {
+                version: 1,
+                workspace: {
+                    strategy: 'createOnly',
+                    expectedTabs: [{ ref: 'main', urlIncludes: '/orders' }],
+                },
+            },
+        },
+    );
+    assert.equal(result.workspaceId, 'ws-created');
+});
+
+test('expectedTabs exactUrl validation fails with ERR_WORKFLOW_WORKSPACE_RESOLVE_FAILED', async () => {
+    await assert.rejects(
+        () =>
+            resolveWorkflowWorkspace(
+                {
+                    pageRegistry: {
+                        createWorkspace: async () => ({ workspaceId: 'ws-created', tabId: 'tab-created' }),
+                        resolveTabToken: () => 'tk-created',
+                        resolvePage: async () => ({ url: () => 'http://localhost/orders/list', goto: async () => {} }),
+                    } as any,
+                    restoreWorkspace: async () => ({ workspaceId: 'ws-restore', tabId: 'tab-restore', tabToken: 'tk-restore' }),
+                },
+                {
+                    scene: 'order',
+                    binding: {
+                        version: 1,
+                        workspace: {
+                            strategy: 'createOnly',
+                            expectedTabs: [{ ref: 'main', exactUrl: 'http://localhost/orders/detail' }],
+                        },
+                    },
+                },
+            ),
+        /ERR_WORKFLOW_WORKSPACE_RESOLVE_FAILED|workflow workspace resolve failed/,
+    );
 });
