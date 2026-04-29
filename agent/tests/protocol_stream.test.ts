@@ -123,3 +123,55 @@ test('play.start returns play.started immediately and emits completion event', a
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(emitted.some((action) => action.type === ACTION_TYPES.PLAY_COMPLETED), true);
 });
+
+test('record.stop resolves recording session by workspaceId even with mismatched tabToken', async () => {
+    const handler = recordingHandlers[ACTION_TYPES.RECORD_STOP];
+    const state = createRecordingState();
+    state.recordingEnabled.add('token-a');
+    state.recordingEnabled.add('token-b');
+    state.recordings.set('token-a', []);
+    state.recordings.set('token-b', []);
+    state.recordingManifests.set('token-a', {
+        recordingToken: 'token-a',
+        workspaceId: 'ws-a',
+        startedAt: 1,
+        tabs: [],
+    });
+    state.recordingManifests.set('token-b', {
+        recordingToken: 'token-b',
+        workspaceId: 'ws-b',
+        startedAt: 2,
+        tabs: [],
+    });
+    state.workspaceLatestRecording.set('ws-a', 'token-a');
+    state.workspaceLatestRecording.set('ws-b', 'token-b');
+
+    const response = await handler(
+        {
+            page: { url: () => { throw new Error('no page in pageless mode'); } } as any,
+            tabToken: 'unknown-tab-token',
+            pageRegistry: {} as any,
+            log: () => undefined,
+            recordingState: state,
+            replayOptions: {
+                clickDelayMs: 0,
+                stepDelayMs: 0,
+                scroll: { minDelta: 10, maxDelta: 20, minSteps: 1, maxSteps: 2 },
+            },
+            navDedupeWindowMs: 1000,
+        } as any,
+        {
+            v: 1,
+            id: 'record-stop-1',
+            type: ACTION_TYPES.RECORD_STOP,
+            tabToken: 'unknown-tab-token',
+            scope: { workspaceId: 'ws-b' },
+            payload: {},
+            at: Date.now(),
+        },
+    );
+
+    assert.equal(response.type, `${ACTION_TYPES.RECORD_STOP}.result`);
+    assert.equal(state.recordingEnabled.has('token-b'), false);
+    assert.equal(state.recordingEnabled.has('token-a'), true);
+});

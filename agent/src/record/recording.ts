@@ -603,15 +603,22 @@ export const startRecording = async (
 /**
  * 停止录制：仅关闭录制开关，保留已有记录。
  */
-export const stopRecording = (state: RecordingState, tabToken: string): void => {
+export const stopRecording = (state: RecordingState, tabToken: string, opts?: { workspaceId?: string }): void => {
     const recordLog = getLogger('record');
-    const effectiveToken = resolveSingleRecordingToken(state, tabToken, { mustBeEnabled: true });
+    const effectiveToken = resolveSingleRecordingToken(state, tabToken, {
+        mustBeEnabled: true,
+        workspaceId: opts?.workspaceId,
+    });
     state.recordingEnabled.delete(effectiveToken);
     state.lastNavigateTs.delete(effectiveToken);
     state.lastClickTs.delete(effectiveToken);
     state.lastScrollY.delete(effectiveToken);
     state.recordSnapshotCache.delete(effectiveToken);
-    recordLog('stop', { tabToken: effectiveToken, sourceTabToken: tabToken });
+    recordLog('stop', {
+        tabToken: effectiveToken,
+        sourceTabToken: tabToken,
+        workspaceId: opts?.workspaceId,
+    });
 };
 
 /**

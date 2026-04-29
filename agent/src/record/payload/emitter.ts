@@ -7,6 +7,7 @@ const getElementText = (el: Element) => {
 
 type WindowWithTabToken = Window & { __rpa_tab_token?: unknown; __TAB_TOKEN__?: unknown };
 type WindowBridge = Window & Record<string, unknown>;
+type RecorderControlWindow = Window & { __rpa_recorder_enabled?: unknown };
 
 export type EmitPayload = { type: string; [key: string]: unknown };
 export type EmitFn = (payload: EmitPayload) => void;
@@ -32,6 +33,8 @@ const getToken = (): string | null => {
 
 export const createEmitter = (bindingName: string, version: string): { emit: EmitFn; debugTarget: DebugTargetFn } => {
     const emit: EmitFn = (payload) => {
+        const enabled = (window as RecorderControlWindow).__rpa_recorder_enabled;
+        if (enabled === false) {return;}
         const tabToken = getToken();
         if (!tabToken) {
             try {

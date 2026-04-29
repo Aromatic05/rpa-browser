@@ -21,7 +21,7 @@ import {
 } from '../record/recording';
 import { ERROR_CODES } from './error_codes';
 import type { StepUnion } from '../runner/steps/types';
-import type { RecorderEvent } from '../record/recorder';
+import { setRecorderRuntimeEnabled, type RecorderEvent } from '../record/recorder';
 import { replayRecording, type ReplayEvent } from '../play/replay';
 
 export const recordingHandlers: Record<string, ActionHandler> = {
@@ -33,20 +33,48 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             entryUrl: ctx.page.url(),
         });
         await ensureRecorder(ctx.recordingState, ctx.page, ctx.tabToken, ctx.navDedupeWindowMs);
+        await setRecorderRuntimeEnabled(ctx.page, true);
         return replyAction(action, { pageUrl: ctx.page.url() });
     },
     'record.stop': async (ctx, action) => {
-        stopRecording(ctx.recordingState, ctx.tabToken);
-        return replyAction(action, { pageUrl: ctx.page.url() });
+        const workspaceId = action.scope?.workspaceId;
+        stopRecording(ctx.recordingState, ctx.tabToken, { workspaceId });
+        try {
+            await setRecorderRuntimeEnabled(ctx.page, false);
+        } catch {
+            // ignore unavailable page in pageless mode
+        }
+        if (workspaceId) {
+            try {
+                const tabs = await ctx.pageRegistry.listTabs(workspaceId);
+                for (const tab of tabs) {
+                    try {
+                        const page = await ctx.pageRegistry.resolvePage({ workspaceId, tabId: tab.tabId });
+                        await setRecorderRuntimeEnabled(page, false);
+                    } catch {
+                        // ignore tabs without live page binding
+                    }
+                }
+            } catch {
+                // ignore workspace listing failures
+            }
+        }
+        let pageUrl = '';
+        try {
+            pageUrl = ctx.page.url();
+        } catch {
+            // pageless mode: no concrete page target
+        }
+        return replyAction(action, { pageUrl });
     },
     'record.get': async (ctx, action) => {
-        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
+        const workspaceId = action.scope?.workspaceId;
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
         return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
     'record.clear': async (ctx, action) => {
-        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
-        clearRecording(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
+        const workspaceId = action.scope?.workspaceId;
+        clearRecording(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
         return replyAction(action, { cleared: true });
     },
     'record.list': async (ctx, action) => {

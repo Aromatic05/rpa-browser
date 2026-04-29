@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createActionDispatcher } from '../../src/actions/dispatcher';
 import type { Action } from '../../src/actions/action_protocol';
 import { createRecordingState } from '../../src/record/recording';
 
-const workflowsRoot = path.resolve(process.cwd(), 'agent/.artifacts/workflows');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const workflowsRoot = path.resolve(__dirname, '../../.artifacts/workflows');
 
 test('workflow.init does not require tab target in action dispatcher', async (t) => {
     const scene = `pageless-${Date.now()}`;

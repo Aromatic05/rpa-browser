@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { workflowHandlers } from '../../src/actions/workflow';
 import { createRecordingState } from '../../src/record/recording';
 
-const workflowsRoot = path.resolve(process.cwd(), 'agent/.artifacts/workflows');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const workflowsRoot = path.resolve(__dirname, '../../.artifacts/workflows');
 
 const ensureScene = (scene: string, dslSource = '') => {
     const sceneDir = path.join(workflowsRoot, scene);
@@ -195,6 +198,7 @@ test('workflow.init creates minimal workflow artifacts and is idempotent', async
     } as any);
     assert.equal(first.type, 'workflow.init.result');
     assert.equal((first.payload as any).created, true);
+    assert.equal(String((first.payload as any).workflowRoot).includes('/agent/agent/.artifacts/'), false);
     assert.equal(fs.existsSync(path.join(sceneDir, 'workflow.yaml')), true);
     assert.equal(fs.existsSync(path.join(sceneDir, 'records')), true);
     assert.equal(fs.existsSync(path.join(sceneDir, 'checkpoints')), true);

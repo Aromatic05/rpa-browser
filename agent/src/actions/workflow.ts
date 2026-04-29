@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { replyAction } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
@@ -15,7 +16,9 @@ import type { StepResolve } from '../runner/steps/types';
 import YAML from 'yaml';
 import { validateCheckpointResolveFileForSerialization, validateSingleCheckpointFileForSerialization, type CheckpointResolveFile, type SingleCheckpointFile } from '../runner/serialization/types';
 
-const DEFAULT_ARTIFACTS_ROOT = path.resolve(process.cwd(), 'agent/.artifacts');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DEFAULT_ARTIFACTS_ROOT = path.resolve(__dirname, '../../.artifacts');
 const DEFAULT_WORKFLOWS_DIR = path.resolve(DEFAULT_ARTIFACTS_ROOT, 'workflows');
 
 const toWorkflowWorkspaceId = (scene: string): string => `workflow:${scene}`;

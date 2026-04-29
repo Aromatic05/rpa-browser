@@ -9,9 +9,11 @@ import {
     getRecordingBundle,
     listWorkspaceRecordings,
     recordStep,
+    recordEvent,
     saveWorkspaceSnapshot,
     stopRecording,
 } from '../../src/record/recording';
+import type { RecorderEvent } from '../../src/record/recorder';
 import type { StepUnion } from '../../src/runner/steps/types';
 
 test('recordStep appends cross-tab step into sole active recording session', () => {
@@ -45,6 +47,32 @@ test('stopRecording falls back to sole active recording token', () => {
     assert.equal(state.lastNavigateTs.has('token-a'), false);
     assert.equal(state.lastClickTs.has('token-a'), false);
     assert.equal(state.lastScrollY.has('token-a'), false);
+});
+
+test('stopRecording resolves active token by workspaceId', () => {
+    const state = createRecordingState();
+    state.recordingEnabled.add('token-a');
+    state.recordingEnabled.add('token-b');
+    state.recordings.set('token-a', []);
+    state.recordings.set('token-b', []);
+    state.recordingManifests.set('token-a', {
+        recordingToken: 'token-a',
+        workspaceId: 'ws-a',
+        startedAt: 1,
+        tabs: [],
+    });
+    state.recordingManifests.set('token-b', {
+        recordingToken: 'token-b',
+        workspaceId: 'ws-b',
+        startedAt: 2,
+        tabs: [],
+    });
+    state.workspaceLatestRecording.set('ws-a', 'token-a');
+    state.workspaceLatestRecording.set('ws-b', 'token-b');
+
+    stopRecording(state, 'unknown-token', { workspaceId: 'ws-b' });
+    assert.equal(state.recordingEnabled.has('token-b'), false);
+    assert.equal(state.recordingEnabled.has('token-a'), true);
 });
 
 test('getRecording/clearRecording fall back to sole recording key', () => {
@@ -230,4 +258,21 @@ test('recording enhancements are stored as sidecar and never mixed into step', (
     assert.equal((bundle.steps[0].meta as Record<string, unknown>).recording, undefined);
     assert.equal(bundle.enrichments?.['step-sidecar-1']?.target?.nodeId, 'button_buy');
     assert.equal(bundle.enrichments?.['step-sidecar-1']?.resolvePolicy?.allowFuzzy, true);
+});
+
+test('recordEvent is ignored after stopRecording', async () => {
+    const state = createRecordingState();
+    state.recordingEnabled.add('token-a');
+    state.recordings.set('token-a', []);
+    stopRecording(state, 'token-a');
+
+    const event: RecorderEvent = {
+        tabToken: 'token-a',
+        ts: Date.now(),
+        type: 'click',
+        selector: '#btn',
+        a11yHint: { role: 'button', name: 'Submit' },
+    };
+    await recordEvent(state, event, 1200);
+    assert.equal((state.recordings.get('token-a') || []).length, 0);
 });

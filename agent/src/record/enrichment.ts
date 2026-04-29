@@ -181,7 +181,7 @@ const buildTargetFingerprint = (
     nodeId: string,
     origin?: { primaryDomId: string; sourceDomIds?: string[] },
 ): RecordedTargetFingerprint => {
-    const attrs = snapshot.attrIndex[nodeId];
+    const attrs = snapshot.attrIndex[nodeId] || {};
     const semanticHints = getNodeSemanticHints(node);
     return {
         nodeId,
@@ -241,8 +241,8 @@ const pickBestNodeId = (snapshot: SnapshotResult, event: RecorderEvent): string 
 };
 
 const scoreNode = (snapshot: SnapshotResult, nodeId: string, node: UnifiedNode, event: RecorderEvent): number => {
-    const locator = snapshot.locatorIndex[nodeId];
-    const attrs = snapshot.attrIndex[nodeId];
+    const locator = snapshot.locatorIndex[nodeId] || {};
+    const attrs = snapshot.attrIndex[nodeId] || {};
     const tag = normalizeText(attrs.tag || attrs.tagName);
     const name = normalizeText(node.name);
     const content = normalizeText(resolveNodeContent(snapshot, node));
