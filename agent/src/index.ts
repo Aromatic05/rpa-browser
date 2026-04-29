@@ -28,6 +28,9 @@ const PAGELESS_ACTIONS = new Set<string>([
     ACTION_TYPES.WORKSPACE_LIST,
     ACTION_TYPES.WORKSPACE_CREATE,
     ACTION_TYPES.RECORD_LIST,
+    ACTION_TYPES.RECORD_STOP,
+    ACTION_TYPES.RECORD_GET,
+    ACTION_TYPES.RECORD_CLEAR,
     ACTION_TYPES.TAB_INIT,
     ACTION_TYPES.WORKFLOW_LIST,
     ACTION_TYPES.WORKFLOW_OPEN,
@@ -47,6 +50,7 @@ const REPLAY_OPTIONS = {
     scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
 };
 const NAV_DEDUPE_WINDOW_MS = 1200;
+const WS_TAP_ENABLED = process.env.RPA_WS_TAP === '1';
 
 const actionLog = getLogger('action');
 const log = (...args: unknown[]) => { actionLog.info('[RPA:agent]', ...args); };
@@ -54,6 +58,41 @@ const logWarning = (...args: unknown[]) => { actionLog.warning('[RPA:agent]', ..
 const logError = (...args: unknown[]) => { actionLog.error('[RPA:agent]', ...args); };
 const logTabReportDebug = (stage: string, data: Record<string, unknown>) =>
     { actionLog.debug('[RPA:tab.report]', { ts: Date.now(), stage, ...data }); };
+const wsTap = (stage: string, data: Record<string, unknown>) => {
+    if (!WS_TAP_ENABLED) {return;}
+    actionLog.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });
+};
+const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
+    if (!raw || typeof raw !== 'object') {
+        return { kind: typeof raw, isObject: false };
+    }
+    const rec = raw as Record<string, unknown>;
+    const payload = rec.payload;
+    const scope = rec.scope;
+    return {
+        v: rec.v,
+        id: typeof rec.id === 'string' ? rec.id : undefined,
+        replyTo: typeof rec.replyTo === 'string' ? rec.replyTo : undefined,
+        type: typeof rec.type === 'string' ? rec.type : undefined,
+        tabToken: typeof rec.tabToken === 'string' ? rec.tabToken : undefined,
+        scope:
+            scope && typeof scope === 'object'
+                ? {
+                      workspaceId: typeof (scope as Record<string, unknown>).workspaceId === 'string'
+                          ? (scope as Record<string, unknown>).workspaceId
+                          : undefined,
+                      tabId: typeof (scope as Record<string, unknown>).tabId === 'string'
+                          ? (scope as Record<string, unknown>).tabId
+                          : undefined,
+                      tabToken: typeof (scope as Record<string, unknown>).tabToken === 'string'
+                          ? (scope as Record<string, unknown>).tabToken
+                          : undefined,
+                  }
+                : undefined,
+        payloadType: Array.isArray(payload) ? 'array' : typeof payload,
+        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
+    };
+};
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -86,6 +125,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 const wsClients = new Set<WebSocket>();
 const broadcast = (action: Action) => {
+    wsTap('agent.broadcast', summarizeActionEnvelope(action));
     const payload = JSON.stringify(action);
     wsClients.forEach((client) => {
         try {
@@ -375,30 +415,76 @@ const parseInboundAction = (raw: unknown): Action => {
     return rec as Action;
 };
 
+/**
+ * ========================= Listener Group A: Recorder Event Sink =========================
+ * 触发源：
+ * - record/recorder.ts 注入到页面的 payload 通过 exposeBinding 回传原始录制事件
+ *
+ * 职责：
+ * 1) 在进入 action 执行前，先做“是否仍在录制”的硬门禁；
+ * 2) 将原始 recorder event 包装为统一 Action(record.event) 广播给观察端；
+ * 3) 同步交给 executeAction 进入录制入库链路（recordEvent/recordStep）。
+ *
+ * 关键约束：
+ * - 无活跃录制会话时直接丢弃（不广播、不执行），避免 record.stop 后仍出现录制流量；
+ * - 若仅存在一个活跃录制 token，允许将事件归并到该唯一 token（跨 tab 人工录制场景）。
+ */
 setRecorderEventSink(async (event, page, tabToken) => {
+    let effectiveToken = tabToken;
+    if (!recordingState.recordingEnabled.has(effectiveToken)) {
+        if (recordingState.recordingEnabled.size === 1) {
+            effectiveToken = Array.from(recordingState.recordingEnabled)[0];
+        } else {
+            wsTap('agent.record_event.drop', {
+                reason: 'recording_not_enabled',
+                sourceTabToken: tabToken,
+                activeRecordingCount: recordingState.recordingEnabled.size,
+            });
+            return;
+        }
+    }
+
     let scope: { workspaceId?: string; tabId?: string; tabToken?: string } | undefined;
     try {
-        const resolved = pageRegistry.resolveScopeFromToken(tabToken);
-        scope = { workspaceId: resolved.workspaceId, tabId: resolved.tabId, tabToken };
+        const resolved = pageRegistry.resolveScopeFromToken(effectiveToken);
+        scope = { workspaceId: resolved.workspaceId, tabId: resolved.tabId, tabToken: effectiveToken };
     } catch {
-        scope = { tabToken };
+        scope = { tabToken: effectiveToken };
     }
     const action: Action = {
         v: 1,
         id: crypto.randomUUID(),
         type: ACTION_TYPES.RECORD_EVENT,
-        tabToken,
+        tabToken: effectiveToken,
         scope,
         payload: event,
         at: event.ts || Date.now(),
     };
     broadcast(action);
-    const response = await executeAction(createActionContext(page, tabToken), action);
+    const response = await executeAction(createActionContext(page, effectiveToken), action);
     if (isFailedAction(response)) {
-        logWarning('record.event.ingest.failed', { tabToken, error: response.payload });
+        logWarning('record.event.ingest.failed', { tabToken: effectiveToken, sourceTabToken: tabToken, error: response.payload });
     }
 });
 
+/**
+ * ========================= Listener Group B: Agent WebSocket Server =========================
+ * 触发源：
+ * - extension background / start_extension / 其他 ws client 发来的 action 请求
+ *
+ * 生命周期与职责：
+ * - listening: 记录启动完成；
+ * - connection: 注册连接；
+ * - message:
+ *   1) 解析原始 JSON；
+ *   2) 校验为受支持的 Action；
+ *   3) 路由到 handleAction 执行；
+ *   4) 回写 *.result / *.failed；
+ *   5) 对状态变化类 action 追加广播 workspace.changed / workspace.sync。
+ *
+ * 可观测性：
+ * - RPA_WS_TAP=1 时输出 inbound/raw/parsed、reply、broadcast 的结构化抓包日志。
+ */
 const wss = new WebSocketServer({ host: '127.0.0.1', port: WS_PORT });
 
 wss.on('listening', () => {
@@ -409,8 +495,9 @@ wss.on('connection', (socket) => {
     wsClients.add(socket);
     socket.on('message', (data) => {
         let raw: unknown;
+        let rawText = '';
         try {
-            const rawText =
+            rawText =
                 typeof data === 'string'
                     ? data
                     : Buffer.isBuffer(data)
@@ -418,9 +505,11 @@ wss.on('connection', (socket) => {
                       : Array.isArray(data)
                         ? Buffer.concat(data).toString('utf8')
                         : data instanceof ArrayBuffer
-                          ? Buffer.from(data).toString('utf8')
-                          : '';
+                        ? Buffer.from(data).toString('utf8')
+                        : '';
+            wsTap('agent.inbound.raw', { bytes: rawText.length, preview: rawText.slice(0, 300) });
             raw = JSON.parse(rawText);
+            wsTap('agent.inbound.parsed', summarizeActionEnvelope(raw));
         } catch {
             socket.send(
                 JSON.stringify({
@@ -431,6 +520,7 @@ wss.on('connection', (socket) => {
                     at: Date.now(),
                 } satisfies Action),
             );
+            wsTap('agent.inbound.parse_failed', { bytes: rawText.length, preview: rawText.slice(0, 300) });
             return;
         }
 
@@ -452,6 +542,7 @@ wss.on('connection', (socket) => {
                             null,
                     });
                 }
+                wsTap('agent.reply', summarizeActionEnvelope(response));
                 socket.send(JSON.stringify(response));
 
                 if (!isFailedAction(response) && isMutatingAction(action.type)) {
@@ -507,6 +598,19 @@ wss.on('connection', (socket) => {
     socket.on('close', () => wsClients.delete(socket));
 });
 
+/**
+ * ========================= Listener Group C: Tab Ping Watchdog Timer =========================
+ * 触发源：
+ * - 固定周期定时器（TAB_PING_WATCHDOG_INTERVAL_MS）
+ *
+ * 职责：
+ * - 检测超时未上报 ping 的 tabToken；
+ * - 首次发现时广播 ping-timeout 状态同步；
+ * - 触发 pageRegistry.closeTokenPage 回收失活页资源。
+ *
+ * 说明：
+ * - staleNotifiedTokens 用于抑制重复通知，避免同一 token 反复刷屏。
+ */
 setInterval(() => {
     const staleTabs = pageRegistry.listTimedOutTokens(TAB_PING_TIMEOUT_MS, Date.now());
     for (const stale of staleTabs) {
