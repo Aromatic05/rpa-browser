@@ -20,6 +20,40 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export const createWsClient = (options: WsClientOptions): WsClient => {
     const log = options.logger ?? createLogger('sw');
+    const wsTap = (stage: string, data: Record<string, unknown>) => {
+        log.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });
+    };
+    const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
+        if (!raw || typeof raw !== 'object') {
+            return { kind: typeof raw, isObject: false };
+        }
+        const rec = raw as Record<string, unknown>;
+        const payload = rec.payload;
+        const scope = rec.scope;
+        return {
+            v: rec.v,
+            id: typeof rec.id === 'string' ? rec.id : undefined,
+            replyTo: typeof rec.replyTo === 'string' ? rec.replyTo : undefined,
+            type: typeof rec.type === 'string' ? rec.type : undefined,
+            tabToken: typeof rec.tabToken === 'string' ? rec.tabToken : undefined,
+            scope:
+                scope && typeof scope === 'object'
+                    ? {
+                          workspaceId: typeof (scope as Record<string, unknown>).workspaceId === 'string'
+                              ? (scope as Record<string, unknown>).workspaceId
+                              : undefined,
+                          tabId: typeof (scope as Record<string, unknown>).tabId === 'string'
+                              ? (scope as Record<string, unknown>).tabId
+                              : undefined,
+                          tabToken: typeof (scope as Record<string, unknown>).tabToken === 'string'
+                              ? (scope as Record<string, unknown>).tabToken
+                              : undefined,
+                      }
+                    : undefined,
+            payloadType: Array.isArray(payload) ? 'array' : typeof payload,
+            payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
+        };
+    };
     let wsRef: WebSocket | null = null;
     let wsReady: Promise<void> | null = null;
     const pending = new Map<string, (reply: Action) => void>();
@@ -69,9 +103,12 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         wsRef.addEventListener('message', (event) => {
             let payload: unknown = event.data;
             if (typeof payload === 'string') {
+                const rawText = payload;
                 try {
-                    payload = JSON.parse(payload);
+                    wsTap('ext.inbound.raw', { bytes: rawText.length, preview: rawText.slice(0, 300) });
+                    payload = JSON.parse(rawText);
                 } catch {
+                    wsTap('ext.inbound.parse_failed', { bytes: rawText.length, preview: rawText.slice(0, 300) });
                     return;
                 }
             }
@@ -79,6 +116,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                 return;
             }
             const action = payload as Action;
+            wsTap('ext.inbound.parsed', summarizeActionEnvelope(action));
             const kind = classifyActionType(action.type);
             if (kind === 'reply' && action.replyTo) {
                 const resolver = pending.get(action.replyTo);
@@ -117,6 +155,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             });
             connect()
                 .then(() => {
+                    wsTap('ext.outbound.send', summarizeActionEnvelope(action));
                     wsRef?.send(JSON.stringify(action));
                 })
                 .catch(() => {

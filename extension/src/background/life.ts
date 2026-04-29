@@ -23,17 +23,11 @@ export type BoundTabToken = {
     workspaceId: string;
     agentTabId: string;
     urlHint: string;
-    pending?: boolean;
 };
 
 export type LifecycleRuntime = {
     ensureTabToken: (tabId: number, hintedWindowId?: number) => Promise<TabRuntimeState | null>;
-    ensureBoundTabToken: (
-        tabId: number,
-        hintedWindowId?: number,
-        preferredTabToken?: string,
-        source?: string,
-    ) => Promise<BoundTabToken | null>;
+    ensureBoundTabToken: (tabId: number, hintedWindowId?: number, preferredTabToken?: string) => Promise<BoundTabToken | null>;
     getActiveTabTokenForWindow: (windowId: number) => Promise<{ tabId: number; tabToken: string; urlHint: string; windowId: number } | null>;
     onActivated: (info: chrome.tabs.TabActiveInfo) => void;
     onRemoved: (tabId: number) => void;
@@ -85,56 +79,8 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     };
 
     const pushTokenToTab = async (tabId: number, tabToken: string) => {
-        const result = await send.toTabTransport<{ ok: boolean }>(
-            tabId,
-            MSG.SET_TOKEN,
-            { tabToken },
-            { timeoutMs: 1200 },
-        );
+        const result = await send.toTabTransport<{ ok: boolean }>(tabId, MSG.SET_TOKEN, { tabToken }, { timeoutMs: 1200 });
         return result.ok && result.data?.ok === true;
-    };
-
-    const reopenWithBinding = async (params: {
-        tabId: number;
-        windowId: number;
-        tabToken: string;
-        workspaceId: string;
-        urlHint: string;
-        title?: string;
-    }) => {
-        let pendingWorkspaceId = params.workspaceId;
-        for (let i = 0; i < 6; i += 1) {
-            const opened = await options.sendAction({
-                v: 1,
-                id: crypto.randomUUID(),
-                type: ACTION_TYPES.TAB_OPENED,
-                tabToken: params.tabToken,
-                scope: { tabToken: params.tabToken, workspaceId: pendingWorkspaceId },
-                payload: {
-                    source: 'extension.sw',
-                    url: params.urlHint,
-                    title: params.title,
-                    at: Date.now(),
-                    windowId: params.windowId,
-                    workspaceId: pendingWorkspaceId,
-                },
-            });
-            if (isFailedReply(opened)) {
-                const error = payloadOf(opened);
-                const code = typeof error.code === 'string' ? error.code : 'ERR';
-                const message = typeof error.message === 'string' ? error.message : 'unknown';
-                throw new Error(`tab.opened failed: ${code}:${message}`);
-            }
-            const openedPayload = payloadOf(opened);
-            const resolvedWorkspaceId = toStringOrUndefined(openedPayload.workspaceId) ?? pendingWorkspaceId;
-            const resolvedAgentTabId = toStringOrUndefined(openedPayload.tabId) ?? '';
-            if (resolvedAgentTabId) {
-                return { workspaceId: resolvedWorkspaceId, tabId: resolvedAgentTabId };
-            }
-            pendingWorkspaceId = resolvedWorkspaceId;
-            await wait(80);
-        }
-        return null;
     };
 
     const resolveWorkspaceId = async (tabToken: string, windowId: number) => {
@@ -168,11 +114,52 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         return remoteActive;
     };
 
+    const bindOpenedStrict = async (params: {
+        tabId: number;
+        windowId: number;
+        tabToken: string;
+        workspaceId: string;
+        urlHint: string;
+        title?: string;
+    }) => {
+        let currentWorkspaceId = params.workspaceId;
+        for (let i = 0; i < 6; i += 1) {
+            const opened = await options.sendAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: ACTION_TYPES.TAB_OPENED,
+                tabToken: params.tabToken,
+                scope: { tabToken: params.tabToken, workspaceId: currentWorkspaceId },
+                payload: {
+                    source: 'extension.sw',
+                    url: params.urlHint,
+                    title: params.title,
+                    at: Date.now(),
+                    windowId: params.windowId,
+                    workspaceId: currentWorkspaceId,
+                },
+            });
+            if (isFailedReply(opened)) {
+                const error = payloadOf(opened);
+                const code = typeof error.code === 'string' ? error.code : 'ERR';
+                const message = typeof error.message === 'string' ? error.message : 'unknown';
+                throw new Error(`tab.opened failed: ${code}:${message}`);
+            }
+            const payload = payloadOf(opened);
+            currentWorkspaceId = toStringOrUndefined(payload.workspaceId) ?? currentWorkspaceId;
+            const agentTabId = toStringOrUndefined(payload.tabId) ?? '';
+            if (agentTabId) {
+                return { workspaceId: currentWorkspaceId, tabId: agentTabId };
+            }
+            await wait(80);
+        }
+        throw new Error(`tab.opened missing tabId (tabId=${String(params.tabId)}, windowId=${String(params.windowId)})`);
+    };
+
     const ensureBoundTabTokenInternal = async (
         tabId: number,
         hintedWindowId?: number,
         preferredTabToken?: string,
-        source?: string,
     ): Promise<BoundTabToken | null> => {
         let windowId = typeof hintedWindowId === 'number' ? hintedWindowId : null;
         let tab = null as chrome.tabs.Tab | null;
@@ -186,7 +173,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         let tabToken = existing?.tabToken ?? '';
         let urlHint = existing?.lastUrl ?? '';
 
-        if (preferredTabToken && !tabToken) {
+        if (!tabToken && preferredTabToken) {
             tabToken = preferredTabToken;
         }
 
@@ -198,17 +185,21 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             }
         }
 
-        let generatedToken = false;
+        if (!urlHint) {
+            if (!tab) {tab = await chrome.tabs.get(tabId);}
+            urlHint = tab?.url ?? '';
+        }
+
+        if (urlHint.startsWith('chrome://newtab')) {
+            return null;
+        }
+
         if (!tabToken) {
             const init = await options.sendAction({
                 v: 1,
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_INIT,
-                payload: {
-                    source: 'extension.sw',
-                    url: tab?.url ?? '',
-                    at: Date.now(),
-                },
+                payload: { source: 'extension.sw', url: urlHint, at: Date.now() },
                 scope: {},
             });
             if (isFailedReply(init)) {
@@ -223,55 +214,17 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 throw new Error('tab.init returned empty tabToken');
             }
             tabToken = createdToken;
-            generatedToken = true;
             await pushTokenToTab(tabId, tabToken).catch(() => false);
-        }
-
-        if (!urlHint) {
-            if (!tab) {tab = await chrome.tabs.get(tabId);}
-            urlHint = tab?.url ?? '';
-        }
-
-        // Hard gate: during transient chrome://newtab phase, emit nothing.
-        // No tab.init / tab.opened should be sent until tab leaves this stage.
-        if (urlHint.startsWith('chrome://newtab')) {
-            return {
-                tabId,
-                windowId,
-                tabToken: tabToken || preferredTabToken || '',
-                workspaceId: options.state.getWindowWorkspace(windowId) ?? options.state.getActiveWorkspaceId() ?? '',
-                agentTabId: '',
-                urlHint,
-                pending: true,
-            };
         }
 
         options.state.upsertTab(tabId, tabToken, urlHint, windowId);
 
-        let tokenScope = options.state.getTokenScope(tabToken);
-        if (!tokenScope) {
-            if (generatedToken) {
-                // First handshake: token just minted, wait for caller page to persist token then retry ENSURE.
-                return {
-                    tabId,
-                    windowId,
-                    tabToken,
-                    workspaceId: options.state.getWindowWorkspace(windowId) ?? options.state.getActiveWorkspaceId() ?? '',
-                    agentTabId: '',
-                    urlHint,
-                    pending: true,
-                };
-            }
-
-            // For non-start pages without existing/preferred token, require explicit token source rather than minting phantom claims.
-            if (!preferredTabToken && source !== 'start_extension') {
-                return null;
-            }
-
+        let scope = options.state.getTokenScope(tabToken);
+        if (!scope) {
             const workspaceId = await resolveWorkspaceId(tabToken, windowId);
             options.state.setWindowWorkspace(windowId, workspaceId);
             if (!tab) {tab = await chrome.tabs.get(tabId);}
-            const rebound = await reopenWithBinding({
+            const rebound = await bindOpenedStrict({
                 tabId,
                 windowId,
                 tabToken,
@@ -279,28 +232,17 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 urlHint,
                 title: tab?.title,
             });
-            if (!rebound) {
-                return {
-                    tabId,
-                    windowId,
-                    tabToken,
-                    workspaceId,
-                    agentTabId: '',
-                    urlHint,
-                    pending: true,
-                };
-            }
             options.state.upsertTokenScope(tabToken, rebound.workspaceId, rebound.tabId);
             options.state.setWindowWorkspace(windowId, rebound.workspaceId);
-            tokenScope = { workspaceId: rebound.workspaceId, tabId: rebound.tabId };
+            scope = { workspaceId: rebound.workspaceId, tabId: rebound.tabId };
         }
 
         return {
             tabId,
             windowId,
             tabToken,
-            workspaceId: tokenScope.workspaceId,
-            agentTabId: tokenScope.tabId,
+            workspaceId: scope.workspaceId,
+            agentTabId: scope.tabId,
             urlHint,
         };
     };
@@ -309,21 +251,19 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         tabId: number,
         hintedWindowId?: number,
         preferredTabToken?: string,
-        source?: string,
     ): Promise<BoundTabToken | null> => {
         const existing = inflightBoundByTab.get(tabId);
         if (existing) {return await existing;}
-        const inflight = ensureBoundTabTokenInternal(tabId, hintedWindowId, preferredTabToken, source)
-            .finally(() => {
-                inflightBoundByTab.delete(tabId);
-            });
+        const inflight = ensureBoundTabTokenInternal(tabId, hintedWindowId, preferredTabToken).finally(() => {
+            inflightBoundByTab.delete(tabId);
+        });
         inflightBoundByTab.set(tabId, inflight);
         return await inflight;
     };
 
     const ensureTabToken = async (tabId: number, hintedWindowId?: number) => {
         const bound = await ensureBoundTabToken(tabId, hintedWindowId);
-        if (!bound || bound.pending) {return null;}
+        if (!bound) {return null;}
         options.state.upsertTab(tabId, bound.tabToken, bound.urlHint, bound.windowId);
         return options.state.getTabState(tabId) ?? null;
     };
@@ -345,7 +285,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
 
         void (async () => {
             const bound = await ensureBoundTabToken(info.tabId, info.windowId);
-            if (!bound?.tabToken || bound.pending) {return;}
+            if (!bound?.tabToken) {return;}
             options.state.setActiveWorkspaceId(bound.workspaceId);
             options.state.setWindowWorkspace(info.windowId, bound.workspaceId);
             const now = Date.now();
@@ -366,11 +306,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         const removed = options.state.removeTab(tabId);
         if (options.state.getActiveTabId() === tabId) {options.state.setActiveTabId(null);}
         if (removed?.tabToken) {
-            void emitLifecycleAction(
-                ACTION_TYPES.TAB_CLOSED,
-                { source: 'extension.sw', at: Date.now(), windowId: removed.windowId },
-                removed.tabToken,
-            );
+            void emitLifecycleAction(ACTION_TYPES.TAB_CLOSED, { source: 'extension.sw', at: Date.now(), windowId: removed.windowId }, removed.tabToken);
             options.state.removeTokenScope(removed.tabToken);
         }
         options.onRefresh();
@@ -380,36 +316,17 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (!changeInfo.url && typeof tab?.windowId !== 'number') {return;}
         const existing = options.state.getTabState(tabId);
         if (!existing?.tabToken) {return;}
-        options.state.upsertTab(
-            tabId,
-            existing.tabToken,
-            changeInfo.url ?? existing.lastUrl,
-            typeof tab?.windowId === 'number' ? tab.windowId : undefined,
-        );
+        options.state.upsertTab(tabId, existing.tabToken, changeInfo.url ?? existing.lastUrl, typeof tab?.windowId === 'number' ? tab.windowId : undefined);
     };
 
-    const onCreated = (tab: chrome.tabs.Tab) => {
-        const tabId = tab.id;
-        const windowId = tab.windowId;
-        if (typeof tabId !== 'number' || typeof windowId !== 'number') {
-            throw new Error('tabs.onCreated missing tab/window id');
-        }
-        // NOTE:
-        // Temporarily disable onCreated -> ensureBoundTabToken binding chain.
-        // This avoids eagerly emitting tab.opened for transient pages such as chrome://newtab/.
-        // Keep code commented (not deleted) for quick rollback/compare.
-        //
-        // void (async () => {
-        //     const bound = await ensureBoundTabToken(tabId, windowId);
-        //     if (!bound || bound.pending) {return;}
-        //     options.onRefresh();
-        // })();
+    const onCreated = (_tab: chrome.tabs.Tab) => {
+        // no-op: creation phase does not emit lifecycle actions.
     };
 
     const onAttached = (tabId: number, info: chrome.tabs.TabAttachInfo) => {
         void (async () => {
             const bound = await ensureBoundTabToken(tabId, info.newWindowId);
-            if (!bound?.tabToken || bound.pending) {return;}
+            if (!bound?.tabToken) {return;}
             const scope = options.state.getTokenScope(bound.tabToken);
             const targetWorkspaceId = options.state.getWindowWorkspace(info.newWindowId);
             if (!scope || !targetWorkspaceId || scope.workspaceId === targetWorkspaceId) {
@@ -421,12 +338,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_REASSIGN,
                 scope: { tabToken: bound.tabToken },
-                payload: {
-                    workspaceId: targetWorkspaceId,
-                    source: 'extension.sw',
-                    windowId: info.newWindowId,
-                    at: Date.now(),
-                },
+                payload: { workspaceId: targetWorkspaceId, source: 'extension.sw', windowId: info.newWindowId, at: Date.now() },
             });
             if (!isFailedReply(result)) {
                 const resultPayload = payloadOf(result);
@@ -478,14 +390,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         options.onRefresh();
     };
 
-    const onStartup = () => {
-        options.state.resetStartupState();
-    };
-
-    const onInstalled = () => {
-        options.state.resetInstalledState();
-    };
-
     return {
         ensureTabToken,
         ensureBoundTabToken,
@@ -497,7 +401,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         onAttached,
         onFocusChanged,
         onWindowRemoved,
-        onStartup,
-        onInstalled,
+        onStartup: () => { options.state.resetStartupState(); },
+        onInstalled: () => { options.state.resetInstalledState(); },
     };
 };

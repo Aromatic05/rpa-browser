@@ -61,7 +61,6 @@ type BoundTokenData = {
     tabToken?: string;
     workspaceId?: string;
     tabId?: string;
-    pending?: boolean;
     error?: string;
 };
 type BoundScope = { tabToken: string; workspaceId: string; tabId?: string };
@@ -117,41 +116,35 @@ const applyTabToken = (tabToken: string) => {
 
 const ensureBoundToken = async (): Promise<BoundScope> => {
     let currentToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? '';
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-        const reply = await new Promise<BoundTokenData>((resolve) => {
-            chrome.runtime.sendMessage(
-                {
-                    type: MSG_ENSURE_BOUND_TOKEN,
-                    source: 'start_extension',
-                    tabToken: currentToken,
-                    url: location.href,
-                    title: document.title,
-                    at: Date.now(),
-                },
-                (response: unknown) => {
-                    if (chrome.runtime.lastError) {
-                        resolve({ ok: false, error: chrome.runtime.lastError.message });
-                        return;
-                    }
-                    resolve((response ?? { ok: false }) as BoundTokenData);
-                },
-            );
-        });
-        if (!reply.ok || !reply.tabToken || !reply.workspaceId) {
-            throw new Error(reply.error ?? 'bound token unavailable');
-        }
-        currentToken = reply.tabToken;
-        applyTabToken(currentToken);
-        if (!reply.pending) {
-            return {
-                tabToken: reply.tabToken,
-                workspaceId: reply.workspaceId,
-                ...(reply.tabId ? { tabId: reply.tabId } : {}),
-            };
-        }
-        await new Promise((resolve) => setTimeout(resolve, 80));
+    const reply = await new Promise<BoundTokenData>((resolve) => {
+        chrome.runtime.sendMessage(
+            {
+                type: MSG_ENSURE_BOUND_TOKEN,
+                source: 'start_extension',
+                tabToken: currentToken,
+                url: location.href,
+                title: document.title,
+                at: Date.now(),
+            },
+            (response: unknown) => {
+                if (chrome.runtime.lastError) {
+                    resolve({ ok: false, error: chrome.runtime.lastError.message });
+                    return;
+                }
+                resolve((response ?? { ok: false }) as BoundTokenData);
+            },
+        );
+    });
+    if (!reply.ok || !reply.tabToken || !reply.workspaceId) {
+        throw new Error(reply.error ?? 'bound token unavailable');
     }
-    throw new Error('bound token unavailable');
+    currentToken = reply.tabToken;
+    applyTabToken(currentToken);
+    return {
+        tabToken: reply.tabToken,
+        workspaceId: reply.workspaceId,
+        ...(reply.tabId ? { tabId: reply.tabId } : {}),
+    };
 };
 
 const sendAction = async <TData = unknown>(type: string, payload: Record<string, unknown> = {}, scope?: Record<string, unknown>) =>

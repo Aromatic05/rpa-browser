@@ -206,7 +206,7 @@ await log('workspace.create returns workspace shell without opening window', asy
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), false);
 });
 
-await log('tabs.onCreated binds tab to window workspace via tab.opened', async () => {
+await log('tabs.onCreated does not emit binding actions', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
@@ -247,9 +247,7 @@ await log('tabs.onCreated binds tab to window workspace via tab.opened', async (
     router.onCreated({ id: 22, windowId: 7, url: 'https://example.com/new', title: 'New' });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), true);
-    const opened = sent.find((action) => action.type === ACTION_TYPES.TAB_OPENED);
-    assert.equal(opened?.payload?.workspaceId, 'ws-1');
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 });
 
 await log('tabs.onCreated reuses pre-bound token scope when window mapping is not ready', async () => {
@@ -328,8 +326,13 @@ await log('tabs.onAttached triggers tab.reassign for cross-window move', async (
         scope: { workspaceId: 'ws-2', tabId: 'tab-b', tabToken: 'token-b' },
     });
 
-    router.onCreated({ id: 21, windowId: 7, url: 'https://example.com/new', title: 'New' });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+        router.handleMessage(
+            { type: MSG.ENSURE_BOUND_TOKEN, tabToken: 'token-new', source: 'start_extension' },
+            { tab: { id: 21, windowId: 7, url: 'https://example.com/new' } },
+            () => resolve(undefined),
+        );
+    });
     router.onAttached(21, { newWindowId: 8, newPosition: 0 });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
