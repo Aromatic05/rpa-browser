@@ -9,7 +9,6 @@ import { createRecordingState, cleanupRecording, ensureRecorder, setRecorderEven
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { executeAction, type ActionContext } from './actions/execute';
 import { failedAction, isFailedAction, type Action } from './actions/action_protocol';
-import { replyAction } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
@@ -17,33 +16,12 @@ import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
-import { resolveActionTarget, ActionTargetError } from './runtime/action_target';
 import { ACTION_TYPES, isRequestActionType } from './actions/action_types';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
-const PAGELESS_ACTIONS = new Set<string>([
-    ACTION_TYPES.WORKSPACE_LIST,
-    ACTION_TYPES.WORKSPACE_CREATE,
-    ACTION_TYPES.RECORD_LIST,
-    ACTION_TYPES.RECORD_STOP,
-    ACTION_TYPES.RECORD_GET,
-    ACTION_TYPES.RECORD_SAVE,
-    ACTION_TYPES.RECORD_LOAD,
-    ACTION_TYPES.RECORD_CLEAR,
-    ACTION_TYPES.TAB_INIT,
-    ACTION_TYPES.WORKFLOW_LIST,
-    ACTION_TYPES.WORKFLOW_OPEN,
-    ACTION_TYPES.WORKFLOW_STATUS,
-    ACTION_TYPES.WORKFLOW_RECORD_SAVE,
-    ACTION_TYPES.WORKFLOW_DSL_GET,
-    ACTION_TYPES.WORKFLOW_DSL_SAVE,
-    ACTION_TYPES.WORKFLOW_DSL_TEST,
-    ACTION_TYPES.WORKFLOW_RELEASE_RUN,
-    ACTION_TYPES.WORKFLOW_INIT,
-]);
 const TAB_PING_TIMEOUT_MS = 45000;
 const TAB_PING_WATCHDOG_INTERVAL_MS = 5000;
 const REPLAY_OPTIONS = {
@@ -70,27 +48,12 @@ const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
     }
     const rec = raw as Record<string, unknown>;
     const payload = rec.payload;
-    const scope = rec.scope;
     return {
         v: rec.v,
         id: typeof rec.id === 'string' ? rec.id : undefined,
         replyTo: typeof rec.replyTo === 'string' ? rec.replyTo : undefined,
         type: typeof rec.type === 'string' ? rec.type : undefined,
-        tabToken: typeof rec.tabToken === 'string' ? rec.tabToken : undefined,
-        scope:
-            scope && typeof scope === 'object'
-                ? {
-                      workspaceId: typeof (scope as Record<string, unknown>).workspaceId === 'string'
-                          ? (scope as Record<string, unknown>).workspaceId
-                          : undefined,
-                      tabId: typeof (scope as Record<string, unknown>).tabId === 'string'
-                          ? (scope as Record<string, unknown>).tabId
-                          : undefined,
-                      tabToken: typeof (scope as Record<string, unknown>).tabToken === 'string'
-                          ? (scope as Record<string, unknown>).tabToken
-                          : undefined,
-                  }
-                : undefined,
+        workspaceName: typeof rec.workspaceName === 'string' ? rec.workspaceName : undefined,
         payloadType: Array.isArray(payload) ? 'array' : typeof payload,
         payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
     };
@@ -162,7 +125,6 @@ const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
         id: crypto.randomUUID(),
         type: ACTION_TYPES.WORKSPACE_SYNC,
         payload: { reason, ...(data || {}) },
-        scope: {},
         at: Date.now(),
     });
 };
@@ -178,7 +140,6 @@ const broadcastWorkspaceList = (reason: string) => {
             workspaces: pageRegistry.listWorkspaces(),
             activeWorkspaceId: active?.workspaceId || null,
         },
-        scope: {},
         at: Date.now(),
     });
 };
@@ -202,7 +163,7 @@ const pageRegistry = createPageRegistry({
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_BOUND,
                 payload: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken: token, url: page.url() },
-                scope: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken: token },
+                workspaceName: scope.workspaceId,
                 at: Date.now(),
             });
         } catch {
@@ -226,18 +187,17 @@ const runStepsDeps = {
     pluginHost: runnerPluginHost,
 };
 setRunStepsDeps(runStepsDeps);
-setControlActionDispatcher(
-    createActionDispatcher({
-        pageRegistry,
-        runtime: runtimeRegistry,
-        recordingState,
-        log: actionLogger,
-        replayOptions: REPLAY_OPTIONS,
-        navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-        emit: broadcast,
-        runStepsDeps,
-    }),
-);
+const actionDispatcher = createActionDispatcher({
+    pageRegistry,
+    runtime: runtimeRegistry,
+    recordingState,
+    log: actionLogger,
+    replayOptions: REPLAY_OPTIONS,
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    emit: broadcast,
+    runStepsDeps,
+});
+setControlActionDispatcher(actionDispatcher);
 const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, log);
 
@@ -258,138 +218,37 @@ const createActionContext = (page: Page, tabToken: string): ActionContext => {
     return ctx;
 };
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const retryClaim = async <T>(fn: () => T | null, attempts = 10, intervalMs = 60): Promise<T | null> => {
-    for (let i = 0; i < attempts; i += 1) {
-        const result = fn();
-        if (result) {return result;}
-        if (i < attempts - 1) {await sleep(intervalMs);}
-    }
-    return null;
-};
-
-const runAction = async (
-    action: Action,
-    target: { tabToken: string; scope: { workspaceId: string; tabId: string } },
-    urlHint?: string,
-    extra?: Record<string, unknown>,
-) => {
-    log('action.target.resolved', {
-        id: action.id,
-        type: action.type,
-        tabToken: target.tabToken,
-        scope: target.scope,
-        extra: extra || null,
-    });
-    const page = await pageRegistry.getPage(target.tabToken, urlHint);
-    return await runnerScope.run(target.scope.workspaceId, async () => {
-        actionLogger('action', { type: action.type, tabToken: target.tabToken, id: action.id, ...(extra || {}) });
-        return await executeAction(createActionContext(page, target.tabToken), action);
-    });
-};
-
-const runPagelessAction = async (action: Action, tabToken = '') => {
-    const pageStub = new Proxy(
-        {},
-        {
-            get: (_target, prop) => {
-                throw new Error(`action '${action.type}' accessed page.${String(prop)} without target`);
-            },
-        },
-    ) as unknown as Page;
-    actionLogger('action', { type: action.type, tabToken: tabToken || null, id: action.id, mode: 'pageless' });
-    return await executeAction(createActionContext(pageStub, tabToken), action);
-};
-
-const bindTabOpenedAction = async (action: Action, urlHint?: string) => {
-    const token =
-        typeof action.scope?.tabToken === 'string'
-            ? action.scope.tabToken
-            : typeof action.tabToken === 'string'
-              ? action.tabToken
-              : '';
-    if (!token) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened missing tabToken');}
-    const payload = (action.payload || {}) as Record<string, unknown>;
-    const workspaceId =
-        (typeof payload.workspaceId === 'string' ? payload.workspaceId : '') ||
-        (typeof action.scope?.workspaceId === 'string' ? action.scope.workspaceId : '');
-    if (!workspaceId) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'tab.opened requires workspaceId');}
-    pageRegistry.createPendingTokenClaim({
-        tabToken: token,
-        workspaceId,
-        source: typeof payload.source === 'string' ? payload.source : 'tab.opened',
-        url: typeof payload.url === 'string' ? payload.url : urlHint,
-        createdAt: typeof payload.at === 'number' ? payload.at : Date.now(),
-    });
-    await pageRegistry.claimPendingToken(token);
-    const scoped = await retryClaim(() => pageRegistry.bindTokenToWorkspace(token, workspaceId), 80, 50);
-    if (!scoped) {
-        logWarning('tab.opened.defer_claim', {
-            tabToken: token,
-            workspaceId,
-            source: typeof payload.source === 'string' ? payload.source : 'tab.opened',
-            url: typeof payload.url === 'string' ? payload.url : urlHint || null,
-        });
-        return replyAction(action, {
-            workspaceId,
-            tabId: null,
-            tabToken: token,
-            deferred: true,
-        });
-    }
-    return await runAction(action, { tabToken: token, scope: scoped }, urlHint, { byWindow: true });
-};
-
 const handleAction = async (action: Action) => {
     const payload = isRecord(action.payload) ? action.payload : null;
     const urlHint = payload && typeof payload.url === 'string' ? payload.url : undefined;
     log('action.inbound', {
         id: action.id,
         type: action.type,
-        tabToken: action.tabToken || action.scope?.tabToken || null,
-        scope: action.scope || null,
+        workspaceName: action.workspaceName || null,
         urlHint: urlHint || null,
     });
     if (action.type === ACTION_TYPES.TAB_REPORTED) {
         logTabReportDebug('agent.inbound', {
             id: action.id,
-            tabToken: action.tabToken || action.scope?.tabToken || null,
-            scope: action.scope || null,
+            workspaceName: action.workspaceName || null,
             urlHint: urlHint || null,
         });
     }
 
-    if (action.type === ACTION_TYPES.TAB_OPENED) {
-        return await bindTabOpenedAction(action, urlHint);
-    }
-
     try {
-        const target = resolveActionTarget(action, pageRegistry);
-        if (target) {
-            return runAction(action, target, urlHint);
+        if (action.workspaceName) {
+            return await runnerScope.run(action.workspaceName, async () => await actionDispatcher.dispatch(action));
         }
-        if (PAGELESS_ACTIONS.has(action.type)) {
-            return runPagelessAction(action);
-        }
-        return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing action target');
+        return await actionDispatcher.dispatch(action);
     } catch (error) {
-        if (!(error instanceof ActionTargetError)) {throw error;}
-
-        logWarning('action.target.error', {
+        const message = error instanceof Error ? error.message : String(error);
+        logWarning('action.dispatch.error', {
             id: action.id,
             type: action.type,
-            code: error.code,
-            message: error.message,
-            scope: action.scope || null,
-            tabToken: action.tabToken || action.scope?.tabToken || null,
+            message,
+            workspaceName: action.workspaceName || null,
         });
-
-        if (PAGELESS_ACTIONS.has(action.type)) {
-            return await runPagelessAction(action);
-        }
-
-        return failedAction(action, error.code, error.message);
+        return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, message);
     }
 };
 
@@ -410,6 +269,9 @@ const parseInboundAction = (raw: unknown): Action => {
     const rec = raw as Record<string, unknown>;
     if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
         throw new Error('invalid action: missing or invalid fields');
+    }
+    if ('scope' in rec || 'tabToken' in rec || 'workspaceId' in rec || 'tabId' in rec || 'tabToken' in rec) {
+        throw new Error('invalid action: legacy address fields are not allowed');
     }
     if (!isRequestActionType(rec.type)) {
         throw new Error(`invalid action: unsupported type '${rec.type}'`);
@@ -446,19 +308,16 @@ setRecorderEventSink(async (event, page, tabToken) => {
         }
     }
 
-    let scope: { workspaceId?: string; tabId?: string; tabToken?: string } | undefined;
+    let workspaceName: string | undefined;
     try {
         const resolved = pageRegistry.resolveScopeFromToken(effectiveToken);
-        scope = { workspaceId: resolved.workspaceId, tabId: resolved.tabId, tabToken: effectiveToken };
-    } catch {
-        scope = { tabToken: effectiveToken };
-    }
+        workspaceName = resolved.workspaceId;
+    } catch {}
     const action: Action = {
         v: 1,
         id: crypto.randomUUID(),
         type: ACTION_TYPES.RECORD_EVENT,
-        tabToken: effectiveToken,
-        scope,
+        workspaceName,
         payload: event,
         at: event.ts || Date.now(),
     };
@@ -537,11 +396,7 @@ wss.on('connection', (socket) => {
                         ok: !isFailedAction(response),
                         workspaceId: responsePayload ? getStringField(responsePayload, 'workspaceId') : null,
                         tabId: responsePayload ? getStringField(responsePayload, 'tabId') : null,
-                        tabToken:
-                            (responsePayload ? getStringField(responsePayload, 'tabToken') : null) ??
-                            action.tabToken ??
-                            action.scope?.tabToken ??
-                            null,
+                        tabToken: responsePayload ? getStringField(responsePayload, 'tabToken') : null,
                     });
                 }
                 wsTap('agent.reply', summarizeActionEnvelope(response));
@@ -556,16 +411,14 @@ wss.on('connection', (socket) => {
                         id: crypto.randomUUID(),
                         type: ACTION_TYPES.WORKSPACE_CHANGED,
                         payload: { workspaceId, tabId, sourceType: action.type },
-                        scope: workspaceId
-                            ? { workspaceId, ...(tabId ? { tabId } : {}) }
-                            : {},
+                        workspaceName: workspaceId || undefined,
                         at: Date.now(),
                     });
                 }
                 if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
                     const data = isRecord(response.payload) ? response.payload : null;
-                    const workspaceId = (data ? getStringField(data, 'workspaceId') : null) ?? action.scope?.workspaceId ?? null;
-                    const tabToken = (data ? getStringField(data, 'tabToken') : null) ?? action.tabToken ?? action.scope?.tabToken ?? null;
+                    const workspaceId = (data ? getStringField(data, 'workspaceId') : null) ?? action.workspaceName ?? null;
+                    const tabToken = data ? getStringField(data, 'tabToken') : null;
                     if (action.type === ACTION_TYPES.TAB_REPORTED) {
                         logTabReportDebug('agent.emit.state_sync', {
                             id: action.id,

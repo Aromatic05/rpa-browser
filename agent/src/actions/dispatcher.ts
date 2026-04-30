@@ -76,35 +76,41 @@ const createActionContext = (
     return ctx;
 };
 
-const resolvePageTarget = async (
+const assertNoLegacyAddressFields = (action: Action): void => {
+    const envelope = action as Record<string, unknown>;
+    if ('scope' in envelope || 'tabToken' in envelope) {
+        throw new Error('legacy action address fields are not allowed');
+    }
+    if (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) {
+        const payload = action.payload as Record<string, unknown>;
+        if ('workspaceId' in payload || 'tabId' in payload || 'tabToken' in payload || 'scope' in payload || 'workspaceName' in payload) {
+            throw new Error('legacy payload address fields are not allowed');
+        }
+    }
+};
+
+const resolveWorkspaceTarget = async (
     options: ActionDispatcherOptions,
     action: Action,
 ): Promise<{ page: Page; tabToken: string } | null> => {
-    const tabToken = action.tabToken || action.scope?.tabToken;
-    if (typeof tabToken === 'string' && tabToken.length > 0) {
-        const page = await options.pageRegistry.getPage(tabToken);
-        options.runtime.bindPage(page, tabToken);
-        return { page, tabToken };
-    }
-
-    const workspaceId = action.scope?.workspaceId || options.pageRegistry.getActiveWorkspace()?.workspaceId;
-    if (workspaceId) {
-        const binding = await options.runtime.ensureActivePage(workspaceId);
-        options.pageRegistry.setActiveWorkspace(binding.workspaceId);
-        options.pageRegistry.setActiveTab(binding.workspaceId, binding.tabId);
+    if (action.workspaceName) {
+        const binding = await options.runtime.ensureActivePage(action.workspaceName);
         return { page: binding.page, tabToken: binding.tabToken };
     }
-
     return null;
 };
 
 export const createActionDispatcher = (options: ActionDispatcherOptions): ActionDispatcher => ({
     async dispatch(action: Action): Promise<ActionHandlerResult> {
-        const target = await resolvePageTarget(options, action);
-        if (!target && PAGELESS_ACTIONS.has(action.type)) {
+        assertNoLegacyAddressFields(action);
+        if (!action.workspaceName) {
             return await executeAction(createActionContext(options, createPageStub(action.type), ''), action);
         }
+        const target = await resolveWorkspaceTarget(options, action);
         if (!target) {
+            if (PAGELESS_ACTIONS.has(action.type)) {
+                return await executeAction(createActionContext(options, createPageStub(action.type), ''), action);
+            }
             throw new Error(`missing action target for ${action.type}`);
         }
         return await executeAction(createActionContext(options, target.page, target.tabToken), action);

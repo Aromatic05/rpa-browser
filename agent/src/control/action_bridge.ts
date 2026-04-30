@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { Action, ActionScope } from '../actions/action_protocol';
+import type { Action } from '../actions/action_protocol';
 import type { ActionHandlerResult } from '../actions/execute';
 import type { ControlRouterContext } from './router';
 
@@ -14,23 +14,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const badRequest = (message: string): Error =>
     Object.assign(new Error(message), { code: 'ERR_CONTROL_BAD_REQUEST' });
-
-const parseScope = (value: unknown): ActionScope | undefined => {
-    if (!isRecord(value)) {
-        return undefined;
-    }
-    const scope: ActionScope = {};
-    if (typeof value.workspaceId === 'string') {
-        scope.workspaceId = value.workspaceId;
-    }
-    if (typeof value.tabId === 'string') {
-        scope.tabId = value.tabId;
-    }
-    if (typeof value.tabToken === 'string') {
-        scope.tabToken = value.tabToken;
-    }
-    return Object.keys(scope).length > 0 ? scope : undefined;
-};
 
 export const setControlActionDispatcher = (dispatcher: ControlActionDispatcher): void => {
     controlActionDispatcher = dispatcher;
@@ -50,15 +33,15 @@ export const callActionFromControl = async (
     if (!isRecord(params) || typeof params.type !== 'string' || params.type.length === 0) {
         throw badRequest('action.call requires a non-empty type');
     }
-
-    const scope = parseScope(params.scope);
+    if ('scope' in params || 'tabToken' in params || 'workspaceId' in params || 'tabId' in params) {
+        throw badRequest('legacy action address fields are not allowed');
+    }
     const action: Action = {
         v: 1,
         id: crypto.randomUUID(),
         type: params.type,
-        ...(scope ? { scope } : {}),
+        ...(typeof params.workspaceName === 'string' ? { workspaceName: params.workspaceName } : {}),
         ...(Object.prototype.hasOwnProperty.call(params, 'payload') ? { payload: params.payload } : {}),
-        ...(typeof params.tabToken === 'string' ? { tabToken: params.tabToken } : {}),
         ...(typeof params.traceId === 'string' ? { traceId: params.traceId } : {}),
         at: Date.now(),
     };
