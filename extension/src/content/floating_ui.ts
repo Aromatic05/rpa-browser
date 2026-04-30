@@ -116,6 +116,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     stopReplayBtn.textContent = 'Stop Replay';
     row3.append(replayBtn, stopReplayBtn);
 
+    const row4 = document.createElement('div');
+    row4.className = 'row';
+    const exportBtn = document.createElement('button');
+    exportBtn.textContent = 'Save Artifact';
+    const importBtn = document.createElement('button');
+    importBtn.textContent = 'Load Artifact';
+    row4.append(exportBtn, importBtn);
+
     const wsSection = document.createElement('div');
     wsSection.className = 'panel-section';
     const wsTitle = document.createElement('div');
@@ -159,9 +167,19 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     sceneInput.style.fontSize = '12px';
     sceneInput.style.borderRadius = '8px';
     sceneInput.style.border = '1px solid #cbd5f5';
-    workflowSection.append(workflowTitle, sceneInput);
+    const recordingNameInput = document.createElement('input');
+    recordingNameInput.type = 'text';
+    recordingNameInput.placeholder = 'recording name (optional)';
+    recordingNameInput.style.width = '100%';
+    recordingNameInput.style.boxSizing = 'border-box';
+    recordingNameInput.style.padding = '6px 8px';
+    recordingNameInput.style.fontSize = '12px';
+    recordingNameInput.style.borderRadius = '8px';
+    recordingNameInput.style.border = '1px solid #cbd5f5';
+    recordingNameInput.style.marginTop = '6px';
+    workflowSection.append(workflowTitle, sceneInput, recordingNameInput);
 
-    panel.append(meta, row1, row2, row3, workflowSection, wsSection, tabSection, out);
+    panel.append(meta, row1, row2, row3, row4, workflowSection, wsSection, tabSection, out);
     wrap.append(ball, panel);
     shadow.append(style, wrap);
 
@@ -179,6 +197,22 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     let activeWorkspaceId: string | null = null;
     let activeTabId: string | null = null;
+    let workflowInitialized = false;
+    const deriveScene = (): string => {
+        const explicit = sceneInput.value.trim();
+        if (explicit) {return explicit;}
+        const workspaceId = activeWorkspaceId || '';
+        if (workspaceId.startsWith('workflow:')) {
+            const scene = workspaceId.slice('workflow:'.length).trim();
+            if (scene) {return scene;}
+        }
+        return workspaceId;
+    };
+    const updateInitVisibility = () => {
+        const activeIsWorkflow = (activeWorkspaceId || '').startsWith('workflow:');
+        const hide = workflowInitialized || activeIsWorkflow;
+        initWorkflowBtn.style.display = hide ? 'none' : '';
+    };
 
     // UI 行为统一走 onAction
     const sendPanelAction = async (
@@ -189,6 +223,10 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const response = await opts.onAction(type, payload, scope);
         render(response);
         interceptAction(response);
+        if (!response.type.endsWith('.failed') && (type === 'workflow.init' || type === 'record.save' || type === 'record.load')) {
+            workflowInitialized = true;
+            updateInitVisibility();
+        }
         return response;
     };
 
@@ -201,11 +239,49 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             render({ code: 'ERR_BAD_ARGS', message: 'scene is required' });
             return;
         }
-        void sendPanelAction('workflow.init', { scene });
+        void (async () => {
+            const inited = await sendPanelAction('workflow.init', { scene });
+            if (inited.type.endsWith('.failed')) {return;}
+            const opened = await sendPanelAction('workflow.open', { scene });
+            if (opened.type.endsWith('.failed')) {return;}
+            refreshWorkspaces();
+            refreshTabs();
+        })();
     });
     clearBtn.addEventListener('click', () => void sendPanelAction('record.clear'));
     replayBtn.addEventListener('click', () => void sendPanelAction('play.start'));
     stopReplayBtn.addEventListener('click', () => void sendPanelAction('play.stop'));
+    exportBtn.addEventListener('click', () => {
+        void (async () => {
+            const scope = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : undefined;
+            const scene = deriveScene();
+            if (!scene) {
+                render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
+                return;
+            }
+            const recordingName = recordingNameInput.value.trim();
+            await sendPanelAction('record.save', {
+                scene,
+                ...(recordingName ? { recordingName } : {}),
+                includeStepResolve: true,
+            }, scope);
+        })();
+    });
+    importBtn.addEventListener('click', () => {
+        void (async () => {
+            const scope = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : undefined;
+            const scene = deriveScene();
+            if (!scene) {
+                render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
+                return;
+            }
+            const recordingName = recordingNameInput.value.trim();
+            await sendPanelAction('record.load', {
+                scene,
+                ...(recordingName ? { recordingName } : {}),
+            }, scope);
+        })();
+    });
 
     const renderWorkspaces = (
         workspaces: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>,
@@ -214,6 +290,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (!activeWorkspaceId && workspaces.length) {
             activeWorkspaceId = workspaces[0].workspaceId;
         }
+        if (activeWorkspaceId?.startsWith('workflow:')) {
+            const scene = activeWorkspaceId.slice('workflow:'.length).trim();
+            if (scene && !sceneInput.value.trim()) {sceneInput.value = scene;}
+        }
+        updateInitVisibility();
         workspaces.forEach((ws) => {
             const btn = document.createElement('button');
             btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${String(ws.tabCount)})`;
@@ -328,6 +409,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     refreshWorkspaces();
     refreshTabs();
+    updateInitVisibility();
 
     let refreshPending = false;
     const scheduleRefresh = () => {

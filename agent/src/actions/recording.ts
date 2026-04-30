@@ -3,6 +3,10 @@
  */
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import YAML from 'yaml';
 import { failedAction, replyAction } from './action_protocol';
 import type { ActionHandler } from './execute';
 import { ACTION_TYPES } from './action_types';
@@ -23,6 +27,81 @@ import { ERROR_CODES } from './error_codes';
 import type { StepUnion } from '../runner/steps/types';
 import { setRecorderRuntimeEnabled, type RecorderEvent } from '../record/recorder';
 import { replayRecording, type ReplayEvent } from '../play/replay';
+import {
+    type StepFile,
+    type StepResolveFile,
+    validateStepFileForSerialization,
+    validateStepResolveFileForSerialization,
+} from '../runner/serialization/types';
+import { resolveWorkflowRecordingDir, saveWorkflowRecordingArtifacts } from '../record/persistence';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DEFAULT_ARTIFACTS_ROOT = path.resolve(__dirname, '../../.artifacts');
+const DEFAULT_WORKFLOWS_DIR = path.resolve(DEFAULT_ARTIFACTS_ROOT, 'workflows');
+
+const toArtifactManifest = (recordingName: string, workspaceId: string | undefined, bundle: {
+    steps: StepUnion[];
+    manifest?: { entryUrl?: string; tabs?: Array<{ tabId?: string; tabRef?: string; lastSeenUrl?: string; firstSeenUrl?: string }> };
+}) => ({
+    version: 1,
+    recordingName,
+    workspaceId: workspaceId || '',
+    entryUrl: bundle.manifest?.entryUrl || '',
+    tabs: (bundle.manifest?.tabs || []).map((item) => ({
+        tabId: item.tabId || item.tabRef || '',
+        url: item.lastSeenUrl || item.firstSeenUrl || '',
+    })),
+    createdAt: Date.now(),
+    stepCount: bundle.steps.length,
+});
+
+const toStepFile = (steps: StepUnion[]): StepFile => ({
+    version: 1,
+    steps: steps.map((step) => ({
+        id: step.id,
+        name: step.name,
+        args: step.args,
+    })) as StepFile['steps'],
+});
+
+const toSceneFromWorkspaceId = (workspaceId: string): string => {
+    if (workspaceId.startsWith('workflow:')) {
+        const scene = workspaceId.slice('workflow:'.length).trim();
+        if (scene) {return scene;}
+    }
+    return workspaceId.trim();
+};
+
+const ensureWorkflowScaffold = (scene: string): { workflowRoot: string; created: boolean } => {
+    const workflowRoot = path.join(DEFAULT_WORKFLOWS_DIR, scene);
+    const workflowPath = path.join(workflowRoot, 'workflow.yaml');
+    fs.mkdirSync(path.join(workflowRoot, 'records'), { recursive: true });
+    fs.mkdirSync(path.join(workflowRoot, 'checkpoints'), { recursive: true });
+    let created = false;
+    if (!fs.existsSync(workflowPath)) {
+        fs.writeFileSync(
+            workflowPath,
+            ['version: 1', `id: ${scene}`, `name: ${scene}`, 'entry:', '  dsl: dsl/main.dsl', 'records: []', 'checkpoints: []'].join('\n') + '\n',
+            'utf8',
+        );
+        created = true;
+    }
+    return { workflowRoot, created };
+};
+
+const resolveLatestRecordingName = (scene: string): string | null => {
+    const recordsRoot = path.join(DEFAULT_WORKFLOWS_DIR, scene, 'records');
+    if (!fs.existsSync(recordsRoot)) {return null;}
+    const dirs = fs.readdirSync(recordsRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    if (!dirs.length) {return null;}
+    dirs.sort((a, b) => {
+        const aTs = fs.statSync(path.join(recordsRoot, a.name)).mtimeMs;
+        const bTs = fs.statSync(path.join(recordsRoot, b.name)).mtimeMs;
+        return bTs - aTs;
+    });
+    return dirs[0].name;
+};
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, action) => {
@@ -71,6 +150,121 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const workspaceId = action.scope?.workspaceId;
         const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
         return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
+    },
+    'record.save': async (ctx, action) => {
+        const workspaceId = action.scope?.workspaceId;
+        if (!workspaceId) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required for record.save');
+        }
+        const payload = (action.payload || {}) as { scene?: string; recordingName?: string; includeStepResolve?: boolean };
+        const scene = (payload.scene || '').trim() || toSceneFromWorkspaceId(workspaceId);
+        if (!scene) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'scene is required for record.save');
+        }
+        const scaffold = ensureWorkflowScaffold(scene);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
+        const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
+        const stepsFile = toStepFile(bundle.steps);
+        validateStepFileForSerialization(stepsFile);
+        const includeStepResolve = payload.includeStepResolve === true;
+        const stepResolveFile: StepResolveFile | undefined = includeStepResolve ? { version: 1, resolves: {} } : undefined;
+        if (stepResolveFile) {
+            validateStepResolveFileForSerialization(stepResolveFile);
+        }
+        const recordsDir = await saveWorkflowRecordingArtifacts({
+            artifactsRootDir: DEFAULT_ARTIFACTS_ROOT,
+            scene,
+            recordingName,
+            workspaceId,
+            entryUrl: bundle.manifest?.entryUrl,
+            tabs: (bundle.manifest?.tabs || []).map((item) => ({
+                tabId: item.tabId || item.tabRef,
+                url: item.lastSeenUrl || item.firstSeenUrl,
+            })),
+            steps: bundle.steps,
+            includeStepResolve,
+        });
+        return replyAction(action, {
+            saved: true,
+            scene,
+            recordingName,
+            workspaceId,
+            recordsDir,
+            workflowRoot: scaffold.workflowRoot,
+            workflowCreated: scaffold.created,
+            stepCount: bundle.steps.length,
+        });
+    },
+    'record.load': async (ctx, action) => {
+        const workspaceId = action.scope?.workspaceId;
+        if (!workspaceId) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required for record.load');
+        }
+        const payload = (action.payload || {}) as {
+            scene?: string;
+            recordingName?: string;
+        };
+        const scene = (payload.scene || '').trim() || toSceneFromWorkspaceId(workspaceId);
+        if (!scene) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'scene is required for record.load');
+        }
+        const scaffold = ensureWorkflowScaffold(scene);
+        const recordingName = (payload.recordingName || '').trim() || resolveLatestRecordingName(scene) || '';
+        if (!recordingName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'record.load requires recordingName or existing records');
+        }
+        const recordsDir = await resolveWorkflowRecordingDir(DEFAULT_ARTIFACTS_ROOT, scene, recordingName);
+        const stepsText = fs.readFileSync(path.join(recordsDir, 'steps.yaml'), 'utf8');
+        const manifestText = fs.readFileSync(path.join(recordsDir, 'manifest.yaml'), 'utf8');
+        const parsedSteps = YAML.parse(stepsText) as StepFile;
+        validateStepFileForSerialization(parsedSteps);
+        const parsedManifest = YAML.parse(manifestText) as {
+            entryUrl?: string;
+            tabs?: Array<{ tabId?: string; url?: string }>;
+        };
+        const stepResolvePath = path.join(recordsDir, 'step_resolve.yaml');
+        if (fs.existsSync(stepResolvePath)) {
+            const resolveText = fs.readFileSync(stepResolvePath, 'utf8');
+            const parsedResolve = YAML.parse(resolveText) as StepResolveFile;
+            validateStepResolveFileForSerialization(parsedResolve);
+        }
+        const recordingToken = crypto.randomUUID();
+        const now = Date.now();
+        const steps: StepUnion[] = parsedSteps.steps.map((step) => ({
+            id: step.id,
+            name: step.name,
+            args: step.args,
+            meta: { source: 'record', ts: now, workspaceId },
+        })) as StepUnion[];
+        ctx.recordingState.recordings.set(recordingToken, steps);
+        ctx.recordingState.recordingEnhancements.set(recordingToken, {});
+        ctx.recordingState.recordingManifests.set(recordingToken, {
+            recordingToken,
+            workspaceId,
+            entryUrl: typeof parsedManifest.entryUrl === 'string' ? parsedManifest.entryUrl : undefined,
+            startedAt: now,
+            tabs: (Array.isArray(parsedManifest.tabs) ? parsedManifest.tabs : []).map((tab) => ({
+                tabToken: recordingToken,
+                tabRef: tab.tabId || 'main',
+                tabId: tab.tabId,
+                firstSeenUrl: tab.url,
+                lastSeenUrl: tab.url,
+                firstSeenAt: now,
+                lastSeenAt: now,
+            })),
+        });
+        ctx.recordingState.workspaceLatestRecording.set(workspaceId, recordingToken);
+        return replyAction(action, {
+            imported: true,
+            scene,
+            recordingName,
+            stepCount: steps.length,
+            workspaceId,
+            recordingToken,
+            recordsDir,
+            workflowRoot: scaffold.workflowRoot,
+            workflowCreated: scaffold.created,
+        });
     },
     'record.clear': async (ctx, action) => {
         const workspaceId = action.scope?.workspaceId;

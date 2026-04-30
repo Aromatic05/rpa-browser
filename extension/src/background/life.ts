@@ -9,6 +9,16 @@ const LIFECYCLE_THROTTLE_MS = 180;
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const toStringOrUndefined = (value: unknown): string | undefined =>
     typeof value === 'string' ? value : typeof value === 'number' ? String(value) : undefined;
+const isBindableTabUrl = (url: string): boolean => {
+    if (!url) {return false;}
+    const lowered = url.toLowerCase();
+    if (lowered.startsWith('chrome://')) {return false;}
+    if (lowered.startsWith('edge://')) {return false;}
+    if (lowered.startsWith('about:')) {return false;}
+    if (lowered.startsWith('devtools://')) {return false;}
+    if (lowered.startsWith('chrome-extension://')) {return false;}
+    return true;
+};
 
 export type LifecycleOptions = {
     state: RouterState;
@@ -190,7 +200,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             urlHint = tab?.url ?? '';
         }
 
-        if (urlHint.startsWith('chrome://newtab')) {
+        if (!isBindableTabUrl(urlHint)) {
             return null;
         }
 

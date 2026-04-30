@@ -20,6 +20,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_ARTIFACTS_ROOT = path.resolve(__dirname, '../../.artifacts');
 const DEFAULT_WORKFLOWS_DIR = path.resolve(DEFAULT_ARTIFACTS_ROOT, 'workflows');
+// WARNING (must-fix architecture debt introduced by Codex):
+// Workflow lifecycle ownership was incorrectly mixed into recording actions.
+// record.save/load must only handle records artifacts, and must not scaffold workflow DSL/content.
+// Workflow creation/open/validation must stay in this workflow module behind explicit workflow actions.
+// Keep this boundary strict and treat any cross-module fallback as a regression.
 
 const toWorkflowWorkspaceId = (scene: string): string => `workflow:${scene}`;
 

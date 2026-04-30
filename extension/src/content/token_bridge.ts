@@ -48,30 +48,36 @@ export const ensureTabToken = (): string => {
 
 export const ensureTabTokenAsync = async (): Promise<string> => {
     let tabToken = ensureTabToken();
-    const runtimeReply = await new Promise<{ ok: boolean; tabToken?: string }>((resolve) => {
-        chrome.runtime.sendMessage(
-            {
-                type: MSG.ENSURE_BOUND_TOKEN,
-                source: 'extension.content',
-                tabToken,
-                url: location.href,
-                title: document.title,
-                at: Date.now(),
-            },
-            (response: unknown) => {
-                if (chrome.runtime.lastError) {
-                    resolve({ ok: false });
-                    return;
-                }
-                resolve((response ?? { ok: false }) as { ok: boolean; tabToken?: string });
-            },
-        );
-    });
-    if (runtimeReply.ok && runtimeReply.tabToken) {
-        tabToken = runtimeReply.tabToken;
-        sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-        writeTokenToWindowName(tabToken);
-        window.__TAB_TOKEN__ = tabToken;
+    for (let i = 0; i < 3; i += 1) {
+        const runtimeReply = await new Promise<{ ok: boolean; tabToken?: string }>((resolve) => {
+            chrome.runtime.sendMessage(
+                {
+                    type: MSG.ENSURE_BOUND_TOKEN,
+                    source: 'extension.content',
+                    tabToken,
+                    url: location.href,
+                    title: document.title,
+                    at: Date.now(),
+                },
+                (response: unknown) => {
+                    if (chrome.runtime.lastError) {
+                        resolve({ ok: false });
+                        return;
+                    }
+                    resolve((response ?? { ok: false }) as { ok: boolean; tabToken?: string });
+                },
+            );
+        });
+        if (runtimeReply.ok && runtimeReply.tabToken) {
+            tabToken = runtimeReply.tabToken;
+            sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
+            writeTokenToWindowName(tabToken);
+            window.__TAB_TOKEN__ = tabToken;
+            break;
+        }
+        if (i < 2) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 120));
+        }
     }
     if (!tabToken) {
         throw new Error('bound tab token unavailable');

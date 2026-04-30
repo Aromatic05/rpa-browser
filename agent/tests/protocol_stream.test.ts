@@ -175,3 +175,103 @@ test('record.stop resolves recording session by workspaceId even with mismatched
     assert.equal(state.recordingEnabled.has('token-b'), false);
     assert.equal(state.recordingEnabled.has('token-a'), true);
 });
+
+test('record.save writes workflow record artifacts to records dir', async () => {
+    const handler = recordingHandlers[ACTION_TYPES.RECORD_SAVE];
+    const state = createRecordingState();
+    state.recordings.set('token-a', [
+        {
+            id: 'step-1',
+            name: 'browser.click',
+            args: { selector: '#submit' },
+            meta: { source: 'record', ts: Date.now(), workspaceId: 'ws-1' },
+        } as any,
+    ]);
+    const scene = `scene_${Date.now()}`;
+    const response = await handler(
+        {
+            page: { url: () => 'https://example.com' } as any,
+            tabToken: 'token-a',
+            pageRegistry: {} as any,
+            log: () => undefined,
+            recordingState: state,
+            replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 10, maxDelta: 20, minSteps: 1, maxSteps: 2 } },
+            navDedupeWindowMs: 1000,
+        } as any,
+        {
+            v: 1,
+            id: 'record-export-1',
+            type: ACTION_TYPES.RECORD_SAVE,
+            tabToken: 'token-a',
+            scope: { workspaceId: 'ws-1' },
+            payload: { scene },
+            at: Date.now(),
+        },
+    );
+    assert.equal(response.type, `${ACTION_TYPES.RECORD_SAVE}.result`);
+    const payload = (response.payload || {}) as { recordsDir?: string; scene?: string; recordingName?: string };
+    assert.equal(payload.scene, scene);
+    assert.equal(typeof payload.recordsDir, 'string');
+});
+
+test('record.load loads saved artifact into workspace recording state', async () => {
+    const saveHandler = recordingHandlers[ACTION_TYPES.RECORD_SAVE];
+    const loadHandler = recordingHandlers[ACTION_TYPES.RECORD_LOAD];
+    const sourceState = createRecordingState();
+    sourceState.recordings.set('token-src', [
+        {
+            id: 'step-1',
+            name: 'browser.fill',
+            args: { selector: '#name', value: 'Alice' },
+            meta: { source: 'record', ts: Date.now(), workspaceId: 'ws-src' },
+        } as any,
+    ]);
+    const scene = `scene_${Date.now()}`;
+    const saved = await saveHandler(
+        {
+            page: { url: () => 'https://example.com' } as any,
+            tabToken: 'token-src',
+            pageRegistry: {} as any,
+            log: () => undefined,
+            recordingState: sourceState,
+            replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 10, maxDelta: 20, minSteps: 1, maxSteps: 2 } },
+            navDedupeWindowMs: 1000,
+        } as any,
+        {
+            v: 1,
+            id: 'record-export-2',
+            type: ACTION_TYPES.RECORD_SAVE,
+            tabToken: 'token-src',
+            scope: { workspaceId: 'ws-src' },
+            payload: { scene },
+            at: Date.now(),
+        },
+    );
+    const savedPayload = (saved.payload || {}) as { recordingName?: string };
+    const recordingName = savedPayload.recordingName || '';
+    const targetState = createRecordingState();
+    const imported = await loadHandler(
+        {
+            page: { url: () => 'https://example.com' } as any,
+            tabToken: 'token-target',
+            pageRegistry: {} as any,
+            log: () => undefined,
+            recordingState: targetState,
+            replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 10, maxDelta: 20, minSteps: 1, maxSteps: 2 } },
+            navDedupeWindowMs: 1000,
+        } as any,
+        {
+            v: 1,
+            id: 'record-import-1',
+            type: ACTION_TYPES.RECORD_LOAD,
+            tabToken: 'token-target',
+            scope: { workspaceId: 'ws-target' },
+            payload: { scene, recordingName },
+            at: Date.now(),
+        },
+    );
+    assert.equal(imported.type, `${ACTION_TYPES.RECORD_LOAD}.result`);
+    const importedToken = targetState.workspaceLatestRecording.get('ws-target');
+    assert.equal(typeof importedToken, 'string');
+    assert.equal((targetState.recordings.get(importedToken || '') || []).length, 1);
+});

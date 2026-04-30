@@ -30,6 +30,8 @@ export const REQUEST_ACTION_TYPES = {
     RECORD_START: 'record.start',
     RECORD_STOP: 'record.stop',
     RECORD_GET: 'record.get',
+    RECORD_SAVE: 'record.save',
+    RECORD_LOAD: 'record.load',
     RECORD_CLEAR: 'record.clear',
     RECORD_LIST: 'record.list',
     RECORD_EVENT: 'record.event',
