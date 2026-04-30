@@ -75,9 +75,10 @@ Control RPC 不返回 Action envelope。
 `action.call` 输入 Action 片段：
 
 - `type` 必填
-- `scope` 可选
+- `workspaceName` 可选
 - `payload` 可选
-- `tabToken` 可选
+
+禁止：`scope/tabToken/workspaceId/tabId`。
 
 路由层会补齐 `v/id/at`，再交给 Action dispatcher。
 

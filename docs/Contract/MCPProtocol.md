@@ -103,7 +103,7 @@ AI 不能绕过 MCP 直接调用内部运行时对象。
 
 ## 与 ActionProtocol 的区别
 
-- Action：extension/start_extension/UI 与 agent 的会话协议，强调 `scope/tabToken/replyTo`。
+- Action：extension/start_extension/UI 与 agent 的会话协议，强调 `workspaceName/replyTo`。
 - MCP：面向外部工具调用，强调 schema 与工具可发现。
 
 两者共享同一执行内核，但协议层完全不同。
