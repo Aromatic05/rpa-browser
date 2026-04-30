@@ -35,9 +35,8 @@ test('action.call dispatches existing action handlers without rpc wrapping chang
     const result = await callActionFromControl(
         {
             type: 'workspace.list',
-            scope: { workspaceId: 'ws-1' },
+            workspaceName: 'ws-1',
             payload: { sample: true },
-            tabToken: 'tk-1',
             traceId: 'trace-1',
         },
         ctx,
@@ -45,9 +44,19 @@ test('action.call dispatches existing action handlers without rpc wrapping chang
 
     assert.equal((result as { type: string }).type, 'workspace.list.result');
     assert.equal(received?.type, 'workspace.list');
-    assert.deepEqual(received?.scope, { workspaceId: 'ws-1' });
-    assert.equal(received?.tabToken, 'tk-1');
+    assert.equal(received?.workspaceName, 'ws-1');
     assert.equal(received?.traceId, 'trace-1');
 
+    clearControlActionDispatcher();
+});
+
+test('action.call rejects legacy address fields', async () => {
+    setControlActionDispatcher({
+        dispatch: async (action) => action,
+    });
+    await assert.rejects(
+        async () => await callActionFromControl({ type: 'workspace.list', scope: { workspaceId: 'ws-1' } }, ctx),
+        /legacy action address fields are not allowed/,
+    );
     clearControlActionDispatcher();
 });

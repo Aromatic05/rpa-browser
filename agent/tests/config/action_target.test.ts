@@ -30,27 +30,25 @@ test('resolveActionTarget prefers tabToken and validates scope consistency', () 
         v: 1,
         id: '1',
         type: 'record.start',
-        tabToken: 'token-b',
-        scope: { workspaceId: 'ws-1', tabId: 'tab-2' },
+        workspaceName: 'ws-1',
     };
     const target = resolveActionTarget(action, createRegistry());
-    assert.equal(target.tabToken, 'token-b');
+    assert.equal(target.tabToken, 'token-a');
     assert.equal(target.scope.workspaceId, 'ws-1');
-    assert.equal(target.scope.tabId, 'tab-2');
+    assert.equal(target.scope.tabId, 'tab-1');
 });
 
-test('resolveActionTarget throws when scope and tabToken mismatch', () => {
+test('resolveActionTarget throws when workspaceName is missing in workspace path', () => {
     const action: Action = {
         v: 1,
         id: '2',
         type: 'record.start',
-        tabToken: 'token-a',
-        scope: { workspaceId: 'ws-1', tabId: 'tab-2' },
     };
-    assert.throws(() => resolveActionTarget(action, createRegistry()), /scope\.tabId does not match tabToken/);
+    const target = resolveActionTarget(action, createRegistry());
+    assert.equal(target, null);
 });
 
-test('resolveActionTarget returns null when tabToken and scope are both missing', () => {
+test('resolveActionTarget returns null when workspaceName is missing', () => {
     const action: Action = {
         v: 1,
         id: '3',
@@ -60,24 +58,15 @@ test('resolveActionTarget returns null when tabToken and scope are both missing'
     assert.equal(target, null);
 });
 
-test('resolveActionTarget throws when tabToken is stale even if scope is provided', () => {
+test('resolveActionTarget throws when workspaceName cannot be resolved', () => {
     const action: Action = {
         v: 1,
         id: '4',
-        type: 'play.start',
-        tabToken: 'token-missing',
-        scope: { workspaceId: 'ws-1', tabId: 'tab-2' },
-    };
-    assert.throws(() => resolveActionTarget(action, createRegistry()), /workspace scope not found for tabToken/);
-});
-
-test('resolveActionTarget throws when tabToken is stale and scope is missing', () => {
-    const action: Action = {
-        v: 1,
-        id: '5',
         type: 'tab.activated',
-        tabToken: 'token-missing',
-        scope: { tabToken: 'token-missing' },
+        workspaceName: 'ws-missing',
     };
-    assert.throws(() => resolveActionTarget(action, createRegistry()), /workspace scope not found for tabToken/);
+    const registry = {
+        resolveScope: () => { throw new Error('not found'); },
+    } as any;
+    assert.throws(() => resolveActionTarget(action, registry), /workspace scope not found for workspaceName/);
 });
