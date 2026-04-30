@@ -17,42 +17,18 @@ type ResolvedActionTarget = {
 };
 
 /**
- * 统一 Action 目标解析：
- * - tabToken 为强约束（单一真源）
- * - scope 作为定位 hint；若与 tabToken 冲突则拒绝执行
+ * 兼容保留：仅基于 workspaceName 解析目标。
  */
 export const resolveActionTarget = (
     action: Action,
     pageRegistry: PageRegistry,
 ): ResolvedActionTarget | null => {
-    const scope = action.scope;
-    const token = scope?.tabToken || action.tabToken;
-
-    if (token) {
-        try {
-            const tokenScope = pageRegistry.resolveScopeFromToken(token);
-            if (scope?.workspaceId && scope.workspaceId !== tokenScope.workspaceId) {
-                throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'scope.workspaceId does not match tabToken');
-            }
-            if (scope?.tabId && scope.tabId !== tokenScope.tabId) {
-                throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'scope.tabId does not match tabToken');
-            }
-            return { tabToken: token, scope: tokenScope };
-        } catch (error) {
-            throw error instanceof ActionTargetError
-                ? error
-                : new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'workspace scope not found for tabToken');
-        }
-    }
-
-    if (scope?.workspaceId || scope?.tabId) {
-        const resolvedScope = pageRegistry.resolveScope({
-            workspaceId: scope.workspaceId,
-            tabId: scope.tabId,
-        });
+    if (!action.workspaceName) {return null;}
+    try {
+        const resolvedScope = pageRegistry.resolveScope({ workspaceId: action.workspaceName });
         const resolvedToken = pageRegistry.resolveTabToken(resolvedScope);
         return { tabToken: resolvedToken, scope: resolvedScope };
+    } catch {
+        throw new ActionTargetError(ERROR_CODES.ERR_BAD_ARGS, 'workspace scope not found for workspaceName');
     }
-
-    return null;
 };
