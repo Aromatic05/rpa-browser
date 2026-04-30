@@ -214,7 +214,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             throw new DslRuntimeError('workflow.record.save requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workspaceId = toWorkflowWorkspaceId(payload.scene);
-        const currentWorkspaceId = action.scope?.workspaceId || ctx.pageRegistry.getActiveWorkspace()?.workspaceId || '';
+        const currentWorkspaceId = action.workspaceName || ctx.pageRegistry.getActiveWorkspace()?.workspaceId || '';
         if (currentWorkspaceId !== workspaceId) {
             throw new DslRuntimeError(
                 `workflow workspace mismatch: expected=${workspaceId} actual=${currentWorkspaceId || 'none'}`,

@@ -51,7 +51,7 @@ const resolveWorkspaceId = (
     argWorkspaceId?: string,
 ) : string | null => {
     if (argWorkspaceId) {return argWorkspaceId;}
-    if (action.scope?.workspaceId) {return action.scope.workspaceId;}
+    if (action.workspaceName) {return action.workspaceName;}
     const active = ctx.pageRegistry.getActiveWorkspace();
     return active?.workspaceId ?? null;
 };
@@ -96,7 +96,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const payload = (action.payload ?? {}) as { source?: string; url?: string; at?: number; workspaceId?: string };
         const workspaceId =
             payload.workspaceId ||
-            action.scope?.workspaceId ||
+            action.workspaceName ||
             ctx.pageRegistry?.getActiveWorkspace?.()?.workspaceId;
         if (typeof ctx.pageRegistry?.createPendingTokenClaim === 'function') {
             ctx.pageRegistry.createPendingTokenClaim({
@@ -178,7 +178,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'workspace.restore': async (ctx, action) => {
         const payload = (action.payload ?? {}) as WorkspaceRestorePayload;
-        const sourceWorkspaceId = payload.workspaceId || action.scope?.workspaceId;
+        const sourceWorkspaceId = payload.workspaceId || action.workspaceName;
         if (!sourceWorkspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required');
         }

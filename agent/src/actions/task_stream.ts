@@ -74,7 +74,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.start': async (ctx, action) => {
         await ensureCheckpointLoaded();
         const payload = (action.payload || {}) as { workspaceId?: string; runId?: string };
-        const workspaceId = payload.workspaceId || action.scope?.workspaceId;
+        const workspaceId = payload.workspaceId || action.workspaceName;
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing workspaceId');
         }

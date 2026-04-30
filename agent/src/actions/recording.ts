@@ -116,7 +116,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { pageUrl: ctx.page.url() });
     },
     'record.stop': async (ctx, action) => {
-        const workspaceId = action.scope?.workspaceId;
+        const workspaceId = action.workspaceName;
         stopRecording(ctx.recordingState, ctx.tabToken, { workspaceId });
         try {
             await setRecorderRuntimeEnabled(ctx.page, false);
@@ -147,12 +147,12 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { pageUrl });
     },
     'record.get': async (ctx, action) => {
-        const workspaceId = action.scope?.workspaceId;
+        const workspaceId = action.workspaceName;
         const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
         return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
     'record.save': async (ctx, action) => {
-        const workspaceId = action.scope?.workspaceId;
+        const workspaceId = action.workspaceName;
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required for record.save');
         }
@@ -196,7 +196,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         });
     },
     'record.load': async (ctx, action) => {
-        const workspaceId = action.scope?.workspaceId;
+        const workspaceId = action.workspaceName;
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required for record.load');
         }
@@ -267,7 +267,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         });
     },
     'record.clear': async (ctx, action) => {
-        const workspaceId = action.scope?.workspaceId;
+        const workspaceId = action.workspaceName;
         clearRecording(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
         return replyAction(action, { cleared: true });
     },
@@ -321,8 +321,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 v: 1,
                 id: crypto.randomUUID(),
                 type,
-                tabToken: ctx.tabToken,
-                scope: { workspaceId: replayWorkspaceId, tabId: initialTabId, tabToken: ctx.tabToken },
+                workspaceName: replayWorkspaceId,
                 payload,
                 at: Date.now(),
                 traceId: action.traceId,
@@ -442,7 +441,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         }
 
         const step = payload;
-        const token = action.scope?.tabToken || action.tabToken || ctx.tabToken;
+        const token = ctx.tabToken;
         const scope = ctx.pageRegistry.resolveScopeFromToken(token);
         let currentUrl: string;
         try {
