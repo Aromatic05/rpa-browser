@@ -69,7 +69,7 @@ export const executeBrowserQuery = async (
     }
 
     const args = step.args as Extract<Step<'browser.query'>['args'], { from: unknown }>;
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const snapshot = readLatestSnapshot(binding.traceCtx.cache);
     if (!snapshot) {
         return {

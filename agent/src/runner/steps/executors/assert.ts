@@ -31,7 +31,7 @@ export const executeBrowserAssert = async (
         };
     }
 
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
 
     if (urlIncludes) {
         const info = await binding.traceTools['trace.page.getInfo']();

@@ -8,7 +8,7 @@ export const executeBrowserMouse = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     if (step.args.action === 'wheel' && typeof step.args.deltaY !== 'number') {
         return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'mouse wheel requires deltaY' } };
     }

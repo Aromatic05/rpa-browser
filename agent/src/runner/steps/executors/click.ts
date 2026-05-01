@@ -39,7 +39,7 @@ const runSelectorClick = async (input: {
     selector: string;
     step: Step<'browser.click'>;
     deps: RunStepsDeps;
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>;
+    binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>;
     timeout: number;
 }): Promise<StepResult> => {
     const { selector, step, deps, binding, timeout } = input;
@@ -80,7 +80,7 @@ export const executeBrowserClick = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const coord = step.args.coord;
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
     const hardTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.interactionTimeoutMs;

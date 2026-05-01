@@ -209,7 +209,7 @@ const writeRunnerStepResultCache = async (
     result: ExecStepResult,
 ) => {
     try {
-        const binding = await deps.runtime.ensureActivePage(workspaceId);
+        const binding = await deps.runtime.resolveBinding(workspaceId);
         const cache = binding.traceCtx.cache as {
             runnerStepResults?: Record<string, unknown>;
             runnerStepResultsRunId?: string;
@@ -373,7 +373,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             const result = await executeOne(step, req.workspaceId, runLocalStepResults, resolvedDeps, req.stepResolves);
             if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
-                    const binding = await resolvedDeps.runtime.ensureActivePage(req.workspaceId);
+                    const binding = await resolvedDeps.runtime.resolveBinding(req.workspaceId);
                     markSnapshotSessionDirty(binding, `step:${step.name}`);
                 } catch (error) {
                     stepLogger('[runner] snapshot dirty mark failed', {

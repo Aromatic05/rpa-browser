@@ -19,7 +19,7 @@ type ChoiceState = {
 };
 
 const ensureVisible = async (
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
+    binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>,
     selector: string,
     timeout?: number,
 ) => {
@@ -373,7 +373,7 @@ export const executeBrowserSelectOption = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const resolved = await resolveTarget(binding, {
         nodeId: step.args.nodeId,
         selector: step.args.selector,

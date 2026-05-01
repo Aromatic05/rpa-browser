@@ -82,7 +82,7 @@ const getSnapshotSessionStore = (binding: PageBinding): SnapshotSessionStore => 
 };
 
 const getSnapshotSessionEntryKey = (binding: PageBinding): string => {
-    return `${binding.workspaceId}:${binding.tabToken}`;
+    return `${binding.workspaceName}:${binding.tabName}`;
 };
 
 export const getSnapshotSessionEntry = (binding: PageBinding): SnapshotSessionEntry | undefined => {
@@ -328,9 +328,9 @@ const createEmptyOverlays = (): SnapshotOverlays => ({
 });
 
 const resolveSnapshotPageIdentity = (binding: PageBinding): SnapshotPageIdentity => ({
-    workspaceId: binding.workspaceId,
-    tabId: binding.tabId,
-    tabToken: binding.tabToken,
+    workspaceId: binding.workspaceName,
+    tabId: binding.tabName,
+    tabToken: binding.tabName,
     url: safeReadPageUrl(binding),
 });
 

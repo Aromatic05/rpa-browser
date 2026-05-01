@@ -117,6 +117,10 @@ export const validateEntityRules = (
                 errors.push(`pagination only allowed for table annotations: ${rule.ruleId}`);
             }
             const nextAction = rule.pagination.nextAction;
+            if (!nextAction) {
+                errors.push(`pagination.nextAction is required for ruleId=${rule.ruleId}`);
+                continue;
+            }
             if (!nextAction.actionIntent.trim()) {
                 errors.push(`pagination.nextAction.actionIntent must be non-empty for ruleId=${rule.ruleId}`);
             }

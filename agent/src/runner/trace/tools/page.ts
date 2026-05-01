@@ -1,12 +1,12 @@
 import crypto from 'crypto';
-import type { AriaRole, Page } from 'playwright';
+import type { Page } from 'playwright';
 import { adoptA11yNode } from '../a11y/adopt';
 import { invalidateA11yCache } from '../a11y/cache';
 import { getA11yTree } from '../a11y/getA11yTree';
 import type { ConsoleEntry, NetworkEntry } from '../types';
 import type { ToolsBuildContext } from './context';
 
-export const createPageTools = (base: ToolsBuildContext): Record<string, (args?: unknown) => Promise<unknown>> => ({
+export const createPageTools = (base: ToolsBuildContext): any => ({
     'trace.page.goto': async (args: { url: string; timeout?: number }) => {
         const result = await base.run('trace.page.goto', args, async () => {
             await base.getCurrentPage().goto(args.url, { timeout: args.timeout });
@@ -102,7 +102,7 @@ export const createPageTools = (base: ToolsBuildContext): Record<string, (args?:
             return evaluated;
         }),
 
-    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: AriaRole; name?: string }) =>
+    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: string; name?: string }) =>
         await base.run('trace.page.screenshot', args, async () => {
             const currentPage = base.getCurrentPage();
             ensurePageDiagnostics(currentPage, base.ctx.cache);

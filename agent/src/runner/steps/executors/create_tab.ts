@@ -7,7 +7,7 @@ export const executeBrowserCreateTab = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const result = await binding.traceTools['trace.tabs.create']({
         workspaceId,
         url: step.args.url,

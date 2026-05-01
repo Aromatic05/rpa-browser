@@ -36,7 +36,7 @@ export const getFailedCtx = async (input: {
 }): Promise<FailedCtx> => {
     let currentUrl: string | undefined;
     try {
-        const binding = await input.deps.runtime.ensureActivePage(input.workspaceId);
+        const binding = await input.deps.runtime.resolveBinding(input.workspaceId);
         const info = await binding.traceTools['trace.page.getInfo']();
         if (info.ok) {
             currentUrl = info.data?.url;

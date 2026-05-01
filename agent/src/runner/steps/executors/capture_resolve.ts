@@ -73,7 +73,7 @@ export const executeBrowserCaptureResolve = async (
         return { stepId: step.id, ok: false, error: normalizedLimit.error };
     }
 
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const cachedSnapshot = readLatestSnapshot(binding.traceCtx.cache);
     const snapshot =
         cachedSnapshot ||
@@ -132,7 +132,7 @@ const readLatestSnapshot = (cache: unknown): SnapshotResult | null => {
 };
 
 const findCandidates = async (
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
+    binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>,
     snapshot: SnapshotResult,
     step: Step<'browser.capture_resolve'>,
 ): Promise<CaptureResolveCandidate[]> => {
@@ -145,7 +145,7 @@ const findCandidates = async (
         return Object.values(snapshot.nodeIndex)
             .filter((node) => selectorMatchesNode(snapshot, node, resolved.target.selector))
             .map((node) => ({
-                ...buildCandidate(snapshot, node, { kind: 'resolve' as const, match: () => [] }, 1),
+                ...buildCandidate(snapshot, node, { kind: 'selector' as const, match: () => [] }, 1),
                 selector: resolved.target.selector,
                 confidence: 0.92,
                 reason: ['matched resolveId sidecar'],
@@ -226,8 +226,6 @@ const buildCandidate = (
     const confidence =
         strategy.kind === 'nodeId'
             ? 1
-            : strategy.kind === 'resolve'
-              ? 0.92
             : strategy.kind === 'selector'
               ? unique ? 0.95 : 0.65
               : strategy.kind === 'role+name'

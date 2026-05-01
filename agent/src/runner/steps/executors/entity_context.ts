@@ -8,7 +8,7 @@ export type FreshEntityContext = {
     snapshot: SnapshotResult;
     finalEntityView: FinalEntityView;
     entry: SnapshotSessionEntry;
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>;
+    binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>;
 };
 
 export const ensureFreshEntityContext = async (
@@ -16,7 +16,7 @@ export const ensureFreshEntityContext = async (
     workspaceId: string,
     refreshReason: string,
 ): Promise<FreshEntityContext> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason,
         collectBaseSnapshot: async (context) =>

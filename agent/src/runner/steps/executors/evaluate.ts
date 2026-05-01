@@ -7,7 +7,7 @@ export const executeBrowserEvaluate = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const result = await binding.traceTools['trace.page.evaluate']({
         expression: step.args.expression,
         arg: step.args.arg,

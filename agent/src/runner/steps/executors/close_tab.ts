@@ -7,7 +7,7 @@ export const executeBrowserCloseTab = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const tabId = step.args.tabId || step.args.tabRef;
     if (!tabId) {
         return {

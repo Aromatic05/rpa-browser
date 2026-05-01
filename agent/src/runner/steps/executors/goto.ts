@@ -7,7 +7,7 @@ export const executeBrowserGoto = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const timeout = step.args.timeout ?? deps.config.waitPolicy.navigationTimeoutMs;
     const currentUrl = binding.page.url();
     if (currentUrl === step.args.url) {

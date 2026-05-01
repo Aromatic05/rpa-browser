@@ -44,7 +44,7 @@ export const createEmitter = (bindingName: string, version: string): { emit: Emi
             }
             return;
         }
-        const bridge = (window as WindowBridge)[bindingName];
+        const bridge = ((window as unknown) as WindowBridge)[bindingName];
         if (typeof bridge !== 'function') {return;}
         const bridgeFn = bridge as (payload: Record<string, unknown>) => void;
         bridgeFn({

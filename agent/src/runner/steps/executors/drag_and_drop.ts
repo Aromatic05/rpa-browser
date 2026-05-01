@@ -9,7 +9,7 @@ export const executeBrowserDragAndDrop = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const source = await resolveTarget(binding, {
         nodeId: step.args.sourceNodeId,
         selector: step.args.sourceSelector,

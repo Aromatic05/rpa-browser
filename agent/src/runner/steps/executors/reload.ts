@@ -7,7 +7,7 @@ export const executeBrowserReload = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const result = await binding.traceTools['trace.page.reload']({ timeout: step.args.timeout });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };

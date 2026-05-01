@@ -7,7 +7,7 @@ export const executeBrowserGetPageInfo = async (
     deps: RunStepsDeps,
     workspaceId: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceId);
     const result = await binding.traceTools['trace.page.getInfo']();
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };

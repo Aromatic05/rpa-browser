@@ -20,7 +20,7 @@ const markEventHandled = (event: Event) => {
     return false;
 };
 
-const inPanel = (path: EventTarget[] | null) => {
+const inPanel = (path: EventTarget[]) => {
     if (!path) {return false;}
     for (const node of path) {
         if (node instanceof HTMLElement && node.id === 'rpa-floating-panel') {return true;}
@@ -32,8 +32,8 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
     const handleClick = (event: MouseEvent) => {
         if (markEventHandled(event)) {return;}
         const path = event.composedPath();
-        let target = path[0] || event.target;
-        if (target instanceof Node && target.nodeType === 3) {target = target.parentElement;}
+        let target: EventTarget | null = path[0] || event.target;
+        if (target instanceof Node && target.nodeType === 3) {target = target.parentElement || null;}
         const element = target instanceof Element ? target : null;
         if (!element) {return;}
         if (inPanel(path) || element.closest('#rpa-floating-panel')) {return;}

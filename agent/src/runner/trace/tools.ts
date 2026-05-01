@@ -145,11 +145,11 @@ export const createTraceTools = (opts: {
         resolveSelectorLocator,
     };
 
-    const tools: BrowserAutomationTools = {
+    const tools = {
         ...createTabsTools(base),
         ...createPageTools(base),
         ...createLocatorTools(base),
-    };
+    } as BrowserAutomationTools;
 
     return { tools, ctx };
 };
