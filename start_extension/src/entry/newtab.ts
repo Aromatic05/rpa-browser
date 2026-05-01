@@ -47,7 +47,7 @@ type WorkflowListData = {
 
 type WorkflowOpenData = {
     workspaceName?: string;
-    tabId?: string;
+    tabName?: string;
     tabName?: string;
 };
 
@@ -60,10 +60,10 @@ type BoundTokenData = {
     ok: boolean;
     tabName?: string;
     workspaceName?: string;
-    tabId?: string;
+    tabName?: string;
     error?: string;
 };
-type BoundScope = { tabName: string; workspaceName: string; tabId?: string };
+type BoundScope = { tabName: string; workspaceName: string; tabName?: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
@@ -136,14 +136,14 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
         );
     });
     if (!reply.ok || !reply.tabName || !reply.workspaceName) {
-        throw new Error(reply.error ?? 'bound token unavailable');
+        throw new Error(reply.error ?? 'bound tab reference unavailable');
     }
     currentToken = reply.tabName;
     applyTabName(currentToken);
     return {
         tabName: reply.tabName,
         workspaceName: reply.workspaceName,
-        ...(reply.tabId ? { tabId: reply.tabId } : {}),
+        ...(reply.tabName ? { tabName: reply.tabName } : {}),
     };
 };
 
@@ -251,7 +251,7 @@ const renderWorkflowList = (items: WorkflowListItem[], scope?: Record<string, un
                 return;
             }
             const workspaceName = opened.data?.workspaceName;
-            const tabId = opened.data?.tabId;
+            const tabName = opened.data?.tabName;
             if (!workspaceName) {
                 if (restoreStatusEl) {
                     restoreStatusEl.textContent = 'open failed: invalid workflow.open response';
@@ -312,7 +312,7 @@ void (async () => {
         await refreshWorkflowList({
             tabName: bound.tabName,
             workspaceName: bound.workspaceName,
-            ...(bound.tabId ? { tabId: bound.tabId } : {}),
+            ...(bound.tabName ? { tabName: bound.tabName } : {}),
         });
     } catch (error) {
         setStatus('offline');
@@ -326,7 +326,7 @@ refreshRestoreBtn?.addEventListener('click', () => {
         await refreshWorkflowList({
             tabName: bound.tabName,
             workspaceName: bound.workspaceName,
-            ...(bound.tabId ? { tabId: bound.tabId } : {}),
+            ...(bound.tabName ? { tabName: bound.tabName } : {}),
         });
     })();
 });

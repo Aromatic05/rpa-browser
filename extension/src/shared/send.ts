@@ -57,12 +57,12 @@ const runtimeTransport = async <T>(req: unknown, timeoutMs = DEFAULT_TIMEOUT_MS)
 };
 
 const tabTransport = async <T>(
-    tabId: number,
+    tabName: number,
     req: unknown,
     timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<TransportResult<T>> => {
     const promise = new Promise<T>((resolve, reject) => {
-        chrome.tabs.sendMessage(tabId, req, (response: unknown) => {
+        chrome.tabs.sendMessage(tabName, req, (response: unknown) => {
             if (chrome.runtime.lastError) {
                 reject(new Error(chrome.runtime.lastError.message));
                 return;
@@ -109,11 +109,11 @@ export const send = {
      * 向指定 tab 发送消息（SW -> content）。
      */
     toTabTransport: <T = unknown>(
-        tabId: number,
+        tabName: number,
         type: string,
         payload?: Record<string, unknown>,
         opts?: { timeoutMs?: number },
     ): Promise<TransportResult<T>> =>
-        tabTransport<T>(tabId, { type, ...(payload ?? {}) }, opts?.timeoutMs),
+        tabTransport<T>(tabName, { type, ...(payload ?? {}) }, opts?.timeoutMs),
 
 };

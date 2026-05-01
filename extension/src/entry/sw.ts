@@ -83,10 +83,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) =>
 );
 
 chrome.tabs.onActivated.addListener((info) => { router.onActivated(info); });
-chrome.tabs.onRemoved.addListener((tabId) => { router.onRemoved(tabId); });
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => { router.onUpdated(tabId, changeInfo, tab); });
+chrome.tabs.onRemoved.addListener((tabName) => { router.onRemoved(tabName); });
+chrome.tabs.onUpdated.addListener((tabName, changeInfo, tab) => { router.onUpdated(tabName, changeInfo, tab); });
 chrome.tabs.onCreated.addListener((tab) => { router.onCreated(tab); });
-chrome.tabs.onAttached.addListener((tabId, info) => { router.onAttached(tabId, info); });
+chrome.tabs.onAttached.addListener((tabName, info) => { router.onAttached(tabName, info); });
 chrome.windows.onFocusChanged.addListener((windowId) => { router.onFocusChanged(windowId); });
 chrome.windows.onRemoved.addListener((windowId) => { router.onWindowRemoved(windowId); });
 
