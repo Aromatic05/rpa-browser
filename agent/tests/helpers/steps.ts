@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import type { Page } from '@playwright/test';
 import path from 'node:path';
 import { createPageRegistry } from '../../src/runtime/page_registry';
+import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runStepList } from '../../src/runner/run_steps';
@@ -44,11 +45,21 @@ export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.rand
     pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
 
     const pluginHost = await createTestPluginHost();
+    const workspaceRegistry = createWorkspaceRegistry();
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(scope.workspaceId);
+    runtimeWorkspace.tabRegistry.createTab({
+        tabName: scope.tabId,
+        tabToken,
+        page,
+        url: page.url(),
+    });
+    runtimeWorkspace.tabRegistry.setActiveTab(scope.tabId);
     const runtime = createRuntimeRegistry({
-        pageRegistry,
+        workspaceRegistry,
         traceHooks: createNoopHooks(),
         pluginHost,
     });
+    runtime.bindPage({ workspaceName: scope.workspaceId, tabName: scope.tabId, page });
 
     const deps = { runtime, config: getRunnerConfig(), pluginHost };
 
