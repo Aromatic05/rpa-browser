@@ -277,6 +277,25 @@ await log('tabs.onCreated reuses pre-bound token scope when window mapping is no
     assert.equal(openedCount, 0);
 });
 
+await log('workflow.open projection uses workspaceName/tabName without payload tabToken', async () => {
+    globalThis.chrome = createChromeMock();
+    let refreshed = 0;
+    const router = createCmdRouter({
+        wsClient: withActionReplies(async () => ({ ok: true, data: {} })),
+        onRefresh: () => {
+            refreshed += 1;
+        },
+    });
+
+    router.handleInboundAction({
+        v: 1,
+        id: 'evt-workflow-open',
+        type: `${ACTION_TYPES.WORKFLOW_OPEN}.result`,
+        payload: { workspaceName: 'ws-1', tabName: 'tab-1' },
+    });
+    assert.equal(refreshed, 1);
+});
+
 await log('workspace.list works without tab token', async () => {
     globalThis.chrome = createChromeMock();
     chrome.tabs.sendMessage = (tabName, message, cb) => {

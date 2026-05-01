@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resolveIncomingAction } from '../../dist/background/action.js';
+import { applyReplyProjection, resolveIncomingAction } from '../../dist/background/action.js';
 
 const mkDeps = () => ({
     state: {
@@ -60,4 +60,37 @@ await log('non pageless action still fails when tabToken unavailable', async () 
         assert.equal(result.reply.type, 'play.start.failed');
         assert.equal(result.reply.payload.message, 'workspaceName unavailable');
     }
+});
+
+await log('applyReplyProjection maps scope using local sender token, not response payload tabToken', async () => {
+    const calls = [];
+    const state = {
+        upsertTokenScope: (token, workspaceName, tabName) => {
+            calls.push({ token, workspaceName, tabName });
+        },
+        bindWorkspaceToWindowIfKnown: () => undefined,
+        setWindowWorkspace: () => undefined,
+        getTabState: (tabId) => (tabId === 123 ? { tabToken: 'token-local', lastUrl: 'https://example.com' } : undefined),
+    };
+
+    applyReplyProjection(
+        {
+            scoped: { v: 1, id: 'req-3', type: 'tab.setActive', workspaceName: 'ws-1', payload: {} },
+            senderTabId: 123,
+            senderWindowId: 456,
+            resolvedWorkspaceName: 'ws-1',
+        },
+        {
+            v: 1,
+            id: 'rep-3',
+            type: 'tab.setActive.result',
+            replyTo: 'req-3',
+            payload: { workspaceName: 'ws-1', tabName: 'tab-1', tabToken: 'token-from-reply' },
+        },
+        mkSender(),
+        state,
+    );
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], { token: 'token-local', workspaceName: 'ws-1', tabName: 'tab-1' });
 });
