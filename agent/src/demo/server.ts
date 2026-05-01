@@ -66,21 +66,21 @@ const contextManager = createContextManager({
 });
 
 const pageRegistry = createPageRegistry({
-    tabTokenKey: TAB_TOKEN_KEY,
+    tabNameKey: TAB_TOKEN_KEY,
     getContext: contextManager.getContext,
     onPageBound: (page, token) => {
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
-        const scope = pageRegistry.resolveScopeFromToken(token);
-        const workspace = workspaceRegistry.createWorkspace(scope.workspaceId);
+        const scope = pageRegistry.resolveTabBinding(token);
+        const workspace = workspaceRegistry.createWorkspace(scope.workspaceName);
         if (!workspace.tabRegistry.hasTab(scope.tabId)) {
-            workspace.tabRegistry.createTab({ tabName: scope.tabId, tabToken: token, page, url: page.url() });
+            workspace.tabRegistry.createTab({ tabName: scope.tabId, tabName: token, page, url: page.url() });
         } else {
             workspace.tabRegistry.bindPage(scope.tabId, page);
         }
         workspace.tabRegistry.setActiveTab(scope.tabId);
-        runtimeRegistry.bindPage({ workspaceName: scope.workspaceId, tabName: scope.tabId, page });
+        runtimeRegistry.bindPage({ workspaceName: scope.workspaceName, tabName: scope.tabId, page });
     },
     onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
@@ -120,7 +120,7 @@ const buildToolDeps = () => ({
     pageRegistry,
     getActiveTabToken: async () => {
         const workspace = await workspaceManager.ensureActiveWorkspace();
-        return workspace.tabToken;
+        return workspace.tabName;
     },
 });
 
