@@ -46,14 +46,12 @@ const resolveSwitchTabIdArg = (step: StepUnion | undefined): string | null => {
 };
 
 const resolveWorkspaceId = (
-    ctx: ActionContext,
     action: Action,
     argWorkspaceId?: string,
 ) : string | null => {
     if (argWorkspaceId) {return argWorkspaceId;}
     if (action.workspaceName) {return action.workspaceName;}
-    const active = ctx.pageRegistry.getActiveWorkspace();
-    return active?.workspaceId ?? null;
+    return null;
 };
 
 const bringWorkspaceTabToFront = async (
@@ -96,8 +94,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const payload = (action.payload ?? {}) as { source?: string; url?: string; at?: number; workspaceName?: string };
         const workspaceId =
             payload.workspaceName ||
-            action.workspaceName ||
-            ctx.pageRegistry?.getActiveWorkspace?.()?.workspaceId;
+            action.workspaceName;
         if (typeof ctx.pageRegistry?.createPendingTokenClaim === 'function') {
             ctx.pageRegistry.createPendingTokenClaim({
                 tabToken,
@@ -131,7 +128,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'workspace.save': async (ctx, action) => {
         const payload = (action.payload ?? {}) as WorkspaceSavePayload;
-        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceName);
+        const workspaceId = resolveWorkspaceId(action, payload.workspaceName);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
@@ -303,7 +300,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.list': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabListPayload;
-        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceName);
+        const workspaceId = resolveWorkspaceId(action, payload.workspaceName);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
@@ -312,7 +309,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.create': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabCreatePayload;
-        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceName);
+        const workspaceId = resolveWorkspaceId(action, payload.workspaceName);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
@@ -327,7 +324,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.close': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabClosePayload;
-        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceName);
+        const workspaceId = resolveWorkspaceId(action, payload.workspaceName);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
@@ -337,7 +334,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.setActive': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabSetActivePayload;
-        const workspaceId = resolveWorkspaceId(ctx, action, payload.workspaceName);
+        const workspaceId = resolveWorkspaceId(action, payload.workspaceName);
         if (!workspaceId) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
