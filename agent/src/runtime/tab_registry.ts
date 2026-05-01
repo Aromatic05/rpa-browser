@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 
 export type RuntimeTab = {
     name: string;
-    tabToken: string;
+    tabName: string;
     page: Page | null;
     url: string;
     title: string;
@@ -11,7 +11,7 @@ export type RuntimeTab = {
 };
 
 export type TabRegistry = {
-    createTab: (input: { tabName: string; tabToken: string; page?: Page | null; url?: string; title?: string; at?: number }) => RuntimeTab;
+    createTab: (input: { tabName: string; tabName: string; page?: Page | null; url?: string; title?: string; at?: number }) => RuntimeTab;
     closeTab: (tabName: string) => RuntimeTab | null;
     listTabs: () => RuntimeTab[];
     setActiveTab: (tabName: string) => void;
@@ -34,7 +34,7 @@ export const createTabRegistry = (): TabRegistry => {
         const now = input.at ?? Date.now();
         const tab: RuntimeTab = {
             name: input.tabName,
-            tabToken: input.tabToken,
+            tabName: input.tabName,
             page: input.page ?? null,
             url: input.url ?? '',
             title: input.title ?? '',

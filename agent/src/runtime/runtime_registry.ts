@@ -37,7 +37,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
                 const { tools, ctx } = plugin.createTraceTools({
                     page: binding.page,
                     context: binding.page.context(),
-                    workspaceId: binding.workspaceName,
+                    workspaceName: binding.workspaceName,
                     sinks: options.traceSinks,
                     hooks: options.traceHooks,
                     tags: { workspaceName: binding.workspaceName, tabName: binding.tabName } as any,
@@ -52,7 +52,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         const { tools, ctx } = resolveCreateTraceTools()({
             page,
             context: page.context(),
-            workspaceId: workspaceName,
+            workspaceName: workspaceName,
             sinks: options.traceSinks,
             hooks: options.traceHooks,
             tags: { workspaceName, tabName } as any,

@@ -4,7 +4,7 @@ import type { WorkflowWorkspaceBinding } from './types';
 
 export type ResolveWorkflowWorkspaceDeps = {
     pageRegistry: PageRegistry;
-    restoreWorkspace: (workspaceId: string) => Promise<{ workspaceId: string; tabId: string; tabToken: string }>;
+    restoreWorkspace: (workspaceName: string) => Promise<{ workspaceName: string; tabId: string; tabName: string }>;
 };
 
 export type ResolveWorkflowWorkspaceInput = {
@@ -13,12 +13,12 @@ export type ResolveWorkflowWorkspaceInput = {
 };
 
 type ResolvedWorkspace = {
-    workspaceId: string;
+    workspaceName: string;
     tabId: string;
-    tabToken: string;
+    tabName: string;
 };
 
-const toWorkspaceId = (scene: string): string => `workflow:${scene}`;
+const toWorkspaceName = (scene: string): string => `workflow:${scene}`;
 
 const ensureEntryUrl = async (
     deps: ResolveWorkflowWorkspaceDeps,
@@ -27,7 +27,7 @@ const ensureEntryUrl = async (
 ): Promise<void> => {
     if (!entryUrl) {return;}
     const page = await deps.pageRegistry.resolvePage({
-        workspaceId: resolved.workspaceId,
+        workspaceName: resolved.workspaceName,
         tabId: resolved.tabId,
     });
     if (page.url() !== entryUrl) {
@@ -42,7 +42,7 @@ const ensureExpectedTabs = async (
 ): Promise<void> => {
     if (!expectedTabs || expectedTabs.length === 0) {return;}
     const page = await deps.pageRegistry.resolvePage({
-        workspaceId: resolved.workspaceId,
+        workspaceName: resolved.workspaceName,
         tabId: resolved.tabId,
     });
     const currentUrl = page.url();
@@ -62,27 +62,27 @@ const ensureExpectedTabs = async (
 };
 
 const createWorkspace = async (deps: ResolveWorkflowWorkspaceDeps, scene: string): Promise<ResolvedWorkspace> => {
-    const workspaceId = toWorkspaceId(scene);
+    const workspaceName = toWorkspaceName(scene);
     if (typeof deps.pageRegistry.createWorkspaceShell === 'function' && typeof deps.pageRegistry.createTab === 'function') {
-        deps.pageRegistry.createWorkspaceShell(workspaceId);
-        const tabId = await deps.pageRegistry.createTab(workspaceId);
+        deps.pageRegistry.createWorkspaceShell(workspaceName);
+        const tabId = await deps.pageRegistry.createTab(workspaceName);
         return {
-            workspaceId,
+            workspaceName,
             tabId,
-            tabToken: deps.pageRegistry.resolveTabToken({ workspaceId, tabId }),
+            tabName: deps.pageRegistry.resolveTabName({ workspaceName, tabId }),
         };
     }
     const created = await deps.pageRegistry.createWorkspace();
     return {
-        workspaceId: created.workspaceId,
+        workspaceName: created.workspaceName,
         tabId: created.tabId,
-        tabToken: deps.pageRegistry.resolveTabToken({ workspaceId: created.workspaceId, tabId: created.tabId }),
+        tabName: deps.pageRegistry.resolveTabName({ workspaceName: created.workspaceName, tabId: created.tabId }),
     };
 };
 
 const restoreWorkspace = async (deps: ResolveWorkflowWorkspaceDeps, scene: string): Promise<ResolvedWorkspace> => {
-    const workspaceId = toWorkspaceId(scene);
-    const restored = await deps.restoreWorkspace(workspaceId);
+    const workspaceName = toWorkspaceName(scene);
+    const restored = await deps.restoreWorkspace(workspaceName);
     return restored;
 };
 

@@ -62,9 +62,9 @@ export type RunWorkflowRequest = {
 export type RunWorkflowResult = {
     scene: string;
     workflowRoot: string;
-    workspaceId: string;
+    workspaceName: string;
     tabId: string;
-    tabToken: string;
+    tabName: string;
     scope: {
         input: Record<string, unknown>;
         vars: Record<string, unknown>;
