@@ -221,7 +221,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
                 'ERR_WORKFLOW_WORKSPACE_RESOLVE_FAILED',
             );
         }
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId });
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, { workspaceId });
         const recordingName = payload.recordingName || toDefaultRecordingName();
         await saveWorkflowRecordingArtifacts({
             artifactsRootDir: DEFAULT_ARTIFACTS_ROOT,

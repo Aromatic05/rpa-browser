@@ -105,21 +105,21 @@ const resolveLatestRecordingName = (scene: string): string | null => {
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, action) => {
-        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
-        await startRecording(ctx.recordingState, ctx.page, ctx.tabToken, ctx.navDedupeWindowMs, {
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.resolveTab().tabToken);
+        await startRecording(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabToken, ctx.navDedupeWindowMs, {
             workspaceId: scope.workspaceId,
             tabId: scope.tabId,
-            entryUrl: ctx.page.url(),
+            entryUrl: ctx.resolvePage().url(),
         });
-        await ensureRecorder(ctx.recordingState, ctx.page, ctx.tabToken, ctx.navDedupeWindowMs);
-        await setRecorderRuntimeEnabled(ctx.page, true);
-        return replyAction(action, { pageUrl: ctx.page.url() });
+        await ensureRecorder(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabToken, ctx.navDedupeWindowMs);
+        await setRecorderRuntimeEnabled(ctx.resolvePage(), true);
+        return replyAction(action, { pageUrl: ctx.resolvePage().url() });
     },
     'record.stop': async (ctx, action) => {
         const workspaceId = action.workspaceName;
-        stopRecording(ctx.recordingState, ctx.tabToken, { workspaceId });
+        stopRecording(ctx.recordingState, ctx.resolveTab().tabToken, { workspaceId });
         try {
-            await setRecorderRuntimeEnabled(ctx.page, false);
+            await setRecorderRuntimeEnabled(ctx.resolvePage(), false);
         } catch {
             // ignore unavailable page in pageless mode
         }
@@ -140,7 +140,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         }
         let pageUrl = '';
         try {
-            pageUrl = ctx.page.url();
+            pageUrl = ctx.resolvePage().url();
         } catch {
             // pageless mode: no concrete page target
         }
@@ -148,7 +148,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     },
     'record.get': async (ctx, action) => {
         const workspaceId = action.workspaceName;
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, workspaceId ? { workspaceId } : undefined);
         return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
     'record.save': async (ctx, action) => {
@@ -162,7 +162,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'scene is required for record.save');
         }
         const scaffold = ensureWorkflowScaffold(scene);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, workspaceId ? { workspaceId } : undefined);
         const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
         const stepsFile = toStepFile(bundle.steps);
         validateStepFileForSerialization(stepsFile);
@@ -268,7 +268,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     },
     'record.clear': async (ctx, action) => {
         const workspaceId = action.workspaceName;
-        clearRecording(ctx.recordingState, ctx.tabToken, workspaceId ? { workspaceId } : undefined);
+        clearRecording(ctx.recordingState, ctx.resolveTab().tabToken, workspaceId ? { workspaceId } : undefined);
         return replyAction(action, { cleared: true });
     },
     'record.list': async (ctx, action) => {
@@ -276,13 +276,13 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { recordings });
     },
     'play.stop': async (ctx, action) => {
-        cancelReplay(ctx.recordingState, ctx.tabToken);
+        cancelReplay(ctx.recordingState, ctx.resolveTab().tabToken);
         return replyAction(action, { stopped: true });
     },
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
-        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.tabToken);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.tabToken, { workspaceId: scope.workspaceId });
+        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.resolveTab().tabToken);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, { workspaceId: scope.workspaceId });
         const steps = bundle.steps;
         const stopOnError = payload.stopOnError ?? true;
         const recordedWorkspaceId = bundle.manifest?.workspaceId;
@@ -315,7 +315,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveWorkspace(replayWorkspaceId);
         ctx.pageRegistry.setActiveTab(replayWorkspaceId, initialTabId);
         const initialTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId: replayWorkspaceId, tabId: initialTabId });
-        beginReplay(ctx.recordingState, ctx.tabToken);
+        beginReplay(ctx.recordingState, ctx.resolveTab().tabToken);
         const emitPlayEvent = (type: string, payload: Record<string, unknown>) => {
             ctx.emit?.({
                 v: 1,
@@ -377,7 +377,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                             return tabRef || undefined;
                         },
                     },
-                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.tabToken),
+                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.resolveTab().tabToken),
                     onEvent: publishReplayEvent,
                 });
                 if (replayed.error?.code === 'ERR_CANCELED') {
@@ -412,7 +412,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                     message: error instanceof Error ? error.message : String(error),
                 });
             } finally {
-                endReplay(ctx.recordingState, ctx.tabToken);
+                endReplay(ctx.recordingState, ctx.resolveTab().tabToken);
             }
         })();
 
@@ -436,12 +436,12 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         }
 
         if (isRawRecorderEventPayload(payload)) {
-            await recordEvent(ctx.recordingState, payload, ctx.navDedupeWindowMs, ctx.page);
+            await recordEvent(ctx.recordingState, payload, ctx.navDedupeWindowMs, ctx.resolvePage());
             return replyAction(action, { accepted: true, mode: 'raw-event' });
         }
 
         const step = payload;
-        const token = ctx.tabToken;
+        const token = ctx.resolveTab().tabToken;
         const scope = ctx.pageRegistry.resolveScopeFromToken(token);
         let currentUrl: string;
         try {
