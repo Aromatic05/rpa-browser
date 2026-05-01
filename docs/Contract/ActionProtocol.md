@@ -28,6 +28,7 @@ Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包
 - 禁止顶层 `scope`。
 - 禁止顶层 `workspaceId/tabId/tabToken`。
 - 禁止 payload 重复地址字段（`workspaceName/workspaceId/tabId/tabToken/scope`）。
+- 对外 workspace/tab 表达只允许 `workspaceName/tabName`。
 
 语义：
 
@@ -48,6 +49,9 @@ Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包
 - 协议层已删除：`workspaceId`、`tabId`、`tabToken`、`scope`。
 - workspace/tab 对外 payload 不得出现 `workspaceId/tabId/tabToken`。
 - extension 内部 chrome tab id、tabToken 映射仅限 adapter 本地状态，不进入 Action 协议。
+- workspace.list 广播必须输出 `workspaces[].workspaceName`、`workspaces[].activeTabName`。
+- extension projection 不得依赖 Action payload `tabToken` 做 scope 更新。
+- `MSG.ENSURE_BOUND_TOKEN` 属于 extension 内部消息协议，不属于 Action 协议验收范围。
 - `page_registry/runtime_registry` 内部仍可使用旧命名字段，但不构成对外协议承诺。
 
 ## 本阶段边界
