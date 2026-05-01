@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
+import { createWorkspaceRegistry } from './runtime/workspace_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { startMcpServer } from './mcp/index';
@@ -27,6 +28,7 @@ const logError = (...args: unknown[]) => { actionLog.error('[RPA:mcp]', ...args)
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
+const workspaceRegistry = createWorkspaceRegistry();
 
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
@@ -73,14 +75,20 @@ const pageRegistry = createPageRegistry({
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
-        if (runtimeRegistry) {
-            runtimeRegistry.bindPage(page, token);
+        const scope = pageRegistry.resolveScopeFromToken(token);
+        const workspace = workspaceRegistry.createWorkspace(scope.workspaceId);
+        if (!workspace.tabRegistry.hasTab(scope.tabId)) {
+            workspace.tabRegistry.createTab({ tabName: scope.tabId, tabToken: token, page, url: page.url() });
+        } else {
+            workspace.tabRegistry.bindPage(scope.tabId, page);
         }
+        workspace.tabRegistry.setActiveTab(scope.tabId);
+        runtimeRegistry.bindPage({ workspaceName: scope.workspaceId, tabName: scope.tabId, page });
     },
     onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
-    pageRegistry,
+    workspaceRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
@@ -97,7 +105,7 @@ setRunStepsDeps(runStepsDeps);
 setControlActionDispatcher(
     createActionDispatcher({
         pageRegistry,
-        runtime: runtimeRegistry,
+        workspaceRegistry,
         recordingState,
         log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
         replayOptions: {

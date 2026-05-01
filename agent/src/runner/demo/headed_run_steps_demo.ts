@@ -11,6 +11,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../runtime/page_registry';
+import { createWorkspaceRegistry } from '../../runtime/workspace_registry';
 import { createRuntimeRegistry } from '../../runtime/runtime_registry';
 import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
@@ -43,16 +44,23 @@ const run = async () => {
         tabTokenKey: '__rpa_tab_token',
         getContext: async () => context,
     });
+    const workspaceRegistry = createWorkspaceRegistry();
     const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
     await pluginHost.load();
     const traceSink = new MemorySink();
     const runtimeRegistry = createRuntimeRegistry({
-        pageRegistry,
+        workspaceRegistry,
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
         pluginHost,
     });
     const workspace = await pageRegistry.createWorkspace();
+    const page = await pageRegistry.resolvePage({ workspaceId: workspace.workspaceId, tabId: workspace.tabId });
+    const token = pageRegistry.resolveTabToken({ workspaceId: workspace.workspaceId, tabId: workspace.tabId });
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspace.workspaceId);
+    runtimeWorkspace.tabRegistry.createTab({ tabName: workspace.tabId, tabToken: token, page, url: page.url() });
+    runtimeWorkspace.tabRegistry.setActiveTab(workspace.tabId);
+    runtimeRegistry.bindPage({ workspaceName: workspace.workspaceId, tabName: workspace.tabId, page });
 
     const firstResp = await runStepList(
         workspace.workspaceId,

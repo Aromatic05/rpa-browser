@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_store';
 import { createContextManager, resolvePaths } from '../runtime/context_manager';
 import { createPageRegistry } from '../runtime/page_registry';
+import { createWorkspaceRegistry } from '../runtime/workspace_registry';
 import { createRuntimeRegistry } from '../runtime/runtime_registry';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
@@ -55,6 +56,7 @@ const serveFile = async (res: http.ServerResponse, filePath: string, contentType
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
+const workspaceRegistry = createWorkspaceRegistry();
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
     userDataDir: paths.userDataDir,
@@ -70,9 +72,15 @@ const pageRegistry = createPageRegistry({
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
-        if (runtimeRegistry) {
-            runtimeRegistry.bindPage(page, token);
+        const scope = pageRegistry.resolveScopeFromToken(token);
+        const workspace = workspaceRegistry.createWorkspace(scope.workspaceId);
+        if (!workspace.tabRegistry.hasTab(scope.tabId)) {
+            workspace.tabRegistry.createTab({ tabName: scope.tabId, tabToken: token, page, url: page.url() });
+        } else {
+            workspace.tabRegistry.bindPage(scope.tabId, page);
         }
+        workspace.tabRegistry.setActiveTab(scope.tabId);
+        runtimeRegistry.bindPage({ workspaceName: scope.workspaceId, tabName: scope.tabId, page });
     },
     onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
 });
@@ -94,7 +102,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
-    pageRegistry,
+    workspaceRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
