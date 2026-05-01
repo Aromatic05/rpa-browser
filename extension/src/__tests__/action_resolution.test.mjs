@@ -3,7 +3,7 @@ import { applyReplyProjection, resolveIncomingAction } from '../../dist/backgrou
 
 const mkDeps = () => ({
     state: {
-        getTokenScope: () => undefined,
+        getBindingWorkspaceTab: () => undefined,
         setActiveWorkspaceName: () => undefined,
     },
     ensureTabName: async () => null,
@@ -62,21 +62,21 @@ await log('non pageless action still fails when tabName unavailable', async () =
     }
 });
 
-await log('applyReplyProjection maps scope using local sender token, not response payload tabName', async () => {
+await log('applyReplyProjection maps by sender bindingName and reply tabName', async () => {
     const calls = [];
     const state = {
-        upsertTokenScope: (token, workspaceName, tabName) => {
-            calls.push({ token, workspaceName, tabName });
+        upsertBindingWorkspaceTab: (bindingName, workspaceName, tabName) => {
+            calls.push({ bindingName, workspaceName, tabName });
         },
         bindWorkspaceToWindowIfKnown: () => undefined,
         setWindowWorkspace: () => undefined,
-        getTabState: (tabId) => (tabId === 123 ? { tabName: 'token-local', lastUrl: 'https://example.com' } : undefined),
+        getTabState: (chromeTabNo) => (chromeTabNo === 123 ? { bindingName: 'binding-local', lastUrl: 'https://example.com' } : undefined),
     };
 
     applyReplyProjection(
         {
             scoped: { v: 1, id: 'req-3', type: 'tab.setActive', workspaceName: 'ws-1', payload: {} },
-            senderTabName: 123,
+            senderChromeTabNo: 123,
             senderWindowId: 456,
             resolvedWorkspaceName: 'ws-1',
         },
@@ -92,5 +92,5 @@ await log('applyReplyProjection maps scope using local sender token, not respons
     );
 
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0], { token: 'token-local', workspaceName: 'ws-1', tabName: 'tab-1' });
+    assert.deepEqual(calls[0], { bindingName: 'binding-local', workspaceName: 'ws-1', tabName: 'tab-1' });
 });

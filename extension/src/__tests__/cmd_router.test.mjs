@@ -111,7 +111,7 @@ await log('window focus sends workspace.setActive and window.focused', async () 
     const router = createCmdRouter({
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
-            return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-1', tabName: 'token-1' } };
+            return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-1' } };
         }),
         onRefresh: () => undefined,
     });
@@ -209,7 +209,7 @@ await log('tabs.onCreated does not emit binding actions', async () => {
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
-                return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-new', tabName: 'token-new' } };
+                return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-new' } };
             }
             return { ok: true, data: {} };
         }),
@@ -244,14 +244,14 @@ await log('tabs.onCreated does not emit binding actions', async () => {
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 });
 
-await log('tabs.onCreated reuses pre-bound token scope when window mapping is not ready', async () => {
+await log('tabs.onCreated reuses pre-bound tab reference scope when window mapping is not ready', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
-                return { ok: true, data: { workspaceName: 'ws-url', tabName: 'tab-new', tabName: 'token-new' } };
+                return { ok: true, data: { workspaceName: 'ws-url', tabName: 'tab-new' } };
             }
             return { ok: true, data: {} };
         }),
