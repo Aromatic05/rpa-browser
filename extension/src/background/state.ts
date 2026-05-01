@@ -1,36 +1,36 @@
 import type { Logger } from '../shared/logger.js';
 
 export type TabRuntimeState = {
-    tabToken: string;
+    tabName: string;
     lastUrl: string;
     windowId: number | null;
     updatedAt: number;
 };
 
 type TokenScope = {
-    workspaceId: string;
+    workspaceName: string;
     tabId: string;
 };
 
 export type RouterState = {
-    upsertTab: (tabId: number, tabToken: string, url: string, windowId?: number | null) => void;
+    upsertTab: (tabId: number, tabName: string, url: string, windowId?: number | null) => void;
     removeTab: (tabId: number) => TabRuntimeState | undefined;
-    findTabIdByToken: (tabToken: string) => number | null;
+    findTabNameByToken: (tabName: string) => number | null;
     getTabState: (tabId: number) => TabRuntimeState | undefined;
-    getTokenScope: (tabToken: string) => TokenScope | undefined;
-    upsertTokenScope: (tabToken: string, workspaceId: string, tabId: string) => void;
-    removeTokenScope: (tabToken: string) => void;
+    getTokenScope: (tabName: string) => TokenScope | undefined;
+    upsertTokenScope: (tabName: string, workspaceName: string, tabId: string) => void;
+    removeTokenScope: (tabName: string) => void;
     getWindowWorkspace: (windowId: number) => string | undefined;
-    setWindowWorkspace: (windowId: number, workspaceId: string) => void;
+    setWindowWorkspace: (windowId: number, workspaceName: string) => void;
     clearWindowWorkspace: (windowId: number) => void;
     clearWindowMappings: () => void;
-    getActiveTabId: () => number | null;
-    setActiveTabId: (tabId: number | null) => void;
-    getActiveWorkspaceId: () => string | null;
-    setActiveWorkspaceId: (workspaceId: string | null) => void;
+    getActiveTabName: () => number | null;
+    setActiveTabName: (tabId: number | null) => void;
+    getActiveWorkspaceName: () => string | null;
+    setActiveWorkspaceName: (workspaceName: string | null) => void;
     getActiveWindowId: () => number | null;
     setActiveWindowId: (windowId: number | null) => void;
-    bindWorkspaceToWindowIfKnown: (tabToken: string) => void;
+    bindWorkspaceToWindowIfKnown: (tabName: string) => void;
     shouldThrottleTabActivated: (key: string, now: number, thresholdMs: number) => boolean;
     shouldThrottleWorkspaceActivated: (key: string, now: number, thresholdMs: number) => boolean;
     resetStartupState: () => void;
@@ -39,54 +39,54 @@ export type RouterState = {
 
 export const createRouterState = (logger?: Logger): RouterState => {
     const tabState = new Map<number, TabRuntimeState>();
-    const tokenToScope = new Map<string, TokenScope>();
+    const tabNameToScope = new Map<string, TokenScope>();
     const windowToWorkspace = new Map<number, string>();
 
-    let activeTabId: number | null = null;
-    let activeWorkspaceId: string | null = null;
+    let activeTabName: number | null = null;
+    let activeWorkspaceName: string | null = null;
     let activeWindowId: number | null = null;
     let lastTabActivatedKey = '';
     let lastTabActivatedAt = 0;
     let lastWorkspaceSetActiveKey = '';
     let lastWorkspaceSetActiveAt = 0;
 
-    const upsertTab = (tabId: number, tabToken: string, url: string, windowId?: number | null) => {
+    const upsertTab = (tabId: number, tabName: string, url: string, windowId?: number | null) => {
         const existingWindowId = tabState.get(tabId)?.windowId ?? null;
         tabState.set(tabId, {
-            tabToken,
+            tabName,
             lastUrl: url,
             windowId: typeof windowId === 'number' ? windowId : existingWindowId,
             updatedAt: Date.now(),
         });
     };
 
-    const findTabIdByToken = (tabToken: string) => {
+    const findTabNameByToken = (tabName: string) => {
         for (const [tabId, state] of tabState.entries()) {
-            if (state.tabToken === tabToken) {return tabId;}
+            if (state.tabName === tabName) {return tabId;}
         }
         return null;
     };
 
-    const upsertTokenScope = (tabToken: string, workspaceId: string, tabId: string) => {
-        const existing = tokenToScope.get(tabToken);
-        if (existing && (existing.workspaceId !== workspaceId || existing.tabId !== tabId)) {
+    const upsertTokenScope = (tabName: string, workspaceName: string, tabId: string) => {
+        const existing = tabNameToScope.get(tabName);
+        if (existing && (existing.workspaceName !== workspaceName || existing.tabId !== tabId)) {
             logger?.debug('mapping.scope_replace', {
-                tabToken,
+                tabName,
                 existing,
-                incoming: { workspaceId, tabId },
+                incoming: { workspaceName, tabId },
             });
         }
-        tokenToScope.set(tabToken, { workspaceId, tabId });
+        tabNameToScope.set(tabName, { workspaceName, tabId });
     };
 
-    const bindWorkspaceToWindowIfKnown = (tabToken: string) => {
-        const scope = tokenToScope.get(tabToken);
+    const bindWorkspaceToWindowIfKnown = (tabName: string) => {
+        const scope = tabNameToScope.get(tabName);
         if (!scope) {return;}
-        const tabId = findTabIdByToken(tabToken);
+        const tabId = findTabNameByToken(tabName);
         if (tabId === null) {return;}
         const windowId = tabState.get(tabId)?.windowId;
         if (typeof windowId !== 'number') {return;}
-        windowToWorkspace.set(windowId, scope.workspaceId);
+        windowToWorkspace.set(windowId, scope.workspaceName);
     };
 
     const shouldThrottleTabActivated = (key: string, now: number, thresholdMs: number) => {
@@ -118,28 +118,28 @@ export const createRouterState = (logger?: Logger): RouterState => {
             tabState.delete(tabId);
             return removed;
         },
-        findTabIdByToken,
+        findTabNameByToken,
         getTabState: (tabId: number) => tabState.get(tabId),
-        getTokenScope: (tabToken: string) => tokenToScope.get(tabToken),
+        getTokenScope: (tabName: string) => tabNameToScope.get(tabName),
         upsertTokenScope,
-        removeTokenScope: (tabToken: string) => {
-            tokenToScope.delete(tabToken);
+        removeTokenScope: (tabName: string) => {
+            tabNameToScope.delete(tabName);
         },
         getWindowWorkspace: (windowId: number) => windowToWorkspace.get(windowId),
-        setWindowWorkspace: (windowId: number, workspaceId: string) => {
-            windowToWorkspace.set(windowId, workspaceId);
+        setWindowWorkspace: (windowId: number, workspaceName: string) => {
+            windowToWorkspace.set(windowId, workspaceName);
         },
         clearWindowWorkspace: (windowId: number) => {
             windowToWorkspace.delete(windowId);
         },
         clearWindowMappings,
-        getActiveTabId: () => activeTabId,
-        setActiveTabId: (tabId: number | null) => {
-            activeTabId = tabId;
+        getActiveTabName: () => activeTabName,
+        setActiveTabName: (tabId: number | null) => {
+            activeTabName = tabId;
         },
-        getActiveWorkspaceId: () => activeWorkspaceId,
-        setActiveWorkspaceId: (workspaceId: string | null) => {
-            activeWorkspaceId = workspaceId;
+        getActiveWorkspaceName: () => activeWorkspaceName,
+        setActiveWorkspaceName: (workspaceName: string | null) => {
+            activeWorkspaceName = workspaceName;
         },
         getActiveWindowId: () => activeWindowId,
         setActiveWindowId: (windowId: number | null) => {
