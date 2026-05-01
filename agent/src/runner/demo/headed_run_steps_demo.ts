@@ -9,6 +9,7 @@
 
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../runtime/page_registry';
 import { createWorkspaceRegistry } from '../../runtime/workspace_registry';
@@ -41,7 +42,7 @@ const run = async () => {
     });
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabNameKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
     const workspaceRegistry = createWorkspaceRegistry();
@@ -54,16 +55,16 @@ const run = async () => {
         traceHooks: createLoggingHooks(),
         pluginHost,
     });
-    const workspace = await pageRegistry.createWorkspace();
-    const page = await pageRegistry.resolvePage({ workspaceName: workspace.workspaceName, tabId: workspace.tabId });
-    const token = pageRegistry.resolveTabName({ workspaceName: workspace.workspaceName, tabId: workspace.tabId });
-    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspace.workspaceName);
-    runtimeWorkspace.tabRegistry.createTab({ tabName: workspace.tabId, page, url: page.url() });
-    runtimeWorkspace.tabRegistry.setActiveTab(workspace.tabId);
-    runtimeRegistry.bindPage({ workspaceName: workspace.workspaceName, tabName: workspace.tabId, page });
+    const workspaceName = 'demo';
+    const tabName = crypto.randomUUID();
+    const page = await pageRegistry.getPage(tabName);
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName);
+    runtimeWorkspace.tabRegistry.createTab({ tabName, page, url: page.url() });
+    runtimeWorkspace.tabRegistry.setActiveTab(tabName);
+    runtimeRegistry.bindPage({ workspaceName, tabName, page });
 
     const firstResp = await runStepList(
-        workspace.workspaceName,
+        workspaceName,
         [
             {
                 id: 'demo-goto',
@@ -97,7 +98,7 @@ const run = async () => {
     }
 
     const secondResp = await runStepList(
-        workspace.workspaceName,
+        workspaceName,
         [
             {
                 id: 'demo-click',

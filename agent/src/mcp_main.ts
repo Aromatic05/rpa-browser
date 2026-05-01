@@ -121,13 +121,14 @@ const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, logNotice);
 await mcpToolHost.load({
     pageRegistry,
+    workspaceRegistry,
     config,
     log,
     runStepsDeps,
 });
 if (hotReloadEnabled) {
     const watchTarget = path.resolve(process.cwd(), 'src/mcp');
-    mcpToolHost.watchDev(watchTarget, { pageRegistry, config, log, runStepsDeps });
+    mcpToolHost.watchDev(watchTarget, { pageRegistry, workspaceRegistry, config, log, runStepsDeps });
     logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
 }
 
@@ -139,6 +140,7 @@ void (async () => {
         logNotice('Playwright Chromium launched with extension.');
         await startMcpServer({
             pageRegistry,
+            workspaceRegistry,
             config,
             log,
             runStepsDeps,

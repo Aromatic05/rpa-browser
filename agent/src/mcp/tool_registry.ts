@@ -1,6 +1,7 @@
 import { createToolHandlers } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
 import type { PageRegistry } from '../runtime/page_registry';
+import type { WorkspaceRegistry } from '../runtime/workspace_registry';
 import type { McpToolDeps, McpToolHandler } from './tool_handlers';
 import type { RunnerConfig, McpToolGroup } from '../config';
 import { defaultRunnerConfig } from '../config/defaults';
@@ -51,6 +52,7 @@ const toolDefinitions: ToolDefinition[] = [
 
 export type ToolRegistryDeps = {
     pageRegistry: PageRegistry;
+    workspaceRegistry: WorkspaceRegistry;
     getActiveTabName: () => Promise<string>;
 };
 
@@ -178,7 +180,7 @@ export const executeTool = async (
     options?: ExecuteToolOptions,
 ): Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }> => {
     const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
-    const handlers = getToolHandlers({ pageRegistry: deps.pageRegistry }, { enabledTools });
+    const handlers = getToolHandlers({ pageRegistry: deps.pageRegistry, workspaceRegistry: deps.workspaceRegistry }, { enabledTools });
     const handler = handlers[name];
     if (!handler) {
         return {

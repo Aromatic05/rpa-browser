@@ -22,7 +22,7 @@ export type ReplayOptions = {
 type ReplayRequest = {
     workspaceName: string;
     initialTabName: string;
-    initialTabName: string;
+    initialTabId: string;
     steps: StepUnion[];
     enrichments?: RecordingEnhancementMap;
     recordingManifest?: RecordingManifest;
@@ -120,7 +120,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         return true;
     };
 
-    const tokenToTab = new Map<string, string>([[req.initialTabName, req.initialTabName]]);
+    const tokenToTab = new Map<string, string>([[req.initialTabName, req.initialTabId]]);
     const refToTab = new Map<string, string>();
     if (req.recordingManifest?.entryTabRef) {
         refToTab.set(req.recordingManifest.entryTabRef, req.initialTabName);

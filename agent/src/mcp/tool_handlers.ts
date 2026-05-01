@@ -1,6 +1,7 @@
 import { type z } from 'zod';
 import crypto from 'crypto';
 import type { PageRegistry } from '../runtime/page_registry';
+import type { WorkspaceRegistry } from '../runtime/workspace_registry';
 import type { RunnerConfig } from '../config';
 import { runStepList } from '../runner/run_steps';
 import type { RunStepsDeps } from '../runner/run_steps_types';
@@ -64,6 +65,7 @@ import {
 
 export type McpToolDeps = {
     pageRegistry: PageRegistry;
+    workspaceRegistry: WorkspaceRegistry;
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
     runStepsDeps?: RunStepsDeps;
@@ -95,8 +97,10 @@ const runSingleStep = async (
     options?: { allowBootstrap?: boolean },
 ) => {
     const scope = await resolveOrBootstrapScope(deps, tabName, options);
-    deps.pageRegistry.setActiveWorkspace(scope.workspaceName);
-    deps.pageRegistry.setActiveTab(scope.workspaceName, scope.tabId);
+    const workspace = deps.workspaceRegistry.createWorkspace(scope.workspaceName);
+    if (workspace.tabRegistry.hasTab(scope.tabId)) {
+        workspace.tabRegistry.setActiveTab(scope.tabId);
+    }
     const { pipe, checkpoint } = await runStepList(scope.workspaceName, [step], deps.runStepsDeps, {
         stopOnError: true,
     });
@@ -119,43 +123,44 @@ const resolveOrBootstrapScope = async (
 ): Promise<{ workspaceName: string; tabId: string }> => {
     const allowBootstrap = options?.allowBootstrap !== false;
     const resolvedTabName = resolveTabNameOrActive(deps, tabName);
-    try {
-        return deps.pageRegistry.resolveTabBinding(resolvedTabName);
-    } catch {
-        if (!allowBootstrap) {
-            throw new Error('tab token not found');
+    for (const workspace of deps.workspaceRegistry.listWorkspaces()) {
+        if (workspace.tabRegistry.hasTab(resolvedTabName)) {
+            return { workspaceName: workspace.name, tabId: resolvedTabName };
         }
-        const shell = deps.pageRegistry.createWorkspaceShell();
-        deps.pageRegistry.setActiveWorkspace(shell.workspaceName);
-        await deps.pageRegistry.getPage(resolvedTabName);
-        const bound = deps.pageRegistry.bindTokenToWorkspace(resolvedTabName, shell.workspaceName);
-        if (bound) {
-            return bound;
-        }
-        return deps.pageRegistry.resolveTabBinding(resolvedTabName);
     }
+    if (!allowBootstrap) {
+        throw new Error('tab not found');
+    }
+    const workspaceName = deps.workspaceRegistry.getActiveWorkspace()?.name || 'default';
+    const workspace = deps.workspaceRegistry.createWorkspace(workspaceName);
+    const page = await deps.pageRegistry.getPage(resolvedTabName);
+    if (!workspace.tabRegistry.hasTab(resolvedTabName)) {
+        workspace.tabRegistry.createTab({ tabName: resolvedTabName, page, url: page.url() });
+    } else {
+        workspace.tabRegistry.bindPage(resolvedTabName, page);
+    }
+    workspace.tabRegistry.setActiveTab(resolvedTabName);
+    return { workspaceName, tabId: resolvedTabName };
 };
 
 const resolveTabNameOrActive = (deps: McpToolDeps, tabName?: string): string => {
     if (typeof tabName === 'string' && tabName.trim().length > 0) {
         return tabName;
     }
-    try {
-        return deps.pageRegistry.resolveTabName();
-    } catch {
-        throw new Error('active tab not found');
+    const activeWorkspace = deps.workspaceRegistry.getActiveWorkspace();
+    const activeTab = activeWorkspace?.tabRegistry.getActiveTab();
+    if (activeTab?.name) {
+        return activeTab.name;
     }
+    throw new Error('active tab not found');
 };
 
 const resolveOrCreateTabName = (deps: McpToolDeps, tabName?: string): string => {
     if (typeof tabName === 'string' && tabName.trim().length > 0) {
         return tabName;
     }
-    try {
-        return deps.pageRegistry.resolveTabName();
-    } catch {
-        return crypto.randomUUID();
-    }
+    const activeWorkspace = deps.workspaceRegistry.getActiveWorkspace();
+    return activeWorkspace?.tabRegistry.getActiveTab()?.name || crypto.randomUUID();
 };
 
 const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
@@ -207,11 +212,6 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     });
     if (!result.ok) {return result;}
 
-    const createdTabName = result.results.find((item) => item.ok)?.data as { tab_id?: unknown } | undefined;
-    if (typeof createdTabName?.tab_id === 'string') {
-        const scope = deps.pageRegistry.resolveTabBinding(sourceTabName);
-        deps.pageRegistry.rebindTokenToTab(sourceTabName, scope.workspaceName, createdTabName.tab_id);
-    }
     return result;
 };
 
@@ -228,10 +228,6 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     });
     if (!result.ok) {return result;}
 
-    const targetTabName = input.tabId || input.tabRef;
-    if (!targetTabName) {return result;}
-    const scope = deps.pageRegistry.resolveTabBinding(sourceTabName);
-    deps.pageRegistry.rebindTokenToTab(sourceTabName, scope.workspaceName, targetTabName);
     return result;
 };
 
@@ -272,13 +268,13 @@ const handleGetPageInfo = (deps: McpToolDeps): McpToolHandler => async (args: un
                     ok: false,
                     error: {
                         code: 'ERR_NOT_FOUND',
-                        message: 'tab token not found',
+                        message: 'tab not found',
                     },
                 },
             ],
             error: {
                 code: 'ERR_NOT_FOUND',
-                message: 'tab token not found',
+                message: 'tab not found',
             },
         };
     }
@@ -309,13 +305,13 @@ const handleListTabs = (deps: McpToolDeps): McpToolHandler => async (args: unkno
                     ok: false,
                     error: {
                         code: 'ERR_NOT_FOUND',
-                        message: 'tab token not found',
+                        message: 'tab not found',
                     },
                 },
             ],
             error: {
                 code: 'ERR_NOT_FOUND',
-                message: 'tab token not found',
+                message: 'tab not found',
             },
         };
     }

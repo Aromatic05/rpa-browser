@@ -81,7 +81,7 @@ export const runWorkflow = async (request: RunWorkflowRequest, deps: RunWorkflow
         scene: request.scene,
         workflowRoot: loaded.rootDir,
         workspaceName: resolvedWorkspace.workspaceName,
-        tabId: resolvedWorkspace.tabId,
+        tabId: resolvedWorkspace.tabName,
         tabName: resolvedWorkspace.tabName,
         scope: result.scope,
         diagnostics: result.diagnostics,

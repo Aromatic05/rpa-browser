@@ -105,15 +105,17 @@ const resolveLatestRecordingName = (scene: string): string | null => {
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, action) => {
-        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().name);
-        await startRecording(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().name, ctx.navDedupeWindowMs, {
-            workspaceName: scope.workspaceName,
-            tabId: scope.tabId,
-            entryUrl: ctx.resolvePage().url(),
+        const tab = ctx.resolveTab();
+        const page = ctx.resolvePage();
+        const workspaceName = action.workspaceName || ctx.workspace?.name || '';
+        await startRecording(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs, {
+            workspaceName,
+            tabId: tab.name,
+            entryUrl: page.url(),
         });
-        await ensureRecorder(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().name, ctx.navDedupeWindowMs);
-        await setRecorderRuntimeEnabled(ctx.resolvePage(), true);
-        return replyAction(action, { pageUrl: ctx.resolvePage().url() });
+        await ensureRecorder(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs);
+        await setRecorderRuntimeEnabled(page, true);
+        return replyAction(action, { pageUrl: page.url() });
     },
     'record.stop': async (ctx, action) => {
         const workspaceName = action.workspaceName;
@@ -123,12 +125,14 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         } catch {
             // ignore unavailable page in pageless mode
         }
-        if (workspaceName) {
+        if (workspaceName && ctx.workspaceRegistry.hasWorkspace(workspaceName)) {
             try {
-                const tabs = await ctx.pageRegistry.listTabs(workspaceName);
+                const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
+                const tabs = workspace?.tabRegistry.listTabs() || [];
                 for (const tab of tabs) {
                     try {
-                        const page = await ctx.pageRegistry.resolvePage({ workspaceName, tabId: tab.tabId });
+                        if (!tab.page) {continue;}
+                        const page = tab.page;
                         await setRecorderRuntimeEnabled(page, false);
                     } catch {
                         // ignore tabs without live page binding
@@ -281,30 +285,37 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     },
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
-        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().name);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, { workspaceName: scope.workspaceName });
+        const currentTab = ctx.resolveTab();
+        const currentWorkspaceName = action.workspaceName || ctx.workspace?.name || '';
+        const bundle = getRecordingBundle(ctx.recordingState, currentTab.name, { workspaceName: currentWorkspaceName });
         const steps = bundle.steps;
         const stopOnError = payload.stopOnError ?? true;
         const recordedWorkspaceName = bundle.manifest?.workspaceName;
-        const existingWorkspaceNames = new Set(ctx.pageRegistry.listWorkspaces().map((ws) => ws.workspaceName));
+        const existingWorkspaceNames = new Set(ctx.workspaceRegistry.listWorkspaces().map((ws) => ws.name));
         if (recordedWorkspaceName && !existingWorkspaceNames.has(recordedWorkspaceName)) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'recording workspace not found');
         }
-        const replayWorkspaceName = recordedWorkspaceName || scope.workspaceName;
+        const replayWorkspaceName = recordedWorkspaceName || currentWorkspaceName;
         // Prefer the currently targeted tab when scope is valid in the same workspace.
         // Only create a new tab if we must switch workspace and no tab is available there.
-        let initialTabName = scope.workspaceName === replayWorkspaceName ? scope.tabId : '';
+        let initialTabName = currentWorkspaceName === replayWorkspaceName ? currentTab.name : '';
         if (!initialTabName) {
-            const targetWs = ctx.pageRegistry.listWorkspaces().find((ws) => ws.workspaceName === replayWorkspaceName);
-            initialTabName = targetWs?.activeTabName || '';
+            const targetWs = ctx.workspaceRegistry.getWorkspace(replayWorkspaceName);
+            initialTabName = targetWs?.tabRegistry.getActiveTab()?.name || '';
         }
         if (!initialTabName) {
-            initialTabName = await ctx.pageRegistry.createTab(replayWorkspaceName);
+            initialTabName = crypto.randomUUID();
+            const page = await ctx.pageRegistry.getPage(initialTabName);
+            const targetWs = ctx.workspaceRegistry.createWorkspace(replayWorkspaceName);
+            targetWs.tabRegistry.createTab({ tabName: initialTabName, page, url: page.url() });
+            targetWs.tabRegistry.setActiveTab(initialTabName);
         }
         // Never reuse recorded tab token; bind replay to the current runtime tab token.
         if (bundle.manifest?.entryUrl) {
             try {
-                const page = await ctx.pageRegistry.resolvePage({ workspaceName: replayWorkspaceName, tabId: initialTabName });
+                const targetWorkspace = ctx.workspaceRegistry.getWorkspace(replayWorkspaceName);
+                const page = targetWorkspace?.tabRegistry.getTab(initialTabName)?.page;
+                if (!page) {throw new Error('page not bound');}
                 if (page.url() !== bundle.manifest.entryUrl) {
                     await page.goto(bundle.manifest.entryUrl, { waitUntil: 'domcontentloaded' });
                 }
@@ -312,10 +323,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 // ignore preflight navigation failures, replay steps will surface deterministic errors later.
             }
         }
-        ctx.pageRegistry.setActiveWorkspace(replayWorkspaceName);
-        ctx.pageRegistry.setActiveTab(replayWorkspaceName, initialTabName);
-        const initialTabName = ctx.pageRegistry.resolveTabName({ workspaceName: replayWorkspaceName, tabId: initialTabName });
-        beginReplay(ctx.recordingState, ctx.resolveTab().name);
+        beginReplay(ctx.recordingState, currentTab.name);
         const emitPlayEvent = (type: string, payload: Record<string, unknown>) => {
             ctx.emit?.({
                 v: 1,
@@ -358,26 +366,24 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 const replayed = await replayRecording({
                     workspaceName: replayWorkspaceName,
                     initialTabName,
-                    initialTabName,
+                    initialTabId: initialTabName,
                     steps,
                     enrichments: bundle.enrichments,
                     recordingManifest: bundle.manifest,
                     stopOnError,
                     replayOptions: ctx.replayOptions,
                     pageRegistry: {
-                        listTabs: (workspaceName: string) => ctx.pageRegistry.listTabs(workspaceName),
-                        resolveTabNameFromToken: (tabName: string) => {
-                            try {
-                                return ctx.pageRegistry.resolveTabBinding(tabName).tabId;
-                            } catch {
-                                return undefined;
-                            }
-                        },
+                        listTabs: async (workspaceName: string) =>
+                            (ctx.workspaceRegistry.getWorkspace(workspaceName)?.tabRegistry.listTabs() || []).map((tab) => ({
+                                tabId: tab.name,
+                                active: ctx.workspaceRegistry.getWorkspace(workspaceName)?.tabRegistry.getActiveTab()?.name === tab.name,
+                            })),
+                        resolveTabNameFromToken: (tabName: string) => tabName,
                         resolveTabNameFromRef: (tabRef: string) => {
                             return tabRef || undefined;
                         },
                     },
-                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.resolveTab().name),
+                    isCanceled: () => ctx.recordingState.replayCancel.has(currentTab.name),
                     onEvent: publishReplayEvent,
                 });
                 if (replayed.error?.code === 'ERR_CANCELED') {
@@ -412,7 +418,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                     message: error instanceof Error ? error.message : String(error),
                 });
             } finally {
-                endReplay(ctx.recordingState, ctx.resolveTab().name);
+                endReplay(ctx.recordingState, currentTab.name);
             }
         })();
 
@@ -442,11 +448,10 @@ export const recordingHandlers: Record<string, ActionHandler> = {
 
         const step = payload;
         const token = ctx.resolveTab().name;
-        const scope = ctx.pageRegistry.resolveTabBinding(token);
+        const workspaceName = action.workspaceName || ctx.workspace?.name || '';
         let currentUrl: string;
         try {
-            const targetPage = await ctx.pageRegistry.resolvePage({ workspaceName: scope.workspaceName, tabId: scope.tabId });
-            currentUrl = targetPage.url();
+            currentUrl = ctx.resolvePage().url();
         } catch {
             currentUrl = '';
         }
@@ -456,10 +461,10 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 ...step.meta,
                 source: step.meta?.source ?? 'record',
                 ts: step.meta?.ts ?? Date.now(),
-                workspaceName: scope.workspaceName,
-                tabId: scope.tabId,
+                workspaceName,
+                tabId: token,
                 tabName: token,
-                tabRef: step.meta?.tabRef || scope.tabId,
+                tabRef: step.meta?.tabRef || token,
                 urlAtRecord: step.meta?.urlAtRecord || currentUrl || undefined,
             },
         };

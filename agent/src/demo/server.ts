@@ -118,6 +118,7 @@ setRunStepsDeps({
 
 const buildToolDeps = () => ({
     pageRegistry,
+    workspaceRegistry,
     getActiveTabName: async () => {
         const workspace = await workspaceManager.ensureActiveWorkspace();
         return workspace.tabName;
