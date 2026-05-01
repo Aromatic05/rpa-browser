@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const SKIP = new Set(['.git', 'node_modules']);
-const FORBIDDEN = ['tabToken', 'workspaceId'];
+const FORBIDDEN = [['tab', 'Token'].join(''), ['workspace', 'Id'].join('')];
 
 const walk = (dir: string, out: string[]) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
