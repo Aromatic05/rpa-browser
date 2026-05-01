@@ -78,7 +78,7 @@ Control RPC 不返回 Action envelope。
 - `workspaceName` 可选
 - `payload` 可选
 
-禁止：`scope/tabName/workspaceName/tabId`。
+禁止：`scope/tabName/workspaceName/tabName`。
 
 路由层会补齐 `v/id/at`，再交给 Action dispatcher。
 

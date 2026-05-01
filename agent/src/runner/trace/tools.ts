@@ -41,13 +41,13 @@ type TraceA11yHint = {
 };
 
 export type BrowserAutomationTools = {
-    'trace.tabs.create': (args: { workspaceName: string; url?: string; timeout?: number }) => Promise<ToolResult<{ tabId: string }>>;
-    'trace.tabs.switch': (args: { workspaceName: string; tabId: string }) => Promise<ToolResult>;
-    'trace.tabs.close': (args: { workspaceName: string; tabId?: string }) => Promise<ToolResult>;
+    'trace.tabs.create': (args: { workspaceName: string; url?: string; timeout?: number }) => Promise<ToolResult<{ tabName: string }>>;
+    'trace.tabs.switch': (args: { workspaceName: string; tabName: string }) => Promise<ToolResult>;
+    'trace.tabs.close': (args: { workspaceName: string; tabName?: string }) => Promise<ToolResult>;
     'trace.page.goto': (args: { url: string; timeout?: number }) => Promise<ToolResult>;
     'trace.page.goBack': (args: { timeout?: number }) => Promise<ToolResult>;
     'trace.page.reload': (args: { timeout?: number }) => Promise<ToolResult>;
-    'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string; tabId?: string; tabs?: Array<{ tabId: string; url?: string; title?: string }> }>>;
+    'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string; tabName?: string; tabs?: Array<{ tabName: string; url?: string; title?: string }> }>>;
     'trace.page.snapshotA11y': (args: { includeA11y: boolean; focusOnly: boolean }) => Promise<ToolResult<{ snapshotId: string; a11y?: string }>>;
     'trace.page.getContent': (args: { ref: string }) => Promise<ToolResult<{ ref: string; content: string }>>;
     'trace.page.readConsole': (args?: { limit?: number }) => Promise<ToolResult<ConsoleEntry[]>>;

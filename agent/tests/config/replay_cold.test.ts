@@ -12,19 +12,19 @@ test('replayRecording creates and switches tab when recorded tabName is missing 
             id: 's1',
             name: 'browser.click',
             args: { selector: '#a' },
-            meta: { source: 'record', tabName: 'token-a', tabId: 'tab-a', workspaceName: 'old-ws' },
+            meta: { source: 'record', tabName: 'token-a', tabName: 'tab-a', workspaceName: 'old-ws' },
         },
         {
             id: 's-switch',
             name: 'browser.switch_tab',
-            args: { tabId: 'tab-b' },
-            meta: { source: 'record', tabName: 'token-b', tabId: 'tab-b', workspaceName: 'old-ws' },
+            args: { tabName: 'tab-b' },
+            meta: { source: 'record', tabName: 'token-b', tabName: 'tab-b', workspaceName: 'old-ws' },
         },
         {
             id: 's2',
             name: 'browser.click',
             args: { selector: '#b' },
-            meta: { source: 'record', tabName: 'token-b', tabId: 'tab-b', workspaceName: 'old-ws' },
+            meta: { source: 'record', tabName: 'token-b', tabName: 'tab-b', workspaceName: 'old-ws' },
         },
     ];
 
@@ -49,7 +49,7 @@ test('replayRecording creates and switches tab when recorded tabName is missing 
         },
         stopOnError: true,
         pageRegistry: {
-            listTabs: async () => [{ tabId: 'tab-now' }],
+            listTabs: async () => [{ tabName: 'tab-now' }],
         },
         deps: {
             runtime: {} as any,
@@ -78,11 +78,11 @@ test('replayRecording creates and switches tab when recorded tabName is missing 
 
     assert.equal(result.ok, true);
     assert.equal(executed[0].name, 'browser.switch_tab');
-    assert.equal((executed[0].args as any).tabId, 'tab-now');
+    assert.equal((executed[0].args as any).tabName, 'tab-now');
     assert.equal(executed[1].name, 'browser.click');
     assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
     assert.equal(
-        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tabId === 'tab-new-1'),
+        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tabName === 'tab-new-1'),
         true,
     );
     assert.equal(executed[executed.length - 1].name, 'browser.click');
@@ -95,13 +95,13 @@ test('replayRecording force switches when tabName changes without browser.switch
             id: 's1',
             name: 'browser.click',
             args: { selector: '#a' },
-            meta: { source: 'record', tabName: 'token-a', tabId: 'tab-a', workspaceName: 'old-ws' },
+            meta: { source: 'record', tabName: 'token-a', tabName: 'tab-a', workspaceName: 'old-ws' },
         },
         {
             id: 's2',
             name: 'browser.click',
             args: { selector: '#b' },
-            meta: { source: 'record', tabName: 'token-b', tabId: 'tab-b', workspaceName: 'old-ws' },
+            meta: { source: 'record', tabName: 'token-b', tabName: 'tab-b', workspaceName: 'old-ws' },
         },
     ];
 
@@ -112,7 +112,7 @@ test('replayRecording force switches when tabName changes without browser.switch
         steps,
         stopOnError: true,
         pageRegistry: {
-            listTabs: async () => [{ tabId: 'tab-now' }],
+            listTabs: async () => [{ tabName: 'tab-now' }],
         },
         deps: {
             runtime: {} as any,
@@ -140,7 +140,7 @@ test('replayRecording force switches when tabName changes without browser.switch
     assert.equal(result.ok, true);
     assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
     assert.equal(
-        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tabId === 'tab-new-1'),
+        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tabName === 'tab-new-1'),
         true,
     );
 });
@@ -157,8 +157,8 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
         {
             id: 'h-switch',
             name: 'browser.switch_tab',
-            args: { tabId: 'legacy-tab-b' },
-            meta: { source: 'record', tabName: 'token-b', workspaceName: 'ws-now', tabId: 'tab-b' },
+            args: { tabName: 'legacy-tab-b' },
+            meta: { source: 'record', tabName: 'token-b', workspaceName: 'ws-now', tabName: 'tab-b' },
         },
         {
             id: 'h2',
@@ -175,7 +175,7 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
         steps,
         stopOnError: true,
         pageRegistry: {
-            listTabs: async () => [{ tabId: 'tab-a' }, { tabId: 'tab-b' }],
+            listTabs: async () => [{ tabName: 'tab-a' }, { tabName: 'tab-b' }],
             resolveTabNameFromToken: (token: string) => (token === 'token-b' ? 'tab-b' : undefined),
         },
         deps: {
@@ -204,7 +204,7 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
     assert.equal(result.ok, true);
     assert.equal(executed.some((step) => step.name === 'browser.create_tab'), false);
     const switched = executed.find((step) => step.id === 'h-switch');
-    assert.equal((switched?.args as any)?.tabId, 'tab-b');
+    assert.equal((switched?.args as any)?.tabName, 'tab-b');
 });
 
 test('replayRecording creates tab with recorded switch url when target tab is missing', async () => {
@@ -213,7 +213,7 @@ test('replayRecording creates tab with recorded switch url when target tab is mi
         {
             id: 's-switch-missing',
             name: 'browser.switch_tab',
-            args: { tabId: 'legacy-tab-b', tabUrl: 'https://example.com/target' },
+            args: { tabName: 'legacy-tab-b', tabUrl: 'https://example.com/target' },
             meta: { source: 'record', tabName: 'token-b', tabRef: 'tab-b', workspaceName: 'old-ws' },
         },
     ];
@@ -225,7 +225,7 @@ test('replayRecording creates tab with recorded switch url when target tab is mi
         steps,
         stopOnError: true,
         pageRegistry: {
-            listTabs: async () => [{ tabId: 'tab-now' }],
+            listTabs: async () => [{ tabName: 'tab-now' }],
             resolveTabNameFromToken: () => undefined,
             resolveTabNameFromRef: () => undefined,
         },
@@ -252,5 +252,5 @@ test('replayRecording creates tab with recorded switch url when target tab is mi
     assert.equal(executed[0].name, 'browser.create_tab');
     assert.equal((executed[0].args as any).url, 'https://example.com/target');
     assert.equal(executed[1].name, 'browser.switch_tab');
-    assert.equal((executed[1].args as any).tabId, 'tab-created');
+    assert.equal((executed[1].args as any).tabName, 'tab-created');
 });

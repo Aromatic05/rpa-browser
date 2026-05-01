@@ -147,7 +147,7 @@ version: 1
 workspaceName: workflow:order_scene
 entryUrl: http://127.0.0.1:5173/entity-rules
 tabs:
-  - tabId: tab-1
+  - tabName: tab-1
     url: http://127.0.0.1:5173/entity-rules
     title: Entity Rules
     active: true

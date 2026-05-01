@@ -12,7 +12,7 @@ const createDeps = (calls: Array<Record<string, unknown>>): RunStepsDeps =>
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-source',
-                tabId: 'tab-dsl-source',
+                tabName: 'tab-dsl-source',
                 tabName: 'tk-dsl-source',
                 traceCtx: { cache: {} },
             }),

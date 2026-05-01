@@ -8,7 +8,7 @@ const createDeps = (): RunStepsDeps =>
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-router',
-                tabId: 'tab-router',
+                tabName: 'tab-router',
                 tabName: 'tk-router',
                 traceCtx: { cache: {} },
             }),

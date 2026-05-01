@@ -83,7 +83,7 @@ Binding handler:
 Normal action resolver assumes token already has workspace scope.
 
 For first-time ownership binding, that assumption is often false:
-- browser UI page can exist before token scope is materialized in agent registry
+- browser UI page can exist before binding workspace mapping is materialized in agent registry
 - `tab.opened` itself is the event that finalizes ownership
 
 So `tab.opened` must not be treated as a normal already-bound action.

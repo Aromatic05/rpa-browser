@@ -301,7 +301,7 @@ const parseInboundAction = (raw: unknown): Action => {
     if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
         throw new Error('invalid action: missing or invalid fields');
     }
-    if ('scope' in rec || 'tabId' in rec || 'tabName' in rec) {
+    if ('scope' in rec || 'tabName' in rec || 'tabName' in rec) {
         throw new Error('invalid action: legacy address fields are not allowed');
     }
     if (!isRequestActionType(rec.type)) {
@@ -432,12 +432,12 @@ wss.on('connection', (socket) => {
                 if (!isFailedAction(response) && isMutatingAction(action.type)) {
                     const data = isRecord(response.payload) ? response.payload : null;
                     const workspaceName = data ? getStringField(data, 'workspaceName') : null;
-                    const tabId = data ? getStringField(data, 'tabName') : null;
+                    const tabName = data ? getStringField(data, 'tabName') : null;
                     broadcast({
                         v: 1,
                         id: crypto.randomUUID(),
                         type: ACTION_TYPES.WORKSPACE_CHANGED,
-                        payload: { workspaceName: workspaceName, tabName: tabId, sourceType: action.type },
+                        payload: { workspaceName: workspaceName, tabName: tabName, sourceType: action.type },
                         workspaceName: workspaceName || undefined,
                         at: Date.now(),
                     });

@@ -42,14 +42,14 @@ const DEFAULT_WORKFLOWS_DIR = path.resolve(DEFAULT_ARTIFACTS_ROOT, 'workflows');
 
 const toArtifactManifest = (recordingName: string, workspaceName: string | undefined, bundle: {
     steps: StepUnion[];
-    manifest?: { entryUrl?: string; tabs?: Array<{ tabId?: string; tabRef?: string; lastSeenUrl?: string; firstSeenUrl?: string }> };
+    manifest?: { entryUrl?: string; tabs?: Array<{ tabName?: string; tabRef?: string; lastSeenUrl?: string; firstSeenUrl?: string }> };
 }) => ({
     version: 1,
     recordingName,
     workspaceName: workspaceName || '',
     entryUrl: bundle.manifest?.entryUrl || '',
     tabs: (bundle.manifest?.tabs || []).map((item) => ({
-        tabId: item.tabId || item.tabRef || '',
+        tabName: item.tabName || item.tabRef || '',
         url: item.lastSeenUrl || item.firstSeenUrl || '',
     })),
     createdAt: Date.now(),
@@ -110,7 +110,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const workspaceName = action.workspaceName || ctx.workspace?.name || '';
         await startRecording(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs, {
             workspaceName,
-            tabId: tab.name,
+            tabName: tab.name,
             entryUrl: page.url(),
         });
         await ensureRecorder(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs);
@@ -182,7 +182,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             workspaceName,
             entryUrl: bundle.manifest?.entryUrl,
             tabs: (bundle.manifest?.tabs || []).map((item) => ({
-                tabId: item.tabId || item.tabRef,
+                tabName: item.tabName || item.tabRef,
                 url: item.lastSeenUrl || item.firstSeenUrl,
             })),
             steps: bundle.steps,
@@ -224,7 +224,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         validateStepFileForSerialization(parsedSteps);
         const parsedManifest = YAML.parse(manifestText) as {
             entryUrl?: string;
-            tabs?: Array<{ tabId?: string; url?: string }>;
+            tabs?: Array<{ tabName?: string; url?: string }>;
         };
         const stepResolvePath = path.join(recordsDir, 'step_resolve.yaml');
         if (fs.existsSync(stepResolvePath)) {
@@ -249,8 +249,8 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             startedAt: now,
             tabs: (Array.isArray(parsedManifest.tabs) ? parsedManifest.tabs : []).map((tab) => ({
                 tabName: recordingToken,
-                tabRef: tab.tabId || 'main',
-                tabId: tab.tabId,
+                tabRef: tab.tabName || 'main',
+                tabName: tab.tabName,
                 firstSeenUrl: tab.url,
                 lastSeenUrl: tab.url,
                 firstSeenAt: now,
@@ -340,7 +340,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             if (event.type === 'step.started') {
                 emitPlayEvent(ACTION_TYPES.PLAY_STEP_STARTED, {
                     workspaceName: replayWorkspaceName,
-                    tabId: initialTabName,
+                    tabName: initialTabName,
                     ...event,
                 });
                 return;
@@ -348,14 +348,14 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             if (event.type === 'step.finished') {
                 emitPlayEvent(ACTION_TYPES.PLAY_STEP_FINISHED, {
                     workspaceName: replayWorkspaceName,
-                    tabId: initialTabName,
+                    tabName: initialTabName,
                     ...event,
                 });
                 return;
             }
             emitPlayEvent(ACTION_TYPES.PLAY_PROGRESS, {
                 workspaceName: replayWorkspaceName,
-                tabId: initialTabName,
+                tabName: initialTabName,
                 completed: event.completed,
                 total: event.total,
             });
@@ -375,7 +375,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                     pageRegistry: {
                         listTabs: async (workspaceName: string) =>
                             (ctx.workspaceRegistry.getWorkspace(workspaceName)?.tabRegistry.listTabs() || []).map((tab) => ({
-                                tabId: tab.name,
+                                tabName: tab.name,
                                 active: ctx.workspaceRegistry.getWorkspace(workspaceName)?.tabRegistry.getActiveTab()?.name === tab.name,
                             })),
                         resolveTabNameFromToken: (tabName: string) => tabName,
@@ -389,7 +389,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 if (replayed.error?.code === 'ERR_CANCELED') {
                     emitPlayEvent(ACTION_TYPES.PLAY_CANCELED, {
                         workspaceName: replayWorkspaceName,
-                        tabId: initialTabName,
+                        tabName: initialTabName,
                         results: replayed.results,
                     });
                     return;
@@ -398,7 +398,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                     const firstFailed = replayed.results.find((item) => !item.ok);
                     emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
                         workspaceName: replayWorkspaceName,
-                        tabId: initialTabName,
+                        tabName: initialTabName,
                         code: ERROR_CODES.ERR_ASSERTION_FAILED,
                         message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
                         details: { results: replayed.results, failed: firstFailed?.error || replayed.error },
@@ -407,13 +407,13 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 }
                 emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, {
                     workspaceName: replayWorkspaceName,
-                    tabId: initialTabName,
+                    tabName: initialTabName,
                     results: replayed.results,
                 });
             } catch (error) {
                 emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
                     workspaceName: replayWorkspaceName,
-                    tabId: initialTabName,
+                    tabName: initialTabName,
                     code: ERROR_CODES.ERR_BAD_ARGS,
                     message: error instanceof Error ? error.message : String(error),
                 });
@@ -427,7 +427,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             {
                 started: true,
                 workspaceName: replayWorkspaceName,
-                tabId: initialTabName,
+                tabName: initialTabName,
                 tabName: initialTabName,
                 stepCount: steps.length,
                 stopOnError,
@@ -462,7 +462,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 source: step.meta?.source ?? 'record',
                 ts: step.meta?.ts ?? Date.now(),
                 workspaceName,
-                tabId: token,
+                tabName: token,
                 tabName: token,
                 tabRef: step.meta?.tabRef || token,
                 urlAtRecord: step.meta?.urlAtRecord || currentUrl || undefined,

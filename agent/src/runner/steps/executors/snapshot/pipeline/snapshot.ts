@@ -406,7 +406,7 @@ const hasPageIdentityChanged = (
     if (!previousIdentity) {return false;}
     return !(
         previousIdentity.workspaceName === nextIdentity.workspaceName &&
-        previousIdentity.tabId === nextIdentity.tabId &&
+        previousIdentity.tabName === nextIdentity.tabName &&
         previousIdentity.tabName === nextIdentity.tabName &&
         previousIdentity.url === nextIdentity.url
     );
@@ -416,7 +416,7 @@ const clonePageIdentity = (identity: SnapshotPageIdentity | undefined): Snapshot
     if (!identity) {return undefined;}
     return {
         workspaceName: identity.workspaceName,
-        tabId: identity.tabId,
+        tabName: identity.tabName,
         tabName: identity.tabName,
         url: identity.url,
     };

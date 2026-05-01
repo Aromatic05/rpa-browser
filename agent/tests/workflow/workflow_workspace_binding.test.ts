@@ -32,7 +32,7 @@ test('createOnly uses create workspace path', async () => {
             pageRegistry: {
                 createWorkspace: async () => {
                     created = true;
-                    return { workspaceName: 'ws-1', tabId: 'tab-1' };
+                    return { workspaceName: 'ws-1', tabName: 'tab-1' };
                 },
                 resolveTabName: () => 'tk-1',
                 createWorkspaceShell: () => {
@@ -41,7 +41,7 @@ test('createOnly uses create workspace path', async () => {
                 },
                 resolvePage: async () => ({ url: () => 'http://a', goto: async () => {} }),
             } as any,
-            restoreWorkspace: async () => ({ workspaceName: 'ws-x', tabId: 'tab-x', tabName: 'tk-x' }),
+            restoreWorkspace: async () => ({ workspaceName: 'ws-x', tabName: 'tab-x', tabName: 'tk-x' }),
         },
         {
             scene: 'order',
@@ -64,7 +64,7 @@ test('restoreOrCreate tries restore first then create', async () => {
             pageRegistry: {
                 createWorkspace: async () => {
                     createCalled += 1;
-                    return { workspaceName: 'ws-created', tabId: 'tab-created' };
+                    return { workspaceName: 'ws-created', tabName: 'tab-created' };
                 },
                 resolveTabName: () => 'tk-created',
                 resolvePage: async () => ({ url: () => 'http://a', goto: async () => {} }),
@@ -91,11 +91,11 @@ test('expectedTabs urlIncludes validation succeeds', async () => {
     const result = await resolveWorkflowWorkspace(
         {
             pageRegistry: {
-                createWorkspace: async () => ({ workspaceName: 'ws-created', tabId: 'tab-created' }),
+                createWorkspace: async () => ({ workspaceName: 'ws-created', tabName: 'tab-created' }),
                 resolveTabName: () => 'tk-created',
                 resolvePage: async () => ({ url: () => 'http://localhost/orders/list', goto: async () => {} }),
             } as any,
-            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabId: 'tab-restore', tabName: 'tk-restore' }),
+            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
         },
         {
             scene: 'order',
@@ -117,11 +117,11 @@ test('expectedTabs exactUrl validation fails with ERR_WORKFLOW_WORKSPACE_RESOLVE
             resolveWorkflowWorkspace(
                 {
                     pageRegistry: {
-                        createWorkspace: async () => ({ workspaceName: 'ws-created', tabId: 'tab-created' }),
+                        createWorkspace: async () => ({ workspaceName: 'ws-created', tabName: 'tab-created' }),
                         resolveTabName: () => 'tk-created',
                         resolvePage: async () => ({ url: () => 'http://localhost/orders/list', goto: async () => {} }),
                     } as any,
-                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabId: 'tab-restore', tabName: 'tk-restore' }),
+                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
                 },
                 {
                     scene: 'order',

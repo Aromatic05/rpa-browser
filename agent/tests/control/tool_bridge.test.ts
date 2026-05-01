@@ -19,7 +19,7 @@ const createContext = (calls: CapturedCall[]): ControlRouterContext => ({
             runtime: {
                 ensureActivePage: async () => ({
                     workspaceName: 'ws-control',
-                    tabId: 'tab-control',
+                    tabName: 'tab-control',
                     tabName: 'tk-control',
                     traceCtx: { cache: {} },
                 }),

@@ -14,7 +14,7 @@ const createDeps = (calls: StubCall[], opts?: { failFill?: boolean; delayMs?: nu
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-task',
-                tabId: 'tab-dsl-task',
+                tabName: 'tab-dsl-task',
                 tabName: 'tk-dsl-task',
                 traceCtx: { cache: {} },
             }),

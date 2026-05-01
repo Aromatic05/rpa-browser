@@ -45,7 +45,7 @@ test('replayRecording emits step and progress events as stream', async () => {
         steps: [step],
         stopOnError: true,
         pageRegistry: {
-            listTabs: async () => [{ tabId: 'tab-1', active: true }],
+            listTabs: async () => [{ tabName: 'tab-1', active: true }],
             resolveTabNameFromToken: () => 'tab-1',
             resolveTabNameFromRef: () => 'tab-1',
         },
@@ -86,7 +86,7 @@ test('play.start returns play.started immediately and emits completion event', a
         },
         tabName: 'token-src',
         pageRegistry: {
-            resolveTabBinding: () => ({ workspaceName: 'ws-1', tabId: 'tab-1' }),
+            resolveTabBinding: () => ({ workspaceName: 'ws-1', tabName: 'tab-1' }),
             listWorkspaces: () => [{ workspaceName: 'ws-1', activeTabName: 'tab-1', tabCount: 1 }],
             createTab: async () => 'tab-1',
             resolvePage: async () => ({
@@ -96,7 +96,7 @@ test('play.start returns play.started immediately and emits completion event', a
             setActiveWorkspace: () => undefined,
             setActiveTab: () => undefined,
             resolveTabName: () => 'token-replay',
-            listTabs: async () => [{ tabId: 'tab-1', active: true }],
+            listTabs: async () => [{ tabName: 'tab-1', active: true }],
         },
         log: () => undefined,
         recordingState: createRecordingState(),

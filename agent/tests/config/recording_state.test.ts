@@ -24,8 +24,8 @@ test('recordStep appends cross-tab step into sole active recording session', () 
     const step: StepUnion = {
         id: 'step-1',
         name: 'browser.switch_tab',
-        args: { tabId: 'tab-b' },
-        meta: { source: 'record', ts: 100, tabName: 'token-b', workspaceName: 'ws-1', tabId: 'tab-b' },
+        args: { tabName: 'tab-b' },
+        meta: { source: 'record', ts: 100, tabName: 'token-b', workspaceName: 'ws-1', tabName: 'tab-b' },
     };
 
     recordStep(state, 'token-b', step, 1200);
@@ -108,7 +108,7 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
             {
                 tabName: 'token-a',
                 tabRef: 'tab-a',
-                tabId: 'tab-a',
+                tabName: 'tab-a',
                 firstSeenUrl: 'https://example.com/a',
                 lastSeenUrl: 'https://example.com/a',
                 firstSeenAt: 1,
@@ -119,12 +119,12 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
     const switchStep: StepUnion = {
         id: 'switch-1',
         name: 'browser.switch_tab',
-        args: { tabId: 'tab-b', tabUrl: 'https://example.com/b', tabRef: 'tab-b' },
+        args: { tabName: 'tab-b', tabUrl: 'https://example.com/b', tabRef: 'tab-b' },
         meta: {
             source: 'record',
             ts: 200,
             workspaceName: 'ws-1',
-            tabId: 'tab-b',
+            tabName: 'tab-b',
             tabName: 'token-b',
         },
     };
@@ -201,7 +201,7 @@ test('saveWorkspaceSnapshot strips tabName from persisted steps', () => {
     };
     const snapshot = saveWorkspaceSnapshot(state, {
         workspaceName: 'ws-save',
-        tabs: [{ tabId: 'tab-1', url: 'https://example.com', title: 'Example', active: true }],
+        tabs: [{ tabName: 'tab-1', url: 'https://example.com', title: 'Example', active: true }],
         recordingToken: 'rec-1',
         steps: [sourceStep],
         manifest: {
@@ -212,7 +212,7 @@ test('saveWorkspaceSnapshot strips tabName from persisted steps', () => {
                 {
                     tabName: 'token-sensitive',
                     tabRef: 'tab-1',
-                    tabId: 'tab-1',
+                    tabName: 'tab-1',
                     firstSeenUrl: 'https://example.com',
                     lastSeenUrl: 'https://example.com',
                     firstSeenAt: 10,

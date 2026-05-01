@@ -14,7 +14,7 @@ import type { EntityIndex, UnifiedNode } from '../../../src/runner/steps/executo
 
 const createDeps = (): RunStepsDeps => {
     const workspaceName = 'ws-entity';
-    const tabId = 'tab-entity';
+    const tabName = 'tab-entity';
     const tabName = 'tab-token-entity';
     const url = 'https://example.test/entity';
 
@@ -92,7 +92,7 @@ const createDeps = (): RunStepsDeps => {
         version: 1,
         entries: {
             [`${workspaceName}:${tabName}`]: {
-                pageIdentity: { workspaceName, tabId, tabName, url },
+                pageIdentity: { workspaceName, tabName, tabName, url },
                 baseSnapshot: snapshot,
                 finalSnapshot: snapshot,
                 finalEntityView,
@@ -107,7 +107,7 @@ const createDeps = (): RunStepsDeps => {
 
     const binding = {
         workspaceName,
-        tabId,
+        tabName,
         tabName,
         page: { url: () => url },
         traceCtx: { cache: { snapshotSessionStore } },

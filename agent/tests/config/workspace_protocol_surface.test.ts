@@ -18,7 +18,7 @@ const createCtx = () => ({
         getActiveWorkspace: () => ({ workspaceName: 'ws-1' }),
         listTabs: async (_workspaceName: string) => [
             {
-                tabId: 'tab-1',
+                tabName: 'tab-1',
                 url: 'https://example.com',
                 title: 'Example',
                 active: true,
@@ -77,7 +77,7 @@ test('tab.list only exposes tabName contract fields and requires workspaceName',
         createdAt: 3,
         updatedAt: 4,
     });
-    assert.equal('tabId' in okPayload.tabs[0], false);
+    assert.equal('tabName' in okPayload.tabs[0], false);
 
     const failed = await handler(createCtx() as any, { v: 1, id: 'a3', type: 'tab.list', payload: {} } as any);
     assert.equal(failed.type, 'tab.list.failed');

@@ -51,16 +51,16 @@ test('touchTabName updates tab timestamp for existing token', async () => {
     assert.ok(claimed);
     const scope = pageRegistry.resolveTabBinding('token-touch');
     const before = await pageRegistry.listTabs(scope.workspaceName);
-    const prevUpdatedAt = before.find((item) => item.tabId === scope.tabId)?.updatedAt || 0;
+    const prevUpdatedAt = before.find((item) => item.tabName === scope.tabName)?.updatedAt || 0;
 
     const now = prevUpdatedAt + 5000;
     const touched = pageRegistry.touchTabName('token-touch', now);
     const after = await pageRegistry.listTabs(scope.workspaceName);
-    const nextUpdatedAt = after.find((item) => item.tabId === scope.tabId)?.updatedAt || 0;
+    const nextUpdatedAt = after.find((item) => item.tabName === scope.tabName)?.updatedAt || 0;
 
     assert.ok(touched);
     assert.equal(touched?.workspaceName, scope.workspaceName);
-    assert.equal(touched?.tabId, scope.tabId);
+    assert.equal(touched?.tabName, scope.tabName);
     assert.equal(nextUpdatedAt, now);
 });
 

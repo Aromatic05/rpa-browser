@@ -56,7 +56,7 @@ const createDeps = (snapshot: SnapshotResult): RunStepsDeps => ({
     runtime: (() => {
         const binding = {
             workspaceName: 'ws-1',
-            tabId: 'tab-1',
+            tabName: 'tab-1',
             tabName: 'tk-1',
             traceCtx: {
                 cache: {

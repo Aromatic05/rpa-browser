@@ -12,7 +12,7 @@ type StubCall = {
 const createDeps = (calls: StubCall[], opts?: { noActivePage?: boolean }): RunStepsDeps => {
     const binding = {
         workspaceName: 'ws-ref',
-        tabId: 'tab-ref',
+        tabName: 'tab-ref',
         tabName: 'tk-ref',
         traceCtx: { cache: {} as Record<string, unknown> },
     };

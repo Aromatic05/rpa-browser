@@ -231,7 +231,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             recordingName,
             workspaceName,
             entryUrl: bundle.manifest?.entryUrl,
-            tabs: (bundle.manifest?.tabs || []).map((item) => ({ tabId: item.tabId || item.tabRef, url: item.lastSeenUrl || item.firstSeenUrl })),
+            tabs: (bundle.manifest?.tabs || []).map((item) => ({ tabName: item.tabName || item.tabRef, url: item.lastSeenUrl || item.firstSeenUrl })),
             steps: bundle.steps,
             includeStepResolve: false,
         });
@@ -327,7 +327,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             output: result.scope.output,
             diagnostics: result.diagnostics,
             workspaceName: result.workspaceName,
-            tabId: result.tabId,
+            tabName: result.tabName,
             tabName: result.tabName,
         });
     },

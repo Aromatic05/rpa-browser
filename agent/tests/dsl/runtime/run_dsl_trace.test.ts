@@ -16,7 +16,7 @@ const createDeps = (): RunStepsDeps =>
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl',
-                tabId: 'tab-dsl',
+                tabName: 'tab-dsl',
                 tabName: 'tk-dsl',
                 traceCtx: { cache: {} },
             }),

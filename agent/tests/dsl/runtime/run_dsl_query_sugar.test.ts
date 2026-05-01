@@ -14,7 +14,7 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-query-sugar',
-                tabId: 'tab-dsl-query-sugar',
+                tabName: 'tab-dsl-query-sugar',
                 tabName: 'tk-dsl-query-sugar',
                 traceCtx: { cache: {} },
             }),

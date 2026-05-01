@@ -17,7 +17,7 @@ import type { Checkpoint } from '../../../src/runner/checkpoint';
 const createRuntime = () => ({
     ensureActivePage: async () => ({
         workspaceName: 'ws-1',
-        tabId: 'tab-1',
+        tabName: 'tab-1',
         tabName: 'tk-1',
         page: { url: () => 'https://example.test/page' },
         traceCtx: { cache: {} },

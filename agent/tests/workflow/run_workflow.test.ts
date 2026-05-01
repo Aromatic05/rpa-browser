@@ -12,7 +12,7 @@ const createDeps = (calls: Array<{ name: string; args: Record<string, unknown> }
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-workflow',
-                tabId: 'tab-workflow',
+                tabName: 'tab-workflow',
                 tabName: 'tk-workflow',
                 traceCtx: { cache: {} },
             }),
@@ -87,12 +87,12 @@ fill buyer with input.user.name
             workflowsDir: tmp,
             runStepsDeps: createDeps(calls),
             pageRegistry: {
-                createWorkspace: async () => ({ workspaceName: 'ws-1', tabId: 'tab-1' }),
+                createWorkspace: async () => ({ workspaceName: 'ws-1', tabName: 'tab-1' }),
                 resolveTabName: () => 'tk-1',
                 createWorkspaceShell: () => ({ workspaceName: 'workflow:order' }),
                 resolvePage: async () => ({ url: () => 'about:blank', goto: async () => {} }),
             } as any,
-            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabId: 'tab-restore', tabName: 'tk-restore' }),
+            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
         },
     );
 
@@ -120,11 +120,11 @@ fill buyer with input.user.name
             workflowsDir: tmp,
             runStepsDeps: createDeps(calls),
             pageRegistry: {
-                createWorkspace: async () => ({ workspaceName: 'ws-1', tabId: 'tab-1' }),
+                createWorkspace: async () => ({ workspaceName: 'ws-1', tabName: 'tab-1' }),
                 resolveTabName: () => 'tk-1',
                 resolvePage: async () => ({ url: () => 'about:blank', goto: async () => {} }),
             } as any,
-            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabId: 'tab-restore', tabName: 'tk-restore' }),
+            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
         },
     );
     assert.equal(result.scope.input.user?.name, 'fixture');
@@ -148,12 +148,12 @@ use checkpoint "ensure-login"
                     workflowsDir: tmp,
                     runStepsDeps: createDeps([]),
                     pageRegistry: {
-                        createWorkspace: async () => ({ workspaceName: 'ws-1', tabId: 'tab-1' }),
+                        createWorkspace: async () => ({ workspaceName: 'ws-1', tabName: 'tab-1' }),
                         resolveTabName: () => 'tk-1',
                         createWorkspaceShell: () => ({ workspaceName: 'workflow:order' }),
                         resolvePage: async () => ({ url: () => 'about:blank', goto: async () => {} }),
                     } as any,
-                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabId: 'tab-restore', tabName: 'tk-restore' }),
+                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
                 },
             ),
         /ERR_WORKFLOW_CHECKPOINT_NOT_DECLARED|workflow checkpoint not declared/,
@@ -199,12 +199,12 @@ checkpoint:
             workflowsDir: tmp,
             runStepsDeps: createDeps([]),
             pageRegistry: {
-                createWorkspace: async () => ({ workspaceName: 'ws-1', tabId: 'tab-1' }),
+                createWorkspace: async () => ({ workspaceName: 'ws-1', tabName: 'tab-1' }),
                 resolveTabName: () => 'tk-1',
                 createWorkspaceShell: () => ({ workspaceName: 'workflow:order' }),
                 resolvePage: async () => ({ url: () => 'about:blank', goto: async () => {} }),
             } as any,
-            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabId: 'tab-restore', tabName: 'tk-restore' }),
+            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
         },
     );
 
@@ -231,11 +231,11 @@ snapshot
                     workflowsDir: tmp,
                     runStepsDeps: createDeps([]),
                     pageRegistry: {
-                        createWorkspace: async () => ({ workspaceName: 'ws-1', tabId: 'tab-1' }),
+                        createWorkspace: async () => ({ workspaceName: 'ws-1', tabName: 'tab-1' }),
                         resolveTabName: () => 'tk-1',
                         resolvePage: async () => ({ url: () => 'about:blank', goto: async () => {} }),
                     } as any,
-                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabId: 'tab-restore', tabName: 'tk-restore' }),
+                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
                 },
             ),
         /ERR_WORKFLOW_CHECKPOINT_NOT_FOUND|workflow checkpoint file not found/,

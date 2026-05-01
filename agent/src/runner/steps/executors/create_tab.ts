@@ -15,5 +15,5 @@ export const executeBrowserCreateTab = async (
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
     }
-    return { stepId: step.id, ok: true, data: { tab_id: result.data?.tabId } };
+    return { stepId: step.id, ok: true, data: { tab_id: result.data?.tabName } };
 };

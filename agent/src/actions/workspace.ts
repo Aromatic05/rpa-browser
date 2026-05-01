@@ -64,7 +64,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const bundle = getRecordingBundle(ctx.recordingState, '', { workspaceName: workspaceName });
         const snapshot = saveWorkspaceSnapshot(ctx.recordingState, {
             workspaceName: workspaceName,
-            tabs: tabs.map((tab) => ({ tabId: tab.name, url: tab.url, title: tab.title, active: workspace.tabRegistry.getActiveTab()?.name === tab.name })),
+            tabs: tabs.map((tab) => ({ tabName: tab.name, url: tab.url, title: tab.title, active: workspace.tabRegistry.getActiveTab()?.name === tab.name })),
             recordingToken: bundle.recordingToken,
             steps: bundle.steps,
             manifest: bundle.manifest,
@@ -83,11 +83,11 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const targetWorkspaceName = randomName();
         const workspace = ctx.workspaceRegistry.createWorkspace(targetWorkspaceName);
         for (const tab of snapshot.tabs) {
-            workspace.tabRegistry.createTab({ tabName: tab.tabId || randomName(), url: tab.url || '', title: tab.title || '' });
+            workspace.tabRegistry.createTab({ tabName: tab.tabName || randomName(), url: tab.url || '', title: tab.title || '' });
         }
         const activeTab = snapshot.tabs.find((item) => item.active) || snapshot.tabs[0];
-        if (activeTab?.tabId && workspace.tabRegistry.hasTab(activeTab.tabId)) {
-            workspace.tabRegistry.setActiveTab(activeTab.tabId);
+        if (activeTab?.tabName && workspace.tabRegistry.hasTab(activeTab.tabName)) {
+            workspace.tabRegistry.setActiveTab(activeTab.tabName);
         }
         return replyAction(action, { restored: true, sourceWorkspaceName, workspaceName: targetWorkspaceName, tabName: workspace.tabRegistry.getActiveTab()?.name ?? null });
     },

@@ -15,7 +15,7 @@ const createDispatcher = () => {
                 ensureActivePageCalls += 1;
                 return {
                     workspaceName,
-                    tabId: 'tab-1',
+                    tabName: 'tab-1',
                     tabName: 'token-1',
                     page: {
                         url: () => 'https://example.com',

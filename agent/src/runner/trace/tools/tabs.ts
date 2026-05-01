@@ -7,32 +7,32 @@ export const createTabsTools = (base: ToolsBuildContext) => ({
             if (!base.opts.pageRegistry) {
                 throw new Error('missing page registry');
             }
-            const tabId = crypto.randomUUID();
-            const page = await base.opts.pageRegistry.getPage(tabId, args.url);
+            const tabName = crypto.randomUUID();
+            const page = await base.opts.pageRegistry.getPage(tabName, args.url);
             base.setCurrentPage(page);
             await page.bringToFront().catch(() => undefined);
-            return { tabId };
+            return { tabName };
         }),
 
-    'trace.tabs.switch': async (args: { workspaceName: string; tabId: string }) =>
+    'trace.tabs.switch': async (args: { workspaceName: string; tabName: string }) =>
         await base.run('trace.tabs.switch', args, async () => {
             if (!base.opts.pageRegistry) {
                 throw new Error('missing page registry');
             }
-            const page = await base.opts.pageRegistry.getPage(args.tabId);
+            const page = await base.opts.pageRegistry.getPage(args.tabName);
             base.setCurrentPage(page);
             await page.bringToFront().catch(() => undefined);
         }),
 
-    'trace.tabs.close': async (args: { workspaceName: string; tabId?: string }) =>
+    'trace.tabs.close': async (args: { workspaceName: string; tabName?: string }) =>
         await base.run('trace.tabs.close', args, async () => {
             if (!base.opts.pageRegistry) {
                 throw new Error('missing page registry');
             }
-            const tabId = args.tabId;
-            if (!tabId) {
-                throw new Error('tabId is required');
+            const tabName = args.tabName;
+            if (!tabName) {
+                throw new Error('tabName is required');
             }
-            await base.opts.pageRegistry.closePage(tabId);
+            await base.opts.pageRegistry.closePage(tabName);
         }),
 });

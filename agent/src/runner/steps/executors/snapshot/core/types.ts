@@ -418,7 +418,7 @@ export type FinalEntityView = {
 
 export type SnapshotPageIdentity = {
     workspaceName: string;
-    tabId: string;
+    tabName: string;
     tabName: string;
     url: string;
 };

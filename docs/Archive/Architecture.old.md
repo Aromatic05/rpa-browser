@@ -95,7 +95,7 @@ Snapshot 的实体相关主链路为：
 - workflow artifact 根目录为 `agent/.artifacts/workflows/<scene>/`
 - `steps/<recording-name>/steps.yaml` 与 `steps/<recording-name>/step_resolve.yaml` 只服务单次录制
 - `checkpoints/<checkpoint-name>/checkpoint.yaml`、`checkpoint_resolve.yaml`、`checkpoint_hints.yaml` 只服务单个 checkpoint
-- 多 tab 持久化使用 `tabRef`；运行时 `tabId` / `tabName` 不写入 core `steps.yaml`
+- 多 tab 持久化使用 `tabRef`；运行时 `tabName` / `tabName` 不写入 core `steps.yaml`
 
 执行链路：
 

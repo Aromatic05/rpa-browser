@@ -25,7 +25,7 @@
   tabName?: string,
   scope?: {
     workspaceName?: string,
-    tabId?: string,
+    tabName?: string,
     tabName?: string
   },
   payload?: unknown,
@@ -40,7 +40,7 @@
 - `id` 必须为非空字符串
 - `type` 必须为非空字符串
 - `type` 必须在 ActionType 映射表中
-- 当 `tabName` 存在时，`scope.workspaceName/tabId` 必须与该 token 解析结果一致；冲突返回 `ERR_BAD_ARGS`
+- 当 `tabName` 存在时，`scope.workspaceName/tabName` 必须与该 token 解析结果一致；冲突返回 `ERR_BAD_ARGS`
 
 代码来源：`agent/src/actions/action_protocol.ts`、`agent/src/index.ts`。
 
@@ -67,8 +67,8 @@
   "v": 1,
   "id": "evt-xxx",
   "type": "workspace.changed",
-  "payload": { "workspaceName": "ws-1", "tabId": "tab-1", "sourceType": "tab.create" },
-  "scope": { "workspaceName": "ws-1", "tabId": "tab-1" },
+  "payload": { "workspaceName": "ws-1", "tabName": "tab-1", "sourceType": "tab.create" },
+  "scope": { "workspaceName": "ws-1", "tabName": "tab-1" },
   "at": 1710000000000
 }
 ```
@@ -101,8 +101,8 @@
 | `workspace.*` | `workspace.setActive` | `{ workspaceName: string }` |
 | `workspace.*` | `workspace.save` | `{ workspaceName?: string }` |
 | `workspace.*` | `workspace.restore` | `{ workspaceName: string }` |
-| `workspace.*` | `workspace.changed` | `{ workspaceName?: string, tabId?: string, sourceType?: string }` |
-| `workspace.*` | `workspace.sync` | `{ reason: string, workspaceName?: string, tabId?: string, tabName?: string }` |
+| `workspace.*` | `workspace.changed` | `{ workspaceName?: string, tabName?: string, sourceType?: string }` |
+| `workspace.*` | `workspace.sync` | `{ reason: string, workspaceName?: string, tabName?: string, tabName?: string }` |
 | `tab.*` | `tab.init` | `{ source?: string, url?: string, at?: number }` |
 | `tab.*` | `tab.reassign` | `{ workspaceName: string, source?: string, windowId?: number, at?: number }` |
 
@@ -137,7 +137,7 @@
 ```json
 {
   "workspaceName": "ws-xxx",
-  "tabId": "tab-xxx",
+  "tabName": "tab-xxx",
   "tabName": "token-xxx",
   "pageUrl": "chrome-extension://.../newtab.html",
   "source": "start_extension",
@@ -162,7 +162,7 @@
 
 - `tab.ping`：content/newtab 周期上报存活信息，用于 token 同步和断连恢复（`lastSeen` 语义）。
 - content/start_extension 必须先通过 background 获取已绑定 token（`ENSURE_BOUND_TOKEN`）后再发送业务 action。
-- 若 token 可解析，返回对应 `workspaceName/tabId`；否则返回 `stale: true`。
+- 若 token 可解析，返回对应 `workspaceName/tabName`；否则返回 `stale: true`。
 - orphan `tab.ping` 默认禁止 claim 新 workspace；仅 `source=extension.workspace.create` 允许用于新建 workspace 首 tab 绑定。
 
 ### 2.10 token 生命周期 owner
@@ -175,7 +175,7 @@
 
 - `workspace.save`：将当前（或指定）workspace 保存为可恢复快照。
 - 快照内容：
-  - `tabs`: `tabId/url/title/active`
+  - `tabs`: `tabName/url/title/active`
   - `recording.steps`
   - `recording.manifest`（去除 `tabs[].tabName`）
 - `workspace.restore`：仅恢复 workspace/tab 与录制上下文；不自动触发 `play.start`。
@@ -213,7 +213,7 @@ ERR_WORKSPACE_RESTORE_FAILED
     source: 'mcp' | 'play' | 'script' | 'record',
     ts?: number,
     workspaceName?: string,
-    tabId?: string,
+    tabName?: string,
     tabName?: string
   }
 }

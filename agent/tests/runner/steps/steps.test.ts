@@ -17,7 +17,7 @@ import { setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/r
 const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unknown> = {}): RunStepsDeps => {
     const binding = {
         workspaceName: 'ws1',
-        tabId: 'tab1',
+        tabName: 'tab1',
         tabName: 'token1',
         page: page as any,
         traceTools,

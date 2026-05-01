@@ -16,7 +16,7 @@ export const executeBrowserListTabs = async (
         stepId: step.id,
         ok: true,
         data: {
-            tab_id: result.data?.tabId,
+            tab_id: result.data?.tabName,
             tabs: result.data?.tabs || [],
         },
     };

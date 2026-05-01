@@ -20,7 +20,7 @@ extension 是浏览器侧主入口，负责 token 生命周期、窗口到 works
 ## background 四个核心模块
 
 - `cmd_router`：统一入口，处理 runtime message、WS inbound action、tab/window 事件。
-- `state`：维护 `tabId -> token`、`token -> scope`、`windowId -> workspaceName`。
+- `state`：维护 `tabName -> token`、`token -> scope`、`windowId -> workspaceName`。
 - `action`：封装 dispatch 行为、reply 识别、payload 解析。
 - `life`：负责 `tab.init/tab.opened/tab.activated/tab.closed/tab.ping` 相关生命周期推进。
 

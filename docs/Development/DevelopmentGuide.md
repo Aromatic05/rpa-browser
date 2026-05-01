@@ -49,7 +49,7 @@ pnpm test
 
 ### 5. extension/start_extension 联调要点
 
-- 内容页与 start_extension 必须先确保 bound token。
+- 内容页与 start_extension 必须先确保 bound tab reference。
 - WS 回复必须按 `<action>.result/.failed` 处理。
 
 ### 6. 常见问题排查

@@ -26,8 +26,8 @@ Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包
 - `tabName` 只允许出现在 payload 业务参数内。
 - 禁止顶层 `tabName`。
 - 禁止顶层 `scope`。
-- 禁止顶层 `workspaceName/tabId/tabName`。
-- 禁止 payload 重复地址字段（`workspaceName/workspaceName/tabId/tabName/scope`）。
+- 禁止顶层 `workspaceName/tabName/tabName`。
+- 禁止 payload 重复地址字段（`workspaceName/workspaceName/tabName/tabName/scope`）。
 - 对外 workspace/tab 表达只允许 `workspaceName/tabName`。
 
 语义：
@@ -46,8 +46,8 @@ Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包
 - `workspaceName = workflowName`（协议层命名约定）。
 - `activeWorkspace` 仅用于 UI selection，不参与 action dispatch。
 - dispatch 入口不依赖 `resolveActionTarget`。
-- 协议层已删除：`workspaceName`、`tabId`、`tabName`、`scope`。
-- workspace/tab 对外 payload 不得出现 `workspaceName/tabId/tabName`。
+- 协议层已删除：`workspaceName`、`tabName`、`tabName`、`scope`。
+- workspace/tab 对外 payload 不得出现 `workspaceName/tabName/tabName`。
 - extension 内部 chrome tab id、tabName 映射仅限 adapter 本地状态，不进入 Action 协议。
 - workspace.list 广播必须输出 `workspaces[].workspaceName`、`workspaces[].activeTabName`。
 - extension projection 不得依赖 Action payload `tabName` 做 scope 更新。

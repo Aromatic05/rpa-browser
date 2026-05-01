@@ -13,7 +13,7 @@ const createDeps = (options: {
     entityCount?: number;
 }): RunStepsDeps => {
     const workspaceName = 'ws-1';
-    const tabId = 'tab-1';
+    const tabName = 'tab-1';
     const tabName = 'tab-token-1';
     const currentUrl = options.url || 'https://example.test/page';
     const traceTools = {
@@ -38,7 +38,7 @@ const createDeps = (options: {
             [`${workspaceName}:${tabName}`]: {
                 pageIdentity: {
                     workspaceName,
-                    tabId,
+                    tabName,
                     tabName,
                     url: currentUrl,
                 },
@@ -75,7 +75,7 @@ const createDeps = (options: {
 
     const binding = {
         workspaceName,
-        tabId,
+        tabName,
         tabName,
         page: { url: () => currentUrl },
         traceTools,

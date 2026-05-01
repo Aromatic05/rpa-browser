@@ -13,7 +13,7 @@ const createContext = (calls: Array<Record<string, unknown>>): ControlRouterCont
             runtime: {
                 ensureActivePage: async () => ({
                     workspaceName: 'ws-dsl-control',
-                    tabId: 'tab-dsl-control',
+                    tabName: 'tab-dsl-control',
                     tabName: 'tk-dsl-control',
                     traceCtx: { cache: {} },
                 }),

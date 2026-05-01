@@ -28,7 +28,7 @@ const runSelectStep = async <T = undefined>(step: Step<'browser.select_option'>,
         assert.equal(goto.ok, true);
         const binding = {
             workspaceName: 'ws1',
-            tabId: 'tab1',
+            tabName: 'tab1',
             tabName: 'token1',
             page,
             traceTools: tools,

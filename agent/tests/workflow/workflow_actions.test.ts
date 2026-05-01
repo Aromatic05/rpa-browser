@@ -40,7 +40,7 @@ const ensureScene = (scene: string, dslSource = '') => {
 };
 
 const createCtx = () => {
-    const workspaces = new Map<string, { activeTabName?: string; tabIds: string[] }>();
+    const workspaces = new Map<string, { activeTabName?: string; tabNames: string[] }>();
     const recordingState = createRecordingState();
     const pageRegistry: any = {
         listWorkspaces: () =>
@@ -49,29 +49,29 @@ const createCtx = () => {
                 activeTabName: value.activeTabName,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
-                tabCount: value.tabIds.length,
+                tabCount: value.tabNames.length,
             })),
         createWorkspaceShell: (workspaceName: string) => {
             if (!workspaces.has(workspaceName)) {
-                workspaces.set(workspaceName, { tabIds: [] });
+                workspaces.set(workspaceName, { tabNames: [] });
             }
             return { workspaceName };
         },
         createTab: async (workspaceName: string) => {
-            const ws = workspaces.get(workspaceName) || { tabIds: [] };
-            const tabId = `tab-${ws.tabIds.length + 1}`;
-            ws.tabIds.push(tabId);
-            ws.activeTabName = tabId;
+            const ws = workspaces.get(workspaceName) || { tabNames: [] };
+            const tabName = `tab-${ws.tabNames.length + 1}`;
+            ws.tabNames.push(tabName);
+            ws.activeTabName = tabName;
             workspaces.set(workspaceName, ws);
-            return tabId;
+            return tabName;
         },
         setActiveWorkspace: (_workspaceName: string) => {},
-        setActiveTab: (workspaceName: string, tabId: string) => {
+        setActiveTab: (workspaceName: string, tabName: string) => {
             const ws = workspaces.get(workspaceName);
             if (!ws) {return;}
-            ws.activeTabName = tabId;
+            ws.activeTabName = tabName;
         },
-        resolveTabName: ({ workspaceName, tabId }: { workspaceName: string; tabId: string }) => `${workspaceName}:${tabId}`,
+        resolveTabName: ({ workspaceName, tabName }: { workspaceName: string; tabName: string }) => `${workspaceName}:${tabName}`,
         getActiveWorkspace: () => {
             const first = Array.from(workspaces.entries())[0];
             if (!first) {return null;}
@@ -92,7 +92,7 @@ const createCtx = () => {
                 runtime: {
                     ensureActivePage: async () => ({
                         workspaceName: 'workflow:test',
-                        tabId: 'tab-1',
+                        tabName: 'tab-1',
                         tabName: 'workflow:test:tab-1',
                     }),
                 },

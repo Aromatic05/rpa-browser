@@ -7,10 +7,10 @@ import type { SnapshotResult } from '../../src/runner/steps/executors/snapshot/c
 
 const createReplayStepContext = (runner: Awaited<ReturnType<typeof setupStepRunner>>) => ({
     workspaceName: runner.workspaceName,
-    initialTabName: runner.tabId,
-    initialTabId: runner.tabId,
+    initialTabName: runner.tabName,
+    initialTabId: runner.tabName,
     pageRegistry: {
-        listTabs: async () => [{ tabId: runner.tabId, active: true }],
+        listTabs: async () => [{ tabName: runner.tabName, active: true }],
         resolveTabNameFromToken: (tabName: string) => tabName,
         resolveTabNameFromRef: (tabRef: string) => tabRef || undefined,
     },

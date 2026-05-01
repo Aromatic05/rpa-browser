@@ -10,8 +10,8 @@
 ## 2. 运行时对象
 
 - agent: `pageRegistry` 维护 `tokenToPage`、`tokenToTab`、`workspaces`。
-- extension background: `RouterState` 维护 `tabState`、`tabNameToScope`、`windowToWorkspace`。
-- 绑定目标：每个 `tabName` 必须映射到唯一 `(workspaceName, tabId)`。
+- extension background: `RouterState` 维护 `tabState`、`bindingNameToWorkspaceTab`、`windowToWorkspace`。
+- 绑定目标：每个 `tabName` 必须映射到唯一 `(workspaceName, tabName)`。
 
 ## 3. 通信总线
 
@@ -36,8 +36,8 @@
 - 先尝试 `state` / `preferredToken` / `GET_TOKEN`。
 - 无 token 时由 background 发 `tab.init` 生成，并 `SET_TOKEN` 回写页面。
 - 解析 workspace（`tokenScope -> window mapping -> active workspace -> workspace.list`）。
-- 发 `tab.opened` 完成 agent 绑定；必须拿到 `tabId` 才算成功。
-3. 返回 `{ tabName, workspaceName, tabId }` 给页面。
+- 发 `tab.opened` 完成 agent 绑定；必须拿到 `tabName` 才算成功。
+3. 返回 `{ tabName, workspaceName, tabName }` 给页面。
 4. 页面拿到绑定结果后，才允许发 `tab.ping/tab.report/workflow.*`。
 
 ## 5. chrome://newtab 阶段规则
@@ -54,7 +54,7 @@
 ## 7. 关键失败定义
 
 - `resolve_scope_from_token.miss`：agent 未找到 token->scope 映射。
-- `tab.opened.defer_claim`：agent 尚未完成 token page 绑定，`tab.opened` 暂未拿到 `tabId`。
+- `tab.opened.defer_claim`：agent 尚未完成 token page 绑定，`tab.opened` 暂未拿到 `tabName`。
 
 ## 8. 详细通信图
 
@@ -108,10 +108,10 @@ flowchart TD
   I -- yes --> J["return unavailable (null)"]
   I -- no --> K["resolve workspace"]
   K --> L["tab.opened"]
-  L --> M{"tabId returned?"}
+  L --> M{"tabName returned?"}
   M -- no --> N["strict failure"]
-  M -- yes --> O["upsert token scope"]
-  O --> P["return bound token/scope"]
+  M -- yes --> O["upsert binding workspace mapping"]
+  O --> P["return bound tab reference/scope"]
 ```
 
 ### 8.3 ACTION 入口
@@ -128,7 +128,7 @@ flowchart TD
   G --> H
   H --> I["agent reply"]
   I --> J["applyReplyProjection"]
-  J --> K["update tabNameToScope/window mapping"]
+  J --> K["update bindingNameToWorkspaceTab/window mapping"]
 ```
 
 ## 9. 代码定位

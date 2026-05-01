@@ -143,7 +143,7 @@ export type SaveWorkflowRecordingArtifactsOptions = {
     recordingName: string;
     workspaceName?: string;
     entryUrl?: string;
-    tabs?: Array<{ tabId: string; url?: string }>;
+    tabs?: Array<{ tabName: string; url?: string }>;
     steps: StepUnion[];
     stepResolves?: Record<string, unknown>;
     includeStepResolve?: boolean;

@@ -38,7 +38,7 @@ Step 是 agent 内部统一执行单元，服务于 MCP、DSL、record/play、co
 - `control-rpc`
 - `dsl`
 
-其他字段：`ts/workspaceName/tabId/tabName/tabRef/urlAtRecord`。
+其他字段：`ts/workspaceName/tabName/tabName/tabRef/urlAtRecord`。
 
 ### 4. StepResolve
 

@@ -98,8 +98,8 @@ const runSingleStep = async (
 ) => {
     const scope = await resolveOrBootstrapScope(deps, tabName, options);
     const workspace = deps.workspaceRegistry.createWorkspace(scope.workspaceName);
-    if (workspace.tabRegistry.hasTab(scope.tabId)) {
-        workspace.tabRegistry.setActiveTab(scope.tabId);
+    if (workspace.tabRegistry.hasTab(scope.tabName)) {
+        workspace.tabRegistry.setActiveTab(scope.tabName);
     }
     const { pipe, checkpoint } = await runStepList(scope.workspaceName, [step], deps.runStepsDeps, {
         stopOnError: true,
@@ -120,12 +120,12 @@ const resolveOrBootstrapScope = async (
     deps: McpToolDeps,
     tabName: string | undefined,
     options?: { allowBootstrap?: boolean },
-): Promise<{ workspaceName: string; tabId: string }> => {
+): Promise<{ workspaceName: string; tabName: string }> => {
     const allowBootstrap = options?.allowBootstrap !== false;
     const resolvedTabName = resolveTabNameOrActive(deps, tabName);
     for (const workspace of deps.workspaceRegistry.listWorkspaces()) {
         if (workspace.tabRegistry.hasTab(resolvedTabName)) {
-            return { workspaceName: workspace.name, tabId: resolvedTabName };
+            return { workspaceName: workspace.name, tabName: resolvedTabName };
         }
     }
     if (!allowBootstrap) {
@@ -140,7 +140,7 @@ const resolveOrBootstrapScope = async (
         workspace.tabRegistry.bindPage(resolvedTabName, page);
     }
     workspace.tabRegistry.setActiveTab(resolvedTabName);
-    return { workspaceName, tabId: resolvedTabName };
+    return { workspaceName, tabName: resolvedTabName };
 };
 
 const resolveTabNameOrActive = (deps: McpToolDeps, tabName?: string): string => {
@@ -223,7 +223,7 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const result = await runSingleStep(deps, sourceTabName, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
-        args: { tabId: input.tabId, tabRef: input.tabRef, tabUrl: input.tabUrl },
+        args: { tabName: input.tabName, tabRef: input.tabRef, tabUrl: input.tabUrl },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
@@ -238,7 +238,7 @@ const handleCloseTab = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     return await runSingleStep(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.close_tab',
-        args: { tabId: input.tabId, tabRef: input.tabRef },
+        args: { tabName: input.tabName, tabRef: input.tabRef },
         meta: { source: 'mcp' },
     });
 };

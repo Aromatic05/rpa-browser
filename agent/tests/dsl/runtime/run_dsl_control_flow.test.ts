@@ -15,7 +15,7 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-cf',
-                tabId: 'tab-dsl-cf',
+                tabName: 'tab-dsl-cf',
                 tabName: 'tk-dsl-cf',
                 traceCtx: { cache: {} },
             }),

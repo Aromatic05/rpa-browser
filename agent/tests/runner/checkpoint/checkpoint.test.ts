@@ -55,7 +55,7 @@ const createCtx = (overrides?: Partial<CheckpointCtx>): CheckpointCtx => {
 
 const createBindingWithBusinessEntity = (businessTag: string) => {
     const workspaceName = 'ws-1';
-    const tabId = 'tab-1';
+    const tabName = 'tab-1';
     const tabName = 'tab-token-1';
     const url = 'https://example.test/orders';
     const snapshot = {
@@ -70,7 +70,7 @@ const createBindingWithBusinessEntity = (businessTag: string) => {
 
     return {
         workspaceName,
-        tabId,
+        tabName,
         tabName,
         page: { url: () => url },
         traceTools: {
@@ -83,7 +83,7 @@ const createBindingWithBusinessEntity = (businessTag: string) => {
                     version: 1,
                     entries: {
                         [`${workspaceName}:${tabName}`]: {
-                            pageIdentity: { workspaceName, tabId, tabName, url },
+                            pageIdentity: { workspaceName, tabName, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView: {

@@ -30,23 +30,23 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
     });
     await pageRegistry.bindPage(page, tabName);
     const workspaceName = `ws-${crypto.randomUUID()}`;
-    const tabId = tabName;
+    const tabName = tabName;
 
     const pluginHost = await createTestPluginHost();
     const workspaceRegistry = createWorkspaceRegistry();
     const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName);
     runtimeWorkspace.tabRegistry.createTab({
-        tabName: tabId,
+        tabName: tabName,
         page,
         url: page.url(),
     });
-    runtimeWorkspace.tabRegistry.setActiveTab(tabId);
+    runtimeWorkspace.tabRegistry.setActiveTab(tabName);
     const runtime = createRuntimeRegistry({
         workspaceRegistry,
         traceHooks: createNoopHooks(),
         pluginHost,
     });
-    runtime.bindPage({ workspaceName, tabName: tabId, page });
+    runtime.bindPage({ workspaceName, tabName: tabName, page });
 
     const deps = { runtime, config: getRunnerConfig(), pluginHost };
 
@@ -57,7 +57,7 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
     };
 
-    return { run, workspaceName, tabId, tabName, pageRegistry, deps };
+    return { run, workspaceName, tabName, tabName, pageRegistry, deps };
 };
 
 export const findA11yNodeId = (tree: any, role: string, name: string): string | null => {

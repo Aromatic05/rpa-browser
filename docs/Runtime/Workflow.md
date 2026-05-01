@@ -27,7 +27,7 @@
 - `scene`
 - `workflowRoot`
 - `workspaceName`
-- `tabId`
+- `tabName`
 - `tabName`
 - `entryUrl`（若 workspace binding 声明）
 
@@ -68,7 +68,7 @@
 - `ok`
 - `output`
 - `diagnostics`
-- `workspaceName/tabId/tabName`
+- `workspaceName/tabName/tabName`
 
 ### 2. 生命周期执行顺序
 
@@ -152,7 +152,7 @@ URL 规则：
 ```text
 workflow.open(scene=order_scene)
 -> workspaceName=workflow:order_scene
--> tabId=tab-1
+-> tabName=tab-1
 -> tabName=token-1
 
 workflow.releaseRun(scene=order_scene,input={buyer:"alice"})

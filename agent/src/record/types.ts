@@ -39,7 +39,7 @@ export type RecordedStepEnhancement = {
         snapshotId?: string;
         pageIdentity?: {
             workspaceName: string;
-            tabId: string;
+            tabName: string;
             tabName: string;
             url: string;
         };

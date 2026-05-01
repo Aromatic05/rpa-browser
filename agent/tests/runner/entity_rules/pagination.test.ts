@@ -37,12 +37,12 @@ type ExecutorSpy = {
 
 const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView): RunStepsDeps => {
     const workspaceName = 'ws-pagination';
-    const tabId = 'tab-pagination';
+    const tabName = 'tab-pagination';
     const tabName = 'tab-token-pagination';
     const url = 'https://example.test/entity-pagination';
     const binding = {
         workspaceName,
-        tabId,
+        tabName,
         tabName,
         page: { url: () => url },
         traceCtx: {
@@ -51,7 +51,7 @@ const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView):
                     version: 1,
                     entries: {
                         [`${workspaceName}:${tabName}`]: {
-                            pageIdentity: { workspaceName, tabId, tabName, url },
+                            pageIdentity: { workspaceName, tabName, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView,

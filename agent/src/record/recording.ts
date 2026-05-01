@@ -20,7 +20,7 @@ import type { RecordedStepEnhancement, RecordingEnhancementMap } from './types';
 export type RecordingTabManifest = {
     tabName: string;
     tabRef: string;
-    tabId?: string;
+    tabName?: string;
     firstSeenUrl?: string;
     lastSeenUrl?: string;
     firstSeenAt: number;
@@ -42,7 +42,7 @@ export type SavedRecordingManifest = Omit<RecordingManifest, 'tabs'> & {
 };
 
 export type WorkspaceSavedTab = {
-    tabId: string;
+    tabName: string;
     url: string;
     title: string;
     active: boolean;
@@ -160,7 +160,7 @@ const createStep = <TName extends StepName>(
     name: TName,
     args: StepArgsMap[TName],
     ts: number,
-    metaExtra?: Partial<Pick<StepMeta, 'workspaceName' | 'tabId' | 'tabName' | 'tabRef' | 'urlAtRecord'>>,
+    metaExtra?: Partial<Pick<StepMeta, 'workspaceName' | 'tabName' | 'tabName' | 'tabRef' | 'urlAtRecord'>>,
     resolve?: StepResolve,
 ): Step<TName> => ({
     id: crypto.randomUUID(),
@@ -320,15 +320,15 @@ const ensureManifest = (
 const ensureTabInManifest = (
     manifest: RecordingManifest,
     tabName: string,
-    seed?: { tabRef?: string; tabId?: string; url?: string; at?: number },
+    seed?: { tabRef?: string; tabName?: string; url?: string; at?: number },
 ): RecordingTabManifest => {
     const now = seed?.at || Date.now();
     let tab = manifest.tabs.find((item) => item.tabName === tabName);
     if (!tab) {
         tab = {
             tabName,
-            tabRef: seed?.tabRef || seed?.tabId || tabName,
-            tabId: seed?.tabId,
+            tabRef: seed?.tabRef || seed?.tabName || tabName,
+            tabName: seed?.tabName,
             firstSeenUrl: seed?.url,
             lastSeenUrl: seed?.url,
             firstSeenAt: now,
@@ -337,7 +337,7 @@ const ensureTabInManifest = (
         manifest.tabs.push(tab);
         return tab;
     }
-    if (!tab.tabId && seed?.tabId) {tab.tabId = seed.tabId;}
+    if (!tab.tabName && seed?.tabName) {tab.tabName = seed.tabName;}
     if (!tab.tabRef && seed?.tabRef) {tab.tabRef = seed.tabRef;}
     if (seed?.url) {
         if (!tab.firstSeenUrl) {tab.firstSeenUrl = seed.url;}
@@ -371,8 +371,8 @@ const enrichRecordedStep = (
         (step.name === 'browser.switch_tab' ? switchTabUrl : undefined) ||
         undefined;
     const tab = ensureTabInManifest(manifest, stepTabName, {
-        tabId: step.meta?.tabId,
-        tabRef: step.meta?.tabRef || step.meta?.tabId,
+        tabName: step.meta?.tabName,
+        tabRef: step.meta?.tabRef || step.meta?.tabName,
         url: stepUrl || undefined,
         at: ts,
     });
@@ -575,7 +575,7 @@ export const startRecording = async (
     page: Page,
     tabName: string,
     navDedupeWindowMs: number,
-    seed?: { workspaceName?: string; tabId?: string; entryUrl?: string },
+    seed?: { workspaceName?: string; tabName?: string; entryUrl?: string },
 ): Promise<void> => {
     const recordLog = getLogger('record');
     state.recordingEnabled.add(tabName);
@@ -587,13 +587,13 @@ export const startRecording = async (
     state.lastScrollY.set(tabName, 0);
     const manifest = ensureManifest(state, tabName, {
         workspaceName: seed?.workspaceName,
-        entryTabRef: seed?.tabId || tabName,
+        entryTabRef: seed?.tabName || tabName,
         entryUrl: seed?.entryUrl || page.url(),
     });
     indexWorkspaceRecording(state, tabName, manifest.workspaceName);
     ensureTabInManifest(manifest, tabName, {
-        tabId: seed?.tabId,
-        tabRef: seed?.tabId || tabName,
+        tabName: seed?.tabName,
+        tabRef: seed?.tabName || tabName,
         url: seed?.entryUrl || page.url(),
     });
     recordLog('start', { tabName, url: page.url() });
@@ -700,7 +700,7 @@ const sanitizeSavedManifest = (manifest?: RecordingManifest): SavedRecordingMani
         ...manifest,
         tabs: manifest.tabs.map((tab) => ({
             tabRef: tab.tabRef,
-            tabId: tab.tabId,
+            tabName: tab.tabName,
             firstSeenUrl: tab.firstSeenUrl,
             lastSeenUrl: tab.lastSeenUrl,
             firstSeenAt: tab.firstSeenAt,
@@ -733,7 +733,7 @@ export const saveWorkspaceSnapshot = (
         workspaceName: payload.workspaceName,
         savedAt: Date.now(),
         tabs: payload.tabs.map((tab) => ({
-            tabId: tab.tabId,
+            tabName: tab.tabName,
             url: tab.url,
             title: tab.title,
             active: tab.active,

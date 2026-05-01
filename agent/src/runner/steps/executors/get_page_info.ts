@@ -18,7 +18,7 @@ export const executeBrowserGetPageInfo = async (
         data: {
             url: result.data?.url,
             title: result.data?.title,
-            tab_id: result.data?.tabId,
+            tab_id: result.data?.tabName,
             tabs: result.data?.tabs,
         },
     };

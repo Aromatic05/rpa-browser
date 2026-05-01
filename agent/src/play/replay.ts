@@ -28,7 +28,7 @@ type ReplayRequest = {
     recordingManifest?: RecordingManifest;
     stopOnError: boolean;
     pageRegistry: {
-        listTabs: (workspaceName: string) => Promise<Array<{ tabId: string; active?: boolean }>>;
+        listTabs: (workspaceName: string) => Promise<Array<{ tabName: string; active?: boolean }>>;
         resolveTabNameFromToken?: (tabName: string) => string | undefined;
         resolveTabNameFromRef?: (tabRef: string) => string | undefined;
     };
@@ -100,11 +100,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
     };
-    const forceActivateTab = async (tabId: string, desiredToken?: string, desiredTabRef?: string): Promise<boolean> => {
+    const forceActivateTab = async (tabName: string, desiredToken?: string, desiredTabRef?: string): Promise<boolean> => {
         const switched = await runOne({
             id: `replay-switch-${Date.now()}`,
             name: 'browser.switch_tab',
-            args: { tabId },
+            args: { tabName },
             meta: { source: 'play', ts: Date.now() },
         });
         stepResults.push(...switched.results);
@@ -112,10 +112,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             return false;
         }
         if (desiredToken) {
-            tokenToTab.set(desiredToken, tabId);
+            tokenToTab.set(desiredToken, tabName);
         }
         if (desiredTabRef) {
-            refToTab.set(desiredTabRef, tabId);
+            refToTab.set(desiredTabRef, tabName);
         }
         return true;
     };
@@ -144,7 +144,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         });
 
         const desiredToken = originalStep.meta?.tabName;
-        const desiredTabRef = originalStep.meta?.tabRef || originalStep.meta?.tabId;
+        const desiredTabRef = originalStep.meta?.tabRef || originalStep.meta?.tabName;
         let targetTabName: string | undefined;
         let remappedStep = originalStep;
         if (desiredToken) {
@@ -155,10 +155,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 if (!targetTabName && desiredTabRef) {
                     targetTabName = refToTab.get(desiredTabRef) || req.pageRegistry.resolveTabNameFromRef?.(desiredTabRef);
                 }
-                const recordedTabName = originalStep.meta?.tabId;
-                if (!targetTabName || !tabs.some((tab) => tab.tabId === targetTabName)) {
+                const recordedTabName = originalStep.meta?.tabName;
+                if (!targetTabName || !tabs.some((tab) => tab.tabName === targetTabName)) {
                     targetTabName =
-                        recordedTabName && tabs.some((tab) => tab.tabId === recordedTabName)
+                        recordedTabName && tabs.some((tab) => tab.tabName === recordedTabName)
                             ? recordedTabName
                             : undefined;
                 }
@@ -210,7 +210,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (targetTabName) {
                 remappedStep = {
                     ...originalStep,
-                    args: { ...asRecord(originalStep.args), tabId: targetTabName },
+                    args: { ...asRecord(originalStep.args), tabName: targetTabName },
                 };
             }
         } else if (targetTabName) {
@@ -242,7 +242,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             return { ok: false, results: stepResults };
         }
         if (remappedStep.name === 'browser.switch_tab') {
-            const switchedTo = readStepStringArg(remappedStep, 'tabId') || '';
+            const switchedTo = readStepStringArg(remappedStep, 'tabName') || '';
             if (desiredTabRef && switchedTo) {
                 refToTab.set(desiredTabRef, switchedTo);
             }

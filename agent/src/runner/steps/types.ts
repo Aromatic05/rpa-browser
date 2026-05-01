@@ -173,8 +173,8 @@ export type StepArgsMap = {
     'browser.go_back': { timeout?: number };
     'browser.reload': { timeout?: number };
     'browser.create_tab': { url?: string };
-    'browser.switch_tab': { tabId?: string; tabUrl?: string; tabRef?: string };
-    'browser.close_tab': { tabId?: string; tabRef?: string };
+    'browser.switch_tab': { tabName?: string; tabUrl?: string; tabRef?: string };
+    'browser.close_tab': { tabName?: string; tabRef?: string };
     'browser.get_page_info': Record<string, never>;
     'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
@@ -387,7 +387,7 @@ export type StepMeta = {
     source: 'mcp' | 'play' | 'script' | 'record' | 'control-rpc' | 'dsl';
     ts?: number;
     workspaceName?: string;
-    tabId?: string;
+    tabName?: string;
     tabName?: string;
     tabRef?: string;
     urlAtRecord?: string;
