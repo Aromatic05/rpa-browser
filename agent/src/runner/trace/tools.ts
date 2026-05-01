@@ -19,7 +19,7 @@ import type {
     TraceTags,
 } from './types';
 import type { A11yCandidate } from './a11y/find';
-import type { PageRegistry, WorkspaceName } from '../../runtime/page_registry';
+import type { PageRegistry } from '../../runtime/page_registry';
 import { traceCall } from './trace_call';
 import { createLoggingHooks } from './hooks';
 import { getA11yTree } from './a11y/getA11yTree';
@@ -41,9 +41,9 @@ type TraceA11yHint = {
 };
 
 export type BrowserAutomationTools = {
-    'trace.tabs.create': (args: { workspaceName: WorkspaceName; url?: string; timeout?: number }) => Promise<ToolResult<{ tabId: string }>>;
-    'trace.tabs.switch': (args: { workspaceName: WorkspaceName; tabId: string }) => Promise<ToolResult>;
-    'trace.tabs.close': (args: { workspaceName: WorkspaceName; tabId?: string }) => Promise<ToolResult>;
+    'trace.tabs.create': (args: { workspaceName: string; url?: string; timeout?: number }) => Promise<ToolResult<{ tabId: string }>>;
+    'trace.tabs.switch': (args: { workspaceName: string; tabId: string }) => Promise<ToolResult>;
+    'trace.tabs.close': (args: { workspaceName: string; tabId?: string }) => Promise<ToolResult>;
     'trace.page.goto': (args: { url: string; timeout?: number }) => Promise<ToolResult>;
     'trace.page.goBack': (args: { timeout?: number }) => Promise<ToolResult>;
     'trace.page.reload': (args: { timeout?: number }) => Promise<ToolResult>;
@@ -100,7 +100,7 @@ export const createTraceTools = (opts: {
     page: Page;
     context?: BrowserContext;
     pageRegistry?: PageRegistry;
-    workspaceName?: WorkspaceName;
+    workspaceName?: string;
     sinks?: TraceSink[];
     hooks?: TraceHooks;
     tags?: TraceTags;

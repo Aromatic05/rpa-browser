@@ -1,10 +1,10 @@
 import type { Locator, Page } from 'playwright';
-import type { PageRegistry, WorkspaceName } from '../../../runtime/page_registry';
+import type { PageRegistry } from '../../../runtime/page_registry';
 import type { ToolResult, TraceContext, TraceOpName } from '../types';
 
 export type CreateToolsOptions = {
     pageRegistry?: PageRegistry;
-    workspaceName?: WorkspaceName;
+    workspaceName?: string;
 };
 
 export type RunOp = <T>(op: TraceOpName, args: unknown, fn: () => Promise<T>) => Promise<ToolResult<T>>;

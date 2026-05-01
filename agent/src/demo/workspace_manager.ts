@@ -12,7 +12,6 @@ export type WorkspacePublicInfo = {
 
 type WorkspaceState = {
     workspaceName: string;
-    tabId: string;
     tabName: string;
     createdAt: number;
 };
@@ -28,14 +27,11 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
         if (active) {
             return active;
         }
-        const created = await deps.pageRegistry.createWorkspace();
-        const tabName = deps.pageRegistry.resolveTabName({
-            workspaceName: created.workspaceName,
-            tabId: created.tabId,
-        });
+        const workspaceName = `demo-${crypto.randomUUID()}`;
+        const tabName = crypto.randomUUID();
+        await deps.pageRegistry.getPage(tabName);
         active = {
-            workspaceName: created.workspaceName,
-            tabId: created.tabId,
+            workspaceName,
             tabName,
             createdAt: Date.now(),
         };
@@ -44,10 +40,7 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
 
     const getActiveWorkspacePublicInfo = async (): Promise<WorkspacePublicInfo | null> => {
         if (!active) {return null;}
-        const page = await deps.pageRegistry.resolvePage({
-            workspaceName: active.workspaceName,
-            tabId: active.tabId,
-        });
+        const page = await deps.pageRegistry.getPage(active.tabName);
         return {
             workspaceName: active.workspaceName,
             url: page.url(),

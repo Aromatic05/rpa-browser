@@ -35,19 +35,22 @@ const countSubdirs = (dir: string): number => {
 
 const restoreWorkflowWorkspace = async (
     ctx: Parameters<ActionHandler>[0],
-    workspaceName: string,
-): Promise<{ workspaceName: string; tabId: string; tabName: string }> => {
-    const target = ctx.pageRegistry.listWorkspaces().find((item) => item.workspaceName === workspaceName);
-    if (!target) {
+    workspaceName: string
+): Promise<{ workspaceName: string; tabName: string }> => {
+    const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
+    if (!workspace) {
         throw new Error(`workspace not found: ${workspaceName}`);
     }
-    const tabId = target.activeTabName || (await ctx.pageRegistry.createTab(workspaceName));
-    ctx.pageRegistry.setActiveWorkspace(workspaceName);
-    ctx.pageRegistry.setActiveTab(workspaceName, tabId);
+    let tabName = workspace.tabRegistry.getActiveTab()?.name || '';
+    if (!tabName) {
+        tabName = crypto.randomUUID();
+        const page = await ctx.pageRegistry.getPage(tabName);
+        workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
+    }
+    workspace.tabRegistry.setActiveTab(tabName);
     return {
         workspaceName,
-        tabId,
-        tabName: ctx.pageRegistry.resolveTabName({ workspaceName, tabId }),
+        tabName,
     };
 };
 
@@ -191,7 +194,6 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             scene: payload.scene,
             workflowRoot: loaded.rootDir,
             workspaceName: resolved.workspaceName,
-            tabId: resolved.tabId,
             tabName: resolved.tabName,
             entryUrl: loaded.workspaceBinding?.workspace.entryUrl,
         });
@@ -203,8 +205,8 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             throw new DslRuntimeError('workflow.status requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workspaceName = toWorkflowWorkspaceName(payload.scene);
-        const exists = ctx.pageRegistry.listWorkspaces().some((item) => item.workspaceName === workspaceName);
-        const active = ctx.pageRegistry.getActiveWorkspace()?.workspaceName === workspaceName;
+        const exists = ctx.workspaceRegistry.hasWorkspace(workspaceName);
+        const active = ctx.workspaceRegistry.getActiveWorkspace()?.name === workspaceName;
         return replyAction(action, { scene: payload.scene, workspaceName, exists, active });
     },
 
@@ -214,7 +216,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             throw new DslRuntimeError('workflow.record.save requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workspaceName = toWorkflowWorkspaceName(payload.scene);
-        const currentWorkspaceName = action.workspaceName || ctx.pageRegistry.getActiveWorkspace()?.workspaceName || '';
+        const currentWorkspaceName = action.workspaceName || ctx.workspaceRegistry.getActiveWorkspace()?.name || '';
         if (currentWorkspaceName !== workspaceName) {
             throw new DslRuntimeError(
                 `workflow workspace mismatch: expected=${workspaceName} actual=${currentWorkspaceName || 'none'}`,
