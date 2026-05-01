@@ -3,14 +3,10 @@
  *
  * 设计要点：
  * - 类型只描述“协议形状”，不包含具体实现逻辑。
- * - 与 agent 侧协议兼容，字段名保持一致（如 workspaceId/tabId/tabToken）。
+ * - 与 agent 侧协议兼容，字段名保持一致（workspaceName）。
  */
-
-export type ActionScope = {
-    workspaceId?: string;
-    tabId?: string;
-    tabToken?: string;
-};
+export type WorkspaceName = string;
+export type TabName = string;
 
 /**
  * 协议硬约束（禁止回退为 RPC）：
@@ -22,8 +18,7 @@ export type Action<T extends string = string, P = unknown> = {
     v: 1;
     id: string;
     type: T;
-    tabToken?: string;
-    scope?: ActionScope;
+    workspaceName?: WorkspaceName;
     payload?: P;
     at?: number;
     traceId?: string;
