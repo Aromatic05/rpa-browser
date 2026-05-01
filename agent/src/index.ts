@@ -4,6 +4,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
+import { createWorkspaceRegistry } from './runtime/workspace_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder, setRecorderEventSink } from './record/recording';
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
@@ -61,6 +62,7 @@ const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
+const workspaceRegistry = createWorkspaceRegistry();
 const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.json');
 await loadRecordingStateFromFile(recordingState, recordingStatePath);
 const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
@@ -130,11 +132,11 @@ const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
 };
 
 const broadcastWorkspaceList = (reason: string) => {
-    const active = pageRegistry.getActiveWorkspace();
-    const workspaces = pageRegistry.listWorkspaces().map((workspace) => ({
-        workspaceName: workspace.workspaceId,
-        activeTabName: workspace.activeTabId,
-        tabCount: workspace.tabCount,
+    const active = workspaceRegistry.getActiveWorkspace();
+    const workspaces = workspaceRegistry.listWorkspaces().map((workspace) => ({
+        workspaceName: workspace.name,
+        activeTabName: workspace.tabRegistry.getActiveTab()?.name ?? null,
+        tabCount: workspace.tabRegistry.listTabs().length,
         createdAt: workspace.createdAt,
         updatedAt: workspace.updatedAt,
     }));
@@ -145,7 +147,7 @@ const broadcastWorkspaceList = (reason: string) => {
         payload: {
             reason,
             workspaces,
-            activeWorkspaceName: active?.workspaceId || null,
+            activeWorkspaceName: active?.name || null,
         },
         at: Date.now(),
     });
@@ -159,12 +161,15 @@ const pageRegistry = createPageRegistry({
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
         try {
-            runtimeRegistry.bindPage(page, token);
-        } catch {
-            // runtime trace binding is best-effort during early token/workspace races
-        }
-        try {
             const scope = pageRegistry.resolveScopeFromToken(token);
+            const workspace = workspaceRegistry.createWorkspace(scope.workspaceId);
+            if (!workspace.tabRegistry.hasTab(scope.tabId)) {
+                workspace.tabRegistry.createTab({ tabName: scope.tabId, tabToken: token, page, url: page.url() });
+            } else {
+                workspace.tabRegistry.bindPage(scope.tabId, page);
+            }
+            workspace.tabRegistry.setActiveTab(scope.tabId);
+            runtimeRegistry.bindPage({ workspaceName: scope.workspaceId, tabName: scope.tabId, page });
             broadcast({
                 v: 1,
                 id: crypto.randomUUID(),
@@ -182,7 +187,7 @@ const pageRegistry = createPageRegistry({
 
 const runnerScope = createRunnerScopeRegistry(2);
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
-    pageRegistry,
+    workspaceRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,
@@ -196,7 +201,7 @@ const runStepsDeps = {
 setRunStepsDeps(runStepsDeps);
 const actionDispatcher = createActionDispatcher({
     pageRegistry,
-    runtime: runtimeRegistry,
+    workspaceRegistry,
     recordingState,
     log: actionLogger,
     replayOptions: REPLAY_OPTIONS,
@@ -208,10 +213,22 @@ setControlActionDispatcher(actionDispatcher);
 const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, log);
 
-const createActionContext = (page: Page, tabToken: string): ActionContext => {
+const createActionContext = (workspaceName: string, tabName?: string): ActionContext => {
+    const workspace = workspaceRegistry.getWorkspace(workspaceName);
+    const resolveTab = (name?: string) => {
+        if (!workspace) {throw new Error('workspace not found');}
+        return workspace.tabRegistry.resolveTab(name ?? tabName);
+    };
+    const resolvePage = (name?: string) => {
+        const tab = resolveTab(name);
+        if (!tab.page) {throw new Error('page not bound');}
+        return tab.page;
+    };
     const ctx: ActionContext = {
-        page,
-        tabToken,
+        workspaceRegistry,
+        workspace,
+        resolveTab,
+        resolvePage,
         pageRegistry,
         log: actionLogger,
         recordingState,
@@ -329,7 +346,8 @@ setRecorderEventSink(async (event, page, tabToken) => {
         at: event.ts || Date.now(),
     };
     broadcast(action);
-    const response = await executeAction(createActionContext(page, effectiveToken), action);
+    const scope = pageRegistry.resolveScopeFromToken(effectiveToken);
+    const response = await executeAction(createActionContext(scope.workspaceId, scope.tabId), action);
     if (isFailedAction(response)) {
         logWarning('record.event.ingest.failed', { tabToken: effectiveToken, sourceTabToken: tabToken, error: response.payload });
     }
