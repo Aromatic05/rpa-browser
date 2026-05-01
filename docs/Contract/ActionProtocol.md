@@ -31,7 +31,7 @@ Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包
 
 语义：
 
-- 无 `workspaceName`：进入 control gateway（不解析 runtime page 地址）。
+- 无 `workspaceName`：进入 control gateway（当前阶段保留为 page stub 执行，不做地址补全）。
 - 有 `workspaceName`：进入 workspace gateway（仅按 `workspaceName` 查 workspace）。
 
 ## 结果消息
@@ -46,6 +46,9 @@ Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包
 - `activeWorkspace` 仅用于 UI selection，不参与 action dispatch。
 - dispatch 入口不依赖 `resolveActionTarget`。
 - 协议层已删除：`workspaceId`、`tabId`、`tabToken`、`scope`。
+- workspace/tab 对外 payload 不得出现 `workspaceId/tabId/tabToken`。
+- extension 内部 chrome tab id、tabToken 映射仅限 adapter 本地状态，不进入 Action 协议。
+- `page_registry/runtime_registry` 内部仍可使用旧命名字段，但不构成对外协议承诺。
 
 ## 本阶段边界
 
