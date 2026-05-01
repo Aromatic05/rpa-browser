@@ -47,7 +47,7 @@
 
 ## 6. agent 侧严格语义
 
-- `resolveActionTarget` 解析 token 失败时，返回 `ERR_BAD_ARGS`。
+- Action 入口分流仅按 `workspaceName`；缺失或非法地址返回 `ERR_BAD_ARGS`。
 - 未知 token 不做降级、不吞错。
 - `tab.opened` 由 `bindTabOpenedAction` 专门处理，并执行 claim/bind。
 
@@ -123,7 +123,7 @@ flowchart TD
   B -- no --> D["ensureTabToken(sender tab)"]
   D --> E{"token resolved?"}
   E -- no --> F["failed: tab token unavailable"]
-  E -- yes --> G["inject scope/tabToken"]
+  E -- yes --> G["attach workspaceName/tabName payload"]
   C --> H["send to agent"]
   G --> H
   H --> I["agent reply"]
@@ -144,5 +144,4 @@ flowchart TD
 - agent
 - `src/index.ts`
 - `src/runtime/page_registry.ts`
-- `src/runtime/action_target.ts`
 - `src/actions/workspace.ts`
