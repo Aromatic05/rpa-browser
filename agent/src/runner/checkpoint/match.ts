@@ -82,14 +82,14 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
 };
 
 const evalUrlIncludesRule = async (needle: string, ctx: CheckpointCtx): Promise<boolean> => {
-    const binding = await ctx.failedCtx.deps.runtime.ensureActivePage(ctx.failedCtx.workspaceId);
+    const binding = await ctx.failedCtx.deps.runtime.resolveBinding(ctx.failedCtx.workspaceId);
     const info = await binding.traceTools['trace.page.getInfo']();
     if (!info.ok) {return false;}
     return (info.data?.url || '').includes(needle);
 };
 
 const evalTextVisibleRule = async (needle: string, ctx: CheckpointCtx): Promise<boolean> => {
-    const binding = await ctx.failedCtx.deps.runtime.ensureActivePage(ctx.failedCtx.workspaceId);
+    const binding = await ctx.failedCtx.deps.runtime.resolveBinding(ctx.failedCtx.workspaceId);
     const evaluated = await binding.traceTools['trace.page.evaluate']({
         expression: `({ needle }) => {
             const text = String(needle || '').trim();
@@ -114,7 +114,7 @@ const evalEntityExistsRule = async (
     args: { query: string; kind?: EntityKind | EntityKind[]; businessTag?: string | string[] },
     ctx: CheckpointCtx,
 ): Promise<boolean> => {
-    const binding = await ctx.failedCtx.deps.runtime.ensureActivePage(ctx.failedCtx.workspaceId);
+    const binding = await ctx.failedCtx.deps.runtime.resolveBinding(ctx.failedCtx.workspaceId);
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'checkpoint.match.entityExists',
         collectBaseSnapshot: async (context) =>
