@@ -138,7 +138,7 @@ const broadcastWorkspaceList = (reason: string) => {
         payload: {
             reason,
             workspaces: pageRegistry.listWorkspaces(),
-            activeWorkspaceId: active?.workspaceId || null,
+            activeWorkspaceName: active?.workspaceId || null,
         },
         at: Date.now(),
     });
@@ -417,19 +417,19 @@ wss.on('connection', (socket) => {
                 }
                 if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
                     const data = isRecord(response.payload) ? response.payload : null;
-                    const workspaceId = (data ? getStringField(data, 'workspaceName') : null) ?? action.workspaceName ?? null;
-                    const tabToken = data ? getStringField(data, 'tabToken') : null;
+                    const workspaceName = (data ? getStringField(data, 'workspaceName') : null) ?? action.workspaceName ?? null;
+                    const tabName = data ? getStringField(data, 'tabName') : null;
                     if (action.type === ACTION_TYPES.TAB_REPORTED) {
                         logTabReportDebug('agent.emit.state_sync', {
                             id: action.id,
                             reason: `report:${action.type}`,
-                            workspaceId,
-                            tabToken,
+                            workspaceName,
+                            tabName,
                         });
                     }
                     broadcastStateSync(`report:${action.type}`, {
-                        workspaceId,
-                        tabToken,
+                        workspaceName,
+                        tabName,
                     });
                     broadcastWorkspaceList(`report:${action.type}`);
                 }
@@ -472,9 +472,8 @@ setInterval(() => {
         if (staleNotifiedTokens.has(stale.tabToken)) {continue;}
         staleNotifiedTokens.add(stale.tabToken);
         broadcastStateSync('ping-timeout', {
-            workspaceId: stale.workspaceId,
-            tabId: stale.tabId,
-            tabToken: stale.tabToken,
+            workspaceName: stale.workspaceId,
+            tabName: stale.tabId,
             lastSeenAt: stale.lastSeenAt,
         });
         void pageRegistry.closeTokenPage(stale.tabToken);
