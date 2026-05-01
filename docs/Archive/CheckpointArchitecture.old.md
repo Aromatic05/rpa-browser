@@ -37,7 +37,7 @@ runSteps
 - `runSteps`：维护 queue、signal、run-local step result map，位于 [agent/src/runner/run_steps.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/run_steps.ts)。
 - `executeOne`：执行单个普通 step，并在执行前解析 runner step ref。
 - `step failed`：当 step 返回 `ok: false` 时，runner 保留原始失败结果，准备创建 `FailedCtx`。
-- `getFailedCtx`：收集 `runId`、`workspaceId`、失败 step、失败结果、当前 URL、依赖对象，位于 [agent/src/runner/failed_ctx.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/failed_ctx.ts)。
+- `getFailedCtx`：收集 `runId`、`workspaceName`、失败 step、失败结果、当前 URL、依赖对象，位于 [agent/src/runner/failed_ctx.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/failed_ctx.ts)。
 - `runCheckpoint`：checkpoint 总入口，创建 `CheckpointCtx`，串联 enter、pick、bind、run、retry、fold。
 - `createCheckpointCtx`：初始化 `active`、`finalResult`、`meta`。
 - `maybeEnterCheckpoint`：判断当前失败是否允许进入 checkpoint。
@@ -52,7 +52,7 @@ runSteps
 `FailedCtx` 定义在 [agent/src/runner/failed_ctx.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/failed_ctx.ts)。当前显式字段包括：
 
 - `runId`
-- `workspaceId`
+- `workspaceName`
 - `step`
 - `rawResult`
 - `checkpointAttempt`
@@ -64,7 +64,7 @@ runSteps
 从概念上看，`FailedCtx` 覆盖以下失败上下文：
 
 - runId
-- workspaceId
+- workspaceName
 - failed step
 - failed result
 - page context
@@ -82,7 +82,7 @@ runSteps
 
 当前职责包括：
 
-- 保存 `runId`、`workspaceId`，这些信息通过 `failedCtx` 间接持有。
+- 保存 `runId`、`workspaceName`，这些信息通过 `failedCtx` 间接持有。
 - 保存 `failedCtx`。
 - 保存候选选中的 checkpoint，字段是 `checkpoint`。
 - 保存当前尝试次数，来源是 `failedCtx.checkpointAttempt`。

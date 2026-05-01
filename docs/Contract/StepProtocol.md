@@ -38,7 +38,7 @@ Step 是 agent 内部统一执行单元，服务于 MCP、DSL、record/play、co
 - `control-rpc`
 - `dsl`
 
-其他字段：`ts/workspaceId/tabId/tabToken/tabRef/urlAtRecord`。
+其他字段：`ts/workspaceName/tabId/tabName/tabRef/urlAtRecord`。
 
 ### 4. StepResolve
 
@@ -57,7 +57,7 @@ Step 是 agent 内部统一执行单元，服务于 MCP、DSL、record/play、co
 `run_steps_types.ts` 请求：
 
 - `runId`
-- `workspaceId`
+- `workspaceName`
 - `stepsQueue`
 - `resultPipe`
 - `signalChannel`
@@ -70,7 +70,7 @@ Step 是 agent 内部统一执行单元，服务于 MCP、DSL、record/play、co
 - `step.start`
 - `step.end`
 
-字段包含 `workspaceId/stepId/name/ok/durationMs/error`。
+字段包含 `workspaceName/stepId/name/ok/durationMs/error`。
 
 ### 7. 结果协议
 
@@ -101,7 +101,7 @@ const step = {
   id: 's1',
   name: 'browser.click',
   args: { selector: '#submit' },
-  meta: { source: 'dsl', workspaceId: 'workflow:order_scene' }
+  meta: { source: 'dsl', workspaceName: 'workflow:order_scene' }
 };
 ```
 

@@ -92,7 +92,7 @@
 1. 归属明确类别。
 2. 事件名稳定，可用于检索。
 3. 不输出敏感信息明文。
-4. 错误日志包含可复现的上下文字段（workspaceId/tabToken/stepId）。
+4. 错误日志包含可复现的上下文字段（workspaceName/tabName/stepId）。
 
 ## 限制
 

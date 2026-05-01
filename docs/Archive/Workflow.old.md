@@ -62,7 +62,7 @@ Current implementation validates only the current tab URL against `expectedTabs`
 - workflow is the project package.
 - workspace is the runtime container.
 - `record.*`, `play.*`, and `task.*` keep their existing action names.
-- those existing actions still run against `action.scope.workspaceId`, now typically `workflow:<scene>`.
+- those existing actions still run against `action.scope.workspaceName`, now typically `workflow:<scene>`.
 
 ## DSL Entry
 

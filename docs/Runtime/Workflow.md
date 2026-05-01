@@ -26,14 +26,14 @@
 
 - `scene`
 - `workflowRoot`
-- `workspaceId`
+- `workspaceName`
 - `tabId`
-- `tabToken`
+- `tabName`
 - `entryUrl`（若 workspace binding 声明）
 
 #### workflow.status
 
-输入：`scene`。输出：`workspaceId/exists/active`。
+输入：`scene`。输出：`workspaceName/exists/active`。
 
 #### workflow.record.save
 
@@ -59,7 +59,7 @@
 - `ok`
 - `output`
 - `diagnostics`
-- `workspaceId`
+- `workspaceName`
 
 #### workflow.releaseRun
 
@@ -68,7 +68,7 @@
 - `ok`
 - `output`
 - `diagnostics`
-- `workspaceId/tabId/tabToken`
+- `workspaceName/tabId/tabName`
 
 ### 2. 生命周期执行顺序
 
@@ -151,9 +151,9 @@ URL 规则：
 
 ```text
 workflow.open(scene=order_scene)
--> workspaceId=workflow:order_scene
+-> workspaceName=workflow:order_scene
 -> tabId=tab-1
--> tabToken=token-1
+-> tabName=token-1
 
 workflow.releaseRun(scene=order_scene,input={buyer:"alice"})
 -> output={...}

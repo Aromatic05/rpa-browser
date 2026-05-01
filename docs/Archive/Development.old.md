@@ -329,17 +329,17 @@ pnpm test:extension
 
 ## 9. Workspace / Tab 归属规则（无主标签页）
 
-Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 重绑”。
+Agent 对 `tabName` 采用 strict-token 模型：同一 token 不做“按 URL 重绑”。
 
 ### 9.0 token 单一真源
 
-- `tabToken` 只允许由 agent 生成（`tab.init`）。
+- `tabName` 只允许由 agent 生成（`tab.init`）。
 - start/content 侧禁止本地 UUID 生成，只可读取已有 token 或向 agent 请求初始化。
 - token 丢失视为异常状态，必须重新向 agent 初始化，不做 token 改写重绑。
 
 ### 9.1 无主标签页定义
 
-- token 已存在于运行时，但 `token -> (workspaceId, tabId)` 尚未建立。
+- token 已存在于运行时，但 `token -> (workspaceName, tabId)` 尚未建立。
 
 ### 9.2 归属策略
 
@@ -358,7 +358,7 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 
 ### 9.4 窗口约束
 
-- extension 使用 `windowId -> workspaceId` 运行时映射管理工作区归属。
+- extension 使用 `windowId -> workspaceName` 运行时映射管理工作区归属。
 - `chrome.windows.onFocusChanged` 触发 `workspace.setActive` 同步。
 - `chrome.tabs.onCreated` 必须携带 `windowId` 并执行 `tab.opened` 归属（按窗口映射绑定，不允许自动新建 workspace）。
 - `chrome.tabs.onAttached` 负责跨窗口拖拽时的 `tab.reassign` 重分配。
@@ -372,7 +372,7 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
 - 场景建议覆盖组合动作（fill/click/scroll/switch/select），避免使用固定 `sleep`
 - 时序诊断优先依赖 `step.start/step.end` 时间戳和步骤顺序断言
 - 多 tab 录制依赖 `tab.activated` 生命周期事件自动落库为 `browser.switch_tab`（同 workspace 下跨 tab）
-- `record.stop/get/clear` 在仅有一个录制会话时允许“错误 tabToken”兜底到该会话，避免 UI 焦点切换导致停错录制
+- `record.stop/get/clear` 在仅有一个录制会话时允许“错误 tabName”兜底到该会话，避免 UI 焦点切换导致停错录制
 - 面板 `tab.setActive` 也会直接写入 `browser.switch_tab`，不依赖生命周期回调先到达
 - workflow artifact 根目录统一为 `agent/.artifacts/workflows/<scene>/`
 - `steps/` 下每个录制单独一个目录：`steps/<recording-name>/steps.yaml` 与 `steps/<recording-name>/step_resolve.yaml`
@@ -391,18 +391,18 @@ Agent 对 `tabToken` 采用 strict-token 模型：同一 token 不做“按 URL 
   - `workspaceSnapshots`（`workspace.save` 产物）。
 
 `workspaceSnapshots` 约束：
-- 保存 `tabs`（`tabId/url/title/active`），不保存运行时 `tabToken`。
-- 保存录制 `steps`，并移除 step `meta.tabToken`。
-- 保存录制 `manifest` 的 tab 列表时，移除 `tabs[].tabToken`。
-- 多 tab step 持久化优先写 `args.tabRef`；运行时 `tabId` 与 `tabToken` 不进入 core step YAML。
+- 保存 `tabs`（`tabId/url/title/active`），不保存运行时 `tabName`。
+- 保存录制 `steps`，并移除 step `meta.tabName`。
+- 保存录制 `manifest` 的 tab 列表时，移除 `tabs[].tabName`。
+- 多 tab step 持久化优先写 `args.tabRef`；运行时 `tabId` 与 `tabName` 不进入 core step YAML。
 
 恢复语义约束：
 - `workspace.restore` 只负责恢复 workspace/tab 与录制上下文，不自动触发 `play.start`。
 - 若无可恢复快照，返回 `ERR_WORKSPACE_SNAPSHOT_NOT_FOUND`。
 - 失败路径统一返回 `ERR_WORKSPACE_RESTORE_FAILED`（含原始 message）。
 - 切换到目标 tab 时会补装 recorder，确保新 tab 后续动作可继续录制
-- 热回放会优先使用当前运行时的 `tabToken -> tabId` 映射；仅在无法解析时才走 `browser.create_tab`（cold replay）
-- 录制结果包含 `manifest`（`workspaceId`、`entryTabRef`、`entryUrl`、tabs 快照）以及步骤级 `meta.tabRef/meta.urlAtRecord`
+- 热回放会优先使用当前运行时的 `tabName -> tabId` 映射；仅在无法解析时才走 `browser.create_tab`（cold replay）
+- 录制结果包含 `manifest`（`workspaceName`、`entryTabRef`、`entryUrl`、tabs 快照）以及步骤级 `meta.tabRef/meta.urlAtRecord`
 - 回放采用 `workspace` 先决策略：命中录制 workspace 走热启动；未命中走冷启动（创建 workspace/tab 并用记录 URL 预热）
 
 关键环境变量：

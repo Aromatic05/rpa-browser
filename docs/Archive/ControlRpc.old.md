@@ -64,11 +64,11 @@ Control RPC 是 agent 的本地控制面，用来连接已经运行中的 agent 
 ```
 
 ```json
-{"id":"2","method":"browser.click","params":{"workspaceId":"ws","args":{"nodeId":"xxx"}}}
+{"id":"2","method":"browser.click","params":{"workspaceName":"ws","args":{"nodeId":"xxx"}}}
 ```
 
 ```json
-{"id":"3","method":"dsl.run","params":{"workspaceId":"ws","source":"click input.submit","input":{"submit":"submit-btn"}}}
+{"id":"3","method":"dsl.run","params":{"workspaceName":"ws","source":"click input.submit","input":{"submit":"submit-btn"}}}
 ```
 
 ## CLI

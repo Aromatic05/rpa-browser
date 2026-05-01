@@ -2,7 +2,7 @@
 
 ## 1. 强约束（唯一来源）
 
-- `tabToken` 的唯一生成入口：**extension background -> `tab.init`**。
+- `tabName` 的唯一生成入口：**extension background -> `tab.init`**。
 - content 与 start_extension **禁止**直接发送 `tab.init`、`tab.opened`。
 - `tab.opened` 的唯一发送入口：**extension background**。
 - 页面侧（content/start_extension）只能通过 `RPA_ENSURE_BOUND_TOKEN` 申请已绑定 token。
@@ -10,8 +10,8 @@
 ## 2. 运行时对象
 
 - agent: `pageRegistry` 维护 `tokenToPage`、`tokenToTab`、`workspaces`。
-- extension background: `RouterState` 维护 `tabState`、`tokenToScope`、`windowToWorkspace`。
-- 绑定目标：每个 `tabToken` 必须映射到唯一 `(workspaceId, tabId)`。
+- extension background: `RouterState` 维护 `tabState`、`tabNameToScope`、`windowToWorkspace`。
+- 绑定目标：每个 `tabName` 必须映射到唯一 `(workspaceName, tabId)`。
 
 ## 3. 通信总线
 
@@ -37,7 +37,7 @@
 - 无 token 时由 background 发 `tab.init` 生成，并 `SET_TOKEN` 回写页面。
 - 解析 workspace（`tokenScope -> window mapping -> active workspace -> workspace.list`）。
 - 发 `tab.opened` 完成 agent 绑定；必须拿到 `tabId` 才算成功。
-3. 返回 `{ tabToken, workspaceId, tabId }` 给页面。
+3. 返回 `{ tabName, workspaceName, tabId }` 给页面。
 4. 页面拿到绑定结果后，才允许发 `tab.ping/tab.report/workflow.*`。
 
 ## 5. chrome://newtab 阶段规则
@@ -128,7 +128,7 @@ flowchart TD
   G --> H
   H --> I["agent reply"]
   I --> J["applyReplyProjection"]
-  J --> K["update tokenToScope/window mapping"]
+  J --> K["update tabNameToScope/window mapping"]
 ```
 
 ## 9. 代码定位
@@ -149,7 +149,7 @@ flowchart TD
 ## 10. 第二阶段接口迁移边界
 
 - 删除 `runtime.ensureActivePage`，运行时入口统一为 `workspaceName/tabName`。
-- 删除 `ActionContext.page`、`ActionContext.tabToken` 通用字段。
+- 删除 `ActionContext.page`、`ActionContext.tabName` 通用字段。
 - `Action` 顶层地址字段仅保留 `workspaceName`。
 - `tabName` 只在 workspace 内部运行时和 payload 中使用。
 - `workspace` 运行时对象持有 `workflow`、`runner`、`tabRegistry`。

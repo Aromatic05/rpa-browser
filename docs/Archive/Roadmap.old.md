@@ -22,12 +22,12 @@
 - 恢复链路可观测，失败场景有稳定错误码与日志定位信息。
 
 当前落地状态（2026-03）：
-- 已完成：workspace 录制快照持久化与恢复（`workspace.save` / `workspace.restore`），包含 tab URL（不含 tabToken）与录制 steps。
+- 已完成：workspace 录制快照持久化与恢复（`workspace.save` / `workspace.restore`），包含 tab URL（不含 tabName）与录制 steps。
 - 已完成：恢复专用日志事件（`workspace.restore.start/end`）和错误码（快照缺失/恢复失败）。
 
 ### A2. 任务审计视图（`L`）
 
-- `A2-1` 统一 TaskRun 模型（taskId/workspaceId/step timeline）（`M`）
+- `A2-1` 统一 TaskRun 模型（taskId/workspaceName/step timeline）（`M`）
 - `A2-2` step/trace/action 日志归档与索引（`M`）
 - `A2-3` 查询接口（按 taskId/状态/workspace 过滤）（`M`）
 - `A2-4` 从历史任务生成 replay 输入（`S`）

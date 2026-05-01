@@ -34,5 +34,5 @@ play.start(stopOnError=true)
 
 ## 限制
 
-- replay 对 `createdTabId` 依赖当前 executor data 结构。
+- replay 对 `createdTabName` 依赖当前 executor data 结构。
 - stopOnError=true 时首个失败会提前返回。

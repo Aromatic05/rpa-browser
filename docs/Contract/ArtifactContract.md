@@ -10,7 +10,7 @@
 
 - 全局根路径：`agent/.artifacts/`
 - workflow 根路径：`agent/.artifacts/workflows/<scene>/`
-- scene 与 workspace 映射：`workspaceId = workflow:<scene>`
+- scene 与 workspace 映射：`workspaceName = workflow:<scene>`
 
 ### 2. workflow 目录结构
 
@@ -144,7 +144,7 @@ workspace:
 
 ```yaml
 version: 1
-workspaceId: workflow:order_scene
+workspaceName: workflow:order_scene
 entryUrl: http://127.0.0.1:5173/entity-rules
 tabs:
   - tabId: tab-1

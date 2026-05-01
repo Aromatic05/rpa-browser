@@ -63,11 +63,11 @@ MCP 使用 JSON-RPC 消息体，核心请求包括：
 2. `mcp/tool_handlers.ts`
 3. `mcp/tool_registry.ts`
 
-## tabToken 与 workspace 注入规则
+## tabName 与 workspace 注入规则
 
 MCP handler 侧会把工具请求转换为 Step，并通过 runtime 解析目标页面。目标解析顺序遵循 runner/runtime 当前实现：
 
-1. 显式 `workspaceId`
+1. 显式 `workspaceName`
 2. scope 已绑定 token
 3. active workspace
 

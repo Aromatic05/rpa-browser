@@ -46,9 +46,9 @@ extension/start_extension/mcp/control
 
 ### 3. workflow 与 workspace/tab
 
-- workflow 绑定 workspaceId：`workflow:<scene>`。
+- workflow 绑定 workspaceName：`workflow:<scene>`。
 - workspace 维护 tab 集合和 activeTab。
-- tab 通过 `tabToken` 与扩展侧生命周期绑定。
+- tab 通过 `tabName` 与扩展侧生命周期绑定。
 
 ### 4. 录制与回放
 

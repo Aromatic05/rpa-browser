@@ -62,7 +62,7 @@
 
 ## 与 workspace 的关系
 
-每个 workflow 场景绑定唯一 `workspaceId=workflow:<scene>`。record/play/dsl 测试在该 workspace 上下文复用同一浏览器会话。
+每个 workflow 场景绑定唯一 `workspaceName=workflow:<scene>`。record/play/dsl 测试在该 workspace 上下文复用同一浏览器会话。
 
 ## 禁止事项
 

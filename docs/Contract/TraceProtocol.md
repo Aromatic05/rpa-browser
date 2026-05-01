@@ -64,7 +64,7 @@ Trace 不直接返回 StepResult。
 ## FileSink JSONL 行格式
 
 ```json
-{"type":"op.start","ts":1710000000000,"op":"trace.page.goto","tags":{"workspaceId":"ws-1"}}
+{"type":"op.start","ts":1710000000000,"op":"trace.page.goto","tags":{"workspaceName":"ws-1"}}
 ```
 
 ```json

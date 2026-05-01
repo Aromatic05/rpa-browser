@@ -40,11 +40,11 @@ Agent handler:
 - `workspaceHandlers['tab.init']`
 
 Behavior:
-- Generates `tabToken`
+- Generates `tabName`
 - Creates pending claim in `page_registry.createPendingTokenClaim(...)`
 - Stores claim metadata:
-  - `tabToken`
-  - `workspaceId` (if provided/inferred)
+  - `tabName`
+  - `workspaceName` (if provided/inferred)
   - `source`
   - `url`
   - `createdAt`
@@ -58,7 +58,7 @@ Behavior:
 - Reads token from page/session if needed
 - Registers `tokenToPage`
 - If pending claim exists for token:
-  - resolves target workspace (`claim.workspaceId` > active workspace > new shell)
+  - resolves target workspace (`claim.workspaceName` > active workspace > new shell)
   - binds token into workspace (`bindTokenToWorkspace`)
   - deletes pending claim
 
@@ -72,7 +72,7 @@ Agent routing:
 
 Binding handler:
 - `bindTabOpenedAction`
-  - validates token/workspaceId
+  - validates token/workspaceName
   - creates/refreshes pending claim
   - actively attempts `claimPendingToken(token)`
   - retries `bindTokenToWorkspace`
@@ -104,7 +104,7 @@ So `tab.opened` must not be treated as a normal already-bound action.
 3. start page calls `workflow.open`
 4. start page calls `tab.opened` with:
    - current page token
-   - target `workspaceId`
+   - target `workspaceName`
 5. agent runs binding lifecycle path and confirms or defers claim
 
 ## Failure and Recovery Model

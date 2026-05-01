@@ -62,7 +62,7 @@ Snapshot 的实体相关主链路为：
 - `agent/src/index.ts` 校验 action 后调用 `agent/src/actions/execute.ts`
 - 部分动作会进一步调用 `runSteps`
 - 广播同样使用 Action 协议（`workspace.sync/workspace.changed/tab.bound`），不再使用 `type="event"`。
-- workspace 物理承载以浏览器窗口为单位，extension 在 SW 内维护 `windowId -> workspaceId` 映射并同步焦点/关闭副作用。
+- workspace 物理承载以浏览器窗口为单位，extension 在 SW 内维护 `windowId -> workspaceName` 映射并同步焦点/关闭副作用。
 
 ## MCP（HTTP）
 
@@ -95,7 +95,7 @@ Snapshot 的实体相关主链路为：
 - workflow artifact 根目录为 `agent/.artifacts/workflows/<scene>/`
 - `steps/<recording-name>/steps.yaml` 与 `steps/<recording-name>/step_resolve.yaml` 只服务单次录制
 - `checkpoints/<checkpoint-name>/checkpoint.yaml`、`checkpoint_resolve.yaml`、`checkpoint_hints.yaml` 只服务单个 checkpoint
-- 多 tab 持久化使用 `tabRef`；运行时 `tabId` / `tabToken` 不写入 core `steps.yaml`
+- 多 tab 持久化使用 `tabRef`；运行时 `tabId` / `tabName` 不写入 core `steps.yaml`
 
 执行链路：
 

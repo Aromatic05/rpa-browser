@@ -20,7 +20,7 @@ extension 是浏览器侧主入口，负责 token 生命周期、窗口到 works
 ## background 四个核心模块
 
 - `cmd_router`：统一入口，处理 runtime message、WS inbound action、tab/window 事件。
-- `state`：维护 `tabId -> token`、`token -> scope`、`windowId -> workspaceId`。
+- `state`：维护 `tabId -> token`、`token -> scope`、`windowId -> workspaceName`。
 - `action`：封装 dispatch 行为、reply 识别、payload 解析。
 - `life`：负责 `tab.init/tab.opened/tab.activated/tab.closed/tab.ping` 相关生命周期推进。
 
@@ -40,7 +40,7 @@ extension 不复制业务执行逻辑，只做协议投影：
 
 业务事实以 agent 返回为准。
 
-## windowId 与 workspaceId 映射
+## windowId 与 workspaceName 映射
 
 `state.ts` 维护窗口映射，用于：
 
@@ -48,7 +48,7 @@ extension 不复制业务执行逻辑，只做协议投影：
 - `tab.opened` 早于 token claim 时进行 defer-claim
 - 跨窗口拖拽后的重绑定
 
-## tabToken owner 规则
+## tabName owner 规则
 
 - token 生命周期 owner 是 background。
 - content/start_extension 必须用 `RPA_ENSURE_BOUND_TOKEN` 请求可用 token。

@@ -31,8 +31,8 @@
 
 ```text
 workflow.open(order_scene)
--> workspaceId=workflow:order_scene
--> tabToken=...
+-> workspaceName=workflow:order_scene
+-> tabName=...
 -> workflow.releaseRun(order_scene)
 ```
 

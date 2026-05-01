@@ -56,7 +56,7 @@ pnpm test
 
 - `workflow.open` 失败：检查 manifest 与 workspace binding schema。
 - `dsl.test` 失败：检查 DSL 缩进、变量引用、checkpoint 声明。
-- `record.save` 失败：检查 scope.workspaceId 是否为 `workflow:<scene>`。
+- `record.save` 失败：检查 scope.workspaceName 是否为 `workflow:<scene>`。
 - `tab.ping` 异常：检查 token 映射与 watchdog stale 清理日志。
 
 ## 示例
