@@ -9,7 +9,7 @@
 import type { Action } from '../shared/types.js';
 
 export type FloatingUIOptions = {
-    tabToken: string;
+    tabName: string;
     onAction: (
         type: string,
         payload?: Record<string, unknown>,
@@ -86,7 +86,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = `tabToken: ${opts.tabToken.slice(0, 8)}…`;
+    meta.textContent = `tabName: ${opts.tabName.slice(0, 8)}…`;
 
     const row1 = document.createElement('div');
     row1.className = 'row';
@@ -195,13 +195,13 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         out.textContent = JSON.stringify(payload, null, 2);
     };
 
-    let activeWorkspaceId: string | null = null;
-    let activeTabId: string | null = null;
+    let activeWorkspaceName: string | null = null;
+    let activeTabName: string | null = null;
     let workflowInitialized = false;
     const deriveScene = (): string => {
         const explicit = sceneInput.value.trim();
         if (explicit) {return explicit;}
-        const workspaceName = activeWorkspaceId || '';
+        const workspaceName = activeWorkspaceName || '';
         if (workspaceName.startsWith('workflow:')) {
             const scene = workspaceName.slice('workflow:'.length).trim();
             if (scene) {return scene;}
@@ -209,7 +209,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return workspaceName;
     };
     const updateInitVisibility = () => {
-        const activeIsWorkflow = (activeWorkspaceId || '').startsWith('workflow:');
+        const activeIsWorkflow = (activeWorkspaceName || '').startsWith('workflow:');
         const hide = workflowInitialized || activeIsWorkflow;
         initWorkflowBtn.style.display = hide ? 'none' : '';
     };
@@ -253,7 +253,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     stopReplayBtn.addEventListener('click', () => void sendPanelAction('play.stop'));
     exportBtn.addEventListener('click', () => {
         void (async () => {
-            const scope = activeWorkspaceId ? { workspaceName: activeWorkspaceId } : undefined;
+            const scope = activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined;
             const scene = deriveScene();
             if (!scene) {
                 render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
@@ -269,7 +269,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
     importBtn.addEventListener('click', () => {
         void (async () => {
-            const scope = activeWorkspaceId ? { workspaceName: activeWorkspaceId } : undefined;
+            const scope = activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined;
             const scene = deriveScene();
             if (!scene) {
                 render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
@@ -284,25 +284,25 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
 
     const renderWorkspaces = (
-        workspaces: Array<{ workspaceName: string; activeTabId?: string; tabCount: number }>,
+        workspaces: Array<{ workspaceName: string; activeTabName?: string; tabCount: number }>,
     ) => {
         wsList.innerHTML = '';
-        if (!activeWorkspaceId && workspaces.length) {
-            activeWorkspaceId = workspaces[0].workspaceName;
+        if (!activeWorkspaceName && workspaces.length) {
+            activeWorkspaceName = workspaces[0].workspaceName;
         }
-        if (activeWorkspaceId?.startsWith('workflow:')) {
-            const scene = activeWorkspaceId.slice('workflow:'.length).trim();
+        if (activeWorkspaceName?.startsWith('workflow:')) {
+            const scene = activeWorkspaceName.slice('workflow:'.length).trim();
             if (scene && !sceneInput.value.trim()) {sceneInput.value = scene;}
         }
         updateInitVisibility();
         workspaces.forEach((ws) => {
             const btn = document.createElement('button');
             btn.textContent = `${ws.workspaceName.slice(0, 6)}… (${String(ws.tabCount)})`;
-            if (activeWorkspaceId === ws.workspaceName) {
+            if (activeWorkspaceName === ws.workspaceName) {
                 btn.classList.add('primary');
             }
             btn.addEventListener('click', () => {
-                activeWorkspaceId = ws.workspaceName;
+                activeWorkspaceName = ws.workspaceName;
                 void sendPanelAction('workspace.setActive', { workspaceName: ws.workspaceName });
                 refreshTabs();
             });
@@ -317,12 +317,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             btn.textContent = `${tab.tabName.slice(0, 6)}… ${tab.title || tab.url || ''}`;
             if (tab.active) {
                 btn.classList.add('primary');
-                activeTabId = tab.tabName;
+                activeTabName = tab.tabName;
             }
             btn.addEventListener('click', () => {
-                activeTabId = tab.tabName;
-                if (activeWorkspaceId) {
-                    void sendPanelAction('tab.setActive', { workspaceName: activeWorkspaceId, tabName: tab.tabName });
+                activeTabName = tab.tabName;
+                if (activeWorkspaceName) {
+                    void sendPanelAction('tab.setActive', { workspaceName: activeWorkspaceName, tabName: tab.tabName });
                 } else {
                     void sendPanelAction('tab.setActive', { tabName: tab.tabName });
                 }
@@ -337,8 +337,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     const refreshTabs = () => {
-        if (activeWorkspaceId) {
-            void sendPanelAction('tab.list', { workspaceName: activeWorkspaceId });
+        if (activeWorkspaceName) {
+            void sendPanelAction('tab.list', { workspaceName: activeWorkspaceName });
         } else {
             void sendPanelAction('tab.list', {});
         }
@@ -348,19 +348,19 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         void (async () => {
             const action = await sendPanelAction('workspace.create', {});
             const payload = (action.payload ?? {}) as { workspaceName?: string };
-            if (payload.workspaceName) {activeWorkspaceId = payload.workspaceName;}
+            if (payload.workspaceName) {activeWorkspaceName = payload.workspaceName;}
             refreshWorkspaces();
             refreshTabs();
         })();
     });
 
     closeTabBtn.addEventListener('click', () => {
-        if (!activeTabId) {return;}
+        if (!activeTabName) {return;}
         void (async () => {
-            if (activeWorkspaceId) {
-                await sendPanelAction('tab.close', { workspaceName: activeWorkspaceId, tabName: activeTabId });
+            if (activeWorkspaceName) {
+                await sendPanelAction('tab.close', { workspaceName: activeWorkspaceName, tabName: activeTabName });
             } else {
-                await sendPanelAction('tab.close', { tabName: activeTabId });
+                await sendPanelAction('tab.close', { tabName: activeTabName });
             }
 
             const listed = await sendPanelAction('workspace.list', {});
@@ -372,14 +372,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             if (!workspaces.length) {
                 const created = await sendPanelAction('workspace.create', {});
                 const createdPayload = (created.payload ?? {}) as { workspaceName?: string };
-                activeWorkspaceId = createdPayload.workspaceName ?? null;
+                activeWorkspaceName = createdPayload.workspaceName ?? null;
                 refreshWorkspaces();
                 refreshTabs();
                 return;
             }
 
-            activeWorkspaceId = workspaces[0].workspaceName;
-            await sendPanelAction('workspace.setActive', { workspaceName: activeWorkspaceId });
+            activeWorkspaceName = workspaces[0].workspaceName;
+            await sendPanelAction('workspace.setActive', { workspaceName: activeWorkspaceName });
             refreshTabs();
         })();
     });
@@ -387,13 +387,13 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const interceptAction = (action: Action) => {
         if (action.type.endsWith('.failed')) {return;}
         const payload = (action.payload ?? {}) as {
-            activeWorkspaceId?: string;
-            workspaces?: Array<{ workspaceName: string; activeTabId?: string; tabCount: number }>;
+            activeWorkspaceName?: string;
+            workspaces?: Array<{ workspaceName: string; activeTabName?: string; tabCount: number }>;
             tabs?: Array<{ tabName: string; url: string; title: string; active: boolean }>;
         };
         if (payload.workspaces) {
-            if (payload.activeWorkspaceId) {
-                activeWorkspaceId = payload.activeWorkspaceId;
+            if (payload.activeWorkspaceName) {
+                activeWorkspaceName = payload.activeWorkspaceName;
             }
             renderWorkspaces(payload.workspaces);
         }

@@ -216,7 +216,7 @@
           qs('envStatus').textContent = 'No active workspace.';
           return;
         }
-        qs('envStatus').textContent = `Workspace ${data.workspaceId}\n${data.title || '(untitled)'}\n${data.url || ''}`;
+        qs('envStatus').textContent = `Workspace ${data.workspaceName}\n${data.title || '(untitled)'}\n${data.url || ''}`;
       };
 
       qs('saveSettings').addEventListener('click', async () => {
@@ -257,7 +257,7 @@
         });
         const data = await resp.json();
         if (resp.ok && data) {
-          qs('envStatus').textContent = `Workspace ${data.workspaceId}\n${data.title || '(untitled)'}\n${data.url || ''}`;
+          qs('envStatus').textContent = `Workspace ${data.workspaceName}\n${data.title || '(untitled)'}\n${data.url || ''}`;
         }
       });
 

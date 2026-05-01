@@ -45,12 +45,12 @@ export const payloadOf = (action: Action | null | undefined): Record<string, unk
 type ResolveDeps = {
     state: RouterState;
     ensureTabToken: (tabId: number, hintedWindowId?: number) => Promise<TabRuntimeState | null>;
-    getActiveTabTokenForWindow: (windowId: number) => Promise<{ tabId: number; tabToken: string; urlHint: string; windowId: number } | null>;
+    getActiveTabTokenForWindow: (windowId: number) => Promise<{ tabId: number; tabName: string; urlHint: string; windowId: number } | null>;
 };
 
 type ResolvedIncomingAction = {
     scoped: Action;
-    senderTabId?: number;
+    senderTabName?: number;
     senderWindowId?: number;
     resolvedWorkspaceName?: string;
 };
@@ -95,23 +95,23 @@ export const resolveIncomingAction = async (
 
     const isWorkspaceAction = incoming.type.startsWith('workspace.');
     const isPagelessAction = PAGELESS_ACTIONS.has(incoming.type) || isWorkspaceAction;
-    const senderTabId = sender.tab?.id;
+    const senderTabName = sender.tab?.id;
     const senderWindowId = sender.tab?.windowId;
     let resolvedWorkspaceName = incoming.workspaceName;
 
-    if (!resolvedWorkspaceName && !isPagelessAction && typeof senderTabId === 'number') {
-        const senderTabInfo = await deps.ensureTabToken(senderTabId, senderWindowId);
-        if (senderTabInfo?.tabToken) {
-            const tokenScope = deps.state.getTokenScope(senderTabInfo.tabToken);
-            resolvedWorkspaceName = tokenScope?.workspaceId;
+    if (!resolvedWorkspaceName && !isPagelessAction && typeof senderTabName === 'number') {
+        const senderTabInfo = await deps.ensureTabToken(senderTabName, senderWindowId);
+        if (senderTabInfo?.tabName) {
+            const tokenScope = deps.state.getTokenScope(senderTabInfo.tabName);
+            resolvedWorkspaceName = tokenScope?.workspaceName;
         }
     }
 
     if (!resolvedWorkspaceName && !isPagelessAction && typeof senderWindowId === 'number') {
         const active = await deps.getActiveTabTokenForWindow(senderWindowId);
-        if (active?.tabToken) {
-            const tokenScope = deps.state.getTokenScope(active.tabToken);
-            resolvedWorkspaceName = tokenScope?.workspaceId;
+        if (active?.tabName) {
+            const tokenScope = deps.state.getTokenScope(active.tabName);
+            resolvedWorkspaceName = tokenScope?.workspaceName;
         }
     }
 
@@ -130,13 +130,13 @@ export const resolveIncomingAction = async (
         workspaceName: resolvedWorkspaceName,
     };
 
-    if (resolvedWorkspaceName) {deps.state.setActiveWorkspaceId(resolvedWorkspaceName);}
+    if (resolvedWorkspaceName) {deps.state.setActiveWorkspaceName(resolvedWorkspaceName);}
 
     return {
         ok: true,
         value: {
             scoped,
-            senderTabId,
+            senderTabName,
             senderWindowId,
             resolvedWorkspaceName,
         },
@@ -151,21 +151,21 @@ export const applyReplyProjection = (
 ): void => {
     const responsePayload = payloadOf(reply);
     const replyWorkspaceName = toStringOrUndefined(responsePayload.workspaceName);
-    const effectiveWorkspaceId = !isFailedReply(reply) ? (replyWorkspaceName ?? resolved.resolvedWorkspaceName ?? null) : null;
-    if (isFailedReply(reply) || !effectiveWorkspaceId) {return;}
+    const effectiveWorkspaceName = !isFailedReply(reply) ? (replyWorkspaceName ?? resolved.resolvedWorkspaceName ?? null) : null;
+    if (isFailedReply(reply) || !effectiveWorkspaceName) {return;}
 
     const responseTabName = toStringOrUndefined(responsePayload.tabName);
 
-    if (typeof resolved.senderTabId === 'number') {
-        const senderState = state.getTabState(resolved.senderTabId);
-        const senderTabToken = senderState?.tabToken;
+    if (typeof resolved.senderTabName === 'number') {
+        const senderState = state.getTabState(resolved.senderTabName);
+        const senderTabToken = senderState?.tabName;
         if (senderTabToken && responseTabName) {
-            state.upsertTokenScope(senderTabToken, effectiveWorkspaceId, responseTabName);
+            state.upsertTokenScope(senderTabToken, effectiveWorkspaceName, responseTabName);
             state.bindWorkspaceToWindowIfKnown(senderTabToken);
         }
-        const senderUrl = sender.tab?.url ?? state.getTabState(resolved.senderTabId)?.lastUrl ?? '';
+        const senderUrl = sender.tab?.url ?? state.getTabState(resolved.senderTabName)?.lastUrl ?? '';
         if (typeof resolved.senderWindowId === 'number') {
-            state.setWindowWorkspace(resolved.senderWindowId, effectiveWorkspaceId);
+            state.setWindowWorkspace(resolved.senderWindowId, effectiveWorkspaceName);
         }
     }
 };

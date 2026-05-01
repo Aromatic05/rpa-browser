@@ -70,9 +70,9 @@ const router = createCmdRouter({
 actionBus.subscribe(
     ['**'],
     async (action) => {
-        const targetTabId = router.resolveActionTargetTabId(action);
-        if (targetTabId === null) {return;}
-        await send.toTabTransport(targetTabId, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
+        const targetTabName = router.resolveActionTargetTabName(action);
+        if (targetTabName === null) {return;}
+        await send.toTabTransport(targetTabName, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
     },
 );
 

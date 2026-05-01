@@ -1,8 +1,8 @@
 /**
- * token_bridge：tabToken 管理 + hello 绑定。
+ * token_bridge：tabName 管理 + hello 绑定。
  *
  * 设计说明：
- * - tabToken 保存在 sessionStorage，并同步挂到 window 便于调试。
+ * - tabName 保存在 sessionStorage，并同步挂到 window 便于调试。
  * - hello 在导航变更时发送，确保 SW 侧及时更新映射。
  */
 
@@ -29,32 +29,32 @@ const readTokenFromWindowName = (): string | null => {
     }
 };
 
-const writeTokenToWindowName = (tabToken: string) => {
+const writeTokenToWindowName = (tabName: string) => {
     try {
-        window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabToken}`;
+        window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabName}`;
     } catch {
         // ignore window.name write failures
     }
 };
 
 export const ensureTabToken = (): string => {
-    const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? readTokenFromWindowName() ?? '';
-    if (!tabToken) {return '';}
-    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-    writeTokenToWindowName(tabToken);
-    window.__TAB_TOKEN__ = tabToken;
-    return tabToken;
+    const tabName = sessionStorage.getItem(TAB_TOKEN_KEY) ?? readTokenFromWindowName() ?? '';
+    if (!tabName) {return '';}
+    sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
+    writeTokenToWindowName(tabName);
+    window.__TAB_TOKEN__ = tabName;
+    return tabName;
 };
 
 export const ensureTabTokenAsync = async (): Promise<string> => {
-    let tabToken = ensureTabToken();
+    let tabName = ensureTabToken();
     for (let i = 0; i < 3; i += 1) {
-        const runtimeReply = await new Promise<{ ok: boolean; tabToken?: string }>((resolve) => {
+        const runtimeReply = await new Promise<{ ok: boolean; tabName?: string }>((resolve) => {
             chrome.runtime.sendMessage(
                 {
                     type: MSG.ENSURE_BOUND_TOKEN,
                     source: 'extension.content',
-                    tabToken,
+                    tabName,
                     url: location.href,
                     title: document.title,
                     at: Date.now(),
@@ -64,30 +64,30 @@ export const ensureTabTokenAsync = async (): Promise<string> => {
                         resolve({ ok: false });
                         return;
                     }
-                    resolve((response ?? { ok: false }) as { ok: boolean; tabToken?: string });
+                    resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string });
                 },
             );
         });
-        if (runtimeReply.ok && runtimeReply.tabToken) {
-            tabToken = runtimeReply.tabToken;
-            sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-            writeTokenToWindowName(tabToken);
-            window.__TAB_TOKEN__ = tabToken;
+        if (runtimeReply.ok && runtimeReply.tabName) {
+            tabName = runtimeReply.tabName;
+            sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
+            writeTokenToWindowName(tabName);
+            window.__TAB_TOKEN__ = tabName;
             break;
         }
         if (i < 2) {
             await new Promise<void>((resolve) => setTimeout(resolve, 120));
         }
     }
-    if (!tabToken) {
+    if (!tabName) {
         throw new Error('bound tab token unavailable');
     }
-    return tabToken;
+    return tabName;
 };
 
-export const bindHello = (tabToken: string, onHello?: () => void): () => void => {
+export const bindHello = (tabName: string, onHello?: () => void): () => void => {
     const sendHello = () => {
-        void send.hello({ tabToken, url: location.href });
+        void send.hello({ tabName, url: location.href });
         onHello?.();
     };
 

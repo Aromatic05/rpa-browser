@@ -1,5 +1,5 @@
 /**
- * Content script 入口：注入悬浮 UI + tabToken，并与 SW 通信。
+ * Content script 入口：注入悬浮 UI + tabName，并与 SW 通信。
  *
  * 注意：
  * - 内容脚本是“非 module”脚本，禁止静态 import。
@@ -27,7 +27,7 @@ type ActionShape = {
 
 type FloatingUIExports = {
     mountFloatingUI: (opts: {
-        tabToken: string;
+        tabName: string;
         onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
         onEvent?: (handler: (action: ActionShape) => void) => void;
     }) => { scheduleRefresh: () => void };
@@ -36,7 +36,7 @@ type FloatingUIExports = {
 type TokenBridgeExports = {
     ensureTabToken: () => string;
     ensureTabTokenAsync: () => Promise<string>;
-    bindHello: (tabToken: string, onHello?: () => void) => () => void;
+    bindHello: (tabName: string, onHello?: () => void) => () => void;
 };
 
 type ProtocolExports = {
@@ -104,10 +104,10 @@ const loadFloatingUI = (() => {
     if (window.__rpaTokenInjected) {return;}
     window.__rpaTokenInjected = true;
 
-    // tabToken + hello 绑定（异步初始化，所有使用点需 await）
+    // tabName + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<string> | null = null;
-    const sendReport = async (tabToken?: string) => {
-        const token = tabToken ?? (await ensureToken());
+    const sendReport = async (tabName?: string) => {
+        const token = tabName ?? (await ensureToken());
         const { send } = await loadSend();
         await send.action({
             v: 1,
@@ -146,20 +146,20 @@ const loadFloatingUI = (() => {
                 if (!isRecord(message)) {return;}
                 if (message.type === MSG.GET_TOKEN) {
                     const mod = await loadTokenBridge();
-                    const tabToken = mod.ensureTabToken();
-                    sendResponse({ ok: true, tabToken, url: location.href });
+                    const tabName = mod.ensureTabToken();
+                    sendResponse({ ok: true, tabName, url: location.href });
                     return;
                 }
                 if (message.type === MSG.SET_TOKEN) {
-                    const token = typeof message.tabToken === 'string' ? message.tabToken : '';
+                    const token = typeof message.tabName === 'string' ? message.tabName : '';
                     if (!token) {
-                        sendResponse({ ok: false, error: 'missing tabToken' });
+                        sendResponse({ ok: false, error: 'missing tabName' });
                         return;
                     }
                     sessionStorage.setItem('__rpa_tab_token', token);
                     window.name = `__RPA_TAB_TOKEN__:${token}`;
                     (window as any).__TAB_TOKEN__ = token;
-                    sendResponse({ ok: true, tabToken: token, url: location.href });
+                    sendResponse({ ok: true, tabName: token, url: location.href });
                 }
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: String(error) });
@@ -172,14 +172,14 @@ const loadFloatingUI = (() => {
     const PING_INTERVAL_MS = 15000;
     let pingTimer: ReturnType<typeof setInterval> | null = null;
     const sendPing = async () => {
-        const tabToken = await ensureToken();
+        const tabName = await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.ping',
             payload: {
-                tabName: tabToken,
+                tabName: tabName,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -201,16 +201,16 @@ const loadFloatingUI = (() => {
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
-        const tabToken = await ensureToken();
-        void sendReport(tabToken);
+        const tabName = await ensureToken();
+        void sendReport(tabName);
         startHeartbeat();
         uiHandle = mountFloatingUI({
-            tabToken,
+            tabName,
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
                 const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
-                const scopedTabToken = typedScope.tabName ?? tabToken;
+                const scopedTabToken = typedScope.tabName ?? tabName;
                 const normalizedPayload =
                     type === 'record.event'
                         ? {

@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "RPA Browser Demo",
     "version": "0.1.0",
-    "description": "MV3 tabToken demo with agent recording.",
+    "description": "MV3 tabName demo with agent recording.",
     "permissions": ["storage", "activeTab", "scripting", "tabs", "windows"],
     "host_permissions": ["<all_urls>"],
     "action": {

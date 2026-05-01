@@ -46,9 +46,9 @@ type WorkflowListData = {
 };
 
 type WorkflowOpenData = {
-    workspaceId?: string;
+    workspaceName?: string;
     tabId?: string;
-    tabToken?: string;
+    tabName?: string;
 };
 
 type WorkflowRunData = {
@@ -58,12 +58,12 @@ type WorkflowRunData = {
 
 type BoundTokenData = {
     ok: boolean;
-    tabToken?: string;
-    workspaceId?: string;
+    tabName?: string;
+    workspaceName?: string;
     tabId?: string;
     error?: string;
 };
-type BoundScope = { tabToken: string; workspaceId: string; tabId?: string };
+type BoundScope = { tabName: string; workspaceName: string; tabId?: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
@@ -107,11 +107,11 @@ const setStatus = (text: string, ok = false) => {
     }
 };
 
-const applyTabToken = (tabToken: string) => {
-    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-    window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabToken}`;
-    window.__rpa_tab_token = tabToken;
-    window.__TAB_TOKEN__ = tabToken;
+const applyTabToken = (tabName: string) => {
+    sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
+    window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabName}`;
+    window.__rpa_tab_token = tabName;
+    window.__TAB_TOKEN__ = tabName;
 };
 
 const ensureBoundToken = async (): Promise<BoundScope> => {
@@ -121,7 +121,7 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
             {
                 type: MSG_ENSURE_BOUND_TOKEN,
                 source: 'start_extension',
-                tabToken: currentToken,
+                tabName: currentToken,
                 url: location.href,
                 title: document.title,
                 at: Date.now(),
@@ -135,14 +135,14 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
             },
         );
     });
-    if (!reply.ok || !reply.tabToken || !reply.workspaceId) {
+    if (!reply.ok || !reply.tabName || !reply.workspaceName) {
         throw new Error(reply.error ?? 'bound token unavailable');
     }
-    currentToken = reply.tabToken;
+    currentToken = reply.tabName;
     applyTabToken(currentToken);
     return {
-        tabToken: reply.tabToken,
-        workspaceId: reply.workspaceId,
+        tabName: reply.tabName,
+        workspaceName: reply.workspaceName,
         ...(reply.tabId ? { tabId: reply.tabId } : {}),
     };
 };
@@ -250,16 +250,16 @@ const renderWorkflowList = (items: WorkflowListItem[], scope?: Record<string, un
                 }
                 return;
             }
-            const workspaceId = opened.data?.workspaceId;
+            const workspaceName = opened.data?.workspaceName;
             const tabId = opened.data?.tabId;
-            if (!workspaceId) {
+            if (!workspaceName) {
                 if (restoreStatusEl) {
                     restoreStatusEl.textContent = 'open failed: invalid workflow.open response';
                 }
                 return;
             }
             if (restoreStatusEl) {
-                restoreStatusEl.textContent = `open done: ${workspaceId}`;
+                restoreStatusEl.textContent = `open done: ${workspaceName}`;
             }
         });
 
@@ -306,12 +306,12 @@ const refreshWorkflowList = async (scope?: Record<string, unknown>) => {
 void (async () => {
     try {
         const bound = await ensureBoundToken();
-        if (tokenEl) {tokenEl.textContent = `${bound.tabToken.slice(0, 8)}...`;}
+        if (tokenEl) {tokenEl.textContent = `${bound.tabName.slice(0, 8)}...`;}
         if (urlEl) {urlEl.textContent = location.href;}
         setStatus('connected', true);
         await refreshWorkflowList({
-            tabToken: bound.tabToken,
-            workspaceId: bound.workspaceId,
+            tabName: bound.tabName,
+            workspaceName: bound.workspaceName,
             ...(bound.tabId ? { tabId: bound.tabId } : {}),
         });
     } catch (error) {
@@ -324,8 +324,8 @@ refreshRestoreBtn?.addEventListener('click', () => {
     void (async () => {
         const bound = await ensureBoundToken();
         await refreshWorkflowList({
-            tabToken: bound.tabToken,
-            workspaceId: bound.workspaceId,
+            tabName: bound.tabName,
+            workspaceName: bound.workspaceName,
             ...(bound.tabId ? { tabId: bound.tabId } : {}),
         });
     })();
