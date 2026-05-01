@@ -4,16 +4,16 @@ import { runStepList } from '../runner/run_steps';
 import type { StepUnion } from '../runner/steps/types';
 
 export type WorkspacePublicInfo = {
-    workspaceId: string;
+    workspaceName: string;
     url: string;
     title: string;
     createdAt: number;
 };
 
 type WorkspaceState = {
-    workspaceId: string;
+    workspaceName: string;
     tabId: string;
-    tabToken: string;
+    tabName: string;
     createdAt: number;
 };
 
@@ -29,14 +29,14 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
             return active;
         }
         const created = await deps.pageRegistry.createWorkspace();
-        const tabToken = deps.pageRegistry.resolveTabToken({
-            workspaceId: created.workspaceId,
+        const tabName = deps.pageRegistry.resolveTabName({
+            workspaceName: created.workspaceName,
             tabId: created.tabId,
         });
         active = {
-            workspaceId: created.workspaceId,
+            workspaceName: created.workspaceName,
             tabId: created.tabId,
-            tabToken,
+            tabName,
             createdAt: Date.now(),
         };
         return active;
@@ -45,11 +45,11 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
     const getActiveWorkspacePublicInfo = async (): Promise<WorkspacePublicInfo | null> => {
         if (!active) {return null;}
         const page = await deps.pageRegistry.resolvePage({
-            workspaceId: active.workspaceId,
+            workspaceName: active.workspaceName,
             tabId: active.tabId,
         });
         return {
-            workspaceId: active.workspaceId,
+            workspaceName: active.workspaceName,
             url: page.url(),
             title: await page.title(),
             createdAt: active.createdAt,
@@ -64,7 +64,7 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
             args: { url },
             meta: { source: 'script', ts: Date.now() },
         };
-        const { pipe, checkpoint } = await runStepList(workspace.workspaceId, [step], undefined, { stopOnError: true });
+        const { pipe, checkpoint } = await runStepList(workspace.workspaceName, [step], undefined, { stopOnError: true });
         const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown }>;
         const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };

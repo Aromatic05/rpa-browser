@@ -139,6 +139,6 @@ export type TraceHooks = {
 };
 
 export type TraceTags = {
-    workspaceId?: string;
-    tabToken?: string;
+    workspaceName?: string;
+    tabName?: string;
 };

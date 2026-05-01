@@ -71,7 +71,7 @@ export const runWorkflow = async (request: RunWorkflowRequest, deps: RunWorkflow
     const input = (request.input || loaded.inputsExample || {}) as Record<string, unknown>;
 
     const result = await runDslSource(loaded.dslSource, {
-        workspaceId: resolvedWorkspace.workspaceId,
+        workspaceName: resolvedWorkspace.workspaceName,
         deps: deps.runStepsDeps,
         input,
         checkpointProvider,
@@ -80,9 +80,9 @@ export const runWorkflow = async (request: RunWorkflowRequest, deps: RunWorkflow
     return {
         scene: request.scene,
         workflowRoot: loaded.rootDir,
-        workspaceId: resolvedWorkspace.workspaceId,
+        workspaceName: resolvedWorkspace.workspaceName,
         tabId: resolvedWorkspace.tabId,
-        tabToken: resolvedWorkspace.tabToken,
+        tabName: resolvedWorkspace.tabName,
         scope: result.scope,
         diagnostics: result.diagnostics,
     };
