@@ -118,21 +118,21 @@ const resolveOrBootstrapScope = async (
     options?: { allowBootstrap?: boolean },
 ): Promise<{ workspaceName: string; tabId: string }> => {
     const allowBootstrap = options?.allowBootstrap !== false;
-    const resolvedTabToken = resolveTabNameOrActive(deps, tabName);
+    const resolvedTabName = resolveTabNameOrActive(deps, tabName);
     try {
-        return deps.pageRegistry.resolveTabBinding(resolvedTabToken);
+        return deps.pageRegistry.resolveTabBinding(resolvedTabName);
     } catch {
         if (!allowBootstrap) {
             throw new Error('tab token not found');
         }
         const shell = deps.pageRegistry.createWorkspaceShell();
         deps.pageRegistry.setActiveWorkspace(shell.workspaceName);
-        await deps.pageRegistry.getPage(resolvedTabToken);
-        const bound = deps.pageRegistry.bindTokenToWorkspace(resolvedTabToken, shell.workspaceName);
+        await deps.pageRegistry.getPage(resolvedTabName);
+        const bound = deps.pageRegistry.bindTokenToWorkspace(resolvedTabName, shell.workspaceName);
         if (bound) {
             return bound;
         }
-        return deps.pageRegistry.resolveTabBinding(resolvedTabToken);
+        return deps.pageRegistry.resolveTabBinding(resolvedTabName);
     }
 };
 
@@ -147,7 +147,7 @@ const resolveTabNameOrActive = (deps: McpToolDeps, tabName?: string): string => 
     }
 };
 
-const resolveOrCreateTabToken = (deps: McpToolDeps, tabName?: string): string => {
+const resolveOrCreateTabName = (deps: McpToolDeps, tabName?: string): string => {
     if (typeof tabName === 'string' && tabName.trim().length > 0) {
         return tabName;
     }
@@ -198,8 +198,8 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const sourceTabToken = resolveOrCreateTabToken(deps, input.tabName);
-    const result = await runSingleStep(deps, sourceTabToken, {
+    const sourceTabName = resolveOrCreateTabName(deps, input.tabName);
+    const result = await runSingleStep(deps, sourceTabName, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
         args: { url: input.url },
@@ -209,8 +209,8 @@ const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
 
     const createdTabName = result.results.find((item) => item.ok)?.data as { tab_id?: unknown } | undefined;
     if (typeof createdTabName?.tab_id === 'string') {
-        const scope = deps.pageRegistry.resolveTabBinding(sourceTabToken);
-        deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceName, createdTabName.tab_id);
+        const scope = deps.pageRegistry.resolveTabBinding(sourceTabName);
+        deps.pageRegistry.rebindTokenToTab(sourceTabName, scope.workspaceName, createdTabName.tab_id);
     }
     return result;
 };
@@ -219,8 +219,8 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
     const parsed = parseInput<BrowserSwitchTabInput>(browserSwitchTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const sourceTabToken = resolveTabNameOrActive(deps, input.tabName);
-    const result = await runSingleStep(deps, sourceTabToken, {
+    const sourceTabName = resolveTabNameOrActive(deps, input.tabName);
+    const result = await runSingleStep(deps, sourceTabName, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
         args: { tabId: input.tabId, tabRef: input.tabRef, tabUrl: input.tabUrl },
@@ -230,8 +230,8 @@ const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unkn
 
     const targetTabName = input.tabId || input.tabRef;
     if (!targetTabName) {return result;}
-    const scope = deps.pageRegistry.resolveTabBinding(sourceTabToken);
-    deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceName, targetTabName);
+    const scope = deps.pageRegistry.resolveTabBinding(sourceTabName);
+    deps.pageRegistry.rebindTokenToTab(sourceTabName, scope.workspaceName, targetTabName);
     return result;
 };
 

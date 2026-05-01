@@ -35,7 +35,7 @@ test('bindPage requires explicit workspace binding', async () => {
     assert.notEqual(claimedA?.workspaceName, claimedB?.workspaceName);
 });
 
-test('touchTabToken updates tab timestamp for existing token', async () => {
+test('touchTabName updates tab timestamp for existing token', async () => {
     const pageRegistry = createPageRegistry({
         tabNameKey: '__rpa_tab_token',
         getContext: async () =>
@@ -54,7 +54,7 @@ test('touchTabToken updates tab timestamp for existing token', async () => {
     const prevUpdatedAt = before.find((item) => item.tabId === scope.tabId)?.updatedAt || 0;
 
     const now = prevUpdatedAt + 5000;
-    const touched = pageRegistry.touchTabToken('token-touch', now);
+    const touched = pageRegistry.touchTabName('token-touch', now);
     const after = await pageRegistry.listTabs(scope.workspaceName);
     const nextUpdatedAt = after.find((item) => item.tabId === scope.tabId)?.updatedAt || 0;
 

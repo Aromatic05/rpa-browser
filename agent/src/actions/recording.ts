@@ -314,7 +314,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         }
         ctx.pageRegistry.setActiveWorkspace(replayWorkspaceName);
         ctx.pageRegistry.setActiveTab(replayWorkspaceName, initialTabName);
-        const initialTabToken = ctx.pageRegistry.resolveTabName({ workspaceName: replayWorkspaceName, tabId: initialTabName });
+        const initialTabName = ctx.pageRegistry.resolveTabName({ workspaceName: replayWorkspaceName, tabId: initialTabName });
         beginReplay(ctx.recordingState, ctx.resolveTab().name);
         const emitPlayEvent = (type: string, payload: Record<string, unknown>) => {
             ctx.emit?.({
@@ -358,7 +358,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 const replayed = await replayRecording({
                     workspaceName: replayWorkspaceName,
                     initialTabName,
-                    initialTabToken,
+                    initialTabName,
                     steps,
                     enrichments: bundle.enrichments,
                     recordingManifest: bundle.manifest,
@@ -422,7 +422,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 started: true,
                 workspaceName: replayWorkspaceName,
                 tabId: initialTabName,
-                tabName: initialTabToken,
+                tabName: initialTabName,
                 stepCount: steps.length,
                 stopOnError,
             },

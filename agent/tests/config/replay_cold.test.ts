@@ -31,7 +31,7 @@ test('replayRecording creates and switches tab when recorded tabName is missing 
     const result = await replayRecording({
         workspaceName: 'ws-now',
         initialTabName: 'tab-now',
-        initialTabToken: 'token-a',
+        initialTabName: 'token-a',
         steps,
         enrichments: {
             s1: {
@@ -108,7 +108,7 @@ test('replayRecording force switches when tabName changes without browser.switch
     const result = await replayRecording({
         workspaceName: 'ws-now',
         initialTabName: 'tab-now',
-        initialTabToken: 'token-a',
+        initialTabName: 'token-a',
         steps,
         stopOnError: true,
         pageRegistry: {
@@ -171,7 +171,7 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
     const result = await replayRecording({
         workspaceName: 'ws-now',
         initialTabName: 'tab-a',
-        initialTabToken: 'token-a',
+        initialTabName: 'token-a',
         steps,
         stopOnError: true,
         pageRegistry: {
@@ -221,7 +221,7 @@ test('replayRecording creates tab with recorded switch url when target tab is mi
     const result = await replayRecording({
         workspaceName: 'ws-now',
         initialTabName: 'tab-now',
-        initialTabToken: 'token-a',
+        initialTabName: 'token-a',
         steps,
         stopOnError: true,
         pageRegistry: {

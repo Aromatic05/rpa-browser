@@ -37,7 +37,7 @@ const writeTokenToWindowName = (tabName: string) => {
     }
 };
 
-export const ensureTabToken = (): string => {
+export const ensureTabName = (): string => {
     const tabName = sessionStorage.getItem(TAB_TOKEN_KEY) ?? readTokenFromWindowName() ?? '';
     if (!tabName) {return '';}
     sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
@@ -46,8 +46,8 @@ export const ensureTabToken = (): string => {
     return tabName;
 };
 
-export const ensureTabTokenAsync = async (): Promise<string> => {
-    let tabName = ensureTabToken();
+export const ensureTabNameAsync = async (): Promise<string> => {
+    let tabName = ensureTabName();
     for (let i = 0; i < 3; i += 1) {
         const runtimeReply = await new Promise<{ ok: boolean; tabName?: string }>((resolve) => {
             chrome.runtime.sendMessage(

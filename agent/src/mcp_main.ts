@@ -15,7 +15,7 @@ import { McpToolHost } from './mcp/hotreload/tool_host';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 
-const TAB_TOKEN_KEY = '__rpa_tab_token';
+const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
 if (!process.env.RPA_USER_DATA_DIR) {
     process.env.RPA_USER_DATA_DIR = path.resolve(process.cwd(), '.user-data-mcp');
@@ -69,23 +69,23 @@ const sourceMcpHotEntry = path.resolve(process.cwd(), 'src/mcp/hot_entry.ts');
 const mcpToolHost = new McpToolHost(sourceMcpHotEntry);
 
 const pageRegistry = createPageRegistry({
-    tabNameKey: TAB_TOKEN_KEY,
+    tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
-    onPageBound: (page, token) => {
-        if (recordingState.recordingEnabled.has(token)) {
-            void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
+    onPageBound: (page, tabName) => {
+        if (recordingState.recordingEnabled.has(tabName)) {
+            void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
         }
-        const scope = pageRegistry.resolveTabBinding(token);
-        const workspace = workspaceRegistry.createWorkspace(scope.workspaceName);
-        if (!workspace.tabRegistry.hasTab(scope.tabId)) {
-            workspace.tabRegistry.createTab({ tabName: scope.tabId, page, url: page.url() });
+        const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+        const workspace = workspaceRegistry.createWorkspace(workspaceName);
+        if (!workspace.tabRegistry.hasTab(tabName)) {
+            workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
         } else {
-            workspace.tabRegistry.bindPage(scope.tabId, page);
+            workspace.tabRegistry.bindPage(tabName, page);
         }
-        workspace.tabRegistry.setActiveTab(scope.tabId);
-        runtimeRegistry.bindPage({ workspaceName: scope.workspaceName, tabName: scope.tabId, page });
+        workspace.tabRegistry.setActiveTab(tabName);
+        runtimeRegistry.bindPage({ workspaceName, tabName, page });
     },
-    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
+    onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
 });
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     workspaceRegistry,

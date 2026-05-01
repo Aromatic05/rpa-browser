@@ -107,7 +107,7 @@ const setStatus = (text: string, ok = false) => {
     }
 };
 
-const applyTabToken = (tabName: string) => {
+const applyTabName = (tabName: string) => {
     sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
     window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabName}`;
     window.__rpa_tab_token = tabName;
@@ -139,7 +139,7 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
         throw new Error(reply.error ?? 'bound token unavailable');
     }
     currentToken = reply.tabName;
-    applyTabToken(currentToken);
+    applyTabName(currentToken);
     return {
         tabName: reply.tabName,
         workspaceName: reply.workspaceName,

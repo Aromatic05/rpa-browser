@@ -44,8 +44,8 @@ export const payloadOf = (action: Action | null | undefined): Record<string, unk
 
 type ResolveDeps = {
     state: RouterState;
-    ensureTabToken: (tabId: number, hintedWindowId?: number) => Promise<TabRuntimeState | null>;
-    getActiveTabTokenForWindow: (windowId: number) => Promise<{ tabId: number; tabName: string; urlHint: string; windowId: number } | null>;
+    ensureTabName: (tabId: number, hintedWindowId?: number) => Promise<TabRuntimeState | null>;
+    getActiveTabNameForWindow: (windowId: number) => Promise<{ tabId: number; tabName: string; urlHint: string; windowId: number } | null>;
 };
 
 type ResolvedIncomingAction = {
@@ -100,7 +100,7 @@ export const resolveIncomingAction = async (
     let resolvedWorkspaceName = incoming.workspaceName;
 
     if (!resolvedWorkspaceName && !isPagelessAction && typeof senderTabName === 'number') {
-        const senderTabInfo = await deps.ensureTabToken(senderTabName, senderWindowId);
+        const senderTabInfo = await deps.ensureTabName(senderTabName, senderWindowId);
         if (senderTabInfo?.tabName) {
             const tokenScope = deps.state.getTokenScope(senderTabInfo.tabName);
             resolvedWorkspaceName = tokenScope?.workspaceName;
@@ -108,7 +108,7 @@ export const resolveIncomingAction = async (
     }
 
     if (!resolvedWorkspaceName && !isPagelessAction && typeof senderWindowId === 'number') {
-        const active = await deps.getActiveTabTokenForWindow(senderWindowId);
+        const active = await deps.getActiveTabNameForWindow(senderWindowId);
         if (active?.tabName) {
             const tokenScope = deps.state.getTokenScope(active.tabName);
             resolvedWorkspaceName = tokenScope?.workspaceName;
@@ -158,10 +158,10 @@ export const applyReplyProjection = (
 
     if (typeof resolved.senderTabName === 'number') {
         const senderState = state.getTabState(resolved.senderTabName);
-        const senderTabToken = senderState?.tabName;
-        if (senderTabToken && responseTabName) {
-            state.upsertTokenScope(senderTabToken, effectiveWorkspaceName, responseTabName);
-            state.bindWorkspaceToWindowIfKnown(senderTabToken);
+        const senderTabName = senderState?.tabName;
+        if (senderTabName && responseTabName) {
+            state.upsertTokenScope(senderTabName, effectiveWorkspaceName, responseTabName);
+            state.bindWorkspaceToWindowIfKnown(senderTabName);
         }
         const senderUrl = sender.tab?.url ?? state.getTabState(resolved.senderTabName)?.lastUrl ?? '';
         if (typeof resolved.senderWindowId === 'number') {

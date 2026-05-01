@@ -34,8 +34,8 @@ type FloatingUIExports = {
 };
 
 type TokenBridgeExports = {
-    ensureTabToken: () => string;
-    ensureTabTokenAsync: () => Promise<string>;
+    ensureTabName: () => string;
+    ensureTabNameAsync: () => Promise<string>;
     bindHello: (tabName: string, onHello?: () => void) => () => void;
 };
 
@@ -125,7 +125,7 @@ const loadFloatingUI = (() => {
     const ensureToken = () => {
         tokenReady ??= (async () => {
                 const mod = await loadTokenBridge();
-                const token = await mod.ensureTabTokenAsync();
+                const token = await mod.ensureTabNameAsync();
                 mod.bindHello(token, () => {
                     void sendReport(token);
                 });
@@ -146,7 +146,7 @@ const loadFloatingUI = (() => {
                 if (!isRecord(message)) {return;}
                 if (message.type === MSG.GET_TOKEN) {
                     const mod = await loadTokenBridge();
-                    const tabName = mod.ensureTabToken();
+                    const tabName = mod.ensureTabName();
                     sendResponse({ ok: true, tabName, url: location.href });
                     return;
                 }
@@ -210,7 +210,7 @@ const loadFloatingUI = (() => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
                 const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
-                const scopedTabToken = typedScope.tabName ?? tabName;
+                const scopedTabName = typedScope.tabName ?? tabName;
                 const normalizedPayload =
                     type === 'record.event'
                         ? {
@@ -230,7 +230,7 @@ const loadFloatingUI = (() => {
                     payload: normalizedPayload,
                 };
                 if (!hasExplicitScope && action.payload && typeof action.payload === 'object') {
-                    (action.payload as Record<string, unknown>).tabName = scopedTabToken;
+                    (action.payload as Record<string, unknown>).tabName = scopedTabName;
                 }
                 return await send.action(action);
             },

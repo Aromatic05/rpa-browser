@@ -5,7 +5,7 @@ const getElementText = (el: Element) => {
     return el.textContent || '';
 };
 
-type WindowWithTabToken = Window & { __rpa_tab_token?: unknown; __TAB_TOKEN__?: unknown };
+type WindowWithTabName = Window & { __rpa_tab_token?: unknown; __TAB_TOKEN__?: unknown };
 type WindowBridge = Window & Record<string, unknown>;
 type RecorderControlWindow = Window & { __rpa_recorder_enabled?: unknown };
 
@@ -23,7 +23,7 @@ const getToken = (): string | null => {
         // ignore sessionStorage read failures
     }
     try {
-        const fromWindow = (window as WindowWithTabToken).__rpa_tab_token ?? (window as WindowWithTabToken).__TAB_TOKEN__;
+        const fromWindow = (window as WindowWithTabName).__rpa_tab_token ?? (window as WindowWithTabName).__TAB_TOKEN__;
         if (typeof fromWindow === 'string' && fromWindow.length > 0) {return fromWindow;}
     } catch {
         // ignore window token read failures

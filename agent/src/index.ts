@@ -21,7 +21,7 @@ import { ACTION_TYPES, isRequestActionType } from './actions/action_types';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 
-const TAB_TOKEN_KEY = '__rpa_tab_token';
+const TAB_NAME_KEY = '__rpa_tab_name';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
 const TAB_PING_TIMEOUT_MS = 45000;
 const TAB_PING_WATCHDOG_INTERVAL_MS = 5000;
@@ -112,7 +112,7 @@ const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
     ACTION_TYPES.TAB_CLOSED,
     ACTION_TYPES.TAB_REASSIGN,
 ]);
-const staleNotifiedTokens = new Set<string>();
+const staleNotifiedTabs = new Set<string>();
 type UnknownRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is UnknownRecord =>
@@ -153,36 +153,43 @@ const broadcastWorkspaceList = (reason: string) => {
     });
 };
 
+const findWorkspaceNameByTabName = (tabName: string): string | null => {
+    for (const workspace of workspaceRegistry.listWorkspaces()) {
+        if (workspace.tabRegistry.hasTab(tabName)) {
+            return workspace.name;
+        }
+    }
+    return null;
+};
+
 const pageRegistry = createPageRegistry({
-    tabNameKey: TAB_TOKEN_KEY,
+    tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
-    onPageBound: (page, token) => {
-        if (recordingState.recordingEnabled.has(token)) {
-            void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
+    onPageBound: (page, tabName) => {
+        if (recordingState.recordingEnabled.has(tabName)) {
+            void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
         }
-        try {
-            const scope = pageRegistry.resolveTabBinding(token);
-            const workspace = workspaceRegistry.createWorkspace(scope.workspaceName);
-            if (!workspace.tabRegistry.hasTab(scope.tabId)) {
-                workspace.tabRegistry.createTab({ tabName: scope.tabId, page, url: page.url() });
-            } else {
-                workspace.tabRegistry.bindPage(scope.tabId, page);
-            }
-            workspace.tabRegistry.setActiveTab(scope.tabId);
-            runtimeRegistry.bindPage({ workspaceName: scope.workspaceName, tabName: scope.tabId, page });
-            broadcast({
-                v: 1,
-                id: crypto.randomUUID(),
-                type: ACTION_TYPES.TAB_BOUND,
-                payload: { workspaceName: scope.workspaceName, tabName: scope.tabId, url: page.url() },
-                workspaceName: scope.workspaceName,
-                at: Date.now(),
-            });
-        } catch {
-            // ignore
+        const workspaceName = findWorkspaceNameByTabName(tabName)
+            || workspaceRegistry.getActiveWorkspace()?.name
+            || 'default';
+        const workspace = workspaceRegistry.createWorkspace(workspaceName);
+        if (!workspace.tabRegistry.hasTab(tabName)) {
+            workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
+        } else {
+            workspace.tabRegistry.bindPage(tabName, page);
         }
+        workspace.tabRegistry.setActiveTab(tabName);
+        runtimeRegistry.bindPage({ workspaceName, tabName, page });
+        broadcast({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.TAB_BOUND,
+            payload: { workspaceName, tabName, url: page.url() },
+            workspaceName,
+            at: Date.now(),
+        });
     },
-    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
+    onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
 });
 
 const runnerScope = createRunnerScopeRegistry(2);
@@ -294,7 +301,7 @@ const parseInboundAction = (raw: unknown): Action => {
     if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
         throw new Error('invalid action: missing or invalid fields');
     }
-    if ('scope' in rec || 'tabName' in rec || 'workspaceName' in rec || 'tabId' in rec || 'tabName' in rec) {
+    if ('scope' in rec || 'tabId' in rec || 'tabName' in rec) {
         throw new Error('invalid action: legacy address fields are not allowed');
     }
     if (!isRequestActionType(rec.type)) {
@@ -318,25 +325,21 @@ const parseInboundAction = (raw: unknown): Action => {
  * - 若仅存在一个活跃录制 token，允许将事件归并到该唯一 token（跨 tab 人工录制场景）。
  */
 setRecorderEventSink(async (event, page, tabName) => {
-    let effectiveToken = tabName;
-    if (!recordingState.recordingEnabled.has(effectiveToken)) {
+    let effectiveTabName = tabName;
+    if (!recordingState.recordingEnabled.has(effectiveTabName)) {
         if (recordingState.recordingEnabled.size === 1) {
-            effectiveToken = Array.from(recordingState.recordingEnabled)[0];
+            effectiveTabName = Array.from(recordingState.recordingEnabled)[0];
         } else {
             wsTap('agent.record_event.drop', {
                 reason: 'recording_not_enabled',
-                sourceTabToken: tabName,
+                sourceTabName: tabName,
                 activeRecordingCount: recordingState.recordingEnabled.size,
             });
             return;
         }
     }
 
-    let workspaceName: string | undefined;
-    try {
-        const resolved = pageRegistry.resolveTabBinding(effectiveToken);
-        workspaceName = resolved.workspaceName;
-    } catch {}
+    const workspaceName = findWorkspaceNameByTabName(effectiveTabName) || undefined;
     const action: Action = {
         v: 1,
         id: crypto.randomUUID(),
@@ -346,10 +349,10 @@ setRecorderEventSink(async (event, page, tabName) => {
         at: event.ts || Date.now(),
     };
     broadcast(action);
-    const scope = pageRegistry.resolveTabBinding(effectiveToken);
-    const response = await executeAction(createActionContext(scope.workspaceName, scope.tabId), action);
+    if (!workspaceName) {return;}
+    const response = await executeAction(createActionContext(workspaceName, effectiveTabName), action);
     if (isFailedAction(response)) {
-        logWarning('record.event.ingest.failed', { tabName: effectiveToken, sourceTabToken: tabName, error: response.payload });
+        logWarning('record.event.ingest.failed', { tabName: effectiveTabName, sourceTabName: tabName, error: response.payload });
     }
 });
 
@@ -485,32 +488,33 @@ wss.on('connection', (socket) => {
  * 职责：
  * - 检测超时未上报 ping 的 tabName；
  * - 首次发现时广播 ping-timeout 状态同步；
- * - 触发 pageRegistry.closeTokenPage 回收失活页资源。
+ * - 触发 pageRegistry.closePage 回收失活页资源。
  *
  * 说明：
- * - staleNotifiedTokens 用于抑制重复通知，避免同一 token 反复刷屏。
+ * - staleNotifiedTabs 用于抑制重复通知，避免同一 tab 反复刷屏。
  */
 setInterval(() => {
-    const staleTabs = pageRegistry.listTimedOutTokens(TAB_PING_TIMEOUT_MS, Date.now());
+    const staleTabs = pageRegistry.listStaleBindings(TAB_PING_TIMEOUT_MS, Date.now());
     for (const stale of staleTabs) {
-        if (staleNotifiedTokens.has(stale.tabName)) {continue;}
-        staleNotifiedTokens.add(stale.tabName);
+        if (staleNotifiedTabs.has(stale.bindingName)) {continue;}
+        staleNotifiedTabs.add(stale.bindingName);
+        const workspaceName = findWorkspaceNameByTabName(stale.bindingName);
         broadcastStateSync('ping-timeout', {
-            workspaceName: stale.workspaceName,
-            tabName: stale.tabId,
+            workspaceName,
+            tabName: stale.bindingName,
             lastSeenAt: stale.lastSeenAt,
         });
-        void pageRegistry.closeTokenPage(stale.tabName);
+        void pageRegistry.closePage(stale.bindingName);
     }
 }, TAB_PING_WATCHDOG_INTERVAL_MS);
 
 (async () => {
     await contextManager.getContext();
     await controlServer.start();
-    if (pageRegistry.listWorkspaces().length === 0) {
-        const created = pageRegistry.createWorkspaceShell();
-        assert.ok(created.workspaceName, 'bootstrap workspaceName missing');
-        log('workspace.bootstrap.created', { workspaceName: created.workspaceName });
+    if (workspaceRegistry.listWorkspaces().length === 0) {
+        const created = workspaceRegistry.createWorkspace('default');
+        assert.ok(created.name, 'bootstrap workspaceName missing');
+        log('workspace.bootstrap.created', { workspaceName: created.name });
     }
     broadcastWorkspaceList('bootstrap');
     log(`Control RPC listening on ${controlServer.endpoint}`);

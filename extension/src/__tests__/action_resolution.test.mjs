@@ -6,8 +6,8 @@ const mkDeps = () => ({
         getTokenScope: () => undefined,
         setActiveWorkspaceName: () => undefined,
     },
-    ensureTabToken: async () => null,
-    getActiveTabTokenForWindow: async () => null,
+    ensureTabName: async () => null,
+    getActiveTabNameForWindow: async () => null,
 });
 
 const mkSender = () => ({

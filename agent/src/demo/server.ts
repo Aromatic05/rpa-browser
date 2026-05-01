@@ -22,7 +22,7 @@ const __dirname = path.dirname(__filename);
 const STATIC_DIR = path.resolve(__dirname, '../../static');
 const HOST = '127.0.0.1';
 const PORT = 17334;
-const TAB_TOKEN_KEY = '__rpa_tab_token';
+const TAB_NAME_KEY = '__rpa_tab_name';
 const _CLICK_DELAY_MS = 300;
 const _REPLAY_STEP_DELAY_MS = 900;
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -66,23 +66,23 @@ const contextManager = createContextManager({
 });
 
 const pageRegistry = createPageRegistry({
-    tabNameKey: TAB_TOKEN_KEY,
+    tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
-    onPageBound: (page, token) => {
-        if (recordingState.recordingEnabled.has(token)) {
-            void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
+    onPageBound: (page, tabName) => {
+        if (recordingState.recordingEnabled.has(tabName)) {
+            void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
         }
-        const scope = pageRegistry.resolveTabBinding(token);
-        const workspace = workspaceRegistry.createWorkspace(scope.workspaceName);
-        if (!workspace.tabRegistry.hasTab(scope.tabId)) {
-            workspace.tabRegistry.createTab({ tabName: scope.tabId, page, url: page.url() });
+        const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+        const workspace = workspaceRegistry.createWorkspace(workspaceName);
+        if (!workspace.tabRegistry.hasTab(tabName)) {
+            workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
         } else {
-            workspace.tabRegistry.bindPage(scope.tabId, page);
+            workspace.tabRegistry.bindPage(tabName, page);
         }
-        workspace.tabRegistry.setActiveTab(scope.tabId);
-        runtimeRegistry.bindPage({ workspaceName: scope.workspaceName, tabName: scope.tabId, page });
+        workspace.tabRegistry.setActiveTab(tabName);
+        runtimeRegistry.bindPage({ workspaceName, tabName, page });
     },
-    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
+    onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
 });
 
 const workspaceManager = createWorkspaceManager({
@@ -118,7 +118,7 @@ setRunStepsDeps({
 
 const buildToolDeps = () => ({
     pageRegistry,
-    getActiveTabToken: async () => {
+    getActiveTabName: async () => {
         const workspace = await workspaceManager.ensureActiveWorkspace();
         return workspace.tabName;
     },

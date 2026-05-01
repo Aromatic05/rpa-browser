@@ -176,7 +176,7 @@ export const createCmdRouter = (options: CmdRouterOptions): {
                     return;
                 }
                 const preferredToken = typeof typedMessage.tabName === 'string' ? typedMessage.tabName : undefined;
-                const bound = await life.ensureBoundTabToken(tabId, windowId, preferredToken);
+                const bound = await life.ensureBoundTabName(tabId, windowId, preferredToken);
                 if (!bound) {
                     sendResponse({ ok: false, error: 'bound token unavailable' });
                     return;
@@ -200,8 +200,8 @@ export const createCmdRouter = (options: CmdRouterOptions): {
                 const incomingAction = (typedMessage.action ?? {}) as Action;
                 const reply = await dispatchIncomingAction(incomingAction, sender, {
                     state,
-                    ensureTabToken: life.ensureTabToken,
-                    getActiveTabTokenForWindow: life.getActiveTabTokenForWindow,
+                    ensureTabName: life.ensureTabName,
+                    getActiveTabNameForWindow: life.getActiveTabNameForWindow,
                     sendAction,
                 });
                 sendResponse(reply);

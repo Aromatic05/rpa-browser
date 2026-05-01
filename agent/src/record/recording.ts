@@ -350,7 +350,7 @@ const ensureTabInManifest = (
 const enrichRecordedStep = (
     state: RecordingState,
     recordingToken: string,
-    sourceTabToken: string,
+    sourceTabName: string,
     step: StepUnion,
 ): StepUnion => {
     const ts = step.meta?.ts ?? Date.now();
@@ -361,7 +361,7 @@ const enrichRecordedStep = (
     if (manifest.workspaceName) {
         indexWorkspaceRecording(state, recordingToken, manifest.workspaceName);
     }
-    const stepTabToken = step.meta?.tabName || sourceTabToken;
+    const stepTabName = step.meta?.tabName || sourceTabName;
     const args = step.args as unknown;
     const gotoUrl = isRecord(args) && typeof args.url === 'string' ? args.url : undefined;
     const switchTabUrl = isRecord(args) && typeof args.tabUrl === 'string' ? args.tabUrl : undefined;
@@ -370,7 +370,7 @@ const enrichRecordedStep = (
         (step.name === 'browser.goto' ? gotoUrl : undefined) ||
         (step.name === 'browser.switch_tab' ? switchTabUrl : undefined) ||
         undefined;
-    const tab = ensureTabInManifest(manifest, stepTabToken, {
+    const tab = ensureTabInManifest(manifest, stepTabName, {
         tabId: step.meta?.tabId,
         tabRef: step.meta?.tabRef || step.meta?.tabId,
         url: stepUrl || undefined,
@@ -384,7 +384,7 @@ const enrichRecordedStep = (
             ...step.meta,
             source: step.meta?.source ?? 'record',
             ts,
-            tabName: stepTabToken,
+            tabName: stepTabName,
             tabRef: step.meta?.tabRef || tab.tabRef,
             urlAtRecord: step.meta?.urlAtRecord || stepUrl || undefined,
         },
@@ -463,7 +463,7 @@ export const recordEvent = async (
     recordLog('event', {
         type: normalized.name,
         tabName: effectiveToken,
-        sourceTabToken: event.tabName,
+        sourceTabName: event.tabName,
         ts: event.ts,
     });
 };
@@ -511,7 +511,7 @@ export const recordStep = (
     recordLog('event', {
         type: normalized.name,
         tabName: effectiveToken,
-        sourceTabToken: tabName,
+        sourceTabName: tabName,
         ts,
     });
 };
@@ -616,7 +616,7 @@ export const stopRecording = (state: RecordingState, tabName: string, opts?: { w
     state.recordSnapshotCache.delete(effectiveToken);
     recordLog('stop', {
         tabName: effectiveToken,
-        sourceTabToken: tabName,
+        sourceTabName: tabName,
         workspaceName: opts?.workspaceName,
     });
 };
@@ -711,7 +711,7 @@ const sanitizeSavedManifest = (manifest?: RecordingManifest): SavedRecordingMani
 
 const sanitizeSavedStep = (step: StepUnion): StepUnion => {
     if (!step.meta) {return { ...step };}
-    const { tabName: _dropTabToken, ...metaNoToken } = step.meta;
+    const { tabName: _dropTabName, ...metaNoToken } = step.meta;
     return {
         ...step,
         meta: metaNoToken,

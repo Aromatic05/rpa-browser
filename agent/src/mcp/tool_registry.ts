@@ -51,7 +51,7 @@ const toolDefinitions: ToolDefinition[] = [
 
 export type ToolRegistryDeps = {
     pageRegistry: PageRegistry;
-    getActiveTabToken: () => Promise<string>;
+    getActiveTabName: () => Promise<string>;
 };
 
 export type ExecuteToolOptions = {
@@ -59,9 +59,9 @@ export type ExecuteToolOptions = {
 };
 
 const resolveTabName = async (deps: ToolRegistryDeps, options?: ExecuteToolOptions) =>
-    options?.tabNameOverride || (await deps.getActiveTabToken());
+    options?.tabNameOverride || (await deps.getActiveTabName());
 
-const stripTabTokenSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
+const stripTabNameSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
     const required = Array.isArray(schema.required)
         ? schema.required.filter((item) => item !== 'tabName')
         : undefined;
@@ -103,12 +103,12 @@ const pruneSchema = (value: unknown): unknown => {
 };
 
 const compactInputSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
-    const stripped = stripTabTokenSchema(schema);
+    const stripped = stripTabNameSchema(schema);
     const compacted = pruneSchema(stripped);
     return (compacted && typeof compacted === 'object' ? compacted : { type: 'object' }) as Record<string, unknown>;
 };
 
-const withTabToken = (args: unknown, tabName: string): unknown => {
+const withTabName = (args: unknown, tabName: string): unknown => {
     if (!args || typeof args !== 'object' || Array.isArray(args)) {
         return { tabName };
     }
@@ -189,5 +189,5 @@ export const executeTool = async (
     }
 
     const tabName = await resolveTabName(deps, options);
-    return await handler(withTabToken(args, tabName));
+    return await handler(withTabName(args, tabName));
 };

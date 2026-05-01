@@ -32,7 +32,7 @@
 ## 4. 绑定流程（硬规则）
 
 1. 页面发 `RPA_ENSURE_BOUND_TOKEN`。
-2. background `ensureBoundTabToken` 处理：
+2. background `ensureBoundTabName` 处理：
 - 先尝试 `state` / `preferredToken` / `GET_TOKEN`。
 - 无 token 时由 background 发 `tab.init` 生成，并 `SET_TOKEN` 回写页面。
 - 解析 workspace（`tokenScope -> window mapping -> active workspace -> workspace.list`）。
@@ -43,7 +43,7 @@
 ## 5. chrome://newtab 阶段规则
 
 - `chrome://newtab` 阶段不发送生命周期动作。
-- `ensureBoundTabToken` 在该阶段直接返回不可用（null），调用方不得继续发送业务 action。
+- `ensureBoundTabName` 在该阶段直接返回不可用（null），调用方不得继续发送业务 action。
 
 ## 6. agent 侧严格语义
 
@@ -68,7 +68,7 @@ flowchart LR
 
   subgraph BG["Extension Background"]
     R["cmd_router"]
-    L["life.ensureBoundTabToken"]
+    L["life.ensureBoundTabName"]
     S["RouterState"]
   end
 
@@ -120,7 +120,7 @@ flowchart TD
 flowchart TD
   A["ACTION ingress"] --> B{"workspace/pageless?"}
   B -- yes --> C["direct route"]
-  B -- no --> D["ensureTabToken(sender tab)"]
+  B -- no --> D["ensureTabName(sender tab)"]
   D --> E{"token resolved?"}
   E -- no --> F["failed: tab token unavailable"]
   E -- yes --> G["attach workspaceName/tabName payload"]

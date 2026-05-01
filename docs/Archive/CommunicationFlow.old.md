@@ -33,8 +33,8 @@ No `{ ok, data }` transport wrapper is used across extension ↔ agent action ch
 ### 1. Token intent creation (`tab.init`)
 
 Caller:
-- content script (`token_bridge.ensureTabTokenAsync`)
-- start page (`newtab.ensureTabTokenFromAgent`)
+- content script (`token_bridge.ensureTabNameAsync`)
+- start page (`newtab.ensureTabNameFromAgent`)
 
 Agent handler:
 - `workspaceHandlers['tab.init']`
