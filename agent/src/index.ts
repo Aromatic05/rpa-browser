@@ -154,28 +154,28 @@ const broadcastWorkspaceList = (reason: string) => {
 };
 
 const pageRegistry = createPageRegistry({
-    tabTokenKey: TAB_TOKEN_KEY,
+    tabNameKey: TAB_TOKEN_KEY,
     getContext: contextManager.getContext,
     onPageBound: (page, token) => {
         if (recordingState.recordingEnabled.has(token)) {
             void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
         }
         try {
-            const scope = pageRegistry.resolveScopeFromToken(token);
-            const workspace = workspaceRegistry.createWorkspace(scope.workspaceId);
+            const scope = pageRegistry.resolveTabBinding(token);
+            const workspace = workspaceRegistry.createWorkspace(scope.workspaceName);
             if (!workspace.tabRegistry.hasTab(scope.tabId)) {
-                workspace.tabRegistry.createTab({ tabName: scope.tabId, tabToken: token, page, url: page.url() });
+                workspace.tabRegistry.createTab({ tabName: scope.tabId, tabName: token, page, url: page.url() });
             } else {
                 workspace.tabRegistry.bindPage(scope.tabId, page);
             }
             workspace.tabRegistry.setActiveTab(scope.tabId);
-            runtimeRegistry.bindPage({ workspaceName: scope.workspaceId, tabName: scope.tabId, page });
+            runtimeRegistry.bindPage({ workspaceName: scope.workspaceName, tabName: scope.tabId, page });
             broadcast({
                 v: 1,
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_BOUND,
-                payload: { workspaceName: scope.workspaceId, tabName: scope.tabId, url: page.url() },
-                workspaceName: scope.workspaceId,
+                payload: { workspaceName: scope.workspaceName, tabName: scope.tabId, url: page.url() },
+                workspaceName: scope.workspaceName,
                 at: Date.now(),
             });
         } catch {
@@ -294,7 +294,7 @@ const parseInboundAction = (raw: unknown): Action => {
     if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
         throw new Error('invalid action: missing or invalid fields');
     }
-    if ('scope' in rec || 'tabToken' in rec || 'workspaceId' in rec || 'tabId' in rec || 'tabToken' in rec) {
+    if ('scope' in rec || 'tabName' in rec || 'workspaceName' in rec || 'tabId' in rec || 'tabName' in rec) {
         throw new Error('invalid action: legacy address fields are not allowed');
     }
     if (!isRequestActionType(rec.type)) {
@@ -317,15 +317,15 @@ const parseInboundAction = (raw: unknown): Action => {
  * - 无活跃录制会话时直接丢弃（不广播、不执行），避免 record.stop 后仍出现录制流量；
  * - 若仅存在一个活跃录制 token，允许将事件归并到该唯一 token（跨 tab 人工录制场景）。
  */
-setRecorderEventSink(async (event, page, tabToken) => {
-    let effectiveToken = tabToken;
+setRecorderEventSink(async (event, page, tabName) => {
+    let effectiveToken = tabName;
     if (!recordingState.recordingEnabled.has(effectiveToken)) {
         if (recordingState.recordingEnabled.size === 1) {
             effectiveToken = Array.from(recordingState.recordingEnabled)[0];
         } else {
             wsTap('agent.record_event.drop', {
                 reason: 'recording_not_enabled',
-                sourceTabToken: tabToken,
+                sourceTabToken: tabName,
                 activeRecordingCount: recordingState.recordingEnabled.size,
             });
             return;
@@ -334,8 +334,8 @@ setRecorderEventSink(async (event, page, tabToken) => {
 
     let workspaceName: string | undefined;
     try {
-        const resolved = pageRegistry.resolveScopeFromToken(effectiveToken);
-        workspaceName = resolved.workspaceId;
+        const resolved = pageRegistry.resolveTabBinding(effectiveToken);
+        workspaceName = resolved.workspaceName;
     } catch {}
     const action: Action = {
         v: 1,
@@ -346,10 +346,10 @@ setRecorderEventSink(async (event, page, tabToken) => {
         at: event.ts || Date.now(),
     };
     broadcast(action);
-    const scope = pageRegistry.resolveScopeFromToken(effectiveToken);
-    const response = await executeAction(createActionContext(scope.workspaceId, scope.tabId), action);
+    const scope = pageRegistry.resolveTabBinding(effectiveToken);
+    const response = await executeAction(createActionContext(scope.workspaceName, scope.tabId), action);
     if (isFailedAction(response)) {
-        logWarning('record.event.ingest.failed', { tabToken: effectiveToken, sourceTabToken: tabToken, error: response.payload });
+        logWarning('record.event.ingest.failed', { tabName: effectiveToken, sourceTabToken: tabName, error: response.payload });
     }
 });
 
@@ -421,7 +421,7 @@ wss.on('connection', (socket) => {
                         ok: !isFailedAction(response),
                         workspaceName: responsePayload ? getStringField(responsePayload, 'workspaceName') : null,
                         tabName: responsePayload ? getStringField(responsePayload, 'tabName') : null,
-                        tabToken: responsePayload ? getStringField(responsePayload, 'tabToken') : null,
+                        tabName: responsePayload ? getStringField(responsePayload, 'tabName') : null,
                     });
                 }
                 wsTap('agent.reply', summarizeActionEnvelope(response));
@@ -429,14 +429,14 @@ wss.on('connection', (socket) => {
 
                 if (!isFailedAction(response) && isMutatingAction(action.type)) {
                     const data = isRecord(response.payload) ? response.payload : null;
-                    const workspaceId = data ? getStringField(data, 'workspaceName') : null;
+                    const workspaceName = data ? getStringField(data, 'workspaceName') : null;
                     const tabId = data ? getStringField(data, 'tabName') : null;
                     broadcast({
                         v: 1,
                         id: crypto.randomUUID(),
                         type: ACTION_TYPES.WORKSPACE_CHANGED,
-                        payload: { workspaceName: workspaceId, tabName: tabId, sourceType: action.type },
-                        workspaceName: workspaceId || undefined,
+                        payload: { workspaceName: workspaceName, tabName: tabId, sourceType: action.type },
+                        workspaceName: workspaceName || undefined,
                         at: Date.now(),
                     });
                 }
@@ -484,7 +484,7 @@ wss.on('connection', (socket) => {
  * - 固定周期定时器（TAB_PING_WATCHDOG_INTERVAL_MS）
  *
  * 职责：
- * - 检测超时未上报 ping 的 tabToken；
+ * - 检测超时未上报 ping 的 tabName；
  * - 首次发现时广播 ping-timeout 状态同步；
  * - 触发 pageRegistry.closeTokenPage 回收失活页资源。
  *
@@ -494,14 +494,14 @@ wss.on('connection', (socket) => {
 setInterval(() => {
     const staleTabs = pageRegistry.listTimedOutTokens(TAB_PING_TIMEOUT_MS, Date.now());
     for (const stale of staleTabs) {
-        if (staleNotifiedTokens.has(stale.tabToken)) {continue;}
-        staleNotifiedTokens.add(stale.tabToken);
+        if (staleNotifiedTokens.has(stale.tabName)) {continue;}
+        staleNotifiedTokens.add(stale.tabName);
         broadcastStateSync('ping-timeout', {
-            workspaceName: stale.workspaceId,
+            workspaceName: stale.workspaceName,
             tabName: stale.tabId,
             lastSeenAt: stale.lastSeenAt,
         });
-        void pageRegistry.closeTokenPage(stale.tabToken);
+        void pageRegistry.closeTokenPage(stale.tabName);
     }
 }, TAB_PING_WATCHDOG_INTERVAL_MS);
 
@@ -510,8 +510,8 @@ setInterval(() => {
     await controlServer.start();
     if (pageRegistry.listWorkspaces().length === 0) {
         const created = pageRegistry.createWorkspaceShell();
-        assert.ok(created.workspaceId, 'bootstrap workspaceId missing');
-        log('workspace.bootstrap.created', { workspaceId: created.workspaceId });
+        assert.ok(created.workspaceName, 'bootstrap workspaceName missing');
+        log('workspace.bootstrap.created', { workspaceName: created.workspaceName });
     }
     broadcastWorkspaceList('bootstrap');
     log(`Control RPC listening on ${controlServer.endpoint}`);
