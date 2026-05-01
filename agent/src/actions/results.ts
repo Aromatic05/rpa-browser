@@ -11,7 +11,7 @@ import type { ErrorCode } from './error_codes';
 export type ErrorResult = {
     ok: false;
     requestId?: string;
-    tabToken: string;
+    tabName: string;
     error: {
         code: ErrorCode;
         message: string;
@@ -22,7 +22,7 @@ export type ErrorResult = {
 export type SuccessResult<T = unknown> = {
     ok: true;
     requestId?: string;
-    tabToken: string;
+    tabName: string;
     data: T;
 };
 
@@ -31,9 +31,9 @@ export type Result<T = unknown> = SuccessResult<T> | ErrorResult;
 /**
  * 构造成功结果。
  */
-export const okResult = <T>(tabToken: string, data: T, requestId?: string): SuccessResult<T> => ({
+export const okResult = <T>(tabName: string, data: T, requestId?: string): SuccessResult<T> => ({
     ok: true,
-    tabToken,
+    tabName,
     requestId,
     data,
 });
@@ -42,14 +42,14 @@ export const okResult = <T>(tabToken: string, data: T, requestId?: string): Succ
  * 构造失败结果。details 仅用于调试/诊断，不应泄露敏感信息。
  */
 export const errorResult = (
-    tabToken: string,
+    tabName: string,
     code: ErrorCode,
     message: string,
     requestId?: string,
     details?: unknown,
 ): ErrorResult => ({
     ok: false,
-    tabToken,
+    tabName,
     requestId,
     error: { code, message, details },
 });

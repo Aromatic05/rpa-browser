@@ -14,15 +14,15 @@ export const runDslControl = async (
     if (!isRecord(params)) {
         throw badRequest('dsl.run params must be an object');
     }
-    if (typeof params.workspaceId !== 'string' || params.workspaceId.length === 0) {
-        throw badRequest('workspaceId is required');
+    if (typeof params.workspaceName !== 'string' || params.workspaceName.length === 0) {
+        throw badRequest('workspaceName is required');
     }
     if (typeof params.source !== 'string' || params.source.length === 0) {
         throw badRequest('source is required');
     }
 
     const result = await runDslSource(params.source, {
-        workspaceId: params.workspaceId,
+        workspaceName: params.workspaceName,
         deps: ctx.deps,
         input: isRecord(params.input) ? params.input : undefined,
         checkpointProvider: ctx.checkpointProvider,

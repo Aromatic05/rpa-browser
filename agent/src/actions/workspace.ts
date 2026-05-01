@@ -61,9 +61,9 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const tabs = workspace.tabRegistry.listTabs();
-        const bundle = getRecordingBundle(ctx.recordingState, '', { workspaceId: workspaceName });
+        const bundle = getRecordingBundle(ctx.recordingState, '', { workspaceName: workspaceName });
         const snapshot = saveWorkspaceSnapshot(ctx.recordingState, {
-            workspaceId: workspaceName,
+            workspaceName: workspaceName,
             tabs: tabs.map((tab) => ({ tabId: tab.name, url: tab.url, title: tab.title, active: workspace.tabRegistry.getActiveTab()?.name === tab.name })),
             recordingToken: bundle.recordingToken,
             steps: bundle.steps,
@@ -83,7 +83,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const targetWorkspaceName = randomName();
         const workspace = ctx.workspaceRegistry.createWorkspace(targetWorkspaceName);
         for (const tab of snapshot.tabs) {
-            workspace.tabRegistry.createTab({ tabName: tab.tabId || randomName(), tabToken: randomName(), url: tab.url || '', title: tab.title || '' });
+            workspace.tabRegistry.createTab({ tabName: tab.tabId || randomName(), tabName: randomName(), url: tab.url || '', title: tab.title || '' });
         }
         const activeTab = snapshot.tabs.find((item) => item.active) || snapshot.tabs[0];
         if (activeTab?.tabId && workspace.tabRegistry.hasTab(activeTab.tabId)) {
@@ -110,9 +110,9 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const tabName = randomName();
-        const tabToken = randomName();
-        const page = await ctx.pageRegistry.getPage(tabToken, payload.startUrl);
-        workspace.tabRegistry.createTab({ tabName, tabToken, page, url: page.url() });
+        const tabName = randomName();
+        const page = await ctx.pageRegistry.getPage(tabName, payload.startUrl);
+        workspace.tabRegistry.createTab({ tabName, tabName, page, url: page.url() });
         workspace.tabRegistry.setActiveTab(tabName);
         return replyAction(action, { workspaceName, tabName });
     },
@@ -143,7 +143,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         if (!workspaceName || !payload.tabName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName/tabName is required');}
         const workspace = ctx.workspaceRegistry.createWorkspace(workspaceName);
         if (!workspace.tabRegistry.hasTab(payload.tabName)) {
-            workspace.tabRegistry.createTab({ tabName: payload.tabName, tabToken: randomName(), url: payload.url || '', title: payload.title || '', at: payload.at });
+            workspace.tabRegistry.createTab({ tabName: payload.tabName, tabName: randomName(), url: payload.url || '', title: payload.title || '', at: payload.at });
         }
         workspace.tabRegistry.updateTab(payload.tabName, { url: payload.url, title: payload.title, updatedAt: payload.at });
         workspace.tabRegistry.setActiveTab(payload.tabName);
@@ -190,7 +190,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         }
         const workspace = ctx.workspaceRegistry.createWorkspace(payload.workspaceName);
         if (!workspace.tabRegistry.hasTab(payload.tabName)) {
-            workspace.tabRegistry.createTab({ tabName: payload.tabName, tabToken: randomName(), at: payload.at });
+            workspace.tabRegistry.createTab({ tabName: payload.tabName, tabName: randomName(), at: payload.at });
         }
         workspace.tabRegistry.setActiveTab(payload.tabName);
         return replyAction(action, {

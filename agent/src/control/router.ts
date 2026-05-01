@@ -12,7 +12,7 @@ export type ControlHandler = (
 
 export type ControlRouterContext = {
     deps: RunStepsDeps;
-    workspaceId?: string;
+    workspaceName?: string;
     checkpointProvider?: DslCheckpointProvider;
 };
 
@@ -54,10 +54,10 @@ const handlerError = (error: unknown): { code: string; message: string; details?
 
 export const createControlRouter = (ctx: ControlRouterContext): ControlRouter => {
     const resolveWorkspaceParams = (params: unknown): unknown => {
-        if (ctx.workspaceId && typeof params === 'object' && params !== null && !Array.isArray(params)) {
+        if (ctx.workspaceName && typeof params === 'object' && params !== null && !Array.isArray(params)) {
             const record = params as Record<string, unknown>;
-            if (typeof record.workspaceId !== 'string') {
-                return { workspaceId: ctx.workspaceId, ...record };
+            if (typeof record.workspaceName !== 'string') {
+                return { workspaceName: ctx.workspaceName, ...record };
             }
         }
         return params;

@@ -23,7 +23,7 @@ export type DslTaskRunner = {
 };
 
 export type CreateDslTaskRunnerOptions = {
-    workspaceId: string;
+    workspaceName: string;
     deps: RunStepsDeps;
     stopOnError?: boolean;
 };
@@ -38,7 +38,7 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
     let started = false;
     let latestCheckpoint: Checkpoint = {
         runId,
-        workspaceId: options.workspaceId,
+        workspaceName: options.workspaceName,
         status: 'running',
         cursor: 0,
         updatedAt: Date.now(),
@@ -47,7 +47,7 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
     const runPromise = runSteps(
         {
             runId,
-            workspaceId: options.workspaceId,
+            workspaceName: options.workspaceName,
             stepsQueue: queue,
             resultPipe: pipe,
             signalChannel: signals,

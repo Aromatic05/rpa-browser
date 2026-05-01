@@ -40,13 +40,13 @@ const __dirname = path.dirname(__filename);
 const DEFAULT_ARTIFACTS_ROOT = path.resolve(__dirname, '../../.artifacts');
 const DEFAULT_WORKFLOWS_DIR = path.resolve(DEFAULT_ARTIFACTS_ROOT, 'workflows');
 
-const toArtifactManifest = (recordingName: string, workspaceId: string | undefined, bundle: {
+const toArtifactManifest = (recordingName: string, workspaceName: string | undefined, bundle: {
     steps: StepUnion[];
     manifest?: { entryUrl?: string; tabs?: Array<{ tabId?: string; tabRef?: string; lastSeenUrl?: string; firstSeenUrl?: string }> };
 }) => ({
     version: 1,
     recordingName,
-    workspaceId: workspaceId || '',
+    workspaceName: workspaceName || '',
     entryUrl: bundle.manifest?.entryUrl || '',
     tabs: (bundle.manifest?.tabs || []).map((item) => ({
         tabId: item.tabId || item.tabRef || '',
@@ -65,12 +65,12 @@ const toStepFile = (steps: StepUnion[]): StepFile => ({
     })) as StepFile['steps'],
 });
 
-const toSceneFromWorkspaceId = (workspaceId: string): string => {
-    if (workspaceId.startsWith('workflow:')) {
-        const scene = workspaceId.slice('workflow:'.length).trim();
+const toSceneFromWorkspaceName = (workspaceName: string): string => {
+    if (workspaceName.startsWith('workflow:')) {
+        const scene = workspaceName.slice('workflow:'.length).trim();
         if (scene) {return scene;}
     }
-    return workspaceId.trim();
+    return workspaceName.trim();
 };
 
 const ensureWorkflowScaffold = (scene: string): { workflowRoot: string; created: boolean } => {
@@ -105,30 +105,30 @@ const resolveLatestRecordingName = (scene: string): string | null => {
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, action) => {
-        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.resolveTab().tabToken);
-        await startRecording(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabToken, ctx.navDedupeWindowMs, {
-            workspaceId: scope.workspaceId,
+        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().tabName);
+        await startRecording(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabName, ctx.navDedupeWindowMs, {
+            workspaceName: scope.workspaceName,
             tabId: scope.tabId,
             entryUrl: ctx.resolvePage().url(),
         });
-        await ensureRecorder(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabToken, ctx.navDedupeWindowMs);
+        await ensureRecorder(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabName, ctx.navDedupeWindowMs);
         await setRecorderRuntimeEnabled(ctx.resolvePage(), true);
         return replyAction(action, { pageUrl: ctx.resolvePage().url() });
     },
     'record.stop': async (ctx, action) => {
-        const workspaceId = action.workspaceName;
-        stopRecording(ctx.recordingState, ctx.resolveTab().tabToken, { workspaceId });
+        const workspaceName = action.workspaceName;
+        stopRecording(ctx.recordingState, ctx.resolveTab().tabName, { workspaceName });
         try {
             await setRecorderRuntimeEnabled(ctx.resolvePage(), false);
         } catch {
             // ignore unavailable page in pageless mode
         }
-        if (workspaceId) {
+        if (workspaceName) {
             try {
-                const tabs = await ctx.pageRegistry.listTabs(workspaceId);
+                const tabs = await ctx.pageRegistry.listTabs(workspaceName);
                 for (const tab of tabs) {
                     try {
-                        const page = await ctx.pageRegistry.resolvePage({ workspaceId, tabId: tab.tabId });
+                        const page = await ctx.pageRegistry.resolvePage({ workspaceName, tabId: tab.tabId });
                         await setRecorderRuntimeEnabled(page, false);
                     } catch {
                         // ignore tabs without live page binding
@@ -147,22 +147,22 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { pageUrl });
     },
     'record.get': async (ctx, action) => {
-        const workspaceId = action.workspaceName;
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, workspaceId ? { workspaceId } : undefined);
+        const workspaceName = action.workspaceName;
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabName, workspaceName ? { workspaceName } : undefined);
         return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
     'record.save': async (ctx, action) => {
-        const workspaceId = action.workspaceName;
-        if (!workspaceId) {
-            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required for record.save');
+        const workspaceName = action.workspaceName;
+        if (!workspaceName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.save');
         }
         const payload = (action.payload || {}) as { scene?: string; recordingName?: string; includeStepResolve?: boolean };
-        const scene = (payload.scene || '').trim() || toSceneFromWorkspaceId(workspaceId);
+        const scene = (payload.scene || '').trim() || toSceneFromWorkspaceName(workspaceName);
         if (!scene) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'scene is required for record.save');
         }
         const scaffold = ensureWorkflowScaffold(scene);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, workspaceId ? { workspaceId } : undefined);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabName, workspaceName ? { workspaceName } : undefined);
         const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
         const stepsFile = toStepFile(bundle.steps);
         validateStepFileForSerialization(stepsFile);
@@ -175,7 +175,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             artifactsRootDir: DEFAULT_ARTIFACTS_ROOT,
             scene,
             recordingName,
-            workspaceId,
+            workspaceName,
             entryUrl: bundle.manifest?.entryUrl,
             tabs: (bundle.manifest?.tabs || []).map((item) => ({
                 tabId: item.tabId || item.tabRef,
@@ -188,7 +188,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             saved: true,
             scene,
             recordingName,
-            workspaceId,
+            workspaceName,
             recordsDir,
             workflowRoot: scaffold.workflowRoot,
             workflowCreated: scaffold.created,
@@ -196,15 +196,15 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         });
     },
     'record.load': async (ctx, action) => {
-        const workspaceId = action.workspaceName;
-        if (!workspaceId) {
-            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceId is required for record.load');
+        const workspaceName = action.workspaceName;
+        if (!workspaceName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.load');
         }
         const payload = (action.payload || {}) as {
             scene?: string;
             recordingName?: string;
         };
-        const scene = (payload.scene || '').trim() || toSceneFromWorkspaceId(workspaceId);
+        const scene = (payload.scene || '').trim() || toSceneFromWorkspaceName(workspaceName);
         if (!scene) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'scene is required for record.load');
         }
@@ -234,17 +234,17 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             id: step.id,
             name: step.name,
             args: step.args,
-            meta: { source: 'record', ts: now, workspaceId },
+            meta: { source: 'record', ts: now, workspaceName },
         })) as StepUnion[];
         ctx.recordingState.recordings.set(recordingToken, steps);
         ctx.recordingState.recordingEnhancements.set(recordingToken, {});
         ctx.recordingState.recordingManifests.set(recordingToken, {
             recordingToken,
-            workspaceId,
+            workspaceName,
             entryUrl: typeof parsedManifest.entryUrl === 'string' ? parsedManifest.entryUrl : undefined,
             startedAt: now,
             tabs: (Array.isArray(parsedManifest.tabs) ? parsedManifest.tabs : []).map((tab) => ({
-                tabToken: recordingToken,
+                tabName: recordingToken,
                 tabRef: tab.tabId || 'main',
                 tabId: tab.tabId,
                 firstSeenUrl: tab.url,
@@ -253,13 +253,13 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 lastSeenAt: now,
             })),
         });
-        ctx.recordingState.workspaceLatestRecording.set(workspaceId, recordingToken);
+        ctx.recordingState.workspaceLatestRecording.set(workspaceName, recordingToken);
         return replyAction(action, {
             imported: true,
             scene,
             recordingName,
             stepCount: steps.length,
-            workspaceId,
+            workspaceName,
             recordingToken,
             recordsDir,
             workflowRoot: scaffold.workflowRoot,
@@ -267,8 +267,8 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         });
     },
     'record.clear': async (ctx, action) => {
-        const workspaceId = action.workspaceName;
-        clearRecording(ctx.recordingState, ctx.resolveTab().tabToken, workspaceId ? { workspaceId } : undefined);
+        const workspaceName = action.workspaceName;
+        clearRecording(ctx.recordingState, ctx.resolveTab().tabName, workspaceName ? { workspaceName } : undefined);
         return replyAction(action, { cleared: true });
     },
     'record.list': async (ctx, action) => {
@@ -276,35 +276,35 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { recordings });
     },
     'play.stop': async (ctx, action) => {
-        cancelReplay(ctx.recordingState, ctx.resolveTab().tabToken);
+        cancelReplay(ctx.recordingState, ctx.resolveTab().tabName);
         return replyAction(action, { stopped: true });
     },
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
-        const scope = ctx.pageRegistry.resolveScopeFromToken(ctx.resolveTab().tabToken);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, { workspaceId: scope.workspaceId });
+        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().tabName);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabName, { workspaceName: scope.workspaceName });
         const steps = bundle.steps;
         const stopOnError = payload.stopOnError ?? true;
-        const recordedWorkspaceId = bundle.manifest?.workspaceId;
-        const existingWorkspaceIds = new Set(ctx.pageRegistry.listWorkspaces().map((ws) => ws.workspaceId));
-        if (recordedWorkspaceId && !existingWorkspaceIds.has(recordedWorkspaceId)) {
+        const recordedWorkspaceName = bundle.manifest?.workspaceName;
+        const existingWorkspaceNames = new Set(ctx.pageRegistry.listWorkspaces().map((ws) => ws.workspaceName));
+        if (recordedWorkspaceName && !existingWorkspaceNames.has(recordedWorkspaceName)) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'recording workspace not found');
         }
-        const replayWorkspaceId = recordedWorkspaceId || scope.workspaceId;
+        const replayWorkspaceName = recordedWorkspaceName || scope.workspaceName;
         // Prefer the currently targeted tab when scope is valid in the same workspace.
         // Only create a new tab if we must switch workspace and no tab is available there.
-        let initialTabId = scope.workspaceId === replayWorkspaceId ? scope.tabId : '';
-        if (!initialTabId) {
-            const targetWs = ctx.pageRegistry.listWorkspaces().find((ws) => ws.workspaceId === replayWorkspaceId);
-            initialTabId = targetWs?.activeTabId || '';
+        let initialTabName = scope.workspaceName === replayWorkspaceName ? scope.tabId : '';
+        if (!initialTabName) {
+            const targetWs = ctx.pageRegistry.listWorkspaces().find((ws) => ws.workspaceName === replayWorkspaceName);
+            initialTabName = targetWs?.activeTabName || '';
         }
-        if (!initialTabId) {
-            initialTabId = await ctx.pageRegistry.createTab(replayWorkspaceId);
+        if (!initialTabName) {
+            initialTabName = await ctx.pageRegistry.createTab(replayWorkspaceName);
         }
         // Never reuse recorded tab token; bind replay to the current runtime tab token.
         if (bundle.manifest?.entryUrl) {
             try {
-                const page = await ctx.pageRegistry.resolvePage({ workspaceId: replayWorkspaceId, tabId: initialTabId });
+                const page = await ctx.pageRegistry.resolvePage({ workspaceName: replayWorkspaceName, tabId: initialTabName });
                 if (page.url() !== bundle.manifest.entryUrl) {
                     await page.goto(bundle.manifest.entryUrl, { waitUntil: 'domcontentloaded' });
                 }
@@ -312,16 +312,16 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 // ignore preflight navigation failures, replay steps will surface deterministic errors later.
             }
         }
-        ctx.pageRegistry.setActiveWorkspace(replayWorkspaceId);
-        ctx.pageRegistry.setActiveTab(replayWorkspaceId, initialTabId);
-        const initialTabToken = ctx.pageRegistry.resolveTabToken({ workspaceId: replayWorkspaceId, tabId: initialTabId });
-        beginReplay(ctx.recordingState, ctx.resolveTab().tabToken);
+        ctx.pageRegistry.setActiveWorkspace(replayWorkspaceName);
+        ctx.pageRegistry.setActiveTab(replayWorkspaceName, initialTabName);
+        const initialTabToken = ctx.pageRegistry.resolveTabName({ workspaceName: replayWorkspaceName, tabId: initialTabName });
+        beginReplay(ctx.recordingState, ctx.resolveTab().tabName);
         const emitPlayEvent = (type: string, payload: Record<string, unknown>) => {
             ctx.emit?.({
                 v: 1,
                 id: crypto.randomUUID(),
                 type,
-                workspaceName: replayWorkspaceId,
+                workspaceName: replayWorkspaceName,
                 payload,
                 at: Date.now(),
                 traceId: action.traceId,
@@ -331,23 +331,23 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const publishReplayEvent = (event: ReplayEvent) => {
             if (event.type === 'step.started') {
                 emitPlayEvent(ACTION_TYPES.PLAY_STEP_STARTED, {
-                    workspaceId: replayWorkspaceId,
-                    tabId: initialTabId,
+                    workspaceName: replayWorkspaceName,
+                    tabId: initialTabName,
                     ...event,
                 });
                 return;
             }
             if (event.type === 'step.finished') {
                 emitPlayEvent(ACTION_TYPES.PLAY_STEP_FINISHED, {
-                    workspaceId: replayWorkspaceId,
-                    tabId: initialTabId,
+                    workspaceName: replayWorkspaceName,
+                    tabId: initialTabName,
                     ...event,
                 });
                 return;
             }
             emitPlayEvent(ACTION_TYPES.PLAY_PROGRESS, {
-                workspaceId: replayWorkspaceId,
-                tabId: initialTabId,
+                workspaceName: replayWorkspaceName,
+                tabId: initialTabName,
                 completed: event.completed,
                 total: event.total,
             });
@@ -356,8 +356,8 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         void (async () => {
             try {
                 const replayed = await replayRecording({
-                    workspaceId: replayWorkspaceId,
-                    initialTabId,
+                    workspaceName: replayWorkspaceName,
+                    initialTabName,
                     initialTabToken,
                     steps,
                     enrichments: bundle.enrichments,
@@ -365,25 +365,25 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                     stopOnError,
                     replayOptions: ctx.replayOptions,
                     pageRegistry: {
-                        listTabs: (workspaceId: string) => ctx.pageRegistry.listTabs(workspaceId),
-                        resolveTabIdFromToken: (tabToken: string) => {
+                        listTabs: (workspaceName: string) => ctx.pageRegistry.listTabs(workspaceName),
+                        resolveTabNameFromToken: (tabName: string) => {
                             try {
-                                return ctx.pageRegistry.resolveScopeFromToken(tabToken).tabId;
+                                return ctx.pageRegistry.resolveTabBinding(tabName).tabId;
                             } catch {
                                 return undefined;
                             }
                         },
-                        resolveTabIdFromRef: (tabRef: string) => {
+                        resolveTabNameFromRef: (tabRef: string) => {
                             return tabRef || undefined;
                         },
                     },
-                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.resolveTab().tabToken),
+                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.resolveTab().tabName),
                     onEvent: publishReplayEvent,
                 });
                 if (replayed.error?.code === 'ERR_CANCELED') {
                     emitPlayEvent(ACTION_TYPES.PLAY_CANCELED, {
-                        workspaceId: replayWorkspaceId,
-                        tabId: initialTabId,
+                        workspaceName: replayWorkspaceName,
+                        tabId: initialTabName,
                         results: replayed.results,
                     });
                     return;
@@ -391,8 +391,8 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 if (!replayed.ok && stopOnError) {
                     const firstFailed = replayed.results.find((item) => !item.ok);
                     emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
-                        workspaceId: replayWorkspaceId,
-                        tabId: initialTabId,
+                        workspaceName: replayWorkspaceName,
+                        tabId: initialTabName,
                         code: ERROR_CODES.ERR_ASSERTION_FAILED,
                         message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
                         details: { results: replayed.results, failed: firstFailed?.error || replayed.error },
@@ -400,19 +400,19 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                     return;
                 }
                 emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, {
-                    workspaceId: replayWorkspaceId,
-                    tabId: initialTabId,
+                    workspaceName: replayWorkspaceName,
+                    tabId: initialTabName,
                     results: replayed.results,
                 });
             } catch (error) {
                 emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
-                    workspaceId: replayWorkspaceId,
-                    tabId: initialTabId,
+                    workspaceName: replayWorkspaceName,
+                    tabId: initialTabName,
                     code: ERROR_CODES.ERR_BAD_ARGS,
                     message: error instanceof Error ? error.message : String(error),
                 });
             } finally {
-                endReplay(ctx.recordingState, ctx.resolveTab().tabToken);
+                endReplay(ctx.recordingState, ctx.resolveTab().tabName);
             }
         })();
 
@@ -420,9 +420,9 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             action,
             {
                 started: true,
-                workspaceId: replayWorkspaceId,
-                tabId: initialTabId,
-                tabToken: initialTabToken,
+                workspaceName: replayWorkspaceName,
+                tabId: initialTabName,
+                tabName: initialTabToken,
                 stepCount: steps.length,
                 stopOnError,
             },
@@ -441,11 +441,11 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         }
 
         const step = payload;
-        const token = ctx.resolveTab().tabToken;
-        const scope = ctx.pageRegistry.resolveScopeFromToken(token);
+        const token = ctx.resolveTab().tabName;
+        const scope = ctx.pageRegistry.resolveTabBinding(token);
         let currentUrl: string;
         try {
-            const targetPage = await ctx.pageRegistry.resolvePage({ workspaceId: scope.workspaceId, tabId: scope.tabId });
+            const targetPage = await ctx.pageRegistry.resolvePage({ workspaceName: scope.workspaceName, tabId: scope.tabId });
             currentUrl = targetPage.url();
         } catch {
             currentUrl = '';
@@ -456,9 +456,9 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 ...step.meta,
                 source: step.meta?.source ?? 'record',
                 ts: step.meta?.ts ?? Date.now(),
-                workspaceId: scope.workspaceId,
+                workspaceName: scope.workspaceName,
                 tabId: scope.tabId,
-                tabToken: token,
+                tabName: token,
                 tabRef: step.meta?.tabRef || scope.tabId,
                 urlAtRecord: step.meta?.urlAtRecord || currentUrl || undefined,
             },
@@ -470,5 +470,5 @@ export const recordingHandlers: Record<string, ActionHandler> = {
 
 const isRawRecorderEventPayload = (payload: StepUnion | RecorderEvent): payload is RecorderEvent => {
     const maybe = payload as Partial<RecorderEvent>;
-    return typeof maybe.type === 'string' && typeof maybe.tabToken === 'string' && typeof maybe.ts === 'number';
+    return typeof maybe.type === 'string' && typeof maybe.tabName === 'string' && typeof maybe.ts === 'number';
 };

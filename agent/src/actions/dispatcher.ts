@@ -34,12 +34,12 @@ const createPageStub = (actionType: string): Page =>
 
 const assertNoLegacyAddressFields = (action: Action): void => {
     const envelope = action as Record<string, unknown>;
-    if ('scope' in envelope || 'tabToken' in envelope) {
+    if ('scope' in envelope || 'tabName' in envelope) {
         throw new Error('legacy action address fields are not allowed');
     }
     if (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) {
         const payload = action.payload as Record<string, unknown>;
-        if ('workspaceId' in payload || 'tabId' in payload || 'tabToken' in payload || 'scope' in payload) {
+        if ('workspaceName' in payload || 'tabId' in payload || 'tabName' in payload || 'scope' in payload) {
             throw new Error('legacy payload address fields are not allowed');
         }
         if (action.workspaceName && 'workspaceName' in payload) {

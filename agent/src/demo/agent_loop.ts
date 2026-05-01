@@ -20,7 +20,7 @@ export type AgentLoopResult = {
 
 const sanitizeResult = (result: any) => {
     if (!result || typeof result !== 'object') {return result;}
-    const { tabToken: _tabToken, ...rest } = result;
+    const { tabName: _tabName, ...rest } = result;
     return rest;
 };
 
@@ -61,7 +61,7 @@ export const runAgentLoop = async (params: {
         {
             role: 'system',
             content:
-                'You are a browser automation assistant. You must use tools to inspect pages before answering. Do not claim you cannot access a site unless tools fail. Do not ask for tabToken; tools operate on the active workspace.',
+                'You are a browser automation assistant. You must use tools to inspect pages before answering. Do not claim you cannot access a site unless tools fail. Do not ask for tabName; tools operate on the active workspace.',
         },
         { role: 'user', content: message },
     ];

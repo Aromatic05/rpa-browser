@@ -55,20 +55,20 @@ export type ToolRegistryDeps = {
 };
 
 export type ExecuteToolOptions = {
-    tabTokenOverride?: string;
+    tabNameOverride?: string;
 };
 
-const resolveTabToken = async (deps: ToolRegistryDeps, options?: ExecuteToolOptions) =>
-    options?.tabTokenOverride || (await deps.getActiveTabToken());
+const resolveTabName = async (deps: ToolRegistryDeps, options?: ExecuteToolOptions) =>
+    options?.tabNameOverride || (await deps.getActiveTabToken());
 
 const stripTabTokenSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
     const required = Array.isArray(schema.required)
-        ? schema.required.filter((item) => item !== 'tabToken')
+        ? schema.required.filter((item) => item !== 'tabName')
         : undefined;
     const properties =
         schema.properties && typeof schema.properties === 'object'
             ? Object.fromEntries(
-                  Object.entries(schema.properties as Record<string, unknown>).filter(([key]) => key !== 'tabToken'),
+                  Object.entries(schema.properties as Record<string, unknown>).filter(([key]) => key !== 'tabName'),
               )
             : undefined;
 
@@ -108,15 +108,15 @@ const compactInputSchema = (schema: Record<string, unknown>): Record<string, unk
     return (compacted && typeof compacted === 'object' ? compacted : { type: 'object' }) as Record<string, unknown>;
 };
 
-const withTabToken = (args: unknown, tabToken: string): unknown => {
+const withTabToken = (args: unknown, tabName: string): unknown => {
     if (!args || typeof args !== 'object' || Array.isArray(args)) {
-        return { tabToken };
+        return { tabName };
     }
     const rec = args as Record<string, unknown>;
-    if (typeof rec.tabToken === 'string' && rec.tabToken.length > 0) {
+    if (typeof rec.tabName === 'string' && rec.tabName.length > 0) {
         return args;
     }
-    return { ...rec, tabToken };
+    return { ...rec, tabName };
 };
 
 const isKnownTool = (name: string): boolean => toolDefinitions.some((tool) => tool.name === name);
@@ -188,6 +188,6 @@ export const executeTool = async (
         };
     }
 
-    const tabToken = await resolveTabToken(deps, options);
-    return await handler(withTabToken(args, tabToken));
+    const tabName = await resolveTabName(deps, options);
+    return await handler(withTabToken(args, tabName));
 };

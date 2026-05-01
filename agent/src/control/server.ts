@@ -7,7 +7,7 @@ import type { DslCheckpointProvider } from '../dsl/emit';
 export type ControlServerOptions = {
     endpoint?: string;
     deps: RunStepsDeps;
-    workspaceId?: string;
+    workspaceName?: string;
     checkpointProvider?: DslCheckpointProvider;
 };
 
@@ -21,7 +21,7 @@ export const createControlServer = (options: ControlServerOptions): ControlServe
     const transport = createControlTransport(options.endpoint);
     const router = createControlRouter({
         deps: options.deps,
-        workspaceId: options.workspaceId,
+        workspaceName: options.workspaceName,
         checkpointProvider: options.checkpointProvider,
     });
     let started = false;

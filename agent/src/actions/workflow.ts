@@ -26,7 +26,7 @@ const DEFAULT_WORKFLOWS_DIR = path.resolve(DEFAULT_ARTIFACTS_ROOT, 'workflows');
 // Workflow creation/open/validation must stay in this workflow module behind explicit workflow actions.
 // Keep this boundary strict and treat any cross-module fallback as a regression.
 
-const toWorkflowWorkspaceId = (scene: string): string => `workflow:${scene}`;
+const toWorkflowWorkspaceName = (scene: string): string => `workflow:${scene}`;
 
 const countSubdirs = (dir: string): number => {
     if (!fs.existsSync(dir)) {return 0;}
@@ -35,19 +35,19 @@ const countSubdirs = (dir: string): number => {
 
 const restoreWorkflowWorkspace = async (
     ctx: Parameters<ActionHandler>[0],
-    workspaceId: string,
-): Promise<{ workspaceId: string; tabId: string; tabToken: string }> => {
-    const target = ctx.pageRegistry.listWorkspaces().find((item) => item.workspaceId === workspaceId);
+    workspaceName: string,
+): Promise<{ workspaceName: string; tabId: string; tabName: string }> => {
+    const target = ctx.pageRegistry.listWorkspaces().find((item) => item.workspaceName === workspaceName);
     if (!target) {
-        throw new Error(`workspace not found: ${workspaceId}`);
+        throw new Error(`workspace not found: ${workspaceName}`);
     }
-    const tabId = target.activeTabId || (await ctx.pageRegistry.createTab(workspaceId));
-    ctx.pageRegistry.setActiveWorkspace(workspaceId);
-    ctx.pageRegistry.setActiveTab(workspaceId, tabId);
+    const tabId = target.activeTabName || (await ctx.pageRegistry.createTab(workspaceName));
+    ctx.pageRegistry.setActiveWorkspace(workspaceName);
+    ctx.pageRegistry.setActiveTab(workspaceName, tabId);
     return {
-        workspaceId,
+        workspaceName,
         tabId,
-        tabToken: ctx.pageRegistry.resolveTabToken({ workspaceId, tabId }),
+        tabName: ctx.pageRegistry.resolveTabName({ workspaceName, tabId }),
     };
 };
 
@@ -179,7 +179,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         const resolved = await resolveWorkflowWorkspace(
             {
                 pageRegistry: ctx.pageRegistry,
-                restoreWorkspace: async (workspaceId) => await restoreWorkflowWorkspace(ctx, workspaceId),
+                restoreWorkspace: async (workspaceName) => await restoreWorkflowWorkspace(ctx, workspaceName),
             },
             {
                 scene: payload.scene,
@@ -190,9 +190,9 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         return replyAction(action, {
             scene: payload.scene,
             workflowRoot: loaded.rootDir,
-            workspaceId: resolved.workspaceId,
+            workspaceName: resolved.workspaceName,
             tabId: resolved.tabId,
-            tabToken: resolved.tabToken,
+            tabName: resolved.tabName,
             entryUrl: loaded.workspaceBinding?.workspace.entryUrl,
         });
     },
@@ -202,10 +202,10 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         if (!payload.scene) {
             throw new DslRuntimeError('workflow.status requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
-        const workspaceId = toWorkflowWorkspaceId(payload.scene);
-        const exists = ctx.pageRegistry.listWorkspaces().some((item) => item.workspaceId === workspaceId);
-        const active = ctx.pageRegistry.getActiveWorkspace()?.workspaceId === workspaceId;
-        return replyAction(action, { scene: payload.scene, workspaceId, exists, active });
+        const workspaceName = toWorkflowWorkspaceName(payload.scene);
+        const exists = ctx.pageRegistry.listWorkspaces().some((item) => item.workspaceName === workspaceName);
+        const active = ctx.pageRegistry.getActiveWorkspace()?.workspaceName === workspaceName;
+        return replyAction(action, { scene: payload.scene, workspaceName, exists, active });
     },
 
     'workflow.record.save': async (ctx, action) => {
@@ -213,21 +213,21 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         if (!payload.scene) {
             throw new DslRuntimeError('workflow.record.save requires scene', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
-        const workspaceId = toWorkflowWorkspaceId(payload.scene);
-        const currentWorkspaceId = action.workspaceName || ctx.pageRegistry.getActiveWorkspace()?.workspaceId || '';
-        if (currentWorkspaceId !== workspaceId) {
+        const workspaceName = toWorkflowWorkspaceName(payload.scene);
+        const currentWorkspaceName = action.workspaceName || ctx.pageRegistry.getActiveWorkspace()?.workspaceName || '';
+        if (currentWorkspaceName !== workspaceName) {
             throw new DslRuntimeError(
-                `workflow workspace mismatch: expected=${workspaceId} actual=${currentWorkspaceId || 'none'}`,
+                `workflow workspace mismatch: expected=${workspaceName} actual=${currentWorkspaceName || 'none'}`,
                 'ERR_WORKFLOW_WORKSPACE_RESOLVE_FAILED',
             );
         }
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabToken, { workspaceId });
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabName, { workspaceName });
         const recordingName = payload.recordingName || toDefaultRecordingName();
         await saveWorkflowRecordingArtifacts({
             artifactsRootDir: DEFAULT_ARTIFACTS_ROOT,
             scene: payload.scene,
             recordingName,
-            workspaceId,
+            workspaceName,
             entryUrl: bundle.manifest?.entryUrl,
             tabs: (bundle.manifest?.tabs || []).map((item) => ({ tabId: item.tabId || item.tabRef, url: item.lastSeenUrl || item.firstSeenUrl })),
             steps: bundle.steps,
@@ -274,7 +274,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         const resolved = await resolveWorkflowWorkspace(
             {
                 pageRegistry: ctx.pageRegistry,
-                restoreWorkspace: async (workspaceId) => await restoreWorkflowWorkspace(ctx, workspaceId),
+                restoreWorkspace: async (workspaceName) => await restoreWorkflowWorkspace(ctx, workspaceName),
             },
             {
                 scene: payload.scene,
@@ -284,7 +284,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         const checkpointProvider = createWorkflowCheckpointProvider(payload.scene, loaded.checkpoints);
         const input = (payload.input || loaded.inputsExample || {}) as Record<string, unknown>;
         const runResult = await runDslSource(loaded.dslSource, {
-            workspaceId: resolved.workspaceId,
+            workspaceName: resolved.workspaceName,
             deps: ctx.runStepsDeps,
             input,
             checkpointProvider,
@@ -293,7 +293,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             ok: true,
             output: runResult.scope.output,
             diagnostics: runResult.diagnostics,
-            workspaceId: resolved.workspaceId,
+            workspaceName: resolved.workspaceName,
         });
     },
 
@@ -315,7 +315,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             },
             {
                 pageRegistry: ctx.pageRegistry,
-                restoreWorkspace: async (workspaceId) => await restoreWorkflowWorkspace(ctx, workspaceId),
+                restoreWorkspace: async (workspaceName) => await restoreWorkflowWorkspace(ctx, workspaceName),
                 runStepsDeps: ctx.runStepsDeps,
                 workflowsDir: DEFAULT_WORKFLOWS_DIR,
             },
@@ -324,9 +324,9 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             ok: true,
             output: result.scope.output,
             diagnostics: result.diagnostics,
-            workspaceId: result.workspaceId,
+            workspaceName: result.workspaceName,
             tabId: result.tabId,
-            tabToken: result.tabToken,
+            tabName: result.tabName,
         });
     },
 };

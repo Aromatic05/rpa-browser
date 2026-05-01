@@ -18,11 +18,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const badRequest = (message: string): Error =>
     Object.assign(new Error(message), { code: 'ERR_CONTROL_BAD_REQUEST' });
 
-const assertWorkspaceId = (params: unknown): string => {
-    if (!isRecord(params) || typeof params.workspaceId !== 'string' || params.workspaceId.length === 0) {
-        throw badRequest('workspaceId is required');
+const assertWorkspaceName = (params: unknown): string => {
+    if (!isRecord(params) || typeof params.workspaceName !== 'string' || params.workspaceName.length === 0) {
+        throw badRequest('workspaceName is required');
     }
-    return params.workspaceId;
+    return params.workspaceName;
 };
 
 const resolveArgs = <T extends keyof StepArgsMap>(params: unknown, method: T): StepArgsMap[T] => {
@@ -44,7 +44,7 @@ export const runBrowserTool = async (
         throw badRequest(`unsupported browser tool: ${method}`);
     }
 
-    const workspaceId = assertWorkspaceId(params);
+    const workspaceName = assertWorkspaceName(params);
     const step: StepUnion = {
         id: crypto.randomUUID(),
         name: method as StepName,
@@ -52,12 +52,12 @@ export const runBrowserTool = async (
         meta: {
             source: 'control-rpc',
             ts: Date.now(),
-            workspaceId,
+            workspaceName,
         },
     } as StepUnion;
 
     const runner = createDslTaskRunner({
-        workspaceId,
+        workspaceName,
         deps: ctx.deps,
         stopOnError: true,
     });

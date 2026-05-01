@@ -24,7 +24,7 @@ import { getRunnerConfig } from '../config';
 
 type TaskRunState = {
     runId: string;
-    workspaceId: string;
+    workspaceName: string;
     status: RunStatus;
     queue: StepsQueue;
     pipe: ResultPipe;
@@ -49,12 +49,12 @@ const ensureCheckpointLoaded = async () => {
 
 const toTaskRunCheckpoint = (
     runId: string,
-    workspaceId: string,
+    workspaceName: string,
     status: RunStatus,
     cursor: number,
 ): TaskRunCheckpoint => ({
     runId,
-    workspaceId,
+    workspaceName,
     status,
     cursor,
     nextSeq: cursor,
@@ -73,10 +73,10 @@ const getRun = (runId: string) => runs.get(runId) || null;
 export const taskStreamHandlers: Record<string, ActionHandler> = {
     'task.run.start': async (ctx, action) => {
         await ensureCheckpointLoaded();
-        const payload = (action.payload || {}) as { workspaceId?: string; runId?: string };
-        const workspaceId = payload.workspaceId || action.workspaceName;
-        if (!workspaceId) {
-            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing workspaceId');
+        const payload = (action.payload || {}) as { workspaceName?: string; runId?: string };
+        const workspaceName = payload.workspaceName || action.workspaceName;
+        if (!workspaceName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'missing workspaceName');
         }
 
         const runId = payload.runId || crypto.randomUUID();
@@ -85,19 +85,19 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
         const signals = createSignalChannel();
         const state: TaskRunState = {
             runId,
-            workspaceId,
+            workspaceName,
             status: 'running',
             queue,
             pipe,
             signals,
-            checkpoint: { runId, workspaceId, status: 'running', cursor: 0, updatedAt: Date.now() },
+            checkpoint: { runId, workspaceName, status: 'running', cursor: 0, updatedAt: Date.now() },
         };
         runs.set(runId, state);
-        await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceId, 'running', 0));
+        await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'running', 0));
 
         void runSteps({
             runId,
-            workspaceId,
+            workspaceName,
             stepsQueue: queue,
             resultPipe: pipe,
             signalChannel: signals,
@@ -105,7 +105,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
             onCheckpoint: async (checkpoint) => {
                 state.checkpoint = checkpoint;
                 state.status = checkpoint.status;
-                await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceId, checkpoint.status, checkpoint.cursor));
+                await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, checkpoint.status, checkpoint.cursor));
                 if (checkpoint.status === 'completed' || checkpoint.status === 'failed' || checkpoint.status === 'halted') {
                     runs.delete(runId);
                 }
@@ -119,12 +119,12 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
                 state.status = 'failed';
                 state.checkpoint = {
                     runId,
-                    workspaceId,
+                    workspaceName,
                     status: 'failed',
                     cursor: state.queue.cursor,
                     updatedAt: Date.now(),
                 };
-                void persistCheckpoint(toTaskRunCheckpoint(runId, workspaceId, 'failed', state.queue.cursor));
+                void persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'failed', state.queue.cursor));
                 ctx.log('task.run.error', { runId, error: error instanceof Error ? error.message : String(error) });
             });
 
@@ -163,13 +163,13 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
         sendSignal(run.signals, 'checkpoint');
         run.checkpoint = {
             runId: run.runId,
-            workspaceId: run.workspaceId,
+            workspaceName: run.workspaceName,
             status: run.status,
             cursor: run.queue.cursor,
             updatedAt: Date.now(),
         };
         await persistCheckpoint(
-            toTaskRunCheckpoint(run.runId, run.workspaceId, run.status, run.queue.cursor),
+            toTaskRunCheckpoint(run.runId, run.workspaceName, run.status, run.queue.cursor),
         );
         return replyAction(action, { checkpoint: run.checkpoint });
     },
@@ -185,12 +185,12 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
         runs.delete(run.runId);
         const checkpoint = {
             runId: run.runId,
-            workspaceId: run.workspaceId,
+            workspaceName: run.workspaceName,
             status: 'halted' as const,
             cursor: run.queue.cursor,
             updatedAt: Date.now(),
         };
-        await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceId, 'halted', run.queue.cursor));
+        await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceName, 'halted', run.queue.cursor));
         return replyAction(action, { checkpoint });
     },
 
@@ -246,7 +246,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
         const signals = createSignalChannel();
         const state: TaskRunState = {
             runId: checkpoint.runId,
-            workspaceId: checkpoint.workspaceId,
+            workspaceName: checkpoint.workspaceName,
             status: 'running',
             queue,
             pipe,
@@ -254,11 +254,11 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
             checkpoint,
         };
         runs.set(checkpoint.runId, state);
-        await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceId, 'running', checkpoint.cursor));
+        await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'running', checkpoint.cursor));
 
         void runSteps({
             runId: checkpoint.runId,
-            workspaceId: checkpoint.workspaceId,
+            workspaceName: checkpoint.workspaceName,
             stepsQueue: queue,
             resultPipe: pipe,
             signalChannel: signals,
@@ -267,7 +267,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
                 state.checkpoint = next;
                 state.status = next.status;
                 await persistCheckpoint(
-                    toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceId, next.status, next.cursor),
+                    toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, next.status, next.cursor),
                 );
                 if (next.status === 'completed' || next.status === 'failed' || next.status === 'halted') {
                     runs.delete(checkpoint.runId);
@@ -282,13 +282,13 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
                 state.status = 'failed';
                 state.checkpoint = {
                     runId: checkpoint.runId,
-                    workspaceId: checkpoint.workspaceId,
+                    workspaceName: checkpoint.workspaceName,
                     status: 'failed',
                     cursor: state.queue.cursor,
                     updatedAt: Date.now(),
                 };
                 void persistCheckpoint(
-                    toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceId, 'failed', state.queue.cursor),
+                    toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'failed', state.queue.cursor),
                 );
                 ctx.log('task.run.resume.error', {
                     runId: checkpoint.runId,
@@ -298,7 +298,7 @@ export const taskStreamHandlers: Record<string, ActionHandler> = {
 
         return replyAction(action, {
             runId: checkpoint.runId,
-            workspaceId: checkpoint.workspaceId,
+            workspaceName: checkpoint.workspaceName,
             checkpoint: state.checkpoint,
             resumed: true,
         });

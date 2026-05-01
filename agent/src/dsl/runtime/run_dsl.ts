@@ -10,7 +10,7 @@ import { createDslScope, setDslValue, type DslScope } from './scope';
 import { resolveDslValue } from './refs';
 
 export type RunDslContext = {
-    workspaceId: string;
+    workspaceName: string;
     deps: RunStepsDeps;
     input?: Record<string, unknown>;
     checkpointProvider?: DslCheckpointProvider;
@@ -24,7 +24,7 @@ export type RunDslResult = {
 export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<RunDslResult> => {
     const scope = createDslScope(ctx.input);
     const taskRunner = createDslTaskRunner({
-        workspaceId: ctx.workspaceId,
+        workspaceName: ctx.workspaceName,
         deps: ctx.deps,
         stopOnError: true,
     });

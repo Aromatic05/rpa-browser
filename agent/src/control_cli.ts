@@ -80,10 +80,10 @@ const parseCommand = async (argv: string[]) => {
                     'timeout-ms': { type: 'string' },
                 },
             });
-            const workspaceId = parsed.values.workspace;
+            const workspaceName = parsed.values.workspace;
             const inlineSource = parsed.values.source;
             const file = parsed.values.file;
-            if (typeof workspaceId !== 'string' || workspaceId.length === 0) {
+            if (typeof workspaceName !== 'string' || workspaceName.length === 0) {
                 throw new Error('dsl requires --workspace');
             }
             if ((typeof inlineSource === 'string') === (typeof file === 'string')) {
@@ -95,7 +95,7 @@ const parseCommand = async (argv: string[]) => {
                 request: {
                     method: 'dsl.run',
                     params: {
-                        workspaceId,
+                        workspaceName,
                         source,
                         ...(typeof parsed.values.input === 'string'
                             ? { input: parseJson('input', parsed.values.input) }
@@ -128,7 +128,7 @@ const parseCommand = async (argv: string[]) => {
                 request: {
                     method: normalizeToolMethod(name),
                     params: {
-                        workspaceId: parsed.values.workspace,
+                        workspaceName: parsed.values.workspace,
                         ...(typeof parsed.values.args === 'string'
                             ? { args: parseJson('args', parsed.values.args) }
                             : {}),
@@ -167,7 +167,7 @@ const parseCommand = async (argv: string[]) => {
                             ? { payload: parseJson('payload', parsed.values.payload) }
                             : {}),
                         ...(typeof parsed.values['tab-token'] === 'string'
-                            ? { tabToken: parsed.values['tab-token'] }
+                            ? { tabName: parsed.values['tab-token'] }
                             : {}),
                         ...(typeof parsed.values['trace-id'] === 'string'
                             ? { traceId: parsed.values['trace-id'] }
