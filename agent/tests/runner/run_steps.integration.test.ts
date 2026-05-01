@@ -104,8 +104,8 @@ test.skip('runSteps isolates workspaces and emits step/trace events', async () =
     ]);
     assert.equal(steps2b.ok, true);
 
-    const binding1 = await runtimeRegistry.ensureActivePage(ws1.workspaceId);
-    const binding2 = await runtimeRegistry.ensureActivePage(ws2.workspaceId);
+    const binding1 = await runtimeRegistry.resolveBinding(ws1.workspaceId);
+    const binding2 = await runtimeRegistry.resolveBinding(ws2.workspaceId);
     assert.ok(binding1.page.url().includes('run_steps_fixture_a.html'));
     assert.ok(binding2.page.url().includes('run_steps_fixture_b.html'));
 

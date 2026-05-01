@@ -24,7 +24,7 @@ const createReplayStepContext = (runner: Awaited<ReturnType<typeof setupStepRunn
 });
 
 const getLatestSnapshot = async (runner: Awaited<ReturnType<typeof setupStepRunner>>) => {
-    const binding = await runner.deps.runtime.ensureActivePage(runner.workspaceId);
+    const binding = await runner.deps.runtime.resolveBinding(runner.workspaceId);
     const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
     return cache.latestSnapshot as SnapshotResult | undefined;
 };
