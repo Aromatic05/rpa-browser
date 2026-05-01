@@ -12,8 +12,7 @@ test('replyAction and failedAction keep action-to-action semantics with replyTo'
         v: 1 as const,
         id: 'req-1',
         type: 'workspace.list',
-        tabToken: 'tab-1',
-        scope: { workspaceId: 'ws-1', tabId: 'tab-1', tabToken: 'tab-1' },
+        workspaceName: 'ws-1',
         traceId: 'trace-1',
         at: 123,
     };
@@ -109,8 +108,7 @@ test('play.start returns play.started immediately and emits completion event', a
         v: 1 as const,
         id: 'play-req-1',
         type: ACTION_TYPES.PLAY_START,
-        tabToken: 'token-src',
-        scope: { workspaceId: 'ws-1', tabId: 'tab-1', tabToken: 'token-src' },
+        workspaceName: 'ws-1',
         payload: {},
         at: Date.now(),
     };
