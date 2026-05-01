@@ -35,10 +35,10 @@ export const createEmitter = (bindingName: string, version: string): { emit: Emi
     const emit: EmitFn = (payload) => {
         const enabled = (window as RecorderControlWindow).__rpa_recorder_enabled;
         if (enabled === false) {return;}
-        const tabToken = getToken();
-        if (!tabToken) {
+        const tabName = getToken();
+        if (!tabName) {
             try {
-                console.warn('[recorder] missing tabToken', { url: location.href, payload: payload.type });
+                console.warn('[recorder] missing tabName', { url: location.href, payload: payload.type });
             } catch {
                 // ignore debug logging failures
             }
@@ -49,7 +49,7 @@ export const createEmitter = (bindingName: string, version: string): { emit: Emi
         const bridgeFn = bridge as (payload: Record<string, unknown>) => void;
         bridgeFn({
             recorderVersion: version,
-            tabToken,
+            tabName,
             ts: Date.now(),
             url: location.href,
             pageTitle: document.title,

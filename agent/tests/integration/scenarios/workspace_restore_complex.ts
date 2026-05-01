@@ -21,27 +21,27 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
     run: async ({ client, fixtureBaseUrl }) => {
         timeline('scenario.workspace-restore.start', { fixtureBaseUrl });
 
-        const ws1 = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const ws1 = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({ type: 'workspace.create' }),
             'workspace.create(ws1)',
         );
         timeline('ws1.created', ws1);
 
-        const ws1TabA = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const ws1TabA = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({
                 type: 'tab.create',
-                tabToken: ws1.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1.tabId, tabToken: ws1.tabToken },
-                payload: { workspaceId: ws1.workspaceId, startUrl: `${fixtureBaseUrl}/run_steps_fixture_a.html` },
+                tabName: ws1.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1.tabId, tabName: ws1.tabName },
+                payload: { workspaceName: ws1.workspaceName, startUrl: `${fixtureBaseUrl}/run_steps_fixture_a.html` },
             }),
             'tab.create(ws1.a)',
         );
-        const ws1TabB = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const ws1TabB = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({
                 type: 'tab.create',
-                tabToken: ws1TabA.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabA.tabId, tabToken: ws1TabA.tabToken },
-                payload: { workspaceId: ws1.workspaceId, startUrl: `${fixtureBaseUrl}/run_steps_fixture_b.html` },
+                tabName: ws1TabA.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabA.tabId, tabName: ws1TabA.tabName },
+                payload: { workspaceName: ws1.workspaceName, startUrl: `${fixtureBaseUrl}/run_steps_fixture_b.html` },
             }),
             'tab.create(ws1.b)',
         );
@@ -50,9 +50,9 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'tab.close',
-                tabToken: ws1TabA.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabA.tabId, tabToken: ws1TabA.tabToken },
-                payload: { workspaceId: ws1.workspaceId, tabId: ws1.tabId },
+                tabName: ws1TabA.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabA.tabId, tabName: ws1TabA.tabName },
+                payload: { workspaceName: ws1.workspaceName, tabId: ws1.tabId },
             }),
             'tab.close(ws1.initial)',
         );
@@ -60,9 +60,9 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'tab.setActive',
-                tabToken: ws1TabB.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabB.tabId, tabToken: ws1TabB.tabToken },
-                payload: { workspaceId: ws1.workspaceId, tabId: ws1TabB.tabId },
+                tabName: ws1TabB.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabB.tabId, tabName: ws1TabB.tabName },
+                payload: { workspaceName: ws1.workspaceName, tabId: ws1TabB.tabId },
             }),
             'tab.setActive(ws1.b)',
         );
@@ -70,16 +70,16 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.start',
-                tabToken: ws1TabA.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabA.tabId, tabToken: ws1TabA.tabToken },
+                tabName: ws1TabA.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabA.tabId, tabName: ws1TabA.tabName },
             }),
             'record.start(ws1)',
         );
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: ws1TabA.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabA.tabId, tabToken: ws1TabA.tabToken },
+                tabName: ws1TabA.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabA.tabId, tabName: ws1TabA.tabName },
                 payload: {
                     id: 'ws1-rec-a-fill',
                     name: 'browser.fill',
@@ -92,8 +92,8 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: ws1TabA.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabA.tabId, tabToken: ws1TabA.tabToken },
+                tabName: ws1TabA.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabA.tabId, tabName: ws1TabA.tabName },
                 payload: {
                     id: 'ws1-rec-switch-b',
                     name: 'browser.switch_tab',
@@ -106,8 +106,8 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: ws1TabB.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabB.tabId, tabToken: ws1TabB.tabToken },
+                tabName: ws1TabB.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabB.tabId, tabName: ws1TabB.tabName },
                 payload: {
                     id: 'ws1-rec-b-fill',
                     name: 'browser.fill',
@@ -120,18 +120,18 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.stop',
-                tabToken: ws1TabA.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabA.tabId, tabToken: ws1TabA.tabToken },
+                tabName: ws1TabA.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabA.tabId, tabName: ws1TabA.tabName },
             }),
             'record.stop(ws1)',
         );
 
-        const ws1Saved = expectOk<{ workspaceId: string; tabCount: number; stepCount: number; saved: boolean }>(
+        const ws1Saved = expectOk<{ workspaceName: string; tabCount: number; stepCount: number; saved: boolean }>(
             await client.sendAction({
                 type: 'workspace.save',
-                tabToken: ws1TabA.tabToken,
-                scope: { workspaceId: ws1.workspaceId, tabId: ws1TabA.tabId, tabToken: ws1TabA.tabToken },
-                payload: { workspaceId: ws1.workspaceId },
+                tabName: ws1TabA.tabName,
+                scope: { workspaceName: ws1.workspaceName, tabId: ws1TabA.tabId, tabName: ws1TabA.tabName },
+                payload: { workspaceName: ws1.workspaceName },
             }),
             'workspace.save(ws1)',
         );
@@ -140,16 +140,16 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         assert.ok(ws1Saved.stepCount >= 3, `workspace.save expected >=3 steps, got ${ws1Saved.stepCount}`);
         timeline('ws1.saved', ws1Saved);
 
-        const ws2 = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const ws2 = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({ type: 'workspace.create' }),
             'workspace.create(ws2)',
         );
-        const ws2TabA = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const ws2TabA = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({
                 type: 'tab.create',
-                tabToken: ws2.tabToken,
-                scope: { workspaceId: ws2.workspaceId, tabId: ws2.tabId, tabToken: ws2.tabToken },
-                payload: { workspaceId: ws2.workspaceId, startUrl: `${fixtureBaseUrl}/choices.html` },
+                tabName: ws2.tabName,
+                scope: { workspaceName: ws2.workspaceName, tabId: ws2.tabId, tabName: ws2.tabName },
+                payload: { workspaceName: ws2.workspaceName, startUrl: `${fixtureBaseUrl}/choices.html` },
             }),
             'tab.create(ws2.a)',
         );
@@ -158,55 +158,55 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'workspace.setActive',
-                tabToken: ws2TabA.tabToken,
-                scope: { workspaceId: ws2.workspaceId, tabId: ws2TabA.tabId, tabToken: ws2TabA.tabToken },
-                payload: { workspaceId: ws1.workspaceId },
+                tabName: ws2TabA.tabName,
+                scope: { workspaceName: ws2.workspaceName, tabId: ws2TabA.tabId, tabName: ws2TabA.tabName },
+                payload: { workspaceName: ws1.workspaceName },
             }),
             'workspace.setActive(ws1)',
         );
         expectOk(
             await client.sendAction({
                 type: 'workspace.setActive',
-                scope: { workspaceId: ws2.workspaceId },
-                payload: { workspaceId: ws2.workspaceId },
+                scope: { workspaceName: ws2.workspaceName },
+                payload: { workspaceName: ws2.workspaceName },
             }),
             'workspace.setActive(ws2)',
         );
 
         const restored = expectOk<{
             restored: boolean;
-            sourceWorkspaceId: string;
-            workspaceId: string;
+            sourceWorkspaceName: string;
+            workspaceName: string;
             tabId: string;
-            tabToken: string;
+            tabName: string;
             tabCount: number;
             stepCount: number;
         }>(
             await client.sendAction({
                 type: 'workspace.restore',
-                tabToken: ws2TabA.tabToken,
-                scope: { workspaceId: ws2.workspaceId, tabId: ws2TabA.tabId, tabToken: ws2TabA.tabToken },
-                payload: { workspaceId: ws1.workspaceId },
+                tabName: ws2TabA.tabName,
+                scope: { workspaceName: ws2.workspaceName, tabId: ws2TabA.tabId, tabName: ws2TabA.tabName },
+                payload: { workspaceName: ws1.workspaceName },
             }),
             'workspace.restore(ws1->new)',
         );
         assert.ok(restored.restored, 'workspace.restore did not report restored=true');
-        assert.equal(restored.sourceWorkspaceId, ws1.workspaceId);
-        assert.notEqual(restored.workspaceId, ws1.workspaceId);
-        assert.notEqual(restored.workspaceId, ws2.workspaceId);
+        assert.equal(restored.sourceWorkspaceName, ws1.workspaceName);
+        assert.notEqual(restored.workspaceName, ws1.workspaceName);
+        assert.notEqual(restored.workspaceName, ws2.workspaceName);
         assert.ok(restored.tabCount >= ws1Saved.tabCount, `restored.tabCount mismatch: ${restored.tabCount}`);
         assert.ok(restored.stepCount >= ws1Saved.stepCount, `restored.stepCount mismatch: ${restored.stepCount}`);
         timeline('workspace.restored', restored);
 
         const restoredTabs = expectOk<{
-            workspaceId: string;
+            workspaceName: string;
             tabs: Array<{ tabId: string; url: string; active: boolean }>;
         }>(
             await client.sendAction({
                 type: 'tab.list',
-                tabToken: restored.tabToken,
-                scope: { workspaceId: restored.workspaceId, tabId: restored.tabId, tabToken: restored.tabToken },
-                payload: { workspaceId: restored.workspaceId },
+                tabName: restored.tabName,
+                scope: { workspaceName: restored.workspaceName, tabId: restored.tabId, tabName: restored.tabName },
+                payload: { workspaceName: restored.workspaceName },
             }),
             'tab.list(restored)',
         );
@@ -220,32 +220,32 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'tab.setActive',
-                scope: { workspaceId: restored.workspaceId, tabId: restoredTabA!.tabId },
-                payload: { workspaceId: restored.workspaceId, tabId: restoredTabA!.tabId },
+                scope: { workspaceName: restored.workspaceName, tabId: restoredTabA!.tabId },
+                payload: { workspaceName: restored.workspaceName, tabId: restoredTabA!.tabId },
             }),
             'tab.setActive(restored.a)',
         );
         expectOk(
             await client.sendAction({
                 type: 'tab.setActive',
-                scope: { workspaceId: restored.workspaceId, tabId: restoredTabB!.tabId },
-                payload: { workspaceId: restored.workspaceId, tabId: restoredTabB!.tabId },
+                scope: { workspaceName: restored.workspaceName, tabId: restoredTabB!.tabId },
+                payload: { workspaceName: restored.workspaceName, tabId: restoredTabB!.tabId },
             }),
             'tab.setActive(restored.b)',
         );
         expectOk(
             await client.sendAction({
                 type: 'workspace.setActive',
-                scope: { workspaceId: ws2.workspaceId },
-                payload: { workspaceId: ws2.workspaceId },
+                scope: { workspaceName: ws2.workspaceName },
+                payload: { workspaceName: ws2.workspaceName },
             }),
             'workspace.setActive(ws2,again)',
         );
         expectOk(
             await client.sendAction({
                 type: 'workspace.setActive',
-                scope: { workspaceId: restored.workspaceId },
-                payload: { workspaceId: restored.workspaceId },
+                scope: { workspaceName: restored.workspaceName },
+                payload: { workspaceName: restored.workspaceName },
             }),
             'workspace.setActive(restored,again)',
         );
@@ -253,8 +253,8 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
         const restoredRecording = expectOk<{ steps: Array<{ id: string; name: string }> }>(
             await client.sendAction({
                 type: 'record.get',
-                tabToken: restored.tabToken,
-                scope: { workspaceId: restored.workspaceId, tabId: restored.tabId, tabToken: restored.tabToken },
+                tabName: restored.tabName,
+                scope: { workspaceName: restored.workspaceName, tabId: restored.tabId, tabName: restored.tabName },
             }),
             'record.get(restored)',
         );
@@ -271,23 +271,23 @@ export const workspaceRestoreComplexScenario: IntegrationScenario = {
             'restored recording missing ws1-rec-b-fill',
         );
 
-        const workspaces = expectOk<{ workspaces: Array<{ workspaceId: string }>; activeWorkspaceId: string | null }>(
+        const workspaces = expectOk<{ workspaces: Array<{ workspaceName: string }>; activeWorkspaceName: string | null }>(
             await client.sendAction({
                 type: 'workspace.list',
-                scope: { workspaceId: restored.workspaceId },
+                scope: { workspaceName: restored.workspaceName },
             }),
             'workspace.list(final)',
         );
-        const ids = new Set(workspaces.workspaces.map((item) => item.workspaceId));
-        assert.ok(ids.has(ws1.workspaceId), 'workspace.list missing ws1');
-        assert.ok(ids.has(ws2.workspaceId), 'workspace.list missing ws2');
-        assert.ok(ids.has(restored.workspaceId), 'workspace.list missing restored workspace');
-        assert.equal(workspaces.activeWorkspaceId, restored.workspaceId);
+        const ids = new Set(workspaces.workspaces.map((item) => item.workspaceName));
+        assert.ok(ids.has(ws1.workspaceName), 'workspace.list missing ws1');
+        assert.ok(ids.has(ws2.workspaceName), 'workspace.list missing ws2');
+        assert.ok(ids.has(restored.workspaceName), 'workspace.list missing restored workspace');
+        assert.equal(workspaces.activeWorkspaceName, restored.workspaceName);
 
         timeline('scenario.workspace-restore.done', {
-            ws1: ws1.workspaceId,
-            ws2: ws2.workspaceId,
-            restored: restored.workspaceId,
+            ws1: ws1.workspaceName,
+            ws2: ws2.workspaceName,
+            restored: restored.workspaceName,
             workspaceCount: workspaces.workspaces.length,
         });
     },

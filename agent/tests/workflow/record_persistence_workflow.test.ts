@@ -20,7 +20,7 @@ test('saveWorkflowRecordingArtifacts writes into workflow records directory with
         artifactsRootDir: tmp,
         scene: 'order',
         recordingName: 'recording-main',
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         entryUrl: 'http://localhost/orders',
         steps,
         stepResolves: {},

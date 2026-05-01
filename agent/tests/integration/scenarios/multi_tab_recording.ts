@@ -19,7 +19,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         const headed = ['1', 'true', 'yes'].includes((process.env.RPA_INTEGRATION_HEADED || '').toLowerCase());
 
         timeline('scenario.start', { fixtureBaseUrl, headed });
-        const created = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const created = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({
                 type: 'workspace.create',
             }),
@@ -27,34 +27,34 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         );
         timeline('workspace.created', created);
 
-        const tabA = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const tabA = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({
                 type: 'tab.create',
-                scope: { workspaceId: created.workspaceId, tabToken: created.tabToken },
-                tabToken: created.tabToken,
-                payload: { workspaceId: created.workspaceId, startUrl: `${fixtureBaseUrl}/run_steps_fixture_a.html` },
+                scope: { workspaceName: created.workspaceName, tabName: created.tabName },
+                tabName: created.tabName,
+                payload: { workspaceName: created.workspaceName, startUrl: `${fixtureBaseUrl}/run_steps_fixture_a.html` },
             }),
             'tab.create',
         );
         timeline('tab.created.a', tabA);
 
-        const tabB = expectOk<{ workspaceId: string; tabId: string; tabToken: string }>(
+        const tabB = expectOk<{ workspaceName: string; tabId: string; tabName: string }>(
             await client.sendAction({
                 type: 'tab.create',
-                scope: { workspaceId: created.workspaceId, tabToken: tabA.tabToken },
-                tabToken: tabA.tabToken,
-                payload: { workspaceId: created.workspaceId, startUrl: `${fixtureBaseUrl}/run_steps_fixture_b.html` },
+                scope: { workspaceName: created.workspaceName, tabName: tabA.tabName },
+                tabName: tabA.tabName,
+                payload: { workspaceName: created.workspaceName, startUrl: `${fixtureBaseUrl}/run_steps_fixture_b.html` },
             }),
             'tab.create(second)',
         );
         timeline('tab.created.b', tabB);
 
-        const tabList = expectOk<{ workspaceId: string; tabs: Array<{ tabId: string; url: string; active: boolean }> }>(
+        const tabList = expectOk<{ workspaceName: string; tabs: Array<{ tabId: string; url: string; active: boolean }> }>(
             await client.sendAction({
                 type: 'tab.list',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
-                payload: { workspaceId: created.workspaceId },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
+                payload: { workspaceName: created.workspaceName },
             }),
             'tab.list(after-create)',
         );
@@ -66,9 +66,9 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'tab.setActive',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
-                payload: { workspaceId: created.workspaceId, tabId: tabA.tabId },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
+                payload: { workspaceName: created.workspaceName, tabId: tabA.tabId },
             }),
             'tab.setActive(first)',
         );
@@ -76,8 +76,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.start',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
             }),
             'record.start',
         );
@@ -85,8 +85,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
                 payload: {
                     id: 'rec-fill-a',
                     name: 'browser.fill',
@@ -104,8 +104,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
                 payload: {
                     id: 'rec-select-a',
                     name: 'browser.select_option',
@@ -123,8 +123,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
                 payload: {
                     id: 'rec-click-a',
                     name: 'browser.click',
@@ -138,8 +138,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
                 payload: {
                     id: 'rec-scroll-a',
                     name: 'browser.scroll',
@@ -153,8 +153,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
                 payload: {
                     id: 'rec-page-info-a',
                     name: 'browser.get_page_info',
@@ -168,8 +168,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
                 payload: {
                     id: 'rec-switch-b',
                     name: 'browser.switch_tab',
@@ -184,26 +184,26 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'tab.setActive',
-                tabToken: tabB.tabToken,
+                tabName: tabB.tabName,
                 scope: {
-                    workspaceId: created.workspaceId,
+                    workspaceName: created.workspaceName,
                     tabId: tabB.tabId,
-                    tabToken: tabB.tabToken,
+                    tabName: tabB.tabName,
                 },
-                payload: { workspaceId: created.workspaceId, tabId: tabB.tabId },
+                payload: { workspaceName: created.workspaceName, tabId: tabB.tabId },
             }),
             'tab.setActive(second,record-b)',
         );
         timeline('tab.setActive.b(record-phase)', { tabId: tabB.tabId });
         const tabListAfterSwitch = expectOk<{
-            workspaceId: string;
+            workspaceName: string;
             tabs: Array<{ tabId: string; active: boolean; url: string }>;
         }>(
             await client.sendAction({
                 type: 'tab.list',
-                tabToken: tabB.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabB.tabId, tabToken: tabB.tabToken },
-                payload: { workspaceId: created.workspaceId },
+                tabName: tabB.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabB.tabId, tabName: tabB.tabName },
+                payload: { workspaceName: created.workspaceName },
             }),
             'tab.list(after-switch-to-b)',
         );
@@ -217,8 +217,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabB.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabB.tabId, tabToken: tabB.tabToken },
+                tabName: tabB.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabB.tabId, tabName: tabB.tabName },
                 payload: {
                     id: 'rec-page-info-b',
                     name: 'browser.get_page_info',
@@ -232,8 +232,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabB.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabB.tabId, tabToken: tabB.tabToken },
+                tabName: tabB.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabB.tabId, tabName: tabB.tabName },
                 payload: {
                     id: 'rec-fill-b',
                     name: 'browser.fill',
@@ -251,8 +251,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabB.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabB.tabId, tabToken: tabB.tabToken },
+                tabName: tabB.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabB.tabId, tabName: tabB.tabName },
                 payload: {
                     id: 'rec-select-b',
                     name: 'browser.select_option',
@@ -270,8 +270,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.event',
-                tabToken: tabB.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabB.tabId, tabToken: tabB.tabToken },
+                tabName: tabB.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabB.tabId, tabName: tabB.tabName },
                 payload: {
                     id: 'rec-fill-b-final',
                     name: 'browser.fill',
@@ -285,8 +285,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'record.stop',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
             }),
             'record.stop',
         );
@@ -294,8 +294,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         const recording = expectOk<{ steps: Array<{ name: string }> }>(
             await client.sendAction({
                 type: 'record.get',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
             }),
             'record.get',
         );
@@ -319,9 +319,9 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         expectOk(
             await client.sendAction({
                 type: 'tab.setActive',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
-                payload: { workspaceId: created.workspaceId, tabId: tabA.tabId },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
+                payload: { workspaceName: created.workspaceName, tabId: tabA.tabId },
             }),
             'tab.setActive(before-play)',
         );
@@ -331,8 +331,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
         const replay = expectOk<{ results: Array<{ ok: boolean }> }>(
             await client.sendAction({
                 type: 'play.start',
-                tabToken: tabA.tabToken,
-                scope: { workspaceId: created.workspaceId, tabId: tabA.tabId, tabToken: tabA.tabToken },
+                tabName: tabA.tabName,
+                scope: { workspaceName: created.workspaceName, tabId: tabA.tabId, tabName: tabA.tabName },
                 payload: { stopOnError: true },
             }),
             'play.start',
@@ -377,8 +377,8 @@ export const multiTabRecordingScenario: IntegrationScenario = {
             recFillB: idxFillB,
             recSelectB: idxSelectB,
             recFillBFinal: idxFillBFinal,
-            pageInfoBTabId: info?.tab_id,
-            expectedBTabId: tabB.tabId,
+            pageInfoBTabName: info?.tab_id,
+            expectedBTabName: tabB.tabId,
         });
         timeline('scenario.done');
     },

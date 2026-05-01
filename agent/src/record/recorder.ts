@@ -88,7 +88,7 @@ export type RecordedEventType =
     | 'copy';
 
 export type RecorderEvent = {
-    tabToken: string;
+    tabName: string;
     ts: number;
     type: RecordedEventType;
     recorderVersion?: string;

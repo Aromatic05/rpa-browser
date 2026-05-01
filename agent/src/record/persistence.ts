@@ -55,22 +55,22 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
         }
     }
 
-    for (const [workspaceId, recordingToken] of Object.entries(persisted.workspaceLatestRecording)) {
+    for (const [workspaceName, recordingToken] of Object.entries(persisted.workspaceLatestRecording)) {
         if (
-            typeof workspaceId === 'string' &&
+            typeof workspaceName === 'string' &&
             typeof recordingToken === 'string' &&
             recordingToken.length > 0 &&
             state.recordings.has(recordingToken)
         ) {
-            state.workspaceLatestRecording.set(workspaceId, recordingToken);
+            state.workspaceLatestRecording.set(workspaceName, recordingToken);
         }
     }
 
-    for (const [workspaceId, snapshot] of Object.entries(persisted.workspaceSnapshots)) {
-        if (!workspaceId || typeof snapshot !== 'object') {continue;}
+    for (const [workspaceName, snapshot] of Object.entries(persisted.workspaceSnapshots)) {
+        if (!workspaceName || typeof snapshot !== 'object') {continue;}
         if (!Array.isArray(snapshot.tabs)) {continue;}
         if (!Array.isArray(snapshot.recording.steps)) {continue;}
-        state.workspaceSnapshots.set(workspaceId, snapshot);
+        state.workspaceSnapshots.set(workspaceName, snapshot);
     }
 };
 
@@ -141,7 +141,7 @@ export type SaveWorkflowRecordingArtifactsOptions = {
     artifactsRootDir: string;
     scene: string;
     recordingName: string;
-    workspaceId?: string;
+    workspaceName?: string;
     entryUrl?: string;
     tabs?: Array<{ tabId: string; url?: string }>;
     steps: StepUnion[];
@@ -152,7 +152,7 @@ export type SaveWorkflowRecordingArtifactsOptions = {
 const toRecordingManifestFile = (opts: SaveWorkflowRecordingArtifactsOptions) => ({
     version: 1,
     recordingName: opts.recordingName,
-    workspaceId: opts.workspaceId || '',
+    workspaceName: opts.workspaceName || '',
     entryUrl: opts.entryUrl || '',
     tabs: opts.tabs || [],
     createdAt: Date.now(),

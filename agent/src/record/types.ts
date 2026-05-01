@@ -38,9 +38,9 @@ export type RecordedStepEnhancement = {
         mode?: 'full' | 'diff';
         snapshotId?: string;
         pageIdentity?: {
-            workspaceId: string;
+            workspaceName: string;
             tabId: string;
-            tabToken: string;
+            tabName: string;
             url: string;
         };
         capturedAt: number;
