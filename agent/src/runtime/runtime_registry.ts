@@ -1,50 +1,35 @@
-/**
- * RuntimeRegistry：统一 workspace/tab/page 与 Trace 的绑定入口。
- *
- * 设计目标：
- * - 以 workspaceId 为路由单位，确保每次执行能找到“当前 active page”
- * - Page 绑定时自动创建 trace tools，并在日志中携带标签（workspaceId/tabToken）
- * - 不在此层做动作执行，只负责“运行时资源与绑定关系”
- */
-
 import type { Page } from 'playwright';
-import type { PageRegistry, WorkspaceId } from './page_registry';
 import { createTraceTools, type BrowserAutomationTools } from '../runner/trace';
 import type { RunnerPluginHost } from '../runner/hotreload/plugin_host';
 import type { CreateTraceToolsFn } from '../runner/plugin_entry';
 import type { TraceContext, TraceHooks, TraceSink } from '../runner/trace/types';
+import type { WorkspaceRegistry } from './workspace_registry';
 
 export type PageBinding = {
-    workspaceId: WorkspaceId;
-    tabId: string;
-    tabToken: string;
+    workspaceName: string;
+    tabName: string;
     page: Page;
     traceTools: BrowserAutomationTools;
     traceCtx: TraceContext;
 };
 
 export type RuntimeRegistry = {
-    ensureActivePage: (workspaceId: WorkspaceId) => Promise<PageBinding>;
-    bindPage: (page: Page, tabToken: string) => PageBinding;
-    getBindingByTabToken: (tabToken: string) => PageBinding | null;
-    setActiveTab: (workspaceId: WorkspaceId, tabId: string) => void;
+    bindPage: (input: { workspaceName: string; tabName: string; page: Page }) => PageBinding;
+    resolveBinding: (workspaceName: string, tabName?: string) => Promise<PageBinding>;
+    getBinding: (workspaceName: string, tabName: string) => PageBinding | null;
 };
 
 type RuntimeRegistryOptions = {
-    pageRegistry: PageRegistry;
+    workspaceRegistry: WorkspaceRegistry;
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
 };
 
-/**
- * 创建 RuntimeRegistry。内部维护 tabToken -> trace 绑定映射。
- * 当 Page 关闭时会自动清理对应绑定。
- */
 export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeRegistry => {
     const bindings = new Map<string, PageBinding>();
-    const resolveCreateTraceTools = (): CreateTraceToolsFn =>
-        options.pluginHost?.getTraceToolsFactory() || createTraceTools;
+    const keyOf = (workspaceName: string, tabName: string) => `${workspaceName}::${tabName}`;
+    const resolveCreateTraceTools = (): CreateTraceToolsFn => options.pluginHost?.getTraceToolsFactory() || createTraceTools;
 
     if (options.pluginHost) {
         options.pluginHost.onReload((plugin) => {
@@ -52,11 +37,10 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
                 const { tools, ctx } = plugin.createTraceTools({
                     page: binding.page,
                     context: binding.page.context(),
-                    pageRegistry: options.pageRegistry,
-                    workspaceId: binding.workspaceId,
+                    workspaceId: binding.workspaceName,
                     sinks: options.traceSinks,
                     hooks: options.traceHooks,
-                    tags: { workspaceId: binding.workspaceId, tabToken: binding.tabToken },
+                    tags: { workspaceName: binding.workspaceName, tabName: binding.tabName } as any,
                 });
                 binding.traceTools = tools;
                 binding.traceCtx = ctx;
@@ -64,64 +48,53 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         });
     }
 
-    const bindPage = (page: Page, tabToken: string): PageBinding => {
-        const scope = options.pageRegistry.resolveScopeFromToken(tabToken);
-        const existing = bindings.get(tabToken);
-        if (existing?.page === page) {
-            return existing;
-        }
+    const createBinding = (workspaceName: string, tabName: string, page: Page): PageBinding => {
         const { tools, ctx } = resolveCreateTraceTools()({
             page,
             context: page.context(),
-            pageRegistry: options.pageRegistry,
-            workspaceId: scope.workspaceId,
+            workspaceId: workspaceName,
             sinks: options.traceSinks,
             hooks: options.traceHooks,
-            tags: { workspaceId: scope.workspaceId, tabToken },
+            tags: { workspaceName, tabName } as any,
         });
-        const binding: PageBinding = {
-            workspaceId: scope.workspaceId,
-            tabId: scope.tabId,
-            tabToken,
-            page,
-            traceTools: tools,
-            traceCtx: ctx,
-        };
-        bindings.set(tabToken, binding);
+        const binding: PageBinding = { workspaceName, tabName, page, traceTools: tools, traceCtx: ctx };
+        const key = keyOf(workspaceName, tabName);
+        bindings.set(key, binding);
         page.on('close', () => {
-            bindings.delete(tabToken);
+            bindings.delete(key);
         });
         return binding;
     };
 
-    /**
-     * 确保 workspace 有可用页面：
-     * - 若 workspace 不存在则创建
-     * - 若没有 active tab 则自动创建新 tab
-     * - 返回绑定了 trace 的 PageBinding
-     */
-    const ensureActivePage = async (workspaceId: WorkspaceId) => {
-        const workspace = options.pageRegistry.listWorkspaces().find((w) => w.workspaceId === workspaceId);
-        if (!workspace) {
-            const created = await options.pageRegistry.createWorkspace();
-            workspaceId = created.workspaceId;
+    const bindPage = (input: { workspaceName: string; tabName: string; page: Page }): PageBinding => {
+        const workspace = options.workspaceRegistry.getWorkspace(input.workspaceName);
+        if (!workspace) {throw new Error(`workspace not found: ${input.workspaceName}`);}
+        const tab = workspace.tabRegistry.getTab(input.tabName);
+        if (!tab) {throw new Error(`tab not found: ${input.tabName}`);}
+        tab.page = input.page;
+        const existing = bindings.get(keyOf(input.workspaceName, input.tabName));
+        if (existing?.page === input.page) {
+            return existing;
         }
-        const resolved = options.pageRegistry.resolveScope({ workspaceId });
-        const page = await options.pageRegistry.resolvePage({ workspaceId, tabId: resolved.tabId });
-        const tabToken = options.pageRegistry.resolveTabToken({ workspaceId, tabId: resolved.tabId });
-        return bindPage(page, tabToken);
+        return createBinding(input.workspaceName, input.tabName, input.page);
     };
 
-    const getBindingByTabToken = (tabToken: string) => bindings.get(tabToken) || null;
-
-    const setActiveTab = (workspaceId: WorkspaceId, tabId: string) => {
-        options.pageRegistry.setActiveTab(workspaceId, tabId);
+    const resolveBinding = async (workspaceName: string, tabName?: string): Promise<PageBinding> => {
+        const workspace = options.workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {throw new Error(`workspace not found: ${workspaceName}`);}
+        const tab = workspace.tabRegistry.resolveTab(tabName);
+        if (!tab.page) {throw new Error(`page not bound: ${workspaceName}/${tab.name}`);}
+        const key = keyOf(workspaceName, tab.name);
+        const existing = bindings.get(key);
+        if (existing && existing.page === tab.page) {
+            return existing;
+        }
+        return createBinding(workspaceName, tab.name, tab.page);
     };
 
     return {
-        ensureActivePage,
         bindPage,
-        getBindingByTabToken,
-        setActiveTab,
+        resolveBinding,
+        getBinding: (workspaceName, tabName) => bindings.get(keyOf(workspaceName, tabName)) || null,
     };
 };
