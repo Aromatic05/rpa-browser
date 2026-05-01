@@ -83,7 +83,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const targetWorkspaceName = randomName();
         const workspace = ctx.workspaceRegistry.createWorkspace(targetWorkspaceName);
         for (const tab of snapshot.tabs) {
-            workspace.tabRegistry.createTab({ tabName: tab.tabId || randomName(), tabName: randomName(), url: tab.url || '', title: tab.title || '' });
+            workspace.tabRegistry.createTab({ tabName: tab.tabId || randomName(), url: tab.url || '', title: tab.title || '' });
         }
         const activeTab = snapshot.tabs.find((item) => item.active) || snapshot.tabs[0];
         if (activeTab?.tabId && workspace.tabRegistry.hasTab(activeTab.tabId)) {
@@ -110,9 +110,8 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const tabName = randomName();
-        const tabName = randomName();
         const page = await ctx.pageRegistry.getPage(tabName, payload.startUrl);
-        workspace.tabRegistry.createTab({ tabName, tabName, page, url: page.url() });
+        workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
         workspace.tabRegistry.setActiveTab(tabName);
         return replyAction(action, { workspaceName, tabName });
     },
@@ -143,7 +142,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         if (!workspaceName || !payload.tabName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName/tabName is required');}
         const workspace = ctx.workspaceRegistry.createWorkspace(workspaceName);
         if (!workspace.tabRegistry.hasTab(payload.tabName)) {
-            workspace.tabRegistry.createTab({ tabName: payload.tabName, tabName: randomName(), url: payload.url || '', title: payload.title || '', at: payload.at });
+            workspace.tabRegistry.createTab({ tabName: payload.tabName, url: payload.url || '', title: payload.title || '', at: payload.at });
         }
         workspace.tabRegistry.updateTab(payload.tabName, { url: payload.url, title: payload.title, updatedAt: payload.at });
         workspace.tabRegistry.setActiveTab(payload.tabName);
@@ -190,7 +189,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         }
         const workspace = ctx.workspaceRegistry.createWorkspace(payload.workspaceName);
         if (!workspace.tabRegistry.hasTab(payload.tabName)) {
-            workspace.tabRegistry.createTab({ tabName: payload.tabName, tabName: randomName(), at: payload.at });
+            workspace.tabRegistry.createTab({ tabName: payload.tabName, at: payload.at });
         }
         workspace.tabRegistry.setActiveTab(payload.tabName);
         return replyAction(action, {

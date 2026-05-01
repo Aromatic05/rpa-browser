@@ -58,7 +58,7 @@ const run = async () => {
     const page = await pageRegistry.resolvePage({ workspaceName: workspace.workspaceName, tabId: workspace.tabId });
     const token = pageRegistry.resolveTabName({ workspaceName: workspace.workspaceName, tabId: workspace.tabId });
     const runtimeWorkspace = workspaceRegistry.createWorkspace(workspace.workspaceName);
-    runtimeWorkspace.tabRegistry.createTab({ tabName: workspace.tabId, tabName: token, page, url: page.url() });
+    runtimeWorkspace.tabRegistry.createTab({ tabName: workspace.tabId, page, url: page.url() });
     runtimeWorkspace.tabRegistry.setActiveTab(workspace.tabId);
     runtimeRegistry.bindPage({ workspaceName: workspace.workspaceName, tabName: workspace.tabId, page });
 

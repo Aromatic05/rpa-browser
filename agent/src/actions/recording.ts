@@ -105,19 +105,19 @@ const resolveLatestRecordingName = (scene: string): string | null => {
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, action) => {
-        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().tabName);
-        await startRecording(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabName, ctx.navDedupeWindowMs, {
+        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().name);
+        await startRecording(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().name, ctx.navDedupeWindowMs, {
             workspaceName: scope.workspaceName,
             tabId: scope.tabId,
             entryUrl: ctx.resolvePage().url(),
         });
-        await ensureRecorder(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().tabName, ctx.navDedupeWindowMs);
+        await ensureRecorder(ctx.recordingState, ctx.resolvePage(), ctx.resolveTab().name, ctx.navDedupeWindowMs);
         await setRecorderRuntimeEnabled(ctx.resolvePage(), true);
         return replyAction(action, { pageUrl: ctx.resolvePage().url() });
     },
     'record.stop': async (ctx, action) => {
         const workspaceName = action.workspaceName;
-        stopRecording(ctx.recordingState, ctx.resolveTab().tabName, { workspaceName });
+        stopRecording(ctx.recordingState, ctx.resolveTab().name, { workspaceName });
         try {
             await setRecorderRuntimeEnabled(ctx.resolvePage(), false);
         } catch {
@@ -148,7 +148,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     },
     'record.get': async (ctx, action) => {
         const workspaceName = action.workspaceName;
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabName, workspaceName ? { workspaceName } : undefined);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, workspaceName ? { workspaceName } : undefined);
         return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
     'record.save': async (ctx, action) => {
@@ -162,7 +162,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'scene is required for record.save');
         }
         const scaffold = ensureWorkflowScaffold(scene);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabName, workspaceName ? { workspaceName } : undefined);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, workspaceName ? { workspaceName } : undefined);
         const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
         const stepsFile = toStepFile(bundle.steps);
         validateStepFileForSerialization(stepsFile);
@@ -268,7 +268,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
     },
     'record.clear': async (ctx, action) => {
         const workspaceName = action.workspaceName;
-        clearRecording(ctx.recordingState, ctx.resolveTab().tabName, workspaceName ? { workspaceName } : undefined);
+        clearRecording(ctx.recordingState, ctx.resolveTab().name, workspaceName ? { workspaceName } : undefined);
         return replyAction(action, { cleared: true });
     },
     'record.list': async (ctx, action) => {
@@ -276,13 +276,13 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { recordings });
     },
     'play.stop': async (ctx, action) => {
-        cancelReplay(ctx.recordingState, ctx.resolveTab().tabName);
+        cancelReplay(ctx.recordingState, ctx.resolveTab().name);
         return replyAction(action, { stopped: true });
     },
     'play.start': async (ctx, action) => {
         const payload = (action.payload || {}) as { stopOnError?: boolean };
-        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().tabName);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().tabName, { workspaceName: scope.workspaceName });
+        const scope = ctx.pageRegistry.resolveTabBinding(ctx.resolveTab().name);
+        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, { workspaceName: scope.workspaceName });
         const steps = bundle.steps;
         const stopOnError = payload.stopOnError ?? true;
         const recordedWorkspaceName = bundle.manifest?.workspaceName;
@@ -315,7 +315,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         ctx.pageRegistry.setActiveWorkspace(replayWorkspaceName);
         ctx.pageRegistry.setActiveTab(replayWorkspaceName, initialTabName);
         const initialTabToken = ctx.pageRegistry.resolveTabName({ workspaceName: replayWorkspaceName, tabId: initialTabName });
-        beginReplay(ctx.recordingState, ctx.resolveTab().tabName);
+        beginReplay(ctx.recordingState, ctx.resolveTab().name);
         const emitPlayEvent = (type: string, payload: Record<string, unknown>) => {
             ctx.emit?.({
                 v: 1,
@@ -377,7 +377,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                             return tabRef || undefined;
                         },
                     },
-                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.resolveTab().tabName),
+                    isCanceled: () => ctx.recordingState.replayCancel.has(ctx.resolveTab().name),
                     onEvent: publishReplayEvent,
                 });
                 if (replayed.error?.code === 'ERR_CANCELED') {
@@ -412,7 +412,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                     message: error instanceof Error ? error.message : String(error),
                 });
             } finally {
-                endReplay(ctx.recordingState, ctx.resolveTab().tabName);
+                endReplay(ctx.recordingState, ctx.resolveTab().name);
             }
         })();
 
@@ -441,7 +441,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         }
 
         const step = payload;
-        const token = ctx.resolveTab().tabName;
+        const token = ctx.resolveTab().name;
         const scope = ctx.pageRegistry.resolveTabBinding(token);
         let currentUrl: string;
         try {

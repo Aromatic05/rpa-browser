@@ -78,7 +78,7 @@ const pageRegistry = createPageRegistry({
         const scope = pageRegistry.resolveTabBinding(token);
         const workspace = workspaceRegistry.createWorkspace(scope.workspaceName);
         if (!workspace.tabRegistry.hasTab(scope.tabId)) {
-            workspace.tabRegistry.createTab({ tabName: scope.tabId, tabName: token, page, url: page.url() });
+            workspace.tabRegistry.createTab({ tabName: scope.tabId, page, url: page.url() });
         } else {
             workspace.tabRegistry.bindPage(scope.tabId, page);
         }
