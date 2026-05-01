@@ -65,6 +65,6 @@ test('dispatcher rejects payload workspaceName duplication', async () => {
                 workspaceName: 'ws-1',
                 payload: { workspaceName: 'ws-1' },
             }),
-        /legacy payload address fields are not allowed/,
+        /payload must not duplicate workspaceName/,
     );
 });

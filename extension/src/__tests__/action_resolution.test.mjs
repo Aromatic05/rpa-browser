@@ -58,6 +58,6 @@ await log('non pageless action still fails when tabToken unavailable', async () 
     assert.equal(result.ok, false);
     if (!result.ok) {
         assert.equal(result.reply.type, 'play.start.failed');
-        assert.equal(result.reply.payload.message, 'tab token unavailable');
+        assert.equal(result.reply.payload.message, 'workspaceName unavailable');
     }
 });
