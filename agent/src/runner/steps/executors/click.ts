@@ -78,9 +78,9 @@ const runSelectorClick = async (input: {
 export const executeBrowserClick = async (
     step: Step<'browser.click'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const coord = step.args.coord;
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
     const hardTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.interactionTimeoutMs;

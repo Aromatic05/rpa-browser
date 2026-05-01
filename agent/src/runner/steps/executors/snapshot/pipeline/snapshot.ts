@@ -51,9 +51,9 @@ import type {
 export const executeBrowserSnapshot = async (
     step: Step<'browser.snapshot'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const previousIdentity = clonePageIdentity(getSnapshotSessionEntry(binding)?.pageIdentity);
     const ensured = await ensureFreshSnapshot(binding, {
         forceRefresh: step.args.refresh === true,
@@ -405,9 +405,9 @@ const hasPageIdentityChanged = (
 ): boolean => {
     if (!previousIdentity) {return false;}
     return !(
-        previousIdentity.workspaceId === nextIdentity.workspaceId &&
+        previousIdentity.workspaceName === nextIdentity.workspaceName &&
         previousIdentity.tabId === nextIdentity.tabId &&
-        previousIdentity.tabToken === nextIdentity.tabToken &&
+        previousIdentity.tabName === nextIdentity.tabName &&
         previousIdentity.url === nextIdentity.url
     );
 };
@@ -415,9 +415,9 @@ const hasPageIdentityChanged = (
 const clonePageIdentity = (identity: SnapshotPageIdentity | undefined): SnapshotPageIdentity | undefined => {
     if (!identity) {return undefined;}
     return {
-        workspaceId: identity.workspaceId,
+        workspaceName: identity.workspaceName,
         tabId: identity.tabId,
-        tabToken: identity.tabToken,
+        tabName: identity.tabName,
         url: identity.url,
     };
 };

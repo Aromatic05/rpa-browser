@@ -13,10 +13,10 @@ export type FreshEntityContext = {
 
 export const ensureFreshEntityContext = async (
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
     refreshReason: string,
 ): Promise<FreshEntityContext> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason,
         collectBaseSnapshot: async (context) =>

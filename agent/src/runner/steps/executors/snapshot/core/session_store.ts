@@ -285,9 +285,9 @@ export const readSnapshotDiffBaseline = (
         root: cloneTreeWithRuntime(baseline.root),
         createdAt: baseline.createdAt,
         pageIdentity: {
-            workspaceId: baseline.pageIdentity.workspaceId,
+            workspaceName: baseline.pageIdentity.workspaceName,
             tabId: baseline.pageIdentity.tabId,
-            tabToken: baseline.pageIdentity.tabToken,
+            tabName: baseline.pageIdentity.tabName,
             url: baseline.pageIdentity.url,
         },
     };
@@ -304,9 +304,9 @@ export const writeSnapshotDiffBaseline = (
         root: cloneTreeWithRuntime(baseline.root),
         createdAt: baseline.createdAt,
         pageIdentity: {
-            workspaceId: baseline.pageIdentity.workspaceId,
+            workspaceName: baseline.pageIdentity.workspaceName,
             tabId: baseline.pageIdentity.tabId,
-            tabToken: baseline.pageIdentity.tabToken,
+            tabName: baseline.pageIdentity.tabName,
             url: baseline.pageIdentity.url,
         },
     };
@@ -328,9 +328,9 @@ const createEmptyOverlays = (): SnapshotOverlays => ({
 });
 
 const resolveSnapshotPageIdentity = (binding: PageBinding): SnapshotPageIdentity => ({
-    workspaceId: binding.workspaceName,
+    workspaceName: binding.workspaceName,
     tabId: binding.tabName,
-    tabToken: binding.tabName,
+    tabName: binding.tabName,
     url: safeReadPageUrl(binding),
 });
 
@@ -431,9 +431,9 @@ const safeReadPageUrl = (binding: PageBinding): string => {
 
 const isSamePageIdentity = (left: SnapshotPageIdentity, right: SnapshotPageIdentity): boolean => {
     return (
-        left.workspaceId === right.workspaceId &&
+        left.workspaceName === right.workspaceName &&
         left.tabId === right.tabId &&
-        left.tabToken === right.tabToken &&
+        left.tabName === right.tabName &&
         left.url === right.url
     );
 };

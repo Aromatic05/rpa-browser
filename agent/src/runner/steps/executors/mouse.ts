@@ -6,9 +6,9 @@ import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 export const executeBrowserMouse = async (
     step: Step<'browser.mouse'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     if (step.args.action === 'wheel' && typeof step.args.deltaY !== 'number') {
         return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'mouse wheel requires deltaY' } };
     }

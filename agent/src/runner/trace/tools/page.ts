@@ -35,9 +35,9 @@ export const createPageTools = (base: ToolsBuildContext): any => ({
         await base.run('trace.page.getInfo', undefined, async () => {
             const currentPage = base.getCurrentPage();
             const info = { url: currentPage.url(), title: await currentPage.title() };
-            if (!base.opts.pageRegistry || !base.opts.workspaceId) {return info;}
-            const tabs = await base.opts.pageRegistry.listTabs(base.opts.workspaceId);
-            const active = base.opts.pageRegistry.resolveScope({ workspaceId: base.opts.workspaceId });
+            if (!base.opts.pageRegistry || !base.opts.workspaceName) {return info;}
+            const tabs = await base.opts.pageRegistry.listTabs(base.opts.workspaceName);
+            const active = base.opts.pageRegistry.resolveScope({ workspaceName: base.opts.workspaceName });
             return {
                 ...info,
                 tabId: active.tabId,

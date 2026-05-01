@@ -49,8 +49,8 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
 
     const formatTags = (event: TraceEvent) => {
         if (!event.tags) {return '';}
-        const ws = event.tags.workspaceId ? ` ws=${event.tags.workspaceId}` : '';
-        const tab = event.tags.tabToken ? ` tab=${event.tags.tabToken}` : '';
+        const ws = event.tags.workspaceName ? ` ws=${event.tags.workspaceName}` : '';
+        const tab = event.tags.tabName ? ` tab=${event.tags.tabName}` : '';
         return `${ws}${tab}`;
     };
 

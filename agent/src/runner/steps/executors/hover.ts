@@ -7,9 +7,9 @@ import { resolveTarget } from '../helpers/resolve_target';
 export const executeBrowserHover = async (
     step: Step<'browser.hover'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const resolved = await resolveTarget(binding, {
         nodeId: step.args.nodeId,
         selector: step.args.selector,

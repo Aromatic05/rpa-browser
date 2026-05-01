@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserReload = async (
     step: Step<'browser.reload'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const result = await binding.traceTools['trace.page.reload']({ timeout: step.args.timeout });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };

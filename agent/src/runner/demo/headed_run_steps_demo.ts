@@ -41,7 +41,7 @@ const run = async () => {
     });
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_token',
         getContext: async () => context,
     });
     const workspaceRegistry = createWorkspaceRegistry();
@@ -55,15 +55,15 @@ const run = async () => {
         pluginHost,
     });
     const workspace = await pageRegistry.createWorkspace();
-    const page = await pageRegistry.resolvePage({ workspaceId: workspace.workspaceId, tabId: workspace.tabId });
-    const token = pageRegistry.resolveTabToken({ workspaceId: workspace.workspaceId, tabId: workspace.tabId });
-    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspace.workspaceId);
-    runtimeWorkspace.tabRegistry.createTab({ tabName: workspace.tabId, tabToken: token, page, url: page.url() });
+    const page = await pageRegistry.resolvePage({ workspaceName: workspace.workspaceName, tabId: workspace.tabId });
+    const token = pageRegistry.resolveTabName({ workspaceName: workspace.workspaceName, tabId: workspace.tabId });
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspace.workspaceName);
+    runtimeWorkspace.tabRegistry.createTab({ tabName: workspace.tabId, tabName: token, page, url: page.url() });
     runtimeWorkspace.tabRegistry.setActiveTab(workspace.tabId);
-    runtimeRegistry.bindPage({ workspaceName: workspace.workspaceId, tabName: workspace.tabId, page });
+    runtimeRegistry.bindPage({ workspaceName: workspace.workspaceName, tabName: workspace.tabId, page });
 
     const firstResp = await runStepList(
-        workspace.workspaceId,
+        workspace.workspaceName,
         [
             {
                 id: 'demo-goto',
@@ -97,7 +97,7 @@ const run = async () => {
     }
 
     const secondResp = await runStepList(
-        workspace.workspaceId,
+        workspace.workspaceName,
         [
             {
                 id: 'demo-click',

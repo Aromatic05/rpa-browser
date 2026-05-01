@@ -7,9 +7,9 @@ import { resolveTarget } from '../helpers/resolve_target';
 export const executeBrowserPressKey = async (
     step: Step<'browser.press_key'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
     if (hasTarget) {
         const resolved = await resolveTarget(binding, {

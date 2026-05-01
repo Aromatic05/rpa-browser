@@ -1,5 +1,5 @@
 export type RunnerScopeRegistry = {
-    run: <T>(workspaceId: string, task: () => Promise<T>) => Promise<T>;
+    run: <T>(workspaceName: string, task: () => Promise<T>) => Promise<T>;
 };
 
 type Semaphore = {
@@ -35,8 +35,8 @@ export const createRunnerScopeRegistry = (maxConcurrent = 2): RunnerScopeRegistr
     const semaphore = createSemaphore(maxConcurrent);
     const queues = new Map<string, Promise<unknown>>();
 
-    const run = async <T>(workspaceId: string, task: () => Promise<T>) => {
-        const previous = queues.get(workspaceId) || Promise.resolve();
+    const run = async <T>(workspaceName: string, task: () => Promise<T>) => {
+        const previous = queues.get(workspaceName) || Promise.resolve();
         const next = previous
             .catch(() => undefined)
             .then(async () => {
@@ -47,7 +47,7 @@ export const createRunnerScopeRegistry = (maxConcurrent = 2): RunnerScopeRegistr
                     semaphore.release();
                 }
             });
-        queues.set(workspaceId, next);
+        queues.set(workspaceName, next);
         return await (next);
     };
 

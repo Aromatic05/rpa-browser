@@ -4,7 +4,7 @@ import type { StepResult, StepUnion } from './steps/types';
 
 export type FailedCtx = {
     runId: string;
-    workspaceId: string;
+    workspaceName: string;
     stepIndex: number;
     step: StepUnion;
     rawResult: StepResult;
@@ -21,7 +21,7 @@ export type FailedCtx = {
 
 export const getFailedCtx = async (input: {
     runId: string;
-    workspaceId: string;
+    workspaceName: string;
     stepIndex: number;
     step: StepUnion;
     rawResult: StepResult;
@@ -36,7 +36,7 @@ export const getFailedCtx = async (input: {
 }): Promise<FailedCtx> => {
     let currentUrl: string | undefined;
     try {
-        const binding = await input.deps.runtime.resolveBinding(input.workspaceId);
+        const binding = await input.deps.runtime.resolveBinding(input.workspaceName);
         const info = await binding.traceTools['trace.page.getInfo']();
         if (info.ok) {
             currentUrl = info.data?.url;
@@ -47,7 +47,7 @@ export const getFailedCtx = async (input: {
 
     return {
         runId: input.runId,
-        workspaceId: input.workspaceId,
+        workspaceName: input.workspaceName,
         stepIndex: input.stepIndex,
         step: input.step,
         rawResult: input.rawResult,

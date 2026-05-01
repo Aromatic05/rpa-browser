@@ -11,11 +11,11 @@ const ROOT_FROM_REFS = new Set(['snapshot', 'snapshot.latest']);
 export const executeBrowserQuery = async (
     step: Step<'browser.query'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
     if ('op' in step.args) {
         if (step.args.op === 'entity') {
-            const context = await ensureFreshEntityContext(deps, workspaceId, 'browser.query.entity');
+            const context = await ensureFreshEntityContext(deps, workspaceName, 'browser.query.entity');
             const queried = queryBusinessEntity(
                 context.snapshot,
                 context.finalEntityView,
@@ -37,7 +37,7 @@ export const executeBrowserQuery = async (
         }
 
         if (step.args.op === 'entity.target') {
-            const context = await ensureFreshEntityContext(deps, workspaceId, 'browser.query.entity.target');
+            const context = await ensureFreshEntityContext(deps, workspaceName, 'browser.query.entity.target');
             const resolved = resolveBusinessEntityTarget(
                 context.snapshot,
                 context.finalEntityView,
@@ -69,7 +69,7 @@ export const executeBrowserQuery = async (
     }
 
     const args = step.args as Extract<Step<'browser.query'>['args'], { from: unknown }>;
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const snapshot = readLatestSnapshot(binding.traceCtx.cache);
     if (!snapshot) {
         return {

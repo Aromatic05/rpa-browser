@@ -371,9 +371,9 @@ const chooseInCustomChoicePopup = async (
 export const executeBrowserSelectOption = async (
     step: Step<'browser.select_option'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const resolved = await resolveTarget(binding, {
         nodeId: step.args.nodeId,
         selector: step.args.selector,

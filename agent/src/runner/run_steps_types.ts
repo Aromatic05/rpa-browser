@@ -8,7 +8,7 @@ export type StepEvent =
     | {
           type: 'step.start';
           ts: number;
-          workspaceId: string;
+          workspaceName: string;
           stepId: string;
           name: StepName;
           argsSummary?: unknown;
@@ -16,7 +16,7 @@ export type StepEvent =
     | {
           type: 'step.end';
           ts: number;
-          workspaceId: string;
+          workspaceName: string;
           stepId: string;
           name: StepName;
           ok: boolean;
@@ -59,7 +59,7 @@ export type SignalChannel = {
 
 export type Checkpoint = {
     runId: string;
-    workspaceId: string;
+    workspaceName: string;
     status: RunStatus;
     cursor: number;
     updatedAt: number;
@@ -74,7 +74,7 @@ export type RunStepsDeps = {
 
 export type RunStepsRequest = {
     runId: string;
-    workspaceId: string;
+    workspaceName: string;
     stepsQueue: StepsQueue;
     resultPipe: ResultPipe;
     signalChannel: SignalChannel;

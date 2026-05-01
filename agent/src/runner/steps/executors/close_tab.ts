@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserCloseTab = async (
     step: Step<'browser.close_tab'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const tabId = step.args.tabId || step.args.tabRef;
     if (!tabId) {
         return {
@@ -17,7 +17,7 @@ export const executeBrowserCloseTab = async (
         };
     }
     const result = await binding.traceTools['trace.tabs.close']({
-        workspaceId,
+        workspaceName,
         tabId,
     });
     if (!result.ok) {

@@ -54,7 +54,7 @@ export const normalizeCaptureResolveLimit = (
 export const executeBrowserCaptureResolve = async (
     step: Step<'browser.capture_resolve'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
     const args = step.args;
     if (!args.nodeId && !args.selector && !args.text && !args.role && !args.name) {
@@ -73,11 +73,11 @@ export const executeBrowserCaptureResolve = async (
         return { stepId: step.id, ok: false, error: normalizedLimit.error };
     }
 
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const cachedSnapshot = readLatestSnapshot(binding.traceCtx.cache);
     const snapshot =
         cachedSnapshot ||
-        (await ensureFreshEntityContext(deps, workspaceId, 'browser.capture_resolve')).snapshot;
+        (await ensureFreshEntityContext(deps, workspaceName, 'browser.capture_resolve')).snapshot;
     const candidates = await findCandidates(binding, snapshot, step).then((items) => items.slice(0, normalizedLimit.value));
     if (candidates.length === 0) {
         return {

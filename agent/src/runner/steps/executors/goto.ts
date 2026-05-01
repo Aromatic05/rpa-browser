@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserGoto = async (
     step: Step<'browser.goto'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const timeout = step.args.timeout ?? deps.config.waitPolicy.navigationTimeoutMs;
     const currentUrl = binding.page.url();
     if (currentUrl === step.args.url) {

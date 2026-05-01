@@ -5,11 +5,11 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserCreateTab = async (
     step: Step<'browser.create_tab'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const result = await binding.traceTools['trace.tabs.create']({
-        workspaceId,
+        workspaceName,
         url: step.args.url,
     });
     if (!result.ok) {

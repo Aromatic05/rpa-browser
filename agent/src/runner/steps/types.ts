@@ -386,9 +386,9 @@ export type StepMeta = {
     requestId?: string;
     source: 'mcp' | 'play' | 'script' | 'record' | 'control-rpc' | 'dsl';
     ts?: number;
-    workspaceId?: string;
+    workspaceName?: string;
     tabId?: string;
-    tabToken?: string;
+    tabName?: string;
     tabRef?: string;
     urlAtRecord?: string;
 };
@@ -420,7 +420,7 @@ export type StepResult = {
 };
 
 export type RunStepsRequest = {
-    workspaceId: string;
+    workspaceName: string;
     steps: StepUnion[];
     stepResolves?: Record<string, StepResolve>;
     options?: { dryRun?: boolean; stopOnError?: boolean; maxConcurrency?: number };

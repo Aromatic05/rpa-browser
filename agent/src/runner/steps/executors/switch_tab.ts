@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserSwitchTab = async (
     step: Step<'browser.switch_tab'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const tabId = step.args.tabId || step.args.tabRef;
     if (!tabId) {
         return {
@@ -17,7 +17,7 @@ export const executeBrowserSwitchTab = async (
         };
     }
     const result = await binding.traceTools['trace.tabs.switch']({
-        workspaceId,
+        workspaceName,
         tabId,
     });
     if (!result.ok) {

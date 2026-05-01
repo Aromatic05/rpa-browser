@@ -51,12 +51,12 @@ export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
         const iso = new Date(event.ts).toISOString();
         if (event.type === 'step.start') {
             stepLogger(
-                `${prefix} start ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name}`,
+                `${prefix} start ts=${event.ts} iso=${iso} workspace=${event.workspaceName} step=${event.stepId} name=${event.name}`,
             );
             return;
         }
         stepLogger(
-            `${prefix} end ts=${event.ts} iso=${iso} workspace=${event.workspaceId} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
+            `${prefix} end ts=${event.ts} iso=${iso} workspace=${event.workspaceName} step=${event.stepId} name=${event.name} ok=${event.ok} ms=${event.durationMs}`,
         );
     },
 });
@@ -95,7 +95,7 @@ export type RunLocalStepResults = Record<
 
 const executeOne = async (
     step: StepUnion,
-    workspaceId: string,
+    workspaceName: string,
     runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
     stepResolves?: Record<string, StepResolve>,
@@ -135,7 +135,7 @@ const executeOne = async (
     }
 
     const fn = executors[step.name];
-    return await fn(runtimeStep.step, deps, workspaceId);
+    return await fn(runtimeStep.step, deps, workspaceName);
 };
 
 const STEP_RESOLVE_STEP_NAMES = new Set([
@@ -204,12 +204,12 @@ const injectStepResolve = (
 
 const writeRunnerStepResultCache = async (
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
     runId: string,
     result: ExecStepResult,
 ) => {
     try {
-        const binding = await deps.runtime.resolveBinding(workspaceId);
+        const binding = await deps.runtime.resolveBinding(workspaceName);
         const cache = binding.traceCtx.cache as {
             runnerStepResults?: Record<string, unknown>;
             runnerStepResultsRunId?: string;
@@ -235,9 +235,9 @@ const waitForInput = (queue: StepsQueue, signalChannel: SignalChannel): Promise<
         getWaiters(signalWaiters, signalChannel).add(resolve);
     });
 
-const checkpointOf = (runId: string, workspaceId: string, status: RunStatus, cursor: number): Checkpoint => ({
+const checkpointOf = (runId: string, workspaceName: string, status: RunStatus, cursor: number): Checkpoint => ({
     runId,
-    workspaceId,
+    workspaceName,
     status,
     cursor,
     updatedAt: Date.now(),
@@ -332,7 +332,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             const event = req.signalChannel.items[req.signalChannel.cursor++];
             if (event.signal === 'halt') {
                 status = 'halted';
-                const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+                const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
                 await req.onCheckpoint?.(checkpoint);
                 return checkpoint;
             }
@@ -364,16 +364,16 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             await writeStepEvent(resolvedDeps.stepSinks, {
                 type: 'step.start',
                 ts: startedAt,
-                workspaceId: req.workspaceId,
+                workspaceName: req.workspaceName,
                 stepId: step.id,
                 name: step.name,
                 argsSummary: step.args,
             });
 
-            const result = await executeOne(step, req.workspaceId, runLocalStepResults, resolvedDeps, req.stepResolves);
+            const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
             if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
-                    const binding = await resolvedDeps.runtime.resolveBinding(req.workspaceId);
+                    const binding = await resolvedDeps.runtime.resolveBinding(req.workspaceName);
                     markSnapshotSessionDirty(binding, `step:${step.name}`);
                 } catch (error) {
                     stepLogger('[runner] snapshot dirty mark failed', {
@@ -386,7 +386,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             await writeStepEvent(resolvedDeps.stepSinks, {
                 type: 'step.end',
                 ts: Date.now(),
-                workspaceId: req.workspaceId,
+                workspaceName: req.workspaceName,
                 stepId: step.id,
                 name: step.name,
                 ok: result.ok,
@@ -400,7 +400,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 const attempt = checkpointAttempts.get(step.id) ?? 0;
                 const failedCtx = await getFailedCtx({
                     runId: req.runId,
-                    workspaceId: req.workspaceId,
+                    workspaceName: req.workspaceName,
                     stepIndex,
                     step,
                     rawResult: result,
@@ -410,7 +410,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpointMaxAttempts,
                     inCheckpointFlow: false,
                     deps: resolvedDeps,
-                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceId, runLocalStepResults, resolvedDeps, req.stepResolves),
+                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves),
                     checkpoints: req.checkpoints,
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
@@ -433,7 +433,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 data: finalResult.data,
                 error: finalResult.error,
             };
-            await writeRunnerStepResultCache(resolvedDeps, req.workspaceId, req.runId, finalResult);
+            await writeRunnerStepResultCache(resolvedDeps, req.workspaceName, req.runId, finalResult);
             pushResultPipe(req.resultPipe, output);
 
             if (nextStatus === 'suspended') {
@@ -442,7 +442,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 status = 'failed';
             }
 
-            const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+            const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
             await req.onCheckpoint?.(checkpoint);
             if (status === 'failed') {
                 return checkpoint;
@@ -452,7 +452,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
 
         if (req.stepsQueue.closed) {
             status = 'completed';
-            const checkpoint = checkpointOf(req.runId, req.workspaceId, status, req.stepsQueue.cursor);
+            const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
             await req.onCheckpoint?.(checkpoint);
             return checkpoint;
         }
@@ -462,7 +462,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
 };
 
 export const runStepList = async (
-    workspaceId: string,
+    workspaceName: string,
     steps: StepUnion[],
     deps?: RunStepsDeps,
     opts?: { stopOnError?: boolean; runId?: string; stepResolves?: Record<string, StepResolve> },
@@ -473,7 +473,7 @@ export const runStepList = async (
     const checkpoint = await runSteps(
         {
             runId: opts?.runId || crypto.randomUUID(),
-            workspaceId,
+            workspaceName,
             stepsQueue: queue,
             resultPipe: pipe,
             signalChannel: signals,
