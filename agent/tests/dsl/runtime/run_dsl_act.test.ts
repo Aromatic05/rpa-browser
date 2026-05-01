@@ -13,9 +13,9 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl',
+                workspaceName: 'ws-dsl',
                 tabId: 'tab-dsl',
-                tabToken: 'tk-dsl',
+                tabName: 'tk-dsl',
                 traceCtx: { cache: {} },
             }),
         },
@@ -63,7 +63,7 @@ test('runDsl executes type/select/snapshot as browser steps', async () => {
     );
 
     await runDsl(program, {
-        workspaceId: 'ws-dsl',
+        workspaceName: 'ws-dsl',
         deps: createDeps(calls),
         input: { text: 'alice', value: 'approved' },
     });
@@ -88,7 +88,7 @@ test('runDsl wait delays execution and does not emit a step', async () => {
 
     const startedAt = Date.now();
     await runDsl(program, {
-        workspaceId: 'ws-dsl',
+        workspaceName: 'ws-dsl',
         deps: createDeps(calls),
     });
     const elapsed = Date.now() - startedAt;

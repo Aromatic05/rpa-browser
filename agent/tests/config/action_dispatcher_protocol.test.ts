@@ -8,15 +8,15 @@ const createDispatcher = () => {
     let ensureActivePageCalls = 0;
     const dispatcher = createActionDispatcher({
         pageRegistry: {
-            getActiveWorkspace: () => ({ workspaceId: 'active-ws' }),
+            getActiveWorkspace: () => ({ workspaceName: 'active-ws' }),
         } as any,
         runtime: {
-            ensureActivePage: async (workspaceId: string) => {
+            ensureActivePage: async (workspaceName: string) => {
                 ensureActivePageCalls += 1;
                 return {
-                    workspaceId,
+                    workspaceName,
                     tabId: 'tab-1',
-                    tabToken: 'token-1',
+                    tabName: 'token-1',
                     page: {
                         url: () => 'https://example.com',
                     },

@@ -23,11 +23,11 @@ test('resolveEnabledToolNames honors group and explicit enable/disable', () => {
     assert.equal(enabled.has('browser.evaluate'), true);
 });
 
-test('getToolSpecs strips tabToken and prunes empty required', () => {
+test('getToolSpecs strips tabName and prunes empty required', () => {
     const enabled = new Set(['browser.go_back']);
     const specs = getToolSpecs({ enabledTools: enabled });
     assert.equal(specs.length, 1);
     const schema = specs[0].inputSchema as { properties?: Record<string, unknown>; required?: unknown[] };
-    assert.equal(Boolean(schema.properties?.tabToken), false);
+    assert.equal(Boolean(schema.properties?.tabName), false);
     assert.equal(Array.isArray(schema.required), false);
 });

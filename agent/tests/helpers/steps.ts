@@ -23,33 +23,33 @@ export const createTestPluginHost = async () => {
     return host;
 };
 
-export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.randomUUID()}`) => {
+export const setupStepRunner = async (page: Page, tabName = `test-${crypto.randomUUID()}`) => {
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_token',
         getContext: async () => page.context(),
     });
 
     const shell = pageRegistry.createWorkspaceShell();
-    await pageRegistry.bindPage(page, tabToken);
-    let scope: { workspaceId: string; tabId: string };
+    await pageRegistry.bindPage(page, tabName);
+    let scope: { workspaceName: string; tabId: string };
     try {
-        scope = pageRegistry.resolveScopeFromToken(tabToken);
+        scope = pageRegistry.resolveTabBinding(tabName);
     } catch {
-        const bound = pageRegistry.bindTokenToWorkspace(tabToken, shell.workspaceId);
+        const bound = pageRegistry.bindTokenToWorkspace(tabName, shell.workspaceName);
         if (!bound) {
-            throw new Error('setupStepRunner failed to bind tabToken to workspace');
+            throw new Error('setupStepRunner failed to bind tabName to workspace');
         }
-        scope = pageRegistry.resolveScopeFromToken(tabToken);
+        scope = pageRegistry.resolveTabBinding(tabName);
     }
-    pageRegistry.setActiveWorkspace(scope.workspaceId);
-    pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
+    pageRegistry.setActiveWorkspace(scope.workspaceName);
+    pageRegistry.setActiveTab(scope.workspaceName, scope.tabId);
 
     const pluginHost = await createTestPluginHost();
     const workspaceRegistry = createWorkspaceRegistry();
-    const runtimeWorkspace = workspaceRegistry.createWorkspace(scope.workspaceId);
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(scope.workspaceName);
     runtimeWorkspace.tabRegistry.createTab({
         tabName: scope.tabId,
-        tabToken,
+        tabName,
         page,
         url: page.url(),
     });
@@ -59,18 +59,18 @@ export const setupStepRunner = async (page: Page, tabToken = `test-${crypto.rand
         traceHooks: createNoopHooks(),
         pluginHost,
     });
-    runtime.bindPage({ workspaceName: scope.workspaceId, tabName: scope.tabId, page });
+    runtime.bindPage({ workspaceName: scope.workspaceName, tabName: scope.tabId, page });
 
     const deps = { runtime, config: getRunnerConfig(), pluginHost };
 
     const run = async (steps: StepUnion[]) => {
-        const { pipe, checkpoint } = await runStepList(scope.workspaceId, steps, deps, { stopOnError: true });
+        const { pipe, checkpoint } = await runStepList(scope.workspaceName, steps, deps, { stopOnError: true });
         const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown }>;
         const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
     };
 
-    return { run, workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken, pageRegistry, deps };
+    return { run, workspaceName: scope.workspaceName, tabId: scope.tabId, tabName, pageRegistry, deps };
 };
 
 export const findA11yNodeId = (tree: any, role: string, name: string): string | null => {

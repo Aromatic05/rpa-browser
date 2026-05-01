@@ -13,7 +13,7 @@ const createMockPage = (url: string) =>
 
 test('tab.init pending claim is consumed by bindPage and tab.opened resolves without ERR_BAD_ARGS', async () => {
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_token',
         getContext: async () =>
             ({
                 pages: () => [],
@@ -32,7 +32,7 @@ test('tab.init pending claim is consumed by bindPage and tab.opened resolves wit
             v: 1,
             id: 'init-1',
             type: 'tab.init',
-            scope: { workspaceId: 'ws-flow' },
+            scope: { workspaceName: 'ws-flow' },
             payload: {
                 source: 'start_extension',
                 url: 'chrome-extension://start/newtab.html',
@@ -42,19 +42,19 @@ test('tab.init pending claim is consumed by bindPage and tab.opened resolves wit
     );
 
     assert.equal(initReply.type, 'tab.init.result');
-    const tabToken = (initReply.payload as any)?.tabToken as string;
-    assert.equal(typeof tabToken, 'string');
-    assert.equal(tabToken.length > 10, true);
+    const tabName = (initReply.payload as any)?.tabName as string;
+    assert.equal(typeof tabName, 'string');
+    assert.equal(tabName.length > 10, true);
 
     const page = createMockPage('chrome-extension://start/newtab.html');
-    await pageRegistry.bindPage(page, tabToken);
+    await pageRegistry.bindPage(page, tabName);
 
-    const scope = pageRegistry.resolveScopeFromToken(tabToken);
-    assert.equal(scope.workspaceId, 'ws-flow');
+    const scope = pageRegistry.resolveTabBinding(tabName);
+    assert.equal(scope.workspaceName, 'ws-flow');
 
     const openedReply = await workspaceHandlers['tab.opened'](
         {
-            tabToken,
+            tabName,
             pageRegistry,
             page,
             log: () => {},
@@ -63,17 +63,17 @@ test('tab.init pending claim is consumed by bindPage and tab.opened resolves wit
             v: 1,
             id: 'opened-1',
             type: 'tab.opened',
-            scope: { tabToken, workspaceId: 'ws-flow' },
+            scope: { tabName, workspaceName: 'ws-flow' },
             payload: {
                 source: 'start_extension',
                 url: 'chrome-extension://start/newtab.html',
                 title: 'RPA Start',
                 at: Date.now(),
-                workspaceId: 'ws-flow',
+                workspaceName: 'ws-flow',
             },
         } as any,
     );
 
     assert.equal(openedReply.type, 'tab.opened.result');
-    assert.equal((openedReply.payload as any).workspaceId, 'ws-flow');
+    assert.equal((openedReply.payload as any).workspaceName, 'ws-flow');
 });

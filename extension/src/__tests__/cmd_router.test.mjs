@@ -57,10 +57,10 @@ const createChromeMock = () => ({
         sendMessage: (tabName, message, cb) => {
             if (message?.type === MSG.GET_TOKEN) {
                 if (tabName === 21) {
-                    cb({ ok: true, tabToken: 'token-new', url: 'https://example.com/new' });
+                    cb({ ok: true, tabName: 'token-new', url: 'https://example.com/new' });
                     return;
                 }
-                cb({ ok: true, tabToken: 'token-new', url: 'https://example.com/new' });
+                cb({ ok: true, tabName: 'token-new', url: 'https://example.com/new' });
                 return;
             }
             cb({ ok: true });
@@ -111,7 +111,7 @@ await log('window focus sends workspace.setActive and window.focused', async () 
     const router = createCmdRouter({
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
-            return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-1', tabToken: 'token-1' } };
+            return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-1', tabName: 'token-1' } };
         }),
         onRefresh: () => undefined,
     });
@@ -119,7 +119,7 @@ await log('window focus sends workspace.setActive and window.focused', async () 
     router.handleMessage(
         {
             type: MSG.HELLO,
-            tabToken: 'token-1',
+            tabName: 'token-1',
             url: 'https://example.com',
         },
         {
@@ -209,7 +209,7 @@ await log('tabs.onCreated does not emit binding actions', async () => {
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
-                return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-new', tabToken: 'token-new' } };
+                return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-new', tabName: 'token-new' } };
             }
             return { ok: true, data: {} };
         }),
@@ -219,7 +219,7 @@ await log('tabs.onCreated does not emit binding actions', async () => {
     router.handleMessage(
         {
             type: MSG.HELLO,
-            tabToken: 'token-1',
+            tabName: 'token-1',
             url: 'https://example.com',
         },
         {
@@ -251,7 +251,7 @@ await log('tabs.onCreated reuses pre-bound token scope when window mapping is no
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
-                return { ok: true, data: { workspaceName: 'ws-url', tabName: 'tab-new', tabToken: 'token-new' } };
+                return { ok: true, data: { workspaceName: 'ws-url', tabName: 'tab-new', tabName: 'token-new' } };
             }
             return { ok: true, data: {} };
         }),
@@ -277,7 +277,7 @@ await log('tabs.onCreated reuses pre-bound token scope when window mapping is no
     assert.equal(openedCount, 0);
 });
 
-await log('workflow.open projection uses workspaceName/tabName without payload tabToken', async () => {
+await log('workflow.open projection uses workspaceName/tabName without payload tabName', async () => {
     globalThis.chrome = createChromeMock();
     let refreshed = 0;
     const router = createCmdRouter({
@@ -304,7 +304,7 @@ await log('workspace.list works without tab token', async () => {
             return;
         }
         if (message?.type === MSG.GET_TOKEN) {
-            cb({ ok: true, tabToken: 'token-new', url: 'https://example.com/new' });
+            cb({ ok: true, tabName: 'token-new', url: 'https://example.com/new' });
             return;
         }
         cb({ ok: true });

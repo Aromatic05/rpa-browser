@@ -29,22 +29,22 @@ type FixtureOptions = {
 };
 
 const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView): RunStepsDeps => {
-    const workspaceId = 'ws-diagnostics';
+    const workspaceName = 'ws-diagnostics';
     const tabId = 'tab-diagnostics';
-    const tabToken = 'tab-token-diagnostics';
+    const tabName = 'tab-token-diagnostics';
     const url = 'https://example.test/entity-diagnostics';
     const binding = {
-        workspaceId,
+        workspaceName,
         tabId,
-        tabToken,
+        tabName,
         page: { url: () => url },
         traceCtx: {
             cache: {
                 snapshotSessionStore: {
                     version: 1,
                     entries: {
-                        [`${workspaceId}:${tabToken}`]: {
-                            pageIdentity: { workspaceId, tabId, tabToken, url },
+                        [`${workspaceName}:${tabName}`]: {
+                            pageIdentity: { workspaceName, tabId, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView,

@@ -13,7 +13,7 @@ test.describe('replay self heal', () => {
         expect(nodeId).not.toBeNull();
         const replay = await import('../../src/play/replay');
         const res = await replay.replayRecording({
-            workspaceId: runner.workspaceId,
+            workspaceName: runner.workspaceName,
             steps: [createStep('browser.click', { nodeId: nodeId || undefined })],
             stopOnError: true,
             deps: runner.deps,
@@ -34,7 +34,7 @@ test.describe('replay self heal', () => {
         expect(nodeId).not.toBeNull();
         const replay = await import('../../src/play/replay');
         const res = await replay.replayRecording({
-            workspaceId: runner.workspaceId,
+            workspaceName: runner.workspaceName,
             steps: [createStep('browser.click', { nodeId: nodeId || undefined })],
             stopOnError: true,
             deps: runner.deps,

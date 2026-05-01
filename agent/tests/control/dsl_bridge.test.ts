@@ -12,9 +12,9 @@ const createContext = (calls: Array<Record<string, unknown>>): ControlRouterCont
         ({
             runtime: {
                 ensureActivePage: async () => ({
-                    workspaceId: 'ws-dsl-control',
+                    workspaceName: 'ws-dsl-control',
                     tabId: 'tab-dsl-control',
-                    tabToken: 'tk-dsl-control',
+                    tabName: 'tk-dsl-control',
                     traceCtx: { cache: {} },
                 }),
             },
@@ -57,7 +57,7 @@ test('dsl.run executes a simple dsl program', async () => {
 
     const result = await runDslControl(
         {
-            workspaceId: 'ws-dsl-control',
+            workspaceName: 'ws-dsl-control',
             source: `
 let buyer = query entity.target "order.form" {
   kind: "form.field"

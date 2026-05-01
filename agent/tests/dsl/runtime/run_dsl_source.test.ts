@@ -11,9 +11,9 @@ const createDeps = (calls: Array<Record<string, unknown>>): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl-source',
+                workspaceName: 'ws-dsl-source',
                 tabId: 'tab-dsl-source',
-                tabToken: 'tk-dsl-source',
+                tabName: 'tk-dsl-source',
                 traceCtx: { cache: {} },
             }),
         },
@@ -65,7 +65,7 @@ for user in input.users:
     fill buyer with user.name
         `,
         {
-            workspaceId: 'ws-dsl-source',
+            workspaceName: 'ws-dsl-source',
             deps: createDeps(calls),
             checkpointProvider,
             input: {
@@ -91,7 +91,7 @@ test('runDslSource throws DslValidationError with diagnostics', async () => {
 click buyer
                 `,
                 {
-                    workspaceId: 'ws-dsl-source',
+                    workspaceName: 'ws-dsl-source',
                     deps: createDeps([]),
                     input: {},
                 },

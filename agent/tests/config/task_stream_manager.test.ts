@@ -35,7 +35,7 @@ test('shared queue + result pipe', async () => {
     const pipe = createResultPipe();
     const signals = createSignalChannel();
 
-    const loop = runSteps({ runId, workspaceId: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
+    const loop = runSteps({ runId, workspaceName: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
 
     enqueueSteps(queue, [
         { id: 's1', name: 'browser.click', args: { selector: '#a' } } as StepUnion,
@@ -59,7 +59,7 @@ test('abort signal stops run loop', async () => {
     const pipe = createResultPipe();
     const signals = createSignalChannel();
 
-    const loop = runSteps({ runId, workspaceId: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
+    const loop = runSteps({ runId, workspaceName: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
     sendSignal(signals, 'halt');
 
     const cp = await loop;
@@ -79,7 +79,7 @@ test('flush signal clears not-yet-executed steps', async () => {
     const signals = createSignalChannel();
     sendSignal(signals, 'suspend');
 
-    const loop = runSteps({ runId, workspaceId: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
+    const loop = runSteps({ runId, workspaceName: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: signals, stopOnError: true });
     sendSignal(signals, 'flush');
     sendSignal(signals, 'continue');
     closeStepsQueue(queue);

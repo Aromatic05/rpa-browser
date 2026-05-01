@@ -6,25 +6,25 @@ import type { RecordingEnhancementMap } from '../../src/record/types';
 import type { SnapshotResult } from '../../src/runner/steps/executors/snapshot/core/types';
 
 const createReplayStepContext = (runner: Awaited<ReturnType<typeof setupStepRunner>>) => ({
-    workspaceId: runner.workspaceId,
-    initialTabId: runner.tabId,
-    initialTabToken: runner.tabToken,
+    workspaceName: runner.workspaceName,
+    initialTabName: runner.tabId,
+    initialTabToken: runner.tabName,
     pageRegistry: {
-        listTabs: (workspaceId: string) => runner.pageRegistry.listTabs(workspaceId),
-        resolveTabIdFromToken: (tabToken: string) => {
+        listTabs: (workspaceName: string) => runner.pageRegistry.listTabs(workspaceName),
+        resolveTabNameFromToken: (tabName: string) => {
             try {
-                return runner.pageRegistry.resolveScopeFromToken(tabToken).tabId;
+                return runner.pageRegistry.resolveTabBinding(tabName).tabId;
             } catch {
                 return undefined;
             }
         },
-        resolveTabIdFromRef: (tabRef: string) => tabRef || undefined,
+        resolveTabNameFromRef: (tabRef: string) => tabRef || undefined,
     },
     deps: runner.deps,
 });
 
 const getLatestSnapshot = async (runner: Awaited<ReturnType<typeof setupStepRunner>>) => {
-    const binding = await runner.deps.runtime.resolveBinding(runner.workspaceId);
+    const binding = await runner.deps.runtime.resolveBinding(runner.workspaceName);
     const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
     return cache.latestSnapshot as SnapshotResult | undefined;
 };
@@ -53,7 +53,7 @@ test.describe('replay drift enhancement', () => {
                 id: 'drift-list-click',
                 name: 'browser.click',
                 args: { nodeId: 'stale-node-id-list' },
-                meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+                meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
             },
         ];
 
@@ -119,7 +119,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-scope-save',
             name: 'browser.click',
             args: { nodeId: 'stale-node-id-scope' },
-            meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -167,7 +167,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-fill-step',
             name: 'browser.fill',
             args: { value: 'alice-v2', nodeId: 'stale-node-id-fill' },
-            meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -210,7 +210,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-ambiguous-delete',
             name: 'browser.click',
             args: { nodeId: 'stale-node-id-ambiguous' },
-            meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
         };
 
         const enrichments: RecordingEnhancementMap = {

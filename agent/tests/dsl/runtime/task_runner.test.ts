@@ -13,9 +13,9 @@ const createDeps = (calls: StubCall[], opts?: { failFill?: boolean; delayMs?: nu
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl-task',
+                workspaceName: 'ws-dsl-task',
                 tabId: 'tab-dsl-task',
-                tabToken: 'tk-dsl-task',
+                tabName: 'tk-dsl-task',
                 traceCtx: { cache: {} },
             }),
         },
@@ -58,7 +58,7 @@ const createDeps = (calls: StubCall[], opts?: { failFill?: boolean; delayMs?: nu
 test('task_runner runs multiple steps through one runId and preserves queue order', async () => {
     const calls: StubCall[] = [];
     const runner = createDslTaskRunner({
-        workspaceId: 'ws-dsl-task',
+        workspaceName: 'ws-dsl-task',
         deps: createDeps(calls, { delayMs: 5 }),
     });
 
@@ -96,7 +96,7 @@ test('task_runner runs multiple steps through one runId and preserves queue orde
 test('task_runner matches results by stepId across consecutive steps', async () => {
     const calls: StubCall[] = [];
     const runner = createDslTaskRunner({
-        workspaceId: 'ws-dsl-task',
+        workspaceName: 'ws-dsl-task',
         deps: createDeps(calls, { delayMs: 1 }),
     });
 
@@ -128,7 +128,7 @@ test('task_runner matches results by stepId across consecutive steps', async () 
 
 test('task_runner returns failed step results without swallowing errors', async () => {
     const runner = createDslTaskRunner({
-        workspaceId: 'ws-dsl-task',
+        workspaceName: 'ws-dsl-task',
         deps: createDeps([], { failFill: true }),
     });
 
@@ -150,7 +150,7 @@ test('task_runner returns failed step results without swallowing errors', async 
 test('task_runner close waits for runSteps completion', async () => {
     const calls: StubCall[] = [];
     const runner = createDslTaskRunner({
-        workspaceId: 'ws-dsl-task',
+        workspaceName: 'ws-dsl-task',
         deps: createDeps(calls),
     });
 

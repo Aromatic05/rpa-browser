@@ -4,18 +4,18 @@ import { workspaceHandlers } from '../../src/actions/workspace';
 
 const createCtx = () => ({
     page: { url: () => 'https://example.com' },
-    tabToken: 'token-1',
+    tabName: 'token-1',
     pageRegistry: {
         listWorkspaces: () => [
             {
-                workspaceId: 'ws-1',
-                activeTabId: 'tab-1',
+                workspaceName: 'ws-1',
+                activeTabName: 'tab-1',
                 tabCount: 2,
                 createdAt: 1,
                 updatedAt: 2,
             },
         ],
-        getActiveWorkspace: () => ({ workspaceId: 'ws-1' }),
+        getActiveWorkspace: () => ({ workspaceName: 'ws-1' }),
         listTabs: async (_workspaceName: string) => [
             {
                 tabId: 'tab-1',
@@ -53,8 +53,8 @@ test('workspace.list only exposes workspaceName contract fields', async () => {
         createdAt: 1,
         updatedAt: 2,
     });
-    assert.equal('workspaceId' in payload.workspaces[0], false);
-    assert.equal('activeTabId' in payload.workspaces[0], false);
+    assert.equal('workspaceName' in payload.workspaces[0], false);
+    assert.equal('activeTabName' in payload.workspaces[0], false);
 });
 
 test('tab.list only exposes tabName contract fields and requires workspaceName', async () => {

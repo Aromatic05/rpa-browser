@@ -18,9 +18,9 @@ const createContext = (calls: CapturedCall[]): ControlRouterContext => ({
         ({
             runtime: {
                 ensureActivePage: async () => ({
-                    workspaceId: 'ws-control',
+                    workspaceName: 'ws-control',
                     tabId: 'tab-control',
-                    tabToken: 'tk-control',
+                    tabName: 'tk-control',
                     traceCtx: { cache: {} },
                 }),
             },
@@ -71,7 +71,7 @@ test('browser.click generates a step and executes through the task runner', asyn
     const result = await runBrowserTool(
         'browser.click',
         {
-            workspaceId: 'ws-control',
+            workspaceName: 'ws-control',
             args: { nodeId: 'buyer-input' },
         },
         createContext(calls),
@@ -90,7 +90,7 @@ test('browser.fill generates a step and executes through the task runner', async
     const result = await runBrowserTool(
         'browser.fill',
         {
-            workspaceId: 'ws-control',
+            workspaceName: 'ws-control',
             args: { nodeId: 'buyer-input', value: 'alice' },
         },
         createContext(calls),
@@ -108,7 +108,7 @@ test('browser.query returns the full StepResult', async () => {
     const result = await runBrowserTool(
         'browser.query',
         {
-            workspaceId: 'ws-control',
+            workspaceName: 'ws-control',
             args: {
                 op: 'entity.target',
                 businessTag: 'order.form',

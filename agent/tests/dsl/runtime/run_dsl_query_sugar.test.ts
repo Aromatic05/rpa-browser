@@ -13,9 +13,9 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl-query-sugar',
+                workspaceName: 'ws-dsl-query-sugar',
                 tabId: 'tab-dsl-query-sugar',
-                tabToken: 'tk-dsl-query-sugar',
+                tabName: 'tk-dsl-query-sugar',
                 traceCtx: { cache: {} },
             }),
         },
@@ -42,7 +42,7 @@ test('runDslSource executes query table sugar and writes vars', async () => {
 let rows = query table "order.list" currentRows
         `,
         {
-            workspaceId: 'ws-dsl-query-sugar',
+            workspaceName: 'ws-dsl-query-sugar',
             deps: createDeps(calls),
             input: {},
         },
@@ -64,7 +64,7 @@ test('runDslSource keeps hasNextPage query sugar as-is', async () => {
 let hasNext = query table "order.list" hasNextPage
         `,
         {
-            workspaceId: 'ws-dsl-query-sugar',
+            workspaceName: 'ws-dsl-query-sugar',
             deps: createDeps(calls),
             input: {},
         },

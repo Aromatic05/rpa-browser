@@ -10,7 +10,7 @@ import { setNodeAttr } from '../../src/runner/steps/executors/snapshot/core/runt
 const createBinding = (snapshot?: Record<string, unknown>) => {
     const calls: Array<{ name: string; payload: Record<string, unknown> }> = [];
     const binding = {
-        workspaceId: 'ws-test',
+        workspaceName: 'ws-test',
         page: {},
         traceCtx: { cache: { latestSnapshot: snapshot } },
         traceTools: {

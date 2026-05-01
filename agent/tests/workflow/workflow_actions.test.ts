@@ -40,42 +40,42 @@ const ensureScene = (scene: string, dslSource = '') => {
 };
 
 const createCtx = () => {
-    const workspaces = new Map<string, { activeTabId?: string; tabIds: string[] }>();
+    const workspaces = new Map<string, { activeTabName?: string; tabIds: string[] }>();
     const recordingState = createRecordingState();
     const pageRegistry: any = {
         listWorkspaces: () =>
-            Array.from(workspaces.entries()).map(([workspaceId, value]) => ({
-                workspaceId,
-                activeTabId: value.activeTabId,
+            Array.from(workspaces.entries()).map(([workspaceName, value]) => ({
+                workspaceName,
+                activeTabName: value.activeTabName,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 tabCount: value.tabIds.length,
             })),
-        createWorkspaceShell: (workspaceId: string) => {
-            if (!workspaces.has(workspaceId)) {
-                workspaces.set(workspaceId, { tabIds: [] });
+        createWorkspaceShell: (workspaceName: string) => {
+            if (!workspaces.has(workspaceName)) {
+                workspaces.set(workspaceName, { tabIds: [] });
             }
-            return { workspaceId };
+            return { workspaceName };
         },
-        createTab: async (workspaceId: string) => {
-            const ws = workspaces.get(workspaceId) || { tabIds: [] };
+        createTab: async (workspaceName: string) => {
+            const ws = workspaces.get(workspaceName) || { tabIds: [] };
             const tabId = `tab-${ws.tabIds.length + 1}`;
             ws.tabIds.push(tabId);
-            ws.activeTabId = tabId;
-            workspaces.set(workspaceId, ws);
+            ws.activeTabName = tabId;
+            workspaces.set(workspaceName, ws);
             return tabId;
         },
-        setActiveWorkspace: (_workspaceId: string) => {},
-        setActiveTab: (workspaceId: string, tabId: string) => {
-            const ws = workspaces.get(workspaceId);
+        setActiveWorkspace: (_workspaceName: string) => {},
+        setActiveTab: (workspaceName: string, tabId: string) => {
+            const ws = workspaces.get(workspaceName);
             if (!ws) {return;}
-            ws.activeTabId = tabId;
+            ws.activeTabName = tabId;
         },
-        resolveTabToken: ({ workspaceId, tabId }: { workspaceId: string; tabId: string }) => `${workspaceId}:${tabId}`,
+        resolveTabName: ({ workspaceName, tabId }: { workspaceName: string; tabId: string }) => `${workspaceName}:${tabId}`,
         getActiveWorkspace: () => {
             const first = Array.from(workspaces.entries())[0];
             if (!first) {return null;}
-            return { workspaceId: first[0], activeTabId: first[1].activeTabId };
+            return { workspaceName: first[0], activeTabName: first[1].activeTabName };
         },
         resolvePage: async () => ({
             url: () => 'about:blank',
@@ -87,13 +87,13 @@ const createCtx = () => {
         ctx: {
             pageRegistry,
             recordingState,
-            tabToken: 'token-test',
+            tabName: 'token-test',
             runStepsDeps: {
                 runtime: {
                     ensureActivePage: async () => ({
-                        workspaceId: 'workflow:test',
+                        workspaceName: 'workflow:test',
                         tabId: 'tab-1',
-                        tabToken: 'workflow:test:tab-1',
+                        tabName: 'workflow:test:tab-1',
                     }),
                 },
                 stepSinks: [],
@@ -127,7 +127,7 @@ test('workflow actions list/open/dsl get save/test/release and record save', asy
         payload: { scene },
     } as any);
     assert.equal(opened.type, 'workflow.open.result');
-    assert.equal((opened.payload as any).workspaceId, `workflow:${scene}`);
+    assert.equal((opened.payload as any).workspaceName, `workflow:${scene}`);
 
     const dslGet = await workflowHandlers['workflow.dsl.get'](ctx, {
         v: 1,
@@ -152,7 +152,7 @@ test('workflow actions list/open/dsl get save/test/release and record save', asy
         v: 1,
         id: '5',
         type: 'workflow.record.save',
-        scope: { workspaceId: `workflow:${scene}` },
+        scope: { workspaceName: `workflow:${scene}` },
         payload: { scene, recordingName: 'rec-main' },
     } as any);
     assert.equal(recordSaved.type, 'workflow.record.save.result');

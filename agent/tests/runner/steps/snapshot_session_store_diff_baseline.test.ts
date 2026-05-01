@@ -22,9 +22,9 @@ const createSnapshot = (id: string) => buildSnapshotFromViewRoot(createBaselineR
 
 const createBinding = (urlRef: { current: string }) => {
     return {
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         tabId: 'tab-1',
-        tabToken: 'token-1',
+        tabName: 'token-1',
         page: {
             url: () => urlRef.current,
         },

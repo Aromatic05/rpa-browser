@@ -27,9 +27,9 @@ const runSelectStep = async <T = undefined>(step: Step<'browser.select_option'>,
         const goto = await tools['trace.page.goto']({ url: fixtureUrl() });
         assert.equal(goto.ok, true);
         const binding = {
-            workspaceId: 'ws1',
+            workspaceName: 'ws1',
             tabId: 'tab1',
-            tabToken: 'token1',
+            tabName: 'token1',
             page,
             traceTools: tools,
             traceCtx: ctx,

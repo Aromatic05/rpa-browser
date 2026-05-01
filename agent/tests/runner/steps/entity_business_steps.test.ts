@@ -13,9 +13,9 @@ import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/exec
 import type { EntityIndex, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
 
 const createDeps = (): RunStepsDeps => {
-    const workspaceId = 'ws-entity';
+    const workspaceName = 'ws-entity';
     const tabId = 'tab-entity';
-    const tabToken = 'tab-token-entity';
+    const tabName = 'tab-token-entity';
     const url = 'https://example.test/entity';
 
     const headerOrderNo: UnifiedNode = { id: 'header_order_no', role: 'columnheader', name: '订单编号', children: [] };
@@ -91,8 +91,8 @@ const createDeps = (): RunStepsDeps => {
     const snapshotSessionStore = {
         version: 1,
         entries: {
-            [`${workspaceId}:${tabToken}`]: {
-                pageIdentity: { workspaceId, tabId, tabToken, url },
+            [`${workspaceName}:${tabName}`]: {
+                pageIdentity: { workspaceName, tabId, tabName, url },
                 baseSnapshot: snapshot,
                 finalSnapshot: snapshot,
                 finalEntityView,
@@ -106,9 +106,9 @@ const createDeps = (): RunStepsDeps => {
     };
 
     const binding = {
-        workspaceId,
+        workspaceName,
         tabId,
-        tabToken,
+        tabName,
         page: { url: () => url },
         traceCtx: { cache: { snapshotSessionStore } },
     };

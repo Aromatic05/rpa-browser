@@ -19,9 +19,9 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl-e2e',
+                workspaceName: 'ws-dsl-e2e',
                 tabId: 'tab-dsl-e2e',
-                tabToken: 'tk-dsl-e2e',
+                tabName: 'tk-dsl-e2e',
                 traceCtx: { cache: {} },
             }),
         },
@@ -63,7 +63,7 @@ test('runDslSource executes the order flow fixture end to end', async () => {
     };
 
     const result = await runDslSource(source, {
-        workspaceId: 'ws-dsl-e2e',
+        workspaceName: 'ws-dsl-e2e',
         deps: createDeps(calls),
         checkpointProvider,
         input: {

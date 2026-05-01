@@ -36,22 +36,22 @@ type ExecutorSpy = {
 };
 
 const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView): RunStepsDeps => {
-    const workspaceId = 'ws-pagination';
+    const workspaceName = 'ws-pagination';
     const tabId = 'tab-pagination';
-    const tabToken = 'tab-token-pagination';
+    const tabName = 'tab-token-pagination';
     const url = 'https://example.test/entity-pagination';
     const binding = {
-        workspaceId,
+        workspaceName,
         tabId,
-        tabToken,
+        tabName,
         page: { url: () => url },
         traceCtx: {
             cache: {
                 snapshotSessionStore: {
                     version: 1,
                     entries: {
-                        [`${workspaceId}:${tabToken}`]: {
-                            pageIdentity: { workspaceId, tabId, tabToken, url },
+                        [`${workspaceName}:${tabName}`]: {
+                            pageIdentity: { workspaceName, tabId, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView,
@@ -273,9 +273,9 @@ const buildSpyDeps = (deps: RunStepsDeps, spy: ExecutorSpy): RunStepsDeps => ({
             const executors = deps.pluginHost.getExecutors();
             return {
                 ...executors,
-                'browser.click': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
+                'browser.click': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceName: string) => {
                     spy.clickNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
-                    return await executors['browser.click'](step, innerDeps, workspaceId);
+                    return await executors['browser.click'](step, innerDeps, workspaceName);
                 },
             };
         },
@@ -285,7 +285,7 @@ const buildSpyDeps = (deps: RunStepsDeps, spy: ExecutorSpy): RunStepsDeps => ({
 const withAntEntityRuleRunner = async <T>(
     callback: (ctx: {
         page: Page;
-        workspaceId: string;
+        workspaceName: string;
         deps: RunStepsDeps;
     }) => Promise<T>,
 ): Promise<T> => {
@@ -315,7 +315,7 @@ const withAntEntityRuleRunner = async <T>(
 
         return await callback({
             page,
-            workspaceId: runner.workspaceId,
+            workspaceName: runner.workspaceName,
             deps: runner.deps,
         });
     } finally {
@@ -483,7 +483,7 @@ test('diagnostics capture unresolved and ambiguous table pagination bindings', (
 });
 
 test('order list pagination query can resolve next page target', async () => {
-    await withAntEntityRuleRunner(async ({ page, workspaceId, deps }) => {
+    await withAntEntityRuleRunner(async ({ page, workspaceName, deps }) => {
         const spy: ExecutorSpy = { clickNodeIds: [] };
         const spyDeps = buildSpyDeps(deps, spy);
         const steps: StepUnion[] = [
@@ -532,7 +532,7 @@ test('order list pagination query can resolve next page target', async () => {
             } as StepUnion,
         ];
 
-        const { checkpoint, pipe } = await runStepList(workspaceId, steps, spyDeps, {
+        const { checkpoint, pipe } = await runStepList(workspaceName, steps, spyDeps, {
             runId: 'run-order-list-pagination',
             stopOnError: true,
         });

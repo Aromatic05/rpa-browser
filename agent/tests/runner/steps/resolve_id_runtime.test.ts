@@ -17,9 +17,9 @@ import type { StepResolve, StepUnion } from '../../../src/runner/steps/types';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         tabId: 'tab-1',
-        tabToken: 'tk-1',
+        tabName: 'tk-1',
         page: { url: () => 'https://example.test/page' },
         traceCtx: { cache: {} },
         traceTools: {},
@@ -143,7 +143,7 @@ test('checkpoint act step injects resolve from serialized resolveId sidecar', as
     const signals = createSignalChannel();
     const checkpoint = await runSteps({
         runId: 'run-1',
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         stepsQueue: queue,
         resultPipe: pipe,
         signalChannel: signals,

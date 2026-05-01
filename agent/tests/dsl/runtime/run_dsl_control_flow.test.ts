@@ -14,9 +14,9 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl-cf',
+                workspaceName: 'ws-dsl-cf',
                 tabId: 'tab-dsl-cf',
-                tabToken: 'tk-dsl-cf',
+                tabName: 'tk-dsl-cf',
                 traceCtx: { cache: {} },
             }),
         },
@@ -67,7 +67,7 @@ for user in input.users:
     );
 
     const result = await runDsl(program, {
-        workspaceId: 'ws-dsl-cf',
+        workspaceName: 'ws-dsl-cf',
         deps: createDeps(calls),
         input: {
             users: [{ name: 'alice' }, { name: 'bob' }],
@@ -92,7 +92,7 @@ for user in input.user:
                     `),
                 ),
                 {
-                    workspaceId: 'ws-dsl-cf',
+                    workspaceName: 'ws-dsl-cf',
                     deps: createDeps([]),
                     input: { user: { name: 'alice' } },
                 },
@@ -114,12 +114,12 @@ else:
     );
 
     await runDsl(program, {
-        workspaceId: 'ws-dsl-cf',
+        workspaceName: 'ws-dsl-cf',
         deps: createDeps(trueCalls),
         input: { enabled: true, submit: 'submit-btn', cancel: 'cancel-btn' },
     });
     await runDsl(program, {
-        workspaceId: 'ws-dsl-cf',
+        workspaceName: 'ws-dsl-cf',
         deps: createDeps(falseCalls),
         input: { enabled: false, submit: 'submit-btn', cancel: 'cancel-btn' },
     });
@@ -181,7 +181,7 @@ test('runDsl can branch on query results and handle nested for/if', async () => 
     });
 
     await runDsl(program, {
-        workspaceId: 'ws-dsl-cf',
+        workspaceName: 'ws-dsl-cf',
         deps: createDeps(calls),
         input: {
             users: [

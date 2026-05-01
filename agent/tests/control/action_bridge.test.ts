@@ -55,7 +55,7 @@ test('action.call rejects legacy address fields', async () => {
         dispatch: async (action) => action,
     });
     await assert.rejects(
-        async () => await callActionFromControl({ type: 'workspace.list', scope: { workspaceId: 'ws-1' } }, ctx),
+        async () => await callActionFromControl({ type: 'workspace.list', scope: { workspaceName: 'ws-1' } }, ctx),
         /legacy action address fields are not allowed/,
     );
     clearControlActionDispatcher();

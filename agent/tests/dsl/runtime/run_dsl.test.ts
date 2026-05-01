@@ -16,9 +16,9 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl',
+                workspaceName: 'ws-dsl',
                 tabId: 'tab-dsl',
-                tabToken: 'tk-dsl',
+                tabName: 'tk-dsl',
                 traceCtx: { cache: {} },
             }),
         },
@@ -74,7 +74,7 @@ test('runDsl executes query then fill through one task stream and writes vars/ou
     );
 
     const result = await runDsl(program, {
-        workspaceId: 'ws-dsl',
+        workspaceName: 'ws-dsl',
         deps: createDeps(calls),
         checkpointProvider,
         input: {
@@ -134,7 +134,7 @@ test('runDsl wraps failed act steps as DslRuntimeError', async () => {
                     `),
                 ),
                 {
-                    workspaceId: 'ws-dsl',
+                    workspaceName: 'ws-dsl',
                     deps,
                     input: { user: { name: 'alice' } },
                 },

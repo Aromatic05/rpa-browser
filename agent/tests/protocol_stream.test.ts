@@ -39,15 +39,15 @@ test('replayRecording emits step and progress events as stream', async () => {
     };
     const events: string[] = [];
     const result = await replayRecording({
-        workspaceId: 'ws-1',
-        initialTabId: 'tab-1',
+        workspaceName: 'ws-1',
+        initialTabName: 'tab-1',
         initialTabToken: 'token-1',
         steps: [step],
         stopOnError: true,
         pageRegistry: {
             listTabs: async () => [{ tabId: 'tab-1', active: true }],
-            resolveTabIdFromToken: () => 'tab-1',
-            resolveTabIdFromRef: () => 'tab-1',
+            resolveTabNameFromToken: () => 'tab-1',
+            resolveTabNameFromRef: () => 'tab-1',
         },
         deps: {
             runtime: {
@@ -84,10 +84,10 @@ test('play.start returns play.started immediately and emits completion event', a
             url: () => 'https://example.com',
             goto: async () => undefined,
         },
-        tabToken: 'token-src',
+        tabName: 'token-src',
         pageRegistry: {
-            resolveScopeFromToken: () => ({ workspaceId: 'ws-1', tabId: 'tab-1' }),
-            listWorkspaces: () => [{ workspaceId: 'ws-1', activeTabId: 'tab-1', tabCount: 1 }],
+            resolveTabBinding: () => ({ workspaceName: 'ws-1', tabId: 'tab-1' }),
+            listWorkspaces: () => [{ workspaceName: 'ws-1', activeTabName: 'tab-1', tabCount: 1 }],
             createTab: async () => 'tab-1',
             resolvePage: async () => ({
                 url: () => 'https://example.com',
@@ -95,7 +95,7 @@ test('play.start returns play.started immediately and emits completion event', a
             }),
             setActiveWorkspace: () => undefined,
             setActiveTab: () => undefined,
-            resolveTabToken: () => 'token-replay',
+            resolveTabName: () => 'token-replay',
             listTabs: async () => [{ tabId: 'tab-1', active: true }],
         },
         log: () => undefined,
@@ -122,7 +122,7 @@ test('play.start returns play.started immediately and emits completion event', a
     assert.equal(emitted.some((action) => action.type === ACTION_TYPES.PLAY_COMPLETED), true);
 });
 
-test('record.stop resolves recording session by workspaceId even with mismatched tabToken', async () => {
+test('record.stop resolves recording session by workspaceName even with mismatched tabName', async () => {
     const handler = recordingHandlers[ACTION_TYPES.RECORD_STOP];
     const state = createRecordingState();
     state.recordingEnabled.add('token-a');
@@ -131,13 +131,13 @@ test('record.stop resolves recording session by workspaceId even with mismatched
     state.recordings.set('token-b', []);
     state.recordingManifests.set('token-a', {
         recordingToken: 'token-a',
-        workspaceId: 'ws-a',
+        workspaceName: 'ws-a',
         startedAt: 1,
         tabs: [],
     });
     state.recordingManifests.set('token-b', {
         recordingToken: 'token-b',
-        workspaceId: 'ws-b',
+        workspaceName: 'ws-b',
         startedAt: 2,
         tabs: [],
     });
@@ -147,7 +147,7 @@ test('record.stop resolves recording session by workspaceId even with mismatched
     const response = await handler(
         {
             page: { url: () => { throw new Error('no page in pageless mode'); } } as any,
-            tabToken: 'unknown-tab-token',
+            tabName: 'unknown-tab-token',
             pageRegistry: {} as any,
             log: () => undefined,
             recordingState: state,
@@ -181,14 +181,14 @@ test('record.save writes workflow record artifacts to records dir', async () => 
             id: 'step-1',
             name: 'browser.click',
             args: { selector: '#submit' },
-            meta: { source: 'record', ts: Date.now(), workspaceId: 'ws-1' },
+            meta: { source: 'record', ts: Date.now(), workspaceName: 'ws-1' },
         } as any,
     ]);
     const scene = `scene_${Date.now()}`;
     const response = await handler(
         {
             page: { url: () => 'https://example.com' } as any,
-            tabToken: 'token-a',
+            tabName: 'token-a',
             pageRegistry: {} as any,
             log: () => undefined,
             recordingState: state,
@@ -219,14 +219,14 @@ test('record.load loads saved artifact into workspace recording state', async ()
             id: 'step-1',
             name: 'browser.fill',
             args: { selector: '#name', value: 'Alice' },
-            meta: { source: 'record', ts: Date.now(), workspaceId: 'ws-src' },
+            meta: { source: 'record', ts: Date.now(), workspaceName: 'ws-src' },
         } as any,
     ]);
     const scene = `scene_${Date.now()}`;
     const saved = await saveHandler(
         {
             page: { url: () => 'https://example.com' } as any,
-            tabToken: 'token-src',
+            tabName: 'token-src',
             pageRegistry: {} as any,
             log: () => undefined,
             recordingState: sourceState,
@@ -248,7 +248,7 @@ test('record.load loads saved artifact into workspace recording state', async ()
     const imported = await loadHandler(
         {
             page: { url: () => 'https://example.com' } as any,
-            tabToken: 'token-target',
+            tabName: 'token-target',
             pageRegistry: {} as any,
             log: () => undefined,
             recordingState: targetState,

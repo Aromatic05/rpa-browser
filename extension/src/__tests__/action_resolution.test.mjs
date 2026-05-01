@@ -4,7 +4,7 @@ import { applyReplyProjection, resolveIncomingAction } from '../../dist/backgrou
 const mkDeps = () => ({
     state: {
         getTokenScope: () => undefined,
-        setActiveWorkspaceId: () => undefined,
+        setActiveWorkspaceName: () => undefined,
     },
     ensureTabToken: async () => null,
     getActiveTabTokenForWindow: async () => null,
@@ -27,7 +27,7 @@ const log = async (name, fn) => {
     }
 };
 
-await log('workflow.init resolves as pageless without tabToken', async () => {
+await log('workflow.init resolves as pageless without tabName', async () => {
     const result = await resolveIncomingAction(
         {
             v: 1,
@@ -44,7 +44,7 @@ await log('workflow.init resolves as pageless without tabToken', async () => {
     }
 });
 
-await log('non pageless action still fails when tabToken unavailable', async () => {
+await log('non pageless action still fails when tabName unavailable', async () => {
     const result = await resolveIncomingAction(
         {
             v: 1,
@@ -62,7 +62,7 @@ await log('non pageless action still fails when tabToken unavailable', async () 
     }
 });
 
-await log('applyReplyProjection maps scope using local sender token, not response payload tabToken', async () => {
+await log('applyReplyProjection maps scope using local sender token, not response payload tabName', async () => {
     const calls = [];
     const state = {
         upsertTokenScope: (token, workspaceName, tabName) => {
@@ -70,13 +70,13 @@ await log('applyReplyProjection maps scope using local sender token, not respons
         },
         bindWorkspaceToWindowIfKnown: () => undefined,
         setWindowWorkspace: () => undefined,
-        getTabState: (tabId) => (tabId === 123 ? { tabToken: 'token-local', lastUrl: 'https://example.com' } : undefined),
+        getTabState: (tabId) => (tabId === 123 ? { tabName: 'token-local', lastUrl: 'https://example.com' } : undefined),
     };
 
     applyReplyProjection(
         {
             scoped: { v: 1, id: 'req-3', type: 'tab.setActive', workspaceName: 'ws-1', payload: {} },
-            senderTabId: 123,
+            senderTabName: 123,
             senderWindowId: 456,
             resolvedWorkspaceName: 'ws-1',
         },
@@ -85,7 +85,7 @@ await log('applyReplyProjection maps scope using local sender token, not respons
             id: 'rep-3',
             type: 'tab.setActive.result',
             replyTo: 'req-3',
-            payload: { workspaceName: 'ws-1', tabName: 'tab-1', tabToken: 'token-from-reply' },
+            payload: { workspaceName: 'ws-1', tabName: 'tab-1', tabName: 'token-from-reply' },
         },
         mkSender(),
         state,

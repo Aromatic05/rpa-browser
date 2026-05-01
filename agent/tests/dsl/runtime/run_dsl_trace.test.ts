@@ -15,9 +15,9 @@ const createDeps = (): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl',
+                workspaceName: 'ws-dsl',
                 tabId: 'tab-dsl',
-                tabToken: 'tk-dsl',
+                tabName: 'tk-dsl',
                 traceCtx: { cache: {} },
             }),
         },
@@ -60,7 +60,7 @@ test('runDsl writes stmt and step trace logs', async () => {
     );
 
     await runDsl(program, {
-        workspaceId: 'ws-dsl',
+        workspaceName: 'ws-dsl',
         deps: createDeps(),
         logger,
     });

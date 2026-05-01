@@ -16,9 +16,9 @@ import type { Checkpoint } from '../../../src/runner/checkpoint';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         tabId: 'tab-1',
-        tabToken: 'tk-1',
+        tabName: 'tk-1',
         page: { url: () => 'https://example.test/page' },
         traceCtx: { cache: {} },
         traceTools: {
@@ -52,7 +52,7 @@ const runOne = async (opts: {
     const cp = await runSteps(
         {
             runId: 'run-1',
-            workspaceId: 'ws-1',
+            workspaceName: 'ws-1',
             stepsQueue: queue,
             resultPipe: pipe,
             signalChannel: signals,
@@ -164,7 +164,7 @@ test('checkpoint can request suspend and runner enters suspended', async () => {
     const signals = createSignalChannel();
     const loop = runSteps({
         runId: 'run-suspend',
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         stepsQueue: queue,
         resultPipe: pipe,
         signalChannel: signals,
@@ -248,7 +248,7 @@ test('failed step stops re-entering checkpoint after policy maxAttempts', async 
     const signals = createSignalChannel();
     const cp = await runSteps({
         runId: 'run-max-attempts',
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         stepsQueue: queue,
         resultPipe: pipe,
         signalChannel: signals,

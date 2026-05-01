@@ -13,9 +13,9 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-dsl-form',
+                workspaceName: 'ws-dsl-form',
                 tabId: 'tab-dsl-form',
-                tabToken: 'tk-dsl-form',
+                tabName: 'tk-dsl-form',
                 traceCtx: { cache: {} },
             }),
         },
@@ -49,7 +49,7 @@ test('runDslSource executes fill form sugar via query then fill', async () => {
 fill form "order.form" field "buyer" with input.user.name
         `,
         {
-            workspaceId: 'ws-dsl-form',
+            workspaceName: 'ws-dsl-form',
             deps: createDeps(calls),
             input: {
                 user: { name: 'alice' },
@@ -76,7 +76,7 @@ test('runDslSource executes click form sugar via query then click', async () => 
 click form "order.form" action "submit"
         `,
         {
-            workspaceId: 'ws-dsl-form',
+            workspaceName: 'ws-dsl-form',
             deps: createDeps(calls),
             input: {},
         },

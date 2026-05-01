@@ -10,9 +10,9 @@ import { markSnapshotSessionDirty } from '../../../src/runner/steps/executors/sn
 
 const createDeps = (page: any, cache: Record<string, unknown> = {}): RunStepsDeps => {
     const binding = {
-        workspaceId: 'ws-token',
+        workspaceName: 'ws-token',
         tabId: 'tab-token',
-        tabToken: 'tab-token',
+        tabName: 'tab-token',
         page: page as any,
         traceTools: {},
         traceCtx: { cache: { ...cache } },
