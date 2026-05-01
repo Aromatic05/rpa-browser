@@ -314,7 +314,17 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');
         }
         const tabs = await ctx.pageRegistry.listTabs(workspaceId);
-        return replyAction(action, { workspaceName: workspaceId, tabs: tabs.map((tab) => ({ ...tab, tabName: tab.tabId })) });
+        return replyAction(action, {
+            workspaceName: workspaceId,
+            tabs: tabs.map((tab) => ({
+                tabName: tab.tabId,
+                url: tab.url,
+                title: tab.title,
+                active: tab.active,
+                createdAt: tab.createdAt,
+                updatedAt: tab.updatedAt,
+            })),
+        });
     },
     'tab.create': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabCreatePayload;
@@ -328,7 +338,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             await page.goto(payload.startUrl, { waitUntil: payload.waitUntil ?? 'domcontentloaded' });
             await page.bringToFront();
         }
-        logPageEvent('tab.create', { workspaceId, tabId, startUrl: payload.startUrl });
+        logPageEvent('tab.create', { workspaceName: workspaceId, tabName: tabId, startUrl: payload.startUrl });
         return replyAction(action, { workspaceName: workspaceId, tabName: tabId });
     },
     'tab.close': async (ctx, action) => {
