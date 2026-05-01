@@ -109,7 +109,16 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     'workspace.list': async (ctx, action) => {
         const list = ctx.pageRegistry.listWorkspaces();
         const active = ctx.pageRegistry.getActiveWorkspace();
-        return replyAction(action, { workspaces: list, activeWorkspaceName: active?.workspaceId ?? null });
+        return replyAction(action, {
+            workspaces: list.map((workspace) => ({
+                workspaceName: workspace.workspaceId,
+                activeTabName: workspace.activeTabId,
+                tabCount: workspace.tabCount,
+                createdAt: workspace.createdAt,
+                updatedAt: workspace.updatedAt,
+            })),
+            activeWorkspaceName: active?.workspaceId ?? null,
+        });
     },
     'workspace.create': async (ctx, action) => {
         const payload = (action.payload ?? {}) as WorkspaceCreatePayload;
