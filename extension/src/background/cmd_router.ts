@@ -53,9 +53,13 @@ export const createCmdRouter = (options: CmdRouterOptions): {
     });
 
     const resolveActionTargetTabId = (action: Action) => {
-        const token = action.tabToken ?? action.scope?.tabToken;
-        const targetTabId = token ? state.findTabIdByToken(token) : state.getActiveTabId();
-        return typeof targetTabId === 'number' ? targetTabId : null;
+        if (!action.workspaceName) {
+            const activeTabId = state.getActiveTabId();
+            return typeof activeTabId === 'number' ? activeTabId : null;
+        }
+        if (state.getActiveWorkspaceId() !== action.workspaceName) {return null;}
+        const activeTabId = state.getActiveTabId();
+        return typeof activeTabId === 'number' ? activeTabId : null;
     };
 
     const handleInboundAction = (action: Action) => {
@@ -63,7 +67,7 @@ export const createCmdRouter = (options: CmdRouterOptions): {
 
         if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
             const data = (action.payload ?? {}) as Record<string, unknown>;
-            const activeId = toStringValue(data.activeWorkspaceId);
+            const activeId = toStringValue(data.activeWorkspaceName);
             if (activeId) {state.setActiveWorkspaceId(activeId);}
             options.onRefresh();
             return;
@@ -72,8 +76,8 @@ export const createCmdRouter = (options: CmdRouterOptions): {
         if (action.type === ACTION_TYPES.TAB_BOUND) {
             const data = (action.payload ?? {}) as Record<string, unknown>;
             const tabToken = toStringValue(data.tabToken);
-            const workspaceId = toStringValue(data.workspaceId);
-            const tabId = toStringValue(data.tabId);
+            const workspaceId = toStringValue(data.workspaceName);
+            const tabId = toStringValue(data.tabName);
             if (tabToken && workspaceId && tabId) {
                 state.upsertTokenScope(tabToken, workspaceId, tabId);
                 state.bindWorkspaceToWindowIfKnown(tabToken);
@@ -87,9 +91,9 @@ export const createCmdRouter = (options: CmdRouterOptions): {
 
         if (action.type === ACTION_TYPES.WORKFLOW_OPEN || action.type === `${ACTION_TYPES.WORKFLOW_OPEN}.result`) {
             const data = (action.payload ?? {}) as Record<string, unknown>;
-            const workspaceId = toStringValue(data.workspaceId);
+            const workspaceId = toStringValue(data.workspaceName);
             const tabToken = toStringValue(data.tabToken);
-            const tabId = toStringValue(data.tabId);
+            const tabId = toStringValue(data.tabName);
             if (workspaceId && tabToken && tabId) {
                 state.upsertTokenScope(tabToken, workspaceId, tabId);
                 state.setActiveWorkspaceId(workspaceId);
@@ -100,7 +104,7 @@ export const createCmdRouter = (options: CmdRouterOptions): {
 
         if (action.type === ACTION_TYPES.WORKSPACE_CHANGED) {
             const data = (action.payload ?? {}) as Record<string, unknown>;
-            const workspaceId = toStringValue(data.workspaceId) ?? action.scope?.workspaceId ?? null;
+            const workspaceId = toStringValue(data.workspaceName) ?? action.workspaceName ?? null;
             if (workspaceId) {
                 state.setActiveWorkspaceId(workspaceId);
                 const activeWindowId = state.getActiveWindowId();
@@ -118,7 +122,6 @@ export const createCmdRouter = (options: CmdRouterOptions): {
             id: crypto.randomUUID(),
             type: ACTION_TYPES.WORKSPACE_LIST,
             payload: {},
-            scope: {},
         });
         if (isFailedReply(reply)) {
             const error = payloadOf(reply);
@@ -127,7 +130,7 @@ export const createCmdRouter = (options: CmdRouterOptions): {
             throw new Error(`bootstrap.workspace_list_failed: ${code}:${message}`);
         }
         const data = payloadOf(reply);
-        const activeId = toStringValue(data.activeWorkspaceId);
+        const activeId = toStringValue(data.activeWorkspaceName);
         if (activeId) {state.setActiveWorkspaceId(activeId);}
     };
 

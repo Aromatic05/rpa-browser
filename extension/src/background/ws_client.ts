@@ -29,27 +29,12 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         }
         const rec = raw as Record<string, unknown>;
         const payload = rec.payload;
-        const scope = rec.scope;
         return {
             v: rec.v,
             id: typeof rec.id === 'string' ? rec.id : undefined,
             replyTo: typeof rec.replyTo === 'string' ? rec.replyTo : undefined,
             type: typeof rec.type === 'string' ? rec.type : undefined,
-            tabToken: typeof rec.tabToken === 'string' ? rec.tabToken : undefined,
-            scope:
-                scope && typeof scope === 'object'
-                    ? {
-                          workspaceId: typeof (scope as Record<string, unknown>).workspaceId === 'string'
-                              ? (scope as Record<string, unknown>).workspaceId
-                              : undefined,
-                          tabId: typeof (scope as Record<string, unknown>).tabId === 'string'
-                              ? (scope as Record<string, unknown>).tabId
-                              : undefined,
-                          tabToken: typeof (scope as Record<string, unknown>).tabToken === 'string'
-                              ? (scope as Record<string, unknown>).tabToken
-                              : undefined,
-                      }
-                    : undefined,
+            workspaceName: typeof rec.workspaceName === 'string' ? rec.workspaceName : undefined,
             payloadType: Array.isArray(payload) ? 'array' : typeof payload,
             payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
         };

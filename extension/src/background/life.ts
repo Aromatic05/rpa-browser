@@ -57,14 +57,13 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     const emitLifecycleAction = async (
         type: 'tab.activated' | 'tab.closed',
         payload: Record<string, unknown>,
-        tabToken?: string,
+        workspaceName?: string,
     ) => {
         await options.sendAction({
             v: 1,
             id: crypto.randomUUID(),
             type,
-            tabToken,
-            scope: tabToken ? { tabToken } : {},
+            workspaceName,
             payload,
         });
     };
@@ -106,7 +105,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             id: crypto.randomUUID(),
             type: ACTION_TYPES.WORKSPACE_LIST,
             payload: {},
-            scope: {},
         });
         if (isFailedReply(reply)) {
             const error = payloadOf(reply);
@@ -138,15 +136,14 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 v: 1,
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_OPENED,
-                tabToken: params.tabToken,
-                scope: { tabToken: params.tabToken, workspaceId: currentWorkspaceId },
+                workspaceName: currentWorkspaceId,
                 payload: {
                     source: 'extension.sw',
                     url: params.urlHint,
                     title: params.title,
                     at: Date.now(),
                     windowId: params.windowId,
-                    workspaceId: currentWorkspaceId,
+                    tabName: params.tabToken,
                 },
             });
             if (isFailedReply(opened)) {
@@ -156,8 +153,8 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 throw new Error(`tab.opened failed: ${code}:${message}`);
             }
             const payload = payloadOf(opened);
-            currentWorkspaceId = toStringOrUndefined(payload.workspaceId) ?? currentWorkspaceId;
-            const agentTabId = toStringOrUndefined(payload.tabId) ?? '';
+            currentWorkspaceId = toStringOrUndefined(payload.workspaceName) ?? currentWorkspaceId;
+            const agentTabId = toStringOrUndefined(payload.tabName) ?? '';
             if (agentTabId) {
                 return { workspaceId: currentWorkspaceId, tabId: agentTabId };
             }
@@ -210,7 +207,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_INIT,
                 payload: { source: 'extension.sw', url: urlHint, at: Date.now() },
-                scope: {},
             });
             if (isFailedReply(init)) {
                 const error = payloadOf(init);
@@ -304,7 +300,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             await emitLifecycleAction(
                 ACTION_TYPES.TAB_ACTIVATED,
                 { source: 'extension.sw', url: bound.urlHint || '', at: now, windowId: info.windowId },
-                bound.tabToken,
+                bound.workspaceId,
             );
         })();
 
@@ -316,7 +312,12 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         const removed = options.state.removeTab(tabId);
         if (options.state.getActiveTabId() === tabId) {options.state.setActiveTabId(null);}
         if (removed?.tabToken) {
-            void emitLifecycleAction(ACTION_TYPES.TAB_CLOSED, { source: 'extension.sw', at: Date.now(), windowId: removed.windowId }, removed.tabToken);
+            const removedScope = options.state.getTokenScope(removed.tabToken);
+            void emitLifecycleAction(
+                ACTION_TYPES.TAB_CLOSED,
+                { source: 'extension.sw', at: Date.now(), windowId: removed.windowId },
+                removedScope?.workspaceId,
+            );
             options.state.removeTokenScope(removed.tabToken);
         }
         options.onRefresh();
@@ -347,13 +348,13 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 v: 1,
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_REASSIGN,
-                scope: { tabToken: bound.tabToken },
-                payload: { workspaceId: targetWorkspaceId, source: 'extension.sw', windowId: info.newWindowId, at: Date.now() },
+                workspaceName: scope.workspaceId,
+                payload: { workspaceName: targetWorkspaceId, tabName: bound.tabToken, source: 'extension.sw', windowId: info.newWindowId, at: Date.now() },
             });
             if (!isFailedReply(result)) {
                 const resultPayload = payloadOf(result);
-                const workspaceId = toStringOrUndefined(resultPayload.workspaceId) ?? targetWorkspaceId;
-                const targetTabId = toStringOrUndefined(resultPayload.tabId) ?? scope.tabId;
+                const workspaceId = toStringOrUndefined(resultPayload.workspaceName) ?? targetWorkspaceId;
+                const targetTabId = toStringOrUndefined(resultPayload.tabName) ?? scope.tabId;
                 options.state.upsertTokenScope(bound.tabToken, workspaceId, targetTabId);
                 options.state.setWindowWorkspace(info.newWindowId, workspaceId);
                 if (options.state.getActiveWindowId() === info.newWindowId) {
@@ -384,8 +385,8 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 v: 1,
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.WORKSPACE_SET_ACTIVE,
-                payload: { workspaceId: scope.workspaceId },
-                scope: { workspaceId: scope.workspaceId },
+                workspaceName: scope.workspaceId,
+                payload: {},
             });
             options.onRefresh();
         })();

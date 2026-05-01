@@ -27,9 +27,8 @@ export const withActionBase = (action: Action): Action => ({
     v: 1 as const,
     id: action.id,
     type: action.type,
+    workspaceName: action.workspaceName,
     payload: action.payload,
-    scope: action.scope,
-    tabToken: action.tabToken,
     at: action.at,
     traceId: action.traceId,
 });
@@ -53,8 +52,7 @@ type ResolvedIncomingAction = {
     scoped: Action;
     senderTabId?: number;
     senderWindowId?: number;
-    resolvedTabToken?: string;
-    inferredScope?: { workspaceId: string; tabId: string };
+    resolvedWorkspaceName?: string;
 };
 
 const mkFailedAction = (type: string, replyTo: string | undefined, code: string, message: string): Action => ({
@@ -97,55 +95,42 @@ export const resolveIncomingAction = async (
 
     const isWorkspaceAction = incoming.type.startsWith('workspace.');
     const isPagelessAction = PAGELESS_ACTIONS.has(incoming.type) || isWorkspaceAction;
-    let tabToken = incoming.tabToken ?? incoming.scope?.tabToken;
     const senderTabId = sender.tab?.id;
     const senderWindowId = sender.tab?.windowId;
+    let resolvedWorkspaceName = incoming.workspaceName;
 
-    if (!isPagelessAction && typeof senderTabId === 'number') {
+    if (!resolvedWorkspaceName && !isPagelessAction && typeof senderTabId === 'number') {
         const senderTabInfo = await deps.ensureTabToken(senderTabId, senderWindowId);
-        if (senderTabInfo?.tabToken) {tabToken = senderTabInfo.tabToken;}
+        if (senderTabInfo?.tabToken) {
+            const tokenScope = deps.state.getTokenScope(senderTabInfo.tabToken);
+            resolvedWorkspaceName = tokenScope?.workspaceId;
+        }
     }
 
-    if (!isPagelessAction && !tabToken && typeof senderWindowId === 'number') {
+    if (!resolvedWorkspaceName && !isPagelessAction && typeof senderWindowId === 'number') {
         const active = await deps.getActiveTabTokenForWindow(senderWindowId);
-        if (active) {tabToken = active.tabToken;}
+        if (active?.tabToken) {
+            const tokenScope = deps.state.getTokenScope(active.tabToken);
+            resolvedWorkspaceName = tokenScope?.workspaceId;
+        }
     }
 
-    if (!tabToken && !isPagelessAction) {
+    if (!resolvedWorkspaceName && !isPagelessAction) {
         return {
             ok: false,
-            reply: mkFailedAction(deriveFailedActionType(incoming.type), incoming.id, 'ERR_BAD_ARGS', 'tab token unavailable'),
+            reply: mkFailedAction(deriveFailedActionType(incoming.type), incoming.id, 'ERR_BAD_ARGS', 'workspaceName unavailable'),
         };
     }
-
-    const tokenScope = tabToken ? deps.state.getTokenScope(tabToken) : undefined;
-    const scope = tokenScope ? { workspaceId: tokenScope.workspaceId, tabId: tokenScope.tabId } : undefined;
-    const requestedWorkspaceId = incoming.scope?.workspaceId;
-    const requestedTabId = incoming.scope?.tabId;
-    const hasExplicitScope = Boolean(requestedWorkspaceId ?? requestedTabId);
-
-    const scopedScope = hasExplicitScope
-        ? {
-              ...(requestedWorkspaceId ? { workspaceId: requestedWorkspaceId } : {}),
-              ...(requestedTabId ? { tabId: requestedTabId } : {}),
-          }
-        : scope
-          ? { workspaceId: scope.workspaceId, tabId: scope.tabId, ...(tabToken !== undefined ? { tabToken } : {}) }
-          : tabToken
-            !== undefined
-            ? { tabToken }
-            : {};
 
     const scoped: Action = {
         ...incoming,
         v: 1,
         id: incoming.id,
         at: incoming.at ?? Date.now(),
-        tabToken: hasExplicitScope ? undefined : tabToken,
-        scope: scopedScope,
+        workspaceName: resolvedWorkspaceName,
     };
 
-    if (scope?.workspaceId) {deps.state.setActiveWorkspaceId(scope.workspaceId);}
+    if (resolvedWorkspaceName) {deps.state.setActiveWorkspaceId(resolvedWorkspaceName);}
 
     return {
         ok: true,
@@ -153,8 +138,7 @@ export const resolveIncomingAction = async (
             scoped,
             senderTabId,
             senderWindowId,
-            resolvedTabToken: tabToken,
-            inferredScope: scope,
+            resolvedWorkspaceName,
         },
     };
 };
@@ -166,30 +150,19 @@ export const applyReplyProjection = (
     state: RouterState,
 ): void => {
     const responsePayload = payloadOf(reply);
-    const replyWorkspaceId = toStringOrUndefined(responsePayload.workspaceId);
-    const effectiveWorkspaceId = !isFailedReply(reply)
-        ? (replyWorkspaceId ?? resolved.inferredScope?.workspaceId ?? state.getActiveWorkspaceId())
-        : null;
+    const replyWorkspaceName = toStringOrUndefined(responsePayload.workspaceName);
+    const effectiveWorkspaceId = !isFailedReply(reply) ? (replyWorkspaceName ?? resolved.resolvedWorkspaceName ?? null) : null;
     if (isFailedReply(reply) || !effectiveWorkspaceId) {return;}
 
     const responseTabToken = toStringOrUndefined(responsePayload.tabToken);
-    const responseTabId = toStringOrUndefined(responsePayload.tabId);
+    const responseTabId = toStringOrUndefined(responsePayload.tabName);
     if (responseTabToken && responseTabId) {
         state.upsertTokenScope(responseTabToken, effectiveWorkspaceId, responseTabId);
         state.bindWorkspaceToWindowIfKnown(responseTabToken);
     }
 
     if (typeof resolved.senderTabId === 'number') {
-        if (resolved.resolvedTabToken) {
-            const oldTabId = state.findTabIdByToken(resolved.resolvedTabToken);
-            if (oldTabId !== null && oldTabId !== resolved.senderTabId) {
-                state.removeTab(oldTabId);
-            }
-        }
         const senderUrl = sender.tab?.url ?? state.getTabState(resolved.senderTabId)?.lastUrl ?? '';
-        if (resolved.resolvedTabToken) {
-            state.upsertTab(resolved.senderTabId, resolved.resolvedTabToken, senderUrl, resolved.senderWindowId);
-        }
         if (typeof resolved.senderWindowId === 'number') {
             state.setWindowWorkspace(resolved.senderWindowId, effectiveWorkspaceId);
         }

@@ -13,17 +13,15 @@ interface Window {
 }
 
 type ActionScopeInput = {
-    workspaceId?: string;
-    tabId?: string;
-    tabToken?: string;
+    workspaceName?: string;
+    tabName?: string;
 };
 
 type ActionShape = {
     v: 1;
     id: string;
     type: string;
-    tabToken?: string;
-    scope?: Record<string, unknown>;
+    workspaceName?: string;
     payload?: unknown;
 };
 
@@ -115,9 +113,8 @@ const loadFloatingUI = (() => {
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.report',
-            tabToken: token,
-            scope: { tabToken: token },
             payload: {
+                tabName: token,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -181,9 +178,8 @@ const loadFloatingUI = (() => {
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.ping',
-            tabToken,
-            scope: { tabToken },
             payload: {
+                tabName: tabToken,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -213,8 +209,8 @@ const loadFloatingUI = (() => {
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
-                const hasExplicitScope = Boolean(typedScope.workspaceId ?? typedScope.tabId);
-                const scopedTabToken = typedScope.tabToken ?? tabToken;
+                const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
+                const scopedTabToken = typedScope.tabName ?? tabToken;
                 const normalizedPayload =
                     type === 'record.event'
                         ? {
@@ -226,20 +222,16 @@ const loadFloatingUI = (() => {
                               },
                           }
                         : (payload ?? {});
-                const normalizedScope = hasExplicitScope
-                    ? {
-                          ...(typedScope.workspaceId ? { workspaceId: typedScope.workspaceId } : {}),
-                          ...(typedScope.tabId ? { tabId: typedScope.tabId } : {}),
-                      }
-                    : { ...typedScope, tabToken: scopedTabToken };
                 const action = {
                     v: 1 as const,
                     id: crypto.randomUUID(),
                     type,
-                    tabToken: hasExplicitScope ? undefined : scopedTabToken,
-                    scope: normalizedScope,
+                    workspaceName: typedScope.workspaceName,
                     payload: normalizedPayload,
                 };
+                if (!hasExplicitScope && action.payload && typeof action.payload === 'object') {
+                    (action.payload as Record<string, unknown>).tabName = scopedTabToken;
+                }
                 return await send.action(action);
             },
             onEvent: (handler) => {
