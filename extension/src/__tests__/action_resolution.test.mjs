@@ -85,7 +85,7 @@ await log('applyReplyProjection maps scope using local sender token, not respons
             id: 'rep-3',
             type: 'tab.setActive.result',
             replyTo: 'req-3',
-            payload: { workspaceName: 'ws-1', tabName: 'tab-1', tabName: 'token-from-reply' },
+            payload: { workspaceName: 'ws-1', tabName: 'tab-1' },
         },
         mkSender(),
         state,

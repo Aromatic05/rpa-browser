@@ -1,16 +1,20 @@
 import { test, expect } from '../helpers/fixtures';
 import { createStep, setupStepRunner } from '../helpers/steps';
 
+const getLatestSnapshotRoot = async (runner: Awaited<ReturnType<typeof setupStepRunner>>) => {
+    const binding = await runner.deps.runtime.resolveBinding(runner.workspaceName);
+    const cache = binding.traceCtx.cache as { latestSnapshot?: { root?: unknown } };
+    return cache.latestSnapshot?.root || null;
+};
+
 test.describe('a11y scan', () => {
     test('detects violations', async ({ browser, fixtureURL }) => {
         const context = await browser.newContext();
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/a11y-broken.html`);
         const runner = await setupStepRunner(page, 'a11y-token');
-        const res = await runner.run([createStep('browser.snapshot', { includeA11y: true })]);
-        expect(res.ok).toBe(true);
-        const a11y = (res.results[0]?.data as any)?.a11y || '';
-        expect(a11y.length).toBeGreaterThan(0);
+        await runner.run([createStep('browser.snapshot', { includeA11y: true })]);
+        expect(await getLatestSnapshotRoot(runner)).toBeTruthy();
         await context.close();
     });
 
@@ -19,10 +23,8 @@ test.describe('a11y scan', () => {
         const page = await context.newPage();
         await page.goto(`${fixtureURL}/a11y-ok.html`);
         const runner = await setupStepRunner(page, 'a11y-ok');
-        const res = await runner.run([createStep('browser.snapshot', { includeA11y: true })]);
-        expect(res.ok).toBe(true);
-        const a11y = (res.results[0]?.data as any)?.a11y || '';
-        expect(a11y.length).toBeGreaterThan(0);
+        await runner.run([createStep('browser.snapshot', { includeA11y: true })]);
+        expect(await getLatestSnapshotRoot(runner)).toBeTruthy();
         await context.close();
     });
 

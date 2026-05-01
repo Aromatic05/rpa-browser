@@ -22,11 +22,10 @@ const bindWorkspaceToRuntime = async (
     workspaceName: string,
     tabId: string,
 ) => {
-    const page = await pageRegistry.resolvePage({ workspaceName, tabId });
-    const token = pageRegistry.resolveTabName({ workspaceName, tabId });
+    const page = await pageRegistry.getPage(tabId);
     const workspace = workspaceRegistry.createWorkspace(workspaceName);
     if (!workspace.tabRegistry.hasTab(tabId)) {
-        workspace.tabRegistry.createTab({ tabName: tabId, tabName: token, page, url: page.url() });
+        workspace.tabRegistry.createTab({ tabName: tabId, page, url: page.url() });
     } else {
         workspace.tabRegistry.bindPage(tabId, page);
     }
@@ -38,23 +37,17 @@ const createWorkspaceWithPage = async (
     pageRegistry: ReturnType<typeof createPageRegistry>,
     context: BrowserContext,
 ) => {
-    const shell = pageRegistry.createWorkspaceShell();
-    const token = crypto.randomUUID();
+    const workspaceName = `ws-${crypto.randomUUID()}`;
+    const tabId = crypto.randomUUID();
     const page = await context.newPage();
-    await pageRegistry.bindPage(page, token);
-    const bound = pageRegistry.bindTokenToWorkspace(token, shell.workspaceName);
-    if (!bound) {
-        throw new Error('failed to bind workspace token');
-    }
-    pageRegistry.setActiveWorkspace(bound.workspaceName);
-    pageRegistry.setActiveTab(bound.workspaceName, bound.tabId);
-    return { workspaceName: bound.workspaceName, tabId: bound.tabId };
+    await pageRegistry.bindPage(page, tabId);
+    return { workspaceName, tabId };
 };
 
 test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabNameKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
     const workspaceRegistry = createWorkspaceRegistry();
@@ -81,8 +74,8 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
         ),
     ]);
 
-    const pageA = await pageRegistry.resolvePage({ workspaceName: wsA.workspaceName, tabId: wsA.tabId });
-    const pageB = await pageRegistry.resolvePage({ workspaceName: wsB.workspaceName, tabId: wsB.tabId });
+    const pageA = await pageRegistry.getPage(wsA.tabId);
+    const pageB = await pageRegistry.getPage(wsB.tabId);
     expect(pageA.url()).toContain('/choices.html');
     expect(pageB.url()).toContain('/date.html');
     await context.close();
@@ -91,7 +84,7 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
 test('workspace serial queue', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabNameKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
     const workspaceRegistry = createWorkspaceRegistry();
@@ -127,7 +120,7 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
 test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabNameKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
     const workspaceRegistry = createWorkspaceRegistry();
@@ -139,25 +132,20 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
     });
     const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const ws = await createWorkspaceWithPage(pageRegistry, context);
-    const tab2 = await pageRegistry.createTab(ws.workspaceName);
+    const tab2 = crypto.randomUUID();
+    await pageRegistry.getPage(tab2);
     await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, ws.workspaceName, ws.tabId);
     await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, ws.workspaceName, tab2);
 
-    const tab1Token = pageRegistry.resolveTabName({ workspaceName: ws.workspaceName, tabId: ws.tabId });
-    const tab2Token = pageRegistry.resolveTabName({ workspaceName: ws.workspaceName, tabId: tab2 });
-
-    pageRegistry.setActiveTab(ws.workspaceName, ws.tabId);
     workspaceRegistry.getWorkspace(ws.workspaceName)?.tabRegistry.setActiveTab(ws.tabId);
     await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
-    pageRegistry.setActiveTab(ws.workspaceName, tab2);
     workspaceRegistry.getWorkspace(ws.workspaceName)?.tabRegistry.setActiveTab(tab2);
     await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
 
-    pageRegistry.setActiveTab(ws.workspaceName, tab2);
-    const activePage = await pageRegistry.resolvePage({ workspaceName: ws.workspaceName });
+    const activePage = await pageRegistry.getPage(tab2);
     expect(activePage.url()).toContain('/date.html');
 
-    const explicitPage = await pageRegistry.resolvePage({ workspaceName: ws.workspaceName, tabId: ws.tabId });
+    const explicitPage = await pageRegistry.getPage(ws.tabId);
     expect(explicitPage.url()).toContain('/choices.html');
 
     await context.close();

@@ -8,16 +8,10 @@ import type { SnapshotResult } from '../../src/runner/steps/executors/snapshot/c
 const createReplayStepContext = (runner: Awaited<ReturnType<typeof setupStepRunner>>) => ({
     workspaceName: runner.workspaceName,
     initialTabName: runner.tabId,
-    initialTabName: runner.tabName,
+    initialTabId: runner.tabId,
     pageRegistry: {
-        listTabs: (workspaceName: string) => runner.pageRegistry.listTabs(workspaceName),
-        resolveTabNameFromToken: (tabName: string) => {
-            try {
-                return runner.pageRegistry.resolveTabBinding(tabName).tabId;
-            } catch {
-                return undefined;
-            }
-        },
+        listTabs: async () => [{ tabId: runner.tabId, active: true }],
+        resolveTabNameFromToken: (tabName: string) => tabName,
         resolveTabNameFromRef: (tabRef: string) => tabRef || undefined,
     },
     deps: runner.deps,
@@ -53,7 +47,7 @@ test.describe('replay drift enhancement', () => {
                 id: 'drift-list-click',
                 name: 'browser.click',
                 args: { nodeId: 'stale-node-id-list' },
-                meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
+                meta: { source: 'record', ts: Date.now() },
             },
         ];
 
@@ -85,7 +79,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(result.ok).toBe(true);
         await expect(page.locator('body')).toHaveAttribute('data-clicked', '李四');
         await expect(page.locator('#result')).toHaveText('李四');
@@ -119,7 +112,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-scope-save',
             name: 'browser.click',
             args: { nodeId: 'stale-node-id-scope' },
-            meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now() },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -146,7 +139,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(replay.ok).toBe(true);
         await expect(page.locator('body')).toHaveAttribute('data-clicked', 'main');
         await expect(page.locator('#result')).toHaveText('main');
@@ -167,7 +159,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-fill-step',
             name: 'browser.fill',
             args: { value: 'alice-v2', nodeId: 'stale-node-id-fill' },
-            meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now() },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -190,7 +182,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(replay.ok).toBe(true);
         await expect(page.locator('body')).toHaveAttribute('data-filled', 'alice-v2');
         await expect(page.locator('#value')).toHaveText('alice-v2');
@@ -210,7 +201,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-ambiguous-delete',
             name: 'browser.click',
             args: { nodeId: 'stale-node-id-ambiguous' },
-            meta: { source: 'record', ts: Date.now(), tabName: runner.tabName, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now() },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -232,7 +223,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(replay.ok).toBe(false);
         const failed = replay.results.find((item) => !item.ok);
         expect(failed).toBeTruthy();
