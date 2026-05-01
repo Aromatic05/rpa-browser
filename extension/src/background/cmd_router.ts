@@ -75,15 +75,20 @@ export const createCmdRouter = (options: CmdRouterOptions): {
 
         if (action.type === ACTION_TYPES.TAB_BOUND) {
             const data = (action.payload ?? {}) as Record<string, unknown>;
-            const tabToken = toStringValue(data.tabToken);
-            const workspaceId = toStringValue(data.workspaceName);
-            const tabId = toStringValue(data.tabName);
-            if (tabToken && workspaceId && tabId) {
-                state.upsertTokenScope(tabToken, workspaceId, tabId);
-                state.bindWorkspaceToWindowIfKnown(tabToken);
+            const workspaceName = toStringValue(data.workspaceName);
+            const tabName = toStringValue(data.tabName);
+            if (workspaceName && tabName) {
+                const activeTabId = state.getActiveTabId();
+                if (typeof activeTabId === 'number') {
+                    const activeTab = state.getTabState(activeTabId);
+                    if (activeTab?.tabToken) {
+                        state.upsertTokenScope(activeTab.tabToken, workspaceName, tabName);
+                        state.bindWorkspaceToWindowIfKnown(activeTab.tabToken);
+                    }
+                }
             }
-            if (!state.getActiveWorkspaceId() && workspaceId) {
-                state.setActiveWorkspaceId(workspaceId);
+            if (!state.getActiveWorkspaceId() && workspaceName) {
+                state.setActiveWorkspaceId(workspaceName);
             }
             options.onRefresh();
             return;
