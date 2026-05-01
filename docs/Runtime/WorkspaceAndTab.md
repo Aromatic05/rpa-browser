@@ -145,3 +145,18 @@ flowchart TD
 - `src/index.ts`
 - `src/runtime/page_registry.ts`
 - `src/actions/workspace.ts`
+
+## 10. 第二阶段接口迁移边界
+
+- 删除 `runtime.ensureActivePage`，运行时入口统一为 `workspaceName/tabName`。
+- 删除 `ActionContext.page`、`ActionContext.tabToken` 通用字段。
+- `Action` 顶层地址字段仅保留 `workspaceName`。
+- `tabName` 只在 workspace 内部运行时和 payload 中使用。
+- `workspace` 运行时对象持有 `workflow`、`runner`、`tabRegistry`。
+- `tabRegistry` 归属单个 workspace，并维护该 workspace 的 `activeTab`。
+- `page_registry` 退化为底层 page/lifecycle adapter，不再承担业务路由核心。
+- 本阶段只迁公共接口与直接编译断点。
+- 本阶段不做 record/play 深层迁移。
+- 本阶段不做 workflow artifact 迁移。
+- 本阶段不做 checkpoint runtime 重写。
+- 本阶段不做 DSL 实现修改。
