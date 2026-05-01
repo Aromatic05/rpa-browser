@@ -83,8 +83,11 @@ const assertNoLegacyAddressFields = (action: Action): void => {
     }
     if (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) {
         const payload = action.payload as Record<string, unknown>;
-        if ('workspaceId' in payload || 'tabId' in payload || 'tabToken' in payload || 'scope' in payload || 'workspaceName' in payload) {
+        if ('workspaceId' in payload || 'tabId' in payload || 'tabToken' in payload || 'scope' in payload) {
             throw new Error('legacy payload address fields are not allowed');
+        }
+        if (action.workspaceName && 'workspaceName' in payload) {
+            throw new Error('payload must not duplicate workspaceName');
         }
     }
 };

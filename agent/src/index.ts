@@ -162,7 +162,7 @@ const pageRegistry = createPageRegistry({
                 v: 1,
                 id: crypto.randomUUID(),
                 type: ACTION_TYPES.TAB_BOUND,
-                payload: { workspaceId: scope.workspaceId, tabId: scope.tabId, tabToken: token, url: page.url() },
+                payload: { workspaceName: scope.workspaceId, tabName: scope.tabId, url: page.url() },
                 workspaceName: scope.workspaceId,
                 at: Date.now(),
             });
@@ -394,8 +394,8 @@ wss.on('connection', (socket) => {
                     logTabReportDebug('agent.reply', {
                         id: action.id,
                         ok: !isFailedAction(response),
-                        workspaceId: responsePayload ? getStringField(responsePayload, 'workspaceId') : null,
-                        tabId: responsePayload ? getStringField(responsePayload, 'tabId') : null,
+                        workspaceName: responsePayload ? getStringField(responsePayload, 'workspaceName') : null,
+                        tabName: responsePayload ? getStringField(responsePayload, 'tabName') : null,
                         tabToken: responsePayload ? getStringField(responsePayload, 'tabToken') : null,
                     });
                 }
@@ -404,20 +404,20 @@ wss.on('connection', (socket) => {
 
                 if (!isFailedAction(response) && isMutatingAction(action.type)) {
                     const data = isRecord(response.payload) ? response.payload : null;
-                    const workspaceId = data ? getStringField(data, 'workspaceId') : null;
-                    const tabId = data ? getStringField(data, 'tabId') : null;
+                    const workspaceId = data ? getStringField(data, 'workspaceName') : null;
+                    const tabId = data ? getStringField(data, 'tabName') : null;
                     broadcast({
                         v: 1,
                         id: crypto.randomUUID(),
                         type: ACTION_TYPES.WORKSPACE_CHANGED,
-                        payload: { workspaceId, tabId, sourceType: action.type },
+                        payload: { workspaceName: workspaceId, tabName: tabId, sourceType: action.type },
                         workspaceName: workspaceId || undefined,
                         at: Date.now(),
                     });
                 }
                 if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
                     const data = isRecord(response.payload) ? response.payload : null;
-                    const workspaceId = (data ? getStringField(data, 'workspaceId') : null) ?? action.workspaceName ?? null;
+                    const workspaceId = (data ? getStringField(data, 'workspaceName') : null) ?? action.workspaceName ?? null;
                     const tabToken = data ? getStringField(data, 'tabToken') : null;
                     if (action.type === ACTION_TYPES.TAB_REPORTED) {
                         logTabReportDebug('agent.emit.state_sync', {
