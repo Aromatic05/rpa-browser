@@ -131,13 +131,20 @@ const broadcastStateSync = (reason: string, data?: Record<string, unknown>) => {
 
 const broadcastWorkspaceList = (reason: string) => {
     const active = pageRegistry.getActiveWorkspace();
+    const workspaces = pageRegistry.listWorkspaces().map((workspace) => ({
+        workspaceName: workspace.workspaceId,
+        activeTabName: workspace.activeTabId,
+        tabCount: workspace.tabCount,
+        createdAt: workspace.createdAt,
+        updatedAt: workspace.updatedAt,
+    }));
     broadcast({
         v: 1,
         id: crypto.randomUUID(),
         type: ACTION_TYPES.WORKSPACE_LIST,
         payload: {
             reason,
-            workspaces: pageRegistry.listWorkspaces(),
+            workspaces,
             activeWorkspaceName: active?.workspaceId || null,
         },
         at: Date.now(),
