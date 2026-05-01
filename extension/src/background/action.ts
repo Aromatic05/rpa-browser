@@ -154,14 +154,15 @@ export const applyReplyProjection = (
     const effectiveWorkspaceId = !isFailedReply(reply) ? (replyWorkspaceName ?? resolved.resolvedWorkspaceName ?? null) : null;
     if (isFailedReply(reply) || !effectiveWorkspaceId) {return;}
 
-    const responseTabToken = toStringOrUndefined(responsePayload.tabToken);
-    const responseTabId = toStringOrUndefined(responsePayload.tabName);
-    if (responseTabToken && responseTabId) {
-        state.upsertTokenScope(responseTabToken, effectiveWorkspaceId, responseTabId);
-        state.bindWorkspaceToWindowIfKnown(responseTabToken);
-    }
+    const responseTabName = toStringOrUndefined(responsePayload.tabName);
 
     if (typeof resolved.senderTabId === 'number') {
+        const senderState = state.getTabState(resolved.senderTabId);
+        const senderTabToken = senderState?.tabToken;
+        if (senderTabToken && responseTabName) {
+            state.upsertTokenScope(senderTabToken, effectiveWorkspaceId, responseTabName);
+            state.bindWorkspaceToWindowIfKnown(senderTabToken);
+        }
         const senderUrl = sender.tab?.url ?? state.getTabState(resolved.senderTabId)?.lastUrl ?? '';
         if (typeof resolved.senderWindowId === 'number') {
             state.setWindowWorkspace(resolved.senderWindowId, effectiveWorkspaceId);
