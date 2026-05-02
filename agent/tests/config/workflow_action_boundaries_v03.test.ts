@@ -66,6 +66,12 @@ test('workflow.create/open/rename use control payload naming and keep workspace/
     assert.equal(ws?.name, to);
     assert.equal(ws?.workflow.name, to);
     assert.equal(ctx.workspaceRegistry.getWorkspace(from), null);
+    const fromDir = path.resolve(process.cwd(), 'agent/.artifacts/workflows', from);
+    const toDir = path.resolve(process.cwd(), 'agent/.artifacts/workflows', to);
+    assert.equal(fs.existsSync(fromDir), false);
+    assert.equal(fs.existsSync(toDir), true);
+    const manifest = fs.readFileSync(path.join(toDir, 'workflow.yaml'), 'utf8');
+    assert.equal(manifest.includes(`name: ${to}`), true);
 
     cleanup(from);
     cleanup(to);
