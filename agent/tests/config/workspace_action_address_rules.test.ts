@@ -1,106 +1,136 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { workspaceHandlers } from '../../src/actions/workspace';
-import { createActionDispatcher } from '../../src/actions/dispatcher';
+import crypto from 'node:crypto';
+import { handleRuntimeControlAction } from '../../src/runtime/control';
+import { handleWorkspaceControlAction, setWorkspaceControlServices } from '../../src/runtime/workspace_control';
+import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
+import { createWorkflowOnFs } from '../../src/workflow';
 import { createRecordingState } from '../../src/record/recording';
-import type { Action } from '../../src/actions/action_protocol';
+import { setWorkflowControlServices } from '../../src/workflow/control';
 
-const createWorkspaceRuntime = () => {
-    const tabs = new Map<string, { name: string; url: string; title: string; createdAt: number; updatedAt: number }>([
-        ['tab-1', { name: 'tab-1', url: 'https://example.com', title: 'Example', createdAt: 1, updatedAt: 2 }],
-    ]);
-    let activeTab = 'tab-1';
-    return {
-        name: 'ws-1',
-        createdAt: 1,
-        updatedAt: 2,
-        tabRegistry: {
-            listTabs: () => Array.from(tabs.values()),
-            getActiveTab: () => tabs.get(activeTab),
-            setActiveTab: (tabName: string) => {
-                if (!tabs.has(tabName)) {throw new Error(`tab not found: ${tabName}`);}
-                activeTab = tabName;
-            },
-            hasTab: (tabName: string) => tabs.has(tabName),
-            resolveTab: (tabName?: string) => {
-                const key = tabName || activeTab;
-                const tab = tabs.get(key);
-                if (!tab) {throw new Error(`tab not found: ${key}`);}
-                return tab;
-            },
-        },
-    };
-};
+const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: 'a1', type, ...extra });
 
-const createCtx = () => {
-    const workspace = createWorkspaceRuntime();
-    return {
-        workspaceRegistry: {
-            getWorkspace: (name: string) => (name === workspace.name ? workspace : null),
-            setActiveWorkspace: () => undefined,
-            createWorkspace: () => workspace,
-            listWorkspaces: () => [workspace],
-            getActiveWorkspace: () => workspace,
-        },
-        pageRegistry: { getPage: async () => ({ url: () => 'https://example.com' }) },
-        recordingState: createRecordingState(),
-        replayOptions: {} as any,
-        navDedupeWindowMs: 0,
-        emit: () => undefined,
-        log: () => undefined,
-    } as any;
-};
+test('workspace.create and workspace.list and tab.init go through runtime control', async () => {
+    const registry = createWorkspaceRegistry();
+    const wsName = `ws-${crypto.randomUUID()}`;
 
-test('tab.list accepts top-level workspaceName with empty payload', async () => {
-    const handler = workspaceHandlers['tab.list'];
-    const reply = await handler(createCtx(), { v: 1, id: 'a1', type: 'tab.list', workspaceName: 'ws-1', payload: {} } as Action);
-    assert.equal(reply.type, 'tab.list.result');
-});
-
-test('tab.setActive accepts top-level workspaceName with payload.tabName', async () => {
-    const handler = workspaceHandlers['tab.setActive'];
-    const reply = await handler(createCtx(), {
-        v: 1,
-        id: 'a2',
-        type: 'tab.setActive',
-        workspaceName: 'ws-1',
-        payload: { tabName: 'tab-1' },
-    } as Action);
-    assert.equal(reply.type, 'tab.setActive.result');
-});
-
-test('workspace.setActive accepts top-level workspaceName with empty payload', async () => {
-    const handler = workspaceHandlers['workspace.setActive'];
-    const reply = await handler(createCtx(), { v: 1, id: 'a3', type: 'workspace.setActive', workspaceName: 'ws-1', payload: {} } as Action);
-    assert.equal(reply.type, 'workspace.setActive.result');
-});
-
-test('workspace action fails when top-level workspaceName is missing', async () => {
-    const handler = workspaceHandlers['tab.list'];
-    const reply = await handler(createCtx(), { v: 1, id: 'a4', type: 'tab.list', payload: {} } as Action);
-    assert.equal(reply.type, 'tab.list.failed');
-});
-
-test('dispatcher rejects payload.workspaceName for tab.list', async () => {
-    const dispatcher = createActionDispatcher({
-        pageRegistry: {} as any,
-        workspaceRegistry: {
-            getWorkspace: () => null,
-        } as any,
-        recordingState: createRecordingState(),
-        log: () => undefined,
-        replayOptions: {} as any,
-        navDedupeWindowMs: 0,
+    const createReply = await handleRuntimeControlAction({
+        action: action('workspace.create', { payload: { workspaceName: wsName } }),
+        workspaceRegistry: registry,
     });
-    await assert.rejects(
-        async () =>
-            await dispatcher.dispatch({
-                v: 1,
-                id: 'a5',
-                type: 'tab.list',
-                workspaceName: 'ws-1',
-                payload: { workspaceName: 'ws-1' },
-            } as Action),
-        /legacy payload address fields are not allowed/,
-    );
+    assert.equal(createReply.reply.type, 'workspace.create.result');
+
+    const listReply = await handleRuntimeControlAction({
+        action: action('workspace.list'),
+        workspaceRegistry: registry,
+    });
+    assert.equal(listReply.reply.type, 'workspace.list.result');
+    assert.equal(Array.isArray((listReply.reply.payload as any).workspaces), true);
+
+    const initReply = await handleRuntimeControlAction({
+        action: action('tab.init'),
+        workspaceRegistry: registry,
+    });
+    assert.equal(initReply.reply.type, 'tab.init.result');
+    assert.equal(typeof (initReply.reply.payload as any).tabName, 'string');
+});
+
+test('workspace.setActive and tab actions go through workspace control', async () => {
+    const registry = createWorkspaceRegistry();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabRegistry.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
+
+    let createdWithStartUrl: string | undefined;
+    setWorkspaceControlServices({
+        pageRegistry: {
+            getPage: async (_tabName: string, startUrl?: string) => {
+                createdWithStartUrl = startUrl;
+                return {
+                    url: () => startUrl || 'about:blank',
+                    isClosed: () => false,
+                    close: async () => undefined,
+                } as any;
+            },
+        },
+    });
+
+    const setActiveReply = await handleWorkspaceControlAction({
+        action: action('workspace.setActive', { workspaceName: wsName }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+    assert.equal(setActiveReply.reply.type, 'workspace.setActive.result');
+
+    const listReply = await handleWorkspaceControlAction({
+        action: action('tab.list', { workspaceName: wsName }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+    assert.equal(listReply.reply.type, 'tab.list.result');
+
+    const createReply = await handleWorkspaceControlAction({
+        action: action('tab.create', { workspaceName: wsName, payload: { startUrl: 'https://start.url' } }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+    assert.equal(createReply.reply.type, 'tab.create.result');
+    assert.equal(createdWithStartUrl, 'https://start.url');
+
+    const createdTabName = (createReply.reply.payload as any).tabName as string;
+    const setTabReply = await handleWorkspaceControlAction({
+        action: action('tab.setActive', { workspaceName: wsName, payload: { tabName: createdTabName } }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+    assert.equal(setTabReply.reply.type, 'tab.setActive.result');
+
+    const closeReply = await handleWorkspaceControlAction({
+        action: action('tab.close', { workspaceName: wsName, payload: { tabName: createdTabName } }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+    assert.equal(closeReply.reply.type, 'tab.close.result');
+});
+
+test('tab.reassign uses action.workspaceName and ignores payload.workspaceName', async () => {
+    const registry = createWorkspaceRegistry();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+
+    const reply = await handleWorkspaceControlAction({
+        action: action('tab.reassign', {
+            workspaceName: wsName,
+            payload: { workspaceName: 'ws-payload', tabName: 'tab-9', source: 'test' },
+        }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+
+    assert.equal(reply.reply.type, 'tab.reassign.result');
+    assert.equal((reply.reply.payload as any).workspaceName, wsName);
+    assert.equal(ws.tabRegistry.hasTab('tab-9'), true);
+});
+
+test('workspace.save and workspace.restore are routed from workspace control to workflow control', async () => {
+    const registry = createWorkspaceRegistry();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabRegistry.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
+    ws.tabRegistry.setActiveTab('tab-1');
+    setWorkflowControlServices({ recordingState: createRecordingState() });
+
+    const saveReply = await handleWorkspaceControlAction({
+        action: action('workspace.save', { workspaceName: wsName }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+    assert.equal(saveReply.reply.type, 'workspace.save.result');
+
+    const restoreReply = await handleWorkspaceControlAction({
+        action: action('workspace.restore', { workspaceName: wsName }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
+    assert.equal(restoreReply.reply.type, 'workspace.restore.result');
 });
