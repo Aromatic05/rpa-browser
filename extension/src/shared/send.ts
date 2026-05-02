@@ -7,10 +7,11 @@
  */
 
 import { MSG, type TransportError, type TransportResult } from './protocol.js';
-import { deriveFailedActionType } from '../actions/action_types.js';
 import type { Action } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 20000;
+const deriveTransportFailedActionType = (actionType: string): string =>
+    actionType ? `${actionType}.failed` : 'action.dispatch.failed';
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<TransportResult<T>> => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -98,7 +99,7 @@ export const send = {
         return {
             v: 1,
             id: crypto.randomUUID(),
-            type: deriveFailedActionType(action.type || ''),
+            type: deriveTransportFailedActionType(action.type || ''),
             replyTo: action.id || '',
             payload: { code: transportError.code, message: transportError.message, details },
             at: Date.now(),
