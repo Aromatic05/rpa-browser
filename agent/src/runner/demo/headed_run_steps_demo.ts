@@ -20,6 +20,7 @@ import { createLoggingHooks } from '../trace/hooks';
 import { getRunnerConfig } from '../../config';
 import { RunnerPluginHost } from '../hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../../workflow';
+import { createRecordingState } from '../../record/recording';
 
 const fixtureUrl = () =>
     pathToFileURL(
@@ -46,9 +47,26 @@ const run = async () => {
         tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
-    const workspaceRegistry = createWorkspaceRegistry();
     const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
     await pluginHost.load();
+    const runStepsDeps = {
+        runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
+        stepSinks: [createConsoleStepSink('[step]')],
+        config: getRunnerConfig(),
+        pluginHost,
+    };
+    const workspaceRegistry = createWorkspaceRegistry({
+        pageRegistry,
+        recordingState: createRecordingState(),
+        replayOptions: {
+            clickDelayMs: 300,
+            stepDelayMs: 900,
+            scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+        },
+        navDedupeWindowMs: 1200,
+        runStepsDeps,
+        runnerConfig: getRunnerConfig(),
+    });
     const traceSink = new MemorySink();
     const runtimeRegistry = createRuntimeRegistry({
         workspaceRegistry,
@@ -56,6 +74,7 @@ const run = async () => {
         traceHooks: createLoggingHooks(),
         pluginHost,
     });
+    runStepsDeps.runtime = runtimeRegistry;
     const workspaceName = 'demo';
     const tabName = crypto.randomUUID();
     const page = await pageRegistry.getPage(tabName);

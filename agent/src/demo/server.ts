@@ -57,7 +57,7 @@ const serveFile = async (res: http.ServerResponse, filePath: string, contentType
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
-const workspaceRegistry = createWorkspaceRegistry();
+let workspaceRegistry!: ReturnType<typeof createWorkspaceRegistry>;
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
     userDataDir: paths.userDataDir,
@@ -101,6 +101,24 @@ if (process.env.NODE_ENV !== 'production') {
     runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
 }
 
+const runStepsDeps = {
+    runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
+    stepSinks: [createConsoleStepSink('[step]')],
+    config,
+    pluginHost: runnerPluginHost,
+};
+workspaceRegistry = createWorkspaceRegistry({
+    pageRegistry,
+    recordingState,
+    replayOptions: {
+        clickDelayMs: 300,
+        stepDelayMs: 900,
+        scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+    },
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    runStepsDeps,
+    runnerConfig: config,
+});
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     workspaceRegistry,
@@ -110,12 +128,8 @@ const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeR
         : createNoopHooks(),
     pluginHost: runnerPluginHost,
 });
-setRunStepsDeps({
-    runtime: runtimeRegistry,
-    stepSinks: [createConsoleStepSink('[step]')],
-    config,
-    pluginHost: runnerPluginHost,
-});
+runStepsDeps.runtime = runtimeRegistry;
+setRunStepsDeps(runStepsDeps);
 
 const buildToolDeps = () => ({
     pageRegistry,

@@ -15,10 +15,6 @@ import { McpToolHost } from './mcp/hotreload/tool_host';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
-import { setWorkspaceControlServices } from './runtime/workspace_control';
-import { setWorkflowControlServices } from './workflow/control';
-import { setRecordControlServices } from './record/control';
-import { setDslControlServices } from './dsl/control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -38,7 +34,7 @@ const logError = (...args: unknown[]) => { actionLog.error('[RPA:mcp]', ...args)
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
-const workspaceRegistry = createWorkspaceRegistry();
+let workspaceRegistry!: ReturnType<typeof createWorkspaceRegistry>;
 
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
@@ -97,6 +93,21 @@ const pageRegistry = createPageRegistry({
     },
     onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
 });
+const runStepsDeps = {
+    runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
+    stepSinks: [createConsoleStepSink('[step]')],
+    config,
+    pluginHost: runnerPluginHost,
+};
+setRunStepsDeps(runStepsDeps);
+workspaceRegistry = createWorkspaceRegistry({
+    pageRegistry,
+    recordingState,
+    replayOptions: REPLAY_OPTIONS,
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    runStepsDeps,
+    runnerConfig: config,
+});
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     workspaceRegistry,
     traceSinks,
@@ -105,21 +116,7 @@ const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeR
         : createNoopHooks(),
     pluginHost: runnerPluginHost,
 });
-const runStepsDeps = {
-    runtime: runtimeRegistry,
-    stepSinks: [createConsoleStepSink('[step]')],
-    config,
-    pluginHost: runnerPluginHost,
-};
-setRunStepsDeps(runStepsDeps);
-setWorkspaceControlServices({ pageRegistry });
-setWorkflowControlServices({ recordingState });
-setRecordControlServices({
-    recordingState,
-    replayOptions: REPLAY_OPTIONS,
-    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-});
-setDslControlServices({ runStepsDeps });
+runStepsDeps.runtime = runtimeRegistry;
 setControlActionDispatcher(
     createActionDispatcher({
         workspaceRegistry,

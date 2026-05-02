@@ -29,10 +29,6 @@ import { startActionWsClient } from './actions/ws_client';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 import { ingestRecorderEvent } from './record/ingest';
-import { setWorkspaceControlServices } from './runtime/workspace_control';
-import { setWorkflowControlServices } from './workflow/control';
-import { setRecordControlServices } from './record/control';
-import { setDslControlServices } from './dsl/control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -60,7 +56,7 @@ let broadcast: (action: Action) => void = () => undefined;
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
-const workspaceRegistry = createWorkspaceRegistry();
+let workspaceRegistry!: ReturnType<typeof createWorkspaceRegistry>;
 const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.json');
 await loadRecordingStateFromFile(recordingState, recordingStatePath);
 const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
@@ -190,6 +186,22 @@ const pageRegistry = createPageRegistry({
     onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
 });
 
+const runStepsDeps = {
+    runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
+    stepSinks: [createConsoleStepSink('[step]')],
+    config,
+    pluginHost: runnerPluginHost,
+};
+setRunStepsDeps(runStepsDeps);
+workspaceRegistry = createWorkspaceRegistry({
+    pageRegistry,
+    recordingState,
+    replayOptions: REPLAY_OPTIONS,
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    emit: broadcast,
+    runStepsDeps,
+    runnerConfig: config,
+});
 const runnerScope = createRunnerScopeRegistry(2);
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     workspaceRegistry,
@@ -197,27 +209,12 @@ const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeR
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,
 });
-const runStepsDeps = {
-    runtime: runtimeRegistry,
-    stepSinks: [createConsoleStepSink('[step]')],
-    config,
-    pluginHost: runnerPluginHost,
-};
-setRunStepsDeps(runStepsDeps);
+runStepsDeps.runtime = runtimeRegistry;
 const actionDispatcher = createActionDispatcher({
     workspaceRegistry,
     log: actionLogger,
     emit: broadcast,
 });
-setWorkspaceControlServices({ pageRegistry });
-setWorkflowControlServices({ recordingState });
-setRecordControlServices({
-    recordingState,
-    replayOptions: REPLAY_OPTIONS,
-    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-    emit: broadcast,
-});
-setDslControlServices({ runStepsDeps });
 setControlActionDispatcher(actionDispatcher);
 const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, log);
