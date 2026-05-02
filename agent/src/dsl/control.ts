@@ -51,7 +51,7 @@ const requireDsl = (workflow: Workflow, dslName: string): WorkflowDsl => {
     return artifact;
 };
 
-const createCheckpointProvider = (workflow: Workflow) => {
+const buildWorkflowCheckpointProvider = (workflow: Workflow) => {
     const checkpoints = workflow.list(CHECKPOINT_DUMMY);
     const byName = new Map<string, WorkflowCheckpoint>();
     for (const item of checkpoints) {
@@ -98,7 +98,7 @@ export const handleDslControlAction = async (input: WorkspaceControlInput): Prom
         workspaceName: workspace.name,
         deps: services.runStepsDeps,
         input: payload.input || {},
-        checkpointProvider: createCheckpointProvider(workflow),
+        checkpointProvider: buildWorkflowCheckpointProvider(workflow),
     });
 
     if (action.type === 'dsl.test') {
