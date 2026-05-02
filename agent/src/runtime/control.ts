@@ -57,6 +57,9 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             }
             const workflow = createWorkflowOnFs(workflowName);
             const workspace = workspaceRegistry.createWorkspace(workflowName, workflow);
+            if (workspace.name !== workspace.workflow.name) {
+                throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after create');
+            }
             return { reply: replyAction(action, { workflowName, workspaceName: workspace.name, created: true }), events: [] };
         }
         case 'workflow.open': {
@@ -67,6 +70,9 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             }
             const workflow = loadWorkflowFromFs(workflowName);
             const workspace = workspaceRegistry.createWorkspace(workflowName, workflow);
+            if (workspace.name !== workspace.workflow.name) {
+                throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after open');
+            }
             return { reply: replyAction(action, { workflowName, workspaceName: workspace.name, opened: true }), events: [] };
         }
         case 'workflow.rename': {
@@ -79,6 +85,9 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             renameWorkflowOnFs(fromName, toName);
             const renamedWorkflow = loadWorkflowFromFs(toName);
             const workspace = workspaceRegistry.renameWorkspace(fromName, toName, renamedWorkflow);
+            if (workspace.name !== workspace.workflow.name) {
+                throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after rename');
+            }
             return { reply: replyAction(action, { fromName, toName, workspaceName: workspace.name, renamed: true }), events: [] };
         }
         default:

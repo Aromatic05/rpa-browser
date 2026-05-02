@@ -168,6 +168,9 @@ export const handleWorkspaceControlAction = async (input: WorkspaceControlInput)
     }
 
     if (action.type === 'workflow.status') {
+        if (workspace.name !== workspace.workflow.name) {
+            throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch');
+        }
         const active = input.workspaceRegistry.getActiveWorkspace()?.name === workspace.name;
         return { reply: replyAction(action, { workspaceName: workspace.name, exists: true, active }), events: [] };
     }
