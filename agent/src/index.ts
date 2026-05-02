@@ -5,7 +5,14 @@ import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
-import { createRecordingState, cleanupRecording, ensureRecorder, setRecorderEventSink } from './record/recording';
+import {
+    createRecordingState,
+    cleanupRecording,
+    ensureRecorder,
+    setRecorderEventSink,
+    getWorkspaceActiveRecordingToken,
+    attachTabToRecordingManifest,
+} from './record/recording';
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { executeAction, type ActionContext } from './actions/execute';
 import { failedAction, isFailedAction, type Action } from './actions/action_protocol';
@@ -149,9 +156,6 @@ const pageRegistry = createPageRegistry({
     tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
     onPageBound: (page, bindingName) => {
-        if (recordingState.recordingEnabled.has(bindingName)) {
-            void ensureRecorder(recordingState, page, bindingName, NAV_DEDUPE_WINDOW_MS);
-        }
         const { workspaceName, workspace } = resolveWorkspaceForBinding(bindingName);
         if (!workspace.tabRegistry.hasTab(bindingName)) {
             workspace.tabRegistry.createTab({ tabName: bindingName, page, url: page.url() });
@@ -160,6 +164,15 @@ const pageRegistry = createPageRegistry({
         }
         workspace.tabRegistry.setActiveTab(bindingName);
         runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page });
+        const activeRecordingToken = getWorkspaceActiveRecordingToken(recordingState, workspaceName);
+        if (activeRecordingToken) {
+            attachTabToRecordingManifest(recordingState, activeRecordingToken, bindingName, {
+                tabRef: bindingName,
+                url: page.url(),
+            });
+            void ensureRecorder(recordingState, page, bindingName, NAV_DEDUPE_WINDOW_MS);
+            void setRecorderRuntimeEnabled(page, true);
+        }
         broadcast({
             v: 1,
             id: crypto.randomUUID(),

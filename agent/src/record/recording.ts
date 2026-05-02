@@ -351,6 +351,26 @@ const ensureTabInManifest = (
     return tab;
 };
 
+export const getWorkspaceActiveRecordingToken = (
+    state: RecordingState,
+    workspaceName: string,
+): string | null => {
+    const token = state.workspaceLatestRecording.get(workspaceName);
+    if (!token) {return null;}
+    if (!state.recordingEnabled.has(token)) {return null;}
+    return token;
+};
+
+export const attachTabToRecordingManifest = (
+    state: RecordingState,
+    recordingToken: string,
+    tabName: string,
+    seed?: { tabRef?: string; url?: string; at?: number },
+): void => {
+    const manifest = ensureManifest(state, recordingToken);
+    ensureTabInManifest(manifest, tabName, seed);
+};
+
 const enrichRecordedStep = (
     state: RecordingState,
     recordingToken: string,
