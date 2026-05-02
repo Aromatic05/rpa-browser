@@ -1,6 +1,5 @@
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { WebSocketServer, type WebSocket } from 'ws';
 import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
@@ -17,8 +16,9 @@ import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
-import { ACTION_TYPES, isRequestActionType } from './actions/action_types';
+import { ACTION_TYPES } from './actions/action_types';
 import { createActionDispatcher } from './actions/dispatcher';
+import { startActionWsClient } from './actions/ws_client';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 
@@ -44,22 +44,7 @@ const wsTap = (stage: string, data: Record<string, unknown>) => {
     if (!WS_TAP_ENABLED) {return;}
     actionLog.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });
 };
-const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
-    if (!raw || typeof raw !== 'object') {
-        return { kind: typeof raw, isObject: false };
-    }
-    const rec = raw as Record<string, unknown>;
-    const payload = rec.payload;
-    return {
-        v: rec.v,
-        id: typeof rec.id === 'string' ? rec.id : undefined,
-        replyTo: typeof rec.replyTo === 'string' ? rec.replyTo : undefined,
-        type: typeof rec.type === 'string' ? rec.type : undefined,
-        workspaceName: typeof rec.workspaceName === 'string' ? rec.workspaceName : undefined,
-        payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
-    };
-};
+let broadcast: (action: Action) => void = () => undefined;
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -90,19 +75,6 @@ await runnerPluginHost.load();
 if (process.env.NODE_ENV !== 'production') {
     runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
 }
-
-const wsClients = new Set<WebSocket>();
-const broadcast = (action: Action) => {
-    wsTap('agent.broadcast', summarizeActionEnvelope(action));
-    const payload = JSON.stringify(action);
-    wsClients.forEach((client) => {
-        try {
-            if (client.readyState === client.OPEN) {client.send(payload);}
-        } catch {
-            // ignore
-        }
-    });
-};
 
 const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
     ACTION_TYPES.WORKSPACE_CREATE,
@@ -294,22 +266,82 @@ const isMutatingAction = (type: string) =>
     type === ACTION_TYPES.TAB_CLOSED ||
     type === ACTION_TYPES.TAB_REASSIGN;
 
-const parseInboundAction = (raw: unknown): Action => {
-    if (!raw || typeof raw !== 'object') {
-        throw new Error('invalid action: not an object');
+const projectActionResult = (action: Action, response: Action): Action[] => {
+    const projected: Action[] = [];
+    if (!isFailedAction(response) && isMutatingAction(action.type)) {
+        const data = isRecord(response.payload) ? response.payload : null;
+        const workspaceName = data ? getStringField(data, 'workspaceName') : null;
+        const tabName = data ? getStringField(data, 'tabName') : null;
+        projected.push({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.WORKSPACE_CHANGED,
+            payload: { workspaceName: workspaceName, tabName: tabName, sourceType: action.type },
+            workspaceName: workspaceName || undefined,
+            at: Date.now(),
+        });
     }
-    const rec = raw as Record<string, unknown>;
-    if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
-        throw new Error('invalid action: missing or invalid fields');
+    if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
+        const data = isRecord(response.payload) ? response.payload : null;
+        const workspaceName = (data ? getStringField(data, 'workspaceName') : null) ?? action.workspaceName ?? null;
+        const tabName = data ? getStringField(data, 'tabName') : null;
+        if (action.type === ACTION_TYPES.TAB_REPORTED) {
+            logTabReportDebug('agent.emit.state_sync', {
+                id: action.id,
+                reason: `report:${action.type}`,
+                workspaceName,
+                tabName,
+            });
+        }
+        projected.push({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.WORKSPACE_SYNC,
+            payload: { reason: `report:${action.type}`, workspaceName, tabName },
+            at: Date.now(),
+        });
+        const active = workspaceRegistry.getActiveWorkspace();
+        const workspaces = workspaceRegistry.listWorkspaces().map((workspace) => ({
+            workspaceName: workspace.name,
+            activeTabName: workspace.tabRegistry.getActiveTab()?.name ?? null,
+            tabCount: workspace.tabRegistry.listTabs().length,
+            createdAt: workspace.createdAt,
+            updatedAt: workspace.updatedAt,
+        }));
+        projected.push({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.WORKSPACE_LIST,
+            payload: {
+                reason: `report:${action.type}`,
+                workspaces,
+                activeWorkspaceName: active?.name || null,
+            },
+            at: Date.now(),
+        });
     }
-    if ('scope' in rec || 'tabName' in rec) {
-        throw new Error('invalid action: legacy address fields are not allowed');
-    }
-    if (!isRequestActionType(rec.type)) {
-        throw new Error(`invalid action: unsupported type '${rec.type}'`);
-    }
-    return rec as Action;
+    return projected;
 };
+
+const actionWsClient = startActionWsClient({
+    port: WS_PORT,
+    host: '127.0.0.1',
+    dispatchAction: async (action) => {
+        try {
+            return await handleAction(action);
+        } finally {
+            void recordingPersistence.flush();
+        }
+    },
+    projectActionResult,
+    onError: (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logError('action.dispatch.failed', { message });
+    },
+    onListening: (url) => { log(`WS listening on ${url}`); },
+    wsTap,
+});
+broadcast = actionWsClient.broadcastAction;
 
 /**
  * ========================= Listener Group A: Recorder Event Sink =========================
@@ -355,130 +387,6 @@ setRecorderEventSink(async (event, page, tabName) => {
     if (isFailedAction(response)) {
         logWarning('record.event.ingest.failed', { tabName: effectiveTabName, sourceTabName: tabName, error: response.payload });
     }
-});
-
-/**
- * ========================= Listener Group B: Agent WebSocket Server =========================
- * 触发源：
- * - extension background / start_extension / 其他 ws client 发来的 action 请求
- *
- * 生命周期与职责：
- * - listening: 记录启动完成；
- * - connection: 注册连接；
- * - message:
- *   1) 解析原始 JSON；
- *   2) 校验为受支持的 Action；
- *   3) 路由到 handleAction 执行；
- *   4) 回写 *.result / *.failed；
- *   5) 对状态变化类 action 追加广播 workspace.changed / workspace.sync。
- *
- * 可观测性：
- * - RPA_WS_TAP=1 时输出 inbound/raw/parsed、reply、broadcast 的结构化抓包日志。
- */
-const wss = new WebSocketServer({ host: '127.0.0.1', port: WS_PORT });
-
-wss.on('listening', () => {
-    log(`WS listening on ws://127.0.0.1:${WS_PORT}`);
-});
-
-wss.on('connection', (socket) => {
-    wsClients.add(socket);
-    socket.on('message', (data) => {
-        let raw: unknown;
-        let rawText = '';
-        try {
-            rawText =
-                typeof data === 'string'
-                    ? data
-                    : Buffer.isBuffer(data)
-                      ? data.toString('utf8')
-                      : Array.isArray(data)
-                        ? Buffer.concat(data).toString('utf8')
-                        : data instanceof ArrayBuffer
-                        ? Buffer.from(data).toString('utf8')
-                        : '';
-            wsTap('agent.inbound.raw', { bytes: rawText.length, preview: rawText.slice(0, 300) });
-            raw = JSON.parse(rawText);
-            wsTap('agent.inbound.parsed', summarizeActionEnvelope(raw));
-        } catch {
-            socket.send(
-                JSON.stringify({
-                    v: 1,
-                    id: crypto.randomUUID(),
-                    type: 'action.dispatch.failed',
-                    payload: { code: 'ERR_BAD_JSON', message: 'invalid json' },
-                    at: Date.now(),
-                } satisfies Action),
-            );
-            wsTap('agent.inbound.parse_failed', { bytes: rawText.length, preview: rawText.slice(0, 300) });
-            return;
-        }
-
-        void (async () => {
-            try {
-                const action = parseInboundAction(raw);
-                const response = await handleAction(action);
-                if (action.type === ACTION_TYPES.TAB_REPORTED) {
-                    const responsePayload = isRecord(response.payload) ? response.payload : null;
-                    logTabReportDebug('agent.reply', {
-                        id: action.id,
-                        ok: !isFailedAction(response),
-                        workspaceName: responsePayload ? getStringField(responsePayload, 'workspaceName') : null,
-                        tabName: responsePayload ? getStringField(responsePayload, 'tabName') : null,
-                    });
-                }
-                wsTap('agent.reply', summarizeActionEnvelope(response));
-                socket.send(JSON.stringify(response));
-
-                if (!isFailedAction(response) && isMutatingAction(action.type)) {
-                    const data = isRecord(response.payload) ? response.payload : null;
-                    const workspaceName = data ? getStringField(data, 'workspaceName') : null;
-                    const tabName = data ? getStringField(data, 'tabName') : null;
-                    broadcast({
-                        v: 1,
-                        id: crypto.randomUUID(),
-                        type: ACTION_TYPES.WORKSPACE_CHANGED,
-                        payload: { workspaceName: workspaceName, tabName: tabName, sourceType: action.type },
-                        workspaceName: workspaceName || undefined,
-                        at: Date.now(),
-                    });
-                }
-                if (!isFailedAction(response) && REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
-                    const data = isRecord(response.payload) ? response.payload : null;
-                    const workspaceName = (data ? getStringField(data, 'workspaceName') : null) ?? action.workspaceName ?? null;
-                    const tabName = data ? getStringField(data, 'tabName') : null;
-                    if (action.type === ACTION_TYPES.TAB_REPORTED) {
-                        logTabReportDebug('agent.emit.state_sync', {
-                            id: action.id,
-                            reason: `report:${action.type}`,
-                            workspaceName,
-                            tabName,
-                        });
-                    }
-                    broadcastStateSync(`report:${action.type}`, {
-                        workspaceName,
-                        tabName,
-                    });
-                    broadcastWorkspaceList(`report:${action.type}`);
-                }
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                logError('action.dispatch.failed', { message });
-                socket.send(
-                    JSON.stringify({
-                        v: 1,
-                        id: crypto.randomUUID(),
-                        type: 'action.dispatch.failed',
-                        payload: { code: ERROR_CODES.ERR_BAD_ARGS, message },
-                        at: Date.now(),
-                    } satisfies Action),
-                );
-            } finally {
-                void recordingPersistence.flush();
-            }
-        })();
-    });
-    socket.on('close', () => wsClients.delete(socket));
 });
 
 /**
