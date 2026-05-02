@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { replyAction, failedAction } from '../src/actions/action_protocol';
-import { replayRecording } from '../src/play/replay';
+import { replayRecording } from '../src/record/replay';
 import type { StepUnion } from '../src/runner/steps/types';
 import { createRecordingState } from '../src/record/recording';
 import { ACTION_TYPES } from '../src/actions/action_types';

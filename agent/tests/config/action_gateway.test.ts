@@ -85,3 +85,11 @@ test('static boundaries: no legacy handler table or execute imports in action in
     assert.equal(indexContent.includes('./workflow'), false);
     assert.equal(indexContent.includes('./task_stream'), false);
 });
+
+test('replay domain ownership boundaries', () => {
+    const srcRoot = path.resolve(process.cwd(), 'src');
+    const recordControl = fs.readFileSync(path.join(srcRoot, 'record/control.ts'), 'utf8');
+    assert.equal(recordControl.includes('../play/replay'), false);
+    assert.equal(fs.existsSync(path.join(srcRoot, 'play/replay.ts')), false);
+    assert.equal(fs.existsSync(path.join(srcRoot, 'record/replay.ts')), true);
+});

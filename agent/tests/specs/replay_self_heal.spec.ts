@@ -17,7 +17,7 @@ test.describe('replay self heal', () => {
         const tree = await getLatestSnapshotRoot(runner);
         const nodeId = findA11yNodeId(tree, 'link', 'Orders');
         expect(nodeId).not.toBeNull();
-        const replay = await import('../../src/play/replay');
+        const replay = await import('../../src/record/replay');
         const res = await replay.replayRecording({
             workspaceName: runner.workspaceName,
             steps: [createStep('browser.click', { nodeId: nodeId || undefined })],
@@ -38,7 +38,7 @@ test.describe('replay self heal', () => {
         const tree = await getLatestSnapshotRoot(runner);
         const nodeId = findA11yNodeId(tree, 'link', 'Orders');
         expect(nodeId).not.toBeNull();
-        const replay = await import('../../src/play/replay');
+        const replay = await import('../../src/record/replay');
         const res = await replay.replayRecording({
             workspaceName: runner.workspaceName,
             steps: [createStep('browser.click', { nodeId: nodeId || undefined })],

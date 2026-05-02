@@ -1,6 +1,6 @@
 import { test, expect } from '../helpers/fixtures';
 import { createStep, setupStepRunner } from '../helpers/steps';
-import { replayRecording } from '../../src/play/replay';
+import { replayRecording } from '../../src/record/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import type { RecordingEnhancementMap } from '../../src/record/types';
 import type { SnapshotResult } from '../../src/runner/steps/executors/snapshot/core/types';

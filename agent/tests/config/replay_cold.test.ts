@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { replayRecording } from '../../src/play/replay';
+import { replayRecording } from '../../src/record/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
