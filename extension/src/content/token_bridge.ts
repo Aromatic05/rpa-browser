@@ -11,18 +11,18 @@ import { send } from '../shared/send.js';
 
 declare global {
     interface Window {
-        __TAB_TOKEN__?: string;
+        __rpa_tab_name?: string;
     }
 }
 
-const TAB_TOKEN_KEY = '__rpa_tab_token';
-const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
+const TAB_NAME_KEY = '__rpa_tab_name';
+const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
 
 const readTokenFromWindowName = (): string | null => {
     try {
         const raw = window.name;
-        if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) {return null;}
-        const token = raw.slice(TAB_TOKEN_WIN_NAME_PREFIX.length).trim();
+        if (!raw.startsWith(TAB_NAME_WIN_NAME_PREFIX)) {return null;}
+        const token = raw.slice(TAB_NAME_WIN_NAME_PREFIX.length).trim();
         return token || null;
     } catch {
         return null;
@@ -31,18 +31,18 @@ const readTokenFromWindowName = (): string | null => {
 
 const writeTokenToWindowName = (tabName: string) => {
     try {
-        window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabName}`;
+        window.name = `${TAB_NAME_WIN_NAME_PREFIX}${tabName}`;
     } catch {
         // ignore window.name write failures
     }
 };
 
 export const ensureTabName = (): string => {
-    const tabName = sessionStorage.getItem(TAB_TOKEN_KEY) ?? readTokenFromWindowName() ?? '';
+    const tabName = sessionStorage.getItem(TAB_NAME_KEY) ?? readTokenFromWindowName() ?? '';
     if (!tabName) {return '';}
-    sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
+    sessionStorage.setItem(TAB_NAME_KEY, tabName);
     writeTokenToWindowName(tabName);
-    window.__TAB_TOKEN__ = tabName;
+    window.__rpa_tab_name = tabName;
     return tabName;
 };
 
@@ -70,9 +70,9 @@ export const ensureTabNameAsync = async (): Promise<string> => {
         });
         if (runtimeReply.ok && runtimeReply.tabName) {
             tabName = runtimeReply.tabName;
-            sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
+            sessionStorage.setItem(TAB_NAME_KEY, tabName);
             writeTokenToWindowName(tabName);
-            window.__TAB_TOKEN__ = tabName;
+            window.__rpa_tab_name = tabName;
             break;
         }
         if (i < 2) {

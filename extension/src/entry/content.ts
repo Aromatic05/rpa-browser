@@ -151,15 +151,15 @@ const loadFloatingUI = (() => {
                     return;
                 }
                 if (message.type === MSG.SET_TOKEN) {
-                    const token = typeof message.tabName === 'string' ? message.tabName : '';
-                    if (!token) {
+                    const tabName = typeof message.tabName === 'string' ? message.tabName : '';
+                    if (!tabName) {
                         sendResponse({ ok: false, error: 'missing tabName' });
                         return;
                     }
-                    sessionStorage.setItem('__rpa_tab_token', token);
-                    window.name = `__RPA_TAB_TOKEN__:${token}`;
-                    (window as any).__TAB_TOKEN__ = token;
-                    sendResponse({ ok: true, tabName: token, url: location.href });
+                    sessionStorage.setItem('__rpa_tab_name', tabName);
+                    window.name = `__RPA_TAB_NAME__:${tabName}`;
+                    (window as any).__rpa_tab_name = tabName;
+                    sendResponse({ ok: true, tabName, url: location.href });
                 }
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: String(error) });
