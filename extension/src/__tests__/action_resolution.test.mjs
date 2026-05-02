@@ -62,9 +62,113 @@ await log('payload.workspaceName is rejected', async () => {
     assert.equal(reply.payload.code, 'ERR_BAD_ARGS');
 });
 
+await log('missing v fails envelope', async () => {
+    const reply = await dispatchActionRequest(
+        { id: 'req-v0', type: 'workspace.list', payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('v not equal to 1 fails envelope', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 2, id: 'req-v2', type: 'workspace.list', payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('top-level scope is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-scope', type: 'workspace.list', scope: { workspaceName: 'ws-1' }, payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('top-level workspaceId is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-wsid', type: 'workspace.list', workspaceId: 'legacy-1', payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('top-level tabToken is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-tabtoken', type: 'workspace.list', tabToken: 'tok-1', payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
 await log('top-level tabName is rejected', async () => {
     const reply = await dispatchActionRequest(
         { v: 1, id: 'req-6', type: 'workspace.list', tabName: 'tab-1', payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('top-level tabId is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-tabid', type: 'workspace.list', tabId: 11, payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('top-level windowId is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-windowid', type: 'workspace.list', windowId: 7, payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('top-level chromeTabNo is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-ctn', type: 'workspace.list', chromeTabNo: 11, payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('payload.scope is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-pscope', type: 'workspace.list', payload: { scope: { workspaceName: 'ws-1' } } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('payload.workspaceId is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-pwsid', type: 'workspace.list', payload: { workspaceId: 'legacy-1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('payload.tabToken is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-ptabtoken', type: 'workspace.list', payload: { tabToken: 'tok-1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('payload.tabName is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-ptabname', type: 'workspace.list', payload: { tabName: 'tab-1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'action.dispatch.failed');
+});
+
+await log('payload.tabId is rejected', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-ptabid', type: 'workspace.list', payload: { tabId: 11 } },
         mkWsClient(),
     );
     assert.equal(reply.type, 'action.dispatch.failed');
