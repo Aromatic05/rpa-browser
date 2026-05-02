@@ -158,12 +158,20 @@ await log('payload.tabToken is rejected', async () => {
     assert.equal(reply.type, 'action.dispatch.failed');
 });
 
-await log('payload.tabName is rejected', async () => {
+await log('payload.tabName is allowed', async () => {
     const reply = await dispatchActionRequest(
         { v: 1, id: 'req-ptabname', type: 'workspace.list', payload: { tabName: 'tab-1' } },
         mkWsClient(),
     );
-    assert.equal(reply.type, 'action.dispatch.failed');
+    assert.equal(reply.type, 'workspace.list.result');
+});
+
+await log('tab.setActive with top-level workspaceName and payload.tabName passes', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-tabsetactive', type: 'tab.setActive', workspaceName: 'ws-1', payload: { tabName: 'tab-1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'tab.setActive.result');
 });
 
 await log('payload.tabId is rejected', async () => {

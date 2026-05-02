@@ -41,7 +41,6 @@ export const validateActionEnvelope = (incoming: unknown): EnvelopeOk | Envelope
             || has(payload, 'scope')
             || has(payload, 'workspaceId')
             || has(payload, 'tabToken')
-            || has(payload, 'tabName')
             || has(payload, 'tabId')
         )
     ) {
