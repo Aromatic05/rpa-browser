@@ -40,9 +40,6 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             const workspace = workspaceRegistry.createWorkspace(workspaceName, workflow);
             return { reply: replyAction(action, { workspaceName: workspace.name, tabName: null }), events: [] };
         }
-        case 'workspace.setActive': {
-            throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'workspace.setActive requires workspaceName and must go through workspace gateway');
-        }
         case 'tab.init': {
             return { reply: replyAction(action, { workspaceName: null, tabName: randomName() }), events: [] };
         }
