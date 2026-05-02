@@ -32,6 +32,7 @@ import { ingestRecorderEvent } from './record/ingest';
 import { setWorkspaceControlServices } from './runtime/workspace_control';
 import { setWorkflowControlServices } from './workflow/control';
 import { setRecordControlServices } from './record/control';
+import { setDslControlServices } from './dsl/control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -216,6 +217,7 @@ setRecordControlServices({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
     emit: broadcast,
 });
+setDslControlServices({ runStepsDeps });
 setControlActionDispatcher(actionDispatcher);
 const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, log);

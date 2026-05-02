@@ -4,7 +4,6 @@ export const REQUEST_ACTION_TYPES = {
     WORKFLOW_OPEN: 'workflow.open',
     WORKFLOW_RENAME: 'workflow.rename',
     WORKFLOW_STATUS: 'workflow.status',
-    WORKFLOW_RELEASE_RUN: 'workflow.releaseRun',
     DSL_GET: 'dsl.get',
     DSL_SAVE: 'dsl.save',
     DSL_TEST: 'dsl.test',

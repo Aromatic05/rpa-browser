@@ -18,6 +18,7 @@ import { ensureWorkflowOnFs } from './workflow';
 import { setWorkspaceControlServices } from './runtime/workspace_control';
 import { setWorkflowControlServices } from './workflow/control';
 import { setRecordControlServices } from './record/control';
+import { setDslControlServices } from './dsl/control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -118,6 +119,7 @@ setRecordControlServices({
     replayOptions: REPLAY_OPTIONS,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
 });
+setDslControlServices({ runStepsDeps });
 setControlActionDispatcher(
     createActionDispatcher({
         workspaceRegistry,
