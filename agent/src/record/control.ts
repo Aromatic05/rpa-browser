@@ -19,7 +19,7 @@ import {
 } from './recording';
 import { setRecorderRuntimeEnabled, type RecorderEvent } from './recorder';
 import { ingestRecordPayload } from './ingest';
-import { replayRecording, type ReplayEvent, type ReplayOptions } from '../play/replay';
+import { replayRecording, type ReplayEvent, type ReplayOptions } from './replay';
 import type { StepUnion } from '../runner/steps/types';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
 

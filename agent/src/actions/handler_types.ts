@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 import type { Action } from './action_protocol';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
-import type { ReplayOptions } from '../play/replay';
+import type { ReplayOptions } from '../record/replay';
 import type { RunStepsDeps } from '../runner/run_steps';
 import type { RuntimeWorkspace, WorkspaceRegistry } from '../runtime/workspace_registry';
 import type { RuntimeTab } from '../runtime/tab_registry';

@@ -3,7 +3,7 @@
  *
  * 依赖关系：
  * - 上游：agent/index.ts 通过 start/stop/ensureRecorder 驱动
- * - 下游：recorder.ts 提供事件流；play/replay 使用 recordings
+ * - 下游：recorder.ts 提供事件流；record/replay 使用 recordings
  *
  * 关键约束：
  * - 录制/回放不可同时进行（回放时忽略录制事件）
