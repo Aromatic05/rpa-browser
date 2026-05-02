@@ -48,7 +48,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const installBindingNameToPage = async (page: Page, bindingName: string) => {
         const script = `
             try { sessionStorage.setItem(${JSON.stringify(options.tabNameKey)}, ${JSON.stringify(bindingName)}); } catch {}
-            try { window.__rpa_tab_name = ${JSON.stringify(bindingName)}; window.__TAB_NAME__ = ${JSON.stringify(bindingName)}; } catch {}
+            try { window.__rpa_tab_name = ${JSON.stringify(bindingName)}; } catch {}
         `;
         await page.addInitScript({ content: script });
         try {
@@ -57,7 +57,6 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                     sessionStorage.setItem(args.key, args.name);
                     try {
                         (window as any).__rpa_tab_name = args.name;
-                        (window as any).__TAB_NAME__ = args.name;
                     } catch {}
                 },
                 { name: bindingName, key: options.tabNameKey },

@@ -135,29 +135,36 @@ const findWorkspaceNameByTabName = (tabName: string): string | null => {
     return null;
 };
 
+const resolveWorkspaceForBinding = (bindingName: string) => {
+    const workspaceName = findWorkspaceNameByTabName(bindingName)
+        || workspaceRegistry.getActiveWorkspace()?.name
+        || 'default';
+    return {
+        workspaceName,
+        workspace: workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName)),
+    };
+};
+
 const pageRegistry = createPageRegistry({
     tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
-    onPageBound: (page, tabName) => {
-        if (recordingState.recordingEnabled.has(tabName)) {
-            void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
+    onPageBound: (page, bindingName) => {
+        if (recordingState.recordingEnabled.has(bindingName)) {
+            void ensureRecorder(recordingState, page, bindingName, NAV_DEDUPE_WINDOW_MS);
         }
-        const workspaceName = findWorkspaceNameByTabName(tabName)
-            || workspaceRegistry.getActiveWorkspace()?.name
-            || 'default';
-        const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
-        if (!workspace.tabRegistry.hasTab(tabName)) {
-            workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
+        const { workspaceName, workspace } = resolveWorkspaceForBinding(bindingName);
+        if (!workspace.tabRegistry.hasTab(bindingName)) {
+            workspace.tabRegistry.createTab({ tabName: bindingName, page, url: page.url() });
         } else {
-            workspace.tabRegistry.bindPage(tabName, page);
+            workspace.tabRegistry.bindPage(bindingName, page);
         }
-        workspace.tabRegistry.setActiveTab(tabName);
-        runtimeRegistry.bindPage({ workspaceName, tabName, page });
+        workspace.tabRegistry.setActiveTab(bindingName);
+        runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page });
         broadcast({
             v: 1,
             id: crypto.randomUUID(),
             type: ACTION_TYPES.TAB_BOUND,
-            payload: { workspaceName, tabName, url: page.url() },
+            payload: { workspaceName, tabName: bindingName, url: page.url() },
             workspaceName,
             at: Date.now(),
         });
