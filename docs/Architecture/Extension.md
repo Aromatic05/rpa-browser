@@ -12,6 +12,7 @@ extension 是浏览器侧入口，负责 chrome message wiring、lifecycle wirin
 - request routing 与 reply/event projection 分离。
 - control action 不携带 `workspaceName`。
 - workspace action 必须显式携带 `workspaceName`。
+- `cmd_router` 不重写 Action envelope。
 
 ## 目录与职责
 
@@ -30,6 +31,11 @@ extension 是浏览器侧入口，负责 chrome message wiring、lifecycle wirin
 
 ## 当前协议约束
 
+- `Action.v` 必须为 `1`。
+- 旧地址字段在顶层禁止出现：`scope`、`workspaceId`、`tabToken`、`tabName`、`tabId`、`windowId`、`chromeTabNo`。
+- 旧地址字段在 payload 中禁止出现：`workspaceName`、`scope`、`workspaceId`、`tabToken`、`tabName`、`tabId`。
+- `workspaceName` 只允许在 Action 顶层出现。
+- `tabName` 只在 workspace action payload 中由具体 action schema 管理。
 - 已删除 `workflow.init`。
 - 已删除 `workflow.record.save`。
 - request action 只按显式 envelope 路由，不做 sender tab、active tab、window mapping、active workspace 回填。
