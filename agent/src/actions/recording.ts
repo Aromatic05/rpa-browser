@@ -85,7 +85,9 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.save');
         }
         const payload = (action.payload || {}) as { recordingName?: string; includeStepResolve?: boolean };
-        const workflow = ensureWorkflowOnFs(workspaceName);
+        const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName)
+            || ctx.workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
+        const workflow = workspace.workflow;
         const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, workspaceName ? { workspaceName } : undefined);
         const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
         const artifact: WorkflowRecording = {

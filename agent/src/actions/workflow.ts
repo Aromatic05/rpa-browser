@@ -171,54 +171,6 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { workspaceName, exists: true, active });
     },
 
-    'workflow.record.save': async (ctx, action) => {
-        const workspaceName = requireWorkspaceName(action);
-        const payload = (action.payload || {}) as { recordingName?: string };
-        const workflow = requireWorkspaceWorkflow(ctx, workspaceName);
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, { workspaceName });
-        const recordingName = payload.recordingName || toDefaultRecordingName();
-        const artifact: WorkflowRecording = {
-            kind: 'recording',
-            name: recordingName,
-            recording: {
-                version: 1,
-                recordingName,
-                workspaceName,
-                entryUrl: bundle.manifest?.entryUrl,
-                tabs: (bundle.manifest?.tabs || []).map((item) => ({
-                    tabName: item.tabName || item.tabRef,
-                    url: item.lastSeenUrl || item.firstSeenUrl,
-                })),
-                createdAt: Date.now(),
-                stepCount: bundle.steps.length,
-            },
-            steps: bundle.steps,
-            stepResolves: {},
-        };
-        workflow.save(artifact);
-        return replyAction(action, { workspaceName, recordingName, stepCount: bundle.steps.length });
-    },
-
-    'workflow.record.load': async (ctx, action) => {
-        const workspaceName = requireWorkspaceName(action);
-        const payload = (action.payload || {}) as { recordingName?: string };
-        const workflow = requireWorkspaceWorkflow(ctx, workspaceName);
-        const recordingName = (payload.recordingName || '').trim();
-        if (!recordingName) {
-            throw new DslRuntimeError('recordingName is required', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
-        }
-        const loaded = workflow.get(recordingName, RECORDING_DUMMY);
-        if (!loaded || loaded.kind !== 'recording') {
-            throw new DslRuntimeError(`recording not found: ${recordingName}`, ERROR_CODES.ERR_BAD_ARGS);
-        }
-        return replyAction(action, {
-            workspaceName,
-            recordingName,
-            stepCount: loaded.steps.length,
-            loaded: true,
-        });
-    },
-
     'workflow.dsl.get': async (ctx, action) => {
         const workspaceName = requireWorkspaceName(action);
         const payload = (action.payload || {}) as { dslName?: string };
