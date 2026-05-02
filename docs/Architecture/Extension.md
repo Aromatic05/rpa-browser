@@ -8,6 +8,11 @@ extension 是浏览器侧入口，负责 chrome message wiring、lifecycle wirin
 
 - `extension/src/actions` 是 extension action gateway 边界。
 - `extension/src/background` 只负责 wiring，不负责 request 路由推导。
+- `actions` 目录不进入 `web_accessible_resources`。
+- `shared` 模块可被 content 动态加载。
+- `shared` 模块不得依赖 `actions` 模块。
+- `content` 模块不得依赖 `actions` 模块。
+- content 动态 import 链路不得触达 `actions/*.js`。
 - 普通 request action 不推导 `workspaceName`。
 - request routing 与 reply/event projection 分离。
 - control action 不携带 `workspaceName`。
@@ -28,6 +33,7 @@ extension 是浏览器侧入口，负责 chrome message wiring、lifecycle wirin
 - `actions/index.ts`：request 分发入口 `dispatchActionRequest`。
 - `actions/projection.ts`：reply/event 对 RouterState 的投影。
 - `actions/ws_client.ts`：WebSocket Action 传输。
+- `shared/send.ts`：shared transport helper，不属于 action gateway。
 
 ## 当前协议约束
 
