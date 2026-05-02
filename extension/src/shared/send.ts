@@ -7,7 +7,7 @@
  */
 
 import { MSG, type TransportError, type TransportResult } from './protocol.js';
-import { deriveFailedActionType } from './action_types.js';
+import { deriveFailedActionType } from '../actions/action_types.js';
 import type { Action } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 20000;

@@ -1,13 +1,13 @@
 export const REQUEST_ACTION_TYPES = {
     WORKFLOW_LIST: 'workflow.list',
+    WORKFLOW_CREATE: 'workflow.create',
     WORKFLOW_OPEN: 'workflow.open',
+    WORKFLOW_RENAME: 'workflow.rename',
     WORKFLOW_STATUS: 'workflow.status',
-    WORKFLOW_RECORD_SAVE: 'workflow.record.save',
     WORKFLOW_DSL_GET: 'workflow.dsl.get',
     WORKFLOW_DSL_SAVE: 'workflow.dsl.save',
     WORKFLOW_DSL_TEST: 'workflow.dsl.test',
     WORKFLOW_RELEASE_RUN: 'workflow.releaseRun',
-    WORKFLOW_INIT: 'workflow.init',
 
     WORKSPACE_LIST: 'workspace.list',
     WORKSPACE_CREATE: 'workspace.create',
@@ -65,7 +65,6 @@ const FIXED_EVENT_ACTION_TYPES = {
 
 export const ACTION_TYPES = { ...REQUEST_ACTION_TYPES, ...FIXED_EVENT_ACTION_TYPES } as const;
 
-export type ActionType = (typeof ACTION_TYPES)[keyof typeof ACTION_TYPES];
 export type RequestActionType = (typeof REQUEST_ACTION_TYPES)[keyof typeof REQUEST_ACTION_TYPES];
 export type ActionMessageKind = 'command' | 'reply' | 'event' | 'invalid';
 
@@ -75,7 +74,6 @@ const domainPrefixes = new Set<string>([
     ...Object.values(REQUEST_ACTION_TYPES).map((type) => type.split('.')[0]),
     'action',
 ]);
-
 const SEGMENT_RE = /^[a-z][a-zA-Z0-9]*$/;
 const resultOrFailureTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\.(result|failed)$/;
 const eventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.(started|progress|completed|canceled|event)$/;
@@ -85,7 +83,6 @@ const hasAllowedPrefix = (domain: string) => {
     const first = domain.split('.')[0] || '';
     return domainPrefixes.has(first);
 };
-
 const isNamedDomain = (domain: string) => domain.split('.').every((part) => SEGMENT_RE.test(part));
 
 export const isRequestActionType = (value: string): value is RequestActionType => requestTypes.has(value);

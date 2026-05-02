@@ -3,7 +3,7 @@
  */
 
 import type { Action } from '../shared/types.js';
-import { classifyActionType, isDispatchActionType } from '../shared/action_types.js';
+import { classifyActionType, isDispatchActionType } from './action_types.js';
 import { createLogger, type Logger } from '../shared/logger.js';
 
 export type WsClient = {

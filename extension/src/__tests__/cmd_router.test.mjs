@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createCmdRouter } from '../../dist/background/cmd_router.js';
-import { ACTION_TYPES } from '../../dist/shared/action_types.js';
+import { ACTION_TYPES } from '../../dist/actions/action_types.js';
 import { MSG } from '../../dist/shared/protocol.js';
 
 const log = async (name, fn) => {

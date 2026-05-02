@@ -223,7 +223,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const response = await opts.onAction(type, payload, scope);
         render(response);
         interceptAction(response);
-        if (!response.type.endsWith('.failed') && (type === 'workflow.init' || type === 'record.save' || type === 'record.load')) {
+        if (!response.type.endsWith('.failed') && (type === 'workflow.create' || type === 'record.save' || type === 'record.load')) {
             workflowInitialized = true;
             updateInitVisibility();
         }
@@ -240,7 +240,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             return;
         }
         void (async () => {
-            const inited = await sendPanelAction('workflow.init', { scene });
+            const inited = await sendPanelAction('workflow.create', { scene });
             if (inited.type.endsWith('.failed')) {return;}
             const opened = await sendPanelAction('workflow.open', { scene });
             if (opened.type.endsWith('.failed')) {return;}

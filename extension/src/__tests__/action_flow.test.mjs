@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createActionBus } from '../../dist/background/action_bus.js';
 import { createWsClient } from '../../dist/actions/ws_client.js';
 import { send } from '../../dist/shared/send.js';
-import { classifyActionType } from '../../dist/shared/action_types.js';
+import { classifyActionType } from '../../dist/actions/action_types.js';
 
 const log = async (name, fn) => {
     try {

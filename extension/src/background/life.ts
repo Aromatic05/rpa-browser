@@ -1,9 +1,18 @@
 import type { Action } from '../shared/types.js';
-import { ACTION_TYPES } from '../shared/action_types.js';
+import { ACTION_TYPES } from '../actions/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
-import { isFailedReply, payloadOf } from './action.js';
 import type { RouterState, TabRuntimeState } from './state.js';
+
+const isFailedReply = (action: Action | null | undefined): boolean => {
+    if (!action) {return false;}
+    return action.type.endsWith('.failed');
+};
+
+const payloadOf = (action: Action | null | undefined): Record<string, unknown> => {
+    if (!action) {return {};}
+    return (action.payload ?? {}) as Record<string, unknown>;
+};
 
 const LIFECYCLE_THROTTLE_MS = 180;
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
