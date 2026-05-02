@@ -32,10 +32,10 @@ Control actions must not use `payload.workspaceName` or active-workspace fallbac
 ## Workspace Actions
 
 - `workflow.status`
-- `workflow.dsl.get`
-- `workflow.dsl.save`
-- `workflow.dsl.test`
-- `workflow.releaseRun`
+- `dsl.get`
+- `dsl.save`
+- `dsl.test`
+- `dsl.run`
 
 Workspace actions must use `action.workspaceName` only.
 
