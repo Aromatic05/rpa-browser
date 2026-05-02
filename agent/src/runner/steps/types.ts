@@ -388,7 +388,6 @@ export type StepMeta = {
     ts?: number;
     workspaceName?: string;
     tabName?: string;
-    tabName?: string;
     tabRef?: string;
     urlAtRecord?: string;
 };

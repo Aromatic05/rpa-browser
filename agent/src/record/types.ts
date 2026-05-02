@@ -40,7 +40,6 @@ export type RecordedStepEnhancement = {
         pageIdentity?: {
             workspaceName: string;
             tabName: string;
-            tabName: string;
             url: string;
         };
         capturedAt: number;
