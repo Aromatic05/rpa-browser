@@ -7,11 +7,11 @@ extension 是浏览器侧主入口，负责 token 生命周期、窗口到 works
 ## 目录与职责
 
 - `entry/sw.ts`：Service Worker 启动入口。
-- `background/cmd_router.ts`：运行时消息路由与 Action 分发。
+- `background/cmd_router.ts`：chrome runtime message wiring 与 Action 发送装配。
 - `background/state.ts`：tab/token/workspace/window 映射状态。
 - `background/action.ts`：Action 组装、回复解析、失败统一。
 - `background/life.ts`：tab 生命周期、绑定重试、激活同步。
-- `background/ws_client.ts`：与 agent WS 通道。
+- `background/ws_client.ts`：Action WebSocket 传输适配层（连接、收包、发包、JSON parse、reply、broadcast）。
 - `content/token_bridge.ts`：content token 获取与 hello。
 - `entry/content.ts`：内容脚本 UI 与事件上报。
 - `shared/action_types.ts`：Action type 常量。
@@ -22,7 +22,7 @@ extension 是浏览器侧主入口，负责 token 生命周期、窗口到 works
 - `cmd_router`：统一入口，处理 runtime message、WS inbound action、tab/window 事件。
 - `state`：维护 `tabName -> token`、`token -> scope`、`windowId -> workspaceName`。
 - `action`：封装 dispatch 行为、reply 识别、payload 解析。
-- `life`：负责 `tab.init/tab.opened/tab.activated/tab.closed/tab.ping` 相关生命周期推进。
+- `life`：负责 `tab.init/tab.opened/tab.activated/tab.closed/tab.ping` 生命周期 wiring。
 
 ## WS 入站/出站流程
 

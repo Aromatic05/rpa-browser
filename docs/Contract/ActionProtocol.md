@@ -3,7 +3,7 @@
 ## 概述
 
 Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包，不是 RPC 返回壳。
-实现入口在 `agent/src/index.ts`、`agent/src/actions/dispatcher.ts`。
+实现入口在 `agent/src/actions/ws_client.ts`、`agent/src/index.ts`（装配）与 `agent/src/actions/dispatcher.ts`。
 
 ## Action Envelope
 
