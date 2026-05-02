@@ -229,6 +229,16 @@ export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
         throw new DslRuntimeError(`workflow already exists: ${toName}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     fs.renameSync(fromDir, toDir);
+    const renamedManifestPath = workflowManifestPath(toName);
+    const manifest = readYamlFile<WorkflowManifest>(renamedManifestPath);
+    if (!manifest || typeof manifest !== 'object' || manifest.version !== 1) {
+        throw new DslRuntimeError(`invalid workflow manifest after rename: ${toName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+    }
+    writeYamlFile(renamedManifestPath, {
+        ...manifest,
+        name: toName,
+        updatedAt: Date.now(),
+    } satisfies WorkflowManifest);
 };
 
 export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir());
