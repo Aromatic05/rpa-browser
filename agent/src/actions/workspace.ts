@@ -8,28 +8,22 @@ import { getRecordingBundle, getWorkspaceSnapshot, saveWorkspaceSnapshot } from 
 import { ensureWorkflowOnFs } from '../workflow';
 
 type WorkspaceCreatePayload = { workspaceName?: string };
-type WorkspaceSetActivePayload = { workspaceName: string };
-type WorkspaceSavePayload = { workspaceName?: string };
-type WorkspaceRestorePayload = { workspaceName: string };
-type TabListPayload = { workspaceName?: string };
-type TabCreatePayload = { workspaceName?: string; startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
-type TabClosePayload = { workspaceName?: string; tabName: string };
-type TabSetActivePayload = { workspaceName?: string; tabName: string };
-type TabOpenedPayload = { tabName?: string; workspaceName?: string; source?: string; url?: string; title?: string; at?: number };
-type TabReportPayload = { tabName?: string; workspaceName?: string; source?: string; url?: string; title?: string; at?: number };
-type TabClosedPayload = { tabName?: string; workspaceName?: string; source?: string; at?: number };
-type TabPingPayload = { tabName?: string; workspaceName?: string; source?: string; url?: string; title?: string; at?: number };
+type TabCreatePayload = { startUrl?: string; waitUntil?: 'domcontentloaded' | 'load' | 'networkidle' };
+type TabClosePayload = { tabName: string };
+type TabSetActivePayload = { tabName: string };
+type TabOpenedPayload = { tabName?: string; source?: string; url?: string; title?: string; at?: number };
+type TabReportPayload = { tabName?: string; source?: string; url?: string; title?: string; at?: number };
+type TabClosedPayload = { tabName?: string; source?: string; at?: number };
+type TabPingPayload = { tabName?: string; source?: string; url?: string; title?: string; at?: number };
 type TabReassignPayload = { workspaceName: string; tabName?: string; source?: string; windowId?: number; at?: number };
 
-const resolveWorkspaceName = (action: Action, payloadWorkspaceName?: string): string | null =>
-    payloadWorkspaceName || action.workspaceName || null;
+const resolveWorkspaceName = (action: Action): string | null => action.workspaceName || null;
 
 const randomName = () => crypto.randomUUID();
 
 export const workspaceHandlers: Record<string, ActionHandler> = {
     [ACTION_TYPES.TAB_INIT]: async (_ctx, action) => {
-        const payload = (action.payload ?? {}) as { workspaceName?: string };
-        return replyAction(action, { workspaceName: payload.workspaceName || action.workspaceName || null, tabName: randomName() });
+        return replyAction(action, { workspaceName: action.workspaceName || null, tabName: randomName() });
     },
     'workspace.list': async (ctx, action) => {
         const active = ctx.workspaceRegistry.getActiveWorkspace();
@@ -51,13 +45,13 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { workspaceName: workspace.name, tabName: null });
     },
     'workspace.setActive': async (ctx, action) => {
-        const payload = (action.payload ?? {}) as WorkspaceSetActivePayload;
-        ctx.workspaceRegistry.setActiveWorkspace(payload.workspaceName);
-        return replyAction(action, { workspaceName: payload.workspaceName });
+        const workspaceName = resolveWorkspaceName(action);
+        if (!workspaceName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
+        ctx.workspaceRegistry.setActiveWorkspace(workspaceName);
+        return replyAction(action, { workspaceName: workspaceName });
     },
     'workspace.save': async (ctx, action) => {
-        const payload = (action.payload ?? {}) as WorkspaceSavePayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
@@ -74,8 +68,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { saved: true, workspaceName, savedAt: snapshot.savedAt, tabCount: snapshot.tabs.length, stepCount: snapshot.recording.steps.length });
     },
     'workspace.restore': async (ctx, action) => {
-        const payload = (action.payload ?? {}) as WorkspaceRestorePayload;
-        const sourceWorkspaceName = payload.workspaceName || action.workspaceName;
+        const sourceWorkspaceName = action.workspaceName;
         if (!sourceWorkspaceName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required');}
         const snapshot = getWorkspaceSnapshot(ctx.recordingState, sourceWorkspaceName);
         if (!snapshot || snapshot.tabs.length === 0) {
@@ -93,8 +86,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { restored: true, sourceWorkspaceName, workspaceName: targetWorkspaceName, tabName: workspace.tabRegistry.getActiveTab()?.name ?? null });
     },
     'tab.list': async (ctx, action) => {
-        const payload = (action.payload ?? {}) as TabListPayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
@@ -106,7 +98,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.create': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabCreatePayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
@@ -118,7 +110,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.close': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabClosePayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
@@ -130,7 +122,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.setActive': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabSetActivePayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspace not found');}
@@ -139,7 +131,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.opened': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabOpenedPayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName || !payload.tabName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName/tabName is required');}
         const workspace = ctx.workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         if (!workspace.tabRegistry.hasTab(payload.tabName)) {
@@ -151,7 +143,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.report': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabReportPayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName || !payload.tabName) {
             return replyAction(action, { source: payload.source || 'unknown', reportedUrl: payload.url, reportedTitle: payload.title, reportedAt: payload.at, stale: true });
         }
@@ -164,7 +156,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.closed': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabClosedPayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName || !payload.tabName) {return replyAction(action, { source: payload.source || 'unknown', reportedAt: payload.at });}
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
         workspace?.tabRegistry.closeTab(payload.tabName);
@@ -172,7 +164,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     },
     'tab.ping': async (ctx, action) => {
         const payload = (action.payload ?? {}) as TabPingPayload;
-        const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
+        const workspaceName = resolveWorkspaceName(action);
         if (!workspaceName || !payload.tabName) {
             return replyAction(action, { source: payload.source || 'unknown', reportedAt: payload.at, stale: true });
         }
