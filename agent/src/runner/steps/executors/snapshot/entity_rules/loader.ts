@@ -11,9 +11,7 @@ const MATCH_FILE = 'match.yaml';
 const ANNOTATION_FILE = 'annotation.yaml';
 const WORKFLOWS_DIR = 'workflows';
 const ENTITY_RULES_DIR = 'entity_rules';
-const LEGACY_PROFILES_DIR = path.join(ENTITY_RULES_DIR, 'profiles');
-
-type BundleSource = 'workflow' | 'legacy';
+type BundleSource = 'workflow';
 
 type LoadedBundleCandidate = {
     bundle: NormalizedEntityRuleBundle;
@@ -40,13 +38,12 @@ export const loadEntityRules = (options: LoadEntityRulesOptions = {}): LoadEntit
     }
 
     const workflowRootDir = path.join(config.rootDir, WORKFLOWS_DIR);
-    const legacyProfilesRootDir = path.join(config.rootDir, LEGACY_PROFILES_DIR);
-    if (!fs.existsSync(workflowRootDir) && !fs.existsSync(legacyProfilesRootDir)) {
-        const issue = `entity rules roots not found: ${workflowRootDir}, ${legacyProfilesRootDir}`;
+    if (!fs.existsSync(workflowRootDir)) {
+        const issue = `entity rules root not found: ${workflowRootDir}`;
         const result = resultWithIssue(config.strict, issue);
         log.info('entity.rules.load.end', {
             selectedProfile: null,
-            reason: 'rules_root_missing',
+            reason: 'rules_root_missing_workflow',
             errors: result.errors,
             warnings: result.warnings,
         });
@@ -190,16 +187,13 @@ const collectBundleEntries = (
     rootDir: string,
 ): Array<{ bundleId: string; bundleDir: string; aliases: string[]; source: BundleSource }> => {
     const workflowRootDir = path.join(rootDir, WORKFLOWS_DIR);
-    const legacyProfilesRootDir = path.join(rootDir, LEGACY_PROFILES_DIR);
     const workflowEntries: Array<{ bundleId: string; bundleDir: string; aliases: string[]; source: BundleSource }> = [];
-    const workflowRuleNames = new Set<string>();
 
     for (const sceneEntry of safeReadDir(workflowRootDir).filter((entry) => entry.isDirectory())) {
         const scene = sceneEntry.name;
         const rulesDir = path.join(workflowRootDir, scene, ENTITY_RULES_DIR);
         for (const ruleEntry of safeReadDir(rulesDir).filter((entry) => entry.isDirectory())) {
             const ruleName = ruleEntry.name;
-            workflowRuleNames.add(ruleName);
             workflowEntries.push({
                 bundleId: `${scene}/${ruleName}`,
                 bundleDir: path.join(rulesDir, ruleName),
@@ -208,19 +202,7 @@ const collectBundleEntries = (
             });
         }
     }
-
-    const legacyEntries = safeReadDir(legacyProfilesRootDir)
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-        .filter((profileName) => !workflowRuleNames.has(profileName))
-        .map((profileName) => ({
-            bundleId: profileName,
-            bundleDir: path.join(legacyProfilesRootDir, profileName),
-            aliases: [profileName],
-            source: 'legacy' as const,
-        }));
-
-    return [...workflowEntries, ...legacyEntries].sort((left, right) => left.bundleId.localeCompare(right.bundleId));
+    return workflowEntries.sort((left, right) => left.bundleId.localeCompare(right.bundleId));
 };
 
 const parseYamlFile = (filePath: string): { ok: true; data: unknown } | { ok: false; error: string } => {
