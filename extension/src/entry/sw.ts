@@ -8,7 +8,7 @@
 import { createLogger } from '../shared/logger.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
-import { createWsClient } from '../background/ws_client.js';
+import { createWsClient } from '../actions/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 import { createActionBus } from '../background/action_bus.js';
 

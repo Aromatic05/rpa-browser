@@ -2,7 +2,7 @@ import { createLogger, type Logger } from '../shared/logger.js';
 import type { Action } from '../shared/types.js';
 import { ACTION_TYPES } from '../shared/action_types.js';
 import { MSG } from '../shared/protocol.js';
-import type { WsClient } from './ws_client.js';
+import type { WsClient } from '../actions/ws_client.js';
 import { createRouterState } from './state.js';
 import { dispatchIncomingAction, isFailedReply, payloadOf, withActionBase } from './action.js';
 import { createLifecycleRuntime } from './life.js';
