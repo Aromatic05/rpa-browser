@@ -15,7 +15,6 @@ import {
 } from './record/recording';
 import { setRecorderRuntimeEnabled } from './record/recorder';
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
-import { executeAction, type ActionContext } from './actions/execute';
 import { failedAction, isFailedAction, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/error_codes';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
@@ -29,6 +28,8 @@ import { createActionDispatcher } from './actions/dispatcher';
 import { startActionWsClient } from './actions/ws_client';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
+import { ingestRecorderEvent } from './record/ingest';
+import { setWorkspaceControlServices } from './runtime/workspace_control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -201,47 +202,14 @@ const runStepsDeps = {
 };
 setRunStepsDeps(runStepsDeps);
 const actionDispatcher = createActionDispatcher({
-    pageRegistry,
     workspaceRegistry,
-    recordingState,
     log: actionLogger,
-    replayOptions: REPLAY_OPTIONS,
-    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
     emit: broadcast,
-    runStepsDeps,
 });
+setWorkspaceControlServices({ pageRegistry });
 setControlActionDispatcher(actionDispatcher);
 const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, log);
-
-const createActionContext = (workspaceName: string, tabName?: string): ActionContext => {
-    const workspace = workspaceRegistry.getWorkspace(workspaceName);
-    const resolveTab = (name?: string) => {
-        if (!workspace) {throw new Error('workspace not found');}
-        return workspace.tabRegistry.resolveTab(name ?? tabName);
-    };
-    const resolvePage = (name?: string) => {
-        const tab = resolveTab(name);
-        if (!tab.page) {throw new Error('page not bound');}
-        return tab.page;
-    };
-    const ctx: ActionContext = {
-        workspaceRegistry,
-        workspace,
-        resolveTab,
-        resolvePage,
-        pageRegistry,
-        log: actionLogger,
-        recordingState,
-        replayOptions: REPLAY_OPTIONS,
-        navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-        emit: broadcast,
-        runStepsDeps,
-        execute: undefined,
-    };
-    ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);
-    return ctx;
-};
 
 const handleAction = async (action: Action) => {
     const payload = isRecord(action.payload) ? action.payload : null;
@@ -372,28 +340,30 @@ broadcast = actionWsClient.broadcastAction;
  * 职责：
  * 1) 在进入 action 执行前，先做“是否仍在录制”的硬门禁；
  * 2) 将原始 recorder event 包装为统一 Action(record.event) 广播给观察端；
- * 3) 同步交给 executeAction 进入录制入库链路（recordEvent/recordStep）。
+ * 3) 直接进入 record 领域 ingest 入库链路（recordEvent/recordStep）。
  *
  * 关键约束：
  * - 无活跃录制会话时直接丢弃（不广播、不执行），避免 record.stop 后仍出现录制流量；
  * - 若仅存在一个活跃录制 token，允许将事件归并到该唯一 token（跨 tab 人工录制场景）。
  */
 setRecorderEventSink(async (event, page, tabName) => {
-    let effectiveTabName = tabName;
-    if (!recordingState.recordingEnabled.has(effectiveTabName)) {
-        if (recordingState.recordingEnabled.size === 1) {
-            effectiveTabName = Array.from(recordingState.recordingEnabled)[0];
-        } else {
-            wsTap('agent.record_event.drop', {
-                reason: 'recording_not_enabled',
-                sourceTabName: tabName,
-                activeRecordingCount: recordingState.recordingEnabled.size,
-            });
-            return;
-        }
+    const ingest = await ingestRecorderEvent({
+        state: recordingState,
+        event,
+        page,
+        tabName,
+        navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    });
+    if (!ingest.accepted) {
+        wsTap('agent.record_event.drop', {
+            reason: ingest.reason || 'recording_not_enabled',
+            sourceTabName: tabName,
+            activeRecordingCount: recordingState.recordingEnabled.size,
+        });
+        return;
     }
 
-    const workspaceName = findWorkspaceNameByTabName(effectiveTabName) || undefined;
+    const workspaceName = findWorkspaceNameByTabName(tabName) || undefined;
     const action: Action = {
         v: 1,
         id: crypto.randomUUID(),
@@ -404,10 +374,6 @@ setRecorderEventSink(async (event, page, tabName) => {
     };
     broadcast(action);
     if (!workspaceName) {return;}
-    const response = await executeAction(createActionContext(workspaceName, effectiveTabName), action);
-    if (isFailedAction(response)) {
-        logWarning('record.event.ingest.failed', { tabName: effectiveTabName, sourceTabName: tabName, error: response.payload });
-    }
 });
 
 /**
