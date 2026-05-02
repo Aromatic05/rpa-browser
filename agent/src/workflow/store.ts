@@ -6,7 +6,7 @@ export type NamedStore<T extends { name: string }> = {
 };
 
 export type WorkflowCodec<T extends { name: string }> = {
-    kind: 'recording' | 'checkpoint' | 'dsl' | 'entity-rules';
+    kind: 'recording' | 'checkpoint' | 'dsl' | 'entity_rules';
     is: (value: unknown) => value is T;
     load: (name: string) => T | null;
     list: () => T[];

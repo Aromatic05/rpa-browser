@@ -18,10 +18,10 @@ export type WorkflowManifest = {
     recordings: string[];
     checkpoints: string[];
     dsls: string[];
-    entityRules: string[];
+    entity_rules: string[];
 };
 
-export type WorkflowCatalogView = Pick<WorkflowManifest, 'name' | 'entry' | 'createdAt' | 'updatedAt' | 'recordings' | 'checkpoints' | 'dsls' | 'entityRules'>;
+export type WorkflowCatalogView = Pick<WorkflowManifest, 'name' | 'entry' | 'createdAt' | 'updatedAt' | 'recordings' | 'checkpoints' | 'dsls' | 'entity_rules'>;
 
 export type Workflow = {
     name: string;
@@ -50,7 +50,7 @@ const defaultManifest = (name: string, now = Date.now()): WorkflowManifest => ({
     recordings: [],
     checkpoints: [],
     dsls: [],
-    entityRules: [],
+    entity_rules: [],
 });
 
 const readManifest = (workflowName: string): WorkflowManifest => {
@@ -89,7 +89,7 @@ const updateCatalog = (manifest: WorkflowManifest, artifact: WorkflowArtifact): 
             manifest.entry.dsl = artifact.name;
         }
     } else {
-        manifest.entityRules = set([...manifest.entityRules, artifact.name]);
+        manifest.entity_rules = set([...manifest.entity_rules, artifact.name]);
     }
 };
 
@@ -98,7 +98,7 @@ const removeFromCatalog = (manifest: WorkflowManifest, name: string): void => {
     manifest.recordings = remove(manifest.recordings);
     manifest.checkpoints = remove(manifest.checkpoints);
     manifest.dsls = remove(manifest.dsls);
-    manifest.entityRules = remove(manifest.entityRules);
+    manifest.entity_rules = remove(manifest.entity_rules);
 };
 
 export const loadWorkflowFromFs = (workflowName: string): Workflow => {
@@ -130,7 +130,7 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             if (manifest.dsls.includes(name)) {
                 return internal.dslStore.get(name);
             }
-            if (manifest.entityRules.includes(name)) {
+            if (manifest.entity_rules.includes(name)) {
                 return internal.entityRuleStore.get(name);
             }
             return null;
@@ -143,7 +143,7 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             recordings: [...manifest.recordings],
             checkpoints: [...manifest.checkpoints],
             dsls: [...manifest.dsls],
-            entityRules: [...manifest.entityRules],
+            entity_rules: [...manifest.entity_rules],
         }),
         delete: (name) => {
             let deleted = false;
@@ -156,7 +156,7 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             if (manifest.dsls.includes(name)) {
                 deleted = internal.dslStore.delete(name) || deleted;
             }
-            if (manifest.entityRules.includes(name)) {
+            if (manifest.entity_rules.includes(name)) {
                 deleted = internal.entityRuleStore.delete(name) || deleted;
             }
             removeFromCatalog(manifest, name);

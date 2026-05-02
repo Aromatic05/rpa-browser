@@ -5,7 +5,7 @@ import { listDirectories, readYamlFile, removePath, workflowRootDir, writeYamlFi
 import type { WorkflowCodec } from './store';
 
 export type WorkflowEntityRules = {
-    kind: 'entity-rules';
+    kind: 'entity_rules';
     name: string;
     match: unknown;
     annotation: unknown;
@@ -15,10 +15,10 @@ const entityRuleDir = (workflowName: string, profileName: string): string =>
     path.join(workflowRootDir(workflowName), 'entity_rules', profileName);
 
 export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<WorkflowEntityRules> => ({
-    kind: 'entity-rules',
+    kind: 'entity_rules',
     is: (value: unknown): value is WorkflowEntityRules => {
         const rec = value as Partial<WorkflowEntityRules>;
-        return !!rec && rec.kind === 'entity-rules' && typeof rec.name === 'string' && !!rec.name;
+        return !!rec && rec.kind === 'entity_rules' && typeof rec.name === 'string' && !!rec.name;
     },
     load: (name) => {
         const dir = entityRuleDir(workflowName, name);
@@ -26,7 +26,7 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
             const match = readYamlFile<unknown>(path.join(dir, 'match.yaml'));
             const annotation = readYamlFile<unknown>(path.join(dir, 'annotation.yaml'));
             validateEntityRules(name, match, annotation);
-            return { kind: 'entity-rules', name, match, annotation };
+            return { kind: 'entity_rules', name, match, annotation };
         } catch {
             return null;
         }
