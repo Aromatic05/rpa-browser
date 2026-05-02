@@ -16,6 +16,7 @@ import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 import { setWorkspaceControlServices } from './runtime/workspace_control';
+import { setWorkflowControlServices } from './workflow/control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -105,6 +106,7 @@ const runStepsDeps = {
 };
 setRunStepsDeps(runStepsDeps);
 setWorkspaceControlServices({ pageRegistry });
+setWorkflowControlServices({ recordingState });
 setControlActionDispatcher(
     createActionDispatcher({
         workspaceRegistry,

@@ -1,11 +1,101 @@
+import crypto from 'node:crypto';
+import { replyAction } from '../actions/action_protocol';
 import { ActionError } from '../actions/failure';
 import { ERROR_CODES } from '../actions/error_codes';
 import type { WorkspaceControlInput } from '../runtime/workspace_control';
 import type { ControlPlaneResult } from '../runtime/control';
+import {
+    getRecordingBundle,
+    getWorkspaceSnapshot,
+    saveWorkspaceSnapshot,
+    type RecordingState,
+} from '../record/recording';
+import { ensureWorkflowOnFs } from '../workflow';
+
+export type WorkflowControlServices = {
+    recordingState: RecordingState;
+};
+
+let workflowControlServices: WorkflowControlServices | null = null;
+
+export const setWorkflowControlServices = (services: WorkflowControlServices): void => {
+    workflowControlServices = services;
+};
+
+const requireServices = (): WorkflowControlServices => {
+    if (!workflowControlServices) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'workflow control services not initialized');
+    }
+    return workflowControlServices;
+};
 
 export const handleWorkflowControlAction = async (input: WorkspaceControlInput): Promise<ControlPlaneResult> => {
-    if (input.action.type === 'workspace.save' || input.action.type === 'workspace.restore') {
-        throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${input.action.type}`);
+    const { action, workspace } = input;
+    const services = requireServices();
+
+    if (action.type === 'workspace.save') {
+        const tabs = workspace.tabRegistry.listTabs();
+        const bundle = getRecordingBundle(services.recordingState, '', { workspaceName: workspace.name });
+        const snapshot = saveWorkspaceSnapshot(services.recordingState, {
+            workspaceName: workspace.name,
+            tabs: tabs.map((tab) => ({
+                tabName: tab.name,
+                url: tab.url,
+                title: tab.title,
+                active: workspace.tabRegistry.getActiveTab()?.name === tab.name,
+            })),
+            recordingToken: bundle.recordingToken,
+            steps: bundle.steps,
+            manifest: bundle.manifest,
+            enrichments: bundle.enrichments,
+        });
+        return {
+            reply: replyAction(action, {
+                saved: true,
+                workspaceName: workspace.name,
+                savedAt: snapshot.savedAt,
+                tabCount: snapshot.tabs.length,
+                stepCount: snapshot.recording.steps.length,
+            }),
+            events: [],
+        };
     }
-    throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${input.action.type}`);
+
+    if (action.type === 'workspace.restore') {
+        const snapshot = getWorkspaceSnapshot(services.recordingState, workspace.name);
+        if (!snapshot || snapshot.tabs.length === 0) {
+            throw new ActionError(ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND, 'no saved workspace snapshot to restore');
+        }
+
+        const targetWorkspaceName = crypto.randomUUID();
+        const targetWorkspace = input.workspaceRegistry.createWorkspace(
+            targetWorkspaceName,
+            ensureWorkflowOnFs(targetWorkspaceName),
+        );
+
+        for (const tab of snapshot.tabs) {
+            targetWorkspace.tabRegistry.createTab({
+                tabName: tab.tabName || crypto.randomUUID(),
+                url: tab.url || '',
+                title: tab.title || '',
+            });
+        }
+
+        const activeTab = snapshot.tabs.find((item) => item.active) || snapshot.tabs[0];
+        if (activeTab?.tabName && targetWorkspace.tabRegistry.hasTab(activeTab.tabName)) {
+            targetWorkspace.tabRegistry.setActiveTab(activeTab.tabName);
+        }
+
+        return {
+            reply: replyAction(action, {
+                restored: true,
+                sourceWorkspaceName: workspace.name,
+                workspaceName: targetWorkspaceName,
+                tabName: targetWorkspace.tabRegistry.getActiveTab()?.name ?? null,
+            }),
+            events: [],
+        };
+    }
+
+    throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
 };
