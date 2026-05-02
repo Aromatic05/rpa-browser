@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "build": "tsc -p tsconfig.json && node build.mjs",
-        "test": "pnpm build && node src/__tests__/cmd_router.test.mjs && node src/__tests__/action_flow.test.mjs && node src/__tests__/action_resolution.test.mjs"
+        "test": "pnpm build && node src/__tests__/cmd_router.test.mjs && node src/__tests__/action_flow.test.mjs && node src/__tests__/action_resolution.test.mjs && node src/__tests__/import_boundary.test.mjs"
     },
     "devDependencies": {
         "@types/chrome": "^0.0.279",
