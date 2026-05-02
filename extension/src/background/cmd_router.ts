@@ -1,11 +1,12 @@
 import { createLogger, type Logger } from '../shared/logger.js';
 import type { Action } from '../shared/types.js';
-import { ACTION_TYPES } from '../shared/action_types.js';
+import { ACTION_TYPES } from '../actions/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import type { WsClient } from '../actions/ws_client.js';
 import { createRouterState } from './state.js';
-import { dispatchIncomingAction, isFailedReply, payloadOf, withActionBase } from './action.js';
 import { createLifecycleRuntime } from './life.js';
+import { dispatchActionRequest } from '../actions/index.js';
+import { projectInboundAction } from '../actions/projection.js';
 
 export type CmdRouterOptions = {
     wsClient: WsClient;
@@ -23,12 +24,29 @@ type TypedRuntimeMessage = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 
+const withActionBase = (action: Action): Action => ({
+    v: 1,
+    id: action.id,
+    type: action.type,
+    workspaceName: action.workspaceName,
+    payload: action.payload,
+    at: action.at,
+    traceId: action.traceId,
+});
+
+const isFailedReply = (action: Action | null | undefined): boolean => {
+    if (!action) {return false;}
+    return action.type.endsWith('.failed');
+};
+
+const payloadOf = (action: Action | null | undefined): Record<string, unknown> => {
+    if (!action) {return {};}
+    return (action.payload ?? {}) as Record<string, unknown>;
+};
+
 export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger ?? createLogger('sw');
-    const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
     const state = createRouterState(log);
-    const toStringValue = (value: unknown): string | null =>
-        typeof value === 'string' ? value : typeof value === 'number' ? String(value) : null;
 
     const sendAction = async (action: Action): Promise<Action> => await options.wsClient.sendAction(withActionBase(action));
 
@@ -45,47 +63,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const handleInboundAction = (action: Action) => {
-        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) {return;}
-
-        if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
-            const data = (action.payload ?? {}) as Record<string, unknown>;
-            const activeWorkspaceName = toStringValue(data.activeWorkspaceName);
-            if (activeWorkspaceName) {state.setActiveWorkspaceName(activeWorkspaceName);}
-            options.onRefresh();
-            return;
-        }
-
-        if (action.type === ACTION_TYPES.TAB_BOUND || action.type === ACTION_TYPES.WORKFLOW_OPEN || action.type === `${ACTION_TYPES.WORKFLOW_OPEN}.result`) {
-            const data = (action.payload ?? {}) as Record<string, unknown>;
-            const workspaceName = toStringValue(data.workspaceName);
-            const tabName = toStringValue(data.tabName);
-            if (workspaceName && tabName) {
-                const activeChromeTabNo = state.getActiveChromeTabNo();
-                if (typeof activeChromeTabNo === 'number') {
-                    const activeTab = state.getTabState(activeChromeTabNo);
-                    if (activeTab?.bindingName) {
-                        state.upsertBindingWorkspaceTab(activeTab.bindingName, workspaceName, tabName);
-                        state.bindWorkspaceToWindowIfKnown(activeTab.bindingName);
-                    }
-                }
-                state.setActiveWorkspaceName(workspaceName);
-            }
-            options.onRefresh();
-            return;
-        }
-
-        if (action.type === ACTION_TYPES.WORKSPACE_CHANGED) {
-            const data = (action.payload ?? {}) as Record<string, unknown>;
-            const workspaceName = toStringValue(data.workspaceName) ?? action.workspaceName ?? null;
-            if (workspaceName) {
-                state.setActiveWorkspaceName(workspaceName);
-                const activeWindowId = state.getActiveWindowId();
-                if (typeof activeWindowId === 'number' && activeWindowId !== WINDOW_NONE) {
-                    state.setWindowWorkspace(activeWindowId, workspaceName);
-                }
-            }
-            options.onRefresh();
-        }
+        projectInboundAction(action, state, options.onRefresh);
     };
 
     const bootstrapState = async () => {
@@ -95,7 +73,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             throw new Error(`bootstrap.workspace_list_failed: ${String(error.code || 'UNKNOWN')}:${String(error.message || 'unknown')}`);
         }
         const data = payloadOf(reply);
-        const activeWorkspaceName = toStringValue(data.activeWorkspaceName);
+        const activeWorkspaceName = typeof data.activeWorkspaceName === 'string' ? data.activeWorkspaceName : null;
         if (activeWorkspaceName) {state.setActiveWorkspaceName(activeWorkspaceName);}
     };
 
@@ -150,13 +128,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (typedMessage.type === MSG.ACTION) {
             (async () => {
-                const incomingAction = (typedMessage.action ?? {}) as Action;
-                const reply = await dispatchIncomingAction(incomingAction, sender, {
-                    state,
-                    ensureTabName: life.ensureTabName,
-                    getActiveTabNameForWindow: life.getActiveTabNameForWindow,
-                    sendAction,
-                });
+                const reply = await dispatchActionRequest(typedMessage.action, options.wsClient);
                 sendResponse(reply);
             })().catch((error: unknown) => {
                 sendResponse({
