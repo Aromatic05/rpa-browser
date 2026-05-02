@@ -6,6 +6,7 @@ import { routeWorkspaceAction } from '../../src/actions/workspace_gateway';
 import { routeControlAction } from '../../src/actions/control_gateway';
 import { createActionDispatcher } from '../../src/actions/dispatcher';
 import type { Action } from '../../src/actions/action_protocol';
+import { isRequestActionType } from '../../src/actions/action_types';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -92,4 +93,11 @@ test('replay domain ownership boundaries', () => {
     assert.equal(recordControl.includes('../play/replay'), false);
     assert.equal(fs.existsSync(path.join(srcRoot, 'play/replay.ts')), false);
     assert.equal(fs.existsSync(path.join(srcRoot, 'record/replay.ts')), true);
+});
+
+test('workflow.dsl.* and workflow.releaseRun are not in request catalog', () => {
+    assert.equal(isRequestActionType('workflow.dsl.get'), false);
+    assert.equal(isRequestActionType('workflow.dsl.save'), false);
+    assert.equal(isRequestActionType('workflow.dsl.test'), false);
+    assert.equal(isRequestActionType('workflow.releaseRun'), false);
 });
