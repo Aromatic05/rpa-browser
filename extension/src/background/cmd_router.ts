@@ -24,16 +24,6 @@ type TypedRuntimeMessage = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 
-const withActionBase = (action: Action): Action => ({
-    v: 1,
-    id: action.id,
-    type: action.type,
-    workspaceName: action.workspaceName,
-    payload: action.payload,
-    at: action.at,
-    traceId: action.traceId,
-});
-
 const isFailedReply = (action: Action | null | undefined): boolean => {
     if (!action) {return false;}
     return action.type.endsWith('.failed');
@@ -48,7 +38,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger ?? createLogger('sw');
     const state = createRouterState(log);
 
-    const sendAction = async (action: Action): Promise<Action> => await options.wsClient.sendAction(withActionBase(action));
+    const sendAction = async (action: Action): Promise<Action> => await options.wsClient.sendAction(action);
 
     const life = createLifecycleRuntime({ state, sendAction, onRefresh: options.onRefresh });
 
