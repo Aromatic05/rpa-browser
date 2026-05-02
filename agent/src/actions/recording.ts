@@ -29,17 +29,32 @@ const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
 
 export const recordingHandlers: Record<string, ActionHandler> = {
     'record.start': async (ctx, action) => {
-        const tab = ctx.resolveTab();
-        const page = ctx.resolvePage();
-        const workspaceName = action.workspaceName || ctx.workspace?.name || '';
-        await startRecording(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs, {
+        const workspaceName = (action.workspaceName || '').trim();
+        if (!workspaceName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.start');
+        }
+        const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `workspace not found: ${workspaceName}`);
+        }
+        const boundTabs = workspace.tabRegistry.listTabs().filter((tab) => Boolean(tab.page));
+        if (!boundTabs.length) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `record.start requires at least one bound page in workspace: ${workspaceName}`);
+        }
+        const primary = boundTabs[0];
+        const primaryPage = primary.page!;
+        await startRecording(ctx.recordingState, primaryPage, primary.name, ctx.navDedupeWindowMs, {
             workspaceName,
-            tabRef: tab.name,
-            entryUrl: page.url(),
+            tabRef: primary.name,
+            entryUrl: primaryPage.url(),
         });
-        await ensureRecorder(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs);
-        await setRecorderRuntimeEnabled(page, true);
-        return replyAction(action, { pageUrl: page.url() });
+        for (const tab of boundTabs) {
+            const page = tab.page;
+            if (!page) {continue;}
+            await ensureRecorder(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs);
+            await setRecorderRuntimeEnabled(page, true);
+        }
+        return replyAction(action, { pageUrl: primaryPage.url() });
     },
     'record.stop': async (ctx, action) => {
         const workspaceName = action.workspaceName;
