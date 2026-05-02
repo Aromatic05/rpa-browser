@@ -80,13 +80,11 @@ export const browserCreateTabInputSchema = z.object({
 
 export const browserSwitchTabInputSchema = z.object({
     tabName: z.string().optional(),
-    tabName: z.string().optional(),
     tabRef: z.string().optional(),
     tabUrl: z.string().optional(),
 });
 
 export const browserCloseTabInputSchema = z.object({
-    tabName: z.string().optional(),
     tabName: z.string().optional(),
     tabRef: z.string().optional(),
 });
@@ -486,7 +484,6 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabName: { type: 'string' },
-            tabName: { type: 'string' },
             tabRef: { type: 'string' },
             tabUrl: { type: 'string' },
         },
@@ -496,7 +493,6 @@ export const toolInputJsonSchemas = {
         type: 'object',
         required: [],
         properties: {
-            tabName: { type: 'string' },
             tabName: { type: 'string' },
             tabRef: { type: 'string' },
         },
