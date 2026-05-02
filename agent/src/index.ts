@@ -301,7 +301,7 @@ const parseInboundAction = (raw: unknown): Action => {
     if (rec.v !== 1 || typeof rec.id !== 'string' || typeof rec.type !== 'string' || !rec.id) {
         throw new Error('invalid action: missing or invalid fields');
     }
-    if ('scope' in rec || 'tabName' in rec || 'tabName' in rec) {
+    if ('scope' in rec || 'tabName' in rec) {
         throw new Error('invalid action: legacy address fields are not allowed');
     }
     if (!isRequestActionType(rec.type)) {

@@ -39,7 +39,7 @@ const assertNoLegacyAddressFields = (action: Action): void => {
     }
     if (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) {
         const payload = action.payload as Record<string, unknown>;
-        if ('workspaceName' in payload || 'tabName' in payload || 'tabName' in payload || 'scope' in payload) {
+        if ('workspaceName' in payload || 'scope' in payload) {
             throw new Error('legacy payload address fields are not allowed');
         }
         if (action.workspaceName && 'workspaceName' in payload) {

@@ -33,7 +33,7 @@ export const callActionFromControl = async (
     if (!isRecord(params) || typeof params.type !== 'string' || params.type.length === 0) {
         throw badRequest('action.call requires a non-empty type');
     }
-    if ('scope' in params || 'tabName' in params || 'workspaceName' in params || 'tabName' in params) {
+    if ('scope' in params || 'tabName' in params) {
         throw badRequest('legacy action address fields are not allowed');
     }
     const action: Action = {
