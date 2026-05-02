@@ -1,11 +1,31 @@
+import type { Page } from 'playwright';
 import { createTabRegistry, type TabRegistry } from './tab_registry';
 import type { Workflow } from '../workflow';
+import { createWorkspaceControl, type WorkspaceControl } from './workspace_control';
+import { createWorkflowControl, type WorkflowControl } from '../workflow/control';
+import { createRecordControl, type RecordControl } from '../record/control';
+import { createDslControl, type DslControl } from '../dsl/control';
+import { createRunnerControl, type RunnerControl } from '../runner/control';
+import type { RecordingState } from '../record/recording';
+import type { ReplayOptions } from '../record/replay';
+import type { RunStepsDeps } from '../runner/run_steps';
+import type { RunnerConfig } from '../config';
+import type { Action } from '../actions/action_protocol';
+
+export type RuntimeWorkspaceControls = {
+    workspace: WorkspaceControl;
+    workflow: WorkflowControl;
+    record: RecordControl;
+    dsl: DslControl;
+    runner: RunnerControl;
+};
 
 export type RuntimeWorkspace = {
     name: string;
     workflow: Workflow;
     runner: unknown;
     tabRegistry: TabRegistry;
+    controls: RuntimeWorkspaceControls;
     createdAt: number;
     updatedAt: number;
 };
@@ -21,7 +41,39 @@ export type WorkspaceRegistry = {
     getActiveWorkspace: () => RuntimeWorkspace | null;
 };
 
-export const createWorkspaceRegistry = (): WorkspaceRegistry => {
+export type WorkspaceRuntimeDeps = {
+    pageRegistry: {
+        getPage: (tabName: string, startUrl?: string) => Promise<Page>;
+    };
+    recordingState: RecordingState;
+    replayOptions: ReplayOptions;
+    navDedupeWindowMs: number;
+    emit?: (action: Action) => void;
+    runStepsDeps: RunStepsDeps;
+    runnerConfig: RunnerConfig;
+};
+
+const createWorkspaceControls = (deps: WorkspaceRuntimeDeps): RuntimeWorkspaceControls => {
+    const workflow = createWorkflowControl({ recordingState: deps.recordingState });
+    const record = createRecordControl({
+        recordingState: deps.recordingState,
+        replayOptions: deps.replayOptions,
+        navDedupeWindowMs: deps.navDedupeWindowMs,
+        emit: deps.emit,
+    });
+    const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
+    const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
+    const workspace = createWorkspaceControl({
+        pageRegistry: deps.pageRegistry,
+        workflowControl: workflow,
+        recordControl: record,
+        dslControl: dsl,
+        runnerControl: runner,
+    });
+    return { workspace, workflow, record, dsl, runner };
+};
+
+export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {
     const workspaces = new Map<string, RuntimeWorkspace>();
     let activeWorkspaceName: string | null = null;
 
@@ -38,6 +90,7 @@ export const createWorkspaceRegistry = (): WorkspaceRegistry => {
             workflow,
             runner: null,
             tabRegistry: createTabRegistry(),
+            controls: createWorkspaceControls(runtimeDeps),
             createdAt: now,
             updatedAt: now,
         };

@@ -2,7 +2,6 @@ import type { Action } from './action_protocol';
 import { ActionError } from './failure';
 import { ERROR_CODES } from './error_codes';
 import type { RuntimeWorkspace } from '../runtime/workspace_registry';
-import { handleWorkspaceControlAction } from '../runtime/workspace_control';
 import type { GatewayDeps } from './control_gateway';
 import { toFailedAction } from './failure';
 
@@ -27,11 +26,7 @@ export const routeWorkspaceAction = async (deps: GatewayDeps, action: Action): P
         const workspaceName = requireWorkspaceName(action);
         const workspace = resolveWorkspace(deps, workspaceName);
 
-        const result = await handleWorkspaceControlAction({
-            action,
-            workspace,
-            workspaceRegistry: deps.workspaceRegistry,
-        });
+        const result = await workspace.controls.workspace.handle(action, workspace, deps.workspaceRegistry);
 
         for (const event of result.events) {
             deps.emit?.(event);
