@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 
-const DEFAULT_ARTIFACTS_ROOT = path.resolve(process.cwd(), 'agent/.artifacts');
+const DEFAULT_ARTIFACTS_ROOT = path.resolve(process.cwd(), '.artifacts');
 
 export const workflowsRootDir = (): string => path.join(DEFAULT_ARTIFACTS_ROOT, 'workflows');
 export const workflowRootDir = (workflowName: string): string => path.join(workflowsRootDir(), workflowName);
