@@ -4,7 +4,7 @@ import { ERROR_CODES } from './error_codes';
 import { DslRuntimeError } from '../dsl/diagnostics/errors';
 import { runDslSource } from '../dsl/runtime';
 import { getRecordingBundle } from '../record/recording';
-import { createWorkflowOnFs, ensureWorkflowOnFs, listWorkflowNames, loadWorkflowFromFs, type Workflow, type WorkflowArtifact, type WorkflowCheckpoint, type WorkflowDsl, type WorkflowRecording } from '../workflow';
+import { createWorkflowOnFs, ensureWorkflowOnFs, listWorkflowNames, loadWorkflowFromFs, type Workflow, type WorkflowCheckpoint, type WorkflowDummy, type WorkflowDsl, type WorkflowRecording } from '../workflow';
 
 const toDefaultRecordingName = (now = new Date()): string => {
     const y = String(now.getFullYear());
@@ -15,6 +15,10 @@ const toDefaultRecordingName = (now = new Date()): string => {
     const ss = String(now.getSeconds()).padStart(2, '0');
     return `recording-${y}${m}${d}-${hh}${mm}${ss}`;
 };
+
+const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
+const CHECKPOINT_DUMMY: WorkflowDummy = { kind: 'checkpoint' };
+const DSL_DUMMY: WorkflowDummy = { kind: 'dsl' };
 
 const resolveWorkspace = (ctx: Parameters<ActionHandler>[0], workspaceName: string): ReturnType<typeof ctx.workspaceRegistry.createWorkspace> => {
     const existing = ctx.workspaceRegistry.getWorkspace(workspaceName);
@@ -34,15 +38,33 @@ const requireWorkspaceName = (action: Parameters<ActionHandler>[1], payload: Rec
     return workspaceName;
 };
 
+const resolveDefaultDslName = (workflow: Workflow): string => {
+    const items = workflow.list(DSL_DUMMY);
+    return items[0]?.name || 'main';
+};
+
 const requireDsl = (workflow: Workflow, dslName: string): WorkflowDsl => {
-    const artifact = workflow.get(dslName);
+    const artifact = workflow.get(dslName, DSL_DUMMY);
     if (!artifact || artifact.kind !== 'dsl') {
         throw new DslRuntimeError(`dsl not found: ${dslName}`, 'ERR_WORKFLOW_DSL_NOT_FOUND');
     }
     return artifact;
 };
 
-const requireCheckpointProvider = (workflow: Workflow) => workflow.getCheckpointProvider();
+const createCheckpointProvider = (workflow: Workflow) => {
+    const checkpoints = workflow.list(CHECKPOINT_DUMMY);
+    const byName = new Map<string, WorkflowCheckpoint>();
+    for (const item of checkpoints) {
+        const artifact = workflow.get(item.name, CHECKPOINT_DUMMY);
+        if (artifact && artifact.kind === 'checkpoint') {
+            byName.set(item.name, artifact);
+        }
+    }
+    return {
+        getCheckpoint: (id: string) => byName.get(id)?.checkpoint || null,
+        getCheckpointResolves: (id: string) => byName.get(id)?.stepResolves || null,
+    };
+};
 
 export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.init': async (ctx, action) => {
@@ -54,14 +76,19 @@ export const workflowHandlers: Record<string, ActionHandler> = {
                 ctx.workspaceRegistry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
                 return true;
             })();
-        const workflow = resolveWorkflow(ctx, workspaceName);
-        return replyAction(action, { workspaceName, workflowName: workflow.name, created });
+        return replyAction(action, { workspaceName, created });
     },
 
     'workflow.list': async (_ctx, action) => {
         const workflows = listWorkflowNames().map((name) => {
             const workflow = loadWorkflowFromFs(name);
-            return workflow.list();
+            return {
+                workspaceName: name,
+                recordings: workflow.list({ kind: 'recording' }),
+                checkpoints: workflow.list({ kind: 'checkpoint' }),
+                dsls: workflow.list({ kind: 'dsl' }),
+                entityRules: workflow.list({ kind: 'entity_rules' }),
+            };
         });
         return replyAction(action, { workflows });
     },
@@ -69,8 +96,8 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     'workflow.open': async (ctx, action) => {
         const payload = (action.payload || {}) as { workspaceName?: string };
         const workspaceName = requireWorkspaceName(action, payload as unknown as Record<string, unknown>);
-        const workspace = resolveWorkspace(ctx, workspaceName);
-        return replyAction(action, { workspaceName, workflowName: workspace.workflow.name, active: ctx.workspaceRegistry.getActiveWorkspace()?.name === workspaceName });
+        resolveWorkspace(ctx, workspaceName);
+        return replyAction(action, { workspaceName, active: ctx.workspaceRegistry.getActiveWorkspace()?.name === workspaceName });
     },
 
     'workflow.status': async (ctx, action) => {
@@ -110,7 +137,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
         const payload = (action.payload || {}) as { workspaceName?: string; dslName?: string };
         const workspaceName = requireWorkspaceName(action, payload as unknown as Record<string, unknown>);
         const workflow = resolveWorkflow(ctx, workspaceName);
-        const dslName = payload.dslName || workflow.list().entry.dsl;
+        const dslName = payload.dslName || resolveDefaultDslName(workflow);
         const dsl = requireDsl(workflow, dslName);
         return replyAction(action, { workspaceName, dslName, content: dsl.content });
     },
@@ -122,7 +149,7 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             throw new DslRuntimeError('workflow.dsl.save requires content', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workflow = resolveWorkflow(ctx, workspaceName);
-        const dslName = payload.dslName || workflow.list().entry.dsl;
+        const dslName = payload.dslName || resolveDefaultDslName(workflow);
         workflow.save({ kind: 'dsl', name: dslName, content: payload.content });
         return replyAction(action, { workspaceName, dslName, saved: true });
     },
@@ -134,13 +161,13 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             throw new DslRuntimeError('run steps deps not initialized for workflow.dsl.test', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workflow = resolveWorkflow(ctx, workspaceName);
-        const dslName = payload.dslName || workflow.list().entry.dsl;
+        const dslName = payload.dslName || resolveDefaultDslName(workflow);
         const dsl = requireDsl(workflow, dslName);
         const runResult = await runDslSource(dsl.content, {
             workspaceName,
             deps: ctx.runStepsDeps,
             input: payload.input || {},
-            checkpointProvider: requireCheckpointProvider(workflow),
+            checkpointProvider: createCheckpointProvider(workflow),
         });
         return replyAction(action, {
             ok: true,
@@ -157,13 +184,13 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             throw new DslRuntimeError('run steps deps not initialized for workflow.releaseRun', ERROR_CODES.ERR_WORKFLOW_BAD_ARGS);
         }
         const workflow = resolveWorkflow(ctx, workspaceName);
-        const dslName = payload.dslName || workflow.list().entry.dsl;
+        const dslName = payload.dslName || resolveDefaultDslName(workflow);
         const dsl = requireDsl(workflow, dslName);
         const runResult = await runDslSource(dsl.content, {
             workspaceName,
             deps: ctx.runStepsDeps,
             input: payload.input || {},
-            checkpointProvider: requireCheckpointProvider(workflow),
+            checkpointProvider: createCheckpointProvider(workflow),
         });
         return replyAction(action, {
             workspaceName,
