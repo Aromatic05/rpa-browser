@@ -14,20 +14,38 @@ export const validateActionEnvelope = (incoming: unknown): EnvelopeOk | Envelope
     if (!isRecord(incoming)) {
         return { ok: false, code: 'ERR_BAD_ARGS', message: 'invalid action envelope' };
     }
+    if (incoming.v !== 1) {
+        return { ok: false, code: 'ERR_BAD_ARGS', message: 'invalid action envelope' };
+    }
     const id = incoming.id;
     const type = incoming.type;
     if (typeof id !== 'string' || typeof type !== 'string') {
         return { ok: false, code: 'ERR_BAD_ARGS', message: 'invalid action envelope' };
     }
-    if (has(incoming, 'tabName')) {
-        return { ok: false, code: 'ERR_BAD_ARGS', message: 'tabName must not be at top level' };
-    }
-    if (has(incoming, 'tabId') || has(incoming, 'windowId') || has(incoming, 'chromeTabNo')) {
+    if (
+        has(incoming, 'scope')
+        || has(incoming, 'workspaceId')
+        || has(incoming, 'tabToken')
+        || has(incoming, 'tabName')
+        || has(incoming, 'tabId')
+        || has(incoming, 'windowId')
+        || has(incoming, 'chromeTabNo')
+    ) {
         return { ok: false, code: 'ERR_BAD_ARGS', message: 'legacy address fields are not allowed' };
     }
     const payload = incoming.payload;
-    if (isRecord(payload) && has(payload, 'workspaceName')) {
-        return { ok: false, code: 'ERR_BAD_ARGS', message: 'payload.workspaceName is not allowed' };
+    if (
+        isRecord(payload)
+        && (
+            has(payload, 'workspaceName')
+            || has(payload, 'scope')
+            || has(payload, 'workspaceId')
+            || has(payload, 'tabToken')
+            || has(payload, 'tabName')
+            || has(payload, 'tabId')
+        )
+    ) {
+        return { ok: false, code: 'ERR_BAD_ARGS', message: 'legacy address fields are not allowed in payload' };
     }
     if (!isRequestActionType(type)) {
         return { ok: false, code: 'ERR_BAD_ARGS', message: `unsupported command type '${type}'` };
