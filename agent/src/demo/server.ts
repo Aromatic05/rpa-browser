@@ -16,6 +16,7 @@ import { getRunnerConfig } from '../config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 import { initLogger, resolveLogPath } from '../logging/logger';
 import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
+import { ensureWorkflowOnFs } from '../workflow';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,7 +74,7 @@ const pageRegistry = createPageRegistry({
             void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
         }
         const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
-        const workspace = workspaceRegistry.createWorkspace(workspaceName);
+        const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         if (!workspace.tabRegistry.hasTab(tabName)) {
             workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
         } else {

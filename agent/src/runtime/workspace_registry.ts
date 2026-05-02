@@ -1,8 +1,9 @@
 import { createTabRegistry, type TabRegistry } from './tab_registry';
+import type { Workflow } from '../workflow';
 
 export type RuntimeWorkspace = {
     name: string;
-    workflow: unknown;
+    workflow: Workflow;
     runner: unknown;
     tabRegistry: TabRegistry;
     createdAt: number;
@@ -10,7 +11,7 @@ export type RuntimeWorkspace = {
 };
 
 export type WorkspaceRegistry = {
-    createWorkspace: (workspaceName: string) => RuntimeWorkspace;
+    createWorkspace: (workspaceName: string, workflow: Workflow) => RuntimeWorkspace;
     hasWorkspace: (workspaceName: string) => boolean;
     getWorkspace: (workspaceName: string) => RuntimeWorkspace | null;
     listWorkspaces: () => RuntimeWorkspace[];
@@ -23,14 +24,14 @@ export const createWorkspaceRegistry = (): WorkspaceRegistry => {
     const workspaces = new Map<string, RuntimeWorkspace>();
     let activeWorkspaceName: string | null = null;
 
-    const createWorkspace = (workspaceName: string) => {
+    const createWorkspace = (workspaceName: string, workflow: Workflow) => {
         if (workspaces.has(workspaceName)) {
             return workspaces.get(workspaceName)!;
         }
         const now = Date.now();
         const workspace: RuntimeWorkspace = {
             name: workspaceName,
-            workflow: null,
+            workflow,
             runner: null,
             tabRegistry: createTabRegistry(),
             createdAt: now,

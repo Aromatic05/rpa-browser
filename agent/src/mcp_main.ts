@@ -14,6 +14,7 @@ import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { McpToolHost } from './mcp/hotreload/tool_host';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
+import { ensureWorkflowOnFs } from './workflow';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -76,7 +77,7 @@ const pageRegistry = createPageRegistry({
             void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
         }
         const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
-        const workspace = workspaceRegistry.createWorkspace(workspaceName);
+        const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         if (!workspace.tabRegistry.hasTab(tabName)) {
             workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
         } else {

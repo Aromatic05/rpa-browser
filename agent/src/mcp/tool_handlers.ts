@@ -62,6 +62,7 @@ import {
     browserBatchInputSchema,
     type BrowserBatchInput,
 } from './schemas';
+import { ensureWorkflowOnFs } from '../workflow';
 
 export type McpToolDeps = {
     pageRegistry: PageRegistry;
@@ -97,7 +98,7 @@ const runSingleStep = async (
     options?: { allowBootstrap?: boolean },
 ) => {
     const scope = await resolveOrBootstrapScope(deps, tabName, options);
-    const workspace = deps.workspaceRegistry.createWorkspace(scope.workspaceName);
+    const workspace = deps.workspaceRegistry.createWorkspace(scope.workspaceName, ensureWorkflowOnFs(scope.workspaceName));
     if (workspace.tabRegistry.hasTab(scope.tabName)) {
         workspace.tabRegistry.setActiveTab(scope.tabName);
     }
@@ -132,7 +133,7 @@ const resolveOrBootstrapScope = async (
         throw new Error('tab not found');
     }
     const workspaceName = deps.workspaceRegistry.getActiveWorkspace()?.name || 'default';
-    const workspace = deps.workspaceRegistry.createWorkspace(workspaceName);
+    const workspace = deps.workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
     const page = await deps.pageRegistry.getPage(resolvedTabName);
     if (!workspace.tabRegistry.hasTab(resolvedTabName)) {
         workspace.tabRegistry.createTab({ tabName: resolvedTabName, page, url: page.url() });

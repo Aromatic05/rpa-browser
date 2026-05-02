@@ -20,6 +20,7 @@ import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { ACTION_TYPES, isRequestActionType } from './actions/action_types';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
+import { ensureWorkflowOnFs } from './workflow';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -172,7 +173,7 @@ const pageRegistry = createPageRegistry({
         const workspaceName = findWorkspaceNameByTabName(tabName)
             || workspaceRegistry.getActiveWorkspace()?.name
             || 'default';
-        const workspace = workspaceRegistry.createWorkspace(workspaceName);
+        const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         if (!workspace.tabRegistry.hasTab(tabName)) {
             workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
         } else {
@@ -512,7 +513,7 @@ setInterval(() => {
     await contextManager.getContext();
     await controlServer.start();
     if (workspaceRegistry.listWorkspaces().length === 0) {
-        const created = workspaceRegistry.createWorkspace('default');
+        const created = workspaceRegistry.createWorkspace('default', ensureWorkflowOnFs('default'));
         assert.ok(created.name, 'bootstrap workspaceName missing');
         log('workspace.bootstrap.created', { workspaceName: created.name });
     }

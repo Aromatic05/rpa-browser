@@ -5,6 +5,7 @@ import type { ActionHandler } from './execute';
 import { ERROR_CODES } from './error_codes';
 import { ACTION_TYPES } from './action_types';
 import { getRecordingBundle, getWorkspaceSnapshot, saveWorkspaceSnapshot } from '../record/recording';
+import { ensureWorkflowOnFs } from '../workflow';
 
 type WorkspaceCreatePayload = { workspaceName?: string };
 type WorkspaceSetActivePayload = { workspaceName: string };
@@ -46,7 +47,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
     'workspace.create': async (ctx, action) => {
         const payload = (action.payload ?? {}) as WorkspaceCreatePayload;
         const workspaceName = payload.workspaceName || randomName();
-        const workspace = ctx.workspaceRegistry.createWorkspace(workspaceName);
+        const workspace = ctx.workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         return replyAction(action, { workspaceName: workspace.name, tabName: null });
     },
     'workspace.setActive': async (ctx, action) => {
@@ -81,7 +82,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
             return failedAction(action, ERROR_CODES.ERR_WORKSPACE_SNAPSHOT_NOT_FOUND, 'no saved workspace snapshot to restore');
         }
         const targetWorkspaceName = randomName();
-        const workspace = ctx.workspaceRegistry.createWorkspace(targetWorkspaceName);
+        const workspace = ctx.workspaceRegistry.createWorkspace(targetWorkspaceName, ensureWorkflowOnFs(targetWorkspaceName));
         for (const tab of snapshot.tabs) {
             workspace.tabRegistry.createTab({ tabName: tab.tabName || randomName(), url: tab.url || '', title: tab.title || '' });
         }
@@ -140,7 +141,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         const payload = (action.payload ?? {}) as TabOpenedPayload;
         const workspaceName = resolveWorkspaceName(action, payload.workspaceName);
         if (!workspaceName || !payload.tabName) {return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName/tabName is required');}
-        const workspace = ctx.workspaceRegistry.createWorkspace(workspaceName);
+        const workspace = ctx.workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         if (!workspace.tabRegistry.hasTab(payload.tabName)) {
             workspace.tabRegistry.createTab({ tabName: payload.tabName, url: payload.url || '', title: payload.title || '', at: payload.at });
         }
@@ -187,7 +188,7 @@ export const workspaceHandlers: Record<string, ActionHandler> = {
         if (!payload.workspaceName || !payload.tabName) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName/tabName is required');
         }
-        const workspace = ctx.workspaceRegistry.createWorkspace(payload.workspaceName);
+        const workspace = ctx.workspaceRegistry.createWorkspace(payload.workspaceName, ensureWorkflowOnFs(payload.workspaceName));
         if (!workspace.tabRegistry.hasTab(payload.tabName)) {
             workspace.tabRegistry.createTab({ tabName: payload.tabName, at: payload.at });
         }

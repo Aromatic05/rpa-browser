@@ -19,6 +19,7 @@ import { MemorySink } from '../trace/sink';
 import { createLoggingHooks } from '../trace/hooks';
 import { getRunnerConfig } from '../../config';
 import { RunnerPluginHost } from '../hotreload/plugin_host';
+import { ensureWorkflowOnFs } from '../../workflow';
 
 const fixtureUrl = () =>
     pathToFileURL(
@@ -58,7 +59,7 @@ const run = async () => {
     const workspaceName = 'demo';
     const tabName = crypto.randomUUID();
     const page = await pageRegistry.getPage(tabName);
-    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName);
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
     runtimeWorkspace.tabRegistry.createTab({ tabName, page, url: page.url() });
     runtimeWorkspace.tabRegistry.setActiveTab(tabName);
     runtimeRegistry.bindPage({ workspaceName, tabName, page });
