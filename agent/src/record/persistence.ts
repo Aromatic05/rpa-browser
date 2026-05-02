@@ -160,7 +160,7 @@ const toRecordingManifestFile = (opts: SaveWorkflowRecordingArtifactsOptions) =>
 });
 
 export const saveWorkflowRecordingArtifacts = async (opts: SaveWorkflowRecordingArtifactsOptions): Promise<string> => {
-    const recordsDir = path.resolve(opts.artifactsRootDir, 'workflows', opts.scene, 'records', opts.recordingName);
+    const recordsDir = path.resolve(opts.artifactsRootDir, 'workflows', opts.scene, 'recordings', opts.recordingName);
     await fs.mkdir(recordsDir, { recursive: true });
 
     const stepsFile: StepFile = {
@@ -188,19 +188,11 @@ export const resolveWorkflowRecordingDir = async (
     scene: string,
     recordingName: string,
 ): Promise<string> => {
-    const recordsDir = path.resolve(artifactsRootDir, 'workflows', scene, 'records', recordingName);
+    const recordsDir = path.resolve(artifactsRootDir, 'workflows', scene, 'recordings', recordingName);
     try {
         const stat = await fs.stat(recordsDir);
         if (stat.isDirectory()) {
             return recordsDir;
-        }
-    } catch {}
-
-    const legacyDir = path.resolve(artifactsRootDir, 'workflows', scene, 'steps', recordingName);
-    try {
-        const stat = await fs.stat(legacyDir);
-        if (stat.isDirectory()) {
-            return legacyDir;
         }
     } catch {}
 

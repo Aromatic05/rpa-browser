@@ -34,6 +34,7 @@ import {
     validateStepResolveFileForSerialization,
 } from '../runner/serialization/types';
 import { resolveWorkflowRecordingDir, saveWorkflowRecordingArtifacts } from '../record/persistence';
+import { ensureWorkflowOnFs } from '../workflow';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,13 +77,13 @@ const toSceneFromWorkspaceName = (workspaceName: string): string => {
 const ensureWorkflowScaffold = (scene: string): { workflowRoot: string; created: boolean } => {
     const workflowRoot = path.join(DEFAULT_WORKFLOWS_DIR, scene);
     const workflowPath = path.join(workflowRoot, 'workflow.yaml');
-    fs.mkdirSync(path.join(workflowRoot, 'records'), { recursive: true });
+        fs.mkdirSync(path.join(workflowRoot, 'recordings'), { recursive: true });
     fs.mkdirSync(path.join(workflowRoot, 'checkpoints'), { recursive: true });
     let created = false;
     if (!fs.existsSync(workflowPath)) {
         fs.writeFileSync(
             workflowPath,
-            ['version: 1', `id: ${scene}`, `name: ${scene}`, 'entry:', '  dsl: dsl/main.dsl', 'records: []', 'checkpoints: []'].join('\n') + '\n',
+            ['version: 1', `name: ${scene}`, 'entry:', '  dsl: main', 'recordings: []', 'checkpoints: []', 'dsls: []', 'entityRules: []'].join('\n') + '\n',
             'utf8',
         );
         created = true;
@@ -91,7 +92,7 @@ const ensureWorkflowScaffold = (scene: string): { workflowRoot: string; created:
 };
 
 const resolveLatestRecordingName = (scene: string): string | null => {
-    const recordsRoot = path.join(DEFAULT_WORKFLOWS_DIR, scene, 'records');
+    const recordsRoot = path.join(DEFAULT_WORKFLOWS_DIR, scene, 'recordings');
     if (!fs.existsSync(recordsRoot)) {return null;}
     const dirs = fs.readdirSync(recordsRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
     if (!dirs.length) {return null;}
@@ -305,7 +306,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         if (!initialTabName) {
             initialTabName = crypto.randomUUID();
             const page = await ctx.pageRegistry.getPage(initialTabName);
-            const targetWs = ctx.workspaceRegistry.createWorkspace(replayWorkspaceName);
+            const targetWs = ctx.workspaceRegistry.createWorkspace(replayWorkspaceName, ensureWorkflowOnFs(replayWorkspaceName));
             targetWs.tabRegistry.createTab({ tabName: initialTabName, page, url: page.url() });
             targetWs.tabRegistry.setActiveTab(initialTabName);
         }
