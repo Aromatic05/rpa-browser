@@ -80,6 +80,7 @@ test('static boundaries: no legacy handler table or execute imports in action in
     const repoRoot = path.resolve(process.cwd(), 'src/actions');
     assert.equal(fs.existsSync(path.join(repoRoot, 'legacy_handlers.ts')), false);
     assert.equal(fs.existsSync(path.join(repoRoot, 'recording.ts')), false);
+    assert.equal(fs.existsSync(path.join(repoRoot, 'task_stream.ts')), false);
     const indexContent = fs.readFileSync(path.join(repoRoot, 'index.ts'), 'utf8');
     assert.equal(indexContent.includes('./execute'), false);
     assert.equal(indexContent.includes('./recording'), false);
