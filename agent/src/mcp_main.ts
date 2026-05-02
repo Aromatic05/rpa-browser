@@ -15,6 +15,7 @@ import { McpToolHost } from './mcp/hotreload/tool_host';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
+import { setWorkspaceControlServices } from './runtime/workspace_control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -103,19 +104,11 @@ const runStepsDeps = {
     pluginHost: runnerPluginHost,
 };
 setRunStepsDeps(runStepsDeps);
+setWorkspaceControlServices({ pageRegistry });
 setControlActionDispatcher(
     createActionDispatcher({
-        pageRegistry,
         workspaceRegistry,
-        recordingState,
         log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
-        replayOptions: {
-            clickDelayMs: 300,
-            stepDelayMs: 900,
-            scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
-        },
-        navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-        runStepsDeps,
     }),
 );
 const controlServer = createControlServer({ deps: runStepsDeps });

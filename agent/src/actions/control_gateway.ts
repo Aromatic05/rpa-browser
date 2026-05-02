@@ -5,13 +5,8 @@ import { ERROR_CODES } from './error_codes';
 
 export type GatewayDeps = {
     workspaceRegistry: any;
-    pageRegistry: any;
-    recordingState: any;
     log: (...args: unknown[]) => void;
-    replayOptions: any;
-    navDedupeWindowMs: number;
     emit?: (action: Action) => void;
-    runStepsDeps?: any;
 };
 
 export const routeControlAction = async (deps: GatewayDeps, action: Action): Promise<Action> => {
@@ -25,13 +20,6 @@ export const routeControlAction = async (deps: GatewayDeps, action: Action): Pro
     const result = await handleRuntimeControlAction({
         action,
         workspaceRegistry: deps.workspaceRegistry,
-        pageRegistry: deps.pageRegistry,
-        recordingState: deps.recordingState,
-        log: deps.log,
-        replayOptions: deps.replayOptions,
-        navDedupeWindowMs: deps.navDedupeWindowMs,
-        emit: deps.emit,
-        runStepsDeps: deps.runStepsDeps,
     });
 
     for (const event of result.events) {

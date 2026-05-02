@@ -31,13 +31,6 @@ export const routeWorkspaceAction = async (deps: GatewayDeps, action: Action): P
             action,
             workspace,
             workspaceRegistry: deps.workspaceRegistry,
-            pageRegistry: deps.pageRegistry,
-            recordingState: deps.recordingState,
-            log: deps.log,
-            replayOptions: deps.replayOptions,
-            navDedupeWindowMs: deps.navDedupeWindowMs,
-            emit: deps.emit,
-            runStepsDeps: deps.runStepsDeps,
         });
 
         for (const event of result.events) {

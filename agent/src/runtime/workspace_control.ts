@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { Page } from 'playwright';
 import { replyAction, type Action } from '../actions/action_protocol';
 import { ActionError } from '../actions/failure';
 import { ERROR_CODES } from '../actions/error_codes';
@@ -13,13 +14,18 @@ export type WorkspaceControlInput = {
     action: Action;
     workspace: RuntimeWorkspace;
     workspaceRegistry: any;
-    pageRegistry: any;
-    recordingState: any;
-    log: (...args: unknown[]) => void;
-    replayOptions: any;
-    navDedupeWindowMs: number;
-    emit?: (action: Action) => void;
-    runStepsDeps?: any;
+};
+
+export type WorkspaceControlServices = {
+    pageRegistry: {
+        getPage: (tabName: string, startUrl?: string) => Promise<Page>;
+    };
+};
+
+let workspaceControlServices: WorkspaceControlServices | null = null;
+
+export const setWorkspaceControlServices = (services: WorkspaceControlServices): void => {
+    workspaceControlServices = services;
 };
 
 export const handleWorkspaceControlAction = async (input: WorkspaceControlInput): Promise<ControlPlaneResult> => {
@@ -45,9 +51,12 @@ export const handleWorkspaceControlAction = async (input: WorkspaceControlInput)
             };
         }
         if (action.type === 'tab.create') {
+            if (!workspaceControlServices) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'workspace control services not initialized');
+            }
             const tabName = crypto.randomUUID();
             const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
-            const page = await input.pageRegistry.getPage(tabName, startUrl);
+            const page = await workspaceControlServices.pageRegistry.getPage(tabName, startUrl);
             workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
             workspace.tabRegistry.setActiveTab(tabName);
             return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };

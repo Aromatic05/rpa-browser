@@ -9,13 +9,6 @@ export type ControlPlaneResult = { reply: Action; events: Action[] };
 export type RuntimeControlInput = {
     action: Action;
     workspaceRegistry: any;
-    pageRegistry: any;
-    recordingState: any;
-    log: (...args: unknown[]) => void;
-    replayOptions: any;
-    navDedupeWindowMs: number;
-    emit?: (action: Action) => void;
-    runStepsDeps?: any;
 };
 
 const randomName = () => crypto.randomUUID();
