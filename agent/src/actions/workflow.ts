@@ -80,17 +80,33 @@ export const workflowHandlers: Record<string, ActionHandler> = {
     },
 
     'workflow.list': async (_ctx, action) => {
-        const workflows = listWorkflowNames().map((name) => {
-            const workflow = loadWorkflowFromFs(name);
-            return {
-                workspaceName: name,
-                recordings: workflow.list({ kind: 'recording' }),
-                checkpoints: workflow.list({ kind: 'checkpoint' }),
-                dsls: workflow.list({ kind: 'dsl' }),
-                entityRules: workflow.list({ kind: 'entity_rules' }),
-            };
-        });
-        return replyAction(action, { workflows });
+        const workflows: Array<{
+            workspaceName: string;
+            recordings: ReturnType<Workflow['list']>;
+            checkpoints: ReturnType<Workflow['list']>;
+            dsls: ReturnType<Workflow['list']>;
+            entityRules: ReturnType<Workflow['list']>;
+        }> = [];
+        const diagnostics: Array<{ workspaceName: string; code?: string; message: string }> = [];
+        for (const name of listWorkflowNames()) {
+            try {
+                const workflow = loadWorkflowFromFs(name);
+                workflows.push({
+                    workspaceName: name,
+                    recordings: workflow.list({ kind: 'recording' }),
+                    checkpoints: workflow.list({ kind: 'checkpoint' }),
+                    dsls: workflow.list({ kind: 'dsl' }),
+                    entityRules: workflow.list({ kind: 'entity_rules' }),
+                });
+            } catch (error) {
+                diagnostics.push({
+                    workspaceName: name,
+                    code: error instanceof DslRuntimeError ? error.code : undefined,
+                    message: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
+        return replyAction(action, { workflows, diagnostics });
     },
 
     'workflow.open': async (ctx, action) => {
