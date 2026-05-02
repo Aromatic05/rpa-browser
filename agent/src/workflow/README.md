@@ -1,6 +1,6 @@
 # Workflow Boundary
 
-Prompt-Version: workflow-correction-v0.3
+Prompt-Version: workflow-correction-v0.4
 
 - workflow is the workspace-scoped serialization gate.
 - workflowName must equal workspaceName.
@@ -36,8 +36,6 @@ Control actions must not use `payload.workspaceName` or active-workspace fallbac
 - `workflow.dsl.save`
 - `workflow.dsl.test`
 - `workflow.releaseRun`
-- `workflow.record.save`
-- `workflow.record.load`
 
 Workspace actions must use `action.workspaceName` only.
 
@@ -78,3 +76,12 @@ Workspace actions must use `action.workspaceName` only.
 
 - `record.save` may create workflow persistence location.
 - `record.load` must not create workflow artifacts.
+- `workflow.record.save` does not exist.
+- `workflow.record.load` does not exist.
+
+## Rename Identity Migration
+
+- `workflow.rename` must update workflow directory name.
+- `workflow.rename` must update `workflow.yaml.name`.
+- `workflow.rename` must update workspace registry entry name.
+- after rename: `workspace.name === workspace.workflow.name`.
