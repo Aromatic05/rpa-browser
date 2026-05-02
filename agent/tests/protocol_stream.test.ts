@@ -41,7 +41,6 @@ test('replayRecording emits step and progress events as stream', async () => {
     const result = await replayRecording({
         workspaceName: 'ws-1',
         initialTabName: 'tab-1',
-        initialTabName: 'token-1',
         steps: [step],
         stopOnError: true,
         pageRegistry: {

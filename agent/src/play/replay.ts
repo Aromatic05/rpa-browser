@@ -22,7 +22,6 @@ export type ReplayOptions = {
 type ReplayRequest = {
     workspaceName: string;
     initialTabName: string;
-    initialTabId: string;
     steps: StepUnion[];
     enrichments?: RecordingEnhancementMap;
     recordingManifest?: RecordingManifest;
@@ -100,7 +99,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
     };
-    const forceActivateTab = async (tabName: string, desiredToken?: string, desiredTabRef?: string): Promise<boolean> => {
+    const forceActivateTab = async (tabName: string, recordedTabName?: string, desiredTabRef?: string): Promise<boolean> => {
         const switched = await runOne({
             id: `replay-switch-${Date.now()}`,
             name: 'browser.switch_tab',
@@ -111,8 +110,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (!switched.ok) {
             return false;
         }
-        if (desiredToken) {
-            tokenToTab.set(desiredToken, tabName);
+        if (recordedTabName) {
+            tokenToTab.set(recordedTabName, tabName);
         }
         if (desiredTabRef) {
             refToTab.set(desiredTabRef, tabName);
@@ -120,7 +119,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         return true;
     };
 
-    const tokenToTab = new Map<string, string>([[req.initialTabName, req.initialTabId]]);
+    const tokenToTab = new Map<string, string>([[req.initialTabName, req.initialTabName]]);
     const refToTab = new Map<string, string>();
     if (req.recordingManifest?.entryTabRef) {
         refToTab.set(req.recordingManifest.entryTabRef, req.initialTabName);
@@ -143,19 +142,18 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             stepName: originalStep.name,
         });
 
-        const desiredToken = originalStep.meta?.tabName;
-        const desiredTabRef = originalStep.meta?.tabRef || originalStep.meta?.tabName;
+        const recordedTabName = originalStep.meta?.tabName;
+        const desiredTabRef = originalStep.meta?.tabRef;
         let targetTabName: string | undefined;
         let remappedStep = originalStep;
-        if (desiredToken) {
-            targetTabName = tokenToTab.get(desiredToken);
+        if (recordedTabName) {
+            targetTabName = tokenToTab.get(recordedTabName);
             if (!targetTabName) {
                 const tabs = await req.pageRegistry.listTabs(req.workspaceName);
-                targetTabName = req.pageRegistry.resolveTabNameFromToken?.(desiredToken);
+                targetTabName = req.pageRegistry.resolveTabNameFromToken?.(recordedTabName);
                 if (!targetTabName && desiredTabRef) {
                     targetTabName = refToTab.get(desiredTabRef) || req.pageRegistry.resolveTabNameFromRef?.(desiredTabRef);
                 }
-                const recordedTabName = originalStep.meta?.tabName;
                 if (!targetTabName || !tabs.some((tab) => tab.tabName === targetTabName)) {
                     targetTabName =
                         recordedTabName && tabs.some((tab) => tab.tabName === recordedTabName)
@@ -198,7 +196,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                     }
                     targetTabName = createdTabName;
                 }
-                tokenToTab.set(desiredToken, targetTabName);
+                tokenToTab.set(recordedTabName, targetTabName);
                 if (desiredTabRef) {
                     refToTab.set(desiredTabRef, targetTabName);
                 }
@@ -214,7 +212,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 };
             }
         } else if (targetTabName) {
-            const activated = await forceActivateTab(targetTabName, desiredToken, desiredTabRef);
+            const activated = await forceActivateTab(targetTabName, recordedTabName, desiredTabRef);
             if (!activated) {
                 return { ok: false, results: stepResults };
             }
