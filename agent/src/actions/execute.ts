@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 import { ERROR_CODES, type ErrorCode } from './error_codes';
 import type { Action } from './action_protocol';
 import { failedAction } from './action_protocol';
-import { actionHandlers } from './index';
+import { actionHandlers } from './legacy_handlers';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';

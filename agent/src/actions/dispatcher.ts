@@ -1,6 +1,9 @@
-import type { Page } from 'playwright';
-import { executeAction, type ActionContext, type ActionHandlerResult } from './execute';
 import type { Action } from './action_protocol';
+import { classifyActionRoute } from './classify';
+import { parseActionEnvelope } from './envelope';
+import { routeControlAction, type GatewayDeps } from './control_gateway';
+import { routeWorkspaceAction } from './workspace_gateway';
+import { toFailedAction, unsupportedActionFailure } from './failure';
 import type { PageRegistry } from '../runtime/page_registry';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../play/replay';
@@ -19,71 +22,37 @@ export type ActionDispatcherOptions = {
 };
 
 export type ActionDispatcher = {
-    dispatch(action: Action): Promise<ActionHandlerResult>;
-};
-
-const createPageStub = (actionType: string): Page =>
-    new Proxy(
-        {},
-        {
-            get: (_target, prop) => {
-                throw new Error(`action '${actionType}' accessed page.${String(prop)} without target`);
-            },
-        },
-    ) as unknown as Page;
-
-const assertNoLegacyAddressFields = (action: Action): void => {
-    const envelope = action as Record<string, unknown>;
-    if ('scope' in envelope || 'tabName' in envelope) {
-        throw new Error('legacy action address fields are not allowed');
-    }
-    if (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) {
-        const payload = action.payload as Record<string, unknown>;
-        if ('workspaceName' in payload || 'scope' in payload) {
-            throw new Error('legacy payload address fields are not allowed');
-        }
-        if (action.workspaceName && 'workspaceName' in payload) {
-            throw new Error('payload must not duplicate workspaceName');
-        }
-    }
-};
-
-const createActionContext = (options: ActionDispatcherOptions, action: Action): ActionContext => {
-    const workspace = action.workspaceName ? options.workspaceRegistry.getWorkspace(action.workspaceName) : null;
-    const resolveTab = (tabName?: string) => {
-        if (!workspace) {throw new Error('workspace not found');}
-        return workspace.tabRegistry.resolveTab(tabName);
-    };
-    const resolvePage = (tabName?: string) => {
-        const tab = resolveTab(tabName);
-        if (!tab.page) {return createPageStub(action.type);}
-        return tab.page;
-    };
-
-    const ctx: ActionContext = {
-        workspaceRegistry: options.workspaceRegistry,
-        workspace,
-        resolveTab,
-        resolvePage,
-        pageRegistry: options.pageRegistry,
-        log: options.log,
-        recordingState: options.recordingState,
-        replayOptions: options.replayOptions,
-        navDedupeWindowMs: options.navDedupeWindowMs,
-        emit: options.emit,
-        runStepsDeps: options.runStepsDeps,
-        execute: undefined,
-    };
-    ctx.execute = (innerAction: Action) => executeAction(ctx, innerAction);
-    return ctx;
+    dispatch(action: Action): Promise<Action>;
 };
 
 export const createActionDispatcher = (options: ActionDispatcherOptions): ActionDispatcher => ({
-    async dispatch(action: Action): Promise<ActionHandlerResult> {
-        assertNoLegacyAddressFields(action);
-        if (action.workspaceName && !options.workspaceRegistry.getWorkspace(action.workspaceName)) {
-            throw new Error(`workspace not found: ${action.workspaceName}`);
+    async dispatch(action: Action): Promise<Action> {
+        try {
+            const parsed = parseActionEnvelope(action);
+            const route = classifyActionRoute(parsed);
+            const deps: GatewayDeps = {
+                workspaceRegistry: options.workspaceRegistry,
+                pageRegistry: options.pageRegistry,
+                recordingState: options.recordingState,
+                log: options.log,
+                replayOptions: options.replayOptions,
+                navDedupeWindowMs: options.navDedupeWindowMs,
+                emit: options.emit,
+                runStepsDeps: options.runStepsDeps,
+            };
+
+            if (route === 'control') {
+                return await routeControlAction(deps, parsed);
+            }
+            if (route === 'workspace') {
+                return await routeWorkspaceAction(deps, parsed);
+            }
+            if (route === 'reply' || route === 'event') {
+                return unsupportedActionFailure(parsed);
+            }
+            return unsupportedActionFailure(parsed);
+        } catch (error) {
+            return toFailedAction(action, error);
         }
-        return await executeAction(createActionContext(options, action), action);
     },
 });
