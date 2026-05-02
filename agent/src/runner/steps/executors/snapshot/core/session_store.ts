@@ -287,7 +287,6 @@ export const readSnapshotDiffBaseline = (
         pageIdentity: {
             workspaceName: baseline.pageIdentity.workspaceName,
             tabName: baseline.pageIdentity.tabName,
-            tabName: baseline.pageIdentity.tabName,
             url: baseline.pageIdentity.url,
         },
     };
@@ -305,7 +304,6 @@ export const writeSnapshotDiffBaseline = (
         createdAt: baseline.createdAt,
         pageIdentity: {
             workspaceName: baseline.pageIdentity.workspaceName,
-            tabName: baseline.pageIdentity.tabName,
             tabName: baseline.pageIdentity.tabName,
             url: baseline.pageIdentity.url,
         },
@@ -329,7 +327,6 @@ const createEmptyOverlays = (): SnapshotOverlays => ({
 
 const resolveSnapshotPageIdentity = (binding: PageBinding): SnapshotPageIdentity => ({
     workspaceName: binding.workspaceName,
-    tabName: binding.tabName,
     tabName: binding.tabName,
     url: safeReadPageUrl(binding),
 });
@@ -432,7 +429,6 @@ const safeReadPageUrl = (binding: PageBinding): string => {
 const isSamePageIdentity = (left: SnapshotPageIdentity, right: SnapshotPageIdentity): boolean => {
     return (
         left.workspaceName === right.workspaceName &&
-        left.tabName === right.tabName &&
         left.tabName === right.tabName &&
         left.url === right.url
     );
