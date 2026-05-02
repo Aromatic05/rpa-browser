@@ -48,7 +48,6 @@ type WorkflowListData = {
 type WorkflowOpenData = {
     workspaceName?: string;
     tabName?: string;
-    tabName?: string;
 };
 
 type WorkflowRunData = {
@@ -60,10 +59,9 @@ type BoundTokenData = {
     ok: boolean;
     tabName?: string;
     workspaceName?: string;
-    tabName?: string;
     error?: string;
 };
-type BoundScope = { tabName: string; workspaceName: string; tabName?: string };
+type BoundScope = { tabName: string; workspaceName: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
