@@ -93,7 +93,6 @@ const createCtx = () => {
                     ensureActivePage: async () => ({
                         workspaceName: 'workflow:test',
                         tabName: 'tab-1',
-                        tabName: 'workflow:test:tab-1',
                     }),
                 },
                 stepSinks: [],

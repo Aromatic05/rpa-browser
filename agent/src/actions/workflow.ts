@@ -328,7 +328,6 @@ export const workflowHandlers: Record<string, ActionHandler> = {
             diagnostics: result.diagnostics,
             workspaceName: result.workspaceName,
             tabName: result.tabName,
-            tabName: result.tabName,
         });
     },
 };

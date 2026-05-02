@@ -64,7 +64,6 @@ export type RunWorkflowResult = {
     workflowRoot: string;
     workspaceName: string;
     tabName: string;
-    tabName: string;
     scope: {
         input: Record<string, unknown>;
         vars: Record<string, unknown>;

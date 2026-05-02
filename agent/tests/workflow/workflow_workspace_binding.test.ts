@@ -41,7 +41,7 @@ test('createOnly uses create workspace path', async () => {
                 },
                 resolvePage: async () => ({ url: () => 'http://a', goto: async () => {} }),
             } as any,
-            restoreWorkspace: async () => ({ workspaceName: 'ws-x', tabName: 'tab-x', tabName: 'tk-x' }),
+            restoreWorkspace: async () => ({ workspaceName: 'ws-x', tabName: 'tab-x' }),
         },
         {
             scene: 'order',
@@ -95,7 +95,7 @@ test('expectedTabs urlIncludes validation succeeds', async () => {
                 resolveTabName: () => 'tk-created',
                 resolvePage: async () => ({ url: () => 'http://localhost/orders/list', goto: async () => {} }),
             } as any,
-            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
+            restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore' }),
         },
         {
             scene: 'order',
@@ -121,7 +121,7 @@ test('expectedTabs exactUrl validation fails with ERR_WORKFLOW_WORKSPACE_RESOLVE
                         resolveTabName: () => 'tk-created',
                         resolvePage: async () => ({ url: () => 'http://localhost/orders/list', goto: async () => {} }),
                     } as any,
-                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore', tabName: 'tk-restore' }),
+                    restoreWorkspace: async () => ({ workspaceName: 'ws-restore', tabName: 'tab-restore' }),
                 },
                 {
                     scene: 'order',
