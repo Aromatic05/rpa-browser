@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { DslRuntimeError } from '../dsl/diagnostics/errors';
 import { createCheckpointCodec, type WorkflowCheckpoint } from './checkpoint';
 import { createDslCodec, type WorkflowDsl } from './dsl';
@@ -48,6 +49,7 @@ export type WorkflowManifest = {
 };
 
 export type Workflow = {
+    readonly name: string;
     save: (value: WorkflowArtifact) => WorkflowArtifact;
     get: (name: string, dummy: WorkflowDummy) => WorkflowArtifact | null;
     list: (dummy: WorkflowDummy) => WorkflowCatalogItem[];
@@ -160,6 +162,7 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
     const internal = createInternal(workflowName);
 
     return {
+        name: workflowName,
         save: (value) => {
             const codec = internal.codecs.find((item) => item.is(value));
             if (!codec) {
@@ -214,6 +217,18 @@ export const ensureWorkflowOnFs = (workflowName: string): Workflow => {
         return loadWorkflowFromFs(workflowName);
     }
     return createWorkflowOnFs(workflowName);
+};
+
+export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
+    const fromDir = workflowRootDir(fromName);
+    const toDir = workflowRootDir(toName);
+    if (!existsDir(fromDir)) {
+        throw new DslRuntimeError(`workflow not found: ${fromName}`, 'ERR_WORKFLOW_NOT_FOUND');
+    }
+    if (existsDir(toDir)) {
+        throw new DslRuntimeError(`workflow already exists: ${toName}`, 'ERR_WORKFLOW_BAD_ARGS');
+    }
+    fs.renameSync(fromDir, toDir);
 };
 
 export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir());
