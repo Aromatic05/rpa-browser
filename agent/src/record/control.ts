@@ -187,6 +187,7 @@ export const handleRecordControlAction = async (input: WorkspaceControlInput): P
         return { reply: replyAction(action, { recordings }), events: [] };
     }
 
+    // play.* actions are controlled in record domain instead of actions gateway.
     if (action.type === 'play.stop') {
         const activeTab = workspace.tabRegistry.getActiveTab();
         if (!activeTab) {
