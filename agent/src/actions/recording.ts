@@ -4,7 +4,8 @@
 
 import crypto from 'node:crypto';
 import { failedAction, replyAction } from './action_protocol';
-import type { ActionHandler } from './execute';
+import type { Action } from './action_protocol';
+import type { ActionHandler } from './handler_types';
 import { ACTION_TYPES } from './action_types';
 import {
     startRecording,

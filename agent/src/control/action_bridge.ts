@@ -1,10 +1,9 @@
 import crypto from 'node:crypto';
 import type { Action } from '../actions/action_protocol';
-import type { ActionHandlerResult } from '../actions/execute';
 import type { ControlRouterContext } from './router';
 
 export type ControlActionDispatcher = {
-    dispatch(action: Action): Promise<ActionHandlerResult>;
+    dispatch(action: Action): Promise<Action>;
 };
 
 let controlActionDispatcher: ControlActionDispatcher | null = null;

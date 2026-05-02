@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { failedAction, replyAction } from './action_protocol';
-import type { ActionHandler } from './execute';
+import type { Action } from './action_protocol';
+import type { ActionHandler } from './handler_types';
 import { ERROR_CODES } from './error_codes';
 import {
     closeStepsQueue,

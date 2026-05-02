@@ -1,5 +1,6 @@
 import { replyAction } from './action_protocol';
-import type { ActionHandler } from './execute';
+import type { Action } from './action_protocol';
+import type { ActionHandler } from './handler_types';
 import { ERROR_CODES } from './error_codes';
 import { DslRuntimeError } from '../dsl/diagnostics/errors';
 import { runDslSource } from '../dsl/runtime';

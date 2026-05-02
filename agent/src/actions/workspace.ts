@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { Action } from './action_protocol';
 import { failedAction, replyAction } from './action_protocol';
-import type { ActionHandler } from './execute';
+import type { ActionHandler } from './handler_types';
 import { ERROR_CODES } from './error_codes';
 import { ACTION_TYPES } from './action_types';
 import { getRecordingBundle, getWorkspaceSnapshot, saveWorkspaceSnapshot } from '../record/recording';
