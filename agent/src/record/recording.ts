@@ -20,7 +20,6 @@ import type { RecordedStepEnhancement, RecordingEnhancementMap } from './types';
 export type RecordingTabManifest = {
     tabName: string;
     tabRef: string;
-    tabName?: string;
     firstSeenUrl?: string;
     lastSeenUrl?: string;
     firstSeenAt: number;
@@ -36,7 +35,14 @@ export type RecordingManifest = {
     tabs: RecordingTabManifest[];
 };
 
-export type SavedRecordingTabManifest = Omit<RecordingTabManifest, 'tabName'>;
+export type SavedRecordingTabManifest = {
+    tabName: string;
+    tabRef: string;
+    firstSeenUrl?: string;
+    lastSeenUrl?: string;
+    firstSeenAt: number;
+    lastSeenAt: number;
+};
 export type SavedRecordingManifest = Omit<RecordingManifest, 'tabs'> & {
     tabs: SavedRecordingTabManifest[];
 };
@@ -160,7 +166,7 @@ const createStep = <TName extends StepName>(
     name: TName,
     args: StepArgsMap[TName],
     ts: number,
-    metaExtra?: Partial<Pick<StepMeta, 'workspaceName' | 'tabName' | 'tabName' | 'tabRef' | 'urlAtRecord'>>,
+    metaExtra?: Partial<Pick<StepMeta, 'workspaceName' | 'tabName' | 'tabRef' | 'urlAtRecord'>>,
     resolve?: StepResolve,
 ): Step<TName> => ({
     id: crypto.randomUUID(),
@@ -320,15 +326,14 @@ const ensureManifest = (
 const ensureTabInManifest = (
     manifest: RecordingManifest,
     tabName: string,
-    seed?: { tabRef?: string; tabName?: string; url?: string; at?: number },
+    seed?: { tabRef?: string; url?: string; at?: number },
 ): RecordingTabManifest => {
     const now = seed?.at || Date.now();
     let tab = manifest.tabs.find((item) => item.tabName === tabName);
     if (!tab) {
         tab = {
             tabName,
-            tabRef: seed?.tabRef || seed?.tabName || tabName,
-            tabName: seed?.tabName,
+            tabRef: seed?.tabRef || tabName,
             firstSeenUrl: seed?.url,
             lastSeenUrl: seed?.url,
             firstSeenAt: now,
@@ -337,7 +342,6 @@ const ensureTabInManifest = (
         manifest.tabs.push(tab);
         return tab;
     }
-    if (!tab.tabName && seed?.tabName) {tab.tabName = seed.tabName;}
     if (!tab.tabRef && seed?.tabRef) {tab.tabRef = seed.tabRef;}
     if (seed?.url) {
         if (!tab.firstSeenUrl) {tab.firstSeenUrl = seed.url;}
@@ -371,8 +375,7 @@ const enrichRecordedStep = (
         (step.name === 'browser.switch_tab' ? switchTabUrl : undefined) ||
         undefined;
     const tab = ensureTabInManifest(manifest, stepTabName, {
-        tabName: step.meta?.tabName,
-        tabRef: step.meta?.tabRef || step.meta?.tabName,
+        tabRef: step.meta?.tabRef,
         url: stepUrl || undefined,
         at: ts,
     });
@@ -575,7 +578,7 @@ export const startRecording = async (
     page: Page,
     tabName: string,
     navDedupeWindowMs: number,
-    seed?: { workspaceName?: string; tabName?: string; entryUrl?: string },
+    seed?: { workspaceName?: string; tabRef?: string; entryUrl?: string },
 ): Promise<void> => {
     const recordLog = getLogger('record');
     state.recordingEnabled.add(tabName);
@@ -587,13 +590,12 @@ export const startRecording = async (
     state.lastScrollY.set(tabName, 0);
     const manifest = ensureManifest(state, tabName, {
         workspaceName: seed?.workspaceName,
-        entryTabRef: seed?.tabName || tabName,
+        entryTabRef: seed?.tabRef || tabName,
         entryUrl: seed?.entryUrl || page.url(),
     });
     indexWorkspaceRecording(state, tabName, manifest.workspaceName);
     ensureTabInManifest(manifest, tabName, {
-        tabName: seed?.tabName,
-        tabRef: seed?.tabName || tabName,
+        tabRef: seed?.tabRef || tabName,
         url: seed?.entryUrl || page.url(),
     });
     recordLog('start', { tabName, url: page.url() });

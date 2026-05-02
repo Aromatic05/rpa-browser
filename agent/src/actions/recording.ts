@@ -110,7 +110,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const workspaceName = action.workspaceName || ctx.workspace?.name || '';
         await startRecording(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs, {
             workspaceName,
-            tabName: tab.name,
+            tabRef: tab.name,
             entryUrl: page.url(),
         });
         await ensureRecorder(ctx.recordingState, page, tab.name, ctx.navDedupeWindowMs);
@@ -248,9 +248,8 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             entryUrl: typeof parsedManifest.entryUrl === 'string' ? parsedManifest.entryUrl : undefined,
             startedAt: now,
             tabs: (Array.isArray(parsedManifest.tabs) ? parsedManifest.tabs : []).map((tab) => ({
-                tabName: recordingToken,
+                tabName: tab.tabName || 'main',
                 tabRef: tab.tabName || 'main',
-                tabName: tab.tabName,
                 firstSeenUrl: tab.url,
                 lastSeenUrl: tab.url,
                 firstSeenAt: now,
@@ -366,7 +365,6 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 const replayed = await replayRecording({
                     workspaceName: replayWorkspaceName,
                     initialTabName,
-                    initialTabId: initialTabName,
                     steps,
                     enrichments: bundle.enrichments,
                     recordingManifest: bundle.manifest,
@@ -428,7 +426,6 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 started: true,
                 workspaceName: replayWorkspaceName,
                 tabName: initialTabName,
-                tabName: initialTabName,
                 stepCount: steps.length,
                 stopOnError,
             },
@@ -462,7 +459,6 @@ export const recordingHandlers: Record<string, ActionHandler> = {
                 source: step.meta?.source ?? 'record',
                 ts: step.meta?.ts ?? Date.now(),
                 workspaceName,
-                tabName: token,
                 tabName: token,
                 tabRef: step.meta?.tabRef || token,
                 urlAtRecord: step.meta?.urlAtRecord || currentUrl || undefined,

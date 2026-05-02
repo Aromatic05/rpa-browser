@@ -25,14 +25,14 @@ test('recordStep appends cross-tab step into sole active recording session', () 
         id: 'step-1',
         name: 'browser.switch_tab',
         args: { tabName: 'tab-b' },
-        meta: { source: 'record', ts: 100, tabName: 'token-b', workspaceName: 'ws-1', tabName: 'tab-b' },
+        meta: { source: 'record', ts: 100, tabName: 'tab-b', workspaceName: 'ws-1' },
     };
 
     recordStep(state, 'token-b', step, 1200);
     const recorded = state.recordings.get('token-a') || [];
     assert.equal(recorded.length, 1);
     assert.equal(recorded[0].name, 'browser.switch_tab');
-    assert.equal(recorded[0].meta?.tabName, 'token-b');
+    assert.equal(recorded[0].meta?.tabName, 'tab-b');
 });
 
 test('stopRecording falls back to sole active recording token', () => {
@@ -106,9 +106,8 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
         startedAt: 1,
         tabs: [
             {
-                tabName: 'token-a',
-                tabRef: 'tab-a',
                 tabName: 'tab-a',
+                tabRef: 'tab-a',
                 firstSeenUrl: 'https://example.com/a',
                 lastSeenUrl: 'https://example.com/a',
                 firstSeenAt: 1,
@@ -125,7 +124,6 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
             ts: 200,
             workspaceName: 'ws-1',
             tabName: 'tab-b',
-            tabName: 'token-b',
         },
     };
     recordStep(state, 'token-a', switchStep, 1200);
@@ -136,7 +134,7 @@ test('recording bundle tracks entry and tab context for switch steps', () => {
     assert.equal(bundle.manifest?.workspaceName, 'ws-1');
     assert.equal(bundle.manifest?.entryTabRef, 'tab-a');
     assert.equal(bundle.manifest?.entryUrl, 'https://example.com/a');
-    const tabB = bundle.manifest?.tabs.find((tab) => tab.tabName === 'token-b');
+    const tabB = bundle.manifest?.tabs.find((tab) => tab.tabName === 'tab-b');
     assert.equal(tabB?.tabRef, 'tab-b');
     assert.equal(tabB?.lastSeenUrl, 'https://example.com/b');
 });
@@ -210,9 +208,8 @@ test('saveWorkspaceSnapshot strips tabName from persisted steps', () => {
             startedAt: 10,
             tabs: [
                 {
-                    tabName: 'token-sensitive',
-                    tabRef: 'tab-1',
                     tabName: 'tab-1',
+                    tabRef: 'tab-1',
                     firstSeenUrl: 'https://example.com',
                     lastSeenUrl: 'https://example.com',
                     firstSeenAt: 10,
@@ -223,7 +220,7 @@ test('saveWorkspaceSnapshot strips tabName from persisted steps', () => {
     });
     assert.equal(snapshot.recording.steps.length, 1);
     assert.equal(snapshot.recording.steps[0].meta?.tabName, undefined);
-    assert.equal('tabName' in (snapshot.recording.manifest?.tabs[0] || {}), false);
+    assert.equal('tabName' in (snapshot.recording.manifest?.tabs[0] || {}), true);
     assert.equal(getWorkspaceSnapshot(state, 'ws-save')?.recording.steps[0].meta?.tabName, undefined);
     const summaries = listWorkspaceRecordings(state);
     assert.equal(summaries.length, 1);
