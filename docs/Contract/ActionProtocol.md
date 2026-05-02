@@ -29,6 +29,11 @@ Action 是 extension/start_extension/UI 与 agent 之间唯一的协议数据包
 - 禁止顶层 `workspaceName/tabName/tabName`。
 - 禁止 payload 重复地址字段（`workspaceName/workspaceName/tabName/tabName/scope`）。
 - 对外 workspace/tab 表达只允许 `workspaceName/tabName`。
+- `workspaceName` 只能出现在 Action 顶层，payload 不得出现 `workspaceName`。
+- `tabName` 只在 payload 中作为 workspace 内部目标名，不是顶层地址字段。
+- extension content 必须通过 `scope.workspaceName` 设置 Action 顶层地址。
+- agent workspace handlers 只从 `action.workspaceName` 读取当前 workspace 地址。
+- dispatcher 持续拒绝 payload 地址字段（含 `payload.workspaceName`）。
 
 语义：
 
