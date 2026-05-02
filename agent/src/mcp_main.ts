@@ -17,9 +17,15 @@ import { createControlServer, registerControlShutdown, setControlActionDispatche
 import { ensureWorkflowOnFs } from './workflow';
 import { setWorkspaceControlServices } from './runtime/workspace_control';
 import { setWorkflowControlServices } from './workflow/control';
+import { setRecordControlServices } from './record/control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
+const REPLAY_OPTIONS = {
+    clickDelayMs: 300,
+    stepDelayMs: 900,
+    scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+};
 if (!process.env.RPA_USER_DATA_DIR) {
     process.env.RPA_USER_DATA_DIR = path.resolve(process.cwd(), '.user-data-mcp');
 }
@@ -107,6 +113,11 @@ const runStepsDeps = {
 setRunStepsDeps(runStepsDeps);
 setWorkspaceControlServices({ pageRegistry });
 setWorkflowControlServices({ recordingState });
+setRecordControlServices({
+    recordingState,
+    replayOptions: REPLAY_OPTIONS,
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+});
 setControlActionDispatcher(
     createActionDispatcher({
         workspaceRegistry,

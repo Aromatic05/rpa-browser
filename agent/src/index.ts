@@ -31,6 +31,7 @@ import { ensureWorkflowOnFs } from './workflow';
 import { ingestRecorderEvent } from './record/ingest';
 import { setWorkspaceControlServices } from './runtime/workspace_control';
 import { setWorkflowControlServices } from './workflow/control';
+import { setRecordControlServices } from './record/control';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -209,6 +210,12 @@ const actionDispatcher = createActionDispatcher({
 });
 setWorkspaceControlServices({ pageRegistry });
 setWorkflowControlServices({ recordingState });
+setRecordControlServices({
+    recordingState,
+    replayOptions: REPLAY_OPTIONS,
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    emit: broadcast,
+});
 setControlActionDispatcher(actionDispatcher);
 const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, log);
