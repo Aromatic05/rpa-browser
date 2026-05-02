@@ -6,7 +6,8 @@ import { routeWorkspaceAction } from '../../src/actions/workspace_gateway';
 import { routeControlAction } from '../../src/actions/control_gateway';
 import { createActionDispatcher } from '../../src/actions/dispatcher';
 import type { Action } from '../../src/actions/action_protocol';
-import { createRecordingState } from '../../src/record/recording';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const baseAction = (type: string): Action => ({ v: 1, id: 'a1', type });
 
@@ -16,11 +17,7 @@ const deps = {
         listWorkspaces: () => [],
         getActiveWorkspace: () => null,
     },
-    pageRegistry: { getPage: async () => ({ url: () => 'https://example.com' }) },
-    recordingState: createRecordingState(),
     log: () => undefined,
-    replayOptions: {},
-    navDedupeWindowMs: 0,
 };
 
 test('envelope rejects legacy top-level address fields', () => {
@@ -39,6 +36,7 @@ test('classify distinguishes control/workspace/reply/event', () => {
     assert.equal(classifyActionRoute({ ...baseAction('tab.list'), workspaceName: 'ws-1' }), 'workspace');
     assert.equal(classifyActionRoute(baseAction('workflow.list.result')), 'reply');
     assert.equal(classifyActionRoute(baseAction('play.progress')), 'event');
+    assert.equal(classifyActionRoute(baseAction('bad-type')), 'invalid');
 });
 
 test('workspace gateway rejects missing workspaceName', async () => {
@@ -59,13 +57,30 @@ test('control gateway does not process workspace actions', async () => {
 
 test('dispatcher routes action without workspaceName to control gateway', async () => {
     const dispatcher = createActionDispatcher({
-        pageRegistry: deps.pageRegistry as any,
         workspaceRegistry: deps.workspaceRegistry as any,
-        recordingState: deps.recordingState,
         log: deps.log,
-        replayOptions: deps.replayOptions as any,
-        navDedupeWindowMs: 0,
     });
     const reply = await dispatcher.dispatch(baseAction('workflow.list'));
     assert.equal(reply.type, 'workflow.list.result');
+});
+
+test('dispatcher does not route reply/event into domain control', async () => {
+    const dispatcher = createActionDispatcher({
+        workspaceRegistry: deps.workspaceRegistry as any,
+        log: deps.log,
+    });
+    const replyAction = await dispatcher.dispatch(baseAction('workflow.list.result'));
+    const eventAction = await dispatcher.dispatch(baseAction('play.progress'));
+    assert.equal(replyAction.type, 'workflow.list.result.failed');
+    assert.equal(eventAction.type, 'play.progress.failed');
+});
+
+test('static boundaries: no legacy handler table or execute imports in action index', () => {
+    const repoRoot = path.resolve(process.cwd(), 'src/actions');
+    assert.equal(fs.existsSync(path.join(repoRoot, 'legacy_handlers.ts')), false);
+    const indexContent = fs.readFileSync(path.join(repoRoot, 'index.ts'), 'utf8');
+    assert.equal(indexContent.includes('./execute'), false);
+    assert.equal(indexContent.includes('./recording'), false);
+    assert.equal(indexContent.includes('./workflow'), false);
+    assert.equal(indexContent.includes('./task_stream'), false);
 });
