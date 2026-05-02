@@ -1,13 +1,42 @@
 import path from 'node:path';
 import { DslRuntimeError } from '../dsl/diagnostics/errors';
-import { createCheckpointCodec, createWorkflowCheckpointProvider, type WorkflowCheckpoint } from './checkpoint';
+import { createCheckpointCodec, type WorkflowCheckpoint } from './checkpoint';
 import { createDslCodec, type WorkflowDsl } from './dsl';
 import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
 import { createEntityRulesCodec, type WorkflowEntityRules } from './entity_rules';
 import { createRecordingCodec, type WorkflowRecording } from './recording';
 import { createNamedStore, type NamedStore, type WorkflowCodec } from './store';
 
+export type WorkflowArtifactKind = 'recording' | 'checkpoint' | 'dsl' | 'entity_rules';
+export type WorkflowDummy = { kind: WorkflowArtifactKind };
+
 export type WorkflowArtifact = WorkflowRecording | WorkflowCheckpoint | WorkflowDsl | WorkflowEntityRules;
+
+export type WorkflowCatalogItemBase = {
+    kind: WorkflowArtifactKind;
+    name: string;
+    title: string;
+    createdAt: number;
+    updatedAt: number;
+    summary: string;
+};
+
+export type WorkflowCheckpointCatalogItem = WorkflowCatalogItemBase & {
+    kind: 'checkpoint';
+    enabled?: boolean;
+    priority?: number;
+};
+
+export type WorkflowEntityRulesCatalogItem = WorkflowCatalogItemBase & {
+    kind: 'entity_rules';
+    enabled?: boolean;
+};
+
+export type WorkflowCatalogItem =
+    | (WorkflowCatalogItemBase & { kind: 'recording' })
+    | WorkflowCheckpointCatalogItem
+    | (WorkflowCatalogItemBase & { kind: 'dsl' })
+    | WorkflowEntityRulesCatalogItem;
 
 export type WorkflowManifest = {
     version: 1;
@@ -15,22 +44,14 @@ export type WorkflowManifest = {
     entry: { dsl: string };
     createdAt: number;
     updatedAt: number;
-    recordings: string[];
-    checkpoints: string[];
-    dsls: string[];
-    entity_rules: string[];
+    catalog: WorkflowCatalogItem[];
 };
 
-export type WorkflowCatalogView = Pick<WorkflowManifest, 'name' | 'entry' | 'createdAt' | 'updatedAt' | 'recordings' | 'checkpoints' | 'dsls' | 'entity_rules'>;
-
 export type Workflow = {
-    name: string;
-    manifest: WorkflowManifest;
     save: (value: WorkflowArtifact) => WorkflowArtifact;
-    get: (name: string) => WorkflowArtifact | null;
-    list: () => WorkflowCatalogView;
-    delete: (name: string) => boolean;
-    getCheckpointProvider: () => import('../dsl/emit').DslCheckpointProvider;
+    get: (name: string, dummy: WorkflowDummy) => WorkflowArtifact | null;
+    list: (dummy: WorkflowDummy) => WorkflowCatalogItem[];
+    delete: (name: string, dummy: WorkflowDummy) => boolean;
 };
 
 type WorkflowInternal = {
@@ -47,15 +68,22 @@ const defaultManifest = (name: string, now = Date.now()): WorkflowManifest => ({
     entry: { dsl: 'main' },
     createdAt: now,
     updatedAt: now,
-    recordings: [],
-    checkpoints: [],
-    dsls: [],
-    entity_rules: [],
+    catalog: [],
 });
 
 const readManifest = (workflowName: string): WorkflowManifest => {
     const filePath = workflowManifestPath(workflowName);
-    return readYamlFile<WorkflowManifest>(filePath);
+    const parsed = readYamlFile<WorkflowManifest>(filePath);
+    if (!parsed || typeof parsed !== 'object' || parsed.version !== 1 || typeof parsed.name !== 'string') {
+        throw new DslRuntimeError(`invalid workflow manifest: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+    }
+    if (!parsed.entry || typeof parsed.entry !== 'object' || typeof parsed.entry.dsl !== 'string') {
+        throw new DslRuntimeError(`invalid workflow manifest entry: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+    }
+    if (!Array.isArray(parsed.catalog)) {
+        throw new DslRuntimeError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+    }
+    return parsed;
 };
 
 const writeManifest = (manifest: WorkflowManifest): void => {
@@ -77,29 +105,59 @@ const createInternal = (workflowName: string): WorkflowInternal => {
     return { recordingStore, checkpointStore, dslStore, entityRuleStore, codecs };
 };
 
-const updateCatalog = (manifest: WorkflowManifest, artifact: WorkflowArtifact): void => {
-    const set = (items: string[]): string[] => Array.from(new Set(items)).sort();
-    if (artifact.kind === 'recording') {
-        manifest.recordings = set([...manifest.recordings, artifact.name]);
-    } else if (artifact.kind === 'checkpoint') {
-        manifest.checkpoints = set([...manifest.checkpoints, artifact.name]);
-    } else if (artifact.kind === 'dsl') {
-        manifest.dsls = set([...manifest.dsls, artifact.name]);
-        if (artifact.name === 'main') {
-            manifest.entry.dsl = artifact.name;
-        }
-    } else {
-        manifest.entity_rules = set([...manifest.entity_rules, artifact.name]);
+const ensureUniqueNameWithinKind = (manifest: WorkflowManifest, kind: WorkflowArtifactKind, name: string): void => {
+    const conflict = manifest.catalog.some((item) => item.kind === kind && item.name === name);
+    if (conflict) {
+        throw new DslRuntimeError(`artifact already exists: kind=${kind} name=${name}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
 };
 
-const removeFromCatalog = (manifest: WorkflowManifest, name: string): void => {
-    const remove = (items: string[]) => items.filter((item) => item !== name);
-    manifest.recordings = remove(manifest.recordings);
-    manifest.checkpoints = remove(manifest.checkpoints);
-    manifest.dsls = remove(manifest.dsls);
-    manifest.entity_rules = remove(manifest.entity_rules);
+const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogItem): WorkflowCatalogItem => {
+    const now = Date.now();
+    const base: WorkflowCatalogItemBase = {
+        kind: artifact.kind,
+        name: artifact.name,
+        title: artifact.name,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        summary: artifact.kind,
+    };
+    if (artifact.kind === 'checkpoint') {
+        return {
+            ...base,
+            kind: 'checkpoint',
+            enabled: artifact.checkpoint.enabled,
+            priority: artifact.checkpoint.priority,
+        };
+    }
+    if (artifact.kind === 'entity_rules') {
+        return {
+            ...base,
+            kind: 'entity_rules',
+            enabled: true,
+        };
+    }
+    if (artifact.kind === 'recording') {
+        return { ...base, kind: 'recording', summary: `steps=${artifact.steps.length}` };
+    }
+    return { ...base, kind: 'dsl', summary: `bytes=${artifact.content.length}` };
 };
+
+const resolveStore = (internal: WorkflowInternal, kind: WorkflowArtifactKind): NamedStore<WorkflowArtifact> => {
+    if (kind === 'recording') {
+        return internal.recordingStore as NamedStore<WorkflowArtifact>;
+    }
+    if (kind === 'checkpoint') {
+        return internal.checkpointStore as NamedStore<WorkflowArtifact>;
+    }
+    if (kind === 'dsl') {
+        return internal.dslStore as NamedStore<WorkflowArtifact>;
+    }
+    return internal.entityRuleStore as NamedStore<WorkflowArtifact>;
+};
+
+const hasCatalog = (manifest: WorkflowManifest, kind: WorkflowArtifactKind, name: string): boolean =>
+    manifest.catalog.some((item) => item.kind === kind && item.name === name);
 
 export const loadWorkflowFromFs = (workflowName: string): Workflow => {
     if (!existsDir(workflowRootDir(workflowName))) {
@@ -107,74 +165,42 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
     }
     const manifest = readManifest(workflowName);
     const internal = createInternal(workflowName);
-    const workflow: Workflow = {
-        name: workflowName,
-        manifest,
+
+    return {
         save: (value) => {
             const codec = internal.codecs.find((item) => item.is(value));
             if (!codec) {
                 throw new DslRuntimeError('unsupported workflow artifact type', 'ERR_WORKFLOW_BAD_ARGS');
             }
+            ensureUniqueNameWithinKind(manifest, value.kind, value.name);
             const saved = codec.save(value as never) as WorkflowArtifact;
-            updateCatalog(manifest, saved);
+            const idx = manifest.catalog.findIndex((item) => item.kind === saved.kind && item.name === saved.name);
+            const nextItem = toCatalogItem(saved, idx >= 0 ? manifest.catalog[idx] : undefined);
+            if (idx >= 0) {
+                manifest.catalog[idx] = nextItem;
+            } else {
+                manifest.catalog.push(nextItem);
+            }
+            if (saved.kind === 'dsl' && saved.name === 'main') {
+                manifest.entry.dsl = 'main';
+            }
             writeManifest(manifest);
             return saved;
         },
-        get: (name) => {
-            if (manifest.recordings.includes(name)) {
-                return internal.recordingStore.get(name);
+        get: (name, dummy) => {
+            if (!hasCatalog(manifest, dummy.kind, name)) {
+                return null;
             }
-            if (manifest.checkpoints.includes(name)) {
-                return internal.checkpointStore.get(name);
-            }
-            if (manifest.dsls.includes(name)) {
-                return internal.dslStore.get(name);
-            }
-            if (manifest.entity_rules.includes(name)) {
-                return internal.entityRuleStore.get(name);
-            }
-            return null;
+            return resolveStore(internal, dummy.kind).get(name);
         },
-        list: () => ({
-            name: manifest.name,
-            entry: manifest.entry,
-            createdAt: manifest.createdAt,
-            updatedAt: manifest.updatedAt,
-            recordings: [...manifest.recordings],
-            checkpoints: [...manifest.checkpoints],
-            dsls: [...manifest.dsls],
-            entity_rules: [...manifest.entity_rules],
-        }),
-        delete: (name) => {
-            let deleted = false;
-            if (manifest.recordings.includes(name)) {
-                deleted = internal.recordingStore.delete(name);
-            }
-            if (manifest.checkpoints.includes(name)) {
-                deleted = internal.checkpointStore.delete(name) || deleted;
-            }
-            if (manifest.dsls.includes(name)) {
-                deleted = internal.dslStore.delete(name) || deleted;
-            }
-            if (manifest.entity_rules.includes(name)) {
-                deleted = internal.entityRuleStore.delete(name) || deleted;
-            }
-            removeFromCatalog(manifest, name);
+        list: (dummy) => manifest.catalog.filter((item) => item.kind === dummy.kind),
+        delete: (name, dummy) => {
+            const deleted = resolveStore(internal, dummy.kind).delete(name);
+            manifest.catalog = manifest.catalog.filter((item) => !(item.kind === dummy.kind && item.name === name));
             writeManifest(manifest);
             return deleted;
         },
-        getCheckpointProvider: () => {
-            const checkpoints = new Map<string, WorkflowCheckpoint>();
-            for (const name of manifest.checkpoints) {
-                const loaded = internal.checkpointStore.get(name);
-                if (loaded) {
-                    checkpoints.set(name, loaded);
-                }
-            }
-            return createWorkflowCheckpointProvider(checkpoints);
-        },
     };
-    return workflow;
 };
 
 export const createWorkflowOnFs = (workflowName: string): Workflow => {
