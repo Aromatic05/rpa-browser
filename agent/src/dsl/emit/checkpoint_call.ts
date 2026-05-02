@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { listCheckpoints, runCheckpointProcedure } from '../../runner/checkpoint';
+import { runCheckpointProcedure } from '../../runner/checkpoint';
 import type { Checkpoint } from '../../runner/checkpoint';
 import type { StepResult, StepUnion } from '../../runner/steps/types';
 import type { StepResolve } from '../../runner/steps/types';
@@ -24,9 +24,7 @@ export const runDslCheckpointCall = async (
     options: RunDslCheckpointOptions,
 ): Promise<Record<string, unknown>> => {
     const checkpoint =
-        options.checkpointProvider?.getCheckpoint(options.stmt.id) ||
-        listCheckpoints().find((item) => item.id === options.stmt.id) ||
-        null;
+        options.checkpointProvider?.getCheckpoint(options.stmt.id) || null;
     if (!checkpoint) {
         throw new DslRuntimeError(`checkpoint not found: ${options.stmt.id}`, 'ERR_DSL_CHECKPOINT_NOT_FOUND');
     }
