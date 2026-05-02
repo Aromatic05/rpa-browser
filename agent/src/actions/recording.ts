@@ -57,41 +57,29 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         return replyAction(action, { pageUrl: primaryPage.url() });
     },
     'record.stop': async (ctx, action) => {
-        const workspaceName = action.workspaceName;
-        stopRecording(ctx.recordingState, ctx.resolveTab().name, { workspaceName });
-        try {
-            await setRecorderRuntimeEnabled(ctx.resolvePage(), false);
-        } catch {
-            // ignore unavailable page in pageless mode
+        const workspaceName = (action.workspaceName || '').trim();
+        if (!workspaceName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.stop');
         }
-        if (workspaceName && ctx.workspaceRegistry.hasWorkspace(workspaceName)) {
-            try {
-                const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
-                const tabs = workspace?.tabRegistry.listTabs() || [];
-                for (const tab of tabs) {
-                    try {
-                        if (!tab.page) {continue;}
-                        const page = tab.page;
-                        await setRecorderRuntimeEnabled(page, false);
-                    } catch {
-                        // ignore tabs without live page binding
-                    }
-                }
-            } catch {
-                // ignore workspace listing failures
-            }
+        const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `workspace not found: ${workspaceName}`);
         }
-        let pageUrl = '';
-        try {
-            pageUrl = ctx.resolvePage().url();
-        } catch {
-            // pageless mode: no concrete page target
+        const tabs = workspace.tabRegistry.listTabs();
+        const firstBoundPage = tabs.find((tab) => Boolean(tab.page))?.page;
+        stopRecording(ctx.recordingState, '', { workspaceName });
+        for (const tab of tabs) {
+            if (!tab.page) {continue;}
+            await setRecorderRuntimeEnabled(tab.page, false);
         }
-        return replyAction(action, { pageUrl });
+        return replyAction(action, { pageUrl: firstBoundPage?.url() || '' });
     },
     'record.get': async (ctx, action) => {
-        const workspaceName = action.workspaceName;
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, workspaceName ? { workspaceName } : undefined);
+        const workspaceName = (action.workspaceName || '').trim();
+        if (!workspaceName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.get');
+        }
+        const bundle = getRecordingBundle(ctx.recordingState, '', { workspaceName });
         return replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments });
     },
     'record.save': async (ctx, action) => {
@@ -103,7 +91,7 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName)
             || ctx.workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         const workflow = workspace.workflow;
-        const bundle = getRecordingBundle(ctx.recordingState, ctx.resolveTab().name, workspaceName ? { workspaceName } : undefined);
+        const bundle = getRecordingBundle(ctx.recordingState, '', { workspaceName });
         const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
         const artifact: WorkflowRecording = {
             kind: 'recording',
@@ -184,8 +172,11 @@ export const recordingHandlers: Record<string, ActionHandler> = {
         });
     },
     'record.clear': async (ctx, action) => {
-        const workspaceName = action.workspaceName;
-        clearRecording(ctx.recordingState, ctx.resolveTab().name, workspaceName ? { workspaceName } : undefined);
+        const workspaceName = (action.workspaceName || '').trim();
+        if (!workspaceName) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.clear');
+        }
+        clearRecording(ctx.recordingState, '', { workspaceName });
         return replyAction(action, { cleared: true });
     },
     'record.list': async (ctx, action) => {

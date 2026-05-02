@@ -13,6 +13,7 @@ import {
     getWorkspaceActiveRecordingToken,
     attachTabToRecordingManifest,
 } from './record/recording';
+import { setRecorderRuntimeEnabled } from './record/recorder';
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { executeAction, type ActionContext } from './actions/execute';
 import { failedAction, isFailedAction, type Action } from './actions/action_protocol';
