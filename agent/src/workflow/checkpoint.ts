@@ -29,6 +29,9 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
         try {
             const checkpointFile = readYamlFile<SingleCheckpointFile>(path.join(dir, 'checkpoint.yaml'));
             validateSingleCheckpointFileForSerialization(checkpointFile);
+            if (checkpointFile.checkpoint.id !== name) {
+                throw new Error(`checkpoint identity mismatch: artifact=${name} checkpoint.id=${checkpointFile.checkpoint.id}`);
+            }
             let stepResolves: Record<string, StepResolve> = {};
             try {
                 const resolveFile = readYamlFile<CheckpointResolveFile>(path.join(dir, 'checkpoint_resolve.yaml'));
@@ -49,6 +52,9 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
             .map((name) => createCheckpointCodec(workflowName).load(name))
             .filter((item): item is WorkflowCheckpoint => item !== null),
     save: (value) => {
+        if (value.checkpoint.id !== value.name) {
+            throw new Error(`checkpoint identity mismatch: artifact=${value.name} checkpoint.id=${value.checkpoint.id}`);
+        }
         const dir = checkpointDir(workflowName, value.name);
         const checkpointFile: SingleCheckpointFile = { version: 1, checkpoint: value.checkpoint };
         validateSingleCheckpointFileForSerialization(checkpointFile);
