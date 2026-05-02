@@ -34,19 +34,21 @@ type TaskRunState = {
     checkpoint: Checkpoint;
 };
 
-const runs = new Map<string, TaskRunState>();
 const runnerConfig = getRunnerConfig();
-const checkpointStore = createTaskCheckpointStore(
-    path.resolve(process.cwd(), runnerConfig.checkpointPolicy.filePath),
-    { flushIntervalMs: runnerConfig.checkpointPolicy.flushIntervalMs },
-);
-const checkpointEnabled = runnerConfig.checkpointPolicy.enabled;
-let checkpointLoaded = false;
+const taskRunRuntime = {
+    runs: new Map<string, TaskRunState>(),
+    checkpointStore: createTaskCheckpointStore(
+        path.resolve(process.cwd(), runnerConfig.checkpointPolicy.filePath),
+        { flushIntervalMs: runnerConfig.checkpointPolicy.flushIntervalMs },
+    ),
+    checkpointEnabled: runnerConfig.checkpointPolicy.enabled,
+    checkpointLoaded: false,
+};
 
 const ensureCheckpointLoaded = async () => {
-    if (checkpointLoaded || !checkpointEnabled) {return;}
-    await checkpointStore.load();
-    checkpointLoaded = true;
+    if (taskRunRuntime.checkpointLoaded || !taskRunRuntime.checkpointEnabled) {return;}
+    await taskRunRuntime.checkpointStore.load();
+    taskRunRuntime.checkpointLoaded = true;
 };
 
 const toTaskRunCheckpoint = (
@@ -65,12 +67,12 @@ const toTaskRunCheckpoint = (
 });
 
 const persistCheckpoint = async (checkpoint: TaskRunCheckpoint) => {
-    if (!checkpointEnabled) {return;}
-    checkpointStore.checkpoints.set(checkpoint.runId, checkpoint);
-    await checkpointStore.flush();
+    if (!taskRunRuntime.checkpointEnabled) {return;}
+    taskRunRuntime.checkpointStore.checkpoints.set(checkpoint.runId, checkpoint);
+    await taskRunRuntime.checkpointStore.flush();
 };
 
-const getRun = (runId: string) => runs.get(runId) || null;
+const getRun = (runId: string) => taskRunRuntime.runs.get(runId) || null;
 
 const requireRunId = (payload: { runId?: string }): string => {
     if (!payload.runId) {
@@ -103,7 +105,7 @@ export const handleRunnerControlAction = async (input: WorkspaceControlInput): P
             signals,
             checkpoint: { runId, workspaceName, status: 'running', cursor: 0, updatedAt: Date.now() },
         };
-        runs.set(runId, state);
+        taskRunRuntime.runs.set(runId, state);
         await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'running', 0));
 
         void runSteps({
@@ -118,7 +120,7 @@ export const handleRunnerControlAction = async (input: WorkspaceControlInput): P
                 state.status = checkpoint.status;
                 await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, checkpoint.status, checkpoint.cursor));
                 if (checkpoint.status === 'completed' || checkpoint.status === 'failed' || checkpoint.status === 'halted') {
-                    runs.delete(runId);
+                    taskRunRuntime.runs.delete(runId);
                 }
             },
         })
@@ -176,7 +178,7 @@ export const handleRunnerControlAction = async (input: WorkspaceControlInput): P
         if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
         sendSignal(run.signals, 'halt');
         run.status = 'halted';
-        runs.delete(run.runId);
+        taskRunRuntime.runs.delete(run.runId);
         const checkpoint = { runId: run.runId, workspaceName: run.workspaceName, status: 'halted' as const, cursor: run.queue.cursor, updatedAt: Date.now() };
         await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceName, 'halted', run.queue.cursor));
         return { reply: replyAction(action, { checkpoint }), events: [] };
@@ -212,7 +214,7 @@ export const handleRunnerControlAction = async (input: WorkspaceControlInput): P
         if (getRun(runId)) {
             throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run already active');
         }
-        const checkpoint = checkpointStore.checkpoints.get(runId);
+        const checkpoint = taskRunRuntime.checkpointStore.checkpoints.get(runId);
         if (!checkpoint) {
             throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint not found');
         }
@@ -234,7 +236,7 @@ export const handleRunnerControlAction = async (input: WorkspaceControlInput): P
             signals,
             checkpoint,
         };
-        runs.set(checkpoint.runId, state);
+        taskRunRuntime.runs.set(checkpoint.runId, state);
         await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'running', checkpoint.cursor));
 
         void runSteps({
@@ -249,7 +251,7 @@ export const handleRunnerControlAction = async (input: WorkspaceControlInput): P
                 state.status = next.status;
                 await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, next.status, next.cursor));
                 if (next.status === 'completed' || next.status === 'failed' || next.status === 'halted') {
-                    runs.delete(checkpoint.runId);
+                    taskRunRuntime.runs.delete(checkpoint.runId);
                 }
             },
         })
