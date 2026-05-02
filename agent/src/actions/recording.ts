@@ -120,7 +120,11 @@ export const recordingHandlers: Record<string, ActionHandler> = {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required for record.load');
         }
         const payload = (action.payload || {}) as { recordingName?: string };
-        const workflow = ensureWorkflowOnFs(workspaceName);
+        const workspace = ctx.workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, `workspace not found: ${workspaceName}`);
+        }
+        const workflow = workspace.workflow;
         const recordingName = (payload.recordingName || '').trim() || workflow.list(RECORDING_DUMMY)[0]?.name || '';
         if (!recordingName) {
             return failedAction(action, ERROR_CODES.ERR_BAD_ARGS, 'record.load requires recordingName or existing records');
