@@ -105,13 +105,6 @@ const createInternal = (workflowName: string): WorkflowInternal => {
     return { recordingStore, checkpointStore, dslStore, entityRuleStore, codecs };
 };
 
-const ensureUniqueNameWithinKind = (manifest: WorkflowManifest, kind: WorkflowArtifactKind, name: string): void => {
-    const conflict = manifest.catalog.some((item) => item.kind === kind && item.name === name);
-    if (conflict) {
-        throw new DslRuntimeError(`artifact already exists: kind=${kind} name=${name}`, 'ERR_WORKFLOW_BAD_ARGS');
-    }
-};
-
 const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogItem): WorkflowCatalogItem => {
     const now = Date.now();
     const base: WorkflowCatalogItemBase = {
@@ -172,7 +165,6 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             if (!codec) {
                 throw new DslRuntimeError('unsupported workflow artifact type', 'ERR_WORKFLOW_BAD_ARGS');
             }
-            ensureUniqueNameWithinKind(manifest, value.kind, value.name);
             const saved = codec.save(value as never) as WorkflowArtifact;
             const idx = manifest.catalog.findIndex((item) => item.kind === saved.kind && item.name === saved.name);
             const nextItem = toCatalogItem(saved, idx >= 0 ? manifest.catalog[idx] : undefined);
