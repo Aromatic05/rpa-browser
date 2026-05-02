@@ -14,17 +14,8 @@ export type DslControlServices = {
     runStepsDeps: RunStepsDeps;
 };
 
-let dslControlServices: DslControlServices | null = null;
-
-export const setDslControlServices = (services: DslControlServices): void => {
-    dslControlServices = services;
-};
-
-const requireServices = (): DslControlServices => {
-    if (!dslControlServices) {
-        throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'dsl control services not initialized');
-    }
-    return dslControlServices;
+export type DslControl = {
+    handle: (input: WorkspaceControlInput) => Promise<ControlPlaneResult>;
 };
 
 const requireWorkspaceWorkflow = (input: WorkspaceControlInput): Workflow => {
@@ -66,59 +57,60 @@ const buildWorkflowCheckpointProvider = (workflow: Workflow) => {
     };
 };
 
-export const handleDslControlAction = async (input: WorkspaceControlInput): Promise<ControlPlaneResult> => {
-    const { action, workspace } = input;
+export const createDslControl = (services: DslControlServices): DslControl => ({
+    handle: async (input) => {
+        const { action, workspace } = input;
 
-    if (action.type !== 'dsl.get' && action.type !== 'dsl.save' && action.type !== 'dsl.test' && action.type !== 'dsl.run') {
-        throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
-    }
+        if (action.type !== 'dsl.get' && action.type !== 'dsl.save' && action.type !== 'dsl.test' && action.type !== 'dsl.run') {
+            throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
+        }
 
-    const workflow = requireWorkspaceWorkflow(input);
-    const payload = (action.payload || {}) as { dslName?: string; content?: string; input?: Record<string, unknown> };
+        const workflow = requireWorkspaceWorkflow(input);
+        const payload = (action.payload || {}) as { dslName?: string; content?: string; input?: Record<string, unknown> };
 
-    if (action.type === 'dsl.get') {
+        if (action.type === 'dsl.get') {
+            const dslName = payload.dslName || resolveDefaultDslName(workflow);
+            const dsl = requireDsl(workflow, dslName);
+            return { reply: replyAction(action, { workspaceName: workspace.name, dslName, content: dsl.content }), events: [] };
+        }
+
+        if (action.type === 'dsl.save') {
+            if (typeof payload.content !== 'string') {
+                throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'dsl.save requires content');
+            }
+            const dslName = payload.dslName || resolveDefaultDslName(workflow);
+            workflow.save({ kind: 'dsl', name: dslName, content: payload.content });
+            return { reply: replyAction(action, { workspaceName: workspace.name, dslName, saved: true }), events: [] };
+        }
+
         const dslName = payload.dslName || resolveDefaultDslName(workflow);
         const dsl = requireDsl(workflow, dslName);
-        return { reply: replyAction(action, { workspaceName: workspace.name, dslName, content: dsl.content }), events: [] };
-    }
+        const runResult = await runDslSource(dsl.content, {
+            workspaceName: workspace.name,
+            deps: services.runStepsDeps,
+            input: payload.input || {},
+            checkpointProvider: buildWorkflowCheckpointProvider(workflow),
+        });
 
-    if (action.type === 'dsl.save') {
-        if (typeof payload.content !== 'string') {
-            throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'dsl.save requires content');
+        if (action.type === 'dsl.test') {
+            return {
+                reply: replyAction(action, {
+                    ok: true,
+                    output: runResult.scope.output,
+                    diagnostics: runResult.diagnostics,
+                    workspaceName: workspace.name,
+                }),
+                events: [],
+            };
         }
-        const dslName = payload.dslName || resolveDefaultDslName(workflow);
-        workflow.save({ kind: 'dsl', name: dslName, content: payload.content });
-        return { reply: replyAction(action, { workspaceName: workspace.name, dslName, saved: true }), events: [] };
-    }
 
-    const services = requireServices();
-    const dslName = payload.dslName || resolveDefaultDslName(workflow);
-    const dsl = requireDsl(workflow, dslName);
-    const runResult = await runDslSource(dsl.content, {
-        workspaceName: workspace.name,
-        deps: services.runStepsDeps,
-        input: payload.input || {},
-        checkpointProvider: buildWorkflowCheckpointProvider(workflow),
-    });
-
-    if (action.type === 'dsl.test') {
         return {
             reply: replyAction(action, {
-                ok: true,
+                workspaceName: workspace.name,
                 output: runResult.scope.output,
                 diagnostics: runResult.diagnostics,
-                workspaceName: workspace.name,
             }),
             events: [],
         };
-    }
-
-    return {
-        reply: replyAction(action, {
-            workspaceName: workspace.name,
-            output: runResult.scope.output,
-            diagnostics: runResult.diagnostics,
-        }),
-        events: [],
-    };
-};
+    },
+});
