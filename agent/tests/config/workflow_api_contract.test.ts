@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import YAML from 'yaml';
 import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs, type WorkflowDummy, type WorkflowRecording } from '../../src/workflow';
 import type { WorkflowDsl } from '../../src/workflow';
 import type { WorkflowCheckpoint } from '../../src/workflow';
@@ -126,14 +127,45 @@ test('workflow artifact directories are normalized', () => {
         steps: [],
         stepResolves: {},
     });
+    workflow.save({
+        kind: 'checkpoint',
+        name: 'guard-1',
+        checkpoint: {
+            id: 'guard-1',
+            trigger: {
+                matchRules: [{ errorCode: 'ERR_SAMPLE' }],
+            },
+        },
+        stepResolves: {},
+        hints: {},
+    });
+
+    const fixtureMatch = YAML.parse(
+        fs.readFileSync(path.resolve(process.cwd(), 'tests/entity_rules/profiles/oa-ant-orders/match.yaml'), 'utf8'),
+    ) as unknown;
+    const fixtureAnnotation = YAML.parse(
+        fs.readFileSync(path.resolve(process.cwd(), 'tests/entity_rules/profiles/oa-ant-orders/annotation.yaml'), 'utf8'),
+    ) as unknown;
+    workflow.save({
+        kind: 'entity_rules',
+        name: 'profile-a',
+        match: fixtureMatch,
+        annotation: fixtureAnnotation,
+    });
 
     const root = path.resolve(process.cwd(), 'agent/.artifacts/workflows', workflowName);
     assert.equal(fs.existsSync(path.join(root, 'recordings', 'rec-1', 'recording.yaml')), true);
     assert.equal(fs.existsSync(path.join(root, 'recordings', 'rec-1', 'steps.yaml')), true);
     assert.equal(fs.existsSync(path.join(root, 'recordings', 'rec-1', 'step_resolve.yaml')), true);
     assert.equal(fs.existsSync(path.join(root, 'dsls', 'main.dsl')), true);
+    assert.equal(fs.existsSync(path.join(root, 'checkpoints', 'guard-1', 'checkpoint.yaml')), true);
+    assert.equal(fs.existsSync(path.join(root, 'checkpoints', 'guard-1', 'checkpoint_resolve.yaml')), true);
+    assert.equal(fs.existsSync(path.join(root, 'checkpoints', 'guard-1', 'checkpoint_hints.yaml')), true);
+    assert.equal(fs.existsSync(path.join(root, 'entity_rules', 'profile-a', 'match.yaml')), true);
+    assert.equal(fs.existsSync(path.join(root, 'entity_rules', 'profile-a', 'annotation.yaml')), true);
     assert.equal(fs.existsSync(path.join(root, 'steps', 'rec-1')), false);
     assert.equal(fs.existsSync(path.join(root, 'dsl', 'main.dsl')), false);
+    assert.equal(fs.existsSync(path.resolve(process.cwd(), 'agent/.artifacts/entity_rules/profiles', 'profile-a')), false);
 
     cleanup(workflowName);
 });
