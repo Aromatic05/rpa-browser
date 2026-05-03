@@ -3,7 +3,7 @@ import { replyAction, type Action } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ACTION_TYPES } from '../actions/action_types';
 import { ERROR_CODES } from '../actions/results';
-import type { WorkspaceControlInput } from '../runtime/workspace_control';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control';
 import {
     beginReplay,
@@ -33,7 +33,7 @@ export type RecordControlServices = {
 };
 
 export type RecordControl = {
-    handle: (input: WorkspaceControlInput) => Promise<ControlPlaneResult>;
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
 };
 
 const requireWorkspaceName = (action: Action, type: string): string => {

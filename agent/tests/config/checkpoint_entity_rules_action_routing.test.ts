@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createActionDispatcher } from '../../src/actions/dispatcher';
-import { createWorkspaceControl } from '../../src/runtime/workspace_control';
+import { createWorkspaceRouter } from '../../src/runtime/workspace/router';
 import { classifyRequestAction, isControlAction as isExtControlAction, isWorkspaceAction as isExtWorkspaceAction } from '../../../extension/src/actions/classify';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: 'a1', type, ...extra });
@@ -24,7 +24,7 @@ test('checkpoint/entity_rules without workspaceName fail dispatch', async () => 
 
 test('checkpoint/entity_rules with workspaceName route into workspace checkpoint/entityRules controls', async () => {
     const calls: string[] = [];
-    const control = createWorkspaceControl({
+    const control = createWorkspaceRouter({
         pageRegistry: { getPage: async () => ({}) as any },
         workflowControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,
         recordControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,

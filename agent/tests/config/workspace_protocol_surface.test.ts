@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createWorkflowOnFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace/registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
 
 test('workspace.save is handled by workflow control', async () => {
     const { registry } = createTestWorkspaceRegistry();

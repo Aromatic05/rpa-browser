@@ -5,7 +5,7 @@ import { createWorkflowOnFs, deleteWorkflowFromFs, toEntityRuleBundle } from '..
 import { createWorkspaceCheckpointRuntime } from '../../src/checkpoint/runtime';
 import type { WorkflowCheckpoint } from '../../src/workflow';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';
-import { createTestWorkspaceRegistry } from '../helpers/workspace/registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
 
 const unique = (prefix: string) => `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };

@@ -1,7 +1,7 @@
 import { replyAction } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
-import type { WorkspaceControlInput } from '../runtime/workspace_control';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
@@ -9,7 +9,7 @@ import type { WorkflowCheckpoint } from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
 
 export type CheckpointControl = {
-    handle: (input: WorkspaceControlInput) => Promise<ControlPlaneResult>;
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
 };
 
 const requireCheckpointId = (payload: Record<string, unknown>): string => {

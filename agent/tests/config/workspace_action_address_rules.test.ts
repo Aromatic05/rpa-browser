@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { handleRuntimeControlAction } from '../../src/runtime/control';
-import { createTestWorkspaceRegistry } from '../helpers/workspace/registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
 import { createWorkflowOnFs } from '../../src/workflow';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: 'a1', type, ...extra });

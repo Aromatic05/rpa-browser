@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
-import { handleWorkspaceControlAction } from '../../src/runtime/workspace_control';
+import { handleWorkspaceControlAction } from '../../src/runtime/workspace/router';
 import { setRunStepsDeps } from '../../src/runner/run_steps';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { StepUnion } from '../../src/runner/steps/types';

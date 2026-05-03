@@ -1,24 +1,24 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
-import { replyAction, type Action } from '../actions/action_protocol';
-import { ActionError } from '../actions/results';
-import { ERROR_CODES } from '../actions/results';
-import type { RuntimeWorkspace, WorkspaceRegistry } from './workspace/registry';
-import type { ControlPlaneResult } from './control';
-import type { WorkflowControl } from '../workflow/control';
-import type { RecordControl } from '../record/control';
-import type { DslControl } from '../dsl/control';
-import type { CheckpointControl } from '../checkpoint/control';
-import type { EntityRulesControl } from '../entity_rules/control';
-import type { RunnerControl } from '../runner/control';
+import { replyAction, type Action } from '../../actions/action_protocol';
+import { ActionError } from '../../actions/results';
+import { ERROR_CODES } from '../../actions/results';
+import type { RuntimeWorkspace, WorkspaceRegistry } from './registry';
+import type { ControlPlaneResult } from '../control';
+import type { WorkflowControl } from '../../workflow/control';
+import type { RecordControl } from '../../record/control';
+import type { DslControl } from '../../dsl/control';
+import type { CheckpointControl } from '../../checkpoint/control';
+import type { EntityRulesControl } from '../../entity_rules/control';
+import type { RunnerControl } from '../../runner/control';
 
-export type WorkspaceControlInput = {
+export type WorkspaceRouterInput = {
     action: Action;
     workspace: RuntimeWorkspace;
     workspaceRegistry: WorkspaceRegistry;
 };
 
-export type WorkspaceControlServices = {
+export type WorkspaceRouterServices = {
     pageRegistry: {
         getPage: (tabName: string, startUrl?: string) => Promise<Page>;
     };
@@ -30,7 +30,7 @@ export type WorkspaceControlServices = {
     runnerControl: RunnerControl;
 };
 
-export type WorkspaceControl = {
+export type WorkspaceRouter = {
     handle: (action: Action, workspace: RuntimeWorkspace, workspaceRegistry: WorkspaceRegistry) => Promise<ControlPlaneResult>;
 };
 
@@ -42,7 +42,7 @@ const requireTabName = (payload: Record<string, unknown>): string => {
     return tabName;
 };
 
-export const createWorkspaceControl = (services: WorkspaceControlServices): WorkspaceControl => ({
+export const createWorkspaceRouter = (services: WorkspaceRouterServices): WorkspaceRouter => ({
     handle: async (action, workspace, workspaceRegistry) => {
         if (action.type === 'workspace.setActive') {
             workspaceRegistry.setActiveWorkspace(workspace.name);

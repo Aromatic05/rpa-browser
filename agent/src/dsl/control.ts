@@ -1,7 +1,7 @@
 import { replyAction } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
-import type { WorkspaceControlInput } from '../runtime/workspace_control';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control';
 import { runDslSource } from './runtime';
 import type { RunStepsDeps } from '../runner/run_steps';
@@ -15,10 +15,10 @@ export type DslControlServices = {
 };
 
 export type DslControl = {
-    handle: (input: WorkspaceControlInput) => Promise<ControlPlaneResult>;
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
 };
 
-const requireWorkspaceWorkflow = (input: WorkspaceControlInput): Workflow => {
+const requireWorkspaceWorkflow = (input: WorkspaceRouterInput): Workflow => {
     const { workspace } = input;
     if (workspace.workflow.name !== workspace.name) {
         throw new ActionError(

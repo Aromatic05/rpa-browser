@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace/registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
 
 const unique = (prefix: string) => `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
@@ -59,11 +59,11 @@ test('domain controls are bound and invokable', async () => {
 test('bootstrap and gateway files keep boundary constraints', () => {
     const indexSource = fs.readFileSync(path.resolve(process.cwd(), 'src/index.ts'), 'utf8');
     const mcpSource = fs.readFileSync(path.resolve(process.cwd(), 'src/mcp_main.ts'), 'utf8');
-    assert.equal(indexSource.includes('setWorkspaceControlServices'), false);
+    assert.equal(indexSource.includes('setWorkspaceRouterServices'), false);
     assert.equal(indexSource.includes('setWorkflowControlServices'), false);
     assert.equal(indexSource.includes('setRecordControlServices'), false);
     assert.equal(indexSource.includes('setDslControlServices'), false);
-    assert.equal(mcpSource.includes('setWorkspaceControlServices'), false);
+    assert.equal(mcpSource.includes('setWorkspaceRouterServices'), false);
     assert.equal(mcpSource.includes('setWorkflowControlServices'), false);
     assert.equal(mcpSource.includes('setRecordControlServices'), false);
     assert.equal(mcpSource.includes('setDslControlServices'), false);

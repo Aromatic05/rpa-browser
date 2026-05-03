@@ -2,13 +2,13 @@ import { replyAction } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
 import type { ControlPlaneResult } from '../runtime/control';
-import type { WorkspaceControlInput } from '../runtime/workspace_control';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { Workflow, WorkflowEntityRules } from '../workflow';
 import { createWorkspaceEntityRulesProvider, type WorkspaceEntityRulesProvider } from './provider';
 import { createWorkspaceEntityRulesRuntime } from './runtime';
 
 export type EntityRulesControl = {
-    handle: (input: WorkspaceControlInput) => Promise<ControlPlaneResult>;
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
     getProvider: (workflow: Workflow) => WorkspaceEntityRulesProvider;
 };
 

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { replyAction } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
-import type { WorkspaceControlInput } from '../runtime/workspace_control';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control';
 import {
     getRecordingBundle,
@@ -17,7 +17,7 @@ export type WorkflowControlServices = {
 };
 
 export type WorkflowControl = {
-    handle: (input: WorkspaceControlInput) => Promise<ControlPlaneResult>;
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
 };
 
 export const createWorkflowControl = (services: WorkflowControlServices): WorkflowControl => ({
