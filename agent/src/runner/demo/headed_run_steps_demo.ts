@@ -13,6 +13,7 @@ import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../runtime/page_registry';
 import { createWorkspaceRegistry } from '../../runtime/workspace_registry';
+import { createWorkspaceEntityRulesProvider } from '../../entity_rules/provider';
 import { createRuntimeRegistry } from '../../runtime/runtime_registry';
 import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
@@ -74,6 +75,13 @@ const run = async () => {
         pluginHost,
     });
     runStepsDeps.runtime = runtimeRegistry;
+    runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            return null;
+        }
+        return createWorkspaceEntityRulesProvider(workspace.workflow);
+    };
     const workspaceName = 'demo';
     const tabName = crypto.randomUUID();
     const page = await pageRegistry.getPage(tabName);

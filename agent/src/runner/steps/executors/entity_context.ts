@@ -22,7 +22,7 @@ export const ensureFreshEntityContext = async (
         collectBaseSnapshot: async (context) =>
             await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
-                entityRuleConfig: deps.config.entityRules,
+                entityRulesProvider: deps.resolveEntityRulesProvider?.(workspaceName) || undefined,
             }),
     });
 

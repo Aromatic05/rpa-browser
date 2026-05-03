@@ -5,6 +5,7 @@ import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace_registry';
+import { createWorkspaceEntityRulesProvider } from './entity_rules/provider';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import {
     createRecordingState,
@@ -115,6 +116,13 @@ const workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
 });
+runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
+    const workspace = workspaceRegistry.getWorkspace(workspaceName);
+    if (!workspace) {
+        return null;
+    }
+    return createWorkspaceEntityRulesProvider(workspace.workflow);
+};
 
 const lifecycle = createRuntimeLifecycle({
     workspaceRegistry,

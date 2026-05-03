@@ -6,6 +6,7 @@ import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_
 import { createContextManager, resolvePaths } from '../runtime/context_manager';
 import { createPageRegistry } from '../runtime/page_registry';
 import { createWorkspaceRegistry } from '../runtime/workspace_registry';
+import { createWorkspaceEntityRulesProvider } from '../entity_rules/provider';
 import { createRuntimeRegistry } from '../runtime/runtime_registry';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
@@ -119,6 +120,13 @@ workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
 });
+runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
+    const workspace = workspaceRegistry.getWorkspace(workspaceName);
+    if (!workspace) {
+        return null;
+    }
+    return createWorkspaceEntityRulesProvider(workspace.workflow);
+};
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
     traceSinks,

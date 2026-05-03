@@ -2,7 +2,7 @@ import type { Page } from 'playwright';
 import crypto from 'node:crypto';
 import type { Step, StepResult } from '../../../types';
 import type { RunStepsDeps } from '../../../../run_steps';
-import type { EntityRuleConfig } from '../../../../../config/entity_rules';
+import type { WorkspaceEntityRulesProvider } from '../../../../../entity_rules/provider';
 import { collectRawData } from '../stages/collect';
 import type { SnapshotWaitMode } from '../stages/collect';
 import { fuseDomAndA11y } from '../stages/fusion';
@@ -15,7 +15,7 @@ import { buildEntityIndex } from '../indexes/entity';
 import { buildBackendDomSelectorMap } from '../indexes/dom_backend_selector';
 import { buildLocatorIndex } from '../indexes/locator';
 import { buildExternalIndexes } from '../indexes/external_indexes';
-import { applyBusinessEntityRules, loadEntityRules } from '../entity_rules';
+import { applyBusinessEntityRules } from '../entity_rules';
 import {
     computeBucketHash,
     computeBucketKey,
@@ -62,7 +62,7 @@ export const executeBrowserSnapshot = async (
             await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
                 waitMode: resolveSnapshotWaitMode(context.fromDirty, context.staleReason),
-                entityRuleConfig: deps.config.entityRules,
+                entityRulesProvider: deps.resolveEntityRulesProvider?.(workspaceName) || undefined,
             }),
     });
 
@@ -152,7 +152,7 @@ export const executeBrowserSnapshot = async (
 type GenerateSemanticSnapshotOptions = {
     captureRuntimeState?: boolean;
     waitMode?: SnapshotWaitMode;
-    entityRuleConfig?: EntityRuleConfig;
+    entityRulesProvider?: WorkspaceEntityRulesProvider;
 };
 
 export const generateSemanticSnapshot = async (
@@ -178,7 +178,7 @@ export const generateSemanticSnapshot = async (
         // 2) 融合构建 unified graph。
         return generateSemanticSnapshotFromRaw(raw, {
             pageUrl: currentUrl,
-            entityRuleConfig: options.entityRuleConfig,
+            entityRulesProvider: options.entityRulesProvider,
         });
     } finally {
         // 3) 无论成功失败都清理页面临时 state-id，清理失败不阻塞主流程。
@@ -188,7 +188,7 @@ export const generateSemanticSnapshot = async (
 
 export const generateSemanticSnapshotFromRaw = (
     raw: RawData,
-    options: { pageUrl?: string; entityRuleConfig?: EntityRuleConfig } = {},
+    options: { pageUrl?: string; entityRulesProvider?: WorkspaceEntityRulesProvider } = {},
 ): SnapshotResult => {
     const cacheStats = createCacheStats();
     const backendSelectorByDomId = buildBackendDomSelectorMap(raw.domTree);
@@ -200,7 +200,7 @@ export const generateSemanticSnapshotFromRaw = (
     stageLinkGlobalRelations(root);
     stageAssignStableIds(root);
 
-    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId, options.pageUrl, options.entityRuleConfig);
+    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId, options.pageUrl, options.entityRulesProvider);
 };
 
 type CacheStats = ReturnType<typeof createCacheStats>;
@@ -312,21 +312,17 @@ const stageBuildSnapshot = (
     cacheStats: CacheStats,
     backendSelectorByDomId?: Record<string, string>,
     pageUrl?: string,
-    entityRuleConfig?: EntityRuleConfig,
+    entityRulesProvider?: WorkspaceEntityRulesProvider,
 ): SnapshotResult => {
     const entityIndex = buildEntityIndex(root);
-    const loadedRules = loadEntityRules({
+    const loadedBundle = entityRulesProvider?.resolveBundle({
         pageKind: inferSnapshotPageKind(entityIndex),
         pageUrl,
-        config: entityRuleConfig,
     });
-    if (loadedRules.errors.length > 0) {
-        throw new Error(`entity rules load failed: ${loadedRules.errors.join('; ')}`);
-    }
     const ruleEntityOverlay = applyBusinessEntityRules({
         root,
         entityIndex,
-        bundle: loadedRules.bundle,
+        bundle: loadedBundle || undefined,
     });
     const locatorIndex = buildLocatorIndex({
         root,

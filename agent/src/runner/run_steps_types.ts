@@ -3,6 +3,7 @@ import type { Checkpoint as RunnerCheckpoint } from './checkpoint/types';
 import type { RuntimeRegistry } from '../runtime/runtime_registry';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../config';
+import type { WorkspaceEntityRulesProvider } from '../entity_rules/provider';
 
 export type StepEvent =
     | {
@@ -70,6 +71,7 @@ export type RunStepsDeps = {
     stepSinks?: StepSink[];
     config: RunnerConfig;
     pluginHost: RunnerPluginHost;
+    resolveEntityRulesProvider?: (workspaceName: string) => WorkspaceEntityRulesProvider | null;
 };
 
 export type RunStepsRequest = {
