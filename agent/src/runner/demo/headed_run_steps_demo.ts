@@ -106,7 +106,7 @@ const run = async () => {
                 meta: { source: 'script' },
             },
         ],
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
+        runStepsDeps,
         { stopOnError: true },
     );
     if (firstResp.checkpoint.status === 'failed') {
@@ -142,7 +142,7 @@ const run = async () => {
                 meta: { source: 'script' },
             },
         ],
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
+        runStepsDeps,
         { stopOnError: true },
     );
     if (secondResp.checkpoint.status === 'failed') {
