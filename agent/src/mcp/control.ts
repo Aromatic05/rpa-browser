@@ -1,4 +1,6 @@
 import { replyAction, type Action } from '../actions/action_protocol';
+import { ActionError } from '../actions/results';
+import { ERROR_CODES } from '../actions/results';
 import type { ControlPlaneResult } from '../runtime/control';
 import type { RuntimeWorkspace } from '../runtime/workspace_registry';
 import type { WorkspaceServiceLifecycle } from '../runtime/service';
@@ -12,8 +14,16 @@ export type McpControl = {
     handle: (action: Action, workspace: RuntimeWorkspace) => Promise<ControlPlaneResult>;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
 export const createMcpControl = (getLifecycle: (workspace: RuntimeWorkspace) => WorkspaceServiceLifecycle): McpControl => ({
     async handle(action, workspace) {
+        const payload = isRecord(action.payload) ? action.payload : {};
+        if (typeof payload.workspaceName === 'string' && payload.workspaceName.trim().length > 0) {
+            throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'mcp actions do not accept payload.workspaceName');
+        }
+
         const lifecycle = getLifecycle(workspace);
 
         if (action.type === 'mcp.start') {

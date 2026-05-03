@@ -55,6 +55,9 @@ export const REQUEST_ACTION_TYPES = {
     ENTITY_RULE_GET: 'entity_rules.get',
     ENTITY_RULE_SAVE: 'entity_rules.save',
     ENTITY_RULE_DELETE: 'entity_rules.delete',
+    MCP_START: 'mcp.start',
+    MCP_STOP: 'mcp.stop',
+    MCP_STATUS: 'mcp.status',
 } as const;
 
 const FIXED_EVENT_ACTION_TYPES = {

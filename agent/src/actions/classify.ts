@@ -2,7 +2,7 @@ import type { Action } from './action_protocol';
 import { classifyActionType } from './action_types';
 
 export type ActionRouteKind = 'control' | 'workspace' | 'reply' | 'event' | 'invalid';
-const WORKSPACE_ONLY_PREFIXES = ['checkpoint.', 'entity_rules.'];
+const WORKSPACE_ONLY_PREFIXES = ['checkpoint.', 'entity_rules.', 'mcp.'];
 const isWorkspaceOnlyType = (type: string): boolean => WORKSPACE_ONLY_PREFIXES.some((prefix) => type.startsWith(prefix));
 
 export const isReplyAction = (action: Action): boolean => classifyActionType(action.type) === 'reply';
