@@ -25,6 +25,9 @@ const createMinimalWorkspace = (name: string): RuntimeWorkspace => ({
     tabRegistry: createTabRegistry(),
     controls: {} as RuntimeWorkspace['controls'],
     serviceLifecycle: createWorkspaceServiceLifecycle(name),
+    getPage: async () => {
+        throw new Error('getPage not stubbed in test');
+    },
     createdAt: Date.now(),
     updatedAt: Date.now(),
 });
