@@ -6,7 +6,6 @@ import type { ControlPlaneResult } from '../runtime/control_plane';
 import { runDslSource } from './runtime';
 import type { RunStepsDeps } from '../runner/run_steps';
 import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
-import { createWorkspaceCheckpointProvider } from '../checkpoint/provider';
 
 const DSL_DUMMY: WorkflowDummy = { kind: 'dsl' };
 
@@ -74,7 +73,7 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             workspaceName: workspace.name,
             deps: services.runStepsDeps,
             input: payload.input || {},
-            checkpointProvider: createWorkspaceCheckpointProvider(workflow),
+            checkpointProvider: workspace.checkpoint.getProvider(workflow),
         });
 
         if (action.type === 'dsl.test') {

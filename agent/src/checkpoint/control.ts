@@ -5,11 +5,14 @@ import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
-import type { WorkflowCheckpoint } from '../workflow';
+import type { Workflow, WorkflowCheckpoint } from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
+import { createWorkspaceCheckpointProvider } from './provider';
+import type { DslCheckpointProvider } from '../dsl/emit/checkpoint_call';
 
 export type CheckpointControl = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+    getProvider: (workflow: Workflow) => DslCheckpointProvider;
 };
 
 const requireCheckpointId = (payload: Record<string, unknown>): string => {
@@ -45,6 +48,7 @@ const resolveHints = (payload: Record<string, unknown>): WorkflowCheckpoint['hin
 };
 
 export const createCheckpointControl = (): CheckpointControl => ({
+    getProvider: (workflow) => createWorkspaceCheckpointProvider(workflow),
     handle: async (input) => {
         const { action, workspace } = input;
         const runtime = createWorkspaceCheckpointRuntime(workspace.workflow);
