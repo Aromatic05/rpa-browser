@@ -43,7 +43,7 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
 
     const findWorkspaceNameByTabName = (tabName: string): string | null => {
         for (const workspace of deps.workspaceRegistry.listWorkspaces()) {
-            if (workspace.tabRegistry.hasTab(tabName)) {
+            if (workspace.tabs.hasTab(tabName)) {
                 return workspace.name;
             }
         }
@@ -72,12 +72,12 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
 
     const onPageBound = (page: Page, bindingName: string) => {
         const { workspaceName, workspace } = resolveWorkspaceForBinding(bindingName);
-        if (!workspace.tabRegistry.hasTab(bindingName)) {
-            workspace.tabRegistry.createTab({ tabName: bindingName, page, url: page.url() });
+        if (!workspace.tabs.hasTab(bindingName)) {
+            workspace.tabs.createTab({ tabName: bindingName, page, url: page.url() });
         } else {
-            workspace.tabRegistry.bindPage(bindingName, page);
+            workspace.tabs.bindPage(bindingName, page);
         }
-        workspace.tabRegistry.setActiveTab(bindingName);
+        workspace.tabs.setActiveTab(bindingName);
         deps.runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page });
 
         const activeRecordingToken = deps.getWorkspaceActiveRecordingToken(deps.recordingState, workspaceName);

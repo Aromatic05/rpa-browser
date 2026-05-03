@@ -25,7 +25,7 @@ export const createWorkflowControl = (services: WorkflowControlServices): Workfl
         const { action, workspace } = input;
 
         if (action.type === 'workspace.save') {
-            const tabs = workspace.tabRegistry.listTabs();
+            const tabs = workspace.tabs.listTabs();
             const bundle = getRecordingBundle(services.recordingState, '', { workspaceName: workspace.name });
             const snapshot = saveWorkspaceSnapshot(services.recordingState, {
                 workspaceName: workspace.name,
@@ -33,7 +33,7 @@ export const createWorkflowControl = (services: WorkflowControlServices): Workfl
                     tabName: tab.name,
                     url: tab.url,
                     title: tab.title,
-                    active: workspace.tabRegistry.getActiveTab()?.name === tab.name,
+                    active: workspace.tabs.getActiveTab()?.name === tab.name,
                 })),
                 recordingToken: bundle.recordingToken,
                 steps: bundle.steps,
@@ -65,7 +65,7 @@ export const createWorkflowControl = (services: WorkflowControlServices): Workfl
             );
 
             for (const tab of snapshot.tabs) {
-                targetWorkspace.tabRegistry.createTab({
+                targetWorkspace.tabs.createTab({
                     tabName: tab.tabName || crypto.randomUUID(),
                     url: tab.url || '',
                     title: tab.title || '',
@@ -73,8 +73,8 @@ export const createWorkflowControl = (services: WorkflowControlServices): Workfl
             }
 
             const activeTab = snapshot.tabs.find((item) => item.active) || snapshot.tabs[0];
-            if (activeTab?.tabName && targetWorkspace.tabRegistry.hasTab(activeTab.tabName)) {
-                targetWorkspace.tabRegistry.setActiveTab(activeTab.tabName);
+            if (activeTab?.tabName && targetWorkspace.tabs.hasTab(activeTab.tabName)) {
+                targetWorkspace.tabs.setActiveTab(activeTab.tabName);
             }
 
             return {
@@ -82,7 +82,7 @@ export const createWorkflowControl = (services: WorkflowControlServices): Workfl
                     restored: true,
                     sourceWorkspaceName: workspace.name,
                     workspaceName: targetWorkspaceName,
-                    tabName: targetWorkspace.tabRegistry.getActiveTab()?.name ?? null,
+                    tabName: targetWorkspace.tabs.getActiveTab()?.name ?? null,
                 }),
                 events: [],
             };

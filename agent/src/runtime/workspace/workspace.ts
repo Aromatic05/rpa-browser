@@ -7,6 +7,8 @@ import { createCheckpointControl, type CheckpointControl } from '../../checkpoin
 import { createEntityRulesControl, type EntityRulesControl } from '../../entity_rules/control';
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
 import { createMcpControl, type McpControl } from '../../mcp/control';
+import { createWorkspaceRouter, type WorkspaceRouter } from './router';
+import { createWorkflowControl, type WorkflowControl } from '../../workflow/control';
 import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
@@ -26,6 +28,7 @@ export type RuntimeWorkspace = {
     entityRules: EntityRulesControl;
     runner: RunnerControl;
     mcp: McpControl;
+    router: WorkspaceRouter;
     createdAt: number;
     updatedAt: number;
 };
@@ -85,6 +88,16 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     const checkpoint = createCheckpointControl();
     const entityRules = createEntityRulesControl();
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
+    const workflowControl = createWorkflowControl({ recordingState: deps.recordingState });
+    const workspaceRouter = createWorkspaceRouter({
+        pageRegistry: { getPage: deps.pageRegistry.getPage },
+        workflowControl,
+        recordControl: record,
+        dslControl: dsl,
+        checkpointControl: checkpoint,
+        entityRulesControl: entityRules,
+        runnerControl: runner,
+    });
 
     const workspace: RuntimeWorkspace = {
         name: deps.name,
@@ -96,6 +109,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         entityRules,
         runner,
         mcp: null as unknown as McpControl,
+        router: workspaceRouter,
         createdAt: now,
         updatedAt: now,
     };

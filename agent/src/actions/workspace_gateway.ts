@@ -26,7 +26,7 @@ export const routeWorkspaceAction = async (deps: GatewayDeps, action: Action): P
         const workspaceName = requireWorkspaceName(action);
         const workspace = resolveWorkspace(deps, workspaceName);
 
-        const result = await workspace.controls.workspace.handle(action, workspace, deps.workspaceRegistry);
+        const result = await workspace.router.handle(action, workspace, deps.workspaceRegistry);
 
         for (const event of result.events) {
             deps.emit?.(event);

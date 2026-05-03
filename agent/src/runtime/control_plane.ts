@@ -23,8 +23,8 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 reply: replyAction(action, {
                     workspaces: workspaceRegistry.listWorkspaces().map((workspace: any) => ({
                         workspaceName: workspace.name,
-                        activeTabName: workspace.tabRegistry.getActiveTab()?.name ?? null,
-                        tabCount: workspace.tabRegistry.listTabs().length,
+                        activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
+                        tabCount: workspace.tabs.listTabs().length,
                         createdAt: workspace.createdAt,
                         updatedAt: workspace.updatedAt,
                     })),

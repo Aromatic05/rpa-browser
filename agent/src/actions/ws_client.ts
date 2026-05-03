@@ -101,8 +101,8 @@ const createWorkspaceListAction = (workspaceRegistry: WorkspaceRegistry, reason:
     const active = workspaceRegistry.getActiveWorkspace();
     const workspaces = workspaceRegistry.listWorkspaces().map((workspace) => ({
         workspaceName: workspace.name,
-        activeTabName: workspace.tabRegistry.getActiveTab()?.name ?? null,
-        tabCount: workspace.tabRegistry.listTabs().length,
+        activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
+        tabCount: workspace.tabs.listTabs().length,
         createdAt: workspace.createdAt,
         updatedAt: workspace.updatedAt,
     }));

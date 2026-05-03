@@ -53,11 +53,11 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
             const payload = (action.payload ?? {}) as Record<string, unknown>;
 
             if (action.type === 'tab.list') {
-                const active = workspace.tabRegistry.getActiveTab()?.name;
+                const active = workspace.tabs.getActiveTab()?.name;
                 return {
                     reply: replyAction(action, {
                         workspaceName: workspace.name,
-                        tabs: workspace.tabRegistry.listTabs().map((tab) => ({
+                        tabs: workspace.tabs.listTabs().map((tab) => ({
                             tabName: tab.name,
                             url: tab.url,
                             title: tab.title,
@@ -74,14 +74,14 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 const tabName = crypto.randomUUID();
                 const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
                 const page = await services.pageRegistry.getPage(tabName, startUrl);
-                workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
-                workspace.tabRegistry.setActiveTab(tabName);
+                workspace.tabs.createTab({ tabName, page, url: page.url() });
+                workspace.tabs.setActiveTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
             }
 
             if (action.type === 'tab.close') {
                 const tabName = requireTabName(payload);
-                const tab = workspace.tabRegistry.closeTab(tabName);
+                const tab = workspace.tabs.closeTab(tabName);
                 if (tab?.page && !tab.page.isClosed()) {
                     await tab.page.close({ runBeforeUnload: true });
                 }
@@ -90,7 +90,7 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
 
             if (action.type === 'tab.setActive') {
                 const tabName = requireTabName(payload);
-                workspace.tabRegistry.setActiveTab(tabName);
+                workspace.tabs.setActiveTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
             }
 
@@ -100,11 +100,11 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 const url = typeof payload.url === 'string' ? payload.url : '';
                 const title = typeof payload.title === 'string' ? payload.title : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
-                if (!workspace.tabRegistry.hasTab(tabName)) {
-                    workspace.tabRegistry.createTab({ tabName, url, title, at });
+                if (!workspace.tabs.hasTab(tabName)) {
+                    workspace.tabs.createTab({ tabName, url, title, at });
                 }
-                workspace.tabRegistry.updateTab(tabName, { url, title, updatedAt: at });
-                workspace.tabRegistry.setActiveTab(tabName);
+                workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
+                workspace.tabs.setActiveTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
             }
 
@@ -114,10 +114,10 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 const url = typeof payload.url === 'string' ? payload.url : undefined;
                 const title = typeof payload.title === 'string' ? payload.title : undefined;
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
-                if (!tabName || !workspace.tabRegistry.hasTab(tabName)) {
+                if (!tabName || !workspace.tabs.hasTab(tabName)) {
                     return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
                 }
-                workspace.tabRegistry.updateTab(tabName, { url, title, updatedAt: at });
+                workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 
@@ -128,7 +128,7 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 if (!tabName) {
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
-                workspace.tabRegistry.closeTab(tabName);
+                workspace.tabs.closeTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
@@ -138,10 +138,10 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 const url = typeof payload.url === 'string' ? payload.url : undefined;
                 const title = typeof payload.title === 'string' ? payload.title : undefined;
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
-                if (!tabName || !workspace.tabRegistry.hasTab(tabName)) {
+                if (!tabName || !workspace.tabs.hasTab(tabName)) {
                     return { reply: replyAction(action, { source, reportedAt: at, stale: true }), events: [] };
                 }
-                workspace.tabRegistry.updateTab(tabName, { url, title, updatedAt: at });
+                workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 
@@ -150,10 +150,10 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
                 const windowId = typeof payload.windowId === 'number' ? payload.windowId : undefined;
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
-                if (!workspace.tabRegistry.hasTab(tabName)) {
-                    workspace.tabRegistry.createTab({ tabName, at });
+                if (!workspace.tabs.hasTab(tabName)) {
+                    workspace.tabs.createTab({ tabName, at });
                 }
-                workspace.tabRegistry.setActiveTab(tabName);
+                workspace.tabs.setActiveTab(tabName);
                 return {
                     reply: replyAction(action, {
                         workspaceName: workspace.name,
@@ -202,7 +202,7 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
         }
 
         if (action.type.startsWith('mcp.')) {
-            return await workspace.controls.mcp.handle(action, workspace);
+            return await workspace.mcp.handle(action, workspace);
         }
 
         throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
