@@ -201,6 +201,10 @@ export const createWorkspaceControl = (services: WorkspaceControlServices): Work
             return await services.runnerControl.handle({ action, workspace, workspaceRegistry });
         }
 
+        if (action.type.startsWith('mcp.')) {
+            return await workspace.controls.mcp.handle(action, workspace);
+        }
+
         throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
     },
 });

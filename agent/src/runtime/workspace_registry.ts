@@ -8,6 +8,10 @@ import { createDslControl, type DslControl } from '../dsl/control';
 import { createRunnerControl, type RunnerControl } from '../runner/control';
 import { createCheckpointControl, type CheckpointControl } from '../checkpoint/control';
 import { createEntityRulesControl, type EntityRulesControl } from '../entity_rules/control';
+import { createMcpControl, type McpControl } from '../mcp/control';
+import { createWorkspaceMcpService } from '../mcp/service';
+import { createWorkspaceServiceLifecycle, type WorkspaceServiceLifecycle } from './service';
+import type { PortAllocator } from './port_allocator';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../record/replay';
 import type { RunStepsDeps } from '../runner/run_steps';
@@ -22,6 +26,7 @@ export type RuntimeWorkspaceControls = {
     checkpoint: CheckpointControl;
     entityRules: EntityRulesControl;
     runner: RunnerControl;
+    mcp: McpControl;
 };
 
 export type RuntimeWorkspace = {
@@ -30,6 +35,7 @@ export type RuntimeWorkspace = {
     runner: unknown;
     tabRegistry: TabRegistry;
     controls: RuntimeWorkspaceControls;
+    serviceLifecycle: WorkspaceServiceLifecycle;
     createdAt: number;
     updatedAt: number;
 };
@@ -55,9 +61,10 @@ export type WorkspaceRuntimeDeps = {
     emit?: (action: Action) => void;
     runStepsDeps: RunStepsDeps;
     runnerConfig: RunnerConfig;
+    portAllocator: PortAllocator;
 };
 
-const createWorkspaceControls = (deps: WorkspaceRuntimeDeps): RuntimeWorkspaceControls => {
+const createWorkspaceControls = (deps: WorkspaceRuntimeDeps, lifecycle: WorkspaceServiceLifecycle): RuntimeWorkspaceControls => {
     const workflow = createWorkflowControl({ recordingState: deps.recordingState });
     const record = createRecordControl({
         recordingState: deps.recordingState,
@@ -78,7 +85,8 @@ const createWorkspaceControls = (deps: WorkspaceRuntimeDeps): RuntimeWorkspaceCo
         entityRulesControl: entityRules,
         runnerControl: runner,
     });
-    return { workspace, workflow, record, dsl, checkpoint, entityRules, runner };
+    const mcp = createMcpControl(() => lifecycle);
+    return { workspace, workflow, record, dsl, checkpoint, entityRules, runner, mcp };
 };
 
 export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {
@@ -93,15 +101,25 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             return workspaces.get(workspaceName)!;
         }
         const now = Date.now();
+        const serviceLifecycle = createWorkspaceServiceLifecycle(workspaceName);
+        const controls = createWorkspaceControls(runtimeDeps, serviceLifecycle);
         const workspace: RuntimeWorkspace = {
             name: workspaceName,
             workflow,
             runner: null,
             tabRegistry: createTabRegistry(),
-            controls: createWorkspaceControls(runtimeDeps),
+            controls,
+            serviceLifecycle,
             createdAt: now,
             updatedAt: now,
         };
+        const mcpService = createWorkspaceMcpService({
+            workspace,
+            portAllocator: runtimeDeps.portAllocator,
+            runStepsDeps: runtimeDeps.runStepsDeps,
+            config: runtimeDeps.runnerConfig,
+        });
+        serviceLifecycle.register(mcpService);
         workspaces.set(workspaceName, workspace);
         if (!activeWorkspaceName) {
             activeWorkspaceName = workspaceName;

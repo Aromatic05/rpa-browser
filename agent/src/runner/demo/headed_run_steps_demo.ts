@@ -21,6 +21,7 @@ import { getRunnerConfig } from '../../config';
 import { RunnerPluginHost } from '../hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../../workflow';
 import { createRecordingState } from '../../record/recording';
+import { createPortAllocator } from '../../runtime/port_allocator';
 import type { RunStepsDeps } from '../run_steps_types';
 
 const fixtureUrl = () =>
@@ -67,6 +68,7 @@ const run = async () => {
         navDedupeWindowMs: 1200,
         runStepsDeps,
         runnerConfig: getRunnerConfig(),
+        portAllocator: createPortAllocator(),
     });
     const traceSink = new MemorySink();
     const runtimeRegistry = createRuntimeRegistry({

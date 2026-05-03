@@ -17,6 +17,7 @@ import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 import { initLogger, resolveLogPath } from '../logging/logger';
 import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../workflow';
+import { createPortAllocator } from '../runtime/port_allocator';
 import type { RunStepsDeps } from '../runner/run_steps_types';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -119,6 +120,7 @@ workspaceRegistry = createWorkspaceRegistry({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
     runStepsDeps,
     runnerConfig: config,
+    portAllocator: createPortAllocator(),
 });
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
