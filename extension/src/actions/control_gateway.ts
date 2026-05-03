@@ -1,6 +1,6 @@
-import type { Action } from '../shared/types.js';
+import type { Action } from './action_protocol.js';
 import type { WsClient } from './ws_client.js';
-import { mkRequestFailedReply } from './failure.js';
+import { mkRequestFailedReply } from './results.js';
 
 export const dispatchControlAction = async (action: Action, wsClient: WsClient): Promise<Action> => {
     if (typeof action.workspaceName === 'string' && action.workspaceName) {

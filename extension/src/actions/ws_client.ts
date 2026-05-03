@@ -2,7 +2,7 @@
  * WS 客户端封装：维护与 agent 的长连接，发送命令并接收 Action 广播。
  */
 
-import type { Action } from '../shared/types.js';
+import type { Action } from './action_protocol.js';
 import { classifyActionType, isDispatchActionType } from './action_types.js';
 import { createLogger, type Logger } from '../shared/logger.js';
 

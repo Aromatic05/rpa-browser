@@ -5,8 +5,8 @@ import { MSG } from '../shared/protocol.js';
 import type { WsClient } from '../actions/ws_client.js';
 import { createRouterState } from './state.js';
 import { createLifecycleRuntime } from './life.js';
-import { dispatchActionRequest } from '../actions/index.js';
-import { projectInboundAction } from '../actions/projection.js';
+import { dispatchActionRequest } from '../actions/dispatcher.js';
+import { projectInboundAction } from './projection.js';
 
 export type CmdRouterOptions = {
     wsClient: WsClient;

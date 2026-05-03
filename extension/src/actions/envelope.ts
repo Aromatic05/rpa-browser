@@ -1,5 +1,5 @@
 import { isRequestActionType } from './action_types.js';
-import type { Action } from '../shared/types.js';
+import type { Action } from './action_protocol.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
