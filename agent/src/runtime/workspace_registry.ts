@@ -36,6 +36,7 @@ export type RuntimeWorkspace = {
     tabRegistry: TabRegistry;
     controls: RuntimeWorkspaceControls;
     serviceLifecycle: WorkspaceServiceLifecycle;
+    getPage: (tabName: string, startUrl?: string) => Promise<Page>;
     createdAt: number;
     updatedAt: number;
 };
@@ -110,6 +111,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             tabRegistry: createTabRegistry(),
             controls,
             serviceLifecycle,
+            getPage: (tabName: string, startUrl?: string) => runtimeDeps.pageRegistry.getPage(tabName, startUrl),
             createdAt: now,
             updatedAt: now,
         };
