@@ -57,6 +57,43 @@ They are workspace-scoped:
 - Tab resolution uses `workspace.tabRegistry` only.
 - `McpToolDeps` and `createToolHandlers` have been removed.
 
+### Tab bootstrap
+
+MCP tool handlers bootstrap tabs on demand when a tool is invoked and no
+matching tab exists. The bootstrap boundary is:
+
+- `RuntimeWorkspace.getPage(tabName, startUrl?)` — workspace-scoped page
+  acquisition, bound at workspace creation time from `pageRegistry.getPage`.
+- `WorkspaceMcpToolDeps.getPage` — optional field that carries the workspace
+  `getPage` into tool handlers. When absent, tab bootstrap throws
+  `"cannot bootstrap tab: getPage not provided"`.
+- `createWorkspaceMcpRuntime` (in `agent/src/mcp/runtime.ts`) passes
+  `deps.workspace.getPage` to `createWorkspaceToolHandlers`, wiring the
+  workspace-scoped page acquisition into MCP tool handlers.
+
+Bootstrap flow (`resolveOrBootstrapScopeWs` in `agent/src/mcp/tool_handlers.ts`):
+
+1. If `tabName` is given and the tab exists in `workspace.tabRegistry`, set
+   it as active and return.
+2. If `tabName` is absent, resolve from the active tab — throw
+   `"active tab not found"` if there is no active tab.
+3. If `allowBootstrap` is disabled, throw `"tab not found"`.
+4. If `deps.getPage` is not provided, throw
+   `"cannot bootstrap tab: getPage not provided"`.
+5. Call `deps.getPage(tabName)` to acquire a real `Page`.
+6. If the tab was registered concurrently, bind the `Page`; otherwise create
+   the tab entry in `workspace.tabRegistry`.
+7. Set the tab as active in `workspace.tabRegistry`.
+
+Key invariants:
+
+- Bootstrap never falls back to a global registry. If `getPage` is missing,
+  the error is explicit and the call fails.
+- `tool_handlers.ts` does not import `PageRegistry` or `WorkspaceRegistry`.
+- `getPage` is provided by the caller (MCP runtime or test), never resolved
+  internally.
+- `browser.create_tab` and `browser.goto` both use the same bootstrap path.
+
 ### Tool names
 
 MCP tool names (`browser.goto`, `browser.click`, …) remain unchanged.
