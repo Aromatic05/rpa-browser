@@ -50,7 +50,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
         if (action.type === 'record.start') {
             const workspaceName = requireWorkspaceName(action, action.type);
-            const boundTabs = workspace.tabRegistry.listTabs().filter((tab) => Boolean(tab.page));
+            const boundTabs = workspace.tabs.listTabs().filter((tab) => Boolean(tab.page));
             if (!boundTabs.length) {
                 throw new ActionError(
                     ERROR_CODES.ERR_BAD_ARGS,
@@ -74,7 +74,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
         if (action.type === 'record.stop') {
             const workspaceName = requireWorkspaceName(action, action.type);
-            const tabs = workspace.tabRegistry.listTabs();
+            const tabs = workspace.tabs.listTabs();
             const firstBoundPage = tabs.find((tab) => Boolean(tab.page))?.page;
             stopRecording(services.recordingState, '', { workspaceName });
             for (const tab of tabs) {
@@ -179,7 +179,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
         }
 
         if (action.type === 'play.stop') {
-            const activeTab = workspace.tabRegistry.getActiveTab();
+            const activeTab = workspace.tabs.getActiveTab();
             if (!activeTab) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
             }
@@ -189,7 +189,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
         if (action.type === 'play.start') {
             const payload = (action.payload || {}) as { stopOnError?: boolean };
-            const currentTab = workspace.tabRegistry.getActiveTab();
+            const currentTab = workspace.tabs.getActiveTab();
             if (!currentTab) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
             }
@@ -255,9 +255,9 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         replayOptions: services.replayOptions,
                         pageRegistry: {
                             listTabs: async () =>
-                                workspace.tabRegistry.listTabs().map((tab) => ({
+                                workspace.tabs.listTabs().map((tab) => ({
                                     tabName: tab.name,
-                                    active: workspace.tabRegistry.getActiveTab()?.name === tab.name,
+                                    active: workspace.tabs.getActiveTab()?.name === tab.name,
                                 })),
                             resolveTabNameFromToken: (tabName: string) => tabName,
                             resolveTabNameFromRef: (tabRef: string) => tabRef || undefined,
@@ -304,7 +304,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
         }
 
         if (action.type === 'record.event') {
-            const activeTab = workspace.tabRegistry.getActiveTab();
+            const activeTab = workspace.tabs.getActiveTab();
             const page = activeTab?.page || null;
             const tabName = activeTab?.name || '';
             if (!tabName) {
