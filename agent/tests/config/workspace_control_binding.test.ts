@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace/registry';
 
 const unique = (prefix: string) => `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };

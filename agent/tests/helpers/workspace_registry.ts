@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createRecordingState, type RecordingState } from '../../src/record/recording';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';

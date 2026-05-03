@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_store';
 import { createContextManager, resolvePaths } from '../runtime/browser/context_manager';
 import { createPageRegistry } from '../runtime/browser/page_registry';
-import { createWorkspaceRegistry } from '../runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../runtime/workspace/registry';
 import { createExecutionBindings } from '../runtime/execution/bindings';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';

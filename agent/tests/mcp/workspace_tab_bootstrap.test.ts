@@ -30,7 +30,7 @@ const createServiceLifecycle = (workspaceName: string) => {
         },
     };
 };
-import type { RuntimeWorkspace } from '../../src/runtime/workspace_registry';
+import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';
 
 const projectRoot = path.resolve(process.cwd());

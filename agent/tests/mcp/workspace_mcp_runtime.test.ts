@@ -28,7 +28,7 @@ const createServiceLifecycle = (workspaceName: string) => {
 import { createPortAllocator } from '../../src/runtime/service/ports';
 import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
 import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
-import type { RuntimeWorkspace } from '../../src/runtime/workspace_registry';
+import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
 import type { Action } from '../../src/actions/action_protocol';
 
 const stubAction = (type: string, opts?: { workspaceName?: string; payload?: Record<string, unknown> }): Action => ({

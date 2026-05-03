@@ -1,7 +1,7 @@
 import type { Action } from './action_protocol';
 import { ActionError } from './results';
 import { ERROR_CODES } from './results';
-import type { RuntimeWorkspace } from '../runtime/workspace_registry';
+import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { GatewayDeps } from './control_gateway';
 import { toFailedAction } from './results';
 

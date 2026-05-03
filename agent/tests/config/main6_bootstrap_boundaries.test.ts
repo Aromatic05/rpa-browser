@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRuntimeLifecycle } from '../../src/runtime/browser/lifecycle';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createRecordingState } from '../../src/record/recording';
 import { createRecorderEventSinkHandler } from '../../src/record/sink';
 import { createWorkflowOnFs, ensureWorkflowOnFs } from '../../src/workflow';

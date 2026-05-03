@@ -2,7 +2,7 @@ import path from 'node:path';
 import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/browser/context_manager';
 import { createPageRegistry } from './runtime/browser/page_registry';
-import { createWorkspaceRegistry } from './runtime/workspace_registry';
+import { createWorkspaceRegistry } from './runtime/workspace/registry';
 import { createExecutionBindings } from './runtime/execution/bindings';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';

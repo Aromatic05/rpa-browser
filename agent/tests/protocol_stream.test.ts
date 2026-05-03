@@ -5,7 +5,7 @@ import { replayRecording } from '../src/record/replay';
 import type { StepUnion } from '../src/runner/steps/types';
 import { createRecordingState } from '../src/record/recording';
 import { ACTION_TYPES } from '../src/actions/action_types';
-import { createWorkspaceRegistry } from '../src/runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../src/runtime/workspace/registry';
 import { createWorkflowOnFs } from '../src/workflow';
 import { handleRecordControlAction, setRecordControlServices } from '../src/record/control';
 

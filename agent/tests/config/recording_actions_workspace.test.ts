@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRecordingState } from '../../src/record/recording';
 import { createWorkflowOnFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace/registry';
 
 const createMockPage = (url: string) => ({
     url: () => url,

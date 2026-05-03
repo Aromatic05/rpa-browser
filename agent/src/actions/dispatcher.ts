@@ -4,7 +4,7 @@ import { parseActionEnvelope } from './envelope';
 import { routeControlAction, type GatewayDeps } from './control_gateway';
 import { routeWorkspaceAction } from './workspace_gateway';
 import { toFailedAction, unsupportedActionFailure } from './results';
-import type { WorkspaceRegistry } from '../runtime/workspace_registry';
+import type { WorkspaceRegistry } from '../runtime/workspace/registry';
 
 export type ActionDispatcherOptions = {
     workspaceRegistry: WorkspaceRegistry;

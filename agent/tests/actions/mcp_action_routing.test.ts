@@ -31,7 +31,7 @@ const createServiceLifecycle = (workspaceName: string) => {
         },
     };
 };
-import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createPortAllocator } from '../../src/runtime/service/ports';
 import type { Action } from '../../src/actions/action_protocol';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';

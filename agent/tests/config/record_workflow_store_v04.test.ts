@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createRecordingState } from '../../src/record/recording';
 import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../src/workflow';
 import { handleRecordControlAction, setRecordControlServices } from '../../src/record/control';

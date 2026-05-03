@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
 import { handleWorkspaceControlAction } from '../../src/runtime/workspace_control';
 import { setRunStepsDeps } from '../../src/runner/run_steps';

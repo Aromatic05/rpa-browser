@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { startActionWsClient } from '../../src/actions/ws_client';
 import type { Action } from '../../src/actions/action_protocol';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace/registry';
 import { createWorkflowOnFs } from '../../src/workflow';
 
 const waitOpen = async (ws: WebSocket) => {

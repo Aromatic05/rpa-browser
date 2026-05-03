@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../runtime/browser/page_registry';
-import { createWorkspaceRegistry } from '../../runtime/workspace_registry';
+import { createWorkspaceRegistry } from '../../runtime/workspace/registry';
 import { createExecutionBindings } from '../../runtime/execution/bindings';
 import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
