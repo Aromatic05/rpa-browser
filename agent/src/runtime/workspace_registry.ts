@@ -6,6 +6,7 @@ import { createWorkflowControl, type WorkflowControl } from '../workflow/control
 import { createRecordControl, type RecordControl } from '../record/control';
 import { createDslControl, type DslControl } from '../dsl/control';
 import { createRunnerControl, type RunnerControl } from '../runner/control';
+import { createCheckpointControl, type CheckpointControl } from '../checkpoint/control';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../record/replay';
 import type { RunStepsDeps } from '../runner/run_steps';
@@ -17,6 +18,7 @@ export type RuntimeWorkspaceControls = {
     workflow: WorkflowControl;
     record: RecordControl;
     dsl: DslControl;
+    checkpoint: CheckpointControl;
     runner: RunnerControl;
 };
 
@@ -62,15 +64,17 @@ const createWorkspaceControls = (deps: WorkspaceRuntimeDeps): RuntimeWorkspaceCo
         emit: deps.emit,
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
+    const checkpoint = createCheckpointControl();
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const workspace = createWorkspaceControl({
         pageRegistry: deps.pageRegistry,
         workflowControl: workflow,
         recordControl: record,
         dslControl: dsl,
+        checkpointControl: checkpoint,
         runnerControl: runner,
     });
-    return { workspace, workflow, record, dsl, runner };
+    return { workspace, workflow, record, dsl, checkpoint, runner };
 };
 
 export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {

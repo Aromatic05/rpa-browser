@@ -8,6 +8,7 @@ import type { ControlPlaneResult } from './control';
 import type { WorkflowControl } from '../workflow/control';
 import type { RecordControl } from '../record/control';
 import type { DslControl } from '../dsl/control';
+import type { CheckpointControl } from '../checkpoint/control';
 import type { RunnerControl } from '../runner/control';
 
 export type WorkspaceControlInput = {
@@ -23,6 +24,7 @@ export type WorkspaceControlServices = {
     workflowControl: WorkflowControl;
     recordControl: RecordControl;
     dslControl: DslControl;
+    checkpointControl: CheckpointControl;
     runnerControl: RunnerControl;
 };
 
@@ -181,11 +183,15 @@ export const createWorkspaceControl = (services: WorkspaceControlServices): Work
             return await services.recordControl.handle({ action, workspace, workspaceRegistry });
         }
 
+        if (action.type.startsWith('checkpoint.')) {
+            return await services.checkpointControl.handle({ action, workspace, workspaceRegistry });
+        }
+
         if (action.type.startsWith('dsl.')) {
             return await services.dslControl.handle({ action, workspace, workspaceRegistry });
         }
 
-        if (action.type.startsWith('task.run.') || action.type.startsWith('checkpoint.')) {
+        if (action.type.startsWith('task.run.')) {
             return await services.runnerControl.handle({ action, workspace, workspaceRegistry });
         }
 
