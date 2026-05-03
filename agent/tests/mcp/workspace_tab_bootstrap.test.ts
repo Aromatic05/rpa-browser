@@ -7,29 +7,6 @@ import { EventEmitter } from 'node:events';
 import type { Page } from 'playwright';
 import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
 import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
-import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../src/runtime/service/types';
-
-const createServiceLifecycle = (workspaceName: string) => {
-    const services = new Map<WorkspaceServiceName, WorkspaceService>();
-    return {
-        register(service: WorkspaceService) { services.set(service.name, service); },
-        async start(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStartResult> {
-            const service = services.get(serviceName);
-            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
-            return await service.start();
-        },
-        async stop(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStopResult> {
-            const service = services.get(serviceName);
-            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
-            return await service.stop();
-        },
-        status(serviceName: WorkspaceServiceName): WorkspaceServiceStatusResult {
-            const service = services.get(serviceName);
-            if (!service) { return { serviceName, workspaceName, port: null, status: 'stopped' as const }; }
-            return service.status();
-        },
-    };
-};
 import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';
 
@@ -50,30 +27,31 @@ const createRunStepsDeps = (): RunStepsDeps => ({
     pluginHost: { getExecutors: () => ({}) } as RunStepsDeps['pluginHost'],
 });
 
-const createMockWorkspace = (name: string, overrides?: Partial<RuntimeWorkspace>): RuntimeWorkspace => ({
+const createMockWorkspace = (name: string): RuntimeWorkspace => ({
     name,
-    workflow: { name, steps: [], checkpoints: [], recording: null, entityRules: { rules: [], bundles: [] } },
-    runner: null,
-    tabRegistry: createWorkspaceTabs({ getPage: async (tabName: string) => createStubPage(tabName) as Page }),
-    controls: {} as RuntimeWorkspace['controls'],
-    serviceLifecycle: createServiceLifecycle(name),
-    getPage: async () => createStubPage(name) as Page,
+    workflow: null as unknown as RuntimeWorkspace['workflow'],
+    tabs: createWorkspaceTabs({ getPage: async (tabName: string) => createStubPage(tabName) as Page }),
+    record: null as unknown as RuntimeWorkspace['record'],
+    dsl: null as unknown as RuntimeWorkspace['dsl'],
+    checkpoint: null as unknown as RuntimeWorkspace['checkpoint'],
+    entityRules: null as unknown as RuntimeWorkspace['entityRules'],
+    runner: null as unknown as RuntimeWorkspace['runner'],
+    mcp: null as unknown as RuntimeWorkspace['mcp'],
+    router: null as unknown as RuntimeWorkspace['router'],
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    ...overrides,
 });
 
 test('bootstrap creates tab via workspace scoped getPage when tab missing', async () => {
     const getPageCalls: string[] = [];
-    const ws = createMockWorkspace('test-ws', {
-        getPage: async (tabName: string) => {
-            getPageCalls.push(tabName);
-            return createStubPage(tabName) as Page;
-        },
-    });
+    const getPage = async (tabName: string) => {
+        getPageCalls.push(tabName);
+        return createStubPage(tabName) as Page;
+    };
+    const ws = createMockWorkspace('test-ws');
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
@@ -84,64 +62,66 @@ test('bootstrap creates tab via workspace scoped getPage when tab missing', asyn
     assert.equal(getPageCalls[0], 'fresh-tab');
 });
 
-test('new tab is written to workspace.tabRegistry after bootstrap', async () => {
+test('new tab is written to workspace.tabs after bootstrap', async () => {
     const ws = createMockWorkspace('test-ws');
+    const getPage = async (tabName: string) => createStubPage(tabName) as Page;
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
-    assert.equal(ws.tabRegistry.hasTab('registered-tab'), false);
+    assert.equal(ws.tabs.hasTab('registered-tab'), false);
 
     await handlers['browser.goto']({ url: 'https://example.com', tabName: 'registered-tab' });
 
-    assert.equal(ws.tabRegistry.hasTab('registered-tab'), true);
+    assert.equal(ws.tabs.hasTab('registered-tab'), true);
 });
 
 test('new tab is set as active tab after bootstrap', async () => {
     const ws = createMockWorkspace('test-ws');
+    const getPage = async (tabName: string) => createStubPage(tabName) as Page;
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
     await handlers['browser.goto']({ url: 'https://example.com', tabName: 'target-tab' });
 
-    const activeTab = ws.tabRegistry.getActiveTab();
+    const activeTab = ws.tabs.getActiveTab();
     assert.ok(activeTab);
     assert.equal(activeTab!.name, 'target-tab');
 });
 
 test('existing tab is not re-created', async () => {
     const getPageCalls: string[] = [];
-    const ws = createMockWorkspace('test-ws', {
-        getPage: async (tabName: string) => {
-            getPageCalls.push(tabName);
-            return createStubPage(tabName) as Page;
-        },
-    });
+    const getPage = async (tabName: string) => {
+        getPageCalls.push(tabName);
+        return createStubPage(tabName) as Page;
+    };
+    const ws = createMockWorkspace('test-ws');
     const preExistingPage = createStubPage('existing') as Page;
-    ws.tabRegistry.createTab({ tabName: 'existing', page: preExistingPage, url: preExistingPage.url() });
+    ws.tabs.createTab({ tabName: 'existing', page: preExistingPage, url: preExistingPage.url() });
 
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
     await handlers['browser.goto']({ url: 'https://example.com', tabName: 'existing' });
 
     assert.equal(getPageCalls.length, 0);
-    assert.equal(ws.tabRegistry.getActiveTab()?.name, 'existing');
+    assert.equal(ws.tabs.getActiveTab()?.name, 'existing');
 });
 
 test('no active tab bootstrap throws active tab not found', async () => {
     const ws = createMockWorkspace('test-ws');
+    const getPage = async (tabName: string) => createStubPage(tabName) as Page;
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
@@ -166,15 +146,14 @@ test('bootstrap with tabName but no getPage throws clear error', async () => {
 
 test('browser.create_tab calls workspace scoped getPage for new tab', async () => {
     const getPageCalls: string[] = [];
-    const ws = createMockWorkspace('test-ws', {
-        getPage: async (tabName: string) => {
-            getPageCalls.push(tabName);
-            return createStubPage(tabName) as Page;
-        },
-    });
+    const getPage = async (tabName: string) => {
+        getPageCalls.push(tabName);
+        return createStubPage(tabName) as Page;
+    };
+    const ws = createMockWorkspace('test-ws');
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
@@ -184,39 +163,42 @@ test('browser.create_tab calls workspace scoped getPage for new tab', async () =
     assert.equal(getPageCalls[0], 'created-tab');
 });
 
-test('browser.create_tab registers new tab in workspace.tabRegistry', async () => {
+test('browser.create_tab registers new tab in workspace.tabs', async () => {
     const ws = createMockWorkspace('test-ws');
+    const getPage = async (tabName: string) => createStubPage(tabName) as Page;
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
-    assert.equal(ws.tabRegistry.hasTab('new-created-tab'), false);
+    assert.equal(ws.tabs.hasTab('new-created-tab'), false);
     await handlers['browser.create_tab']({ url: 'https://example.com', tabName: 'new-created-tab' });
-    assert.equal(ws.tabRegistry.hasTab('new-created-tab'), true);
+    assert.equal(ws.tabs.hasTab('new-created-tab'), true);
 });
 
 test('bootstrap binds real Page to created tab', async () => {
     const ws = createMockWorkspace('test-ws');
+    const getPage = async (tabName: string) => createStubPage(tabName) as Page;
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
         runStepsDeps: createRunStepsDeps(),
     });
 
     await handlers['browser.goto']({ url: 'https://example.com', tabName: 'bound-tab' });
 
-    const tab = ws.tabRegistry.getTab('bound-tab');
+    const tab = ws.tabs.getTab('bound-tab');
     assert.ok(tab);
     assert.ok(tab!.page);
 });
 
 test('createWorkspaceToolHandlers accepts getPage from deps', async () => {
     const ws = createMockWorkspace('test-ws');
+    const getPage = async (tabName: string) => createStubPage(tabName) as Page;
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,
-        getPage: (tabName: string) => ws.getPage(tabName),
+        getPage,
     });
 
     assert.ok(typeof handlers['browser.goto'] === 'function');

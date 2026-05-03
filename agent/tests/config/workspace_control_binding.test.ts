@@ -14,11 +14,11 @@ test('createWorkspace binds controls on RuntimeWorkspace', () => {
     const wsName = unique('ws-bind');
     cleanup(wsName);
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    assert.ok(ws.controls.workspace);
-    assert.ok(ws.controls.workflow);
-    assert.ok(ws.controls.record);
-    assert.ok(ws.controls.dsl);
-    assert.ok(ws.controls.runner);
+    assert.ok(ws.router);
+    assert.ok(ws.router);
+    assert.ok(ws.record);
+    assert.ok(ws.dsl);
+    assert.ok(ws.runner);
     cleanup(wsName);
 });
 
@@ -27,8 +27,8 @@ test('workspace controls route tab.list via bound workspace control', async () =
     const wsName = unique('ws-tab-list');
     cleanup(wsName);
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabRegistry.createTab({ tabName: 'tab-1', url: 'about:blank', title: '' });
-    const reply = await ws.controls.workspace.handle({ v: 1, id: '1', type: 'tab.list', workspaceName: wsName } as any, ws as any, registry as any);
+    ws.tabs.createTab({ tabName: 'tab-1', url: 'about:blank', title: '' });
+    const reply = await ws.router.handle({ v: 1, id: '1', type: 'tab.list', workspaceName: wsName } as any, ws as any, registry as any);
     assert.equal(reply.reply.type, 'tab.list.result');
     cleanup(wsName);
 });
@@ -38,20 +38,24 @@ test('domain controls are bound and invokable', async () => {
     const wsName = unique('ws-domain');
     cleanup(wsName);
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabRegistry.createTab({ tabName: 'tab-1', url: 'about:blank', title: '' });
-    ws.tabRegistry.setActiveTab('tab-1');
+    ws.tabs.createTab({ tabName: 'tab-1', url: 'about:blank', title: '' });
+    ws.tabs.setActiveTab('tab-1');
 
-    const recordGet = await ws.controls.record.handle({ action: { v: 1, id: 'r1', type: 'record.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const recordGet = await ws.record.handle({ action: { v: 1, id: 'r1', type: 'record.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(recordGet.reply.type, 'record.get.result');
 
     ws.workflow.save({ kind: 'dsl', name: 'main', content: '' } as any);
-    const dslGet = await ws.controls.dsl.handle({ action: { v: 1, id: 'd1', type: 'dsl.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const dslGet = await ws.dsl.handle({ action: { v: 1, id: 'd1', type: 'dsl.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(dslGet.reply.type, 'dsl.get.result');
 
-    const workspaceSave = await ws.controls.workflow.handle({ action: { v: 1, id: 'w1', type: 'workspace.save', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const workspaceSave = await ws.router.handle(
+        { v: 1, id: 'w1', type: 'workspace.save', workspaceName: wsName } as any,
+        ws as any,
+        registry as any,
+    );
     assert.equal(workspaceSave.reply.type, 'workspace.save.result');
 
-    const runStart = await ws.controls.runner.handle({ action: { v: 1, id: 't1', type: 'task.run.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const runStart = await ws.runner.handle({ action: { v: 1, id: 't1', type: 'task.run.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(runStart.reply.type, 'task.run.start.result');
     cleanup(wsName);
 });

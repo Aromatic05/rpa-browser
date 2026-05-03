@@ -2,7 +2,8 @@ import { test, expect } from '../helpers/fixtures';
 import type { BrowserContext } from '@playwright/test';
 import crypto from 'node:crypto';
 import { createPageRegistry } from '../../src/runtime/browser/page_registry';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkflowOnFs } from '../../src/workflow';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
@@ -17,19 +18,19 @@ const runBatch = async (deps: any, workspaceName: string, step: ReturnType<typeo
 
 const bindWorkspaceToRuntime = async (
     pageRegistry: ReturnType<typeof createPageRegistry>,
-    workspaceRegistry: ReturnType<typeof createWorkspaceRegistry>,
+    workspaceRegistry: ReturnType<ReturnType<typeof createTestWorkspaceRegistry>['registry']>,
     runtimeRegistry: ReturnType<typeof createExecutionBindings>,
     workspaceName: string,
     tabName: string,
 ) => {
     const page = await pageRegistry.getPage(tabName);
-    const workspace = workspaceRegistry.createWorkspace(workspaceName);
-    if (!workspace.tabRegistry.hasTab(tabName)) {
-        workspace.tabRegistry.createTab({ tabName: tabName, page, url: page.url() });
+    const workspace = workspaceRegistry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    if (!workspace.tabs.hasTab(tabName)) {
+        workspace.tabs.createTab({ tabName: tabName, page, url: page.url() });
     } else {
-        workspace.tabRegistry.bindPage(tabName, page);
+        workspace.tabs.bindPage(tabName, page);
     }
-    workspace.tabRegistry.setActiveTab(tabName);
+    workspace.tabs.setActiveTab(tabName);
     runtimeRegistry.bindPage({ workspaceName: workspaceName, tabName: tabName, page });
 };
 
@@ -50,7 +51,7 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
         tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
-    const workspaceRegistry = createWorkspaceRegistry();
+    const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
@@ -86,7 +87,7 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
         tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
-    const workspaceRegistry = createWorkspaceRegistry();
+    const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
@@ -121,7 +122,7 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
         tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
-    const workspaceRegistry = createWorkspaceRegistry();
+    const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
@@ -134,9 +135,9 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
     await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, ws.workspaceName, ws.tabName);
     await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, ws.workspaceName, tab2);
 
-    workspaceRegistry.getWorkspace(ws.workspaceName)?.tabRegistry.setActiveTab(ws.tabName);
+    workspaceRegistry.getWorkspace(ws.workspaceName)?.tabs.setActiveTab(ws.tabName);
     await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
-    workspaceRegistry.getWorkspace(ws.workspaceName)?.tabRegistry.setActiveTab(tab2);
+    workspaceRegistry.getWorkspace(ws.workspaceName)?.tabs.setActiveTab(tab2);
     await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
 
     const activePage = await pageRegistry.getPage(tab2);

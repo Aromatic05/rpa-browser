@@ -46,19 +46,19 @@ test('workspace.setActive and tab actions go through workspace control', async (
     });
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabRegistry.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
+    ws.tabs.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
 
-    const setActiveReply = await ws.controls.workspace.handle(
+    const setActiveReply = await ws.router.handle(
         action('workspace.setActive', { workspaceName: wsName }),
         ws,
         registry,
     );
     assert.equal(setActiveReply.reply.type, 'workspace.setActive.result');
 
-    const listReply = await ws.controls.workspace.handle(action('tab.list', { workspaceName: wsName }), ws, registry);
+    const listReply = await ws.router.handle(action('tab.list', { workspaceName: wsName }), ws, registry);
     assert.equal(listReply.reply.type, 'tab.list.result');
 
-    const createReply = await ws.controls.workspace.handle(
+    const createReply = await ws.router.handle(
         action('tab.create', { workspaceName: wsName, payload: { startUrl: 'https://start.url' } }),
         ws,
         registry,
@@ -67,14 +67,14 @@ test('workspace.setActive and tab actions go through workspace control', async (
     assert.equal(createdWithStartUrl, 'https://start.url');
 
     const createdTabName = (createReply.reply.payload as any).tabName as string;
-    const setTabReply = await ws.controls.workspace.handle(
+    const setTabReply = await ws.router.handle(
         action('tab.setActive', { workspaceName: wsName, payload: { tabName: createdTabName } }),
         ws,
         registry,
     );
     assert.equal(setTabReply.reply.type, 'tab.setActive.result');
 
-    const closeReply = await ws.controls.workspace.handle(
+    const closeReply = await ws.router.handle(
         action('tab.close', { workspaceName: wsName, payload: { tabName: createdTabName } }),
         ws,
         registry,
@@ -87,7 +87,7 @@ test('tab.reassign uses action.workspaceName and ignores payload.workspaceName',
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
-    const reply = await ws.controls.workspace.handle(
+    const reply = await ws.router.handle(
         action('tab.reassign', {
             workspaceName: wsName,
             payload: { workspaceName: 'ws-payload', tabName: 'tab-9', source: 'test' },
@@ -98,18 +98,18 @@ test('tab.reassign uses action.workspaceName and ignores payload.workspaceName',
 
     assert.equal(reply.reply.type, 'tab.reassign.result');
     assert.equal((reply.reply.payload as any).workspaceName, wsName);
-    assert.equal(ws.tabRegistry.hasTab('tab-9'), true);
+    assert.equal(ws.tabs.hasTab('tab-9'), true);
 });
 
 test('workspace.save and workspace.restore are routed from workspace control to workflow control', async () => {
     const { registry } = createTestWorkspaceRegistry();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabRegistry.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
-    ws.tabRegistry.setActiveTab('tab-1');
-    const saveReply = await ws.controls.workspace.handle(action('workspace.save', { workspaceName: wsName }), ws, registry);
+    ws.tabs.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
+    ws.tabs.setActiveTab('tab-1');
+    const saveReply = await ws.router.handle(action('workspace.save', { workspaceName: wsName }), ws, registry);
     assert.equal(saveReply.reply.type, 'workspace.save.result');
 
-    const restoreReply = await ws.controls.workspace.handle(action('workspace.restore', { workspaceName: wsName }), ws, registry);
+    const restoreReply = await ws.router.handle(action('workspace.restore', { workspaceName: wsName }), ws, registry);
     assert.equal(restoreReply.reply.type, 'workspace.restore.result');
 });

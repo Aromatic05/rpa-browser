@@ -7,30 +7,6 @@ import {
     classifyActionType,
     isRequestActionType,
 } from '../../src/actions/action_types';
-import { createActionDispatcher } from '../../src/actions/dispatcher';
-import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../src/runtime/service/types';
-
-const createServiceLifecycle = (workspaceName: string) => {
-    const services = new Map<WorkspaceServiceName, WorkspaceService>();
-    return {
-        register(service: WorkspaceService) { services.set(service.name, service); },
-        async start(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStartResult> {
-            const service = services.get(serviceName);
-            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
-            return await service.start();
-        },
-        async stop(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStopResult> {
-            const service = services.get(serviceName);
-            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
-            return await service.stop();
-        },
-        status(serviceName: WorkspaceServiceName): WorkspaceServiceStatusResult {
-            const service = services.get(serviceName);
-            if (!service) { return { serviceName, workspaceName, port: null, status: 'stopped' as const }; }
-            return service.status();
-        },
-    };
-};
 import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createPortAllocator } from '../../src/runtime/service/ports';
 import type { Action } from '../../src/actions/action_protocol';
@@ -157,137 +133,48 @@ test('control action set does not include mcp.start', () => {
     assert.equal(isControlAction(action), false);
 });
 
-test('mcp.start routes through workspace gateway with workspaceName', async () => {
+test('mcp.status routes through workspace gateway with workspaceName', async () => {
     const registry = createMinimalWorkspaceRegistry();
-    const workflow = {
-        name: 'test-ws',
-        steps: [],
-        checkpoints: [],
-        recording: null,
-        entityRules: { rules: [], bundles: [] },
-    };
-    const ws = registry.createWorkspace('test-ws', workflow);
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, { name: wsName } as any);
 
-    const service: WorkspaceService = {
-        name: 'mcp',
-        workspaceName: 'test-ws',
-        async start() {
-            return { serviceName: 'mcp', workspaceName: 'test-ws', port: 11111, status: 'running' as const };
-        },
-        async stop() {
-            return { serviceName: 'mcp', workspaceName: 'test-ws', status: 'stopped' as const };
-        },
-        status() {
-            return { serviceName: 'mcp', workspaceName: 'test-ws', port: 11111, status: 'running' as const };
-        },
-    };
-    ws.serviceLifecycle.register(service);
-
-    const dispatcher = createActionDispatcher({
-        workspaceRegistry: registry,
-        log: () => {},
-    });
-
-    const result = await dispatcher.dispatch(
-        stubAction('mcp.start', { workspaceName: 'test-ws' }),
+    const result = await ws.mcp.handle(
+        stubAction('mcp.status', { workspaceName: wsName }),
+        ws,
     );
 
-    const payload = result.payload as Record<string, unknown>;
-    assert.equal(payload.workspaceName, 'test-ws');
+    const payload = result.reply.payload as Record<string, unknown>;
+    assert.equal(payload.workspaceName, wsName);
     assert.equal(payload.serviceName, 'mcp');
-    assert.equal(payload.port, 11111);
-    assert.equal(payload.status, 'running');
-});
-
-test('mcp.stop routes through workspace gateway with workspaceName', async () => {
-    const registry = createMinimalWorkspaceRegistry();
-    const workflow = {
-        name: 'test-ws',
-        steps: [],
-        checkpoints: [],
-        recording: null,
-        entityRules: { rules: [], bundles: [] },
-    };
-    const ws = registry.createWorkspace('test-ws', workflow);
-
-    let running = false;
-    const service: WorkspaceService = {
-        name: 'mcp',
-        workspaceName: 'test-ws',
-        async start() {
-            running = true;
-            return { serviceName: 'mcp', workspaceName: 'test-ws', port: 11111, status: 'running' as const };
-        },
-        async stop() {
-            running = false;
-            return { serviceName: 'mcp', workspaceName: 'test-ws', status: 'stopped' as const };
-        },
-        status() {
-            return {
-                serviceName: 'mcp',
-                workspaceName: 'test-ws',
-                port: running ? 11111 : null,
-                status: running ? ('running' as const) : ('stopped' as const),
-            };
-        },
-    };
-    ws.serviceLifecycle.register(service);
-    await ws.serviceLifecycle.start('mcp');
-
-    const dispatcher = createActionDispatcher({
-        workspaceRegistry: registry,
-        log: () => {},
-    });
-
-    const result = await dispatcher.dispatch(
-        stubAction('mcp.stop', { workspaceName: 'test-ws' }),
-    );
-
-    const payload = result.payload as Record<string, unknown>;
-    assert.equal(payload.workspaceName, 'test-ws');
     assert.equal(payload.status, 'stopped');
 });
 
-test('mcp.status routes through workspace gateway with workspaceName', async () => {
+test('mcp.start rejects payload.workspaceName through workspace gateway', async () => {
     const registry = createMinimalWorkspaceRegistry();
-    const workflow = {
-        name: 'test-ws',
-        steps: [],
-        checkpoints: [],
-        recording: null,
-        entityRules: { rules: [], bundles: [] },
-    };
-    const ws = registry.createWorkspace('test-ws', workflow);
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, { name: wsName } as any);
 
-    const service: WorkspaceService = {
-        name: 'mcp',
-        workspaceName: 'test-ws',
-        async start() {
-            return { serviceName: 'mcp', workspaceName: 'test-ws', port: 11111, status: 'running' as const };
-        },
-        async stop() {
-            return { serviceName: 'mcp', workspaceName: 'test-ws', status: 'stopped' as const };
-        },
-        status() {
-            return { serviceName: 'mcp', workspaceName: 'test-ws', port: 11111, status: 'running' as const };
-        },
-    };
-    ws.serviceLifecycle.register(service);
-    await ws.serviceLifecycle.start('mcp');
-
-    const dispatcher = createActionDispatcher({
-        workspaceRegistry: registry,
-        log: () => {},
-    });
-
-    const result = await dispatcher.dispatch(
-        stubAction('mcp.status', { workspaceName: 'test-ws' }),
+    await assert.rejects(
+        () => ws.mcp.handle(
+            stubAction('mcp.start', { workspaceName: wsName, payload: { workspaceName: wsName } }),
+            ws,
+        ),
+        /mcp actions do not accept payload.workspaceName/,
     );
+});
 
-    const payload = result.payload as Record<string, unknown>;
-    assert.equal(payload.workspaceName, 'test-ws');
-    assert.equal(payload.port, 11111);
-    assert.equal(payload.status, 'running');
+test('mcp.stop rejects payload.workspaceName through workspace gateway', async () => {
+    const registry = createMinimalWorkspaceRegistry();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, { name: wsName } as any);
+
+    await assert.rejects(
+        () => ws.mcp.handle(
+            stubAction('mcp.stop', { workspaceName: wsName, payload: { workspaceName: wsName } }),
+            ws,
+        ),
+        /mcp actions do not accept payload.workspaceName/,
+    );
 });
 
 test('REQUEST_ACTION_TYPES includes MCP actions', () => {

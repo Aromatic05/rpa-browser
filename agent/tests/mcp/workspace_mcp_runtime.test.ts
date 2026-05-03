@@ -30,6 +30,9 @@ import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
 import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
 import type { Action } from '../../src/actions/action_protocol';
+import type { Workflow } from '../../src/workflow';
+
+const stubWorkflow = (name: string) => ({ name }) as Workflow;
 
 const stubAction = (type: string, opts?: { workspaceName?: string; payload?: Record<string, unknown> }): Action => ({
     v: 1,
@@ -40,22 +43,27 @@ const stubAction = (type: string, opts?: { workspaceName?: string; payload?: Rec
     at: Date.now(),
 });
 
-const createMinimalWorkspace = (name: string): RuntimeWorkspace => ({
-    name,
-    workflow: { name, steps: [], checkpoints: [], recording: null, entityRules: { rules: [], bundles: [] } },
-    runner: null,
-    tabRegistry: createWorkspaceTabs({ getPage: async () => { throw new Error('getPage not stubbed in test'); } }),
-    controls: {} as RuntimeWorkspace['controls'],
-    serviceLifecycle: createServiceLifecycle(name),
-    getPage: async () => {
-        throw new Error('getPage not stubbed in test');
-    },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-});
+const createMinimalWorkspace = (name: string, lifecycle?: ReturnType<typeof createServiceLifecycle>): RuntimeWorkspace => {
+    const lc = lifecycle ?? createServiceLifecycle(name);
+    return {
+        name,
+        workflow: stubWorkflow(name),
+        tabs: createWorkspaceTabs({ getPage: async () => { throw new Error('getPage not stubbed in test'); } }),
+        record: null as unknown as RuntimeWorkspace['record'],
+        dsl: null as unknown as RuntimeWorkspace['dsl'],
+        checkpoint: null as unknown as RuntimeWorkspace['checkpoint'],
+        entityRules: null as unknown as RuntimeWorkspace['entityRules'],
+        runner: null as unknown as RuntimeWorkspace['runner'],
+        mcp: createMcpControl(() => lc),
+        router: null as unknown as RuntimeWorkspace['router'],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+    };
+};
 
 test('mcp.start returns workspaceName, serviceName, port, status', async () => {
-    const ws = createMinimalWorkspace('test-ws');
+    const lifecycle = createServiceLifecycle('test-ws');
+    const ws = createMinimalWorkspace('test-ws', lifecycle);
     const service: WorkspaceService = {
         name: 'mcp',
         workspaceName: 'test-ws',
@@ -69,9 +77,9 @@ test('mcp.start returns workspaceName, serviceName, port, status', async () => {
             return { serviceName: 'mcp', workspaceName: 'test-ws', port: null, status: 'stopped' };
         },
     };
-    ws.serviceLifecycle.register(service);
+    lifecycle.register(service);
 
-    const control = createMcpControl(() => ws.serviceLifecycle);
+    const control = createMcpControl(() => lifecycle);
     const result = await control.handle(stubAction('mcp.start', { workspaceName: 'test-ws' }), ws);
 
     const payload = result.reply.payload as Record<string, unknown>;
@@ -82,7 +90,8 @@ test('mcp.start returns workspaceName, serviceName, port, status', async () => {
 });
 
 test('mcp.stop returns workspaceName, serviceName, status', async () => {
-    const ws = createMinimalWorkspace('test-ws');
+    const lifecycle = createServiceLifecycle('test-ws');
+    const ws = createMinimalWorkspace('test-ws', lifecycle);
     let running = false;
     const service: WorkspaceService = {
         name: 'mcp',
@@ -104,9 +113,9 @@ test('mcp.stop returns workspaceName, serviceName, status', async () => {
             };
         },
     };
-    ws.serviceLifecycle.register(service);
+    lifecycle.register(service);
 
-    const control = createMcpControl(() => ws.serviceLifecycle);
+    const control = createMcpControl(() => lifecycle);
     await control.handle(stubAction('mcp.start', { workspaceName: 'test-ws' }), ws);
     const result = await control.handle(stubAction('mcp.stop', { workspaceName: 'test-ws' }), ws);
 
@@ -117,7 +126,8 @@ test('mcp.stop returns workspaceName, serviceName, status', async () => {
 });
 
 test('mcp.status returns workspaceName, serviceName, port, status', async () => {
-    const ws = createMinimalWorkspace('test-ws');
+    const lifecycle = createServiceLifecycle('test-ws');
+    const ws = createMinimalWorkspace('test-ws', lifecycle);
     const service: WorkspaceService = {
         name: 'mcp',
         workspaceName: 'test-ws',
@@ -131,10 +141,10 @@ test('mcp.status returns workspaceName, serviceName, port, status', async () => 
             return { serviceName: 'mcp', workspaceName: 'test-ws', port: 9999, status: 'running' };
         },
     };
-    ws.serviceLifecycle.register(service);
-    await ws.serviceLifecycle.start('mcp');
+    lifecycle.register(service);
+    await lifecycle.start('mcp');
 
-    const control = createMcpControl(() => ws.serviceLifecycle);
+    const control = createMcpControl(() => lifecycle);
     const result = await control.handle(stubAction('mcp.status', { workspaceName: 'test-ws' }), ws);
 
     const payload = result.reply.payload as Record<string, unknown>;
@@ -146,7 +156,7 @@ test('mcp.status returns workspaceName, serviceName, port, status', async () => 
 
 test('mcp.start rejects payload.workspaceName', async () => {
     const ws = createMinimalWorkspace('test-ws');
-    const control = createMcpControl(() => ws.serviceLifecycle);
+    const control = createMcpControl(() => lifecycle);
 
     await assert.rejects(
         () => control.handle(stubAction('mcp.start', { payload: { workspaceName: 'test-ws' } }), ws),
@@ -156,7 +166,7 @@ test('mcp.start rejects payload.workspaceName', async () => {
 
 test('mcp.stop rejects payload.workspaceName', async () => {
     const ws = createMinimalWorkspace('test-ws');
-    const control = createMcpControl(() => ws.serviceLifecycle);
+    const control = createMcpControl(() => lifecycle);
 
     await assert.rejects(
         () => control.handle(stubAction('mcp.stop', { payload: { workspaceName: 'test-ws' } }), ws),
@@ -166,7 +176,7 @@ test('mcp.stop rejects payload.workspaceName', async () => {
 
 test('mcp.status rejects payload.workspaceName', async () => {
     const ws = createMinimalWorkspace('test-ws');
-    const control = createMcpControl(() => ws.serviceLifecycle);
+    const control = createMcpControl(() => lifecycle);
 
     await assert.rejects(
         () => control.handle(stubAction('mcp.status', { payload: { workspaceName: 'test-ws' } }), ws),
@@ -224,7 +234,8 @@ test('port allocator releases port after stop lifecycle', async () => {
 });
 
 test('mcp.start failure propagates through lifecycle', async () => {
-    const ws = createMinimalWorkspace('test-ws');
+    const lifecycle = createServiceLifecycle('test-ws');
+    const ws = createMinimalWorkspace('test-ws', lifecycle);
     const service: WorkspaceService = {
         name: 'mcp',
         workspaceName: 'test-ws',
@@ -238,9 +249,9 @@ test('mcp.start failure propagates through lifecycle', async () => {
             return { serviceName: 'mcp', workspaceName: 'test-ws', port: null, status: 'stopped' };
         },
     };
-    ws.serviceLifecycle.register(service);
+    lifecycle.register(service);
 
-    const control = createMcpControl(() => ws.serviceLifecycle);
+    const control = createMcpControl(() => lifecycle);
     await assert.rejects(
         () => control.handle(stubAction('mcp.start', { workspaceName: 'test-ws' }), ws),
         /port allocation failed/,

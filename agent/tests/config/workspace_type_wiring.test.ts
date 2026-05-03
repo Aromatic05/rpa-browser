@@ -62,7 +62,7 @@ test('RunStepsDeps can carry resolveEntityRulesProvider and return null for miss
             if (!workspace) {
                 return null;
             }
-            return workspace.controls.entityRules.getProvider(workspace.workflow);
+            return workspace.entityRules.getProvider(workspace.workflow);
         },
     };
 

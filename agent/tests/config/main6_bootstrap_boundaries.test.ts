@@ -65,7 +65,7 @@ test('runtime lifecycle binds workspace/tab on page bound', () => {
     lifecycle.onPageBound(createMockPage('https://a.com'), 'tab-a');
     const ws = env.workspaceRegistry.getWorkspace('default');
     assert.ok(ws);
-    assert.equal(ws?.tabRegistry.hasTab('tab-a'), true);
+    assert.equal(ws?.tabs.hasTab('tab-a'), true);
     assert.ok(env.runtimeRegistry.getBinding('default', 'tab-a'));
     assert.equal(emitted.includes('tab.bound'), true);
 });
@@ -101,7 +101,7 @@ test('runtime lifecycle watchdog emits ping-timeout sync', async () => {
     const emitted: any[] = [];
     const closed: string[] = [];
     const ws = env.workspaceRegistry.createWorkspace('ws-ping', ensureWorkflowOnFs('ws-ping'));
-    ws.tabRegistry.createTab({ tabName: 'tab-ping', url: 'about:blank' });
+    ws.tabs.createTab({ tabName: 'tab-ping', url: 'about:blank' });
 
     const lifecycle = createRuntimeLifecycle({
         workspaceRegistry: env.workspaceRegistry,

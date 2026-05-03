@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import type { Page } from '@playwright/test';
 import path from 'node:path';
 import { createPageRegistry } from '../../src/runtime/browser/page_registry';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
+import { createTestWorkspaceRegistry } from './workspace_registry';
+import { createWorkflowOnFs } from '../../src/workflow';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runStepList } from '../../src/runner/run_steps';
@@ -33,14 +34,14 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
     const tabName = tabName;
 
     const pluginHost = await createTestPluginHost();
-    const workspaceRegistry = createWorkspaceRegistry();
-    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName);
-    runtimeWorkspace.tabRegistry.createTab({
+    const { registry: workspaceRegistry } = createTestWorkspaceRegistry();
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    runtimeWorkspace.tabs.createTab({
         tabName: tabName,
         page,
         url: page.url(),
     });
-    runtimeWorkspace.tabRegistry.setActiveTab(tabName);
+    runtimeWorkspace.tabs.setActiveTab(tabName);
     const runtime = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,

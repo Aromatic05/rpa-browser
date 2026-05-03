@@ -4,6 +4,7 @@ import { createRecordingState, type RecordingState } from '../../src/record/reco
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
 import type { Action } from '../../src/actions/action_protocol';
+import { createPortAllocator } from '../../src/runtime/service/ports';
 
 export type TestWorkspaceRegistryOptions = {
     recordingState?: RecordingState;
@@ -40,6 +41,7 @@ export const createTestWorkspaceRegistry = (options: TestWorkspaceRegistryOption
         emit: options.emit,
         runStepsDeps,
         runnerConfig: getRunnerConfig(),
+        portAllocator: createPortAllocator(20000),
     });
 
     return { registry, recordingState, runStepsDeps };

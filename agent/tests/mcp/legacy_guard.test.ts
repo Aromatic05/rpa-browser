@@ -81,9 +81,9 @@ test('tool_registry.ts does not import WorkspaceRegistry', () => {
     assert.ok(!/WorkspaceRegistry/.test(content));
 });
 
-test('mcp_main.ts starts MCP via workspace.serviceLifecycle', () => {
+test('mcp_main.ts starts MCP via workspace.mcp.handle', () => {
     const content = fs.readFileSync(path.join(projectRoot, 'src/mcp_main.ts'), 'utf8');
-    assert.ok(content.includes("serviceLifecycle.start('mcp')"));
+    assert.ok(content.includes("workspace.mcp.handle"));
 });
 
 test('mcp_main.ts does not reference startMcpServer', () => {

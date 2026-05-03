@@ -27,7 +27,7 @@ test('record.start fails clearly when workspace has no bound page', async () => 
 
     await assert.rejects(
         async () =>
-            await ws.controls.record.handle({
+            await ws.record.handle({
                 action: { v: 1, id: 'a1', type: 'record.start', workspaceName: ws.name } as any,
                 workspace: ws as any,
                 workspaceRegistry: registry as any,
@@ -41,28 +41,28 @@ test('record.start/get/save/load/clear/list/stop are handled in record control',
     const { registry } = createTestWorkspaceRegistry({ recordingState });
     const wsName = `ws-${Date.now()}-b`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabRegistry.createTab({ tabName: 'tab-b', page: createMockPage('https://example.com/b'), url: 'https://example.com/b' });
-    ws.tabRegistry.setActiveTab('tab-b');
+    ws.tabs.createTab({ tabName: 'tab-b', page: createMockPage('https://example.com/b'), url: 'https://example.com/b' });
+    ws.tabs.setActiveTab('tab-b');
 
-    const started = await ws.controls.record.handle({ action: { v: 1, id: 's1', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const started = await ws.record.handle({ action: { v: 1, id: 's1', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(started.reply.type, 'record.start.result');
 
-    const got = await ws.controls.record.handle({ action: { v: 1, id: 's2', type: 'record.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const got = await ws.record.handle({ action: { v: 1, id: 's2', type: 'record.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(got.reply.type, 'record.get.result');
 
-    const saved = await ws.controls.record.handle({ action: { v: 1, id: 's3', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const saved = await ws.record.handle({ action: { v: 1, id: 's3', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(saved.reply.type, 'record.save.result');
 
-    const loaded = await ws.controls.record.handle({ action: { v: 1, id: 's4', type: 'record.load', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const loaded = await ws.record.handle({ action: { v: 1, id: 's4', type: 'record.load', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(loaded.reply.type, 'record.load.result');
 
-    const listed = await ws.controls.record.handle({ action: { v: 1, id: 's5', type: 'record.list', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const listed = await ws.record.handle({ action: { v: 1, id: 's5', type: 'record.list', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(listed.reply.type, 'record.list.result');
 
-    const cleared = await ws.controls.record.handle({ action: { v: 1, id: 's6', type: 'record.clear', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const cleared = await ws.record.handle({ action: { v: 1, id: 's6', type: 'record.clear', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(cleared.reply.type, 'record.clear.result');
 
-    const stopped = await ws.controls.record.handle({ action: { v: 1, id: 's7', type: 'record.stop', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    const stopped = await ws.record.handle({ action: { v: 1, id: 's7', type: 'record.stop', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(stopped.reply.type, 'record.stop.result');
 });
 
@@ -71,11 +71,11 @@ test('record.event is ingested in record domain and not routed through actions e
     const { registry } = createTestWorkspaceRegistry({ recordingState });
     const wsName = `ws-${Date.now()}-c`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabRegistry.createTab({ tabName: 'tab-c', page: createMockPage('https://example.com/c'), url: 'https://example.com/c' });
-    ws.tabRegistry.setActiveTab('tab-c');
-    await ws.controls.record.handle({ action: { v: 1, id: 'e0', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    ws.tabs.createTab({ tabName: 'tab-c', page: createMockPage('https://example.com/c'), url: 'https://example.com/c' });
+    ws.tabs.setActiveTab('tab-c');
+    await ws.record.handle({ action: { v: 1, id: 'e0', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
 
-    const ingested = await ws.controls.record.handle({
+    const ingested = await ws.record.handle({
         action: {
             v: 1,
             id: 'e1',

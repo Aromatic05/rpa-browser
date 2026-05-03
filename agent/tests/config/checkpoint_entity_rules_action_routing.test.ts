@@ -47,7 +47,7 @@ test('checkpoint/entity_rules with workspaceName route into workspace checkpoint
     const ws = {
         name: 'ws-1',
         workflow: { name: 'ws-1' },
-        tabRegistry: { getActiveTab: () => null, listTabs: () => [] },
+        tabs: { getActiveTab: () => null, listTabs: () => [] },
     } as any;
     const registry = { getActiveWorkspace: () => ({ name: 'ws-1' }), setActiveWorkspace: () => undefined } as any;
 

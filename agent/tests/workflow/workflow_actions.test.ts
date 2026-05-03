@@ -50,7 +50,7 @@ test('workflow.status is handled by workspace control', async () => {
     const workflow = createWorkflowOnFs(name);
     const ws = registry.createWorkspace(name, workflow);
 
-    const status = await ws.controls.workspace.handle({ v: 1, id: 's1', type: 'workflow.status', workspaceName: name } as any, ws as any, registry as any);
+    const status = await ws.router.handle({ v: 1, id: 's1', type: 'workflow.status', workspaceName: name } as any, ws as any, registry as any);
     assert.equal(status.reply.type, 'workflow.status.result');
     assert.equal((status.reply.payload as any).workspaceName, name);
     cleanup(name);
@@ -71,16 +71,16 @@ test('dsl actions are handled by dsl control', async () => {
     } as any);
     const ws = registry.createWorkspace(name, workflow);
 
-    const got = await ws.controls.workspace.handle({ v: 1, id: 'd1', type: 'dsl.get', workspaceName: name } as any, ws as any, registry as any);
+    const got = await ws.router.handle({ v: 1, id: 'd1', type: 'dsl.get', workspaceName: name } as any, ws as any, registry as any);
     assert.equal(got.reply.type, 'dsl.get.result');
 
-    const saved = await ws.controls.workspace.handle({ v: 1, id: 'd2', type: 'dsl.save', workspaceName: name, payload: { content: '' } } as any, ws as any, registry as any);
+    const saved = await ws.router.handle({ v: 1, id: 'd2', type: 'dsl.save', workspaceName: name, payload: { content: '' } } as any, ws as any, registry as any);
     assert.equal(saved.reply.type, 'dsl.save.result');
 
-    const tested = await ws.controls.workspace.handle({ v: 1, id: 'd3', type: 'dsl.test', workspaceName: name, payload: { input: { a: 1 } } } as any, ws as any, registry as any);
+    const tested = await ws.router.handle({ v: 1, id: 'd3', type: 'dsl.test', workspaceName: name, payload: { input: { a: 1 } } } as any, ws as any, registry as any);
     assert.equal(tested.reply.type, 'dsl.test.result');
 
-    const ran = await ws.controls.workspace.handle({ v: 1, id: 'd4', type: 'dsl.run', workspaceName: name, payload: { input: { b: 2 } } } as any, ws as any, registry as any);
+    const ran = await ws.router.handle({ v: 1, id: 'd4', type: 'dsl.run', workspaceName: name, payload: { input: { b: 2 } } } as any, ws as any, registry as any);
     assert.equal(ran.reply.type, 'dsl.run.result');
 
     cleanup(name);

@@ -5,9 +5,9 @@ import { replayRecording } from '../src/record/replay';
 import type { StepUnion } from '../src/runner/steps/types';
 import { createRecordingState } from '../src/record/recording';
 import { ACTION_TYPES } from '../src/actions/action_types';
-import { createWorkspaceRegistry } from '../src/runtime/workspace/registry';
+import { createTestWorkspaceRegistry } from './helpers/workspace_registry';
 import { createWorkflowOnFs } from '../src/workflow';
-import { handleRecordControlAction, setRecordControlServices } from '../src/record/control';
+import { createRecordControl } from '../src/record/control';
 
 test('replyAction and failedAction keep action-to-action semantics with replyTo', () => {
     const request = { v: 1 as const, id: 'req-1', type: 'workspace.list', workspaceName: 'ws-1', traceId: 'trace-1', at: 123 };
@@ -41,12 +41,12 @@ test('replayRecording emits step and progress events as stream', async () => {
 });
 
 test('play.start returns play.started immediately and emits completion event from record control', async () => {
-    const workspaceRegistry = createWorkspaceRegistry();
+    const { registry: workspaceRegistry } = createTestWorkspaceRegistry();
     const wsName = `ws-${Date.now()}`;
     const ws = workspaceRegistry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     const page = { url: () => 'https://example.com', goto: async () => undefined, isClosed: () => false } as any;
-    ws.tabRegistry.createTab({ tabName: 'tab-1', page, url: 'https://example.com' });
-    ws.tabRegistry.setActiveTab('tab-1');
+    ws.tabs.createTab({ tabName: 'tab-1', page, url: 'https://example.com' });
+    ws.tabs.setActiveTab('tab-1');
 
     const recordingState = createRecordingState();
     recordingState.recordings.set('tab-1', [{ id: 's1', name: 'browser.scroll', args: { direction: 'down', amount: 1 }, meta: { source: 'record', ts: Date.now() } } as any]);
@@ -54,14 +54,14 @@ test('play.start returns play.started immediately and emits completion event fro
     recordingState.workspaceLatestRecording.set(wsName, 'tab-1');
 
     const emitted: string[] = [];
-    setRecordControlServices({
+    const recordControl = createRecordControl({
         recordingState,
         replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1000,
         emit: (action) => emitted.push(action.type),
     });
 
-    const started = await handleRecordControlAction({
+    const started = await recordControl.handle({
         action: { v: 1, id: 'play-req-1', type: ACTION_TYPES.PLAY_START, workspaceName: wsName, payload: {}, at: Date.now() },
         workspace: ws,
         workspaceRegistry,
