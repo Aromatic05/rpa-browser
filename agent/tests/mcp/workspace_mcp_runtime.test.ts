@@ -27,7 +27,7 @@ const createServiceLifecycle = (workspaceName: string) => {
 };
 import { createPortAllocator } from '../../src/runtime/service/ports';
 import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
-import { createTabRegistry } from '../../src/runtime/tab_registry';
+import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../src/runtime/workspace_registry';
 import type { Action } from '../../src/actions/action_protocol';
 
@@ -44,7 +44,7 @@ const createMinimalWorkspace = (name: string): RuntimeWorkspace => ({
     name,
     workflow: { name, steps: [], checkpoints: [], recording: null, entityRules: { rules: [], bundles: [] } },
     runner: null,
-    tabRegistry: createTabRegistry(),
+    tabRegistry: createWorkspaceTabs({ getPage: async () => { throw new Error('getPage not stubbed in test'); } }),
     controls: {} as RuntimeWorkspace['controls'],
     serviceLifecycle: createServiceLifecycle(name),
     getPage: async () => {

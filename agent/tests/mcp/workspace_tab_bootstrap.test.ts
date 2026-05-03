@@ -6,7 +6,7 @@ import { execSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import type { Page } from 'playwright';
 import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
-import { createTabRegistry } from '../../src/runtime/tab_registry';
+import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
 import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../src/runtime/service/types';
 
 const createServiceLifecycle = (workspaceName: string) => {
@@ -54,7 +54,7 @@ const createMockWorkspace = (name: string, overrides?: Partial<RuntimeWorkspace>
     name,
     workflow: { name, steps: [], checkpoints: [], recording: null, entityRules: { rules: [], bundles: [] } },
     runner: null,
-    tabRegistry: createTabRegistry(),
+    tabRegistry: createWorkspaceTabs({ getPage: async (tabName: string) => createStubPage(tabName) as Page }),
     controls: {} as RuntimeWorkspace['controls'],
     serviceLifecycle: createServiceLifecycle(name),
     getPage: async () => createStubPage(name) as Page,

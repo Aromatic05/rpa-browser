@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { createTabRegistry, type TabRegistry } from './tab_registry';
+import { createWorkspaceTabs, type WorkspaceTabs } from './workspace/tabs';
 import type { Workflow } from '../workflow';
 import { createWorkspaceControl, type WorkspaceControl } from './workspace_control';
 import { createWorkflowControl, type WorkflowControl } from '../workflow/control';
@@ -64,7 +64,7 @@ export type RuntimeWorkspace = {
     name: string;
     workflow: Workflow;
     runner: unknown;
-    tabRegistry: TabRegistry;
+    tabRegistry: WorkspaceTabs;
     controls: RuntimeWorkspaceControls;
     serviceLifecycle: ServiceLifecycle;
     getPage: (tabName: string, startUrl?: string) => Promise<Page>;
@@ -139,7 +139,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             name: workspaceName,
             workflow,
             runner: null,
-            tabRegistry: createTabRegistry(),
+            tabRegistry: createWorkspaceTabs({ getPage: runtimeDeps.pageRegistry.getPage }),
             controls,
             serviceLifecycle,
             getPage: (tabName: string, startUrl?: string) => runtimeDeps.pageRegistry.getPage(tabName, startUrl),
