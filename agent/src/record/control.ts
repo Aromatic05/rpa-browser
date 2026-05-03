@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import { replyAction, type Action } from '../actions/action_protocol';
-import { ActionError } from '../actions/failure';
+import { ActionError } from '../actions/results';
 import { ACTION_TYPES } from '../actions/action_types';
-import { ERROR_CODES } from '../actions/error_codes';
+import { ERROR_CODES } from '../actions/results';
 import type { WorkspaceControlInput } from '../runtime/workspace_control';
 import type { ControlPlaneResult } from '../runtime/control';
 import {

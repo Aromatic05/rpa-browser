@@ -1,9 +1,9 @@
 import type { Action } from './action_protocol';
-import { ActionError } from './failure';
-import { ERROR_CODES } from './error_codes';
+import { ActionError } from './results';
+import { ERROR_CODES } from './results';
 import type { RuntimeWorkspace } from '../runtime/workspace_registry';
 import type { GatewayDeps } from './control_gateway';
-import { toFailedAction } from './failure';
+import { toFailedAction } from './results';
 
 const requireWorkspaceName = (action: Action): string => {
     const workspaceName = action.workspaceName?.trim();

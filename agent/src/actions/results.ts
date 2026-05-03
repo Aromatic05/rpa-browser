@@ -1,12 +1,47 @@
-/**
- * results：统一的命令执行返回结构。
- *
- * 约束：
- * - ok=true 时必须携带 data
- * - ok=false 时必须携带 error.code/message
- * - requestId 用于 WS/HTTP 追踪，不参与逻辑判断
- */
-import type { ErrorCode } from './error_codes';
+import { failedAction, type Action } from './action_protocol';
+
+export const ERROR_CODES = {
+    ERR_TIMEOUT: 'ERR_TIMEOUT',
+    ERR_NOT_FOUND: 'ERR_NOT_FOUND',
+    ERR_STALE: 'ERR_STALE',
+    ERR_UNSUPPORTED: 'ERR_UNSUPPORTED',
+    ERR_ASSERTION_FAILED: 'ERR_ASSERTION_FAILED',
+    ERR_DIALOG_BLOCKED: 'ERR_DIALOG_BLOCKED',
+    ERR_POPUP_BLOCKED: 'ERR_POPUP_BLOCKED',
+    ERR_BAD_ARGS: 'ERR_BAD_ARGS',
+    ERR_WORKFLOW_BAD_ARGS: 'ERR_WORKFLOW_BAD_ARGS',
+    ERR_WORKSPACE_SNAPSHOT_NOT_FOUND: 'ERR_WORKSPACE_SNAPSHOT_NOT_FOUND',
+    ERR_WORKSPACE_RESTORE_FAILED: 'ERR_WORKSPACE_RESTORE_FAILED',
+} as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
+export class ActionError extends Error {
+    code: ErrorCode;
+    details?: unknown;
+
+    constructor(code: ErrorCode, message: string, details?: unknown) {
+        super(message);
+        this.code = code;
+        this.details = details;
+    }
+}
+
+export const toFailedAction = (request: Action, error: unknown): Action => {
+    if (error instanceof ActionError) {
+        return failedAction(request, error.code, error.message, error.details);
+    }
+    if (error instanceof Error) {
+        if (error.name === 'TimeoutError') {
+            return failedAction(request, ERROR_CODES.ERR_TIMEOUT, error.message);
+        }
+        return failedAction(request, ERROR_CODES.ERR_BAD_ARGS, error.message);
+    }
+    return failedAction(request, ERROR_CODES.ERR_BAD_ARGS, String(error));
+};
+
+export const unsupportedActionFailure = (request: Action): Action =>
+    failedAction(request, ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${request.type}`);
 
 export type ErrorResult = {
     ok: false;
@@ -28,9 +63,6 @@ export type SuccessResult<T = unknown> = {
 
 export type Result<T = unknown> = SuccessResult<T> | ErrorResult;
 
-/**
- * 构造成功结果。
- */
 export const okResult = <T>(tabName: string, data: T, requestId?: string): SuccessResult<T> => ({
     ok: true,
     tabName,
@@ -38,9 +70,6 @@ export const okResult = <T>(tabName: string, data: T, requestId?: string): Succe
     data,
 });
 
-/**
- * 构造失败结果。details 仅用于调试/诊断，不应泄露敏感信息。
- */
 export const errorResult = (
     tabName: string,
     code: ErrorCode,

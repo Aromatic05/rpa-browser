@@ -3,7 +3,7 @@ import { classifyActionRoute } from './classify';
 import { parseActionEnvelope } from './envelope';
 import { routeControlAction, type GatewayDeps } from './control_gateway';
 import { routeWorkspaceAction } from './workspace_gateway';
-import { toFailedAction, unsupportedActionFailure } from './failure';
+import { toFailedAction, unsupportedActionFailure } from './results';
 import type { WorkspaceRegistry } from '../runtime/workspace_registry';
 
 export type ActionDispatcherOptions = {

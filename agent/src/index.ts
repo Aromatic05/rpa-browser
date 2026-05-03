@@ -16,7 +16,7 @@ import {
 import { setRecorderRuntimeEnabled } from './record/recorder';
 import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { failedAction, type Action } from './actions/action_protocol';
-import { ERROR_CODES } from './actions/error_codes';
+import { ERROR_CODES } from './actions/results';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './config';

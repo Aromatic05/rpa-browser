@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { replyAction, type Action } from '../actions/action_protocol';
-import { ActionError } from '../actions/failure';
-import { ERROR_CODES } from '../actions/error_codes';
+import { ActionError } from '../actions/results';
+import { ERROR_CODES } from '../actions/results';
 import { createWorkflowOnFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
 
 export type ControlPlaneResult = { reply: Action; events: Action[] };

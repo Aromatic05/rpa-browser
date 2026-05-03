@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { failedAction, isFailedAction, type Action } from './action_protocol';
-import { ERROR_CODES } from './error_codes';
+import { ERROR_CODES } from './results';
 import { isRequestActionType, ACTION_TYPES } from './action_types';
 import type { WorkspaceRegistry } from '../runtime/workspace_registry';
 

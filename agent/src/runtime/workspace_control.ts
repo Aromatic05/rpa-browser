@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
 import { replyAction, type Action } from '../actions/action_protocol';
-import { ActionError } from '../actions/failure';
-import { ERROR_CODES } from '../actions/error_codes';
+import { ActionError } from '../actions/results';
+import { ERROR_CODES } from '../actions/results';
 import type { RuntimeWorkspace, WorkspaceRegistry } from './workspace_registry';
 import type { ControlPlaneResult } from './control';
 import type { WorkflowControl } from '../workflow/control';

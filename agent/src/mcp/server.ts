@@ -7,7 +7,7 @@ import {
     ListToolsRequestSchema,
     InitializeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { ERROR_CODES } from '../actions/error_codes';
+import { ERROR_CODES } from '../actions/results';
 import { errorResult } from '../actions/results';
 import type { McpToolDeps, McpToolHandler } from './tool_handlers';
 import { getToolHandlers, getToolSpecs, resolveEnabledToolNames, type ToolSpec } from './tool_registry';
