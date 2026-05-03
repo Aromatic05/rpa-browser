@@ -78,12 +78,12 @@ const pageRegistry = createPageRegistry({
         }
         const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
         const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
-        if (!workspace.tabRegistry.hasTab(tabName)) {
-            workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
+        if (!workspace.tabs.hasTab(tabName)) {
+            workspace.tabs.createTab({ tabName, page, url: page.url() });
         } else {
-            workspace.tabRegistry.bindPage(tabName, page);
+            workspace.tabs.bindPage(tabName, page);
         }
-        workspace.tabRegistry.setActiveTab(tabName);
+        workspace.tabs.setActiveTab(tabName);
         runtimeRegistry.bindPage({ workspaceName, tabName, page });
     },
     onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
@@ -128,7 +128,7 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     if (!workspace) {
         return null;
     }
-    return workspace.controls.entityRules.getProvider(workspace.workflow);
+    return workspace.entityRules.getProvider(workspace.workflow);
 };
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 const runtimeRegistry: ReturnType<typeof createExecutionBindings> = createExecutionBindings({

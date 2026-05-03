@@ -123,7 +123,7 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     if (!workspace) {
         return null;
     }
-    return workspace.controls.entityRules.getProvider(workspace.workflow);
+    return workspace.entityRules.getProvider(workspace.workflow);
 };
 
 const lifecycle = createRuntimeLifecycle({

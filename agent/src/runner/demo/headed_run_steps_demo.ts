@@ -82,14 +82,14 @@ const run = async () => {
         if (!workspace) {
             return null;
         }
-        return workspace.controls.entityRules.getProvider(workspace.workflow);
+        return workspace.entityRules.getProvider(workspace.workflow);
     };
     const workspaceName = 'demo';
     const tabName = crypto.randomUUID();
     const page = await pageRegistry.getPage(tabName);
     const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
-    runtimeWorkspace.tabRegistry.createTab({ tabName, page, url: page.url() });
-    runtimeWorkspace.tabRegistry.setActiveTab(tabName);
+    runtimeWorkspace.tabs.createTab({ tabName, page, url: page.url() });
+    runtimeWorkspace.tabs.setActiveTab(tabName);
     runtimeRegistry.bindPage({ workspaceName, tabName, page });
 
     const firstResp = await runStepList(
