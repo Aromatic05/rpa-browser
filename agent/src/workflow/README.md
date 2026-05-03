@@ -72,6 +72,20 @@ Workspace actions must use `action.workspaceName` only.
 - entity rules persistence is owned by workflow.
 - snapshot pipeline applies entity rules from loaded workflow artifacts.
 
+## Workspace Runtime Controls
+
+- RuntimeWorkspace controls include `workflow`, `checkpoint`, `entityRules`, `record`, `dsl`, `runner`, `tabRegistry`.
+- `checkpoint.*` is routed to workspace checkpoint control.
+- `entity_rules.*` is routed to workspace entityRules control.
+- `task.run.checkpoint` remains runner-owned execution progress checkpoint.
+- workflow checkpoint artifact and runner task checkpoint are separate domains.
+- DSL uses workspace checkpoint provider.
+- snapshot pipeline uses workspace entityRules provider.
+- snapshot executor does not read workflow directly.
+- snapshot executor does not read filesystem rule artifacts directly.
+- shared action protocol package is not introduced in this stage.
+- legacy names `entity-rules`, `ENTITY_RULES`, and `EntityRules` are removed from active runtime naming.
+
 ## Record Persistence Boundary
 
 - `record.save` may create workflow persistence location.
