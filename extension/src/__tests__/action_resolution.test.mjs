@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { dispatchActionRequest } from '../../dist/actions/index.js';
-import { projectInboundAction } from '../../dist/actions/projection.js';
+import { projectInboundAction } from '../../dist/background/projection.js';
 import { ACTION_TYPES } from '../../dist/actions/action_types.js';
 
 const log = async (name, fn) => {

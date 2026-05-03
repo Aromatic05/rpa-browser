@@ -1,5 +1,5 @@
 import type { Action } from '../shared/types.js';
-import { ACTION_TYPES } from './action_types.js';
+import { ACTION_TYPES } from '../actions/action_types.js';
 import type { RouterState } from '../background/state.js';
 
 const toStringValue = (value: unknown): string | null =>
