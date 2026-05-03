@@ -3,7 +3,6 @@ import { createTraceTools, type BrowserAutomationTools } from '../runner/trace';
 import type { RunnerPluginHost } from '../runner/hotreload/plugin_host';
 import type { CreateTraceToolsFn } from '../runner/plugin_entry';
 import type { TraceContext, TraceHooks, TraceSink } from '../runner/trace/types';
-import type { WorkspaceRegistry } from './workspace_registry';
 
 export type PageBinding = {
     workspaceName: string;
@@ -20,7 +19,6 @@ export type RuntimeRegistry = {
 };
 
 type RuntimeRegistryOptions = {
-    workspaceRegistry: WorkspaceRegistry;
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
@@ -28,6 +26,8 @@ type RuntimeRegistryOptions = {
 
 export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeRegistry => {
     const bindings = new Map<string, PageBinding>();
+    const workspaceTabs = new Map<string, Set<string>>();
+    const activeTabs = new Map<string, string>();
     const keyOf = (workspaceName: string, tabName: string) => `${workspaceName}::${tabName}`;
     const resolveCreateTraceTools = (): CreateTraceToolsFn => options.pluginHost?.getTraceToolsFactory() || createTraceTools;
 
@@ -60,36 +60,57 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         const binding: PageBinding = { workspaceName, tabName, page, traceTools: tools, traceCtx: ctx };
         const key = keyOf(workspaceName, tabName);
         bindings.set(key, binding);
+        const tabs = workspaceTabs.get(workspaceName) || new Set<string>();
+        tabs.add(tabName);
+        workspaceTabs.set(workspaceName, tabs);
+        activeTabs.set(workspaceName, tabName);
         page.on('close', () => {
             bindings.delete(key);
+            const tabsForWorkspace = workspaceTabs.get(workspaceName);
+            tabsForWorkspace?.delete(tabName);
+            if (tabsForWorkspace && tabsForWorkspace.size === 0) {
+                workspaceTabs.delete(workspaceName);
+                activeTabs.delete(workspaceName);
+            } else if (activeTabs.get(workspaceName) === tabName) {
+                const nextTab = tabsForWorkspace ? tabsForWorkspace.values().next().value : undefined;
+                if (nextTab) {
+                    activeTabs.set(workspaceName, nextTab);
+                } else {
+                    activeTabs.delete(workspaceName);
+                }
+            }
         });
         return binding;
     };
 
     const bindPage = (input: { workspaceName: string; tabName: string; page: Page }): PageBinding => {
-        const workspace = options.workspaceRegistry.getWorkspace(input.workspaceName);
-        if (!workspace) {throw new Error(`workspace not found: ${input.workspaceName}`);}
-        const tab = workspace.tabRegistry.getTab(input.tabName);
-        if (!tab) {throw new Error(`tab not found: ${input.tabName}`);}
-        tab.page = input.page;
         const existing = bindings.get(keyOf(input.workspaceName, input.tabName));
         if (existing?.page === input.page) {
+            activeTabs.set(input.workspaceName, input.tabName);
             return existing;
         }
         return createBinding(input.workspaceName, input.tabName, input.page);
     };
 
     const resolveBinding = async (workspaceName: string, tabName?: string): Promise<PageBinding> => {
-        const workspace = options.workspaceRegistry.getWorkspace(workspaceName);
-        if (!workspace) {throw new Error(`workspace not found: ${workspaceName}`);}
-        const tab = workspace.tabRegistry.resolveTab(tabName);
-        if (!tab.page) {throw new Error(`page not bound: ${workspaceName}/${tab.name}`);}
-        const key = keyOf(workspaceName, tab.name);
-        const existing = bindings.get(key);
-        if (existing && existing.page === tab.page) {
-            return existing;
+        if (tabName) {
+            const bound = bindings.get(keyOf(workspaceName, tabName));
+            if (!bound) {throw new Error(`page not bound: ${workspaceName}/${tabName}`);}
+            activeTabs.set(workspaceName, tabName);
+            return bound;
         }
-        return createBinding(workspaceName, tab.name, tab.page);
+        const activeTab = activeTabs.get(workspaceName);
+        if (activeTab) {
+            const bound = bindings.get(keyOf(workspaceName, activeTab));
+            if (bound) {return bound;}
+        }
+        const tabs = workspaceTabs.get(workspaceName);
+        const fallbackTab = tabs?.values().next().value as string | undefined;
+        if (!fallbackTab) {throw new Error(`page not bound: ${workspaceName}`);}
+        const bound = bindings.get(keyOf(workspaceName, fallbackTab));
+        if (!bound) {throw new Error(`page not bound: ${workspaceName}/${fallbackTab}`);}
+        activeTabs.set(workspaceName, fallbackTab);
+        return bound;
     };
 
     return {

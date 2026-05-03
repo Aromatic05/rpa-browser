@@ -42,7 +42,6 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
     });
     runtimeWorkspace.tabRegistry.setActiveTab(tabName);
     const runtime = createRuntimeRegistry({
-        workspaceRegistry,
         traceHooks: createNoopHooks(),
         pluginHost,
     });

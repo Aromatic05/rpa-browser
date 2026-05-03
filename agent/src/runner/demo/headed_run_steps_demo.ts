@@ -69,7 +69,6 @@ const run = async () => {
     });
     const traceSink = new MemorySink();
     const runtimeRegistry = createRuntimeRegistry({
-        workspaceRegistry,
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
         pluginHost,
