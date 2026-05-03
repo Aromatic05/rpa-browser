@@ -1,8 +1,5 @@
-import { createToolHandlers } from './tool_handlers';
+import { createWorkspaceToolHandlers, type WorkspaceMcpToolDeps, type McpToolHandler } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
-import type { PageRegistry } from '../runtime/page_registry';
-import type { WorkspaceRegistry } from '../runtime/workspace_registry';
-import type { McpToolDeps, McpToolHandler } from './tool_handlers';
 import type { RunnerConfig, McpToolGroup } from '../config';
 import { defaultRunnerConfig } from '../config/defaults';
 
@@ -51,17 +48,9 @@ const toolDefinitions: ToolDefinition[] = [
 ];
 
 export type ToolRegistryDeps = {
-    pageRegistry: PageRegistry;
-    workspaceRegistry: WorkspaceRegistry;
-    getActiveTabName: () => Promise<string>;
+    workspace: WorkspaceMcpToolDeps['workspace'];
+    config?: RunnerConfig;
 };
-
-export type ExecuteToolOptions = {
-    tabNameOverride?: string;
-};
-
-const resolveTabName = async (deps: ToolRegistryDeps, options?: ExecuteToolOptions) =>
-    options?.tabNameOverride || (await deps.getActiveTabName());
 
 const stripTabNameSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
     const required = Array.isArray(schema.required)
@@ -110,17 +99,6 @@ const compactInputSchema = (schema: Record<string, unknown>): Record<string, unk
     return (compacted && typeof compacted === 'object' ? compacted : { type: 'object' }) as Record<string, unknown>;
 };
 
-const withTabName = (args: unknown, tabName: string): unknown => {
-    if (!args || typeof args !== 'object' || Array.isArray(args)) {
-        return { tabName };
-    }
-    const rec = args as Record<string, unknown>;
-    if (typeof rec.tabName === 'string' && rec.tabName.length > 0) {
-        return args;
-    }
-    return { ...rec, tabName };
-};
-
 const isKnownTool = (name: string): boolean => toolDefinitions.some((tool) => tool.name === name);
 
 const isKnownGroup = (group: string): group is ToolGroup =>
@@ -165,22 +143,21 @@ export const getToolSpecs = (options?: { enabledTools?: Set<string> }): ToolSpec
     }));
 
 export const getToolHandlers = (
-    deps: McpToolDeps,
+    deps: WorkspaceMcpToolDeps,
     options?: { enabledTools?: Set<string> },
 ): Record<string, McpToolHandler> => {
-    const handlers = createToolHandlers(deps);
+    const handlers = createWorkspaceToolHandlers(deps);
     if (!options?.enabledTools) {return handlers;}
     return Object.fromEntries(Object.entries(handlers).filter(([name]) => options.enabledTools!.has(name)));
 };
 
 export const executeTool = async (
-    deps: ToolRegistryDeps & { config?: RunnerConfig },
+    deps: WorkspaceMcpToolDeps,
     name: string,
     args: unknown,
-    options?: ExecuteToolOptions,
 ): Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }> => {
     const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
-    const handlers = getToolHandlers({ pageRegistry: deps.pageRegistry, workspaceRegistry: deps.workspaceRegistry }, { enabledTools });
+    const handlers = getToolHandlers(deps, { enabledTools });
     const handler = handlers[name];
     if (!handler) {
         return {
@@ -189,7 +166,5 @@ export const executeTool = async (
             error: { code: 'ERR_UNSUPPORTED', message: `unknown tool: ${name}` },
         };
     }
-
-    const tabName = await resolveTabName(deps, options);
-    return await handler(withTabName(args, tabName));
+    return await handler(args);
 };

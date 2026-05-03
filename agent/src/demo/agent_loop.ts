@@ -2,6 +2,7 @@ import type { DemoConfig } from './config_store';
 import { createChatCompletion, type ChatMessage } from './openai_compat_client';
 import { executeTool, getToolSpecs } from '../mcp/tool_registry';
 import type { ToolRegistryDeps } from '../mcp/tool_registry';
+import type { WorkspaceMcpToolDeps } from '../mcp/tool_handlers';
 import { ERROR_CODES } from '../actions/results';
 import { errorResult } from '../actions/results';
 
@@ -35,7 +36,7 @@ const parseToolArgs = (raw: string) => {
 export const runAgentLoop = async (params: {
     message: string;
     config: DemoConfig;
-    toolDeps: ToolRegistryDeps;
+    toolDeps: WorkspaceMcpToolDeps;
     maxRounds?: number;
 }): Promise<AgentLoopResult> => {
     const { message, config, toolDeps } = params;

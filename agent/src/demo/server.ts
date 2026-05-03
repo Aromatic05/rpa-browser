@@ -18,6 +18,7 @@ import { initLogger, resolveLogPath } from '../logging/logger';
 import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../workflow';
 import { createPortAllocator } from '../runtime/port_allocator';
+import type { WorkspaceMcpToolDeps } from '../mcp/tool_handlers';
 import type { RunStepsDeps } from '../runner/run_steps_types';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -140,14 +141,14 @@ const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeR
 runStepsDeps.runtime = runtimeRegistry;
 setRunStepsDeps(runStepsDeps);
 
-const buildToolDeps = () => ({
-    pageRegistry,
-    workspaceRegistry,
-    getActiveTabName: async () => {
-        const workspace = await workspaceManager.ensureActiveWorkspace();
-        return workspace.tabName;
-    },
-});
+const buildToolDeps = (): WorkspaceMcpToolDeps => {
+    const ws = workspaceRegistry.getActiveWorkspace();
+    if (!ws) throw new Error('no active workspace');
+    return {
+        workspace: ws,
+        getPage: (tabName: string) => pageRegistry.getPage(tabName),
+    };
+};
 
 const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
