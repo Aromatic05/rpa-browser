@@ -94,7 +94,7 @@ const resolveTabNameOrActiveWs = (deps: WorkspaceMcpToolDeps, tabName?: string):
     if (typeof tabName === 'string' && tabName.trim().length > 0) {
         return tabName;
     }
-    const activeTab = deps.workspace.tabRegistry.getActiveTab();
+    const activeTab = deps.workspace.tabs.getActiveTab();
     if (activeTab?.name) {
         return activeTab.name;
     }
@@ -105,7 +105,7 @@ const resolveOrCreateTabNameWs = (deps: WorkspaceMcpToolDeps, tabName?: string):
     if (typeof tabName === 'string' && tabName.trim().length > 0) {
         return tabName;
     }
-    return deps.workspace.tabRegistry.getActiveTab()?.name || crypto.randomUUID();
+    return deps.workspace.tabs.getActiveTab()?.name || crypto.randomUUID();
 };
 
 const resolveOrBootstrapScopeWs = async (
@@ -115,8 +115,8 @@ const resolveOrBootstrapScopeWs = async (
 ): Promise<{ tabName: string }> => {
     const allowBootstrap = options?.allowBootstrap !== false;
     const resolvedTabName = resolveTabNameOrActiveWs(deps, tabName);
-    if (deps.workspace.tabRegistry.hasTab(resolvedTabName)) {
-        deps.workspace.tabRegistry.setActiveTab(resolvedTabName);
+    if (deps.workspace.tabs.hasTab(resolvedTabName)) {
+        deps.workspace.tabs.setActiveTab(resolvedTabName);
         return { tabName: resolvedTabName };
     }
     if (!allowBootstrap) {
@@ -126,12 +126,12 @@ const resolveOrBootstrapScopeWs = async (
         throw new Error('cannot bootstrap tab: getPage not provided');
     }
     const page = await deps.getPage(resolvedTabName);
-    if (!deps.workspace.tabRegistry.hasTab(resolvedTabName)) {
-        deps.workspace.tabRegistry.createTab({ tabName: resolvedTabName, page, url: page.url() });
+    if (!deps.workspace.tabs.hasTab(resolvedTabName)) {
+        deps.workspace.tabs.createTab({ tabName: resolvedTabName, page, url: page.url() });
     } else {
-        deps.workspace.tabRegistry.bindPage(resolvedTabName, page);
+        deps.workspace.tabs.bindPage(resolvedTabName, page);
     }
-    deps.workspace.tabRegistry.setActiveTab(resolvedTabName);
+    deps.workspace.tabs.setActiveTab(resolvedTabName);
     return { tabName: resolvedTabName };
 };
 
@@ -142,7 +142,7 @@ const runSingleStepWs = async (
     options?: { allowBootstrap?: boolean },
 ) => {
     const scope = await resolveOrBootstrapScopeWs(deps, tabName, options);
-    deps.workspace.tabRegistry.setActiveTab(scope.tabName);
+    deps.workspace.tabs.setActiveTab(scope.tabName);
     const { pipe, checkpoint } = await runStepList(deps.workspace.name, [step], deps.runStepsDeps, {
         stopOnError: true,
     });
