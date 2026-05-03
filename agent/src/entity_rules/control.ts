@@ -3,11 +3,13 @@ import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
 import type { ControlPlaneResult } from '../runtime/control';
 import type { WorkspaceControlInput } from '../runtime/workspace_control';
-import type { WorkflowEntityRules } from '../workflow';
+import type { Workflow, WorkflowEntityRules } from '../workflow';
+import { createWorkspaceEntityRulesProvider, type WorkspaceEntityRulesProvider } from './provider';
 import { createWorkspaceEntityRulesRuntime } from './runtime';
 
 export type EntityRulesControl = {
     handle: (input: WorkspaceControlInput) => Promise<ControlPlaneResult>;
+    getProvider: (workflow: Workflow) => WorkspaceEntityRulesProvider;
 };
 
 const requireProfileName = (payload: Record<string, unknown>): string => {
@@ -27,6 +29,7 @@ const requireEntityRulesArtifact = (payload: Record<string, unknown>): WorkflowE
 };
 
 export const createEntityRulesControl = (): EntityRulesControl => ({
+    getProvider: (workflow) => createWorkspaceEntityRulesProvider(workflow),
     handle: async (input) => {
         const { action, workspace } = input;
         if (!action.type.startsWith('entity_rules.')) {

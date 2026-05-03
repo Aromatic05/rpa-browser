@@ -6,7 +6,6 @@ import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_
 import { createContextManager, resolvePaths } from '../runtime/context_manager';
 import { createPageRegistry } from '../runtime/page_registry';
 import { createWorkspaceRegistry } from '../runtime/workspace_registry';
-import { createWorkspaceEntityRulesProvider } from '../entity_rules/provider';
 import { createRuntimeRegistry } from '../runtime/runtime_registry';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
@@ -18,6 +17,7 @@ import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 import { initLogger, resolveLogPath } from '../logging/logger';
 import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../workflow';
+import type { RunStepsDeps } from '../runner/run_steps_types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -102,7 +102,7 @@ if (process.env.NODE_ENV !== 'production') {
     runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
 }
 
-const runStepsDeps = {
+const runStepsDeps: RunStepsDeps = {
     runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
@@ -125,7 +125,7 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     if (!workspace) {
         return null;
     }
-    return createWorkspaceEntityRulesProvider(workspace.workflow);
+    return workspace.controls.entityRules.getProvider(workspace.workflow);
 };
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({

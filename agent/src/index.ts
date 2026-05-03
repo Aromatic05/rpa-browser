@@ -5,7 +5,6 @@ import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace_registry';
-import { createWorkspaceEntityRulesProvider } from './entity_rules/provider';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import {
     createRecordingState,
@@ -31,6 +30,7 @@ import { createControlServer, registerControlShutdown, setControlActionDispatche
 import { ensureWorkflowOnFs } from './workflow';
 import { createRuntimeLifecycle } from './runtime/lifecycle';
 import { installRecorderEventSink } from './record/sink';
+import type { RunStepsDeps } from './runner/run_steps_types';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
@@ -99,7 +99,7 @@ const runtimeRegistry = createRuntimeRegistry({
     pluginHost: runnerPluginHost,
 });
 
-const runStepsDeps = {
+const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
@@ -121,7 +121,7 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     if (!workspace) {
         return null;
     }
-    return createWorkspaceEntityRulesProvider(workspace.workflow);
+    return workspace.controls.entityRules.getProvider(workspace.workflow);
 };
 
 const lifecycle = createRuntimeLifecycle({

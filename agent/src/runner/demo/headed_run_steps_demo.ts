@@ -13,7 +13,6 @@ import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../runtime/page_registry';
 import { createWorkspaceRegistry } from '../../runtime/workspace_registry';
-import { createWorkspaceEntityRulesProvider } from '../../entity_rules/provider';
 import { createRuntimeRegistry } from '../../runtime/runtime_registry';
 import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
@@ -22,6 +21,7 @@ import { getRunnerConfig } from '../../config';
 import { RunnerPluginHost } from '../hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../../workflow';
 import { createRecordingState } from '../../record/recording';
+import type { RunStepsDeps } from '../run_steps_types';
 
 const fixtureUrl = () =>
     pathToFileURL(
@@ -50,7 +50,7 @@ const run = async () => {
     });
     const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
     await pluginHost.load();
-    const runStepsDeps = {
+    const runStepsDeps: RunStepsDeps = {
         runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
         stepSinks: [createConsoleStepSink('[step]')],
         config: getRunnerConfig(),
@@ -80,7 +80,7 @@ const run = async () => {
         if (!workspace) {
             return null;
         }
-        return createWorkspaceEntityRulesProvider(workspace.workflow);
+        return workspace.controls.entityRules.getProvider(workspace.workflow);
     };
     const workspaceName = 'demo';
     const tabName = crypto.randomUUID();
