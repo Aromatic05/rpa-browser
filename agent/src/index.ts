@@ -30,6 +30,7 @@ import { createControlServer, registerControlShutdown, setControlActionDispatche
 import { ensureWorkflowOnFs } from './workflow';
 import { createRuntimeLifecycle } from './runtime/lifecycle';
 import { installRecorderEventSink } from './record/sink';
+import { createPortAllocator } from './runtime/port_allocator';
 import type { RunStepsDeps } from './runner/run_steps_types';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
@@ -115,6 +116,7 @@ const workspaceRegistry = createWorkspaceRegistry({
     emit: (action) => broadcast(action),
     runStepsDeps,
     runnerConfig: config,
+    portAllocator: createPortAllocator(),
 });
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
