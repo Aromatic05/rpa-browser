@@ -13,7 +13,7 @@ import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
-import { createPortAllocator } from './runtime/port_allocator';
+import { createPortAllocator } from './runtime/service/ports';
 import type { RunStepsDeps } from './runner/run_steps_types';
 
 const TAB_NAME_KEY = '__rpa_tab_name';

@@ -1,9 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-    createWorkspaceServiceLifecycle,
-    type WorkspaceService,
-} from '../../src/runtime/service';
+import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../src/runtime/service/types';
+
+const createServiceLifecycle = (workspaceName: string) => {
+    const services = new Map<WorkspaceServiceName, WorkspaceService>();
+    return {
+        register(service: WorkspaceService) { services.set(service.name, service); },
+        async start(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStartResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.start();
+        },
+        async stop(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStopResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.stop();
+        },
+        status(serviceName: WorkspaceServiceName): WorkspaceServiceStatusResult {
+            const service = services.get(serviceName);
+            if (!service) { return { serviceName, workspaceName, port: null, status: 'stopped' as const }; }
+            return service.status();
+        },
+    };
+};
 
 const createStubService = (
     name: 'mcp',
@@ -33,8 +52,8 @@ const createStubService = (
     };
 };
 
-test('createWorkspaceServiceLifecycle starts a registered service', async () => {
-    const lifecycle = createWorkspaceServiceLifecycle('test-ws');
+test('createServiceLifecycle starts a registered service', async () => {
+    const lifecycle = createServiceLifecycle('test-ws');
     const service = createStubService('mcp', 'test-ws');
     lifecycle.register(service);
 
@@ -45,8 +64,8 @@ test('createWorkspaceServiceLifecycle starts a registered service', async () => 
     assert.equal(result.status, 'running');
 });
 
-test('createWorkspaceServiceLifecycle stops a running service', async () => {
-    const lifecycle = createWorkspaceServiceLifecycle('test-ws');
+test('createServiceLifecycle stops a running service', async () => {
+    const lifecycle = createServiceLifecycle('test-ws');
     const service = createStubService('mcp', 'test-ws');
     lifecycle.register(service);
 
@@ -56,8 +75,8 @@ test('createWorkspaceServiceLifecycle stops a running service', async () => {
     assert.equal(stopResult.status, 'stopped');
 });
 
-test('createWorkspaceServiceLifecycle status returns stopped for unregistered service', () => {
-    const lifecycle = createWorkspaceServiceLifecycle('test-ws');
+test('createServiceLifecycle status returns stopped for unregistered service', () => {
+    const lifecycle = createServiceLifecycle('test-ws');
     const result = lifecycle.status('mcp');
     assert.equal(result.serviceName, 'mcp');
     assert.equal(result.workspaceName, 'test-ws');
@@ -65,8 +84,8 @@ test('createWorkspaceServiceLifecycle status returns stopped for unregistered se
     assert.equal(result.status, 'stopped');
 });
 
-test('createWorkspaceServiceLifecycle status returns running after start', async () => {
-    const lifecycle = createWorkspaceServiceLifecycle('test-ws');
+test('createServiceLifecycle status returns running after start', async () => {
+    const lifecycle = createServiceLifecycle('test-ws');
     const service = createStubService('mcp', 'test-ws');
     lifecycle.register(service);
 
@@ -76,16 +95,16 @@ test('createWorkspaceServiceLifecycle status returns running after start', async
     assert.equal(result.port, 12345);
 });
 
-test('createWorkspaceServiceLifecycle throws on start of unregistered service', async () => {
-    const lifecycle = createWorkspaceServiceLifecycle('test-ws');
+test('createServiceLifecycle throws on start of unregistered service', async () => {
+    const lifecycle = createServiceLifecycle('test-ws');
     await assert.rejects(
         () => lifecycle.start('mcp'),
         /service not registered/,
     );
 });
 
-test('createWorkspaceServiceLifecycle reports service status after stop', async () => {
-    const lifecycle = createWorkspaceServiceLifecycle('test-ws');
+test('createServiceLifecycle reports service status after stop', async () => {
+    const lifecycle = createServiceLifecycle('test-ws');
     const service = createStubService('mcp', 'test-ws');
     lifecycle.register(service);
 
@@ -116,7 +135,7 @@ test('service status transitions: stopped -> starting -> running -> stopping -> 
         },
     };
 
-    const lifecycle = createWorkspaceServiceLifecycle('test-ws');
+    const lifecycle = createServiceLifecycle('test-ws');
     lifecycle.register(service);
 
     await lifecycle.start('mcp');

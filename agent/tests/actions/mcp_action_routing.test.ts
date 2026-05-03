@@ -8,9 +8,31 @@ import {
     isRequestActionType,
 } from '../../src/actions/action_types';
 import { createActionDispatcher } from '../../src/actions/dispatcher';
-import { createWorkspaceServiceLifecycle, type WorkspaceService } from '../../src/runtime/service';
+import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../src/runtime/service/types';
+
+const createServiceLifecycle = (workspaceName: string) => {
+    const services = new Map<WorkspaceServiceName, WorkspaceService>();
+    return {
+        register(service: WorkspaceService) { services.set(service.name, service); },
+        async start(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStartResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.start();
+        },
+        async stop(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStopResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.stop();
+        },
+        status(serviceName: WorkspaceServiceName): WorkspaceServiceStatusResult {
+            const service = services.get(serviceName);
+            if (!service) { return { serviceName, workspaceName, port: null, status: 'stopped' as const }; }
+            return service.status();
+        },
+    };
+};
 import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
-import { createPortAllocator } from '../../src/runtime/port_allocator';
+import { createPortAllocator } from '../../src/runtime/service/ports';
 import type { Action } from '../../src/actions/action_protocol';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';
 

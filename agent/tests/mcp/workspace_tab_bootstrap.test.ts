@@ -7,7 +7,29 @@ import { EventEmitter } from 'node:events';
 import type { Page } from 'playwright';
 import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
 import { createTabRegistry } from '../../src/runtime/tab_registry';
-import { createWorkspaceServiceLifecycle } from '../../src/runtime/service';
+import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../src/runtime/service/types';
+
+const createServiceLifecycle = (workspaceName: string) => {
+    const services = new Map<WorkspaceServiceName, WorkspaceService>();
+    return {
+        register(service: WorkspaceService) { services.set(service.name, service); },
+        async start(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStartResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.start();
+        },
+        async stop(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStopResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.stop();
+        },
+        status(serviceName: WorkspaceServiceName): WorkspaceServiceStatusResult {
+            const service = services.get(serviceName);
+            if (!service) { return { serviceName, workspaceName, port: null, status: 'stopped' as const }; }
+            return service.status();
+        },
+    };
+};
 import type { RuntimeWorkspace } from '../../src/runtime/workspace_registry';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';
 
@@ -34,7 +56,7 @@ const createMockWorkspace = (name: string, overrides?: Partial<RuntimeWorkspace>
     runner: null,
     tabRegistry: createTabRegistry(),
     controls: {} as RuntimeWorkspace['controls'],
-    serviceLifecycle: createWorkspaceServiceLifecycle(name),
+    serviceLifecycle: createServiceLifecycle(name),
     getPage: async () => createStubPage(name) as Page,
     createdAt: Date.now(),
     updatedAt: Date.now(),

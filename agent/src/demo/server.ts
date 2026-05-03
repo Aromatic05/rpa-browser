@@ -17,7 +17,7 @@ import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 import { initLogger, resolveLogPath } from '../logging/logger';
 import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../workflow';
-import { createPortAllocator } from '../runtime/port_allocator';
+import { createPortAllocator } from '../runtime/service/ports';
 import type { WorkspaceMcpToolDeps } from '../mcp/tool_handlers';
 import type { RunStepsDeps } from '../runner/run_steps_types';
 

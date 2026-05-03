@@ -10,8 +10,39 @@ import { createCheckpointControl, type CheckpointControl } from '../checkpoint/c
 import { createEntityRulesControl, type EntityRulesControl } from '../entity_rules/control';
 import { createMcpControl, type McpControl } from '../mcp/control';
 import { createWorkspaceMcpService } from '../mcp/service';
-import { createWorkspaceServiceLifecycle, type WorkspaceServiceLifecycle } from './service';
-import type { PortAllocator } from './port_allocator';
+import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from './service/types';
+import type { PortAllocator } from './service/ports';
+
+type ServiceLifecycle = {
+    register: (service: WorkspaceService) => void;
+    start: (serviceName: WorkspaceServiceName) => Promise<WorkspaceServiceStartResult>;
+    stop: (serviceName: WorkspaceServiceName) => Promise<WorkspaceServiceStopResult>;
+    status: (serviceName: WorkspaceServiceName) => WorkspaceServiceStatusResult;
+};
+
+const createServiceLifecycle = (workspaceName: string): ServiceLifecycle => {
+    const services = new Map<WorkspaceServiceName, WorkspaceService>();
+    return {
+        register(service) { services.set(service.name, service); },
+        async start(serviceName) {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.start();
+        },
+        async stop(serviceName) {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.stop();
+        },
+        status(serviceName) {
+            const service = services.get(serviceName);
+            if (!service) {
+                return { serviceName, workspaceName, port: null, status: 'stopped' as const };
+            }
+            return service.status();
+        },
+    };
+};
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../record/replay';
 import type { RunStepsDeps } from '../runner/run_steps';
@@ -35,7 +66,7 @@ export type RuntimeWorkspace = {
     runner: unknown;
     tabRegistry: TabRegistry;
     controls: RuntimeWorkspaceControls;
-    serviceLifecycle: WorkspaceServiceLifecycle;
+    serviceLifecycle: ServiceLifecycle;
     getPage: (tabName: string, startUrl?: string) => Promise<Page>;
     createdAt: number;
     updatedAt: number;
@@ -65,7 +96,7 @@ export type WorkspaceRuntimeDeps = {
     portAllocator: PortAllocator;
 };
 
-const createWorkspaceControls = (deps: WorkspaceRuntimeDeps, lifecycle: WorkspaceServiceLifecycle): RuntimeWorkspaceControls => {
+const createWorkspaceControls = (deps: WorkspaceRuntimeDeps, lifecycle: ServiceLifecycle): RuntimeWorkspaceControls => {
     const workflow = createWorkflowControl({ recordingState: deps.recordingState });
     const record = createRecordControl({
         recordingState: deps.recordingState,
@@ -102,7 +133,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             return workspaces.get(workspaceName)!;
         }
         const now = Date.now();
-        const serviceLifecycle = createWorkspaceServiceLifecycle(workspaceName);
+        const serviceLifecycle = createServiceLifecycle(workspaceName);
         const controls = createWorkspaceControls(runtimeDeps, serviceLifecycle);
         const workspace: RuntimeWorkspace = {
             name: workspaceName,

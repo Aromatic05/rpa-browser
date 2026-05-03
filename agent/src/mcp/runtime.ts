@@ -1,6 +1,6 @@
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import type { WorkspaceServiceStatus } from '../runtime/service';
-import type { PortAllocator } from '../runtime/port_allocator';
+import type { WorkspaceServiceStatus } from '../runtime/service/types';
+import type { PortAllocator } from '../runtime/service/ports';
 import type { RuntimeWorkspace } from '../runtime/workspace_registry';
 import type { RunStepsDeps } from '../runner/run_steps_types';
 import type { RunnerConfig } from '../config';

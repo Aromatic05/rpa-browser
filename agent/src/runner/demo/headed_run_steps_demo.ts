@@ -21,7 +21,7 @@ import { getRunnerConfig } from '../../config';
 import { RunnerPluginHost } from '../hotreload/plugin_host';
 import { ensureWorkflowOnFs } from '../../workflow';
 import { createRecordingState } from '../../record/recording';
-import { createPortAllocator } from '../../runtime/port_allocator';
+import { createPortAllocator } from '../../runtime/service/ports';
 import type { RunStepsDeps } from '../run_steps_types';
 
 const fixtureUrl = () =>

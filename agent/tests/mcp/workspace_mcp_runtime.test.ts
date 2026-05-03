@@ -2,8 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createMcpControl } from '../../src/mcp/control';
-import { createWorkspaceServiceLifecycle, type WorkspaceService } from '../../src/runtime/service';
-import { createPortAllocator } from '../../src/runtime/port_allocator';
+import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../src/runtime/service/types';
+
+const createServiceLifecycle = (workspaceName: string) => {
+    const services = new Map<WorkspaceServiceName, WorkspaceService>();
+    return {
+        register(service: WorkspaceService) { services.set(service.name, service); },
+        async start(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStartResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.start();
+        },
+        async stop(serviceName: WorkspaceServiceName): Promise<WorkspaceServiceStopResult> {
+            const service = services.get(serviceName);
+            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
+            return await service.stop();
+        },
+        status(serviceName: WorkspaceServiceName): WorkspaceServiceStatusResult {
+            const service = services.get(serviceName);
+            if (!service) { return { serviceName, workspaceName, port: null, status: 'stopped' as const }; }
+            return service.status();
+        },
+    };
+};
+import { createPortAllocator } from '../../src/runtime/service/ports';
 import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
 import { createTabRegistry } from '../../src/runtime/tab_registry';
 import type { RuntimeWorkspace } from '../../src/runtime/workspace_registry';
@@ -24,7 +46,7 @@ const createMinimalWorkspace = (name: string): RuntimeWorkspace => ({
     runner: null,
     tabRegistry: createTabRegistry(),
     controls: {} as RuntimeWorkspace['controls'],
-    serviceLifecycle: createWorkspaceServiceLifecycle(name),
+    serviceLifecycle: createServiceLifecycle(name),
     getPage: async () => {
         throw new Error('getPage not stubbed in test');
     },

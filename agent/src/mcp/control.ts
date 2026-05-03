@@ -3,7 +3,7 @@ import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
 import type { ControlPlaneResult } from '../runtime/control';
 import type { RuntimeWorkspace } from '../runtime/workspace_registry';
-import type { WorkspaceServiceLifecycle } from '../runtime/service';
+import type { WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../runtime/service/types';
 
 export type McpControlInput = {
     action: Action;
@@ -17,7 +17,7 @@ export type McpControl = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 
-export const createMcpControl = (getLifecycle: (workspace: RuntimeWorkspace) => WorkspaceServiceLifecycle): McpControl => ({
+export const createMcpControl = (getLifecycle: (workspace: RuntimeWorkspace) => { start: (serviceName: 'mcp') => Promise<WorkspaceServiceStartResult>; stop: (serviceName: 'mcp') => Promise<WorkspaceServiceStopResult>; status: (serviceName: 'mcp') => WorkspaceServiceStatusResult }): McpControl => ({
     async handle(action, workspace) {
         const payload = isRecord(action.payload) ? action.payload : {};
         if (typeof payload.workspaceName === 'string' && payload.workspaceName.trim().length > 0) {
