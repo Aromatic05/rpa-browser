@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import path from 'node:path';
 import { createPageRegistry } from '../../src/runtime/browser/page_registry';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
-import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
+import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runStepList } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
@@ -41,7 +41,7 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
         url: page.url(),
     });
     runtimeWorkspace.tabRegistry.setActiveTab(tabName);
-    const runtime = createRuntimeRegistry({
+    const runtime = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,
     });

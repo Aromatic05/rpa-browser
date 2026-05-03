@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../runtime/browser/page_registry';
 import { createWorkspaceRegistry } from '../../runtime/workspace_registry';
-import { createRuntimeRegistry } from '../../runtime/runtime_registry';
+import { createExecutionBindings } from '../../runtime/execution/bindings';
 import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
 import { createLoggingHooks } from '../trace/hooks';
@@ -52,7 +52,7 @@ const run = async () => {
     const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
     await pluginHost.load();
     const runStepsDeps: RunStepsDeps = {
-        runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
+        runtime: null as unknown as ReturnType<typeof createExecutionBindings>,
         stepSinks: [createConsoleStepSink('[step]')],
         config: getRunnerConfig(),
         pluginHost,
@@ -71,7 +71,7 @@ const run = async () => {
         portAllocator: createPortAllocator(),
     });
     const traceSink = new MemorySink();
-    const runtimeRegistry = createRuntimeRegistry({
+    const runtimeRegistry = createExecutionBindings({
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
         pluginHost,

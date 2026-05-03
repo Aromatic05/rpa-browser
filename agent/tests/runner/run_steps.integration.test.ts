@@ -10,7 +10,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { createPageRegistry } from '../../src/runtime/browser/page_registry';
-import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
+import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { runStepList, MemoryStepSink } from '../../src/runner/run_steps';
 import { MemorySink } from '../../src/runner/trace/sink';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
@@ -44,7 +44,7 @@ test.skip('runSteps isolates workspaces and emits step/trace events', async () =
 
     const pluginHost = await createTestPluginHost();
     const traceSink = new MemorySink();
-    const runtimeRegistry = createRuntimeRegistry({
+    const runtimeRegistry = createExecutionBindings({
         pageRegistry,
         traceSinks: [traceSink],
         traceHooks: createNoopHooks(),

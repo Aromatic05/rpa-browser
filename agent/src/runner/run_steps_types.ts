@@ -1,6 +1,6 @@
 import type { StepName, StepResolve, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import type { Checkpoint as RunnerCheckpoint } from './checkpoint/types';
-import type { RuntimeRegistry } from '../runtime/runtime_registry';
+import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../config';
 import type { WorkspaceEntityRulesProvider } from '../entity_rules/provider';
@@ -67,7 +67,7 @@ export type Checkpoint = {
 };
 
 export type RunStepsDeps = {
-    runtime: RuntimeRegistry;
+    runtime: ExecutionBindings;
     stepSinks?: StepSink[];
     config: RunnerConfig;
     pluginHost: RunnerPluginHost;

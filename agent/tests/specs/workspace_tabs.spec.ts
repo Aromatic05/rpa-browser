@@ -3,7 +3,7 @@ import type { BrowserContext } from '@playwright/test';
 import crypto from 'node:crypto';
 import { createPageRegistry } from '../../src/runtime/browser/page_registry';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
-import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
+import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runStepList } from '../../src/runner/run_steps';
@@ -18,7 +18,7 @@ const runBatch = async (deps: any, workspaceName: string, step: ReturnType<typeo
 const bindWorkspaceToRuntime = async (
     pageRegistry: ReturnType<typeof createPageRegistry>,
     workspaceRegistry: ReturnType<typeof createWorkspaceRegistry>,
-    runtimeRegistry: ReturnType<typeof createRuntimeRegistry>,
+    runtimeRegistry: ReturnType<typeof createExecutionBindings>,
     workspaceName: string,
     tabName: string,
 ) => {
@@ -52,7 +52,7 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
     });
     const workspaceRegistry = createWorkspaceRegistry();
     const pluginHost = await createTestPluginHost();
-    const runtimeRegistry = createRuntimeRegistry({
+    const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,
     });
@@ -88,7 +88,7 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
     });
     const workspaceRegistry = createWorkspaceRegistry();
     const pluginHost = await createTestPluginHost();
-    const runtimeRegistry = createRuntimeRegistry({
+    const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,
     });
@@ -123,7 +123,7 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
     });
     const workspaceRegistry = createWorkspaceRegistry();
     const pluginHost = await createTestPluginHost();
-    const runtimeRegistry = createRuntimeRegistry({
+    const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,
     });

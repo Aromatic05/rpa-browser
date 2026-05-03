@@ -1,10 +1,10 @@
 import type { Page } from 'playwright';
-import { createTraceTools, type BrowserAutomationTools } from '../runner/trace';
-import type { RunnerPluginHost } from '../runner/hotreload/plugin_host';
-import type { CreateTraceToolsFn } from '../runner/plugin_entry';
-import type { TraceContext, TraceHooks, TraceSink } from '../runner/trace/types';
+import { createTraceTools, type BrowserAutomationTools } from '../../runner/trace';
+import type { RunnerPluginHost } from '../../runner/hotreload/plugin_host';
+import type { CreateTraceToolsFn } from '../../runner/plugin_entry';
+import type { TraceContext, TraceHooks, TraceSink } from '../../runner/trace/types';
 
-export type PageBinding = {
+export type ExecutionBinding = {
     workspaceName: string;
     tabName: string;
     page: Page;
@@ -12,20 +12,20 @@ export type PageBinding = {
     traceCtx: TraceContext;
 };
 
-export type RuntimeRegistry = {
-    bindPage: (input: { workspaceName: string; tabName: string; page: Page }) => PageBinding;
-    resolveBinding: (workspaceName: string, tabName?: string) => Promise<PageBinding>;
-    getBinding: (workspaceName: string, tabName: string) => PageBinding | null;
+export type ExecutionBindings = {
+    bindPage: (input: { workspaceName: string; tabName: string; page: Page }) => ExecutionBinding;
+    resolveBinding: (workspaceName: string, tabName?: string) => Promise<ExecutionBinding>;
+    getBinding: (workspaceName: string, tabName: string) => ExecutionBinding | null;
 };
 
-type RuntimeRegistryOptions = {
+type ExecutionBindingsOptions = {
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
 };
 
-export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeRegistry => {
-    const bindings = new Map<string, PageBinding>();
+export const createExecutionBindings = (options: ExecutionBindingsOptions): ExecutionBindings => {
+    const bindings = new Map<string, ExecutionBinding>();
     const workspaceTabs = new Map<string, Set<string>>();
     const activeTabs = new Map<string, string>();
     const keyOf = (workspaceName: string, tabName: string) => `${workspaceName}::${tabName}`;
@@ -48,7 +48,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         });
     }
 
-    const createBinding = (workspaceName: string, tabName: string, page: Page): PageBinding => {
+    const createBinding = (workspaceName: string, tabName: string, page: Page): ExecutionBinding => {
         const { tools, ctx } = resolveCreateTraceTools()({
             page,
             context: page.context(),
@@ -57,7 +57,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
             hooks: options.traceHooks,
             tags: { workspaceName, tabName } as any,
         });
-        const binding: PageBinding = { workspaceName, tabName, page, traceTools: tools, traceCtx: ctx };
+        const binding: ExecutionBinding = { workspaceName, tabName, page, traceTools: tools, traceCtx: ctx };
         const key = keyOf(workspaceName, tabName);
         bindings.set(key, binding);
         const tabs = workspaceTabs.get(workspaceName) || new Set<string>();
@@ -83,7 +83,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         return binding;
     };
 
-    const bindPage = (input: { workspaceName: string; tabName: string; page: Page }): PageBinding => {
+    const bindPage = (input: { workspaceName: string; tabName: string; page: Page }): ExecutionBinding => {
         const existing = bindings.get(keyOf(input.workspaceName, input.tabName));
         if (existing?.page === input.page) {
             activeTabs.set(input.workspaceName, input.tabName);
@@ -92,7 +92,7 @@ export const createRuntimeRegistry = (options: RuntimeRegistryOptions): RuntimeR
         return createBinding(input.workspaceName, input.tabName, input.page);
     };
 
-    const resolveBinding = async (workspaceName: string, tabName?: string): Promise<PageBinding> => {
+    const resolveBinding = async (workspaceName: string, tabName?: string): Promise<ExecutionBinding> => {
         if (tabName) {
             const bound = bindings.get(keyOf(workspaceName, tabName));
             if (!bound) {throw new Error(`page not bound: ${workspaceName}/${tabName}`);}

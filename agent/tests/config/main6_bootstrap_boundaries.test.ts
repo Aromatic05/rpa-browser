@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRuntimeLifecycle } from '../../src/runtime/browser/lifecycle';
-import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
+import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
 import { createRecordingState } from '../../src/record/recording';
 import { createRecorderEventSinkHandler } from '../../src/record/sink';
@@ -25,7 +25,7 @@ const createMockPage = (urlValue = 'https://example.com') => {
 const createEnv = () => {
     const recordingState = createRecordingState();
     const pageRegistry = { getPage: async () => createMockPage() } as any;
-    const runtimeRegistry = createRuntimeRegistry({});
+    const runtimeRegistry = createExecutionBindings({});
     const runStepsDeps = {
         runtime: runtimeRegistry,
         stepSinks: [],
@@ -154,7 +154,7 @@ test('static boundaries for main6 bootstrap', () => {
     const indexSource = fs.readFileSync(path.resolve(process.cwd(), 'src/index.ts'), 'utf8');
     const sinkSource = fs.readFileSync(path.resolve(process.cwd(), 'src/record/sink.ts'), 'utf8');
     const wsClientSource = fs.readFileSync(path.resolve(process.cwd(), 'src/actions/ws_client.ts'), 'utf8');
-    const runtimeRegistrySource = fs.readFileSync(path.resolve(process.cwd(), 'src/runtime/runtime_registry.ts'), 'utf8');
+    const runtimeRegistrySource = fs.readFileSync(path.resolve(process.cwd(), 'src/runtime/execution/bindings.ts'), 'utf8');
 
     assert.equal(indexSource.includes('projectActionResult'), false);
     assert.equal(indexSource.includes('REPORT_STATE_SYNC_ACTIONS'), false);

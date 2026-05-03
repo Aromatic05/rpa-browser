@@ -5,7 +5,7 @@ import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/browser/context_manager';
 import { createPageRegistry } from './runtime/browser/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace_registry';
-import { createRuntimeRegistry } from './runtime/runtime_registry';
+import { createExecutionBindings } from './runtime/execution/bindings';
 import {
     createRecordingState,
     ensureRecorder,
@@ -94,7 +94,7 @@ const pageRegistry = createPageRegistry({
     onBindingClosed: (bindingName) => onBindingClosedHook(bindingName),
 });
 
-const runtimeRegistry = createRuntimeRegistry({
+const runtimeRegistry = createExecutionBindings({
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,

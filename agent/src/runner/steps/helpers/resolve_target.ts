@@ -1,4 +1,4 @@
-import type { PageBinding } from '../../../runtime/runtime_registry';
+import type { ExecutionBinding } from '../../../runtime/execution/bindings';
 import type { ResolveHint, ResolvePolicy, StepResolve, StepResult } from '../types';
 import type { SnapshotResult } from '../executors/snapshot/core/types';
 import { getNodeAttr, getNodeSemanticHints, normalizeText } from '../executors/snapshot/core/runtime_store';
@@ -20,7 +20,7 @@ export type ResolvedTarget = {
 
 type ResolveResult = { ok: true; target: ResolvedTarget } | { ok: false; error: StepResult['error'] };
 
-export const resolveTarget = async (binding: PageBinding, input: ResolveTargetInput): Promise<ResolveResult> => {
+export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTargetInput): Promise<ResolveResult> => {
     const { nodeId, selector, resolve } = input;
     const hint = resolve?.hint;
     const policy = resolve?.policy;
@@ -81,7 +81,7 @@ export const resolveTarget = async (binding: PageBinding, input: ResolveTargetIn
 };
 
 const resolveByHint = (
-    binding: PageBinding,
+    binding: ExecutionBinding,
     hint: ResolveHint,
     policy: ResolvePolicy,
 ): { ok: true; selector: string; path: string } | { ok: false; error: StepResult['error'] } => {
@@ -130,7 +130,7 @@ const resolveByHint = (
     };
 };
 
-const resolveByEntityHint = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+const resolveByEntityHint = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const entityHint = hint.entity;
     if (!entityHint) {return undefined;}
 
@@ -220,7 +220,7 @@ const isInAnyScope = (nodeId: string, scopeNodeIds: Set<string>, parentById: Map
 };
 
 const resolveBySnapshotNodeId = (
-    binding: PageBinding,
+    binding: ExecutionBinding,
     nodeId: string,
     hint: ResolveHint | undefined,
     policy: ResolvePolicy | undefined,
@@ -275,7 +275,7 @@ const resolveBySnapshotNodeId = (
     };
 };
 
-const resolveByDomFingerprint = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+const resolveByDomFingerprint = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const snapshot = getSnapshot(binding);
     if (!snapshot || !hint.target) {return undefined;}
 
@@ -294,7 +294,7 @@ const resolveByDomFingerprint = (binding: PageBinding, hint: ResolveHint, policy
     return fuzzy.ok ? fuzzy.selector : undefined;
 };
 
-const resolveByHintFuzzy = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+const resolveByHintFuzzy = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const snapshot = getSnapshot(binding);
     if (!snapshot || !hint.target) {return undefined;}
     const fuzzyNodeId = findNodeIdByFuzzyFingerprint(snapshot, hint);
@@ -303,7 +303,7 @@ const resolveByHintFuzzy = (binding: PageBinding, hint: ResolveHint, policy: Res
     return resolved.ok ? resolved.selector : undefined;
 };
 
-const resolveFromHintLocator = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+const resolveFromHintLocator = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const direct = hint.locator?.direct;
     if (!direct) {return undefined;}
 
@@ -318,7 +318,7 @@ const resolveFromHintLocator = (binding: PageBinding, hint: ResolveHint, policy:
     return undefined;
 };
 
-const resolveFromHintRaw = (binding: PageBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
+const resolveFromHintRaw = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     if (hint.raw?.selector) {
         return withVisibilityConstraint(withHintScope(binding, hint, hint.raw.selector, policy), policy.requireVisible);
     }
@@ -338,12 +338,12 @@ const resolveFromHintRaw = (binding: PageBinding, hint: ResolveHint, policy: Res
     return undefined;
 };
 
-const getSnapshot = (binding: PageBinding): SnapshotResult | undefined => {
+const getSnapshot = (binding: ExecutionBinding): SnapshotResult | undefined => {
     const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
     return cache.latestSnapshot as SnapshotResult | undefined;
 };
 
-const withHintScope = (binding: PageBinding, hint: ResolveHint | undefined, selector: string, policy: ResolvePolicy | undefined): string => {
+const withHintScope = (binding: ExecutionBinding, hint: ResolveHint | undefined, selector: string, policy: ResolvePolicy | undefined): string => {
     if (!selector) {return selector;}
     if (!policy?.preferScoped) {return selector;}
     if (!hint?.locator?.scope?.id) {return selector;}

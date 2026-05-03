@@ -1,4 +1,4 @@
-import type { PageBinding } from '../../../../../runtime/runtime_registry';
+import type { ExecutionBinding } from '../../../../../runtime/execution/bindings';
 import { snapshotDebugLog } from './debug';
 import { applySnapshotOverlay, buildFinalEntityViewFromSnapshot } from './overlay';
 import { cloneTreeWithRuntime, normalizeText } from './runtime_store';
@@ -64,7 +64,7 @@ type ShouldRefreshSnapshotResult = {
     reason?: string;
 };
 
-const getSnapshotSessionStore = (binding: PageBinding): SnapshotSessionStore => {
+const getSnapshotSessionStore = (binding: ExecutionBinding): SnapshotSessionStore => {
     const cache = binding.traceCtx.cache as TraceSnapshotCache;
     const raw = cache[STORE_KEY];
     if (isSnapshotSessionStore(raw)) {
@@ -81,16 +81,16 @@ const getSnapshotSessionStore = (binding: PageBinding): SnapshotSessionStore => 
     return store;
 };
 
-const getSnapshotSessionEntryKey = (binding: PageBinding): string => {
+const getSnapshotSessionEntryKey = (binding: ExecutionBinding): string => {
     return `${binding.workspaceName}:${binding.tabName}`;
 };
 
-export const getSnapshotSessionEntry = (binding: PageBinding): SnapshotSessionEntry | undefined => {
+export const getSnapshotSessionEntry = (binding: ExecutionBinding): SnapshotSessionEntry | undefined => {
     const store = getSnapshotSessionStore(binding);
     return store.entries[getSnapshotSessionEntryKey(binding)];
 };
 
-export const ensureSnapshotSessionEntry = (binding: PageBinding): SnapshotSessionEntry => {
+export const ensureSnapshotSessionEntry = (binding: ExecutionBinding): SnapshotSessionEntry => {
     const store = getSnapshotSessionStore(binding);
     const key = getSnapshotSessionEntryKey(binding);
     if (Object.prototype.hasOwnProperty.call(store.entries, key)) {
@@ -105,7 +105,7 @@ export const ensureSnapshotSessionEntry = (binding: PageBinding): SnapshotSessio
     return entry;
 };
 
-export const markSnapshotSessionDirty = (binding: PageBinding, source: string): void => {
+export const markSnapshotSessionDirty = (binding: ExecutionBinding, source: string): void => {
     const entry = ensureSnapshotSessionEntry(binding);
     entry.dirty = true;
     entry.lastDirtyAt = Date.now();
@@ -153,7 +153,7 @@ const shouldRefreshSnapshot = (
 };
 
 export const ensureFreshSnapshot = async (
-    binding: PageBinding,
+    binding: ExecutionBinding,
     options: EnsureFreshSnapshotOptions,
 ): Promise<EnsureFreshSnapshotResult> => {
     const entry = ensureSnapshotSessionEntry(binding);
@@ -248,7 +248,7 @@ export const ensureFreshSnapshot = async (
 };
 
 export const updateSnapshotOverlays = (
-    binding: PageBinding,
+    binding: ExecutionBinding,
     source: string,
     mutator: (overlays: SnapshotOverlays) => void,
 ): SnapshotSessionEntry => {
@@ -325,7 +325,7 @@ const createEmptyOverlays = (): SnapshotOverlays => ({
     deletedEntities: [],
 });
 
-const resolveSnapshotPageIdentity = (binding: PageBinding): SnapshotPageIdentity => ({
+const resolveSnapshotPageIdentity = (binding: ExecutionBinding): SnapshotPageIdentity => ({
     workspaceName: binding.workspaceName,
     tabName: binding.tabName,
     url: safeReadPageUrl(binding),
@@ -379,7 +379,7 @@ const ensureComposedSnapshot = (entry: SnapshotSessionEntry): SnapshotResult => 
     return entry.finalSnapshot;
 };
 
-const setLatestSnapshotCache = (binding: PageBinding, snapshot: SnapshotResult) => {
+const setLatestSnapshotCache = (binding: ExecutionBinding, snapshot: SnapshotResult) => {
     const cache = binding.traceCtx.cache as TraceSnapshotCache;
     cache.latestSnapshot = snapshot;
     cache.latestSnapshotAt = Date.now();
@@ -414,7 +414,7 @@ const summarizeOverlays = (overlays: SnapshotOverlays) => ({
     deleteCount: overlays.deletedEntities.length,
 });
 
-const safeReadPageUrl = (binding: PageBinding): string => {
+const safeReadPageUrl = (binding: ExecutionBinding): string => {
     try {
         const pageLike = binding.page as { url?: () => string };
         if (typeof pageLike.url === 'function') {

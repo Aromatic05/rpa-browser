@@ -6,7 +6,7 @@ import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_
 import { createContextManager, resolvePaths } from '../runtime/browser/context_manager';
 import { createPageRegistry } from '../runtime/browser/page_registry';
 import { createWorkspaceRegistry } from '../runtime/workspace_registry';
-import { createRuntimeRegistry } from '../runtime/runtime_registry';
+import { createExecutionBindings } from '../runtime/execution/bindings';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
 import { runAgentLoop } from './agent_loop';
@@ -105,7 +105,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const runStepsDeps: RunStepsDeps = {
-    runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
+    runtime: null as unknown as ReturnType<typeof createExecutionBindings>,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
@@ -131,7 +131,7 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     return workspace.controls.entityRules.getProvider(workspace.workflow);
 };
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
-const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
+const runtimeRegistry: ReturnType<typeof createExecutionBindings> = createExecutionBindings({
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
