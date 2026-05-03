@@ -5,6 +5,7 @@ import type { WorkspaceControlInput } from '../runtime/workspace_control';
 import type { ControlPlaneResult } from '../runtime/control';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
+import type { WorkflowCheckpoint } from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
 
 export type CheckpointControl = {
@@ -35,12 +36,12 @@ const resolveStepResolves = (payload: Record<string, unknown>): Record<string, S
     return stepResolves as Record<string, StepResolve>;
 };
 
-const resolveHints = (payload: Record<string, unknown>) => {
+const resolveHints = (payload: Record<string, unknown>): WorkflowCheckpoint['hints'] => {
     const hints = payload.hints;
     if (!hints || typeof hints !== 'object' || Array.isArray(hints)) {
         return {};
     }
-    return hints as Record<string, string>;
+    return hints as WorkflowCheckpoint['hints'];
 };
 
 export const createCheckpointControl = (): CheckpointControl => ({
