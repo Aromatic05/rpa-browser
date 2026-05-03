@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { startActionWsClient } from '../../src/actions/ws_client';
 import type { Action } from '../../src/actions/action_protocol';
+import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkflowOnFs } from '../../src/workflow';
 
 const waitOpen = async (ws: WebSocket) => {
     await new Promise<void>((resolve, reject) => {
@@ -24,14 +26,40 @@ const waitMessage = async (ws: WebSocket): Promise<Action> => {
     });
 };
 
+const waitForType = async (ws: WebSocket, type: string, timeoutMs = 2000): Promise<Action> => {
+    return await new Promise<Action>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            ws.off('message', onMessage);
+            reject(new Error(`timeout waiting for ${type}`));
+        }, timeoutMs);
+        const onMessage = (data: unknown) => {
+            try {
+                const action = JSON.parse(String(data)) as Action;
+                if (action.type === type) {
+                    clearTimeout(timer);
+                    ws.off('message', onMessage);
+                    resolve(action);
+                }
+            } catch {}
+        };
+        ws.on('message', onMessage);
+        ws.once('error', (err) => {
+            clearTimeout(timer);
+            ws.off('message', onMessage);
+            reject(err);
+        });
+    });
+};
+
 const randomPort = () => 20000 + Math.floor(Math.random() * 20000);
 
 test('invalid json returns action.dispatch.failed', async () => {
     const port = randomPort();
+    const { registry } = createTestWorkspaceRegistry();
     const server = startActionWsClient({
         port,
+        workspaceRegistry: registry,
         dispatchAction: async () => ({ v: 1, id: 'n/a', type: 'workspace.list.result', payload: {} }),
-        projectActionResult: () => [],
         onError: () => undefined,
     });
     void server;
@@ -47,10 +75,11 @@ test('invalid json returns action.dispatch.failed', async () => {
 
 test('invalid action envelope returns failed action', async () => {
     const port = randomPort();
+    const { registry } = createTestWorkspaceRegistry();
     const server = startActionWsClient({
         port,
+        workspaceRegistry: registry,
         dispatchAction: async () => ({ v: 1, id: 'n/a', type: 'workspace.list.result', payload: {} }),
-        projectActionResult: () => [],
         onError: () => undefined,
     });
     const ws = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -65,14 +94,22 @@ test('invalid action envelope returns failed action', async () => {
 test('dispatchAction reply and projection broadcast', async () => {
     const port = randomPort();
     const calls: Action[] = [];
-    const projected: Action = { v: 1, id: 'evt1', type: 'workspace.changed', payload: { ok: true } };
+    const { registry } = createTestWorkspaceRegistry();
+    const wsName = `ws-${Date.now()}`;
+    registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     const wsServer = startActionWsClient({
         port,
+        workspaceRegistry: registry,
         dispatchAction: async (action) => {
             calls.push(action);
-            return { v: 1, id: 'r1', type: `${action.type}.result`, payload: { ok: true }, replyTo: action.id };
+            return {
+                v: 1,
+                id: 'r1',
+                type: `${action.type}.result`,
+                payload: { ok: true, workspaceName: wsName, tabName: 'tab-1' },
+                replyTo: action.id,
+            };
         },
-        projectActionResult: () => [projected],
         onError: () => undefined,
     });
     const ws1 = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -80,20 +117,34 @@ test('dispatchAction reply and projection broadcast', async () => {
     await waitOpen(ws1);
     await waitOpen(ws2);
 
-    const req = { v: 1 as const, id: 'req1', type: 'workspace.list', payload: {} };
+    const req = {
+        v: 1 as const,
+        id: 'req1',
+        type: 'tab.reassign',
+        workspaceName: wsName,
+        payload: { tabName: 'tab-1', source: 'test' },
+    };
+    const changedOnWs2Promise = waitForType(ws2, 'workspace.changed');
+    const syncOnWs2Promise = waitForType(ws2, 'workspace.sync');
     ws1.send(JSON.stringify(req));
 
     const reply = await waitMessage(ws1);
-    assert.equal(reply.type, 'workspace.list.result');
+    assert.equal(reply.type, 'tab.reassign.result');
     assert.equal(calls.length, 1);
 
-    const eventOnWs2 = await waitMessage(ws2);
+    const eventOnWs2 = await changedOnWs2Promise;
     assert.equal(eventOnWs2.type, 'workspace.changed');
 
-    ws2.close();
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    wsServer.broadcastAction({ v: 1, id: 'b1', type: 'workspace.sync', payload: {} });
+    const syncEventOnWs2 = await syncOnWs2Promise;
+    assert.equal(syncEventOnWs2.type, 'workspace.sync');
 
+    const listOnWs1Promise = waitForType(ws1, 'workspace.list');
+    wsServer.broadcastAction({ v: 1, id: 'b1', type: 'workspace.sync', payload: { reason: 'manual' } });
+    const listEventOnWs1 = await listOnWs1Promise;
+    assert.equal(listEventOnWs1.type, 'workspace.list');
+    assert.equal((listEventOnWs1.payload as any).reason, 'manual');
+
+    ws2.close();
     ws1.close();
     await wsServer.close();
 });

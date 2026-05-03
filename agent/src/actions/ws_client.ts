@@ -1,15 +1,17 @@
+import crypto from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { failedAction, type Action } from './action_protocol';
+import { failedAction, isFailedAction, type Action } from './action_protocol';
 import { ERROR_CODES } from './error_codes';
-import { isRequestActionType } from './action_types';
+import { isRequestActionType, ACTION_TYPES } from './action_types';
+import type { WorkspaceRegistry } from '../runtime/workspace_registry';
 
 export type ActionWsTap = (stage: string, data: Record<string, unknown>) => void;
 
 export type StartActionWsClientOptions = {
     port: number;
     host?: string;
+    workspaceRegistry: WorkspaceRegistry;
     dispatchAction: (action: Action) => Promise<Action>;
-    projectActionResult: (action: Action, reply: Action) => Action[];
     onError: (error: unknown) => void;
     onListening?: (url: string) => void;
     wsTap?: ActionWsTap;
@@ -68,12 +70,95 @@ const safeSend = (socket: WebSocket, action: Action) => {
     socket.send(JSON.stringify(action));
 };
 
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null;
+
+const getStringField = (value: UnknownRecord, key: string): string | null =>
+    typeof value[key] === 'string' ? value[key] : null;
+
+const isMutatingAction = (type: string) =>
+    type === ACTION_TYPES.WORKSPACE_CREATE ||
+    type === ACTION_TYPES.WORKSPACE_RESTORE ||
+    type === ACTION_TYPES.WORKSPACE_SET_ACTIVE ||
+    type === ACTION_TYPES.TAB_CREATE ||
+    type === ACTION_TYPES.TAB_SET_ACTIVE ||
+    type === ACTION_TYPES.TAB_CLOSE ||
+    type === ACTION_TYPES.TAB_CLOSED ||
+    type === ACTION_TYPES.TAB_REASSIGN;
+
+const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
+    ACTION_TYPES.WORKSPACE_CREATE,
+    ACTION_TYPES.WORKSPACE_RESTORE,
+    ACTION_TYPES.TAB_CREATE,
+    ACTION_TYPES.TAB_OPENED,
+    ACTION_TYPES.TAB_REPORTED,
+    ACTION_TYPES.TAB_CLOSED,
+    ACTION_TYPES.TAB_REASSIGN,
+]);
+
+const createWorkspaceListAction = (workspaceRegistry: WorkspaceRegistry, reason: string): Action => {
+    const active = workspaceRegistry.getActiveWorkspace();
+    const workspaces = workspaceRegistry.listWorkspaces().map((workspace) => ({
+        workspaceName: workspace.name,
+        activeTabName: workspace.tabRegistry.getActiveTab()?.name ?? null,
+        tabCount: workspace.tabRegistry.listTabs().length,
+        createdAt: workspace.createdAt,
+        updatedAt: workspace.updatedAt,
+    }));
+    return {
+        v: 1,
+        id: crypto.randomUUID(),
+        type: ACTION_TYPES.WORKSPACE_LIST,
+        payload: {
+            reason,
+            workspaces,
+            activeWorkspaceName: active?.name || null,
+        },
+        at: Date.now(),
+    };
+};
+
+const createProjectedActions = (workspaceRegistry: WorkspaceRegistry, action: Action, reply: Action): Action[] => {
+    if (isFailedAction(reply)) {return [];}
+    const projected: Action[] = [];
+
+    const data = isRecord(reply.payload) ? reply.payload : null;
+    const workspaceName = data ? getStringField(data, 'workspaceName') : null;
+    const tabName = data ? getStringField(data, 'tabName') : null;
+
+    if (isMutatingAction(action.type)) {
+        projected.push({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.WORKSPACE_CHANGED,
+            payload: { workspaceName: workspaceName, tabName: tabName, sourceType: action.type },
+            workspaceName: workspaceName || undefined,
+            at: Date.now(),
+        });
+    }
+
+    if (REPORT_STATE_SYNC_ACTIONS.has(action.type)) {
+        const syncWorkspaceName = workspaceName ?? action.workspaceName ?? null;
+        projected.push({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.WORKSPACE_SYNC,
+            payload: { reason: `report:${action.type}`, workspaceName: syncWorkspaceName, tabName },
+            at: Date.now(),
+        });
+        projected.push(createWorkspaceListAction(workspaceRegistry, `report:${action.type}`));
+    }
+
+    return projected;
+};
+
 export const startActionWsClient = (options: StartActionWsClientOptions): ActionWsClient => {
     const wsTap = options.wsTap ?? (() => undefined);
     const host = options.host ?? DEFAULT_HOST;
     const wsClients = new Set<WebSocket>();
 
-    const broadcastAction = (action: Action) => {
+    const sendToAll = (action: Action) => {
         wsTap('agent.broadcast', summarizeActionEnvelope(action));
         const payload = JSON.stringify(action);
         wsClients.forEach((client) => {
@@ -83,6 +168,15 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
                 // ignore
             }
         });
+    };
+
+    const broadcastAction = (action: Action) => {
+        sendToAll(action);
+        if (action.type === ACTION_TYPES.WORKSPACE_SYNC) {
+            const payload = isRecord(action.payload) ? action.payload : null;
+            const reason = payload && typeof payload.reason === 'string' ? payload.reason : 'sync';
+            sendToAll(createWorkspaceListAction(options.workspaceRegistry, reason));
+        }
     };
 
     const wss = new WebSocketServer({ host, port: options.port });
@@ -123,9 +217,9 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
                     wsTap('agent.reply', summarizeActionEnvelope(reply));
                     safeSend(socket, reply);
 
-                    const projected = options.projectActionResult(action, reply);
+                    const projected = createProjectedActions(options.workspaceRegistry, action, reply);
                     for (const projectedAction of projected) {
-                        broadcastAction(projectedAction);
+                        sendToAll(projectedAction);
                     }
                 } catch (error) {
                     options.onError(error);
