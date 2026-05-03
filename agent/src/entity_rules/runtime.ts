@@ -3,7 +3,7 @@ import { ERROR_CODES } from '../actions/results';
 import type { Workflow, WorkflowDummy, WorkflowEntityRules } from '../workflow';
 import { validateEntityRules } from '../runner/steps/executors/snapshot/entity_rules/validate';
 
-const ENTITY_RULES_DUMMY: WorkflowDummy = { kind: 'entity_rules' };
+const ENTITY_RULE_DUMMY: WorkflowDummy = { kind: 'entity_rules' };
 
 export type WorkspaceEntityRulesRuntime = {
     list: () => WorkflowEntityRules[];
@@ -15,13 +15,13 @@ export type WorkspaceEntityRulesRuntime = {
 export const createWorkspaceEntityRulesRuntime = (workflow: Workflow): WorkspaceEntityRulesRuntime => {
     const list = (): WorkflowEntityRules[] => {
         return workflow
-            .list(ENTITY_RULES_DUMMY)
-            .map((item) => workflow.get(item.name, ENTITY_RULES_DUMMY))
+            .list(ENTITY_RULE_DUMMY)
+            .map((item) => workflow.get(item.name, ENTITY_RULE_DUMMY))
             .filter((item): item is WorkflowEntityRules => item?.kind === 'entity_rules');
     };
 
     const get = (profileName: string): WorkflowEntityRules | null => {
-        const artifact = workflow.get(profileName, ENTITY_RULES_DUMMY);
+        const artifact = workflow.get(profileName, ENTITY_RULE_DUMMY);
         if (!artifact || artifact.kind !== 'entity_rules') {
             return null;
         }
@@ -45,7 +45,7 @@ export const createWorkspaceEntityRulesRuntime = (workflow: Workflow): Workspace
         if (!existing) {
             throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `entity_rules not found: ${profileName}`);
         }
-        workflow.delete(profileName, ENTITY_RULES_DUMMY);
+        workflow.delete(profileName, ENTITY_RULE_DUMMY);
         return existing;
     };
 

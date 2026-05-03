@@ -10,7 +10,7 @@ const log = getLogger('entity');
 const MATCH_FILE = 'match.yaml';
 const ANNOTATION_FILE = 'annotation.yaml';
 const WORKFLOWS_DIR = 'workflows';
-const ENTITY_RULES_DIR = 'entity_rules';
+const ENTITY_RULE_DIR = 'entity_rules';
 type BundleSource = 'workflow';
 
 type LoadedBundleCandidate = {
@@ -191,7 +191,7 @@ const collectBundleEntries = (
 
     for (const sceneEntry of safeReadDir(workflowRootDir).filter((entry) => entry.isDirectory())) {
         const scene = sceneEntry.name;
-        const rulesDir = path.join(workflowRootDir, scene, ENTITY_RULES_DIR);
+        const rulesDir = path.join(workflowRootDir, scene, ENTITY_RULE_DIR);
         for (const ruleEntry of safeReadDir(rulesDir).filter((entry) => entry.isDirectory())) {
             const ruleName = ruleEntry.name;
             workflowEntries.push({

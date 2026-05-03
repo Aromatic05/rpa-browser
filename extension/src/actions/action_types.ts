@@ -51,10 +51,10 @@ export const REQUEST_ACTION_TYPES = {
     CHECKPOINT_GET: 'checkpoint.get',
     CHECKPOINT_SAVE: 'checkpoint.save',
     CHECKPOINT_DELETE: 'checkpoint.delete',
-    ENTITY_RULES_LIST: 'entity_rules.list',
-    ENTITY_RULES_GET: 'entity_rules.get',
-    ENTITY_RULES_SAVE: 'entity_rules.save',
-    ENTITY_RULES_DELETE: 'entity_rules.delete',
+    ENTITY_RULE_LIST: 'entity_rules.list',
+    ENTITY_RULE_GET: 'entity_rules.get',
+    ENTITY_RULE_SAVE: 'entity_rules.save',
+    ENTITY_RULE_DELETE: 'entity_rules.delete',
 } as const;
 
 const FIXED_EVENT_ACTION_TYPES = {
