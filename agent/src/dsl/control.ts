@@ -5,10 +5,10 @@ import type { WorkspaceControlInput } from '../runtime/workspace_control';
 import type { ControlPlaneResult } from '../runtime/control';
 import { runDslSource } from './runtime';
 import type { RunStepsDeps } from '../runner/run_steps';
-import type { Workflow, WorkflowCheckpoint, WorkflowDsl, WorkflowDummy } from '../workflow';
+import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
+import { createWorkspaceCheckpointProvider } from '../checkpoint/provider';
 
 const DSL_DUMMY: WorkflowDummy = { kind: 'dsl' };
-const CHECKPOINT_DUMMY: WorkflowDummy = { kind: 'checkpoint' };
 
 export type DslControlServices = {
     runStepsDeps: RunStepsDeps;
@@ -40,21 +40,6 @@ const requireDsl = (workflow: Workflow, dslName: string): WorkflowDsl => {
         throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `dsl not found: ${dslName}`);
     }
     return artifact;
-};
-
-const buildWorkflowCheckpointProvider = (workflow: Workflow) => {
-    const checkpoints = workflow.list(CHECKPOINT_DUMMY);
-    const byName = new Map<string, WorkflowCheckpoint>();
-    for (const item of checkpoints) {
-        const artifact = workflow.get(item.name, CHECKPOINT_DUMMY);
-        if (artifact && artifact.kind === 'checkpoint') {
-            byName.set(item.name, artifact);
-        }
-    }
-    return {
-        getCheckpoint: (id: string) => byName.get(id)?.checkpoint || null,
-        getCheckpointResolves: (id: string) => byName.get(id)?.stepResolves || null,
-    };
 };
 
 export const createDslControl = (services: DslControlServices): DslControl => ({
@@ -89,7 +74,7 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             workspaceName: workspace.name,
             deps: services.runStepsDeps,
             input: payload.input || {},
-            checkpointProvider: buildWorkflowCheckpointProvider(workflow),
+            checkpointProvider: createWorkspaceCheckpointProvider(workflow),
         });
 
         if (action.type === 'dsl.test') {
