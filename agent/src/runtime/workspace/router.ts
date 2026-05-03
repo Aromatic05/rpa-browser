@@ -4,7 +4,7 @@ import { replyAction, type Action } from '../../actions/action_protocol';
 import { ActionError } from '../../actions/results';
 import { ERROR_CODES } from '../../actions/results';
 import type { RuntimeWorkspace, WorkspaceRegistry } from './registry';
-import type { ControlPlaneResult } from '../control';
+import type { ControlPlaneResult } from '../control_plane';
 import type { WorkflowControl } from '../../workflow/control';
 import type { RecordControl } from '../../record/control';
 import type { DslControl } from '../../dsl/control';

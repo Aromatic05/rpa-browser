@@ -1,7 +1,7 @@
 import { replyAction, type Action } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
-import type { ControlPlaneResult } from '../runtime/control';
+import type { ControlPlaneResult } from '../runtime/control_plane';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../runtime/service/types';
 

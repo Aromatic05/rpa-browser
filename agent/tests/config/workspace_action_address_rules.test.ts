@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { handleRuntimeControlAction } from '../../src/runtime/control';
+import { handleRuntimeControlAction } from '../../src/runtime/control_plane';
 import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
 import { createWorkflowOnFs } from '../../src/workflow';
 

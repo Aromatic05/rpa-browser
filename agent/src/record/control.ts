@@ -4,7 +4,7 @@ import { ActionError } from '../actions/results';
 import { ACTION_TYPES } from '../actions/action_types';
 import { ERROR_CODES } from '../actions/results';
 import type { WorkspaceRouterInput } from '../runtime/workspace/router';
-import type { ControlPlaneResult } from '../runtime/control';
+import type { ControlPlaneResult } from '../runtime/control_plane';
 import {
     beginReplay,
     cancelReplay,

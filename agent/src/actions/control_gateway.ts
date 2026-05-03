@@ -1,6 +1,6 @@
 import type { Action } from './action_protocol';
 import { ActionError, unsupportedActionFailure } from './results';
-import { handleRuntimeControlAction } from '../runtime/control';
+import { handleRuntimeControlAction } from '../runtime/control_plane';
 import { ERROR_CODES } from './results';
 
 export type GatewayDeps = {
