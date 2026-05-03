@@ -47,6 +47,14 @@ export const REQUEST_ACTION_TYPES = {
     TASK_RUN_CONTINUE: 'task.run.continue',
     TASK_RUN_FLUSH: 'task.run.flush',
     TASK_RUN_RESUME: 'task.run.resume',
+    CHECKPOINT_LIST: 'checkpoint.list',
+    CHECKPOINT_GET: 'checkpoint.get',
+    CHECKPOINT_SAVE: 'checkpoint.save',
+    CHECKPOINT_DELETE: 'checkpoint.delete',
+    ENTITY_RULES_LIST: 'entity_rules.list',
+    ENTITY_RULES_GET: 'entity_rules.get',
+    ENTITY_RULES_SAVE: 'entity_rules.save',
+    ENTITY_RULES_DELETE: 'entity_rules.delete',
 } as const;
 
 const FIXED_EVENT_ACTION_TYPES = {

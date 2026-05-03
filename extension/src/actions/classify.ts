@@ -48,6 +48,14 @@ const WORKSPACE_ACTIONS = new Set<string>([
     'task.run.continue',
     'task.run.flush',
     'task.run.resume',
+    'checkpoint.list',
+    'checkpoint.get',
+    'checkpoint.save',
+    'checkpoint.delete',
+    'entity_rules.list',
+    'entity_rules.get',
+    'entity_rules.save',
+    'entity_rules.delete',
 ]);
 
 export type RequestScopeKind = 'control' | 'workspace' | 'invalid';
