@@ -1,21 +1,19 @@
 import path from 'node:path';
-import fs from 'node:fs';
 import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
-import { startMcpServer } from './mcp/index';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
-import { McpToolHost } from './mcp/hotreload/tool_host';
 import { createActionDispatcher } from './actions/dispatcher';
 import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
 import { ensureWorkflowOnFs } from './workflow';
+import { createPortAllocator } from './runtime/port_allocator';
 import type { RunStepsDeps } from './runner/run_steps_types';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
@@ -52,30 +50,8 @@ initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
     : [];
-const sourcePluginEntry = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
-const bundledPluginEntry = path.resolve(process.cwd(), '.runner-dist/plugin.mjs');
-const hasSourcePluginEntry = fs.existsSync(sourcePluginEntry);
-const pluginEntry = process.env.RUNNER_PLUGIN_ENTRY
-    ? path.resolve(process.cwd(), process.env.RUNNER_PLUGIN_ENTRY)
-    : hasSourcePluginEntry
-      ? sourcePluginEntry
-      : bundledPluginEntry;
-const hotReloadDisabled = /^(0|false|off)$/i.test(String(process.env.RUNNER_HOT_RELOAD || '').trim());
-const hotReloadEnabled = !hotReloadDisabled;
-const runnerPluginHost = new RunnerPluginHost(pluginEntry);
+const runnerPluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
 await runnerPluginHost.load();
-if (hotReloadEnabled) {
-    const watchTarget =
-        hasSourcePluginEntry && pluginEntry === sourcePluginEntry
-            ? path.resolve(process.cwd(), 'src/runner')
-            : path.resolve(process.cwd(), '.runner-dist');
-    runnerPluginHost.watchDev(watchTarget);
-    logNotice('Runner plugin hot reload enabled.', { pluginEntry, watchTarget });
-} else {
-    logNotice('Runner plugin hot reload disabled by RUNNER_HOT_RELOAD.', { pluginEntry });
-}
-const sourceMcpHotEntry = path.resolve(process.cwd(), 'src/mcp/hot_entry.ts');
-const mcpToolHost = new McpToolHost(sourceMcpHotEntry);
 
 const pageRegistry = createPageRegistry({
     tabNameKey: TAB_NAME_KEY,
@@ -100,6 +76,8 @@ const runStepsDeps: RunStepsDeps = {
 };
 setRunStepsDeps(runStepsDeps);
 
+const portAllocator = createPortAllocator();
+
 const workspaceRegistry = createWorkspaceRegistry({
     pageRegistry,
     recordingState,
@@ -107,6 +85,7 @@ const workspaceRegistry = createWorkspaceRegistry({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
     runStepsDeps,
     runnerConfig: config,
+    portAllocator,
 });
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
@@ -140,18 +119,6 @@ setControlActionDispatcher(
 );
 const controlServer = createControlServer({ deps: runStepsDeps });
 registerControlShutdown(controlServer, logNotice);
-await mcpToolHost.load({
-    pageRegistry,
-    workspaceRegistry,
-    config,
-    log,
-    runStepsDeps,
-});
-if (hotReloadEnabled) {
-    const watchTarget = path.resolve(process.cwd(), 'src/mcp');
-    mcpToolHost.watchDev(watchTarget, { pageRegistry, workspaceRegistry, config, log, runStepsDeps });
-    logNotice('MCP tool hot reload enabled.', { entry: sourceMcpHotEntry, watchTarget });
-}
 
 void (async () => {
     try {
@@ -159,17 +126,14 @@ void (async () => {
         await controlServer.start();
         logNotice(`Control RPC listening on ${controlServer.endpoint}`);
         logNotice('Playwright Chromium launched with extension.');
-        await startMcpServer({
-            pageRegistry,
-            workspaceRegistry,
-            config,
-            log,
-            runStepsDeps,
-            resolveToolRuntime: () =>
-                mcpToolHost.getRuntime() || {
-                    handlers: {},
-                    tools: [],
-                },
+
+        const workspace = workspaceRegistry.createWorkspace('default', ensureWorkflowOnFs('default'));
+        const mcpResult = await workspace.serviceLifecycle.start('mcp');
+        logNotice('Workspace MCP server started', {
+            workspaceName: mcpResult.workspaceName,
+            serviceName: mcpResult.serviceName,
+            port: mcpResult.port,
+            status: mcpResult.status,
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
