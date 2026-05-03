@@ -193,9 +193,9 @@ export const createContextManager = (options: ContextManagerOptions) => {
  */
 export const resolvePaths = () => {
     const extensionPaths = [
-        path.resolve(__dirname, '../../../extension/dist'),
-        path.resolve(__dirname, '../../../start_extension/dist'),
+        path.resolve(__dirname, '../../../../extension/dist'),
+        path.resolve(__dirname, '../../../../start_extension/dist'),
     ];
-    const userDataDir = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../.user-data');
+    const userDataDir = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
     return { extensionPaths, userDataDir };
 };
