@@ -9,6 +9,7 @@ import type { WorkflowControl } from '../workflow/control';
 import type { RecordControl } from '../record/control';
 import type { DslControl } from '../dsl/control';
 import type { CheckpointControl } from '../checkpoint/control';
+import type { EntityRulesControl } from '../entity_rules/control';
 import type { RunnerControl } from '../runner/control';
 
 export type WorkspaceControlInput = {
@@ -25,6 +26,7 @@ export type WorkspaceControlServices = {
     recordControl: RecordControl;
     dslControl: DslControl;
     checkpointControl: CheckpointControl;
+    entityRulesControl: EntityRulesControl;
     runnerControl: RunnerControl;
 };
 
@@ -185,6 +187,10 @@ export const createWorkspaceControl = (services: WorkspaceControlServices): Work
 
         if (action.type.startsWith('checkpoint.')) {
             return await services.checkpointControl.handle({ action, workspace, workspaceRegistry });
+        }
+
+        if (action.type.startsWith('entity_rules.')) {
+            return await services.entityRulesControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('dsl.')) {

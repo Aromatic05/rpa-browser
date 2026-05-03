@@ -7,6 +7,7 @@ import { createRecordControl, type RecordControl } from '../record/control';
 import { createDslControl, type DslControl } from '../dsl/control';
 import { createRunnerControl, type RunnerControl } from '../runner/control';
 import { createCheckpointControl, type CheckpointControl } from '../checkpoint/control';
+import { createEntityRulesControl, type EntityRulesControl } from '../entity_rules/control';
 import type { RecordingState } from '../record/recording';
 import type { ReplayOptions } from '../record/replay';
 import type { RunStepsDeps } from '../runner/run_steps';
@@ -19,6 +20,7 @@ export type RuntimeWorkspaceControls = {
     record: RecordControl;
     dsl: DslControl;
     checkpoint: CheckpointControl;
+    entityRules: EntityRulesControl;
     runner: RunnerControl;
 };
 
@@ -65,6 +67,7 @@ const createWorkspaceControls = (deps: WorkspaceRuntimeDeps): RuntimeWorkspaceCo
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
+    const entityRules = createEntityRulesControl();
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const workspace = createWorkspaceControl({
         pageRegistry: deps.pageRegistry,
@@ -72,9 +75,10 @@ const createWorkspaceControls = (deps: WorkspaceRuntimeDeps): RuntimeWorkspaceCo
         recordControl: record,
         dslControl: dsl,
         checkpointControl: checkpoint,
+        entityRulesControl: entityRules,
         runnerControl: runner,
     });
-    return { workspace, workflow, record, dsl, checkpoint, runner };
+    return { workspace, workflow, record, dsl, checkpoint, entityRules, runner };
 };
 
 export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {
