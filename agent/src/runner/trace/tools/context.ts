@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'playwright';
-import type { PageRegistry } from '../../../runtime/page_registry';
+import type { PageRegistry } from '../../../runtime/browser/page_registry';
 import type { ToolResult, TraceContext, TraceOpName } from '../types';
 
 export type CreateToolsOptions = {

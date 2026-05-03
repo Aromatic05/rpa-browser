@@ -13,7 +13,7 @@
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getLogger } from '../logging/logger';
+import { getLogger } from '../../logging/logger';
 import { launchLocalChromeForCdp } from './cdp_launcher';
 
 const __filename = fileURLToPath(import.meta.url);

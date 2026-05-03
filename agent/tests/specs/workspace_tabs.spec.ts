@@ -1,7 +1,7 @@
 import { test, expect } from '../helpers/fixtures';
 import type { BrowserContext } from '@playwright/test';
 import crypto from 'node:crypto';
-import { createPageRegistry } from '../../src/runtime/page_registry';
+import { createPageRegistry } from '../../src/runtime/browser/page_registry';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import type { Page } from '@playwright/test';
 import path from 'node:path';
-import { createPageRegistry } from '../../src/runtime/page_registry';
+import { createPageRegistry } from '../../src/runtime/browser/page_registry';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createNoopHooks } from '../../src/runner/trace/hooks';

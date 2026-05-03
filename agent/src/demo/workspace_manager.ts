@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import type { PageRegistry } from '../runtime/page_registry';
+import type { PageRegistry } from '../runtime/browser/page_registry';
 import { runStepList } from '../runner/run_steps';
 import type { StepUnion } from '../runner/steps/types';
 

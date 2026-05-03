@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRuntimeLifecycle } from '../../src/runtime/lifecycle';
+import { createRuntimeLifecycle } from '../../src/runtime/browser/lifecycle';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace_registry';
 import { createRecordingState } from '../../src/record/recording';

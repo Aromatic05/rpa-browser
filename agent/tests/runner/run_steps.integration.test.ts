@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { createPageRegistry } from '../../src/runtime/page_registry';
+import { createPageRegistry } from '../../src/runtime/browser/page_registry';
 import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
 import { runStepList, MemoryStepSink } from '../../src/runner/run_steps';
 import { MemorySink } from '../../src/runner/trace/sink';

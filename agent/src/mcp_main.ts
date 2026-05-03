@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Page } from 'playwright';
-import { createContextManager, resolvePaths } from './runtime/context_manager';
-import { createPageRegistry } from './runtime/page_registry';
+import { createContextManager, resolvePaths } from './runtime/browser/context_manager';
+import { createPageRegistry } from './runtime/browser/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace_registry';
 import { createRuntimeRegistry } from './runtime/runtime_registry';
 import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';

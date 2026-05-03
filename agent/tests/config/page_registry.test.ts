@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPageRegistry } from '../../src/runtime/page_registry';
+import { createPageRegistry } from '../../src/runtime/browser/page_registry';
 
 const createMockPage = (url: string) =>
     ({

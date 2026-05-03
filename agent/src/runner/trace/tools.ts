@@ -19,7 +19,7 @@ import type {
     TraceTags,
 } from './types';
 import type { A11yCandidate } from './a11y/find';
-import type { PageRegistry } from '../../runtime/page_registry';
+import type { PageRegistry } from '../../runtime/browser/page_registry';
 import { traceCall } from './trace_call';
 import { createLoggingHooks } from './hooks';
 import { getA11yTree } from './a11y/getA11yTree';
