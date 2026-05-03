@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import type { Page } from 'playwright';
 import { createContextManager, resolvePaths } from './runtime/context_manager';
 import { createPageRegistry } from './runtime/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace_registry';
@@ -34,7 +35,8 @@ const logError = (...args: unknown[]) => { actionLog.error('[RPA:mcp]', ...args)
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
-let workspaceRegistry!: ReturnType<typeof createWorkspaceRegistry>;
+let onPageBoundHook: (page: Page, tabName: string) => void = () => undefined;
+let onBindingClosedHook: (tabName: string) => void = () => undefined;
 
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
@@ -77,30 +79,27 @@ const mcpToolHost = new McpToolHost(sourceMcpHotEntry);
 const pageRegistry = createPageRegistry({
     tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
-    onPageBound: (page, tabName) => {
-        if (recordingState.recordingEnabled.has(tabName)) {
-            void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
-        }
-        const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
-        const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
-        if (!workspace.tabRegistry.hasTab(tabName)) {
-            workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
-        } else {
-            workspace.tabRegistry.bindPage(tabName, page);
-        }
-        workspace.tabRegistry.setActiveTab(tabName);
-        runtimeRegistry.bindPage({ workspaceName, tabName, page });
-    },
-    onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
+    onPageBound: (page, tabName) => onPageBoundHook(page, tabName),
+    onBindingClosed: (tabName) => onBindingClosedHook(tabName),
 });
+
+const runtimeRegistry = createRuntimeRegistry({
+    traceSinks,
+    traceHooks: config.observability.traceConsoleEnabled
+        ? createLoggingHooks()
+        : createNoopHooks(),
+    pluginHost: runnerPluginHost,
+});
+
 const runStepsDeps = {
-    runtime: null as unknown as ReturnType<typeof createRuntimeRegistry>,
+    runtime: runtimeRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
 };
 setRunStepsDeps(runStepsDeps);
-workspaceRegistry = createWorkspaceRegistry({
+
+const workspaceRegistry = createWorkspaceRegistry({
     pageRegistry,
     recordingState,
     replayOptions: REPLAY_OPTIONS,
@@ -108,15 +107,23 @@ workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
 });
-const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
-    workspaceRegistry,
-    traceSinks,
-    traceHooks: config.observability.traceConsoleEnabled
-        ? createLoggingHooks()
-        : createNoopHooks(),
-    pluginHost: runnerPluginHost,
-});
-runStepsDeps.runtime = runtimeRegistry;
+
+onPageBoundHook = (page, tabName) => {
+    if (recordingState.recordingEnabled.has(tabName)) {
+        void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
+    }
+    const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+    const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
+    if (!workspace.tabRegistry.hasTab(tabName)) {
+        workspace.tabRegistry.createTab({ tabName, page, url: page.url() });
+    } else {
+        workspace.tabRegistry.bindPage(tabName, page);
+    }
+    workspace.tabRegistry.setActiveTab(tabName);
+    runtimeRegistry.bindPage({ workspaceName, tabName, page });
+};
+onBindingClosedHook = (tabName) => { cleanupRecording(recordingState, tabName); };
+
 setControlActionDispatcher(
     createActionDispatcher({
         workspaceRegistry,
