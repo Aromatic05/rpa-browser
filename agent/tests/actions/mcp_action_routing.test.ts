@@ -138,10 +138,11 @@ test('mcp.status routes through workspace gateway with workspaceName', async () 
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, { name: wsName } as any);
 
-    const result = await ws.mcp.handle(
-        stubAction('mcp.status', { workspaceName: wsName }),
-        ws,
-    );
+    const result = await ws.mcp.handle({
+        action: stubAction('mcp.status', { workspaceName: wsName }),
+        workspace: ws,
+        workspaceRegistry: registry,
+    });
 
     const payload = result.reply.payload as Record<string, unknown>;
     assert.equal(payload.workspaceName, wsName);
@@ -149,32 +150,14 @@ test('mcp.status routes through workspace gateway with workspaceName', async () 
     assert.equal(payload.status, 'stopped');
 });
 
-test('mcp.start rejects payload.workspaceName through workspace gateway', async () => {
-    const registry = createMinimalWorkspaceRegistry();
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, { name: wsName } as any);
-
-    await assert.rejects(
-        () => ws.mcp.handle(
-            stubAction('mcp.start', { workspaceName: wsName, payload: { workspaceName: wsName } }),
-            ws,
-        ),
-        /mcp actions do not accept payload.workspaceName/,
-    );
+test('mcp.start with workspaceName and payload.workspaceName is classified invalid by classify layer', () => {
+    const action = stubAction('mcp.start', { workspaceName: 'ws-1', payload: { workspaceName: 'ws-1' } });
+    assert.equal(classifyActionRoute(action), 'invalid');
 });
 
-test('mcp.stop rejects payload.workspaceName through workspace gateway', async () => {
-    const registry = createMinimalWorkspaceRegistry();
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, { name: wsName } as any);
-
-    await assert.rejects(
-        () => ws.mcp.handle(
-            stubAction('mcp.stop', { workspaceName: wsName, payload: { workspaceName: wsName } }),
-            ws,
-        ),
-        /mcp actions do not accept payload.workspaceName/,
-    );
+test('mcp.stop with workspaceName and payload.workspaceName is classified invalid by classify layer', () => {
+    const action = stubAction('mcp.stop', { workspaceName: 'ws-1', payload: { workspaceName: 'ws-1' } });
+    assert.equal(classifyActionRoute(action), 'invalid');
 });
 
 test('REQUEST_ACTION_TYPES includes MCP actions', () => {
