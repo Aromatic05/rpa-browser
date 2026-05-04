@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import type { Page } from 'playwright';
 import { replyAction, type Action } from '../../actions/action_protocol';
 import { ActionError } from '../../actions/results';
 import { ERROR_CODES } from '../../actions/results';
@@ -18,10 +17,7 @@ export type WorkspaceRouterInput = {
     workspaceRegistry: WorkspaceRegistry;
 };
 
-export type WorkspaceRouterServices = {
-    pageRegistry: {
-        getPage: (tabName: string, startUrl?: string) => Promise<Page>;
-    };
+export type WorkspaceRouterDeps = {
     workflowControl: WorkflowControl;
     recordControl: RecordControl;
     dslControl: DslControl;
@@ -42,7 +38,7 @@ const requireTabName = (payload: Record<string, unknown>): string => {
     return tabName;
 };
 
-export const createWorkspaceRouter = (services: WorkspaceRouterServices): WorkspaceRouter => ({
+export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRouter => ({
     handle: async (action, workspace, workspaceRegistry) => {
         if (action.type === 'workspace.setActive') {
             workspaceRegistry.setActiveWorkspace(workspace.name);
@@ -73,8 +69,7 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
             if (action.type === 'tab.create') {
                 const tabName = crypto.randomUUID();
                 const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
-                const page = await services.pageRegistry.getPage(tabName, startUrl);
-                workspace.tabs.createTab({ tabName, page, url: page.url() });
+                await workspace.tabs.ensurePage(tabName, startUrl);
                 workspace.tabs.setActiveTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
             }
@@ -101,9 +96,10 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 const title = typeof payload.title === 'string' ? payload.title : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
                 if (!workspace.tabs.hasTab(tabName)) {
-                    workspace.tabs.createTab({ tabName, url, title, at });
+                    workspace.tabs.createMetadataTab({ tabName, url, title, at });
+                } else {
+                    workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 }
-                workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 workspace.tabs.setActiveTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
             }
@@ -117,7 +113,7 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 if (!tabName || !workspace.tabs.hasTab(tabName)) {
                     return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
                 }
-                workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
+                workspace.tabs.reportTab(tabName, { url, title, at });
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 
@@ -141,7 +137,7 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 if (!tabName || !workspace.tabs.hasTab(tabName)) {
                     return { reply: replyAction(action, { source, reportedAt: at, stale: true }), events: [] };
                 }
-                workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
+                workspace.tabs.pingTab(tabName, { url, title, at });
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 
@@ -150,10 +146,7 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
                 const windowId = typeof payload.windowId === 'number' ? payload.windowId : undefined;
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
-                if (!workspace.tabs.hasTab(tabName)) {
-                    workspace.tabs.createTab({ tabName, at });
-                }
-                workspace.tabs.setActiveTab(tabName);
+                workspace.tabs.reassignTab(tabName, { at });
                 return {
                     reply: replyAction(action, {
                         workspaceName: workspace.name,
@@ -178,27 +171,27 @@ export const createWorkspaceRouter = (services: WorkspaceRouterServices): Worksp
         }
 
         if (action.type === 'workspace.save' || action.type === 'workspace.restore') {
-            return await services.workflowControl.handle({ action, workspace, workspaceRegistry });
+            return await deps.workflowControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('record.') || action.type.startsWith('play.')) {
-            return await services.recordControl.handle({ action, workspace, workspaceRegistry });
+            return await deps.recordControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('checkpoint.')) {
-            return await services.checkpointControl.handle({ action, workspace, workspaceRegistry });
+            return await deps.checkpointControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('entity_rules.')) {
-            return await services.entityRulesControl.handle({ action, workspace, workspaceRegistry });
+            return await deps.entityRulesControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('dsl.')) {
-            return await services.dslControl.handle({ action, workspace, workspaceRegistry });
+            return await deps.dslControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('task.run.')) {
-            return await services.runnerControl.handle({ action, workspace, workspaceRegistry });
+            return await deps.runnerControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('mcp.')) {

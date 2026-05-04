@@ -90,7 +90,6 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const workflowControl = createWorkflowControl({ recordingState: deps.recordingState });
     const workspaceRouter = createWorkspaceRouter({
-        pageRegistry: { getPage: deps.pageRegistry.getPage },
         workflowControl,
         recordControl: record,
         dslControl: dsl,
