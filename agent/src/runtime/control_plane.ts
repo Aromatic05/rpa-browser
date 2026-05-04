@@ -40,6 +40,19 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             const workspace = workspaceRegistry.createWorkspace(workspaceName, workflow);
             return { reply: replyAction(action, { workspaceName: workspace.name, tabName: null }), events: [] };
         }
+        case 'workspace.setActive': {
+            const payload = (action.payload ?? {}) as { workspaceName?: string };
+            const targetName = (payload.workspaceName || '').trim();
+            if (!targetName) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required');
+            }
+            const target = workspaceRegistry.getWorkspace(targetName);
+            if (!target) {
+                throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workspace not found: ${targetName}`);
+            }
+            workspaceRegistry.setActiveWorkspace(targetName);
+            return { reply: replyAction(action, { workspaceName: targetName }), events: [] };
+        }
         case 'tab.init': {
             return { reply: replyAction(action, { workspaceName: null, tabName: randomName() }), events: [] };
         }
