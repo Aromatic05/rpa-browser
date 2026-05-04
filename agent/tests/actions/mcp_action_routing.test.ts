@@ -67,9 +67,10 @@ test('mcp.status without workspaceName is not a control action', () => {
     assert.equal(isControlAction(action), false);
 });
 
-test('mcp.start without workspaceName is not a workspace action', () => {
+test('mcp.start without workspaceName is a workspace action type but routes invalid', () => {
     const action = stubAction('mcp.start');
-    assert.equal(isWorkspaceAction(action), false);
+    assert.equal(isWorkspaceAction(action), true);
+    assert.equal(classifyActionRoute(action), 'invalid');
 });
 
 test('mcp.start with workspaceName is a workspace action', () => {
