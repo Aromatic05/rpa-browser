@@ -1,7 +1,5 @@
-import crypto from 'node:crypto';
 import path from 'node:path';
 import type { Page } from 'playwright';
-import type { Action } from './actions/action_protocol';
 import { createContextManager, resolvePaths } from './runtime/browser/context_manager';
 import { createPageRegistry } from './runtime/browser/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace/registry';
@@ -130,9 +128,7 @@ void (async () => {
         logNotice('Playwright Chromium launched with extension.');
 
         const workspace = workspaceRegistry.createWorkspace('default', ensureWorkflowOnFs('default'));
-        const mcpStartAction: Action = { v: 1, id: crypto.randomUUID(), type: 'mcp.start', workspaceName: workspace.name, payload: {}, at: Date.now() };
-        const mcpControlResult = await workspace.mcp.handle(mcpStartAction, workspace);
-        const mcpResult = mcpControlResult.reply.payload as { workspaceName: string; serviceName: string; port: number; status: string };
+        const mcpResult = await workspace.mcp.start();
         logNotice('Workspace MCP server started', {
             workspaceName: mcpResult.workspaceName,
             serviceName: mcpResult.serviceName,
