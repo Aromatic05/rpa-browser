@@ -79,7 +79,6 @@ const getStringField = (value: UnknownRecord, key: string): string | null =>
 
 const isMutatingAction = (type: string) =>
     type === ACTION_TYPES.WORKSPACE_CREATE ||
-    type === ACTION_TYPES.WORKSPACE_RESTORE ||
     type === ACTION_TYPES.WORKSPACE_SET_ACTIVE ||
     type === ACTION_TYPES.TAB_CREATE ||
     type === ACTION_TYPES.TAB_SET_ACTIVE ||
@@ -89,7 +88,6 @@ const isMutatingAction = (type: string) =>
 
 const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
     ACTION_TYPES.WORKSPACE_CREATE,
-    ACTION_TYPES.WORKSPACE_RESTORE,
     ACTION_TYPES.TAB_CREATE,
     ACTION_TYPES.TAB_OPENED,
     ACTION_TYPES.TAB_REPORTED,
