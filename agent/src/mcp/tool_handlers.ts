@@ -1,7 +1,7 @@
 import { type z } from 'zod';
 import crypto from 'crypto';
 import type { Page } from 'playwright';
-import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
+import type { WorkspaceTabs } from '../runtime/workspace/tabs';
 import type { RunnerConfig } from '../config';
 import { runStepList } from '../runner/run_steps';
 import type { RunStepsDeps } from '../runner/run_steps_types';
@@ -64,7 +64,7 @@ import {
 } from './schemas';
 
 export type WorkspaceMcpToolDeps = {
-    workspace: RuntimeWorkspace;
+    workspace: { name: string; tabs: WorkspaceTabs };
     runStepsDeps?: RunStepsDeps;
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;

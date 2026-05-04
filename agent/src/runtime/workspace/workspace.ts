@@ -60,31 +60,15 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const tabsControl = createTabsControl();
 
-    const workspace: RuntimeWorkspace = {
-        name: deps.name,
-        workflow: deps.workflow,
-        tabs,
-        record,
-        dsl,
-        checkpoint,
-        entityRules,
-        runner,
-        mcp: null as unknown as McpControl,
-        router: null as unknown as WorkspaceRouter,
-        createdAt: now,
-        updatedAt: now,
-    };
-
     const mcpService = createWorkspaceMcpService({
-        workspace,
+        workspace: { name: deps.name, tabs },
         portAllocator: deps.portAllocator,
         runStepsDeps: deps.runStepsDeps,
         config: deps.runnerConfig,
     });
     const mcp = createMcpControl(mcpService);
-    workspace.mcp = mcp;
 
-    workspace.router = createWorkspaceRouter({
+    const router = createWorkspaceRouter({
         tabsControl,
         recordControl: record,
         dslControl: dsl,
@@ -94,5 +78,18 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         mcpControl: mcp,
     });
 
-    return workspace;
+    return {
+        name: deps.name,
+        workflow: deps.workflow,
+        tabs,
+        record,
+        dsl,
+        checkpoint,
+        entityRules,
+        runner,
+        mcp,
+        router,
+        createdAt: now,
+        updatedAt: now,
+    };
 };

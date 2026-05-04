@@ -1,7 +1,7 @@
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { WorkspaceServiceStatus } from '../runtime/service/types';
 import type { PortAllocator } from '../runtime/service/ports';
-import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
+import type { WorkspaceTabs } from '../runtime/workspace/tabs';
 import type { RunStepsDeps } from '../runner/run_steps_types';
 import type { RunnerConfig } from '../config';
 import { createWorkspaceToolHandlers } from './tool_handlers';
@@ -16,7 +16,7 @@ export type WorkspaceMcpRuntime = {
 };
 
 export type WorkspaceMcpRuntimeDeps = {
-    workspace: RuntimeWorkspace;
+    workspace: { name: string; tabs: WorkspaceTabs };
     portAllocator: PortAllocator;
     runStepsDeps?: RunStepsDeps;
     config?: RunnerConfig;
