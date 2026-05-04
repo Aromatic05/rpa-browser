@@ -44,15 +44,13 @@ Each domain control is created eagerly when the workspace is constructed
 | Prefix | Domain |
 |--------|--------|
 | `tab.*` | Router-internal (tabs) |
-| `workspace.save` / `workspace.restore` | WorkflowControl |
 | `record.*` / `play.*` | RecordControl |
 | `checkpoint.*` | CheckpointControl |
 | `entity_rules.*` | EntityRulesControl |
 | `dsl.*` | DslControl |
 | `task.run.*` | RunnerControl |
-| `mcp.start` / `mcp.stop` / `mcp.status` | McpControl (direct) |
+| `mcp.*` | McpControl |
 | `workspace.setActive` | Router-internal (registry) |
-| `workflow.status` | Router-internal |
 
 ## Directory layout
 

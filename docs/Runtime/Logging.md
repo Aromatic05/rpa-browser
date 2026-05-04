@@ -68,7 +68,7 @@
 该事件在 `runtime/page_registry.ts` 记录，表示 token 无法映射到 workspace/tab。需检查：
 
 1. token 是否已过期。
-2. extension background 是否完成 `tab.init/tab.opened`。
+2. extension background 是否完成 tab binding 与 `tab.opened`。
 3. 是否跨窗口拖拽导致映射漂移。
 
 ### tab.opened.defer_claim

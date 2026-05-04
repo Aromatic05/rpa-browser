@@ -31,10 +31,6 @@
 - `tabName`
 - `entryUrl`（若 workspace binding 声明）
 
-#### workflow.status
-
-输入：`scene`。输出：`workspaceName/exists/active`。
-
 #### workflow.record.save
 
 输入：
@@ -76,8 +72,7 @@
 
 1. `workflow.list`
 2. `workflow.open`
-3. `workflow.status`（可选）
-4. `workflow.dsl.get` / `workflow.dsl.save`
+3. `workflow.dsl.get` / `workflow.dsl.save`
 5. `workflow.dsl.test`
 6. `workflow.releaseRun`
 7. `record.start/stop` + `workflow.record.save`（按需）

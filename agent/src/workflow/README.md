@@ -31,7 +31,6 @@ Control actions must not use `payload.workspaceName` or active-workspace fallbac
 
 ## Workspace Actions
 
-- `workflow.status`
 - `dsl.get`
 - `dsl.save`
 - `dsl.test`
@@ -74,7 +73,7 @@ Workspace actions must use `action.workspaceName` only.
 
 ## Workspace Runtime Controls
 
-- RuntimeWorkspace controls include `workflow`, `checkpoint`, `entityRules`, `record`, `dsl`, `runner`, `tabRegistry`.
+- RuntimeWorkspace controls include `workflow`, `checkpoint`, `entityRules`, `record`, `dsl`, `runner`, `mcp`.
 - `checkpoint.*` is routed to workspace checkpoint control.
 - `entity_rules.*` is routed to workspace entityRules control.
 - `task.run.checkpoint` remains runner-owned execution progress checkpoint.

@@ -48,13 +48,6 @@ test('domain controls are bound and invokable', async () => {
     const dslGet = await ws.dsl.handle({ action: { v: 1, id: 'd1', type: 'dsl.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(dslGet.reply.type, 'dsl.get.result');
 
-    const workspaceSave = await ws.router.handle(
-        { v: 1, id: 'w1', type: 'workspace.save', workspaceName: wsName } as any,
-        ws as any,
-        registry as any,
-    );
-    assert.equal(workspaceSave.reply.type, 'workspace.save.result');
-
     const runStart = await ws.runner.handle({ action: { v: 1, id: 't1', type: 'task.run.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(runStart.reply.type, 'task.run.start.result');
     cleanup(wsName);

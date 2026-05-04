@@ -43,19 +43,6 @@ test('workflow lifecycle actions are handled by runtime control', async () => {
     cleanup(renamed);
 });
 
-test('workflow.status is handled by workspace control', async () => {
-    const { registry } = createTestWorkspaceRegistry();
-    const name = uniqueName('wf-status');
-    cleanup(name);
-    const workflow = createWorkflowOnFs(name);
-    const ws = registry.createWorkspace(name, workflow);
-
-    const status = await ws.router.handle({ v: 1, id: 's1', type: 'workflow.status', workspaceName: name } as any, ws as any, registry as any);
-    assert.equal(status.reply.type, 'workflow.status.result');
-    assert.equal((status.reply.payload as any).workspaceName, name);
-    cleanup(name);
-});
-
 test('dsl actions are handled by dsl control', async () => {
     const { registry } = createTestWorkspaceRegistry();
     const name = uniqueName('wf-dsl');

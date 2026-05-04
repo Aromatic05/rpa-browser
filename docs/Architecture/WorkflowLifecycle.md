@@ -10,11 +10,9 @@
 
 1. `workflow.list`
 2. `workflow.open`
-3. `workflow.status`
-4. `workflow.dsl.get/save`
-5. `workflow.dsl.test`
-6. `workflow.record.save`
-7. `workflow.releaseRun`
+3. `dsl.get` / `dsl.save`
+4. `dsl.test`
+5. `record.save`
 
 ### 关键规则
 

@@ -2,16 +2,18 @@
 
 ## 1. 强约束（唯一来源）
 
-- `tabName` 的唯一生成入口：**extension background -> `tab.init`**。
-- content 与 start_extension **禁止**直接发送 `tab.init`、`tab.opened`。
+- `bindingName` 由 extension background 使用 `crypto.randomUUID()` 本地生成，不依赖 agent。
+- extension background 通过 `pushBindingNameToTab` 将 binding name 写入 tab。
+- content 与 start_extension **禁止**直接发送 `tab.opened`。
 - `tab.opened` 的唯一发送入口：**extension background**。
 - 页面侧（content/start_extension）只能通过 `RPA_ENSURE_BOUND_TOKEN` 申请已绑定 token。
 
 ## 2. 运行时对象
 
-- agent: `pageRegistry` 维护 `tokenToPage`、`tokenToTab`、`workspaces`。
+- agent: `PageRegistry` 作为低层 page 绑定基础设施，供 `WorkspaceTabs` 内部使用。
 - extension background: `RouterState` 维护 `tabState`、`bindingNameToWorkspaceTab`、`windowToWorkspace`。
 - 绑定目标：每个 `tabName` 必须映射到唯一 `(workspaceName, tabName)`。
+- `RuntimeWorkspace` 聚合体持有：`tabs`、`record`、`dsl`、`checkpoint`、`entityRules`、`runner`、`mcp`、`router`。
 
 ## 3. 通信总线
 
@@ -25,16 +27,16 @@
 
 ### 3.2 action（background <-> agent）
 
-- 绑定相关：`tab.init`、`tab.opened`
+- 绑定相关：`tab.opened`
 - 生命周期：`tab.report`、`tab.ping`、`tab.activated`、`tab.closed`、`tab.reassign`
-- workspace：`workspace.list/create/setActive/save/restore`
+- workspace：`workspace.list`、`workspace.create`、`workspace.setActive`
 
 ## 4. 绑定流程（硬规则）
 
 1. 页面发 `RPA_ENSURE_BOUND_TOKEN`。
 2. background `ensureBoundTabName` 处理：
 - 先尝试 `state` / `preferredToken` / `GET_TOKEN`。
-- 无 token 时由 background 发 `tab.init` 生成，并 `SET_TOKEN` 回写页面。
+- 无 token 时由 background 用 `crypto.randomUUID()` 本地生成 binding name，并通过 `pushBindingNameToTab` 写入页面。
 - 解析 workspace（`tokenScope -> window mapping -> active workspace -> workspace.list`）。
 - 发 `tab.opened` 完成 agent 绑定；必须拿到 `tabName` 才算成功。
 3. 返回 `{ tabName, workspaceName, tabName }` 给页面。
@@ -47,7 +49,8 @@
 
 ## 6. agent 侧严格语义
 
-- Action 入口分流仅按 `workspaceName`；缺失或非法地址返回 `ERR_BAD_ARGS`。
+- Action 入口分流仅按 `workspaceName` 存在与否；缺失或非法地址返回 `ERR_BAD_ARGS`。
+- `workspaceName` 与 `payload.workspaceName` 同时存在 → 非法路由。
 - 未知 token 不做降级、不吞错。
 - `tab.opened` 由 `bindTabOpenedAction` 专门处理，并执行 claim/bind。
 
@@ -74,14 +77,14 @@ flowchart LR
 
   subgraph AG["Agent"]
     W["WS server"]
-    P["pageRegistry"]
-    H["workspace/tab handlers"]
+    P["PageRegistry (low-level)"]
+    H["RuntimeWorkspace / router"]
   end
 
   C -- "RPA_ENSURE_BOUND_TOKEN" --> R
   R --> L
   L -- "RPA_GET_TOKEN / RPA_SET_TOKEN" --> C
-  L -- "tab.init / tab.opened / workspace.list" --> W
+  L -- "tab.opened / workspace.list" --> W
   C -- "ACTION(tab.ping/report/workflow.*)" --> R
   R -- "scoped ACTION" --> W
   W --> P
@@ -100,8 +103,8 @@ flowchart TD
   C -- no --> E["GET_TOKEN"]
   E --> F{"token returned?"}
   F -- yes --> D
-  F -- no --> G["tab.init by background"]
-  G --> H["SET_TOKEN"]
+  F -- no --> G["crypto.randomUUID() by background"]
+  G --> H["pushBindingNameToTab"]
   H --> D
 
   D --> I{"url is chrome://newtab?"}
@@ -118,17 +121,18 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  A["ACTION ingress"] --> B{"workspace/pageless?"}
-  B -- yes --> C["direct route"]
-  B -- no --> D["ensureTabName(sender tab)"]
-  D --> E{"token resolved?"}
-  E -- no --> F["failed: tab token unavailable"]
-  E -- yes --> G["attach workspaceName/tabName payload"]
-  C --> H["send to agent"]
-  G --> H
-  H --> I["agent reply"]
-  I --> J["applyReplyProjection"]
-  J --> K["update bindingNameToWorkspaceTab/window mapping"]
+  A["ACTION ingress"] --> B{"action.workspaceName present?"}
+  B -- yes --> C["workspace route"]
+  B -- no --> D["control route"]
+  D --> E["ensureTabName(sender tab)"]
+  E --> F{"token resolved?"}
+  F -- no --> G["failed: tab token unavailable"]
+  F -- yes --> H["attach workspaceName/tabName payload"]
+  C --> I["dispatch to agent"]
+  H --> I
+  I --> J["agent reply"]
+  J --> K["applyReplyProjection"]
+  K --> L["update bindingNameToWorkspaceTab/window mapping"]
 ```
 
 ## 9. 代码定位
@@ -143,20 +147,17 @@ flowchart TD
 - `src/entry/newtab.ts`
 - agent
 - `src/index.ts`
-- `src/runtime/page_registry.ts`
-- `src/actions/workspace.ts`
+- `src/runtime/workspace/workspace.ts`
+- `src/runtime/workspace/tabs.ts`
+- `src/runtime/workspace/router.ts`
+- `src/runtime/browser/page_registry.ts`
 
-## 10. 第二阶段接口迁移边界
+## 10. 当前运行时边界
 
-- 删除 `runtime.ensureActivePage`，运行时入口统一为 `workspaceName/tabName`。
-- 删除 `ActionContext.page`、`ActionContext.tabName` 通用字段。
-- `Action` 顶层地址字段仅保留 `workspaceName`。
-- `tabName` 只在 workspace 内部运行时和 payload 中使用。
-- `workspace` 运行时对象持有 `workflow`、`runner`、`tabRegistry`。
-- `tabRegistry` 归属单个 workspace，并维护该 workspace 的 `activeTab`。
-- `page_registry` 退化为底层 page/lifecycle adapter，不再承担业务路由核心。
-- 本阶段只迁公共接口与直接编译断点。
-- 本阶段不做 record/play 深层迁移。
-- 本阶段不做 workflow artifact 迁移。
-- 本阶段不做 checkpoint runtime 重写。
-- 本阶段不做 DSL 实现修改。
+- `RuntimeWorkspace` 聚合体直接持有：`tabs`、`record`、`dsl`、`checkpoint`、`entityRules`、`runner`、`mcp`、`router`。
+- `RuntimeWorkspace` 不持有：`tabRegistry`、`getPage`、`controls`、`serviceLifecycle`。
+- `WorkspaceTabs` 负责 tab 生命周期管理（create、close、activate、report、ping、reassign），内部持有 `Page` 句柄。
+- `PageRegistry` 退化为 `WorkspaceTabs` 内部使用的低层 page 绑定基础设施。
+- `WorkspaceRouter` 按 action type 前缀转发到对应 domain control（`tab.*` → TabsControl、`mcp.*` → McpControl 等）。
+- `workspaceName === workflowName` 是协议不变量。
+- 已删除的 action：`tab.init`、`workspace.save`、`workspace.restore`、`workflow.status`。
