@@ -10,6 +10,7 @@ import type { Action } from '../shared/types.js';
 
 export type FloatingUIOptions = {
     tabName: string;
+    workspaceName: string;
     onAction: (
         type: string,
         payload?: Record<string, unknown>,
@@ -195,7 +196,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         out.textContent = JSON.stringify(payload, null, 2);
     };
 
-    let activeWorkspaceName: string | null = null;
+    let activeWorkspaceName: string | null = opts.workspaceName || null;
     let activeTabName: string | null = null;
     let workflowInitialized = false;
     const deriveScene = (): string => {
@@ -231,11 +232,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     startBtn.addEventListener('click', () =>
-        void sendPanelAction('record.start', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+        void sendPanelAction('record.start', {}, { workspaceName: activeWorkspaceName || opts.workspaceName }));
     stopBtn.addEventListener('click', () =>
-        void sendPanelAction('record.stop', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+        void sendPanelAction('record.stop', {}, { workspaceName: activeWorkspaceName || opts.workspaceName }));
     showBtn.addEventListener('click', () =>
-        void sendPanelAction('record.get', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+        void sendPanelAction('record.get', {}, { workspaceName: activeWorkspaceName || opts.workspaceName }));
     initWorkflowBtn.addEventListener('click', () => {
         const scene = sceneInput.value.trim();
         if (!scene) {
@@ -252,14 +253,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         })();
     });
     clearBtn.addEventListener('click', () =>
-        void sendPanelAction('record.clear', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+        void sendPanelAction('record.clear', {}, { workspaceName: activeWorkspaceName || opts.workspaceName }));
     replayBtn.addEventListener('click', () =>
-        void sendPanelAction('play.start', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+        void sendPanelAction('play.start', {}, { workspaceName: activeWorkspaceName || opts.workspaceName }));
     stopReplayBtn.addEventListener('click', () =>
-        void sendPanelAction('play.stop', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+        void sendPanelAction('play.stop', {}, { workspaceName: activeWorkspaceName || opts.workspaceName }));
     exportBtn.addEventListener('click', () => {
         void (async () => {
-            const scope = activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined;
+            const scope = { workspaceName: activeWorkspaceName || opts.workspaceName };
             const scene = deriveScene();
             if (!scene) {
                 render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
@@ -275,7 +276,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
     importBtn.addEventListener('click', () => {
         void (async () => {
-            const scope = activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined;
+            const scope = { workspaceName: activeWorkspaceName || opts.workspaceName };
             const scene = deriveScene();
             if (!scene) {
                 render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
@@ -343,10 +344,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     const refreshTabs = () => {
-        if (activeWorkspaceName) {
-            void sendPanelAction('tab.list', {}, { workspaceName: activeWorkspaceName });
-        } else {
-            void sendPanelAction('tab.list', {});
+        const wsName = activeWorkspaceName || opts.workspaceName;
+        if (wsName) {
+            void sendPanelAction('tab.list', {}, { workspaceName: wsName });
         }
     };
 

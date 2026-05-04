@@ -46,10 +46,11 @@ export const ensureTabName = (): string => {
     return tabName;
 };
 
-export const ensureTabNameAsync = async (): Promise<string> => {
+export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspaceName: string }> => {
     let tabName = ensureTabName();
+    let workspaceName = '';
     for (let i = 0; i < 3; i += 1) {
-        const runtimeReply = await new Promise<{ ok: boolean; tabName?: string }>((resolve) => {
+        const runtimeReply = await new Promise<{ ok: boolean; tabName?: string; workspaceName?: string }>((resolve) => {
             chrome.runtime.sendMessage(
                 {
                     type: MSG.ENSURE_BOUND_TOKEN,
@@ -64,12 +65,13 @@ export const ensureTabNameAsync = async (): Promise<string> => {
                         resolve({ ok: false });
                         return;
                     }
-                    resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string });
+                    resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string; workspaceName?: string });
                 },
             );
         });
         if (runtimeReply.ok && runtimeReply.tabName) {
             tabName = runtimeReply.tabName;
+            workspaceName = runtimeReply.workspaceName ?? '';
             sessionStorage.setItem(TAB_NAME_KEY, tabName);
             writeTokenToWindowName(tabName);
             window.__rpa_tab_name = tabName;
@@ -82,7 +84,7 @@ export const ensureTabNameAsync = async (): Promise<string> => {
     if (!tabName) {
         throw new Error('bound tab token unavailable');
     }
-    return tabName;
+    return { tabName, workspaceName };
 };
 
 export const bindHello = (tabName: string, onHello?: () => void): () => void => {
