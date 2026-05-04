@@ -262,3 +262,43 @@ test('browser.* action types are not request actions', () => {
     assert.equal(isRequestActionType('browser.snapshot'), false);
     assert.equal(isRequestActionType('browser.fill'), false);
 });
+
+// ---- CONTROL_ACTIONS / WORKSPACE_ACTIONS must not exist ----
+
+test('agent classify does not export CONTROL_ACTIONS', async () => {
+    const mod = await import('../../src/actions/classify');
+    assert.equal('CONTROL_ACTIONS' in mod, false);
+});
+
+test('agent classify does not export WORKSPACE_ACTIONS', async () => {
+    const mod = await import('../../src/actions/classify');
+    assert.equal('WORKSPACE_ACTIONS' in mod, false);
+});
+
+test('extension classify does not export CONTROL_ACTIONS', async () => {
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
+    assert.equal('CONTROL_ACTIONS' in extMod, false);
+});
+
+test('extension classify does not export WORKSPACE_ACTIONS', async () => {
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
+    assert.equal('WORKSPACE_ACTIONS' in extMod, false);
+});
+
+// ---- workspace route with payload.workspaceName specifically invalid ----
+
+test('workspace route with payload.workspaceName is invalid', () => {
+    const action = stubAction('record.start', {
+        workspaceName: 'ws-1',
+        payload: { workspaceName: 'ws-x' },
+    });
+    assert.equal(classifyActionRoute(action), 'invalid');
+});
+
+test('workspace route without payload.workspaceName is valid', () => {
+    const action = stubAction('record.start', {
+        workspaceName: 'ws-1',
+        payload: { scene: 'test' },
+    });
+    assert.equal(classifyActionRoute(action), 'workspace');
+});
