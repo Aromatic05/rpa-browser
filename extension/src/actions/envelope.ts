@@ -37,8 +37,7 @@ export const validateActionEnvelope = (incoming: unknown): EnvelopeOk | Envelope
     if (
         isRecord(payload)
         && (
-            has(payload, 'workspaceName')
-            || has(payload, 'scope')
+            has(payload, 'scope')
             || has(payload, 'workspaceId')
             || has(payload, 'tabToken')
             || has(payload, 'tabId')

@@ -19,9 +19,6 @@ export const parseActionEnvelope = (action: Action): Action => {
         return action;
     }
 
-    if ('workspaceName' in action.payload) {
-        throw new Error('legacy payload address fields are not allowed: workspaceName');
-    }
     if ('scope' in action.payload) {
         throw new Error('legacy payload address fields are not allowed: scope');
     }
