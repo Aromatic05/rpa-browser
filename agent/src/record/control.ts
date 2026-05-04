@@ -50,6 +50,12 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
         if (action.type === 'record.start') {
             const workspaceName = requireWorkspaceName(action, action.type);
+            const tabs = workspace.tabs.listTabs();
+            for (const tab of tabs) {
+                if (!tab.page || tab.page.isClosed()) {
+                    await workspace.tabs.ensurePage(tab.name).catch(() => null);
+                }
+            }
             const boundTabs = workspace.tabs.listTabs().filter((tab) => Boolean(tab.page));
             if (!boundTabs.length) {
                 throw new ActionError(
