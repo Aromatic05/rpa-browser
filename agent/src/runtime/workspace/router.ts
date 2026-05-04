@@ -191,8 +191,23 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
             return await deps.runnerControl.handle({ action, workspace, workspaceRegistry });
         }
 
+        if (action.type === 'mcp.start') {
+            const result = await workspace.mcp.start();
+            return { reply: replyAction(action, { workspaceName: result.workspaceName, serviceName: result.serviceName, port: result.port, status: result.status }), events: [] };
+        }
+
+        if (action.type === 'mcp.stop') {
+            const result = await workspace.mcp.stop();
+            return { reply: replyAction(action, { workspaceName: result.workspaceName, serviceName: result.serviceName, status: result.status }), events: [] };
+        }
+
+        if (action.type === 'mcp.status') {
+            const result = workspace.mcp.status();
+            return { reply: replyAction(action, { workspaceName: result.workspaceName, serviceName: result.serviceName, port: result.port, status: result.status }), events: [] };
+        }
+
         if (action.type.startsWith('mcp.')) {
-            return await workspace.mcp.handle(action, workspace);
+            throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported mcp action: ${action.type}`);
         }
 
         throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
