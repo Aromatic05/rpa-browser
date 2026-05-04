@@ -1,7 +1,7 @@
 import type { Action } from './action_protocol.js';
 import type { WsClient } from './ws_client.js';
 import { validateActionEnvelope } from './envelope.js';
-import { classifyRequestAction } from './classify.js';
+import { classifyActionRoute } from './classify.js';
 import { dispatchControlAction } from './control_gateway.js';
 import { dispatchWorkspaceAction } from './workspace_gateway.js';
 import { mkActionDispatchFailed, mkRequestFailedReply } from './results.js';
@@ -16,7 +16,7 @@ export const dispatchActionRequest = async (incoming: unknown, wsClient: WsClien
     }
 
     const action = envelope.action;
-    const scope = classifyRequestAction(action.type);
+    const scope = classifyActionRoute(action);
     if (scope === 'control') {
         return await dispatchControlAction(action, wsClient);
     }
