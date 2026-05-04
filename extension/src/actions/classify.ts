@@ -3,6 +3,7 @@ import { isDerivedEventActionType, isReplyActionType } from './action_types.js';
 const CONTROL_ACTIONS = new Set<string>([
     'workspace.list',
     'workspace.create',
+    'workspace.setActive',
     'workflow.list',
     'workflow.create',
     'workflow.open',
@@ -11,9 +12,6 @@ const CONTROL_ACTIONS = new Set<string>([
 ]);
 
 const WORKSPACE_ACTIONS = new Set<string>([
-    'workspace.setActive',
-    'workspace.save',
-    'workspace.restore',
     'tab.list',
     'tab.create',
     'tab.close',
@@ -34,7 +32,6 @@ const WORKSPACE_ACTIONS = new Set<string>([
     'record.event',
     'play.start',
     'play.stop',
-    'workflow.status',
     'dsl.get',
     'dsl.save',
     'dsl.test',
@@ -56,6 +53,9 @@ const WORKSPACE_ACTIONS = new Set<string>([
     'entity_rules.get',
     'entity_rules.save',
     'entity_rules.delete',
+    'mcp.start',
+    'mcp.stop',
+    'mcp.status',
 ]);
 
 export type RequestScopeKind = 'control' | 'workspace' | 'invalid';
