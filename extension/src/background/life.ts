@@ -163,15 +163,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (!isBindableTabUrl(urlHint)) {return null;}
 
         if (!bindingName) {
-            const init = await options.sendAction({ v: 1, id: crypto.randomUUID(), type: ACTION_TYPES.TAB_INIT, payload: { source: 'extension.sw', url: urlHint, at: Date.now() } });
-            if (isFailedReply(init)) {
-                const error = payloadOf(init);
-                throw new Error(`tab.init failed: ${String(error.code || 'ERR')}:${String(error.message || 'unknown')}`);
-            }
-            const initPayload = payloadOf(init);
-            const createdBinding = toStringOrUndefined(initPayload.tabName);
-            if (!createdBinding) {throw new Error('tab.init returned empty bindingName');}
-            bindingName = createdBinding;
+            bindingName = crypto.randomUUID();
             await pushBindingNameToTab(chromeTabNo, bindingName).catch(() => false);
         }
 
