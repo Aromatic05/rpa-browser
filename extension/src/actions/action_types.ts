@@ -3,7 +3,6 @@ export const REQUEST_ACTION_TYPES = {
     WORKFLOW_CREATE: 'workflow.create',
     WORKFLOW_OPEN: 'workflow.open',
     WORKFLOW_RENAME: 'workflow.rename',
-    WORKFLOW_STATUS: 'workflow.status',
     DSL_GET: 'dsl.get',
     DSL_SAVE: 'dsl.save',
     DSL_TEST: 'dsl.test',
@@ -12,8 +11,6 @@ export const REQUEST_ACTION_TYPES = {
     WORKSPACE_LIST: 'workspace.list',
     WORKSPACE_CREATE: 'workspace.create',
     WORKSPACE_SET_ACTIVE: 'workspace.setActive',
-    WORKSPACE_SAVE: 'workspace.save',
-    WORKSPACE_RESTORE: 'workspace.restore',
 
     TAB_INIT: 'tab.init',
     TAB_LIST: 'tab.list',
