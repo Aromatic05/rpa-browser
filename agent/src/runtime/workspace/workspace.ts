@@ -15,6 +15,7 @@ import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
 import { createWorkspaceMcpService } from '../../mcp/service';
+import { getLogger } from '../../logging/logger';
 
 export type RuntimeWorkspace = {
     name: string;
@@ -53,6 +54,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         replayOptions: deps.replayOptions,
         navDedupeWindowMs: deps.navDedupeWindowMs,
         emit: deps.emit,
+        log: getLogger('action'),
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();

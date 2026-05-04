@@ -33,6 +33,7 @@ export const defaultRunnerConfig: RunnerConfig = {
         recordLogLevel: 'warning',
         traceLogLevel: 'warning',
         stepLogLevel: 'warning',
+        infraLogLevel: 'warning',
         traceEnabled: true,
         traceLogArgs: false,
         traceConsoleEnabled: false,
@@ -44,6 +45,9 @@ export const defaultRunnerConfig: RunnerConfig = {
         recordConsoleEnabled: false,
         recordFileEnabled: false,
         recordFilePath: '.artifacts/logs/record-{ts}.log',
+        infraConsoleEnabled: true,
+        infraFileEnabled: true,
+        infraFilePath: '.artifacts/logs/infra-{ts}.log',
         screenshotOnError: false,
     },
     confidencePolicy: {

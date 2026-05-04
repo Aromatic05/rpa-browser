@@ -77,6 +77,19 @@ const contextManager = createContextManager({
 
 const config = getRunnerConfig();
 initLogger(config);
+
+process.on('unhandledRejection', (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    actionLog.error('[RPA:agent]', 'unhandled rejection', { message, stack: reason instanceof Error ? reason.stack : undefined });
+});
+process.on('uncaughtException', (error) => {
+    actionLog.error('[RPA:agent]', 'uncaught exception', {
+        message: error.message,
+        stack: error.stack,
+    });
+    process.exit(1);
+});
+
 const actionLogger = getLogger('action');
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]

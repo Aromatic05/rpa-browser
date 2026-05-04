@@ -37,9 +37,12 @@ const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void
 
 const createCdpContextProvider = (options: ContextManagerOptions): ContextProvider => {
     const actionLog = getLogger('action');
+    const infraLog = getLogger('infra');
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
     let cdpLocalStop: (() => Promise<void>) | undefined;
+    let cdpStderr: (() => string) | undefined;
+    let cdpPid: number | undefined;
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
 
     const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
@@ -83,6 +86,8 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             });
             endpoint = launched.endpoint;
             cdpLocalStop = launched.stop;
+            cdpStderr = launched.stderr;
+            cdpPid = launched.pid;
             actionLog.info('[RPA:agent]', 'Local Chrome started for CDP', {
                 endpoint,
                 pid: launched.pid,
@@ -97,8 +102,16 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
                 const context = browser.contexts()[0] || (await browser.newContext());
                 contextRef = context;
                 browser.on('disconnected', () => {
+                    const stderrTail = cdpStderr?.().slice(-2000) || null;
+                    infraLog.error('[RPA:infra]', 'Chrome CDP disconnected', {
+                        endpoint,
+                        pid: cdpPid,
+                        stderrTail,
+                    });
                     if (cdpLocalStop) {void cdpLocalStop();}
                     cdpLocalStop = undefined;
+                    cdpStderr = undefined;
+                    cdpPid = undefined;
                     contextRef = undefined;
                     contextPromise = undefined;
                 });
@@ -117,6 +130,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
 
 const createExtensionContextProvider = (options: ContextManagerOptions): ContextProvider => {
     const actionLog = getLogger('action');
+    const infraLog = getLogger('infra');
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
@@ -160,6 +174,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
             .then(async (context) => {
                 contextRef = context;
                 context.on('close', () => {
+                    infraLog.error('[RPA:infra]', 'Browser context closed unexpectedly');
                     contextRef = undefined;
                     contextPromise = undefined;
                 });

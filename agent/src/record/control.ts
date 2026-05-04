@@ -30,6 +30,7 @@ export type RecordControlServices = {
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
     emit?: (action: Action) => void;
+    log: (...args: unknown[]) => void;
 };
 
 export type RecordControl = {
@@ -288,11 +289,17 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     }
                     emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, { workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results });
                 } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    services.log('[RPA:agent]', 'replay crashed', {
+                        workspaceName: replayWorkspaceName,
+                        tabName: initialTabName,
+                        message,
+                    });
                     emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
                         workspaceName: replayWorkspaceName,
                         tabName: initialTabName,
                         code: ERROR_CODES.ERR_BAD_ARGS,
-                        message: error instanceof Error ? error.message : String(error),
+                        message,
                     });
                 } finally {
                     endReplay(services.recordingState, currentTab.name);

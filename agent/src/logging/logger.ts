@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { RunnerConfig } from '../config';
 
-export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity' | 'dsl';
+export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity' | 'dsl' | 'infra';
 export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
 export type Logger = ((...args: unknown[]) => void) & {
     debug: (...args: unknown[]) => void;
@@ -95,6 +95,14 @@ const getTarget = (type: LogType): LogTarget => {
             minLevel: obs.traceLogLevel,
         };
     }
+    if (type === 'infra') {
+        return {
+            consoleEnabled: obs.infraConsoleEnabled,
+            fileEnabled: obs.infraFileEnabled,
+            filePath: resolveLogPath(obs.infraFilePath),
+            minLevel: obs.infraLogLevel,
+        };
+    }
     return {
         consoleEnabled: false,
         fileEnabled: false,
@@ -123,14 +131,23 @@ const emit = (type: LogType, level: LogLevel, args: unknown[]) => {
         }
     }
     if (target.fileEnabled && target.filePath) {
-        const stream = ensureStream(type, target.filePath);
         const payload = {
             ts: Date.now(),
             type,
             level,
             message: args,
         };
-        stream.write(`${JSON.stringify(payload)}\n`);
+        const line = `${JSON.stringify(payload)}\n`;
+        if (level === 'error' && type === 'infra') {
+            const dir = path.dirname(target.filePath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.appendFileSync(target.filePath, line);
+        } else {
+            const stream = ensureStream(type, target.filePath);
+            stream.write(line);
+        }
     }
 };
 

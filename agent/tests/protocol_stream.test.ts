@@ -59,6 +59,7 @@ test('play.start returns play.started immediately and emits completion event fro
         replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1000,
         emit: (action) => emitted.push(action.type),
+        log: () => undefined,
     });
 
     const started = await recordControl.handle({

@@ -57,6 +57,8 @@ export type Observability = {
     traceLogLevel: 'debug' | 'info' | 'warning' | 'error';
     /** step 最低日志级别 */
     stepLogLevel: 'debug' | 'info' | 'warning' | 'error';
+    /** infra 最低日志级别 */
+    infraLogLevel: 'debug' | 'info' | 'warning' | 'error';
     /** 是否启用 trace */
     traceEnabled: boolean;
     /** 是否输出 trace 参数（默认 false，避免泄露） */
@@ -79,6 +81,12 @@ export type Observability = {
     recordFileEnabled: boolean;
     /** record 日志输出路径 */
     recordFilePath: string;
+    /** 是否在控制台输出 infra 日志 */
+    infraConsoleEnabled: boolean;
+    /** 是否将 infra 日志写入文件 */
+    infraFileEnabled: boolean;
+    /** infra 日志输出路径 */
+    infraFilePath: string;
     /** 出错时截图 */
     screenshotOnError: boolean;
 };

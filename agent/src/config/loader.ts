@@ -99,6 +99,10 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['observability', 'recordLogLevel'], process.env.RUNNER_RECORD_LOG_LEVEL);
     set(['observability', 'traceLogLevel'], process.env.RUNNER_TRACE_LOG_LEVEL);
     set(['observability', 'stepLogLevel'], process.env.RUNNER_STEP_LOG_LEVEL);
+    set(['observability', 'infraLogLevel'], process.env.RUNNER_INFRA_LOG_LEVEL);
+    set(['observability', 'infraConsoleEnabled'], envBool('RUNNER_INFRA_CONSOLE_ENABLED'));
+    set(['observability', 'infraFileEnabled'], envBool('RUNNER_INFRA_FILE_ENABLED'));
+    set(['observability', 'infraFilePath'], process.env.RUNNER_INFRA_FILE_PATH);
     set(['confidencePolicy', 'enabled'], envBool('RUNNER_CONFIDENCE_ENABLED'));
     set(['confidencePolicy', 'minScore'], envNumber('RUNNER_CONFIDENCE_MIN_SCORE'));
     set(['confidencePolicy', 'roleWeight'], envNumber('RUNNER_CONFIDENCE_ROLE_WEIGHT'));
