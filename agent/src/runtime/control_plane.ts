@@ -53,9 +53,6 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             workspaceRegistry.setActiveWorkspace(targetName);
             return { reply: replyAction(action, { workspaceName: targetName }), events: [] };
         }
-        case 'tab.init': {
-            return { reply: replyAction(action, { workspaceName: null, tabName: randomName() }), events: [] };
-        }
         case 'workflow.list': {
             return {
                 reply: replyAction(action, { workflows: listWorkflowNames().map((workflowName) => ({ workflowName })) }),
