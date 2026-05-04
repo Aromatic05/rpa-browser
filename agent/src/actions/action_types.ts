@@ -12,7 +12,6 @@ export const REQUEST_ACTION_TYPES = {
     WORKSPACE_CREATE: 'workspace.create',
     WORKSPACE_SET_ACTIVE: 'workspace.setActive',
 
-    TAB_INIT: 'tab.init',
     TAB_LIST: 'tab.list',
     TAB_CREATE: 'tab.create',
     TAB_CLOSE: 'tab.close',
