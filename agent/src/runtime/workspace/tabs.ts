@@ -14,7 +14,7 @@ export type WorkspaceTabs = {
     createMetadataTab: (input: { tabName: string; url?: string; title?: string; at?: number }) => RuntimeTab;
     ensurePage: (tabName: string, startUrl?: string) => Promise<Page>;
     bindPage: (tabName: string, page: Page) => RuntimeTab | null;
-    closeTab: (tabName: string) => RuntimeTab | null;
+    closeTab: (tabName: string) => Promise<RuntimeTab | null>;
     listTabs: () => RuntimeTab[];
     setActiveTab: (tabName: string) => void;
     getActiveTab: () => RuntimeTab | null;
@@ -84,9 +84,17 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         return tab;
     };
 
-    const closeTab: WorkspaceTabs['closeTab'] = (tabName) => {
+    const closeTab: WorkspaceTabs['closeTab'] = async (tabName) => {
         const tab = tabs.get(tabName) || null;
         if (!tab) { return null; }
+        if (tab.page && !tab.page.isClosed()) {
+            try {
+                await tab.page.close({ runBeforeUnload: true });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                throw new Error(`failed to close tab page: ${tabName}: ${message}`);
+            }
+        }
         tabs.delete(tabName);
         if (activeTabName === tabName) {
             activeTabName = tabs.keys().next().value ?? null;

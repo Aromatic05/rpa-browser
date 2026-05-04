@@ -76,10 +76,7 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
 
             if (action.type === 'tab.close') {
                 const tabName = requireTabName(payload);
-                const tab = workspace.tabs.closeTab(tabName);
-                if (tab?.page && !tab.page.isClosed()) {
-                    await tab.page.close({ runBeforeUnload: true });
-                }
+                await workspace.tabs.closeTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
             }
 
@@ -124,7 +121,7 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
                 if (!tabName) {
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
-                workspace.tabs.closeTab(tabName);
+                await workspace.tabs.closeTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
