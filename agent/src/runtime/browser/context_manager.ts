@@ -102,11 +102,12 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
                 const context = browser.contexts()[0] || (await browser.newContext());
                 contextRef = context;
                 browser.on('disconnected', () => {
-                    const stderrTail = cdpStderr?.().slice(-2000) || null;
-                    infraLog.error('[RPA:infra]', 'Chrome CDP disconnected', {
+                    const stderrTail = cdpStderr?.().slice(-4000) || null;
+                    infraLog.error('[RPA:infra]', 'Chrome CDP disconnected (browser process exited or crashed)', {
                         endpoint,
                         pid: cdpPid,
                         stderrTail,
+                        hasStderr: stderrTail !== null && stderrTail.length > 0,
                     });
                     if (cdpLocalStop) {void cdpLocalStop();}
                     cdpLocalStop = undefined;
@@ -172,12 +173,18 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
                 args: launchArgs,
             })
             .then(async (context) => {
+                const browser = context.browser();
                 contextRef = context;
-                context.on('close', () => {
-                    infraLog.error('[RPA:infra]', 'Browser context closed unexpectedly');
+                const closeHandler = () => {
+                    const browserAlive = browser?.isConnected() ?? false;
+                    infraLog.error('[RPA:infra]', 'Browser context closed', {
+                        browserConnected: browserAlive,
+                        mode: 'extension',
+                    });
                     contextRef = undefined;
                     contextPromise = undefined;
-                });
+                };
+                context.on('close', closeHandler);
                 bindContextPages(context, options.onPage);
                 await ensureStartPage(context);
                 return context;
