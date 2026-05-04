@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createWorkspaceRouter } from '../../src/runtime/workspace/router';
 import type { WorkspaceRouterInput, WorkspaceRouterDeps } from '../../src/runtime/workspace/router';
 import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
@@ -536,4 +538,42 @@ test('McpControl unknown mcp action returns unsupported', async () => {
         () => mcpControl.handle({ action, workspace, workspaceRegistry: registry }),
         /unsupported mcp action/,
     );
+});
+
+// ---- Router does not handle control actions ----
+
+test('WorkspaceRouter does not handle workspace.list', async () => {
+    const { router } = createRouterWithStubs();
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('workspace.list', { workspaceName: 'ws-1' });
+
+    await assert.rejects(
+        () => router.handle(action, workspace, registry),
+        /unsupported action/,
+    );
+});
+
+test('WorkspaceRouter does not handle workflow.create', async () => {
+    const { router } = createRouterWithStubs();
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('workflow.create', { workspaceName: 'ws-1' });
+
+    await assert.rejects(
+        () => router.handle(action, workspace, registry),
+        /unsupported action/,
+    );
+});
+
+// ---- Router source discipline ----
+
+test('WorkspaceRouter source has prefix-forwarder discipline comment', () => {
+    const src = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/runtime/workspace/router.ts'),
+        'utf-8',
+    );
+    assert.ok(src.includes('prefix-only forwarder'));
+    assert.ok(src.includes('MUST NOT parse domain payloads'));
+    assert.ok(src.includes('MUST NOT construct domain business replies'));
 });
