@@ -66,25 +66,90 @@ const initRuntimeLevel = () => {
     });
 };
 
+export type LogEntry = { scope: LoggerScope; level: LogLevel; ts: number; args: unknown[] };
+
+export type LogForwarder = (entry: LogEntry) => void;
+
+let logForwarder: LogForwarder | null = null;
+
+export const setLogForwarder = (forwarder: LogForwarder | null): void => {
+    logForwarder = forwarder;
+};
+
+export const createBufferedLogForwarder = (
+    sendBatch: (entries: LogEntry[]) => void,
+    opts?: { maxBatchSize?: number; flushIntervalMs?: number },
+): { forwarder: LogForwarder; flush: () => void; stop: () => void } => {
+    const maxBatchSize = opts?.maxBatchSize ?? 24;
+    const flushIntervalMs = opts?.flushIntervalMs ?? 2000;
+    let buffer: LogEntry[] = [];
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const flush = () => {
+        if (buffer.length === 0) {return;}
+        const batch = buffer;
+        buffer = [];
+        try {
+            sendBatch(batch);
+        } catch {
+            // silently drop if send fails
+        }
+    };
+
+    const forwarder: LogForwarder = (entry) => {
+        buffer.push(entry);
+        if (buffer.length >= maxBatchSize) {
+            flush();
+        }
+    };
+
+    timer = setInterval(flush, flushIntervalMs);
+
+    return {
+        forwarder,
+        flush,
+        stop: () => {
+            if (timer !== null) {
+                clearInterval(timer);
+                timer = null;
+            }
+            flush();
+        },
+    };
+};
+
 export const createLogger = (scope: LoggerScope): Logger => {
     initRuntimeLevel();
     const prefix = `${LOG_PREFIX}[${scope}]`;
+    const forward = (level: LogLevel, args: unknown[]) => {
+        if (logForwarder) {
+            try {
+                logForwarder({ scope, level, ts: Date.now(), args });
+            } catch {
+                // never let log forwarding break the caller
+            }
+        }
+    };
     return {
         debug: (...args: unknown[]) => {
             if (!shouldLog('debug')) {return;}
             console.warn(`${prefix}[debug]`, ...args);
+            forward('debug', args);
         },
         info: (...args: unknown[]) => {
             if (!shouldLog('info')) {return;}
             console.warn(`${prefix}[info]`, ...args);
+            forward('info', args);
         },
         warning: (...args: unknown[]) => {
             if (!shouldLog('warning')) {return;}
             console.warn(prefix, ...args);
+            forward('warning', args);
         },
         error: (...args: unknown[]) => {
             if (!shouldLog('error')) {return;}
             console.error(prefix, ...args);
+            forward('error', args);
         },
     };
 };

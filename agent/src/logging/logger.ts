@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { RunnerConfig } from '../config';
 
-export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity' | 'dsl' | 'infra';
+export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity' | 'dsl' | 'infra' | 'ext';
 export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
 export type Logger = ((...args: unknown[]) => void) & {
     debug: (...args: unknown[]) => void;
@@ -101,6 +101,14 @@ const getTarget = (type: LogType): LogTarget => {
             fileEnabled: obs.infraFileEnabled,
             filePath: resolveLogPath(obs.infraFilePath),
             minLevel: obs.infraLogLevel,
+        };
+    }
+    if (type === 'ext') {
+        return {
+            consoleEnabled: obs.extConsoleEnabled,
+            fileEnabled: obs.extFileEnabled,
+            filePath: resolveLogPath(obs.extFilePath),
+            minLevel: obs.extLogLevel,
         };
     }
     return {

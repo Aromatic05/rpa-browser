@@ -54,6 +54,8 @@ export const REQUEST_ACTION_TYPES = {
     MCP_START: 'mcp.start',
     MCP_STOP: 'mcp.stop',
     MCP_STATUS: 'mcp.status',
+
+    LOG_EXT: 'log.ext',
 } as const;
 
 const FIXED_EVENT_ACTION_TYPES = {

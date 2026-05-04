@@ -124,7 +124,16 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 steps: bundle.steps,
                 stepResolves: payload.includeStepResolve === true ? {} : {},
             };
+            services.log('[RPA:agent]', 'record.save: saving artifact', {
+                workspaceName,
+                recordingName,
+                stepCount: bundle.steps.length,
+            });
             workflow.save(artifact);
+            services.log('[RPA:agent]', 'record.save: artifact saved', {
+                workspaceName,
+                recordingName,
+            });
             return {
                 reply: replyAction(action, { saved: true, recordingName, workspaceName, stepCount: bundle.steps.length }),
                 events: [],

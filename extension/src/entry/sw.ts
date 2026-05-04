@@ -5,7 +5,7 @@
  * - 不写业务逻辑，业务下沉到 background/*。
  */
 
-import { createLogger } from '../shared/logger.js';
+import { createLogger, createBufferedLogForwarder, setLogForwarder, type LogEntry } from '../shared/logger.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
 import { createWsClient } from '../actions/ws_client.js';
@@ -60,6 +60,20 @@ const wsClient = createWsClient({
     },
     logger: log,
 });
+
+const logForwarder = createBufferedLogForwarder(
+    (entries: LogEntry[]) => {
+        wsClient.sendFireAndForget({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: 'log.ext',
+            payload: { entries },
+            at: Date.now(),
+        });
+    },
+    { maxBatchSize: 24, flushIntervalMs: 2000 },
+);
+setLogForwarder(logForwarder.forwarder);
 
 const router = createCmdRouter({
     wsClient,

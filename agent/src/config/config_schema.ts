@@ -87,6 +87,14 @@ export type Observability = {
     infraFileEnabled: boolean;
     /** infra 日志输出路径 */
     infraFilePath: string;
+    /** ext 最低日志级别（Chrome 扩展转发日志） */
+    extLogLevel: 'debug' | 'info' | 'warning' | 'error';
+    /** 是否在控制台输出 ext 转发日志 */
+    extConsoleEnabled: boolean;
+    /** 是否将 ext 转发日志写入文件 */
+    extFileEnabled: boolean;
+    /** ext 转发日志输出路径 */
+    extFilePath: string;
     /** 出错时截图 */
     screenshotOnError: boolean;
 };

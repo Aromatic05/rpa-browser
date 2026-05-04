@@ -3,6 +3,7 @@ import { replyAction, type Action } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
 import { createWorkflowOnFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
+import { getLogger } from '../logging/logger';
 
 export type ControlPlaneResult = { reply: Action; events: Action[] };
 
@@ -99,6 +100,16 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after rename');
             }
             return { reply: replyAction(action, { fromName, toName, workspaceName: workspace.name, renamed: true }), events: [] };
+        }
+        case 'log.ext': {
+            const payload = (action.payload ?? {}) as { entries?: Array<{ scope: string; level: string; ts: number; args: unknown[] }> };
+            const entries = Array.isArray(payload.entries) ? payload.entries : [];
+            const extLog = getLogger('ext');
+            for (const entry of entries) {
+                const level = (entry.level === 'error' || entry.level === 'warning') ? entry.level : 'info';
+                extLog[level](`[ext:${entry.scope || '?'}]`, ...(Array.isArray(entry.args) ? entry.args : []));
+            }
+            return { reply: replyAction(action, { accepted: entries.length }), events: [] };
         }
         default:
             throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);

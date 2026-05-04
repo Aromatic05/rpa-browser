@@ -27,11 +27,20 @@ export type ContextManagerOptions = {
 
 type ContextProvider = () => Promise<BrowserContext>;
 
-const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void) => {
-    if (!onPage) {return;}
-    context.on('page', onPage);
-    for (const page of context.pages()) {
-        onPage(page);
+const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void, onPageClosed?: (page: Page) => void) => {
+    if (onPage) {
+        context.on('page', onPage);
+        for (const page of context.pages()) {
+            onPage(page);
+        }
+    }
+    if (onPageClosed) {
+        context.on('page', (page) => {
+            page.on('close', () => onPageClosed(page));
+        });
+        for (const page of context.pages()) {
+            page.on('close', () => onPageClosed(page));
+        }
     }
 };
 
@@ -43,12 +52,23 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
     let cdpLocalStop: (() => Promise<void>) | undefined;
     let cdpStderr: (() => string) | undefined;
     let cdpPid: number | undefined;
+    let cdpSelfLaunched = false;
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
+    const pageLifecycle: Array<{ ts: number; event: string; url: string }> = [];
 
     const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
     const cdpPort = Number(process.env.RPA_CDP_PORT || 9222);
     const cdpAutoLaunch = !['0', 'false', 'no'].includes((process.env.RPA_CDP_AUTO_LAUNCH || 'true').toLowerCase());
     const cdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim() || path.resolve(options.userDataDir, 'cdp-browser');
+
+    const onPageOpened = (page: Page) => {
+        pageLifecycle.push({ ts: Date.now(), event: 'opened', url: page.url() });
+        if (pageLifecycle.length > 64) {pageLifecycle.shift();}
+    };
+    const onPageClosed = (page: Page) => {
+        pageLifecycle.push({ ts: Date.now(), event: 'closed', url: page.url() });
+        if (pageLifecycle.length > 64) {pageLifecycle.shift();}
+    };
 
     const ensureStartPage = async (context: BrowserContext) => {
         try {
@@ -88,6 +108,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             cdpLocalStop = launched.stop;
             cdpStderr = launched.stderr;
             cdpPid = launched.pid;
+            cdpSelfLaunched = true;
             actionLog.info('[RPA:agent]', 'Local Chrome started for CDP', {
                 endpoint,
                 pid: launched.pid,
@@ -101,22 +122,45 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             .then(async (browser) => {
                 const context = browser.contexts()[0] || (await browser.newContext());
                 contextRef = context;
+
+                context.on('close', () => {
+                    const openPages = context.pages().filter((p) => !p.isClosed()).map((p) => p.url());
+                    infraLog.error('[RPA:infra]', 'Browser context closed (CDP)', {
+                        endpoint,
+                        pid: cdpPid,
+                        selfLaunched: cdpSelfLaunched,
+                        openPageCount: openPages.length,
+                        lastPageUrls: openPages.slice(-5),
+                        pageLifecycle: pageLifecycle.slice(-20),
+                    });
+                });
+
                 browser.on('disconnected', () => {
+                    const openPages = context.pages().filter((p) => !p.isClosed()).map((p) => p.url());
                     const stderrTail = cdpStderr?.().slice(-4000) || null;
                     infraLog.error('[RPA:infra]', 'Chrome CDP disconnected (browser process exited or crashed)', {
                         endpoint,
                         pid: cdpPid,
+                        selfLaunched: cdpSelfLaunched,
+                        openPageCount: openPages.length,
+                        lastPageUrls: openPages.slice(-5),
                         stderrTail,
                         hasStderr: stderrTail !== null && stderrTail.length > 0,
+                        pageLifecycle: pageLifecycle.slice(-20),
                     });
                     if (cdpLocalStop) {void cdpLocalStop();}
                     cdpLocalStop = undefined;
                     cdpStderr = undefined;
                     cdpPid = undefined;
+                    cdpSelfLaunched = false;
                     contextRef = undefined;
                     contextPromise = undefined;
                 });
-                bindContextPages(context, options.onPage);
+                const onPageComposite = (page: Page) => {
+                    onPageOpened(page);
+                    options.onPage?.(page);
+                };
+                bindContextPages(context, onPageComposite, onPageClosed);
                 await ensureStartPage(context);
                 return context;
             })
@@ -136,6 +180,17 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
     let contextRef: BrowserContext | undefined;
     const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
+    const pageLifecycle: Array<{ ts: number; event: string; url: string }> = [];
+    let browserDisconnected = false;
+
+    const onPageOpened = (page: Page) => {
+        pageLifecycle.push({ ts: Date.now(), event: 'opened', url: page.url() });
+        if (pageLifecycle.length > 64) {pageLifecycle.shift();}
+    };
+    const onPageClosed = (page: Page) => {
+        pageLifecycle.push({ ts: Date.now(), event: 'closed', url: page.url() });
+        if (pageLifecycle.length > 64) {pageLifecycle.shift();}
+    };
 
     const ensureStartPage = async (context: BrowserContext) => {
         try {
@@ -175,17 +230,41 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
             .then(async (context) => {
                 const browser = context.browser();
                 contextRef = context;
-                const closeHandler = () => {
-                    const browserAlive = browser?.isConnected() ?? false;
-                    infraLog.error('[RPA:infra]', 'Browser context closed', {
-                        browserConnected: browserAlive,
+
+                browser?.on('disconnected', () => {
+                    browserDisconnected = true;
+                    const openPages = context.pages().filter((p) => !p.isClosed()).map((p) => p.url());
+                    infraLog.error('[RPA:infra]', 'Browser disconnected (process exited)', {
                         mode: 'extension',
+                        openPageCount: openPages.length,
+                        lastPageUrls: openPages.slice(-5),
+                        pageLifecycle: pageLifecycle.slice(-20),
                     });
                     contextRef = undefined;
                     contextPromise = undefined;
+                });
+
+                context.on('close', () => {
+                    const openPages = context.pages().filter((p) => !p.isClosed()).map((p) => p.url());
+                    infraLog.error('[RPA:infra]', 'Browser context closed', {
+                        mode: 'extension',
+                        browserDisconnected,
+                        browserConnected: browser?.isConnected() ?? false,
+                        openPageCount: openPages.length,
+                        lastPageUrls: openPages.slice(-5),
+                        pageLifecycle: pageLifecycle.slice(-20),
+                    });
+                    if (!browserDisconnected) {
+                        contextRef = undefined;
+                        contextPromise = undefined;
+                    }
+                });
+
+                const onPageComposite = (page: Page) => {
+                    onPageOpened(page);
+                    options.onPage?.(page);
                 };
-                context.on('close', closeHandler);
-                bindContextPages(context, options.onPage);
+                bindContextPages(context, onPageComposite, onPageClosed);
                 await ensureStartPage(context);
                 return context;
             })

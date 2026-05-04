@@ -10,6 +10,7 @@ export type CdpLaunchOptions = {
     extensionPaths?: string[];
     logger?: (...args: unknown[]) => void;
     timeoutMs?: number;
+    onExit?: (code: number | null, signal: string | null) => void;
 };
 
 export type CdpLaunchResult = {
@@ -114,14 +115,15 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     });
 
     proc.on('exit', (code, signal) => {
-        if (code !== 0 && code !== null) {
-            infraLog.error('[RPA:infra]', 'Chrome process exited with error', {
-                pid: proc.pid,
-                exitCode: code,
-                signal: signal || null,
-                stderr: stderr.slice(-2000) || null,
-            });
-        }
+        const isError = code !== 0 && code !== null;
+        infraLog.warning('[RPA:infra]', 'Chrome process exited', {
+            pid: proc.pid,
+            exitCode: code,
+            signal: signal || null,
+            isError,
+            stderrTail: stderr.slice(-2000) || null,
+        });
+        opts.onExit?.(code, signal);
     });
 
     const stop = async () =>
