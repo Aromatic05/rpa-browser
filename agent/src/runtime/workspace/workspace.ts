@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { Workflow } from '../../workflow';
-import { createWorkspaceTabs, type WorkspaceTabs } from './tabs';
+import { createWorkspaceTabs, createTabsControl, type WorkspaceTabs } from './tabs';
 import { createRecordControl, type RecordControl } from '../../record/control';
 import { createDslControl, type DslControl } from '../../dsl/control';
 import { createCheckpointControl, type CheckpointControl } from '../../checkpoint/control';
@@ -8,7 +8,6 @@ import { createEntityRulesControl, type EntityRulesControl } from '../../entity_
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
 import { createMcpControl, type McpControl } from '../../mcp/control';
 import { createWorkspaceRouter, type WorkspaceRouter } from './router';
-import { createWorkflowControl, type WorkflowControl } from '../../workflow/control';
 import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
@@ -59,15 +58,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     const checkpoint = createCheckpointControl();
     const entityRules = createEntityRulesControl();
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
-    const workflowControl = createWorkflowControl({ recordingState: deps.recordingState });
-    const workspaceRouter = createWorkspaceRouter({
-        workflowControl,
-        recordControl: record,
-        dslControl: dsl,
-        checkpointControl: checkpoint,
-        entityRulesControl: entityRules,
-        runnerControl: runner,
-    });
+    const tabsControl = createTabsControl();
 
     const workspace: RuntimeWorkspace = {
         name: deps.name,
@@ -79,18 +70,29 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         entityRules,
         runner,
         mcp: null as unknown as McpControl,
-        router: workspaceRouter,
+        router: null as unknown as WorkspaceRouter,
         createdAt: now,
         updatedAt: now,
     };
 
     const mcpService = createWorkspaceMcpService({
-        workspace: workspace as any,
+        workspace,
         portAllocator: deps.portAllocator,
         runStepsDeps: deps.runStepsDeps,
         config: deps.runnerConfig,
     });
-    (workspace as any).mcp = createMcpControl(mcpService);
+    const mcp = createMcpControl(mcpService);
+    workspace.mcp = mcp;
+
+    workspace.router = createWorkspaceRouter({
+        tabsControl,
+        recordControl: record,
+        dslControl: dsl,
+        checkpointControl: checkpoint,
+        entityRulesControl: entityRules,
+        runnerControl: runner,
+        mcpControl: mcp,
+    });
 
     return workspace;
 };
