@@ -36,7 +36,7 @@ export type RuntimeWorkspace = {
 export type CreateRuntimeWorkspaceDeps = {
     name: string;
     workflow: Workflow;
-    pageRegistry: { getPage: (tabName: string, startUrl?: string) => Promise<Page> };
+    pageRegistry: { getPage: (tabName: string, startUrl?: string) => Promise<Page>; touchBinding?: (bindingName: string) => void };
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
@@ -48,7 +48,7 @@ export type CreateRuntimeWorkspaceDeps = {
 
 export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): RuntimeWorkspace => {
     const now = Date.now();
-    const tabs = createWorkspaceTabs({ getPage: deps.pageRegistry.getPage });
+    const tabs = createWorkspaceTabs({ getPage: deps.pageRegistry.getPage, touchBinding: deps.pageRegistry.touchBinding });
     const record = createRecordControl({
         recordingState: deps.recordingState,
         replayOptions: deps.replayOptions,

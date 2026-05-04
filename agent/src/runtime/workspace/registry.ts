@@ -30,6 +30,7 @@ export type WorkspaceRegistry = {
 export type WorkspaceRuntimeDeps = {
     pageRegistry: {
         getPage: (tabName: string, startUrl?: string) => Promise<import('playwright').Page>;
+        touchBinding?: (bindingName: string) => void;
     };
     recordingState: RecordingState;
     replayOptions: ReplayOptions;

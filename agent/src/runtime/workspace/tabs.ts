@@ -35,6 +35,7 @@ export type WorkspaceTabs = {
 
 export type WorkspaceTabsDeps = {
     getPage: (tabName: string, startUrl?: string) => Promise<Page>;
+    touchBinding?: (bindingName: string) => void;
 };
 
 const now = () => Date.now();
@@ -123,6 +124,7 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         if (typeof input.url === 'string') { tab.url = input.url; }
         if (typeof input.title === 'string') { tab.title = input.title; }
         tab.updatedAt = input.at ?? now();
+        deps.touchBinding?.(tabName);
         return tab;
     };
 
