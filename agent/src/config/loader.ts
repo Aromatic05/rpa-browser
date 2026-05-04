@@ -30,7 +30,7 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 
 const mergeDeep = <T extends Record<string, unknown>>(base: T, patch?: Partial<T>): T => {
     if (!patch) {return base;}
-    const out: Record<string, unknown> = Array.isArray(base) ? [...base] : { ...base };
+    const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
     for (const [key, value] of Object.entries(patch)) {
         if (value && typeof value === 'object' && !Array.isArray(value)) {
             out[key] = mergeDeep(asRecord(out[key]), value as Record<string, unknown>);

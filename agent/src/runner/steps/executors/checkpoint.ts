@@ -6,7 +6,7 @@ import { runCheckpointProcedure } from '../../checkpoint/runtime';
 export const executeBrowserCheckpoint = async (
     step: Step<'browser.checkpoint'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
     const checkpoint = listCheckpoints().find((item) => item.id === step.args.checkpointId);
     if (!checkpoint) {
@@ -36,7 +36,7 @@ export const executeBrowserCheckpoint = async (
                     },
                 };
             }
-            return await fn(nestedStep, deps, workspaceId);
+            return await fn(nestedStep, deps, workspaceName);
         },
     });
 

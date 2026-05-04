@@ -19,7 +19,7 @@ import type {
     TraceTags,
 } from './types';
 import type { A11yCandidate } from './a11y/find';
-import type { PageRegistry, WorkspaceId } from '../../runtime/page_registry';
+import type { PageRegistry } from '../../runtime/browser/page_registry';
 import { traceCall } from './trace_call';
 import { createLoggingHooks } from './hooks';
 import { getA11yTree } from './a11y/getA11yTree';
@@ -41,13 +41,13 @@ type TraceA11yHint = {
 };
 
 export type BrowserAutomationTools = {
-    'trace.tabs.create': (args: { workspaceId: WorkspaceId; url?: string; timeout?: number }) => Promise<ToolResult<{ tabId: string }>>;
-    'trace.tabs.switch': (args: { workspaceId: WorkspaceId; tabId: string }) => Promise<ToolResult>;
-    'trace.tabs.close': (args: { workspaceId: WorkspaceId; tabId?: string }) => Promise<ToolResult>;
+    'trace.tabs.create': (args: { workspaceName: string; url?: string; timeout?: number }) => Promise<ToolResult<{ tabName: string }>>;
+    'trace.tabs.switch': (args: { workspaceName: string; tabName: string }) => Promise<ToolResult>;
+    'trace.tabs.close': (args: { workspaceName: string; tabName?: string }) => Promise<ToolResult>;
     'trace.page.goto': (args: { url: string; timeout?: number }) => Promise<ToolResult>;
     'trace.page.goBack': (args: { timeout?: number }) => Promise<ToolResult>;
     'trace.page.reload': (args: { timeout?: number }) => Promise<ToolResult>;
-    'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string; tabId?: string; tabs?: Array<{ tabId: string; url?: string; title?: string }> }>>;
+    'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string; tabName?: string; tabs?: Array<{ tabName: string; url?: string; title?: string }> }>>;
     'trace.page.snapshotA11y': (args: { includeA11y: boolean; focusOnly: boolean }) => Promise<ToolResult<{ snapshotId: string; a11y?: string }>>;
     'trace.page.getContent': (args: { ref: string }) => Promise<ToolResult<{ ref: string; content: string }>>;
     'trace.page.readConsole': (args?: { limit?: number }) => Promise<ToolResult<ConsoleEntry[]>>;
@@ -100,7 +100,7 @@ export const createTraceTools = (opts: {
     page: Page;
     context?: BrowserContext;
     pageRegistry?: PageRegistry;
-    workspaceId?: WorkspaceId;
+    workspaceName?: string;
     sinks?: TraceSink[];
     hooks?: TraceHooks;
     tags?: TraceTags;
@@ -133,7 +133,7 @@ export const createTraceTools = (opts: {
     const base = {
         opts: {
             pageRegistry: opts.pageRegistry,
-            workspaceId: opts.workspaceId,
+            workspaceName: opts.workspaceName,
         },
         ctx,
         getCurrentPage: () => currentPage,
@@ -145,11 +145,11 @@ export const createTraceTools = (opts: {
         resolveSelectorLocator,
     };
 
-    const tools: BrowserAutomationTools = {
+    const tools = {
         ...createTabsTools(base),
         ...createPageTools(base),
         ...createLocatorTools(base),
-    };
+    } as BrowserAutomationTools;
 
     return { tools, ctx };
 };

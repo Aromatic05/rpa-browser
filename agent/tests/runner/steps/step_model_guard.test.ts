@@ -143,7 +143,7 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
     assert.equal(runStepsTypesSource.includes('stepResolves?: Record<string, StepResolve>;'), true);
 
     const switchTabBlock = readStepArgsBlock('browser.switch_tab');
-    assert.equal(switchTabBlock.includes('tabId?: string;'), true);
+    assert.equal(switchTabBlock.includes('tabName?: string;'), true);
     assert.equal(switchTabBlock.includes('tabUrl?: string;'), true);
     assert.equal(switchTabBlock.includes('tabRef?: string'), true);
     assert.equal(switchTabBlock.includes('tab_id'), false);
@@ -151,7 +151,7 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
     assert.equal(switchTabBlock.includes('tab_ref'), false);
 
     const closeTabBlock = readStepArgsBlock('browser.close_tab');
-    assert.equal(closeTabBlock.includes('tabId?: string'), true);
+    assert.equal(closeTabBlock.includes('tabName?: string'), true);
     assert.equal(closeTabBlock.includes('tabRef?: string'), true);
     assert.equal(closeTabBlock.includes('tab_id'), false);
     assert.equal(closeTabBlock.includes('tab_ref'), false);

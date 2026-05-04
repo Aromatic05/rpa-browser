@@ -12,9 +12,9 @@ const pickDelayMs = (min: number, max: number) => {
 export const executeBrowserType = async (
     step: Step<'browser.type'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const resolved = await resolveTarget(binding, {
         nodeId: step.args.nodeId,
         selector: step.args.selector,

@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import YAML from 'yaml';
 import type { RecordingManifest, RecordingState, WorkspaceSavedSnapshot } from './recording';
 import type { StepUnion } from '../runner/steps/types';
 import type { RecordingEnhancementMap } from './types';
+import type { StepFile, StepResolveFile } from '../runner/serialization/types';
 
 type PersistedRecordingBundle = {
     recordingToken: string;
@@ -53,22 +55,22 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
         }
     }
 
-    for (const [workspaceId, recordingToken] of Object.entries(persisted.workspaceLatestRecording)) {
+    for (const [workspaceName, recordingToken] of Object.entries(persisted.workspaceLatestRecording)) {
         if (
-            typeof workspaceId === 'string' &&
+            typeof workspaceName === 'string' &&
             typeof recordingToken === 'string' &&
             recordingToken.length > 0 &&
             state.recordings.has(recordingToken)
         ) {
-            state.workspaceLatestRecording.set(workspaceId, recordingToken);
+            state.workspaceLatestRecording.set(workspaceName, recordingToken);
         }
     }
 
-    for (const [workspaceId, snapshot] of Object.entries(persisted.workspaceSnapshots)) {
-        if (!workspaceId || typeof snapshot !== 'object') {continue;}
+    for (const [workspaceName, snapshot] of Object.entries(persisted.workspaceSnapshots)) {
+        if (!workspaceName || typeof snapshot !== 'object') {continue;}
         if (!Array.isArray(snapshot.tabs)) {continue;}
         if (!Array.isArray(snapshot.recording.steps)) {continue;}
-        state.workspaceSnapshots.set(workspaceId, snapshot);
+        state.workspaceSnapshots.set(workspaceName, snapshot);
     }
 };
 
@@ -133,4 +135,66 @@ export const startRecordingStateAutoSave = (
         flush: flushIfChanged,
         stop: () => { clearInterval(timer); },
     };
+};
+
+export type SaveWorkflowRecordingArtifactsOptions = {
+    artifactsRootDir: string;
+    scene: string;
+    recordingName: string;
+    workspaceName?: string;
+    entryUrl?: string;
+    tabs?: Array<{ tabName: string; url?: string }>;
+    steps: StepUnion[];
+    stepResolves?: Record<string, unknown>;
+    includeStepResolve?: boolean;
+};
+
+const toRecordingManifestFile = (opts: SaveWorkflowRecordingArtifactsOptions) => ({
+    version: 1,
+    recordingName: opts.recordingName,
+    workspaceName: opts.workspaceName || '',
+    entryUrl: opts.entryUrl || '',
+    tabs: opts.tabs || [],
+    createdAt: Date.now(),
+    stepCount: opts.steps.length,
+});
+
+export const saveWorkflowRecordingArtifacts = async (opts: SaveWorkflowRecordingArtifactsOptions): Promise<string> => {
+    const recordsDir = path.resolve(opts.artifactsRootDir, 'workflows', opts.scene, 'recordings', opts.recordingName);
+    await fs.mkdir(recordsDir, { recursive: true });
+
+    const stepsFile: StepFile = {
+        version: 1,
+        steps: opts.steps.map((step) => ({
+            id: step.id,
+            name: step.name,
+            args: step.args,
+        })) as StepFile['steps'],
+    };
+    await fs.writeFile(path.join(recordsDir, 'steps.yaml'), YAML.stringify(stepsFile), 'utf8');
+    if (opts.includeStepResolve !== false) {
+        const resolvesFile: StepResolveFile = {
+            version: 1,
+            resolves: (opts.stepResolves || {}) as StepResolveFile['resolves'],
+        };
+        await fs.writeFile(path.join(recordsDir, 'step_resolve.yaml'), YAML.stringify(resolvesFile), 'utf8');
+    }
+    await fs.writeFile(path.join(recordsDir, 'manifest.yaml'), YAML.stringify(toRecordingManifestFile(opts)), 'utf8');
+    return recordsDir;
+};
+
+export const resolveWorkflowRecordingDir = async (
+    artifactsRootDir: string,
+    scene: string,
+    recordingName: string,
+): Promise<string> => {
+    const recordsDir = path.resolve(artifactsRootDir, 'workflows', scene, 'recordings', recordingName);
+    try {
+        const stat = await fs.stat(recordsDir);
+        if (stat.isDirectory()) {
+            return recordsDir;
+        }
+    } catch {}
+
+    throw new Error(`workflow recording not found: scene=${scene} recording=${recordingName}`);
 };

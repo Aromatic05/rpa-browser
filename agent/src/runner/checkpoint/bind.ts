@@ -62,7 +62,7 @@ export const maybeBindCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
     const bag: Record<string, unknown> = {
         run: {
             id: ctx.failedCtx.runId,
-            workspaceId: ctx.failedCtx.workspaceId,
+            workspaceName: ctx.failedCtx.workspaceName,
         },
         failed: {
             stepId: ctx.failedCtx.step.id,

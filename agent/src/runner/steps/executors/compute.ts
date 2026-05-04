@@ -12,9 +12,9 @@ type EvalScope = {
 export const executeBrowserCompute = async (
     step: Step<'browser.compute'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const cache = binding.traceCtx.cache as { computeScope?: unknown; runnerStepResults?: unknown };
     const scope: EvalScope = {
         steps: asRecord<RunLocalStepResults>(cache.runnerStepResults),

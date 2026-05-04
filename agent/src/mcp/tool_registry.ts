@@ -1,7 +1,5 @@
-import { createToolHandlers } from './tool_handlers';
+import { createWorkspaceToolHandlers, type WorkspaceMcpToolDeps, type McpToolHandler } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
-import type { PageRegistry } from '../runtime/page_registry';
-import type { McpToolDeps, McpToolHandler } from './tool_handlers';
 import type { RunnerConfig, McpToolGroup } from '../config';
 import { defaultRunnerConfig } from '../config/defaults';
 
@@ -50,25 +48,18 @@ const toolDefinitions: ToolDefinition[] = [
 ];
 
 export type ToolRegistryDeps = {
-    pageRegistry: PageRegistry;
-    getActiveTabToken: () => Promise<string>;
+    workspace: WorkspaceMcpToolDeps['workspace'];
+    config?: RunnerConfig;
 };
 
-export type ExecuteToolOptions = {
-    tabTokenOverride?: string;
-};
-
-const resolveTabToken = async (deps: ToolRegistryDeps, options?: ExecuteToolOptions) =>
-    options?.tabTokenOverride || (await deps.getActiveTabToken());
-
-const stripTabTokenSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
+const stripTabNameSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
     const required = Array.isArray(schema.required)
-        ? schema.required.filter((item) => item !== 'tabToken')
+        ? schema.required.filter((item) => item !== 'tabName')
         : undefined;
     const properties =
         schema.properties && typeof schema.properties === 'object'
             ? Object.fromEntries(
-                  Object.entries(schema.properties as Record<string, unknown>).filter(([key]) => key !== 'tabToken'),
+                  Object.entries(schema.properties as Record<string, unknown>).filter(([key]) => key !== 'tabName'),
               )
             : undefined;
 
@@ -103,20 +94,9 @@ const pruneSchema = (value: unknown): unknown => {
 };
 
 const compactInputSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
-    const stripped = stripTabTokenSchema(schema);
+    const stripped = stripTabNameSchema(schema);
     const compacted = pruneSchema(stripped);
     return (compacted && typeof compacted === 'object' ? compacted : { type: 'object' }) as Record<string, unknown>;
-};
-
-const withTabToken = (args: unknown, tabToken: string): unknown => {
-    if (!args || typeof args !== 'object' || Array.isArray(args)) {
-        return { tabToken };
-    }
-    const rec = args as Record<string, unknown>;
-    if (typeof rec.tabToken === 'string' && rec.tabToken.length > 0) {
-        return args;
-    }
-    return { ...rec, tabToken };
 };
 
 const isKnownTool = (name: string): boolean => toolDefinitions.some((tool) => tool.name === name);
@@ -163,22 +143,21 @@ export const getToolSpecs = (options?: { enabledTools?: Set<string> }): ToolSpec
     }));
 
 export const getToolHandlers = (
-    deps: McpToolDeps,
+    deps: WorkspaceMcpToolDeps,
     options?: { enabledTools?: Set<string> },
 ): Record<string, McpToolHandler> => {
-    const handlers = createToolHandlers(deps);
+    const handlers = createWorkspaceToolHandlers(deps);
     if (!options?.enabledTools) {return handlers;}
     return Object.fromEntries(Object.entries(handlers).filter(([name]) => options.enabledTools!.has(name)));
 };
 
 export const executeTool = async (
-    deps: ToolRegistryDeps & { config?: RunnerConfig },
+    deps: WorkspaceMcpToolDeps,
     name: string,
     args: unknown,
-    options?: ExecuteToolOptions,
 ): Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }> => {
     const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
-    const handlers = getToolHandlers({ pageRegistry: deps.pageRegistry }, { enabledTools });
+    const handlers = getToolHandlers(deps, { enabledTools });
     const handler = handlers[name];
     if (!handler) {
         return {
@@ -187,7 +166,5 @@ export const executeTool = async (
             error: { code: 'ERR_UNSUPPORTED', message: `unknown tool: ${name}` },
         };
     }
-
-    const tabToken = await resolveTabToken(deps, options);
-    return await handler(withTabToken(args, tabToken));
+    return await handler(args);
 };

@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserReadNetwork = async (
     step: Step<'browser.read_network'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const result = await binding.traceTools['trace.page.readNetwork']({
         limit: step.args.limit,
     });

@@ -1,30 +1,23 @@
 import { test, expect } from '../helpers/fixtures';
 import { createStep, setupStepRunner } from '../helpers/steps';
-import { replayRecording } from '../../src/play/replay';
+import { replayRecording } from '../../src/record/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import type { RecordingEnhancementMap } from '../../src/record/types';
 import type { SnapshotResult } from '../../src/runner/steps/executors/snapshot/core/types';
 
 const createReplayStepContext = (runner: Awaited<ReturnType<typeof setupStepRunner>>) => ({
-    workspaceId: runner.workspaceId,
-    initialTabId: runner.tabId,
-    initialTabToken: runner.tabToken,
+    workspaceName: runner.workspaceName,
+    initialTabName: runner.tabName,
     pageRegistry: {
-        listTabs: (workspaceId: string) => runner.pageRegistry.listTabs(workspaceId),
-        resolveTabIdFromToken: (tabToken: string) => {
-            try {
-                return runner.pageRegistry.resolveScopeFromToken(tabToken).tabId;
-            } catch {
-                return undefined;
-            }
-        },
-        resolveTabIdFromRef: (tabRef: string) => tabRef || undefined,
+        listTabs: async () => [{ tabName: runner.tabName, active: true }],
+        resolveTabNameFromToken: (tabName: string) => tabName,
+        resolveTabNameFromRef: (tabRef: string) => tabRef || undefined,
     },
     deps: runner.deps,
 });
 
 const getLatestSnapshot = async (runner: Awaited<ReturnType<typeof setupStepRunner>>) => {
-    const binding = await runner.deps.runtime.ensureActivePage(runner.workspaceId);
+    const binding = await runner.deps.runtime.resolveBinding(runner.workspaceName);
     const cache = binding.traceCtx.cache as { latestSnapshot?: unknown };
     return cache.latestSnapshot as SnapshotResult | undefined;
 };
@@ -53,7 +46,7 @@ test.describe('replay drift enhancement', () => {
                 id: 'drift-list-click',
                 name: 'browser.click',
                 args: { nodeId: 'stale-node-id-list' },
-                meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+                meta: { source: 'record', ts: Date.now() },
             },
         ];
 
@@ -85,7 +78,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(result.ok).toBe(true);
         await expect(page.locator('body')).toHaveAttribute('data-clicked', '李四');
         await expect(page.locator('#result')).toHaveText('李四');
@@ -119,7 +111,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-scope-save',
             name: 'browser.click',
             args: { nodeId: 'stale-node-id-scope' },
-            meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now() },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -146,7 +138,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(replay.ok).toBe(true);
         await expect(page.locator('body')).toHaveAttribute('data-clicked', 'main');
         await expect(page.locator('#result')).toHaveText('main');
@@ -167,7 +158,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-fill-step',
             name: 'browser.fill',
             args: { value: 'alice-v2', nodeId: 'stale-node-id-fill' },
-            meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now() },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -190,7 +181,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(replay.ok).toBe(true);
         await expect(page.locator('body')).toHaveAttribute('data-filled', 'alice-v2');
         await expect(page.locator('#value')).toHaveText('alice-v2');
@@ -210,7 +200,7 @@ test.describe('replay drift enhancement', () => {
             id: 'drift-ambiguous-delete',
             name: 'browser.click',
             args: { nodeId: 'stale-node-id-ambiguous' },
-            meta: { source: 'record', ts: Date.now(), tabToken: runner.tabToken, tabId: runner.tabId },
+            meta: { source: 'record', ts: Date.now() },
         };
 
         const enrichments: RecordingEnhancementMap = {
@@ -232,7 +222,6 @@ test.describe('replay drift enhancement', () => {
             enrichments,
             stopOnError: true,
         });
-
         expect(replay.ok).toBe(false);
         const failed = replay.results.find((item) => !item.ok);
         expect(failed).toBeTruthy();

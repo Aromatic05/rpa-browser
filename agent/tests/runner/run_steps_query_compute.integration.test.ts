@@ -55,9 +55,9 @@ const createTableFixtureSnapshot = (): SnapshotResult => {
 const createDeps = (snapshot: SnapshotResult): RunStepsDeps => ({
     runtime: (() => {
         const binding = {
-            workspaceId: 'ws-1',
-            tabId: 'tab-1',
-            tabToken: 'tk-1',
+            workspaceName: 'ws-1',
+            tabName: 'tab-1',
+            tabName: 'tk-1',
             traceCtx: {
                 cache: {
                     latestSnapshot: snapshot,
@@ -85,7 +85,7 @@ const runWithSteps = async (steps: StepUnion[]) => {
     const signals = createSignalChannel();
     const checkpoint = await runSteps({
         runId: 'run-1',
-        workspaceId: 'ws-1',
+        workspaceName: 'ws-1',
         stepsQueue: queue,
         resultPipe: pipe,
         signalChannel: signals,

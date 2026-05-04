@@ -115,7 +115,7 @@ const createFixture = (): {
 test('queryBusinessEntity table and form queries return expected shapes', () => {
     const { snapshot, finalEntityView } = createFixture();
 
-    const rowCount = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.row_count');
+    const rowCount = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.rowCount');
     assert.equal(rowCount.ok, true);
     if (rowCount.ok) {
         assert.equal(rowCount.data.kind, 'value');
@@ -130,7 +130,7 @@ test('queryBusinessEntity table and form queries return expected shapes', () => 
         assert.deepEqual(headers.data.value, ['订单编号', '采购人', '操作']);
     }
 
-    const pk = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.primary_key');
+    const pk = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.primaryKey');
     assert.equal(pk.ok, true);
     if (pk.ok) {
         assert.equal(pk.data.kind, 'value');
@@ -145,7 +145,7 @@ test('queryBusinessEntity table and form queries return expected shapes', () => 
         assert.equal((columns.data.value as Array<{ fieldKey: string }>).length, 3);
     }
 
-    const rows = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.current_rows');
+    const rows = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.currentRows');
     assert.equal(rows.ok, true);
     if (rows.ok) {
         assert.equal(rows.data.kind, 'value');
@@ -220,7 +220,7 @@ test('resolveBusinessEntityTarget resolves form and table targets', () => {
 test('business resolver returns expected errors for not found, ambiguous, bad args', () => {
     const { snapshot, finalEntityView } = createFixture();
 
-    const notFound = queryBusinessEntity(snapshot, finalEntityView, 'missing.tag', 'table.row_count');
+    const notFound = queryBusinessEntity(snapshot, finalEntityView, 'missing.tag', 'table.rowCount');
     assert.equal(notFound.ok, false);
     if (!notFound.ok) {
         assert.equal(notFound.error.code, 'ERR_NOT_FOUND');
@@ -238,13 +238,13 @@ test('business resolver returns expected errors for not found, ambiguous, bad ar
             },
         ],
     };
-    const ambiguous = queryBusinessEntity(snapshot, ambiguousView, 'order.table.main', 'table.row_count');
+    const ambiguous = queryBusinessEntity(snapshot, ambiguousView, 'order.table.main', 'table.rowCount');
     assert.equal(ambiguous.ok, false);
     if (!ambiguous.ok) {
         assert.equal(ambiguous.error.code, 'ERR_AMBIGUOUS');
     }
 
-    const badQuery = queryBusinessEntity(snapshot, finalEntityView, 'order.form.main', 'table.row_count');
+    const badQuery = queryBusinessEntity(snapshot, finalEntityView, 'order.form.main', 'table.rowCount');
     assert.equal(badQuery.ok, false);
     if (!badQuery.ok) {
         assert.equal(badQuery.error.code, 'ERR_BAD_ARGS');
@@ -299,7 +299,7 @@ test('business resolver returns expected errors for not found, ambiguous, bad ar
 
 test('business resolver outputs camelCase envelope without snake_case keys', () => {
     const { snapshot, finalEntityView } = createFixture();
-    const queried = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.current_rows');
+    const queried = queryBusinessEntity(snapshot, finalEntityView, 'order.table.main', 'table.currentRows');
     assert.equal(queried.ok, true);
     if (queried.ok) {
         const serialized = JSON.stringify(queried.data);

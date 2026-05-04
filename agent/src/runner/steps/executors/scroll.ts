@@ -7,9 +7,9 @@ import { resolveTarget } from '../helpers/resolve_target';
 export const executeBrowserScroll = async (
     step: Step<'browser.scroll'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
     if (hasTarget) {
         const resolved = await resolveTarget(binding, {

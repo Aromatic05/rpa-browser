@@ -88,7 +88,7 @@ export type RecordedEventType =
     | 'copy';
 
 export type RecorderEvent = {
-    tabToken: string;
+    tabName: string;
     ts: number;
     type: RecordedEventType;
     recorderVersion?: string;
@@ -143,5 +143,21 @@ export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent
         } catch {
             // ignore if frame is not ready or cross-origin
         }
+    }
+};
+
+export const setRecorderRuntimeEnabled = async (page: Page, enabled: boolean): Promise<void> => {
+    const applyFlag = async (target: { evaluate: (fn: (value: boolean) => void, value: boolean) => Promise<unknown> }) => {
+        try {
+            await target.evaluate((value: boolean) => {
+                (window as Window & { __rpa_recorder_enabled?: boolean }).__rpa_recorder_enabled = value;
+            }, enabled);
+        } catch {
+            // ignore if frame is not ready or cross-origin
+        }
+    };
+    await applyFlag(page);
+    for (const frame of page.frames()) {
+        await applyFlag(frame as unknown as { evaluate: (fn: (value: boolean) => void, value: boolean) => Promise<unknown> });
     }
 };

@@ -1,0 +1,128 @@
+# 架构
+
+## 概览
+
+仓库由两层核心组成：
+
+- `extension/`：浏览器侧 UI 与命令发送（WS）。
+- `agent/`：后端执行层（WS server / MCP HTTP / MCP 面板），统一走 `runSteps` + `trace`。
+
+另外：
+
+- `mock/`：本地 workspace 夹具（`ant-app` + `element-app`）。
+- `agent/src/demo/*`：本地 MCP 面板服务。
+- `agent/src/mcp/*`：MCP HTTP(SSE) 服务。
+
+## 三个交互入口
+
+1. Extension 入口：`agent/src/index.ts`
+2. MCP HTTP 入口：`agent/src/mcp_main.ts`
+3. MCP 面板入口：`agent/src/demo/server.ts`
+
+这三个入口最终共享 runner/runtime/trace。
+
+## 执行主链路
+
+- Step 统一入口：`agent/src/runner/run_steps.ts`
+- Step 执行器：`agent/src/runner/steps/executors/*`
+- Trace 原子层：`agent/src/runner/trace/*`
+- Checkpoint 模板运行时：`agent/src/runner/checkpoint/runtime.ts`
+- 运行时绑定：`agent/src/runtime/*`
+
+Checkpoint 在当前版本支持两种路径：
+
+- recovery：失败后匹配 `kind=recovery` checkpoint 执行恢复内容
+- procedure：通过 `browser.checkpoint` 显式调用模板，执行 `prepare/content/output` 并导出结构化 output
+
+## Snapshot Entity Pipeline
+
+Snapshot 的实体相关主链路为：
+
+1. `detectStructure`
+2. `buildStructureEntityIndex`
+3. `applyBusinessEntityRules`
+4. `buildLocatorIndex`
+5. `buildFinalEntityView`（session compose 阶段）
+
+约束：
+
+- 通用结构识别只在 `buildStructureEntityIndex` 做一次。
+- 业务规则产物通过 `BusinessEntityOverlay` 叠加，不污染通用 `EntityIndex`。
+- checkpoint / resolve 只消费最终视图与 overlay，不直接改动 runSteps 主循环。
+
+规则与样例沉淀目录：
+
+- 规则包：`agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/*`
+- legacy fallback：`agent/.artifacts/entity_rules/profiles/*`
+- 文档：`docs/Entity/*`
+
+## WS（extension -> agent）
+
+- 扩展发 Action 包到 `ws://127.0.0.1:17333`
+- `agent/src/index.ts` 校验 action 后调用 `agent/src/actions/execute.ts`
+- 部分动作会进一步调用 `runSteps`
+- 广播同样使用 Action 协议（`workspace.sync/workspace.changed/tab.bound`），不再使用 `type="event"`。
+- workspace 物理承载以浏览器窗口为单位，extension 在 SW 内维护 `windowId -> workspaceName` 映射并同步焦点/关闭副作用。
+
+## MCP（HTTP）
+
+- `agent/src/mcp_main.ts` 启动 MCP server
+- `agent/src/mcp/server.ts` 处理 `tools/list`、`tools/call`
+- `agent/src/mcp/tool_handlers.ts` 将工具调用转换成 step，并调用 `runSteps`
+
+## 热重载
+
+- Runner 插件入口：`agent/src/runner/plugin_entry.ts`
+- 运行时加载：`RunnerPluginHost(.runner-dist/plugin.mjs)`
+- 开发模式 watcher：`agent/src/runner/hotreload/plugin_host.ts`
+
+`dev:hot` 与 `mcp:hot` 会自动启动 bundle watcher。
+
+## Target 解析协议
+
+目标型 step 的协议边界固定为三层：
+
+- `args`：业务参数（`nodeId` / `selector` / `resolveId` / value 等）
+- `meta`：来源、时序、workspace/tab 元信息
+- `resolve`：目标解析辅助信息（`hint` + `policy`）
+
+持久化边界：
+
+- `SerializedStep` 只包含 `id`、`name`、`args`
+- `Step.resolve` 不是废弃能力，但它是 runtime-only 字段，不进入 core `steps.yaml`
+- `StepMeta` 也是 runtime-only 字段，不进入 core `steps.yaml`
+- `StepResolveFile` 持久化到 `step_resolve.yaml`
+- workflow artifact 根目录为 `agent/.artifacts/workflows/<scene>/`
+- `steps/<recording-name>/steps.yaml` 与 `steps/<recording-name>/step_resolve.yaml` 只服务单次录制
+- `checkpoints/<checkpoint-name>/checkpoint.yaml`、`checkpoint_resolve.yaml`、`checkpoint_hints.yaml` 只服务单个 checkpoint
+- 多 tab 持久化使用 `tabRef`；运行时 `tabName` / `tabName` 不写入 core `steps.yaml`
+
+执行链路：
+
+1. executor 收集 `args.nodeId` / `args.selector` / `step.resolve`
+2. 调用 `resolveTarget(...)` 收敛为最终 `selector`
+3. trace 仅接收 `selector` 执行，不承担 nodeId/resolve/replay 语义
+
+`browser.capture_resolve` 属于 inspection/query 类 step：
+
+- 输入：`nodeId` / `selector` / `text` / `role` / `name` / `limit`
+- 输出：`StepResolve` 草稿、`candidates`、`confidence`、`warnings`
+- 它只采集当前页面目标证据，不修改页面状态
+- 它不直接写 `step_resolve.yaml`，也不自动修改已有 step
+
+约束：
+
+- 不保留 `A11yHint` 作为公开 Step 协议字段
+- replay 不再通过全局 stepId sidecar 隐式读取增强信息
+- replay 必须在构造 step 时显式写入 `step.resolve`
+
+推荐工作流：
+
+1. 录制或编写 step
+2. 执行 `browser.capture_resolve`
+3. 由 AI / 人类修订 `StepResolve` 草稿
+4. 写入对应录制目录下的 `step_resolve.yaml`
+5. 在 `SerializedStep.args` 中填写 `resolveId`
+6. `runSteps` 运行时注入 `step.resolve`
+
+DSL 目录规范暂不定义，待 DSL 设计完成后再确定。

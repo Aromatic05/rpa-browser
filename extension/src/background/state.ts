@@ -1,36 +1,36 @@
 import type { Logger } from '../shared/logger.js';
 
 export type TabRuntimeState = {
-    tabToken: string;
+    bindingName: string;
     lastUrl: string;
     windowId: number | null;
     updatedAt: number;
 };
 
-type TokenScope = {
-    workspaceId: string;
-    tabId: string;
+type BindingWorkspaceTab = {
+    workspaceName: string;
+    tabName: string;
 };
 
 export type RouterState = {
-    upsertTab: (tabId: number, tabToken: string, url: string, windowId?: number | null) => void;
-    removeTab: (tabId: number) => TabRuntimeState | undefined;
-    findTabIdByToken: (tabToken: string) => number | null;
-    getTabState: (tabId: number) => TabRuntimeState | undefined;
-    getTokenScope: (tabToken: string) => TokenScope | undefined;
-    upsertTokenScope: (tabToken: string, workspaceId: string, tabId: string) => void;
-    removeTokenScope: (tabToken: string) => void;
+    upsertTab: (chromeTabNo: number, bindingName: string, url: string, windowId?: number | null) => void;
+    removeTab: (chromeTabNo: number) => TabRuntimeState | undefined;
+    findChromeTabNoByBindingName: (bindingName: string) => number | null;
+    getTabState: (chromeTabNo: number) => TabRuntimeState | undefined;
+    getBindingWorkspaceTab: (bindingName: string) => BindingWorkspaceTab | undefined;
+    upsertBindingWorkspaceTab: (bindingName: string, workspaceName: string, tabName: string) => void;
+    removeBindingWorkspaceTab: (bindingName: string) => void;
     getWindowWorkspace: (windowId: number) => string | undefined;
-    setWindowWorkspace: (windowId: number, workspaceId: string) => void;
+    setWindowWorkspace: (windowId: number, workspaceName: string) => void;
     clearWindowWorkspace: (windowId: number) => void;
     clearWindowMappings: () => void;
-    getActiveTabId: () => number | null;
-    setActiveTabId: (tabId: number | null) => void;
-    getActiveWorkspaceId: () => string | null;
-    setActiveWorkspaceId: (workspaceId: string | null) => void;
+    getActiveChromeTabNo: () => number | null;
+    setActiveChromeTabNo: (chromeTabNo: number | null) => void;
+    getActiveWorkspaceName: () => string | null;
+    setActiveWorkspaceName: (workspaceName: string | null) => void;
     getActiveWindowId: () => number | null;
     setActiveWindowId: (windowId: number | null) => void;
-    bindWorkspaceToWindowIfKnown: (tabToken: string) => void;
+    bindWorkspaceToWindowIfKnown: (bindingName: string) => void;
     shouldThrottleTabActivated: (key: string, now: number, thresholdMs: number) => boolean;
     shouldThrottleWorkspaceActivated: (key: string, now: number, thresholdMs: number) => boolean;
     resetStartupState: () => void;
@@ -39,54 +39,54 @@ export type RouterState = {
 
 export const createRouterState = (logger?: Logger): RouterState => {
     const tabState = new Map<number, TabRuntimeState>();
-    const tokenToScope = new Map<string, TokenScope>();
-    const windowToWorkspace = new Map<number, string>();
+    const bindingNameToWorkspaceTab = new Map<string, BindingWorkspaceTab>();
+    const windowToWorkspaceName = new Map<number, string>();
 
-    let activeTabId: number | null = null;
-    let activeWorkspaceId: string | null = null;
+    let activeChromeTabNo: number | null = null;
+    let activeWorkspaceName: string | null = null;
     let activeWindowId: number | null = null;
     let lastTabActivatedKey = '';
     let lastTabActivatedAt = 0;
     let lastWorkspaceSetActiveKey = '';
     let lastWorkspaceSetActiveAt = 0;
 
-    const upsertTab = (tabId: number, tabToken: string, url: string, windowId?: number | null) => {
-        const existingWindowId = tabState.get(tabId)?.windowId ?? null;
-        tabState.set(tabId, {
-            tabToken,
+    const upsertTab = (chromeTabNo: number, bindingName: string, url: string, windowId?: number | null) => {
+        const existingWindowId = tabState.get(chromeTabNo)?.windowId ?? null;
+        tabState.set(chromeTabNo, {
+            bindingName,
             lastUrl: url,
             windowId: typeof windowId === 'number' ? windowId : existingWindowId,
             updatedAt: Date.now(),
         });
     };
 
-    const findTabIdByToken = (tabToken: string) => {
-        for (const [tabId, state] of tabState.entries()) {
-            if (state.tabToken === tabToken) {return tabId;}
+    const findChromeTabNoByBindingName = (bindingName: string) => {
+        for (const [chromeTabNo, state] of tabState.entries()) {
+            if (state.bindingName === bindingName) {return chromeTabNo;}
         }
         return null;
     };
 
-    const upsertTokenScope = (tabToken: string, workspaceId: string, tabId: string) => {
-        const existing = tokenToScope.get(tabToken);
-        if (existing && (existing.workspaceId !== workspaceId || existing.tabId !== tabId)) {
-            logger?.debug('mapping.scope_replace', {
-                tabToken,
+    const upsertBindingWorkspaceTab = (bindingName: string, workspaceName: string, tabName: string) => {
+        const existing = bindingNameToWorkspaceTab.get(bindingName);
+        if (existing && (existing.workspaceName !== workspaceName || existing.tabName !== tabName)) {
+            logger?.debug('mapping.replace', {
+                bindingName,
                 existing,
-                incoming: { workspaceId, tabId },
+                incoming: { workspaceName, tabName },
             });
         }
-        tokenToScope.set(tabToken, { workspaceId, tabId });
+        bindingNameToWorkspaceTab.set(bindingName, { workspaceName, tabName });
     };
 
-    const bindWorkspaceToWindowIfKnown = (tabToken: string) => {
-        const scope = tokenToScope.get(tabToken);
-        if (!scope) {return;}
-        const tabId = findTabIdByToken(tabToken);
-        if (tabId === null) {return;}
-        const windowId = tabState.get(tabId)?.windowId;
+    const bindWorkspaceToWindowIfKnown = (bindingName: string) => {
+        const mapped = bindingNameToWorkspaceTab.get(bindingName);
+        if (!mapped) {return;}
+        const chromeTabNo = findChromeTabNoByBindingName(bindingName);
+        if (chromeTabNo === null) {return;}
+        const windowId = tabState.get(chromeTabNo)?.windowId;
         if (typeof windowId !== 'number') {return;}
-        windowToWorkspace.set(windowId, scope.workspaceId);
+        windowToWorkspaceName.set(windowId, mapped.workspaceName);
     };
 
     const shouldThrottleTabActivated = (key: string, now: number, thresholdMs: number) => {
@@ -108,38 +108,38 @@ export const createRouterState = (logger?: Logger): RouterState => {
     };
 
     const clearWindowMappings = () => {
-        windowToWorkspace.clear();
+        windowToWorkspaceName.clear();
     };
 
     return {
         upsertTab,
-        removeTab: (tabId: number) => {
-            const removed = tabState.get(tabId);
-            tabState.delete(tabId);
+        removeTab: (chromeTabNo: number) => {
+            const removed = tabState.get(chromeTabNo);
+            tabState.delete(chromeTabNo);
             return removed;
         },
-        findTabIdByToken,
-        getTabState: (tabId: number) => tabState.get(tabId),
-        getTokenScope: (tabToken: string) => tokenToScope.get(tabToken),
-        upsertTokenScope,
-        removeTokenScope: (tabToken: string) => {
-            tokenToScope.delete(tabToken);
+        findChromeTabNoByBindingName,
+        getTabState: (chromeTabNo: number) => tabState.get(chromeTabNo),
+        getBindingWorkspaceTab: (bindingName: string) => bindingNameToWorkspaceTab.get(bindingName),
+        upsertBindingWorkspaceTab,
+        removeBindingWorkspaceTab: (bindingName: string) => {
+            bindingNameToWorkspaceTab.delete(bindingName);
         },
-        getWindowWorkspace: (windowId: number) => windowToWorkspace.get(windowId),
-        setWindowWorkspace: (windowId: number, workspaceId: string) => {
-            windowToWorkspace.set(windowId, workspaceId);
+        getWindowWorkspace: (windowId: number) => windowToWorkspaceName.get(windowId),
+        setWindowWorkspace: (windowId: number, workspaceName: string) => {
+            windowToWorkspaceName.set(windowId, workspaceName);
         },
         clearWindowWorkspace: (windowId: number) => {
-            windowToWorkspace.delete(windowId);
+            windowToWorkspaceName.delete(windowId);
         },
         clearWindowMappings,
-        getActiveTabId: () => activeTabId,
-        setActiveTabId: (tabId: number | null) => {
-            activeTabId = tabId;
+        getActiveChromeTabNo: () => activeChromeTabNo,
+        setActiveChromeTabNo: (chromeTabNo: number | null) => {
+            activeChromeTabNo = chromeTabNo;
         },
-        getActiveWorkspaceId: () => activeWorkspaceId,
-        setActiveWorkspaceId: (workspaceId: string | null) => {
-            activeWorkspaceId = workspaceId;
+        getActiveWorkspaceName: () => activeWorkspaceName,
+        setActiveWorkspaceName: (workspaceName: string | null) => {
+            activeWorkspaceName = workspaceName;
         },
         getActiveWindowId: () => activeWindowId,
         setActiveWindowId: (windowId: number | null) => {

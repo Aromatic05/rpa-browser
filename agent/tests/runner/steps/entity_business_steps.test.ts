@@ -13,9 +13,9 @@ import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/exec
 import type { EntityIndex, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
 
 const createDeps = (): RunStepsDeps => {
-    const workspaceId = 'ws-entity';
-    const tabId = 'tab-entity';
-    const tabToken = 'tab-token-entity';
+    const workspaceName = 'ws-entity';
+    const tabName = 'tab-entity';
+    const tabName = 'tab-token-entity';
     const url = 'https://example.test/entity';
 
     const headerOrderNo: UnifiedNode = { id: 'header_order_no', role: 'columnheader', name: '订单编号', children: [] };
@@ -91,8 +91,8 @@ const createDeps = (): RunStepsDeps => {
     const snapshotSessionStore = {
         version: 1,
         entries: {
-            [`${workspaceId}:${tabToken}`]: {
-                pageIdentity: { workspaceId, tabId, tabToken, url },
+            [`${workspaceName}:${tabName}`]: {
+                pageIdentity: { workspaceName, tabName, tabName, url },
                 baseSnapshot: snapshot,
                 finalSnapshot: snapshot,
                 finalEntityView,
@@ -106,9 +106,9 @@ const createDeps = (): RunStepsDeps => {
     };
 
     const binding = {
-        workspaceId,
-        tabId,
-        tabToken,
+        workspaceName,
+        tabName,
+        tabName,
         page: { url: () => url },
         traceCtx: { cache: { snapshotSessionStore } },
     };
@@ -130,7 +130,7 @@ test('executeBrowserQuery supports op=entity and op=entity.target', async () => 
         args: {
             op: 'entity',
             businessTag: 'order.table.main',
-            query: 'table.row_count',
+            query: 'table.rowCount',
         },
     };
 

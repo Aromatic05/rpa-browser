@@ -1,19 +1,18 @@
 import crypto from 'crypto';
-import type { PageRegistry } from '../runtime/page_registry';
+import type { PageRegistry } from '../runtime/browser/page_registry';
 import { runStepList } from '../runner/run_steps';
 import type { StepUnion } from '../runner/steps/types';
 
 export type WorkspacePublicInfo = {
-    workspaceId: string;
+    workspaceName: string;
     url: string;
     title: string;
     createdAt: number;
 };
 
 type WorkspaceState = {
-    workspaceId: string;
-    tabId: string;
-    tabToken: string;
+    workspaceName: string;
+    tabName: string;
     createdAt: number;
 };
 
@@ -28,15 +27,12 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
         if (active) {
             return active;
         }
-        const created = await deps.pageRegistry.createWorkspace();
-        const tabToken = deps.pageRegistry.resolveTabToken({
-            workspaceId: created.workspaceId,
-            tabId: created.tabId,
-        });
+        const workspaceName = `demo-${crypto.randomUUID()}`;
+        const tabName = crypto.randomUUID();
+        await deps.pageRegistry.getPage(tabName);
         active = {
-            workspaceId: created.workspaceId,
-            tabId: created.tabId,
-            tabToken,
+            workspaceName,
+            tabName,
             createdAt: Date.now(),
         };
         return active;
@@ -44,12 +40,9 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
 
     const getActiveWorkspacePublicInfo = async (): Promise<WorkspacePublicInfo | null> => {
         if (!active) {return null;}
-        const page = await deps.pageRegistry.resolvePage({
-            workspaceId: active.workspaceId,
-            tabId: active.tabId,
-        });
+        const page = await deps.pageRegistry.getPage(active.tabName);
         return {
-            workspaceId: active.workspaceId,
+            workspaceName: active.workspaceName,
             url: page.url(),
             title: await page.title(),
             createdAt: active.createdAt,
@@ -64,7 +57,7 @@ export const createWorkspaceManager = (deps: WorkspaceManagerDeps) => {
             args: { url },
             meta: { source: 'script', ts: Date.now() },
         };
-        const { pipe, checkpoint } = await runStepList(workspace.workspaceId, [step], undefined, { stopOnError: true });
+        const { pipe, checkpoint } = await runStepList(workspace.workspaceName, [step], undefined, { stopOnError: true });
         const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown }>;
         const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };

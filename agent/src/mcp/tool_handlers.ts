@@ -1,6 +1,7 @@
 import { type z } from 'zod';
 import crypto from 'crypto';
-import type { PageRegistry } from '../runtime/page_registry';
+import type { Page } from 'playwright';
+import type { WorkspaceTabs } from '../runtime/workspace/tabs';
 import type { RunnerConfig } from '../config';
 import { runStepList } from '../runner/run_steps';
 import type { RunStepsDeps } from '../runner/run_steps_types';
@@ -62,11 +63,12 @@ import {
     type BrowserBatchInput,
 } from './schemas';
 
-export type McpToolDeps = {
-    pageRegistry: PageRegistry;
+export type WorkspaceMcpToolDeps = {
+    workspace: { name: string; tabs: WorkspaceTabs };
+    runStepsDeps?: RunStepsDeps;
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
-    runStepsDeps?: RunStepsDeps;
+    getPage?: (tabName: string, startUrl?: string) => Promise<Page>;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
@@ -88,16 +90,60 @@ const buildParseErrorResult = (error: unknown) => ({
     error,
 });
 
-const runSingleStep = async (
-    deps: McpToolDeps,
-    tabToken: string | undefined,
+const resolveTabNameOrActiveWs = (deps: WorkspaceMcpToolDeps, tabName?: string): string => {
+    if (typeof tabName === 'string' && tabName.trim().length > 0) {
+        return tabName;
+    }
+    const activeTab = deps.workspace.tabs.getActiveTab();
+    if (activeTab?.name) {
+        return activeTab.name;
+    }
+    throw new Error('active tab not found');
+};
+
+const resolveOrCreateTabNameWs = (deps: WorkspaceMcpToolDeps, tabName?: string): string => {
+    if (typeof tabName === 'string' && tabName.trim().length > 0) {
+        return tabName;
+    }
+    return deps.workspace.tabs.getActiveTab()?.name || crypto.randomUUID();
+};
+
+const resolveOrBootstrapScopeWs = async (
+    deps: WorkspaceMcpToolDeps,
+    tabName: string | undefined,
+    options?: { allowBootstrap?: boolean },
+): Promise<{ tabName: string }> => {
+    const allowBootstrap = options?.allowBootstrap !== false;
+    const resolvedTabName = resolveTabNameOrActiveWs(deps, tabName);
+    if (deps.workspace.tabs.hasTab(resolvedTabName)) {
+        deps.workspace.tabs.setActiveTab(resolvedTabName);
+        return { tabName: resolvedTabName };
+    }
+    if (!allowBootstrap) {
+        throw new Error('tab not found');
+    }
+    if (!deps.getPage) {
+        throw new Error('cannot bootstrap tab: getPage not provided');
+    }
+    const page = await deps.getPage(resolvedTabName);
+    if (!deps.workspace.tabs.hasTab(resolvedTabName)) {
+        deps.workspace.tabs.createTab({ tabName: resolvedTabName, page, url: page.url() });
+    } else {
+        deps.workspace.tabs.bindPage(resolvedTabName, page);
+    }
+    deps.workspace.tabs.setActiveTab(resolvedTabName);
+    return { tabName: resolvedTabName };
+};
+
+const runSingleStepWs = async (
+    deps: WorkspaceMcpToolDeps,
+    tabName: string | undefined,
     step: StepUnion,
     options?: { allowBootstrap?: boolean },
 ) => {
-    const scope = await resolveOrBootstrapScope(deps, tabToken, options);
-    deps.pageRegistry.setActiveWorkspace(scope.workspaceId);
-    deps.pageRegistry.setActiveTab(scope.workspaceId, scope.tabId);
-    const { pipe, checkpoint } = await runStepList(scope.workspaceId, [step], deps.runStepsDeps, {
+    const scope = await resolveOrBootstrapScopeWs(deps, tabName, options);
+    deps.workspace.tabs.setActiveTab(scope.tabName);
+    const { pipe, checkpoint } = await runStepList(deps.workspace.name, [step], deps.runStepsDeps, {
         stopOnError: true,
     });
     const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown; error?: unknown }>;
@@ -112,57 +158,11 @@ const runSingleStep = async (
     return { ok: results.every((item) => item.ok), results };
 };
 
-const resolveOrBootstrapScope = async (
-    deps: McpToolDeps,
-    tabToken: string | undefined,
-    options?: { allowBootstrap?: boolean },
-): Promise<{ workspaceId: string; tabId: string }> => {
-    const allowBootstrap = options?.allowBootstrap !== false;
-    const resolvedTabToken = resolveTabTokenOrActive(deps, tabToken);
-    try {
-        return deps.pageRegistry.resolveScopeFromToken(resolvedTabToken);
-    } catch {
-        if (!allowBootstrap) {
-            throw new Error('tab token not found');
-        }
-        const shell = deps.pageRegistry.createWorkspaceShell();
-        deps.pageRegistry.setActiveWorkspace(shell.workspaceId);
-        await deps.pageRegistry.getPage(resolvedTabToken);
-        const bound = deps.pageRegistry.bindTokenToWorkspace(resolvedTabToken, shell.workspaceId);
-        if (bound) {
-            return bound;
-        }
-        return deps.pageRegistry.resolveScopeFromToken(resolvedTabToken);
-    }
-};
-
-const resolveTabTokenOrActive = (deps: McpToolDeps, tabToken?: string): string => {
-    if (typeof tabToken === 'string' && tabToken.trim().length > 0) {
-        return tabToken;
-    }
-    try {
-        return deps.pageRegistry.resolveTabToken();
-    } catch {
-        throw new Error('active tab not found');
-    }
-};
-
-const resolveOrCreateTabToken = (deps: McpToolDeps, tabToken?: string): string => {
-    if (typeof tabToken === 'string' && tabToken.trim().length > 0) {
-        return tabToken;
-    }
-    try {
-        return deps.pageRegistry.resolveTabToken();
-    } catch {
-        return crypto.randomUUID();
-    }
-};
-
-const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleGotoWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserGotoInput>(browserGotoInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.goto',
         args: { url: input.url },
@@ -170,11 +170,11 @@ const handleGoto = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
     });
 };
 
-const handleGoBack = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleGoBackWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserGoBackInput>(browserGoBackInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.go_back',
         args: {},
@@ -182,11 +182,11 @@ const handleGoBack = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     });
 };
 
-const handleReload = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleReloadWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserReloadInput>(browserReloadInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.reload',
         args: {},
@@ -194,67 +194,56 @@ const handleReload = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     });
 };
 
-const handleCreateTab = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleCreateTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const sourceTabToken = resolveOrCreateTabToken(deps, input.tabToken);
-    const result = await runSingleStep(deps, sourceTabToken, {
+    const sourceTabName = resolveOrCreateTabNameWs(deps, input.tabName);
+    const result = await runSingleStepWs(deps, sourceTabName, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
         args: { url: input.url },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
-
-    const createdTabId = result.results.find((item) => item.ok)?.data as { tab_id?: unknown } | undefined;
-    if (typeof createdTabId?.tab_id === 'string') {
-        const scope = deps.pageRegistry.resolveScopeFromToken(sourceTabToken);
-        deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, createdTabId.tab_id);
-    }
     return result;
 };
 
-const handleSwitchTab = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleSwitchTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserSwitchTabInput>(browserSwitchTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const sourceTabToken = resolveTabTokenOrActive(deps, input.tabToken);
-    const result = await runSingleStep(deps, sourceTabToken, {
+    const sourceTabName = resolveTabNameOrActiveWs(deps, input.tabName);
+    const result = await runSingleStepWs(deps, sourceTabName, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
-        args: { tabId: input.tabId, tabRef: input.tabRef, tabUrl: input.tabUrl },
+        args: { tabName: input.tabName, tabRef: input.tabRef, tabUrl: input.tabUrl },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
-
-    const targetTabId = input.tabId || input.tabRef;
-    if (!targetTabId) {return result;}
-    const scope = deps.pageRegistry.resolveScopeFromToken(sourceTabToken);
-    deps.pageRegistry.rebindTokenToTab(sourceTabToken, scope.workspaceId, targetTabId);
     return result;
 };
 
-const handleCloseTab = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleCloseTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserCloseTabInput>(browserCloseTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.close_tab',
-        args: { tabId: input.tabId, tabRef: input.tabRef },
+        args: { tabName: input.tabName, tabRef: input.tabRef },
         meta: { source: 'mcp' },
     });
 };
 
-const handleGetPageInfo = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleGetPageInfoWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserGetPageInfoInput>(browserGetPageInfoInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
     try {
-        return await runSingleStep(
+        return await runSingleStepWs(
             deps,
-            input.tabToken,
+            input.tabName,
             {
                 id: crypto.randomUUID(),
                 name: 'browser.get_page_info',
@@ -272,26 +261,26 @@ const handleGetPageInfo = (deps: McpToolDeps): McpToolHandler => async (args: un
                     ok: false,
                     error: {
                         code: 'ERR_NOT_FOUND',
-                        message: 'tab token not found',
+                        message: 'tab not found',
                     },
                 },
             ],
             error: {
                 code: 'ERR_NOT_FOUND',
-                message: 'tab token not found',
+                message: 'tab not found',
             },
         };
     }
 };
 
-const handleListTabs = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleListTabsWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserListTabsInput>(browserListTabsInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
     try {
-        return await runSingleStep(
+        return await runSingleStepWs(
             deps,
-            input.tabToken,
+            input.tabName,
             {
                 id: crypto.randomUUID(),
                 name: 'browser.list_tabs',
@@ -309,19 +298,19 @@ const handleListTabs = (deps: McpToolDeps): McpToolHandler => async (args: unkno
                     ok: false,
                     error: {
                         code: 'ERR_NOT_FOUND',
-                        message: 'tab token not found',
+                        message: 'tab not found',
                     },
                 },
             ],
             error: {
                 code: 'ERR_NOT_FOUND',
-                message: 'tab token not found',
+                message: 'tab not found',
             },
         };
     }
 };
 
-const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleClickWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserClickInput>(browserClickInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
@@ -329,7 +318,7 @@ const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
         button: input.options?.button ?? 'left',
         double: input.options?.double ?? false,
     };
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.click',
         args: {
@@ -343,11 +332,11 @@ const handleClick = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
     });
 };
 
-const handleFill = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleFillWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserFillInput>(browserFillInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.fill',
         args: {
@@ -360,11 +349,11 @@ const handleFill = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
     });
 };
 
-const handleType = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleTypeWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserTypeInput>(browserTypeInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.type',
         args: {
@@ -378,11 +367,11 @@ const handleType = (deps: McpToolDeps): McpToolHandler => async (args: unknown) 
     });
 };
 
-const handleSelectOption = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleSelectOptionWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserSelectOptionInput>(browserSelectOptionInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.select_option',
         args: {
@@ -395,11 +384,11 @@ const handleSelectOption = (deps: McpToolDeps): McpToolHandler => async (args: u
     });
 };
 
-const handleHover = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleHoverWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserHoverInput>(browserHoverInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.hover',
         args: {
@@ -411,11 +400,11 @@ const handleHover = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
     });
 };
 
-const handleScroll = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleScrollWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserScrollInput>(browserScrollInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.scroll',
         args: {
@@ -429,11 +418,11 @@ const handleScroll = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     });
 };
 
-const handlePressKey = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handlePressKeyWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserPressKeyInput>(browserPressKeyInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.press_key',
         args: {
@@ -446,11 +435,11 @@ const handlePressKey = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     });
 };
 
-const handleDragAndDrop = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleDragAndDropWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserDragAndDropInput>(browserDragAndDropInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.drag_and_drop',
         args: {
@@ -466,11 +455,11 @@ const handleDragAndDrop = (deps: McpToolDeps): McpToolHandler => async (args: un
     });
 };
 
-const handleMouse = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleMouseWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserMouseInput>(browserMouseInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.mouse',
         args: {
@@ -484,11 +473,11 @@ const handleMouse = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
     });
 };
 
-const handleSnapshot = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleSnapshotWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserSnapshotInput>(browserSnapshotInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.snapshot',
         args: {
@@ -504,12 +493,12 @@ const handleSnapshot = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     });
 };
 
-const handleEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleEntityWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserEntityInput>(browserEntityInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const { tabToken, ...stepArgs } = input;
-    return await runSingleStep(deps, tabToken, {
+    const { tabName, ...stepArgs } = input;
+    return await runSingleStepWs(deps, tabName, {
         id: crypto.randomUUID(),
         name: 'browser.entity',
         args: stepArgs,
@@ -517,12 +506,12 @@ const handleEntity = (deps: McpToolDeps): McpToolHandler => async (args: unknown
     });
 };
 
-const handleQuery = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleQueryWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserQueryInput>(browserQueryInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const { tabToken, ...stepArgs } = input;
-    return await runSingleStep(deps, tabToken, {
+    const { tabName, ...stepArgs } = input;
+    return await runSingleStepWs(deps, tabName, {
         id: crypto.randomUUID(),
         name: 'browser.query',
         args: stepArgs,
@@ -530,11 +519,11 @@ const handleQuery = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
     });
 };
 
-const handleGetContent = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleGetContentWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserGetContentInput>(browserGetContentInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.get_content',
         args: { ref: input.ref },
@@ -542,11 +531,11 @@ const handleGetContent = (deps: McpToolDeps): McpToolHandler => async (args: unk
     });
 };
 
-const handleReadConsole = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleReadConsoleWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserReadConsoleInput>(browserReadConsoleInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.read_console',
         args: { limit: input.limit },
@@ -554,11 +543,11 @@ const handleReadConsole = (deps: McpToolDeps): McpToolHandler => async (args: un
     });
 };
 
-const handleReadNetwork = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleReadNetworkWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserReadNetworkInput>(browserReadNetworkInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.read_network',
         args: { limit: input.limit },
@@ -566,11 +555,11 @@ const handleReadNetwork = (deps: McpToolDeps): McpToolHandler => async (args: un
     });
 };
 
-const handleEvaluate = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleEvaluateWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserEvaluateInput>(browserEvaluateInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.evaluate',
         args: {
@@ -582,11 +571,11 @@ const handleEvaluate = (deps: McpToolDeps): McpToolHandler => async (args: unkno
     });
 };
 
-const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleTakeScreenshotWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserTakeScreenshotInput>(browserTakeScreenshotInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.take_screenshot',
         args: {
@@ -600,11 +589,11 @@ const handleTakeScreenshot = (deps: McpToolDeps): McpToolHandler => async (args:
     });
 };
 
-const handleCaptureResolve = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleCaptureResolveWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserCaptureResolveInput>(browserCaptureResolveInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    return await runSingleStep(deps, input.tabToken, {
+    return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.capture_resolve',
         args: {
@@ -642,9 +631,9 @@ const defaultRoleByBatchOp = (op: BrowserBatchInput['actions'][number]['op']): s
     return 'button';
 };
 
-const resolveBatchActionTargetsByLabel = async (
-    deps: McpToolDeps,
-    tabToken: string | undefined,
+const resolveBatchActionTargetsByLabelWs = async (
+    deps: WorkspaceMcpToolDeps,
+    tabName: string | undefined,
     input: BrowserBatchInput,
 ): Promise<{ ok: true; actions: BrowserBatchInput['actions'] } | { ok: false; error: unknown }> => {
     const unresolved = input.actions.filter((action) => !action.nodeId && !action.selector && action.label);
@@ -652,7 +641,7 @@ const resolveBatchActionTargetsByLabel = async (
         return { ok: true, actions: input.actions };
     }
 
-    const snap = await runSingleStep(deps, tabToken, {
+    const snap = await runSingleStepWs(deps, tabName, {
         id: crypto.randomUUID(),
         name: 'browser.snapshot',
         args: {
@@ -751,13 +740,13 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
     };
 };
 
-const handleBatch = (deps: McpToolDeps): McpToolHandler => async (args: unknown) => {
+const handleBatchWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserBatchInput>(browserBatchInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
     const stopOnError = input.stopOnError !== false;
 
-    const resolved = await resolveBatchActionTargetsByLabel(deps, input.tabToken, input);
+    const resolved = await resolveBatchActionTargetsByLabelWs(deps, input.tabName, input);
     if (!resolved.ok) {
         return buildParseErrorResult(resolved.error);
     }
@@ -766,7 +755,7 @@ const handleBatch = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
     for (let idx = 0; idx < resolved.actions.length; idx += 1) {
         const action = resolved.actions[idx];
         const step = toBatchStep(action);
-        const stepResult = await runSingleStep(deps, input.tabToken, step);
+        const stepResult = await runSingleStepWs(deps, input.tabName, step);
         const first = stepResult.results[0] as Record<string, unknown> | undefined;
         finalResults.push({
             actionIndex: idx,
@@ -789,32 +778,32 @@ const handleBatch = (deps: McpToolDeps): McpToolHandler => async (args: unknown)
     };
 };
 
-export const createToolHandlers = (deps: McpToolDeps): Record<string, McpToolHandler> => ({
-    'browser.goto': handleGoto(deps),
-    'browser.go_back': handleGoBack(deps),
-    'browser.reload': handleReload(deps),
-    'browser.create_tab': handleCreateTab(deps),
-    'browser.switch_tab': handleSwitchTab(deps),
-    'browser.close_tab': handleCloseTab(deps),
-    'browser.get_page_info': handleGetPageInfo(deps),
-    'browser.list_tabs': handleListTabs(deps),
-    'browser.click': handleClick(deps),
-    'browser.snapshot': handleSnapshot(deps),
-    'browser.capture_resolve': handleCaptureResolve(deps),
-    'browser.entity': handleEntity(deps),
-    'browser.query': handleQuery(deps),
-    'browser.get_content': handleGetContent(deps),
-    'browser.read_console': handleReadConsole(deps),
-    'browser.read_network': handleReadNetwork(deps),
-    'browser.evaluate': handleEvaluate(deps),
-    'browser.fill': handleFill(deps),
-    'browser.take_screenshot': handleTakeScreenshot(deps),
-    'browser.type': handleType(deps),
-    'browser.select_option': handleSelectOption(deps),
-    'browser.hover': handleHover(deps),
-    'browser.scroll': handleScroll(deps),
-    'browser.press_key': handlePressKey(deps),
-    'browser.drag_and_drop': handleDragAndDrop(deps),
-    'browser.mouse': handleMouse(deps),
-    'browser.batch': handleBatch(deps),
+export const createWorkspaceToolHandlers = (deps: WorkspaceMcpToolDeps): Record<string, McpToolHandler> => ({
+    'browser.goto': handleGotoWs(deps),
+    'browser.go_back': handleGoBackWs(deps),
+    'browser.reload': handleReloadWs(deps),
+    'browser.create_tab': handleCreateTabWs(deps),
+    'browser.switch_tab': handleSwitchTabWs(deps),
+    'browser.close_tab': handleCloseTabWs(deps),
+    'browser.get_page_info': handleGetPageInfoWs(deps),
+    'browser.list_tabs': handleListTabsWs(deps),
+    'browser.click': handleClickWs(deps),
+    'browser.snapshot': handleSnapshotWs(deps),
+    'browser.capture_resolve': handleCaptureResolveWs(deps),
+    'browser.entity': handleEntityWs(deps),
+    'browser.query': handleQueryWs(deps),
+    'browser.get_content': handleGetContentWs(deps),
+    'browser.read_console': handleReadConsoleWs(deps),
+    'browser.read_network': handleReadNetworkWs(deps),
+    'browser.evaluate': handleEvaluateWs(deps),
+    'browser.fill': handleFillWs(deps),
+    'browser.take_screenshot': handleTakeScreenshotWs(deps),
+    'browser.type': handleTypeWs(deps),
+    'browser.select_option': handleSelectOptionWs(deps),
+    'browser.hover': handleHoverWs(deps),
+    'browser.scroll': handleScrollWs(deps),
+    'browser.press_key': handlePressKeyWs(deps),
+    'browser.drag_and_drop': handleDragAndDropWs(deps),
+    'browser.mouse': handleMouseWs(deps),
+    'browser.batch': handleBatchWs(deps),
 });

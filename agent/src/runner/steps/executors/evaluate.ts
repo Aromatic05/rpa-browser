@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserEvaluate = async (
     step: Step<'browser.evaluate'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const result = await binding.traceTools['trace.page.evaluate']({
         expression: step.args.expression,
         arg: step.args.arg,

@@ -30,7 +30,7 @@ import { executeBrowserQuery } from './query';
 import { executeBrowserCompute } from './compute';
 import { executeBrowserCheckpoint } from './checkpoint';
 
-export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceId: string) => Promise<StepResult>;
+export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceName: string) => Promise<StepResult>;
 
 export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.goto': executeBrowserGoto as ExecutorFn,

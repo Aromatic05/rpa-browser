@@ -18,12 +18,12 @@ import { runStepList } from '../runner/run_steps';
 type ScriptInput = string | StepUnion[];
 
 export const runScript = async (
-    workspaceId: string,
+    workspaceName: string,
     input: ScriptInput,
     opts?: { stopOnError?: boolean },
 ): Promise<RunStepsResult> => {
     const steps = Array.isArray(input) ? input : parseScript(input);
-    const { pipe, checkpoint } = await runStepList(workspaceId, steps, undefined, {
+    const { pipe, checkpoint } = await runStepList(workspaceName, steps, undefined, {
         stopOnError: opts?.stopOnError ?? true,
     });
     const items = pipe.items;

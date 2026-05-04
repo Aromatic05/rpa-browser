@@ -22,9 +22,8 @@ const createSnapshot = (id: string) => buildSnapshotFromViewRoot(createBaselineR
 
 const createBinding = (urlRef: { current: string }) => {
     return {
-        workspaceId: 'ws-1',
-        tabId: 'tab-1',
-        tabToken: 'token-1',
+        workspaceName: 'ws-1',
+        tabName: 'tab-1',
         page: {
             url: () => urlRef.current,
         },
@@ -40,7 +39,7 @@ test('diff baseline is stored on session entry and keyed by contain/depth/filter
     const binding = createBinding(url);
     const entry = ensureSnapshotSessionEntry(binding);
     const store = (binding.traceCtx.cache as { snapshotSessionStore?: { entries?: Record<string, unknown> } }).snapshotSessionStore;
-    assert.ok(store?.entries?.['ws-1:token-1']);
+    assert.ok(store?.entries?.['ws-1:tab-1']);
 
     const keyA = buildSnapshotDiffBaselineKey({
         contain: 'root',

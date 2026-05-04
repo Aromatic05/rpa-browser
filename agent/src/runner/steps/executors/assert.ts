@@ -17,7 +17,7 @@ const assertError = (stepId: string, message: string, details?: unknown): StepRe
 export const executeBrowserAssert = async (
     step: Step<'browser.assert'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
     const { urlIncludes, textVisible, entityExists } = step.args;
     if (!urlIncludes && !textVisible && !entityExists) {
@@ -31,7 +31,7 @@ export const executeBrowserAssert = async (
         };
     }
 
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
 
     if (urlIncludes) {
         const info = await binding.traceTools['trace.page.getInfo']();
@@ -96,7 +96,7 @@ export const executeBrowserAssert = async (
             collectBaseSnapshot: async (context) =>
                 await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
-                entityRuleConfig: deps.config.entityRules,
+                entityRulesProvider: deps.resolveEntityRulesProvider?.(workspaceName) || undefined,
             }),
         });
 

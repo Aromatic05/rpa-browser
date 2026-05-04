@@ -1,12 +1,12 @@
 import crypto from 'crypto';
-import type { AriaRole, Page } from 'playwright';
+import type { Page } from 'playwright';
 import { adoptA11yNode } from '../a11y/adopt';
 import { invalidateA11yCache } from '../a11y/cache';
 import { getA11yTree } from '../a11y/getA11yTree';
 import type { ConsoleEntry, NetworkEntry } from '../types';
 import type { ToolsBuildContext } from './context';
 
-export const createPageTools = (base: ToolsBuildContext): Record<string, (args?: unknown) => Promise<unknown>> => ({
+export const createPageTools = (base: ToolsBuildContext): any => ({
     'trace.page.goto': async (args: { url: string; timeout?: number }) => {
         const result = await base.run('trace.page.goto', args, async () => {
             await base.getCurrentPage().goto(args.url, { timeout: args.timeout });
@@ -35,14 +35,7 @@ export const createPageTools = (base: ToolsBuildContext): Record<string, (args?:
         await base.run('trace.page.getInfo', undefined, async () => {
             const currentPage = base.getCurrentPage();
             const info = { url: currentPage.url(), title: await currentPage.title() };
-            if (!base.opts.pageRegistry || !base.opts.workspaceId) {return info;}
-            const tabs = await base.opts.pageRegistry.listTabs(base.opts.workspaceId);
-            const active = base.opts.pageRegistry.resolveScope({ workspaceId: base.opts.workspaceId });
-            return {
-                ...info,
-                tabId: active.tabId,
-                tabs: tabs.map((tab) => ({ tabId: tab.tabId, url: tab.url, title: tab.title })),
-            };
+            return info;
         }),
 
     'trace.page.snapshotA11y': async (args: { includeA11y: boolean; focusOnly: boolean }) =>
@@ -102,7 +95,7 @@ export const createPageTools = (base: ToolsBuildContext): Record<string, (args?:
             return evaluated;
         }),
 
-    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: AriaRole; name?: string }) =>
+    'trace.page.screenshot': async (args: { fullPage?: boolean; a11yNodeId?: string; selector?: string; role?: string; name?: string }) =>
         await base.run('trace.page.screenshot', args, async () => {
             const currentPage = base.getCurrentPage();
             ensurePageDiagnostics(currentPage, base.ctx.cache);

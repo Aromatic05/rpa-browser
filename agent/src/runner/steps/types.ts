@@ -173,8 +173,8 @@ export type StepArgsMap = {
     'browser.go_back': { timeout?: number };
     'browser.reload': { timeout?: number };
     'browser.create_tab': { url?: string };
-    'browser.switch_tab': { tabId?: string; tabUrl?: string; tabRef?: string };
-    'browser.close_tab': { tabId?: string; tabRef?: string };
+    'browser.switch_tab': { tabName?: string; tabUrl?: string; tabRef?: string };
+    'browser.close_tab': { tabName?: string; tabRef?: string };
     'browser.get_page_info': Record<string, never>;
     'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
@@ -335,11 +335,11 @@ export type StepArgsMap = {
               op: 'entity';
               businessTag: string;
               query:
-                  | 'table.row_count'
+                  | 'table.rowCount'
                   | 'table.headers'
-                  | 'table.primary_key'
+                  | 'table.primaryKey'
                   | 'table.columns'
-                  | 'table.current_rows'
+                  | 'table.currentRows'
                   | 'table.hasNextPage'
                   | 'table.nextPageTarget'
                   | 'form.fields'
@@ -384,11 +384,10 @@ export type StepArgsMap = {
 
 export type StepMeta = {
     requestId?: string;
-    source: 'mcp' | 'play' | 'script' | 'record';
+    source: 'mcp' | 'play' | 'script' | 'record' | 'control-rpc' | 'dsl';
     ts?: number;
-    workspaceId?: string;
-    tabId?: string;
-    tabToken?: string;
+    workspaceName?: string;
+    tabName?: string;
     tabRef?: string;
     urlAtRecord?: string;
 };
@@ -420,7 +419,7 @@ export type StepResult = {
 };
 
 export type RunStepsRequest = {
-    workspaceId: string;
+    workspaceName: string;
     steps: StepUnion[];
     stepResolves?: Record<string, StepResolve>;
     options?: { dryRun?: boolean; stopOnError?: boolean; maxConcurrency?: number };

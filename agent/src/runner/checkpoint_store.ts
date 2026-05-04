@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Checkpoint } from './run_steps_types';
 
 export type TaskRunCheckpoint = Checkpoint & {
-    workspaceId: string;
+    workspaceName: string;
     nextSeq: number;
     lastAckSeq: number;
 };
@@ -54,10 +54,10 @@ export const createTaskCheckpointStore = (filePath: string, opts?: { flushInterv
         if (!payload) {return checkpoints;}
         for (const [runId, cp] of Object.entries(payload.checkpoints)) {
             if (!runId || !cp || typeof cp !== 'object') {continue;}
-            if (!cp.workspaceId || typeof cp.cursor !== 'number') {continue;}
+            if (!cp.workspaceName || typeof cp.cursor !== 'number') {continue;}
             checkpoints.set(runId, {
                 runId,
-                workspaceId: cp.workspaceId,
+                workspaceName: cp.workspaceName,
                 status: cp.status,
                 cursor: cp.cursor,
                 nextSeq: typeof cp.nextSeq === 'number' ? cp.nextSeq : cp.cursor,

@@ -45,9 +45,9 @@ const createDeps = (snapshot: SnapshotResult) =>
     ({
         runtime: {
             ensureActivePage: async () => ({
-                workspaceId: 'ws-1',
-                tabId: 'tab-1',
-                tabToken: 'tk-1',
+                workspaceName: 'ws-1',
+                tabName: 'tab-1',
+                tabName: 'tk-1',
                 traceCtx: { cache: { latestSnapshot: snapshot } },
             }),
         },

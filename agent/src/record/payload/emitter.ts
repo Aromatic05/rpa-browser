@@ -5,8 +5,9 @@ const getElementText = (el: Element) => {
     return el.textContent || '';
 };
 
-type WindowWithTabToken = Window & { __rpa_tab_token?: unknown; __TAB_TOKEN__?: unknown };
+type WindowWithTabName = Window & { __rpa_tab_token?: unknown; __TAB_TOKEN__?: unknown };
 type WindowBridge = Window & Record<string, unknown>;
+type RecorderControlWindow = Window & { __rpa_recorder_enabled?: unknown };
 
 export type EmitPayload = { type: string; [key: string]: unknown };
 export type EmitFn = (payload: EmitPayload) => void;
@@ -22,7 +23,7 @@ const getToken = (): string | null => {
         // ignore sessionStorage read failures
     }
     try {
-        const fromWindow = (window as WindowWithTabToken).__rpa_tab_token ?? (window as WindowWithTabToken).__TAB_TOKEN__;
+        const fromWindow = (window as WindowWithTabName).__rpa_tab_token ?? (window as WindowWithTabName).__TAB_TOKEN__;
         if (typeof fromWindow === 'string' && fromWindow.length > 0) {return fromWindow;}
     } catch {
         // ignore window token read failures
@@ -32,21 +33,23 @@ const getToken = (): string | null => {
 
 export const createEmitter = (bindingName: string, version: string): { emit: EmitFn; debugTarget: DebugTargetFn } => {
     const emit: EmitFn = (payload) => {
-        const tabToken = getToken();
-        if (!tabToken) {
+        const enabled = (window as RecorderControlWindow).__rpa_recorder_enabled;
+        if (enabled === false) {return;}
+        const tabName = getToken();
+        if (!tabName) {
             try {
-                console.warn('[recorder] missing tabToken', { url: location.href, payload: payload.type });
+                console.warn('[recorder] missing tabName', { url: location.href, payload: payload.type });
             } catch {
                 // ignore debug logging failures
             }
             return;
         }
-        const bridge = (window as WindowBridge)[bindingName];
+        const bridge = ((window as unknown) as WindowBridge)[bindingName];
         if (typeof bridge !== 'function') {return;}
         const bridgeFn = bridge as (payload: Record<string, unknown>) => void;
         bridgeFn({
             recorderVersion: version,
-            tabToken,
+            tabName,
             ts: Date.now(),
             url: location.href,
             pageTitle: document.title,

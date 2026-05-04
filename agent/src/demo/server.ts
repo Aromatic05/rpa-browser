@@ -3,9 +3,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getMaskedConfig, mergeConfig, readConfig, writeConfig } from './config_store';
-import { createContextManager, resolvePaths } from '../runtime/context_manager';
-import { createPageRegistry } from '../runtime/page_registry';
-import { createRuntimeRegistry } from '../runtime/runtime_registry';
+import { createContextManager, resolvePaths } from '../runtime/browser/context_manager';
+import { createPageRegistry } from '../runtime/browser/page_registry';
+import { createWorkspaceRegistry } from '../runtime/workspace/registry';
+import { createExecutionBindings } from '../runtime/execution/bindings';
 import { createWorkspaceManager } from './workspace_manager';
 import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
 import { runAgentLoop } from './agent_loop';
@@ -15,13 +16,17 @@ import { getRunnerConfig } from '../config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../runner/trace';
 import { initLogger, resolveLogPath } from '../logging/logger';
 import { RunnerPluginHost } from '../runner/hotreload/plugin_host';
+import { ensureWorkflowOnFs } from '../workflow';
+import { createPortAllocator } from '../runtime/service/ports';
+import type { WorkspaceMcpToolDeps } from '../mcp/tool_handlers';
+import type { RunStepsDeps } from '../runner/run_steps_types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const STATIC_DIR = path.resolve(__dirname, '../../static');
 const HOST = '127.0.0.1';
 const PORT = 17334;
-const TAB_TOKEN_KEY = '__rpa_tab_token';
+const TAB_NAME_KEY = '__rpa_tab_name';
 const _CLICK_DELAY_MS = 300;
 const _REPLAY_STEP_DELAY_MS = 900;
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -55,6 +60,7 @@ const serveFile = async (res: http.ServerResponse, filePath: string, contentType
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
+let workspaceRegistry!: ReturnType<typeof createWorkspaceRegistry>;
 const contextManager = createContextManager({
     extensionPaths: paths.extensionPaths,
     userDataDir: paths.userDataDir,
@@ -64,17 +70,23 @@ const contextManager = createContextManager({
 });
 
 const pageRegistry = createPageRegistry({
-    tabTokenKey: TAB_TOKEN_KEY,
+    tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
-    onPageBound: (page, token) => {
-        if (recordingState.recordingEnabled.has(token)) {
-            void ensureRecorder(recordingState, page, token, NAV_DEDUPE_WINDOW_MS);
+    onPageBound: (page, tabName) => {
+        if (recordingState.recordingEnabled.has(tabName)) {
+            void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
         }
-        if (runtimeRegistry) {
-            runtimeRegistry.bindPage(page, token);
+        const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+        const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
+        if (!workspace.tabs.hasTab(tabName)) {
+            workspace.tabs.createTab({ tabName, page, url: page.url() });
+        } else {
+            workspace.tabs.bindPage(tabName, page);
         }
+        workspace.tabs.setActiveTab(tabName);
+        runtimeRegistry.bindPage({ workspaceName, tabName, page });
     },
-    onTokenClosed: (token) => { cleanupRecording(recordingState, token); },
+    onBindingClosed: (tabName) => { cleanupRecording(recordingState, tabName); },
 });
 
 const workspaceManager = createWorkspaceManager({
@@ -92,29 +104,51 @@ if (process.env.NODE_ENV !== 'production') {
     runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
 }
 
-// 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
-const runtimeRegistry: ReturnType<typeof createRuntimeRegistry> = createRuntimeRegistry({
+const runStepsDeps: RunStepsDeps = {
+    runtime: null as unknown as ReturnType<typeof createExecutionBindings>,
+    stepSinks: [createConsoleStepSink('[step]')],
+    config,
+    pluginHost: runnerPluginHost,
+};
+workspaceRegistry = createWorkspaceRegistry({
     pageRegistry,
+    recordingState,
+    replayOptions: {
+        clickDelayMs: 300,
+        stepDelayMs: 900,
+        scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+    },
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    runStepsDeps,
+    runnerConfig: config,
+    portAllocator: createPortAllocator(),
+});
+runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
+    const workspace = workspaceRegistry.getWorkspace(workspaceName);
+    if (!workspace) {
+        return null;
+    }
+    return workspace.entityRules.getProvider(workspace.workflow);
+};
+// 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
+const runtimeRegistry: ReturnType<typeof createExecutionBindings> = createExecutionBindings({
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
         : createNoopHooks(),
     pluginHost: runnerPluginHost,
 });
-setRunStepsDeps({
-    runtime: runtimeRegistry,
-    stepSinks: [createConsoleStepSink('[step]')],
-    config,
-    pluginHost: runnerPluginHost,
-});
+runStepsDeps.runtime = runtimeRegistry;
+setRunStepsDeps(runStepsDeps);
 
-const buildToolDeps = () => ({
-    pageRegistry,
-    getActiveTabToken: async () => {
-        const workspace = await workspaceManager.ensureActiveWorkspace();
-        return workspace.tabToken;
-    },
-});
+const buildToolDeps = (): WorkspaceMcpToolDeps => {
+    const ws = workspaceRegistry.getActiveWorkspace();
+    if (!ws) throw new Error('no active workspace');
+    return {
+        workspace: ws,
+        getPage: (tabName: string) => pageRegistry.getPage(tabName),
+    };
+};
 
 const server = http.createServer((req, res) => {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);

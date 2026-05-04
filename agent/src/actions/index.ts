@@ -1,10 +1,9 @@
-import type { ActionHandler } from './execute';
-import { recordingHandlers } from './recording';
-import { taskStreamHandlers } from './task_stream';
-import { workspaceHandlers } from './workspace';
-
-export const actionHandlers: Partial<Record<string, ActionHandler>> = {
-    ...recordingHandlers,
-    ...taskStreamHandlers,
-    ...workspaceHandlers,
-};
+export * from './action_protocol';
+export * from './action_types';
+export * from './envelope';
+export * from './classify';
+export * from './results';
+export * from './control_gateway';
+export * from './workspace_gateway';
+export * from './dispatcher';
+export * from './ws_client';

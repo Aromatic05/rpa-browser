@@ -4,7 +4,7 @@ import { browserBatchInputSchema, browserSnapshotInputSchema, toolInputJsonSchem
 
 test('browser.snapshot MCP schema accepts scoped diff args', () => {
     const parsed = browserSnapshotInputSchema.safeParse({
-        tabToken: 'tab-1',
+        tabName: 'tab-1',
         contain: 'node-1',
         depth: 2,
         filter: {

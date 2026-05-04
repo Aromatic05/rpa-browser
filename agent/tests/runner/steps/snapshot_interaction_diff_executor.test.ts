@@ -10,9 +10,9 @@ import { markSnapshotSessionDirty } from '../../../src/runner/steps/executors/sn
 
 const createDeps = (page: any, cache: Record<string, unknown> = {}): RunStepsDeps => {
     const binding = {
-        workspaceId: 'ws-token',
-        tabId: 'tab-token',
-        tabToken: 'tab-token',
+        workspaceName: 'ws-token',
+        tabName: 'tab-token',
+        tabName: 'tab-token',
         page: page as any,
         traceTools: {},
         traceCtx: { cache: { ...cache } },
@@ -265,7 +265,7 @@ test('executeBrowserSnapshot diff surfaces textbox interaction as content token 
     assert.equal(fake.calls.runtimeEvaluate, 0);
 
     fake.setValue('alice;bob');
-    const binding = await deps.runtime.ensureActivePage('ws-token');
+    const binding = await deps.runtime.resolveBinding('ws-token');
     markSnapshotSessionDirty(binding, 'step:browser.fill');
 
     const second: Step<'browser.snapshot'> = {
@@ -299,7 +299,7 @@ test('executeBrowserSnapshot diff surfaces select interaction as content token c
     assert.equal(fake.calls.runtimeEvaluate, 0);
 
     fake.setSelected('北京');
-    const binding = await deps.runtime.ensureActivePage('ws-token');
+    const binding = await deps.runtime.resolveBinding('ws-token');
     markSnapshotSessionDirty(binding, 'step:browser.select_option');
 
     const second: Step<'browser.snapshot'> = {
@@ -356,7 +356,7 @@ test('interaction dirty refresh should not wait for networkidle', async () => {
     assert.equal(firstResult.ok, true);
 
     fake.calls.loadStates.length = 0;
-    const binding = await deps.runtime.ensureActivePage('ws-token');
+    const binding = await deps.runtime.resolveBinding('ws-token');
     markSnapshotSessionDirty(binding, 'step:browser.click');
 
     const second: Step<'browser.snapshot'> = {
@@ -383,7 +383,7 @@ test('navigation dirty refresh should keep domcontentloaded and networkidle wait
     assert.equal(firstResult.ok, true);
 
     fake.calls.loadStates.length = 0;
-    const binding = await deps.runtime.ensureActivePage('ws-token');
+    const binding = await deps.runtime.resolveBinding('ws-token');
     markSnapshotSessionDirty(binding, 'step:browser.goto');
 
     const second: Step<'browser.snapshot'> = {

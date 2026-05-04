@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserGetContent = async (
     step: Step<'browser.get_content'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const result = await binding.traceTools['trace.page.getContent']({ ref: step.args.ref });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };

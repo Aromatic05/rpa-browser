@@ -12,9 +12,9 @@ const createDeps = (options: {
     textVisibleResult?: boolean;
     entityCount?: number;
 }): RunStepsDeps => {
-    const workspaceId = 'ws-1';
-    const tabId = 'tab-1';
-    const tabToken = 'tab-token-1';
+    const workspaceName = 'ws-1';
+    const tabName = 'tab-1';
+    const tabName = 'tab-token-1';
     const currentUrl = options.url || 'https://example.test/page';
     const traceTools = {
         'trace.page.getInfo': async () => ({ ok: true, data: { url: currentUrl } }),
@@ -35,11 +35,11 @@ const createDeps = (options: {
     const snapshotSessionStore = {
         version: 1,
         entries: {
-            [`${workspaceId}:${tabToken}`]: {
+            [`${workspaceName}:${tabName}`]: {
                 pageIdentity: {
-                    workspaceId,
-                    tabId,
-                    tabToken,
+                    workspaceName,
+                    tabName,
+                    tabName,
                     url: currentUrl,
                 },
                 baseSnapshot: minimalSnapshot,
@@ -74,9 +74,9 @@ const createDeps = (options: {
     };
 
     const binding = {
-        workspaceId,
-        tabId,
-        tabToken,
+        workspaceName,
+        tabName,
+        tabName,
         page: { url: () => currentUrl },
         traceTools,
         traceCtx: {

@@ -5,20 +5,20 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserSwitchTab = async (
     step: Step<'browser.switch_tab'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
-    const tabId = step.args.tabId || step.args.tabRef;
-    if (!tabId) {
+    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const tabName = step.args.tabName || step.args.tabRef;
+    if (!tabName) {
         return {
             stepId: step.id,
             ok: false,
-            error: { code: 'ERR_BAD_ARGS', message: 'browser.switch_tab requires tabId or tabRef' },
+            error: { code: 'ERR_BAD_ARGS', message: 'browser.switch_tab requires tabName or tabRef' },
         };
     }
     const result = await binding.traceTools['trace.tabs.switch']({
-        workspaceId,
-        tabId,
+        workspaceName,
+        tabName,
     });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };

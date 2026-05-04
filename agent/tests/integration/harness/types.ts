@@ -2,8 +2,7 @@ export type ActionPayload = {
     v: 1;
     id: string;
     type: string;
-    tabToken?: string;
-    scope?: { workspaceId?: string; tabId?: string; tabToken?: string };
+    workspaceName?: string;
     payload?: unknown;
 };
 

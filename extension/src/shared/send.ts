@@ -7,10 +7,11 @@
  */
 
 import { MSG, type TransportError, type TransportResult } from './protocol.js';
-import { deriveFailedActionType } from './action_types.js';
 import type { Action } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 20000;
+const deriveTransportFailedActionType = (actionType: string): string =>
+    actionType ? `${actionType}.failed` : 'action.dispatch.failed';
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<TransportResult<T>> => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -57,12 +58,12 @@ const runtimeTransport = async <T>(req: unknown, timeoutMs = DEFAULT_TIMEOUT_MS)
 };
 
 const tabTransport = async <T>(
-    tabId: number,
+    tabName: number,
     req: unknown,
     timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<TransportResult<T>> => {
     const promise = new Promise<T>((resolve, reject) => {
-        chrome.tabs.sendMessage(tabId, req, (response: unknown) => {
+        chrome.tabs.sendMessage(tabName, req, (response: unknown) => {
             if (chrome.runtime.lastError) {
                 reject(new Error(chrome.runtime.lastError.message));
                 return;
@@ -77,7 +78,7 @@ export const send = {
     /**
      * 向 SW 发送 hello（content -> SW）。
      */
-    hello: (payload: { tabToken: string; url: string }): Promise<TransportResult<{ ok: boolean }>> =>
+    hello: (payload: { tabName: string; url: string }): Promise<TransportResult<{ ok: boolean }>> =>
         runtimeTransport<{ ok: boolean }>(
             { type: MSG.HELLO, ...payload },
             5000,
@@ -98,7 +99,7 @@ export const send = {
         return {
             v: 1,
             id: crypto.randomUUID(),
-            type: deriveFailedActionType(action.type || ''),
+            type: deriveTransportFailedActionType(action.type || ''),
             replyTo: action.id || '',
             payload: { code: transportError.code, message: transportError.message, details },
             at: Date.now(),
@@ -109,11 +110,11 @@ export const send = {
      * 向指定 tab 发送消息（SW -> content）。
      */
     toTabTransport: <T = unknown>(
-        tabId: number,
+        tabName: number,
         type: string,
         payload?: Record<string, unknown>,
         opts?: { timeoutMs?: number },
     ): Promise<TransportResult<T>> =>
-        tabTransport<T>(tabId, { type, ...(payload ?? {}) }, opts?.timeoutMs),
+        tabTransport<T>(tabName, { type, ...(payload ?? {}) }, opts?.timeoutMs),
 
 };

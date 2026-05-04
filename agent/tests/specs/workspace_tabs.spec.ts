@@ -1,46 +1,81 @@
 import { test, expect } from '../helpers/fixtures';
-import { createPageRegistry } from '../../src/runtime/page_registry';
-import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
+import type { BrowserContext } from '@playwright/test';
+import crypto from 'node:crypto';
+import { createPageRegistry } from '../../src/runtime/browser/page_registry';
+import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkflowOnFs } from '../../src/workflow';
+import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { createRunnerScopeRegistry } from '../../src/runner/runner_scope';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { runStepList } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
 import { createStep, createTestPluginHost } from '../helpers/steps';
 
-const runBatch = async (deps: any, workspaceId: string, step: ReturnType<typeof createStep>) => {
-    const { checkpoint } = await runStepList(workspaceId, [step], deps, { stopOnError: true });
+const runBatch = async (deps: any, workspaceName: string, step: ReturnType<typeof createStep>) => {
+    const { checkpoint } = await runStepList(workspaceName, [step], deps, { stopOnError: true });
     expect(checkpoint.status).not.toBe('failed');
+};
+
+const bindWorkspaceToRuntime = async (
+    pageRegistry: ReturnType<typeof createPageRegistry>,
+    workspaceRegistry: ReturnType<ReturnType<typeof createTestWorkspaceRegistry>['registry']>,
+    runtimeRegistry: ReturnType<typeof createExecutionBindings>,
+    workspaceName: string,
+    tabName: string,
+) => {
+    const page = await pageRegistry.getPage(tabName);
+    const workspace = workspaceRegistry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    if (!workspace.tabs.hasTab(tabName)) {
+        workspace.tabs.createTab({ tabName: tabName, page, url: page.url() });
+    } else {
+        workspace.tabs.bindPage(tabName, page);
+    }
+    workspace.tabs.setActiveTab(tabName);
+    runtimeRegistry.bindPage({ workspaceName: workspaceName, tabName: tabName, page });
+};
+
+const createWorkspaceWithPage = async (
+    pageRegistry: ReturnType<typeof createPageRegistry>,
+    context: BrowserContext,
+) => {
+    const workspaceName = `ws-${crypto.randomUUID()}`;
+    const tabName = crypto.randomUUID();
+    const page = await context.newPage();
+    await pageRegistry.bindPage(page, tabName);
+    return { workspaceName, tabName };
 };
 
 test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
+    const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
-    const runtimeRegistry = createRuntimeRegistry({
-        pageRegistry,
+    const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,
     });
     const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const runnerScope = createRunnerScopeRegistry(2);
 
-    const wsA = await pageRegistry.createWorkspace();
-    const wsB = await pageRegistry.createWorkspace();
+    const wsA = await createWorkspaceWithPage(pageRegistry, context);
+    const wsB = await createWorkspaceWithPage(pageRegistry, context);
+    await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, wsA.workspaceName, wsA.tabName);
+    await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, wsB.workspaceName, wsB.tabName);
 
     await Promise.all([
-        runnerScope.run(wsA.workspaceId, () =>
-            runBatch(deps, wsA.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/choices.html` })),
+        runnerScope.run(wsA.workspaceName, () =>
+            runBatch(deps, wsA.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/choices.html` })),
         ),
-        runnerScope.run(wsB.workspaceId, () =>
-            runBatch(deps, wsB.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/date.html` })),
+        runnerScope.run(wsB.workspaceName, () =>
+            runBatch(deps, wsB.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/date.html` })),
         ),
     ]);
 
-    const pageA = await pageRegistry.resolvePage({ workspaceId: wsA.workspaceId, tabId: wsA.tabId });
-    const pageB = await pageRegistry.resolvePage({ workspaceId: wsB.workspaceId, tabId: wsB.tabId });
+    const pageA = await pageRegistry.getPage(wsA.tabName);
+    const pageB = await pageRegistry.getPage(wsB.tabName);
     expect(pageA.url()).toContain('/choices.html');
     expect(pageB.url()).toContain('/date.html');
     await context.close();
@@ -49,29 +84,30 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
 test('workspace serial queue', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
+    const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
-    const runtimeRegistry = createRuntimeRegistry({
-        pageRegistry,
+    const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,
     });
     const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
     const runnerScope = createRunnerScopeRegistry(1);
 
-    const ws = await pageRegistry.createWorkspace();
+    const ws = await createWorkspaceWithPage(pageRegistry, context);
+    await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, ws.workspaceName, ws.tabName);
 
     const events: string[] = [];
-    const task1 = runnerScope.run(ws.workspaceId, async () => {
+    const task1 = runnerScope.run(ws.workspaceName, async () => {
         events.push('start1');
-        await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
+        await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
         events.push('end1');
     });
-    const task2 = runnerScope.run(ws.workspaceId, async () => {
+    const task2 = runnerScope.run(ws.workspaceName, async () => {
         events.push('start2');
-        await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
+        await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
         events.push('end2');
     });
 
@@ -83,32 +119,31 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
 test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
+    const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
-    const runtimeRegistry = createRuntimeRegistry({
-        pageRegistry,
+    const runtimeRegistry = createExecutionBindings({
         traceHooks: createNoopHooks(),
         pluginHost,
     });
     const deps = { runtime: runtimeRegistry, config: getRunnerConfig(), pluginHost };
-    const ws = await pageRegistry.createWorkspace();
-    const tab2 = await pageRegistry.createTab(ws.workspaceId);
+    const ws = await createWorkspaceWithPage(pageRegistry, context);
+    const tab2 = crypto.randomUUID();
+    await pageRegistry.getPage(tab2);
+    await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, ws.workspaceName, ws.tabName);
+    await bindWorkspaceToRuntime(pageRegistry, workspaceRegistry, runtimeRegistry, ws.workspaceName, tab2);
 
-    const tab1Token = pageRegistry.resolveTabToken({ workspaceId: ws.workspaceId, tabId: ws.tabId });
-    const tab2Token = pageRegistry.resolveTabToken({ workspaceId: ws.workspaceId, tabId: tab2 });
+    workspaceRegistry.getWorkspace(ws.workspaceName)?.tabs.setActiveTab(ws.tabName);
+    await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
+    workspaceRegistry.getWorkspace(ws.workspaceName)?.tabs.setActiveTab(tab2);
+    await runBatch(deps, ws.workspaceName, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
 
-    pageRegistry.setActiveTab(ws.workspaceId, ws.tabId);
-    await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/choices.html` }));
-    pageRegistry.setActiveTab(ws.workspaceId, tab2);
-    await runBatch(deps, ws.workspaceId, createStep('browser.goto', { url: `${fixtureURL}/date.html` }));
-
-    pageRegistry.setActiveTab(ws.workspaceId, tab2);
-    const activePage = await pageRegistry.resolvePage({ workspaceId: ws.workspaceId });
+    const activePage = await pageRegistry.getPage(tab2);
     expect(activePage.url()).toContain('/date.html');
 
-    const explicitPage = await pageRegistry.resolvePage({ workspaceId: ws.workspaceId, tabId: ws.tabId });
+    const explicitPage = await pageRegistry.getPage(ws.tabName);
     expect(explicitPage.url()).toContain('/choices.html');
 
     await context.close();

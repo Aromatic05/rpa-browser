@@ -9,9 +9,9 @@ import { resolveTarget } from '../helpers/resolve_target';
 export const executeBrowserTakeScreenshot = async (
     step: Step<'browser.take_screenshot'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     let resolvedSelector: string | undefined;
     const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
 

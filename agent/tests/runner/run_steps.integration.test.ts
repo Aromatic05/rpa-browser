@@ -9,8 +9,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { createPageRegistry } from '../../src/runtime/page_registry';
-import { createRuntimeRegistry } from '../../src/runtime/runtime_registry';
+import { createPageRegistry } from '../../src/runtime/browser/page_registry';
+import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { runStepList, MemoryStepSink } from '../../src/runner/run_steps';
 import { MemorySink } from '../../src/runner/trace/sink';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
@@ -38,22 +38,22 @@ test.skip('runSteps isolates workspaces and emits step/trace events', async () =
     });
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_token',
         getContext: async () => context,
     });
 
     const pluginHost = await createTestPluginHost();
     const traceSink = new MemorySink();
-    const runtimeRegistry = createRuntimeRegistry({
+    const runtimeRegistry = createExecutionBindings({
         pageRegistry,
         traceSinks: [traceSink],
         traceHooks: createNoopHooks(),
         pluginHost,
     });
     const stepSink = new MemoryStepSink();
-    const runBatch = async (workspaceId: string, steps: any[]) => {
+    const runBatch = async (workspaceName: string, steps: any[]) => {
         const { pipe, checkpoint } = await runStepList(
-            workspaceId,
+            workspaceName,
             steps,
             { runtime: runtimeRegistry, stepSinks: [stepSink], config: getRunnerConfig(), pluginHost },
             { stopOnError: true },
@@ -67,7 +67,7 @@ test.skip('runSteps isolates workspaces and emits step/trace events', async () =
     const ws1 = await pageRegistry.createWorkspace();
     const ws2 = await pageRegistry.createWorkspace();
 
-    const steps1 = await runBatch(ws1.workspaceId, [
+    const steps1 = await runBatch(ws1.workspaceName, [
         { id: 'ws1-goto', name: 'browser.goto', args: { url: fixtureUrl('run_steps_fixture_a.html') }, meta: { source: 'script' } },
         { id: 'ws1-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
     ]);
@@ -80,13 +80,13 @@ test.skip('runSteps isolates workspaces and emits step/trace events', async () =
     assert.ok(btn1);
     assert.ok(input1);
 
-    const steps1b = await runBatch(ws1.workspaceId, [
+    const steps1b = await runBatch(ws1.workspaceName, [
         { id: 'ws1-click', name: 'browser.click', args: {}, resolve: { hint: { target: { nodeId: btn1! } } }, meta: { source: 'script' } },
         { id: 'ws1-fill', name: 'browser.fill', args: { value: 'hello-a' }, resolve: { hint: { target: { nodeId: input1! } } }, meta: { source: 'script' } },
     ]);
     assert.equal(steps1b.ok, true);
 
-    const steps2 = await runBatch(ws2.workspaceId, [
+    const steps2 = await runBatch(ws2.workspaceName, [
         { id: 'ws2-goto', name: 'browser.goto', args: { url: fixtureUrl('run_steps_fixture_b.html') }, meta: { source: 'script' } },
         { id: 'ws2-snap', name: 'browser.snapshot', args: { includeA11y: true }, meta: { source: 'script' } },
     ]);
@@ -98,14 +98,14 @@ test.skip('runSteps isolates workspaces and emits step/trace events', async () =
     assert.ok(btn2);
     assert.ok(input2);
 
-    const steps2b = await runBatch(ws2.workspaceId, [
+    const steps2b = await runBatch(ws2.workspaceName, [
         { id: 'ws2-click', name: 'browser.click', args: {}, resolve: { hint: { target: { nodeId: btn2! } } }, meta: { source: 'script' } },
         { id: 'ws2-fill', name: 'browser.fill', args: { value: 'hello-b' }, resolve: { hint: { target: { nodeId: input2! } } }, meta: { source: 'script' } },
     ]);
     assert.equal(steps2b.ok, true);
 
-    const binding1 = await runtimeRegistry.ensureActivePage(ws1.workspaceId);
-    const binding2 = await runtimeRegistry.ensureActivePage(ws2.workspaceId);
+    const binding1 = await runtimeRegistry.resolveBinding(ws1.workspaceName);
+    const binding2 = await runtimeRegistry.resolveBinding(ws2.workspaceName);
     assert.ok(binding1.page.url().includes('run_steps_fixture_a.html'));
     assert.ok(binding2.page.url().includes('run_steps_fixture_b.html'));
 
@@ -113,7 +113,7 @@ test.skip('runSteps isolates workspaces and emits step/trace events', async () =
     const traceEvents = traceSink.getEvents();
     assert.ok(traceEvents.length > 0);
     const hasTaggedTrace = traceEvents.some(
-        (event) => event.type === 'op.end' && event.tags?.workspaceId,
+        (event) => event.type === 'op.end' && event.tags?.workspaceName,
     );
     assert.ok(hasTaggedTrace);
 

@@ -23,17 +23,17 @@ const buildSpyDeps = (deps: RunStepsDeps, spy: ExecutorSpy): RunStepsDeps => ({
             const executors = deps.pluginHost.getExecutors();
             return {
                 ...executors,
-                'browser.fill': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
+                'browser.fill': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceName: string) => {
                     spy.fillNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
-                    return await executors['browser.fill'](step, innerDeps, workspaceId);
+                    return await executors['browser.fill'](step, innerDeps, workspaceName);
                 },
-                'browser.click': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
+                'browser.click': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceName: string) => {
                     spy.clickNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
-                    return await executors['browser.click'](step, innerDeps, workspaceId);
+                    return await executors['browser.click'](step, innerDeps, workspaceName);
                 },
-                'browser.hover': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceId: string) => {
+                'browser.hover': async (step: StepUnion, innerDeps: RunStepsDeps, workspaceName: string) => {
                     spy.hoverNodeIds.push(String((step.args as { nodeId?: unknown }).nodeId || ''));
-                    return await executors['browser.hover'](step, innerDeps, workspaceId);
+                    return await executors['browser.hover'](step, innerDeps, workspaceName);
                 },
             };
         },
@@ -47,7 +47,7 @@ const withAntEntityRuleRunner = async <T>(
     },
     callback: (ctx: {
         page: Page;
-        workspaceId: string;
+        workspaceName: string;
         deps: RunStepsDeps;
         run: (steps: StepUnion[], opts?: { stopOnError?: boolean }) => Promise<{ checkpoint: { status: string }; results: any[] }>;
     }) => Promise<T>,
@@ -77,7 +77,7 @@ const withAntEntityRuleRunner = async <T>(
         await page.goto(`${mockServer.baseUrl}${input.pagePath}`, { waitUntil: 'domcontentloaded' });
 
         const run = async (steps: StepUnion[], opts?: { stopOnError?: boolean }) => {
-            const { checkpoint, pipe } = await runStepList(runner.workspaceId, steps, runner.deps, {
+            const { checkpoint, pipe } = await runStepList(runner.workspaceName, steps, runner.deps, {
                 runId: `run-${path.basename(input.pagePath)}`,
                 stopOnError: opts?.stopOnError ?? true,
             });
@@ -89,7 +89,7 @@ const withAntEntityRuleRunner = async <T>(
 
         return await callback({
             page,
-            workspaceId: runner.workspaceId,
+            workspaceName: runner.workspaceName,
             deps: runner.deps,
             run,
         });
@@ -106,7 +106,7 @@ test('order form query target can fill field and click submit via result refs', 
             profile: 'oa-ant-order-form',
             pagePath: '/entity-rules/fixtures/order-form',
         },
-        async ({ page, workspaceId, deps }) => {
+        async ({ page, workspaceName, deps }) => {
             const spy: ExecutorSpy = { fillNodeIds: [], clickNodeIds: [], hoverNodeIds: [] };
             const spyDeps = buildSpyDeps(deps, spy);
             const steps: StepUnion[] = [
@@ -151,7 +151,7 @@ test('order form query target can fill field and click submit via result refs', 
                 } as StepUnion,
             ];
 
-            const { checkpoint, pipe } = await runStepList(workspaceId, steps, spyDeps, {
+            const { checkpoint, pipe } = await runStepList(workspaceName, steps, spyDeps, {
                 runId: 'run-order-form-query-action',
                 stopOnError: true,
             });
@@ -199,7 +199,7 @@ test('order list query can resolve row action and click via result refs', async 
             profile: 'oa-ant-orders',
             pagePath: '/entity-rules/fixtures/order-list',
         },
-        async ({ page, workspaceId, deps }) => {
+        async ({ page, workspaceName, deps }) => {
             const spy: ExecutorSpy = { fillNodeIds: [], clickNodeIds: [], hoverNodeIds: [] };
             const spyDeps = buildSpyDeps(deps, spy);
             const steps: StepUnion[] = [
@@ -209,7 +209,7 @@ test('order list query can resolve row action and click via result refs', async 
                     args: {
                         op: 'entity',
                         businessTag: 'order.list.main',
-                        query: 'table.row_count',
+                        query: 'table.rowCount',
                     },
                 } as StepUnion,
                 {
@@ -218,7 +218,7 @@ test('order list query can resolve row action and click via result refs', async 
                     args: {
                         op: 'entity',
                         businessTag: 'order.list.main',
-                        query: 'table.current_rows',
+                        query: 'table.currentRows',
                     },
                 } as StepUnion,
                 {
@@ -246,7 +246,7 @@ test('order list query can resolve row action and click via result refs', async 
                 } as StepUnion,
             ];
 
-            const { checkpoint, pipe } = await runStepList(workspaceId, steps, spyDeps, {
+            const { checkpoint, pipe } = await runStepList(workspaceName, steps, spyDeps, {
                 runId: 'run-order-list-query-action',
                 stopOnError: true,
             });
@@ -309,7 +309,7 @@ test('normal browser query nodeIds can feed hover via result refs', async () => 
             profile: 'oa-ant-orders',
             pagePath: '/entity-rules/fixtures/order-list',
         },
-        async ({ workspaceId, deps }) => {
+        async ({ workspaceName, deps }) => {
             const spy: ExecutorSpy = { fillNodeIds: [], clickNodeIds: [], hoverNodeIds: [] };
             const spyDeps = buildSpyDeps(deps, spy);
             const steps: StepUnion[] = [
@@ -340,7 +340,7 @@ test('normal browser query nodeIds can feed hover via result refs', async () => 
                 } as StepUnion,
             ];
 
-            const { checkpoint, pipe } = await runStepList(workspaceId, steps, spyDeps, {
+            const { checkpoint, pipe } = await runStepList(workspaceName, steps, spyDeps, {
                 runId: 'run-browser-query-hover',
                 stopOnError: true,
             });
@@ -363,7 +363,7 @@ test('compute can consume browser query value envelope', async () => {
             profile: 'oa-ant-orders',
             pagePath: '/entity-rules/fixtures/order-list',
         },
-        async ({ workspaceId, deps }) => {
+        async ({ workspaceName, deps }) => {
             const steps: StepUnion[] = [
                 {
                     id: 'rowCount',
@@ -371,7 +371,7 @@ test('compute can consume browser query value envelope', async () => {
                     args: {
                         op: 'entity',
                         businessTag: 'order.list.main',
-                        query: 'table.row_count',
+                        query: 'table.rowCount',
                     },
                 } as StepUnion,
                 {
@@ -388,7 +388,7 @@ test('compute can consume browser query value envelope', async () => {
                 } as StepUnion,
             ];
 
-            const { checkpoint, pipe } = await runStepList(workspaceId, steps, deps, {
+            const { checkpoint, pipe } = await runStepList(workspaceName, steps, deps, {
                 runId: 'run-query-compute-envelope',
                 stopOnError: true,
             });

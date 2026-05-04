@@ -50,8 +50,7 @@ export const createWsActionClient = async (url = 'ws://127.0.0.1:17333'): Promis
             v: 1,
             id: action.id || crypto.randomUUID(),
             type: action.type,
-            tabToken: action.tabToken,
-            scope: action.scope,
+            workspaceName: action.workspaceName,
             payload: action.payload,
         };
         return new Promise<ActionOk<any> | ActionErr>((resolve) => {

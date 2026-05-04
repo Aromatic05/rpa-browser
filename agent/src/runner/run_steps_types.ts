@@ -1,14 +1,15 @@
 import type { StepName, StepResolve, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import type { Checkpoint as RunnerCheckpoint } from './checkpoint/types';
-import type { RuntimeRegistry } from '../runtime/runtime_registry';
+import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../config';
+import type { WorkspaceEntityRulesProvider } from '../entity_rules/provider';
 
 export type StepEvent =
     | {
           type: 'step.start';
           ts: number;
-          workspaceId: string;
+          workspaceName: string;
           stepId: string;
           name: StepName;
           argsSummary?: unknown;
@@ -16,7 +17,7 @@ export type StepEvent =
     | {
           type: 'step.end';
           ts: number;
-          workspaceId: string;
+          workspaceName: string;
           stepId: string;
           name: StepName;
           ok: boolean;
@@ -49,6 +50,7 @@ export type StepResult = {
 
 export type ResultPipe = {
     items: StepResult[];
+    waiters: Set<() => void>;
 };
 
 export type SignalChannel = {
@@ -58,22 +60,23 @@ export type SignalChannel = {
 
 export type Checkpoint = {
     runId: string;
-    workspaceId: string;
+    workspaceName: string;
     status: RunStatus;
     cursor: number;
     updatedAt: number;
 };
 
 export type RunStepsDeps = {
-    runtime: RuntimeRegistry;
+    runtime: ExecutionBindings;
     stepSinks?: StepSink[];
     config: RunnerConfig;
     pluginHost: RunnerPluginHost;
+    resolveEntityRulesProvider?: (workspaceName: string) => WorkspaceEntityRulesProvider | null;
 };
 
 export type RunStepsRequest = {
     runId: string;
-    workspaceId: string;
+    workspaceName: string;
     stepsQueue: StepsQueue;
     resultPipe: ResultPipe;
     signalChannel: SignalChannel;

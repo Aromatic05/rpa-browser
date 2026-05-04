@@ -1,11 +1,17 @@
 export const REQUEST_ACTION_TYPES = {
+    WORKFLOW_LIST: 'workflow.list',
+    WORKFLOW_CREATE: 'workflow.create',
+    WORKFLOW_OPEN: 'workflow.open',
+    WORKFLOW_RENAME: 'workflow.rename',
+    DSL_GET: 'dsl.get',
+    DSL_SAVE: 'dsl.save',
+    DSL_TEST: 'dsl.test',
+    DSL_RUN: 'dsl.run',
+
     WORKSPACE_LIST: 'workspace.list',
     WORKSPACE_CREATE: 'workspace.create',
     WORKSPACE_SET_ACTIVE: 'workspace.setActive',
-    WORKSPACE_SAVE: 'workspace.save',
-    WORKSPACE_RESTORE: 'workspace.restore',
 
-    TAB_INIT: 'tab.init',
     TAB_LIST: 'tab.list',
     TAB_CREATE: 'tab.create',
     TAB_CLOSE: 'tab.close',
@@ -20,6 +26,8 @@ export const REQUEST_ACTION_TYPES = {
     RECORD_START: 'record.start',
     RECORD_STOP: 'record.stop',
     RECORD_GET: 'record.get',
+    RECORD_SAVE: 'record.save',
+    RECORD_LOAD: 'record.load',
     RECORD_CLEAR: 'record.clear',
     RECORD_LIST: 'record.list',
     RECORD_EVENT: 'record.event',
@@ -35,6 +43,17 @@ export const REQUEST_ACTION_TYPES = {
     TASK_RUN_CONTINUE: 'task.run.continue',
     TASK_RUN_FLUSH: 'task.run.flush',
     TASK_RUN_RESUME: 'task.run.resume',
+    CHECKPOINT_LIST: 'checkpoint.list',
+    CHECKPOINT_GET: 'checkpoint.get',
+    CHECKPOINT_SAVE: 'checkpoint.save',
+    CHECKPOINT_DELETE: 'checkpoint.delete',
+    ENTITY_RULE_LIST: 'entity_rules.list',
+    ENTITY_RULE_GET: 'entity_rules.get',
+    ENTITY_RULE_SAVE: 'entity_rules.save',
+    ENTITY_RULE_DELETE: 'entity_rules.delete',
+    MCP_START: 'mcp.start',
+    MCP_STOP: 'mcp.stop',
+    MCP_STATUS: 'mcp.status',
 } as const;
 
 const FIXED_EVENT_ACTION_TYPES = {

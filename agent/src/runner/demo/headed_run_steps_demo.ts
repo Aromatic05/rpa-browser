@@ -9,14 +9,20 @@
 
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import crypto from 'node:crypto';
 import { chromium } from 'playwright';
-import { createPageRegistry } from '../../runtime/page_registry';
-import { createRuntimeRegistry } from '../../runtime/runtime_registry';
+import { createPageRegistry } from '../../runtime/browser/page_registry';
+import { createWorkspaceRegistry } from '../../runtime/workspace/registry';
+import { createExecutionBindings } from '../../runtime/execution/bindings';
 import { createConsoleStepSink, runStepList } from '../run_steps';
 import { MemorySink } from '../trace/sink';
 import { createLoggingHooks } from '../trace/hooks';
 import { getRunnerConfig } from '../../config';
 import { RunnerPluginHost } from '../hotreload/plugin_host';
+import { ensureWorkflowOnFs } from '../../workflow';
+import { createRecordingState } from '../../record/recording';
+import { createPortAllocator } from '../../runtime/service/ports';
+import type { RunStepsDeps } from '../run_steps_types';
 
 const fixtureUrl = () =>
     pathToFileURL(
@@ -40,22 +46,54 @@ const run = async () => {
     });
     const context = await browser.newContext();
     const pageRegistry = createPageRegistry({
-        tabTokenKey: '__rpa_tab_token',
+        tabNameKey: '__rpa_tab_name',
         getContext: async () => context,
     });
     const pluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
     await pluginHost.load();
-    const traceSink = new MemorySink();
-    const runtimeRegistry = createRuntimeRegistry({
+    const runStepsDeps: RunStepsDeps = {
+        runtime: null as unknown as ReturnType<typeof createExecutionBindings>,
+        stepSinks: [createConsoleStepSink('[step]')],
+        config: getRunnerConfig(),
+        pluginHost,
+    };
+    const workspaceRegistry = createWorkspaceRegistry({
         pageRegistry,
+        recordingState: createRecordingState(),
+        replayOptions: {
+            clickDelayMs: 300,
+            stepDelayMs: 900,
+            scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+        },
+        navDedupeWindowMs: 1200,
+        runStepsDeps,
+        runnerConfig: getRunnerConfig(),
+        portAllocator: createPortAllocator(),
+    });
+    const traceSink = new MemorySink();
+    const runtimeRegistry = createExecutionBindings({
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
         pluginHost,
     });
-    const workspace = await pageRegistry.createWorkspace();
+    runStepsDeps.runtime = runtimeRegistry;
+    runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            return null;
+        }
+        return workspace.entityRules.getProvider(workspace.workflow);
+    };
+    const workspaceName = 'demo';
+    const tabName = crypto.randomUUID();
+    const page = await pageRegistry.getPage(tabName);
+    const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
+    runtimeWorkspace.tabs.createTab({ tabName, page, url: page.url() });
+    runtimeWorkspace.tabs.setActiveTab(tabName);
+    runtimeRegistry.bindPage({ workspaceName, tabName, page });
 
     const firstResp = await runStepList(
-        workspace.workspaceId,
+        workspaceName,
         [
             {
                 id: 'demo-goto',
@@ -70,7 +108,7 @@ const run = async () => {
                 meta: { source: 'script' },
             },
         ],
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
+        runStepsDeps,
         { stopOnError: true },
     );
     if (firstResp.checkpoint.status === 'failed') {
@@ -89,7 +127,7 @@ const run = async () => {
     }
 
     const secondResp = await runStepList(
-        workspace.workspaceId,
+        workspaceName,
         [
             {
                 id: 'demo-click',
@@ -106,7 +144,7 @@ const run = async () => {
                 meta: { source: 'script' },
             },
         ],
-        { runtime: runtimeRegistry, stepSinks: [createConsoleStepSink('[step]')], config: getRunnerConfig(), pluginHost },
+        runStepsDeps,
         { stopOnError: true },
     );
     if (secondResp.checkpoint.status === 'failed') {

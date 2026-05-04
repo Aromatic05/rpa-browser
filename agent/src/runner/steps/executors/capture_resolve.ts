@@ -54,7 +54,7 @@ export const normalizeCaptureResolveLimit = (
 export const executeBrowserCaptureResolve = async (
     step: Step<'browser.capture_resolve'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
     const args = step.args;
     if (!args.nodeId && !args.selector && !args.text && !args.role && !args.name) {
@@ -73,11 +73,11 @@ export const executeBrowserCaptureResolve = async (
         return { stepId: step.id, ok: false, error: normalizedLimit.error };
     }
 
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const cachedSnapshot = readLatestSnapshot(binding.traceCtx.cache);
     const snapshot =
         cachedSnapshot ||
-        (await ensureFreshEntityContext(deps, workspaceId, 'browser.capture_resolve')).snapshot;
+        (await ensureFreshEntityContext(deps, workspaceName, 'browser.capture_resolve')).snapshot;
     const candidates = await findCandidates(binding, snapshot, step).then((items) => items.slice(0, normalizedLimit.value));
     if (candidates.length === 0) {
         return {
@@ -132,7 +132,7 @@ const readLatestSnapshot = (cache: unknown): SnapshotResult | null => {
 };
 
 const findCandidates = async (
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['ensureActivePage']>>,
+    binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>,
     snapshot: SnapshotResult,
     step: Step<'browser.capture_resolve'>,
 ): Promise<CaptureResolveCandidate[]> => {
@@ -145,7 +145,7 @@ const findCandidates = async (
         return Object.values(snapshot.nodeIndex)
             .filter((node) => selectorMatchesNode(snapshot, node, resolved.target.selector))
             .map((node) => ({
-                ...buildCandidate(snapshot, node, { kind: 'resolve' as const, match: () => [] }, 1),
+                ...buildCandidate(snapshot, node, { kind: 'selector' as const, match: () => [] }, 1),
                 selector: resolved.target.selector,
                 confidence: 0.92,
                 reason: ['matched resolveId sidecar'],
@@ -226,8 +226,6 @@ const buildCandidate = (
     const confidence =
         strategy.kind === 'nodeId'
             ? 1
-            : strategy.kind === 'resolve'
-              ? 0.92
             : strategy.kind === 'selector'
               ? unique ? 0.95 : 0.65
               : strategy.kind === 'role+name'

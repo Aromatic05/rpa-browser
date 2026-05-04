@@ -16,7 +16,7 @@ const rawFailure: StepResult = {
 
 const createFailedCtx = (overrides?: Partial<FailedCtx>): FailedCtx => ({
     runId: 'run-1',
-    workspaceId: 'ws-1',
+    workspaceName: 'ws-1',
     stepIndex: 0,
     step: { id: 's1', name: 'browser.click', args: { selector: '#x' } } as StepUnion,
     rawResult: rawFailure,
@@ -54,9 +54,9 @@ const createCtx = (overrides?: Partial<CheckpointCtx>): CheckpointCtx => {
 };
 
 const createBindingWithBusinessEntity = (businessTag: string) => {
-    const workspaceId = 'ws-1';
-    const tabId = 'tab-1';
-    const tabToken = 'tab-token-1';
+    const workspaceName = 'ws-1';
+    const tabName = 'tab-1';
+    const tabName = 'tab-token-1';
     const url = 'https://example.test/orders';
     const snapshot = {
         root: { id: 'root', role: 'root', children: [] },
@@ -69,9 +69,9 @@ const createBindingWithBusinessEntity = (businessTag: string) => {
     } as any;
 
     return {
-        workspaceId,
-        tabId,
-        tabToken,
+        workspaceName,
+        tabName,
+        tabName,
         page: { url: () => url },
         traceTools: {
             'trace.page.getInfo': async () => ({ ok: true, data: { url } }),
@@ -82,8 +82,8 @@ const createBindingWithBusinessEntity = (businessTag: string) => {
                 snapshotSessionStore: {
                     version: 1,
                     entries: {
-                        [`${workspaceId}:${tabToken}`]: {
-                            pageIdentity: { workspaceId, tabId, tabToken, url },
+                        [`${workspaceName}:${tabName}`]: {
+                            pageIdentity: { workspaceName, tabName, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView: {

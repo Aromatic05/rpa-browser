@@ -1,82 +1,93 @@
 /**
- * token_bridge：tabToken 管理 + hello 绑定。
+ * token_bridge：tabName 管理 + hello 绑定。
  *
  * 设计说明：
- * - tabToken 保存在 sessionStorage，并同步挂到 window 便于调试。
+ * - tabName 保存在 sessionStorage，并同步挂到 window 便于调试。
  * - hello 在导航变更时发送，确保 SW 侧及时更新映射。
  */
 
+import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
-import type { Action } from '../shared/types.js';
 
 declare global {
     interface Window {
-        __TAB_TOKEN__?: string;
+        __rpa_tab_name?: string;
     }
 }
 
-const TAB_TOKEN_KEY = '__rpa_tab_token';
-const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
+const TAB_NAME_KEY = '__rpa_tab_name';
+const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
 
 const readTokenFromWindowName = (): string | null => {
     try {
         const raw = window.name;
-        if (!raw.startsWith(TAB_TOKEN_WIN_NAME_PREFIX)) {return null;}
-        const token = raw.slice(TAB_TOKEN_WIN_NAME_PREFIX.length).trim();
+        if (!raw.startsWith(TAB_NAME_WIN_NAME_PREFIX)) {return null;}
+        const token = raw.slice(TAB_NAME_WIN_NAME_PREFIX.length).trim();
         return token || null;
     } catch {
         return null;
     }
 };
 
-const writeTokenToWindowName = (tabToken: string) => {
+const writeTokenToWindowName = (tabName: string) => {
     try {
-        window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabToken}`;
+        window.name = `${TAB_NAME_WIN_NAME_PREFIX}${tabName}`;
     } catch {
         // ignore window.name write failures
     }
 };
 
-export const ensureTabToken = (): string => {
-    const tabToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? readTokenFromWindowName() ?? '';
-    if (!tabToken) {return '';}
-    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-    writeTokenToWindowName(tabToken);
-    window.__TAB_TOKEN__ = tabToken;
-    return tabToken;
+export const ensureTabName = (): string => {
+    const tabName = sessionStorage.getItem(TAB_NAME_KEY) ?? readTokenFromWindowName() ?? '';
+    if (!tabName) {return '';}
+    sessionStorage.setItem(TAB_NAME_KEY, tabName);
+    writeTokenToWindowName(tabName);
+    window.__rpa_tab_name = tabName;
+    return tabName;
 };
 
-export const ensureTabTokenAsync = async (): Promise<string> => {
-    let tabToken = ensureTabToken();
-    if (!tabToken) {
-        const response = await send.action({
-            v: 1,
-            id: crypto.randomUUID(),
-            type: 'tab.init',
-            payload: {
-                source: 'extension.content',
-                url: location.href,
-                at: Date.now(),
-            },
-            scope: {},
-        } satisfies Action);
-        const payload = (response.payload ?? {}) as { tabToken?: string };
-        if (response.type === 'tab.init.result' && payload.tabToken) {
-            tabToken = payload.tabToken;
+export const ensureTabNameAsync = async (): Promise<string> => {
+    let tabName = ensureTabName();
+    for (let i = 0; i < 3; i += 1) {
+        const runtimeReply = await new Promise<{ ok: boolean; tabName?: string }>((resolve) => {
+            chrome.runtime.sendMessage(
+                {
+                    type: MSG.ENSURE_BOUND_TOKEN,
+                    source: 'extension.content',
+                    tabName,
+                    url: location.href,
+                    title: document.title,
+                    at: Date.now(),
+                },
+                (response: unknown) => {
+                    if (chrome.runtime.lastError) {
+                        resolve({ ok: false });
+                        return;
+                    }
+                    resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string });
+                },
+            );
+        });
+        if (runtimeReply.ok && runtimeReply.tabName) {
+            tabName = runtimeReply.tabName;
+            sessionStorage.setItem(TAB_NAME_KEY, tabName);
+            writeTokenToWindowName(tabName);
+            window.__rpa_tab_name = tabName;
+            break;
         }
-        if (!tabToken) {
-            throw new Error('tab token init failed');
+        if (i < 2) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 120));
         }
     }
-    sessionStorage.setItem(TAB_TOKEN_KEY, tabToken);
-    writeTokenToWindowName(tabToken);
-    window.__TAB_TOKEN__ = tabToken;
-    return tabToken;
+    if (!tabName) {
+        throw new Error('bound tab token unavailable');
+    }
+    return tabName;
 };
 
-export const bindHello = (tabToken: string, onHello?: () => void): () => void => {
+export const bindHello = (tabName: string, onHello?: () => void): () => void => {
     const sendHello = () => {
-        void send.hello({ tabToken, url: location.href });
+        void send.hello({ tabName, url: location.href });
         onHello?.();
     };
 

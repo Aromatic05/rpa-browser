@@ -7,9 +7,9 @@ import { resolveTarget } from '../helpers/resolve_target';
 export const executeBrowserDragAndDrop = async (
     step: Step<'browser.drag_and_drop'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const source = await resolveTarget(binding, {
         nodeId: step.args.sourceNodeId,
         selector: step.args.sourceSelector,

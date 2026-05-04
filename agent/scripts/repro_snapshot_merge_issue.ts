@@ -6,7 +6,7 @@ import { generateSemanticSnapshot } from '../src/runner/steps/executors/snapshot
 import { getNodeAttr } from '../src/runner/steps/executors/snapshot/core/runtime_store';
 import type { DomTreeNode } from '../src/runner/trace/dom/getDomTree';
 import type { UnifiedNode } from '../src/runner/steps/executors/snapshot/core/types';
-import { createContextManager, resolvePaths } from '../src/runtime/context_manager';
+import { createContextManager, resolvePaths } from '../src/runtime/browser/context_manager';
 
 type TargetPaths = {
     checkboxPath?: string;

@@ -7,7 +7,7 @@ test('order-list fixture supports query envelope and table row target resolution
     await withEntityRuleSnapshotContext(
         { profile: 'oa-ant-orders', app: 'ant', pagePath: '/entity-rules/fixtures/order-list' },
         async ({ snapshot, finalEntityView }) => {
-            const rowCount = queryBusinessEntity(snapshot, finalEntityView, 'order.list.main', 'table.row_count');
+            const rowCount = queryBusinessEntity(snapshot, finalEntityView, 'order.list.main', 'table.rowCount');
             assert.equal(rowCount.ok, true);
             if (rowCount.ok) {
                 assert.equal(rowCount.data.kind, 'value');

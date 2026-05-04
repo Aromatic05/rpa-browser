@@ -1,5 +1,5 @@
 /**
- * Content script 入口：注入悬浮 UI + tabToken，并与 SW 通信。
+ * Content script 入口：注入悬浮 UI + tabName，并与 SW 通信。
  *
  * 注意：
  * - 内容脚本是“非 module”脚本，禁止静态 import。
@@ -8,21 +8,45 @@
  * - 仅处理 UI 与消息，不做持久化。
  */
 
-import type * as FloatingUIModule from '../content/floating_ui.js';
-import type * as TokenBridgeModule from '../content/token_bridge.js';
-import type * as ProtocolModule from '../shared/protocol.js';
-import type * as SendModule from '../shared/send.js';
-
-declare global {
-    interface Window {
-        __rpaTokenInjected?: boolean;
-    }
+interface Window {
+    __rpaTokenInjected?: boolean;
 }
 
 type ActionScopeInput = {
-    workspaceId?: string;
-    tabId?: string;
-    tabToken?: string;
+    workspaceName?: string;
+    tabName?: string;
+};
+
+type ActionShape = {
+    v: 1;
+    id: string;
+    type: string;
+    workspaceName?: string;
+    payload?: unknown;
+};
+
+type FloatingUIExports = {
+    mountFloatingUI: (opts: {
+        tabName: string;
+        onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
+        onEvent?: (handler: (action: ActionShape) => void) => void;
+    }) => { scheduleRefresh: () => void };
+};
+
+type TokenBridgeExports = {
+    ensureTabName: () => string;
+    ensureTabNameAsync: () => Promise<string>;
+    bindHello: (tabName: string, onHello?: () => void) => () => void;
+};
+
+type ProtocolExports = {
+    MSG: Record<string, string>;
+};
+
+type SendExports = {
+    send: {
+        action: (action: ActionShape) => Promise<unknown>;
+    };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -30,33 +54,33 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 // 协议与发送模块（动态 import，避免内容脚本模块化限制）
 const loadProtocol = (() => {
-    let cached: Promise<typeof ProtocolModule> | null = null;
+    let cached: Promise<ProtocolExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('shared/protocol.js');
-            cached = import(url) as Promise<typeof ProtocolModule>;
+            cached = import(url) as Promise<ProtocolExports>;
         }
         return cached;
     };
 })();
 
 const loadSend = (() => {
-    let cached: Promise<typeof SendModule> | null = null;
+    let cached: Promise<SendExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('shared/send.js');
-            cached = import(url) as Promise<typeof SendModule>;
+            cached = import(url) as Promise<SendExports>;
         }
         return cached;
     };
 })();
 
 const loadTokenBridge = (() => {
-    let cached: Promise<typeof TokenBridgeModule> | null = null;
+    let cached: Promise<TokenBridgeExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('content/token_bridge.js');
-            cached = import(url) as Promise<typeof TokenBridgeModule>;
+            cached = import(url) as Promise<TokenBridgeExports>;
         }
         return cached;
     };
@@ -64,11 +88,11 @@ const loadTokenBridge = (() => {
 
 
 const loadFloatingUI = (() => {
-    let cached: Promise<typeof FloatingUIModule> | null = null;
+    let cached: Promise<FloatingUIExports> | null = null;
     return () => {
         if (!cached) {
             const url = chrome.runtime.getURL('content/floating_ui.js');
-            cached = import(url) as Promise<typeof FloatingUIModule>;
+            cached = import(url) as Promise<FloatingUIExports>;
         }
         return cached;
     };
@@ -80,18 +104,17 @@ const loadFloatingUI = (() => {
     if (window.__rpaTokenInjected) {return;}
     window.__rpaTokenInjected = true;
 
-    // tabToken + hello 绑定（异步初始化，所有使用点需 await）
+    // tabName + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<string> | null = null;
-    const sendReport = async (tabToken?: string) => {
-        const token = tabToken ?? (await ensureToken());
+    const sendReport = async (tabName?: string) => {
+        const token = tabName ?? (await ensureToken());
         const { send } = await loadSend();
         await send.action({
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.report',
-            tabToken: token,
-            scope: { tabToken: token },
             payload: {
+                tabName: token,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -102,7 +125,7 @@ const loadFloatingUI = (() => {
     const ensureToken = () => {
         tokenReady ??= (async () => {
                 const mod = await loadTokenBridge();
-                const token = await mod.ensureTabTokenAsync();
+                const token = await mod.ensureTabNameAsync();
                 mod.bindHello(token, () => {
                     void sendReport(token);
                 });
@@ -120,9 +143,24 @@ const loadFloatingUI = (() => {
             // 消息接收入口：token 查询 + 录制 start/stop
             void (async () => {
                 const { MSG } = await loadProtocol();
-                if (!isRecord(message) || message.type !== MSG.GET_TOKEN) {return;}
-                    const tabToken = await ensureToken();
-                    sendResponse({ ok: true, tabToken, url: location.href });
+                if (!isRecord(message)) {return;}
+                if (message.type === MSG.GET_TOKEN) {
+                    const mod = await loadTokenBridge();
+                    const tabName = mod.ensureTabName();
+                    sendResponse({ ok: true, tabName, url: location.href });
+                    return;
+                }
+                if (message.type === MSG.SET_TOKEN) {
+                    const tabName = typeof message.tabName === 'string' ? message.tabName : '';
+                    if (!tabName) {
+                        sendResponse({ ok: false, error: 'missing tabName' });
+                        return;
+                    }
+                    sessionStorage.setItem('__rpa_tab_name', tabName);
+                    window.name = `__RPA_TAB_NAME__:${tabName}`;
+                    (window as any).__rpa_tab_name = tabName;
+                    sendResponse({ ok: true, tabName, url: location.href });
+                }
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: String(error) });
             });
@@ -134,15 +172,14 @@ const loadFloatingUI = (() => {
     const PING_INTERVAL_MS = 15000;
     let pingTimer: ReturnType<typeof setInterval> | null = null;
     const sendPing = async () => {
-        const tabToken = await ensureToken();
+        const tabName = await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.ping',
-            tabToken,
-            scope: { tabToken },
             payload: {
+                tabName: tabName,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -160,20 +197,20 @@ const loadFloatingUI = (() => {
 
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
-    let consumeActionEvent: ((action: unknown) => void) | null = null;
+    let consumeActionEvent: ((action: ActionShape) => void) | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
-        const tabToken = await ensureToken();
-        void sendReport(tabToken);
+        const tabName = await ensureToken();
+        void sendReport(tabName);
         startHeartbeat();
         uiHandle = mountFloatingUI({
-            tabToken,
+            tabName,
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
-                const hasExplicitScope = Boolean(typedScope.workspaceId ?? typedScope.tabId);
-                const scopedTabToken = typedScope.tabToken ?? tabToken;
+                const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
+                const scopedTabName = typedScope.tabName ?? tabName;
                 const normalizedPayload =
                     type === 'record.event'
                         ? {
@@ -185,20 +222,16 @@ const loadFloatingUI = (() => {
                               },
                           }
                         : (payload ?? {});
-                const normalizedScope = hasExplicitScope
-                    ? {
-                          ...(typedScope.workspaceId ? { workspaceId: typedScope.workspaceId } : {}),
-                          ...(typedScope.tabId ? { tabId: typedScope.tabId } : {}),
-                      }
-                    : { ...typedScope, tabToken: scopedTabToken };
                 const action = {
                     v: 1 as const,
                     id: crypto.randomUUID(),
                     type,
-                    tabToken: hasExplicitScope ? undefined : scopedTabToken,
-                    scope: normalizedScope,
+                    workspaceName: typedScope.workspaceName,
                     payload: normalizedPayload,
                 };
+                if (!hasExplicitScope && action.payload && typeof action.payload === 'object') {
+                    (action.payload as Record<string, unknown>).tabName = scopedTabName;
+                }
                 return await send.action(action);
             },
             onEvent: (handler) => {
@@ -207,7 +240,7 @@ const loadFloatingUI = (() => {
         });
         chrome.runtime.onMessage.addListener((message: unknown) => {
             if (!isRecord(message) || message.type !== MSG.ACTION_EVENT || !('action' in message)) {return;}
-            consumeActionEvent?.(message.action);
+            consumeActionEvent?.(message.action as ActionShape);
         });
     })();
 

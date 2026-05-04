@@ -5,9 +5,9 @@ import { mapTraceError } from '../helpers/target';
 export const executeBrowserListTabs = async (
     step: Step<'browser.list_tabs'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.ensureActivePage(workspaceId);
+    const binding = await deps.runtime.resolveBinding(workspaceName);
     const result = await binding.traceTools['trace.page.getInfo']();
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
@@ -16,7 +16,7 @@ export const executeBrowserListTabs = async (
         stepId: step.id,
         ok: true,
         data: {
-            tab_id: result.data?.tabId,
+            tab_id: result.data?.tabName,
             tabs: result.data?.tabs || [],
         },
     };

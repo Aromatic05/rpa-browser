@@ -28,3 +28,4 @@ agent/tests/fixtures/snapshot/web_docs_probe/
 
 agent/.mcp-hot
 .vscode/
+.VSCodeCounter/

@@ -11,9 +11,9 @@ import { buildFinalEntityViewFromSnapshot } from './snapshot/core/overlay';
 export const executeBrowserEntity = async (
     step: Step<'browser.entity'>,
     deps: RunStepsDeps,
-    workspaceId: string,
+    workspaceName: string,
 ): Promise<StepResult> => {
-    const context = await ensureFreshEntityContext(deps, workspaceId, `browser.entity.${step.args.op}`);
+    const context = await ensureFreshEntityContext(deps, workspaceName, `browser.entity.${step.args.op}`);
     const args = step.args;
 
     if (args.op === 'list' || args.op === 'find') {

@@ -109,17 +109,17 @@ const main = async () => {
         const listResp = await client.request('tools/list', {});
         console.log('tools/list:', JSON.stringify(listResp.result, null, 2));
 
-        const tabToken = 'mcp-smoke-tab';
+        const tabName = 'mcp-smoke-tab';
         const gotoResp = await client.request('tools/call', {
             name: 'browser.goto',
-            arguments: { tabToken, url: 'https://example.com' },
+            arguments: { tabName, url: 'https://example.com' },
         });
         const gotoResult = parseToolResult(gotoResp);
         console.log('browser.goto:', JSON.stringify(gotoResult, null, 2));
 
         const snapResp = await client.request('tools/call', {
             name: 'browser.snapshot',
-            arguments: { tabToken },
+            arguments: { tabName },
         });
         const snapResult = parseToolResult(snapResp);
         console.log('browser.snapshot:', JSON.stringify(snapResult, null, 2));

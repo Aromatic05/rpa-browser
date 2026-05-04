@@ -6,14 +6,14 @@
  * - 内部维护 workspace/tab 的轻量状态，用于渲染与联动刷新。
  */
 
-import type { Action, ActionScope } from '../shared/types.js';
+import type { Action } from '../shared/types.js';
 
 export type FloatingUIOptions = {
-    tabToken: string;
+    tabName: string;
     onAction: (
         type: string,
         payload?: Record<string, unknown>,
-        scope?: { workspaceId?: string; tabId?: string },
+        scope?: { workspaceName?: string; tabName?: string },
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
 };
@@ -86,7 +86,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = `tabToken: ${opts.tabToken.slice(0, 8)}…`;
+    meta.textContent = `tabName: ${opts.tabName.slice(0, 8)}…`;
 
     const row1 = document.createElement('div');
     row1.className = 'row';
@@ -101,20 +101,28 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     row2.className = 'row';
     const showBtn = document.createElement('button');
     showBtn.textContent = 'Show Rec';
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save WS';
+    const initWorkflowBtn = document.createElement('button');
+    initWorkflowBtn.textContent = 'Init Workflow';
     const clearBtn = document.createElement('button');
     clearBtn.textContent = 'Clear Rec';
     const replayBtn = document.createElement('button');
     replayBtn.className = 'primary';
     replayBtn.textContent = 'Replay';
-    row2.append(showBtn, saveBtn, clearBtn);
+    row2.append(showBtn, initWorkflowBtn, clearBtn);
 
     const row3 = document.createElement('div');
     row3.className = 'row';
     const stopReplayBtn = document.createElement('button');
     stopReplayBtn.textContent = 'Stop Replay';
     row3.append(replayBtn, stopReplayBtn);
+
+    const row4 = document.createElement('div');
+    row4.className = 'row';
+    const exportBtn = document.createElement('button');
+    exportBtn.textContent = 'Save Artifact';
+    const importBtn = document.createElement('button');
+    importBtn.textContent = 'Load Artifact';
+    row4.append(exportBtn, importBtn);
 
     const wsSection = document.createElement('div');
     wsSection.className = 'panel-section';
@@ -145,8 +153,33 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     tabSection.append(tabTitle, tabList, tabActions);
 
     const out = document.createElement('pre');
+    const workflowSection = document.createElement('div');
+    workflowSection.className = 'panel-section';
+    const workflowTitle = document.createElement('div');
+    workflowTitle.className = 'meta';
+    workflowTitle.textContent = 'Workflow';
+    const sceneInput = document.createElement('input');
+    sceneInput.type = 'text';
+    sceneInput.placeholder = 'scene';
+    sceneInput.style.width = '100%';
+    sceneInput.style.boxSizing = 'border-box';
+    sceneInput.style.padding = '6px 8px';
+    sceneInput.style.fontSize = '12px';
+    sceneInput.style.borderRadius = '8px';
+    sceneInput.style.border = '1px solid #cbd5f5';
+    const recordingNameInput = document.createElement('input');
+    recordingNameInput.type = 'text';
+    recordingNameInput.placeholder = 'recording name (optional)';
+    recordingNameInput.style.width = '100%';
+    recordingNameInput.style.boxSizing = 'border-box';
+    recordingNameInput.style.padding = '6px 8px';
+    recordingNameInput.style.fontSize = '12px';
+    recordingNameInput.style.borderRadius = '8px';
+    recordingNameInput.style.border = '1px solid #cbd5f5';
+    recordingNameInput.style.marginTop = '6px';
+    workflowSection.append(workflowTitle, sceneInput, recordingNameInput);
 
-    panel.append(meta, row1, row2, row3, wsSection, tabSection, out);
+    panel.append(meta, row1, row2, row3, row4, workflowSection, wsSection, tabSection, out);
     wrap.append(ball, panel);
     shadow.append(style, wrap);
 
@@ -162,68 +195,142 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         out.textContent = JSON.stringify(payload, null, 2);
     };
 
-    let activeWorkspaceId: string | null = null;
-    let activeTabId: string | null = null;
+    let activeWorkspaceName: string | null = null;
+    let activeTabName: string | null = null;
+    let workflowInitialized = false;
+    const deriveScene = (): string => {
+        const explicit = sceneInput.value.trim();
+        if (explicit) {return explicit;}
+        const workspaceName = activeWorkspaceName || '';
+        if (workspaceName.startsWith('workflow:')) {
+            const scene = workspaceName.slice('workflow:'.length).trim();
+            if (scene) {return scene;}
+        }
+        return workspaceName;
+    };
+    const updateInitVisibility = () => {
+        const activeIsWorkflow = (activeWorkspaceName || '').startsWith('workflow:');
+        const hide = workflowInitialized || activeIsWorkflow;
+        initWorkflowBtn.style.display = hide ? 'none' : '';
+    };
 
     // UI 行为统一走 onAction
     const sendPanelAction = async (
         type: string,
         payload?: Record<string, unknown>,
-        scope?: ActionScope,
+        scope?: { workspaceName?: string; tabName?: string },
     ): Promise<Action> => {
         const response = await opts.onAction(type, payload, scope);
         render(response);
         interceptAction(response);
+        if (!response.type.endsWith('.failed') && (type === 'workflow.create' || type === 'record.save' || type === 'record.load')) {
+            workflowInitialized = true;
+            updateInitVisibility();
+        }
         return response;
     };
 
-    startBtn.addEventListener('click', () => void sendPanelAction('record.start'));
-    stopBtn.addEventListener('click', () => void sendPanelAction('record.stop'));
-    showBtn.addEventListener('click', () => void sendPanelAction('record.get'));
-    saveBtn.addEventListener('click', () =>
-        void sendPanelAction('workspace.save', activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}),
-    );
-    clearBtn.addEventListener('click', () => void sendPanelAction('record.clear'));
-    replayBtn.addEventListener('click', () => void sendPanelAction('play.start'));
-    stopReplayBtn.addEventListener('click', () => void sendPanelAction('play.stop'));
+    startBtn.addEventListener('click', () =>
+        void sendPanelAction('record.start', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+    stopBtn.addEventListener('click', () =>
+        void sendPanelAction('record.stop', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+    showBtn.addEventListener('click', () =>
+        void sendPanelAction('record.get', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+    initWorkflowBtn.addEventListener('click', () => {
+        const scene = sceneInput.value.trim();
+        if (!scene) {
+            render({ code: 'ERR_BAD_ARGS', message: 'scene is required' });
+            return;
+        }
+        void (async () => {
+            const inited = await sendPanelAction('workflow.create', { scene });
+            if (inited.type.endsWith('.failed')) {return;}
+            const opened = await sendPanelAction('workflow.open', { scene });
+            if (opened.type.endsWith('.failed')) {return;}
+            refreshWorkspaces();
+            refreshTabs();
+        })();
+    });
+    clearBtn.addEventListener('click', () =>
+        void sendPanelAction('record.clear', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+    replayBtn.addEventListener('click', () =>
+        void sendPanelAction('play.start', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+    stopReplayBtn.addEventListener('click', () =>
+        void sendPanelAction('play.stop', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined));
+    exportBtn.addEventListener('click', () => {
+        void (async () => {
+            const scope = activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined;
+            const scene = deriveScene();
+            if (!scene) {
+                render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
+                return;
+            }
+            const recordingName = recordingNameInput.value.trim();
+            await sendPanelAction('record.save', {
+                scene,
+                ...(recordingName ? { recordingName } : {}),
+                includeStepResolve: true,
+            }, scope);
+        })();
+    });
+    importBtn.addEventListener('click', () => {
+        void (async () => {
+            const scope = activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined;
+            const scene = deriveScene();
+            if (!scene) {
+                render({ code: 'ERR_BAD_ARGS', message: 'scene is required (or select a workspace first)' });
+                return;
+            }
+            const recordingName = recordingNameInput.value.trim();
+            await sendPanelAction('record.load', {
+                scene,
+                ...(recordingName ? { recordingName } : {}),
+            }, scope);
+        })();
+    });
 
     const renderWorkspaces = (
-        workspaces: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>,
+        workspaces: Array<{ workspaceName: string; activeTabName?: string; tabCount: number }>,
     ) => {
         wsList.innerHTML = '';
-        if (!activeWorkspaceId && workspaces.length) {
-            activeWorkspaceId = workspaces[0].workspaceId;
+        if (!activeWorkspaceName && workspaces.length) {
+            activeWorkspaceName = workspaces[0].workspaceName;
         }
+        if (activeWorkspaceName?.startsWith('workflow:')) {
+            const scene = activeWorkspaceName.slice('workflow:'.length).trim();
+            if (scene && !sceneInput.value.trim()) {sceneInput.value = scene;}
+        }
+        updateInitVisibility();
         workspaces.forEach((ws) => {
             const btn = document.createElement('button');
-            btn.textContent = `${ws.workspaceId.slice(0, 6)}… (${String(ws.tabCount)})`;
-            if (activeWorkspaceId === ws.workspaceId) {
+            btn.textContent = `${ws.workspaceName.slice(0, 6)}… (${String(ws.tabCount)})`;
+            if (activeWorkspaceName === ws.workspaceName) {
                 btn.classList.add('primary');
             }
             btn.addEventListener('click', () => {
-                activeWorkspaceId = ws.workspaceId;
-                void sendPanelAction('workspace.setActive', { workspaceId: ws.workspaceId });
+                activeWorkspaceName = ws.workspaceName;
+                void sendPanelAction('workspace.setActive', { workspaceName: ws.workspaceName });
                 refreshTabs();
             });
             wsList.appendChild(btn);
         });
     };
 
-    const renderTabs = (tabs: Array<{ tabId: string; url: string; title: string; active: boolean }>) => {
+    const renderTabs = (tabs: Array<{ tabName: string; url: string; title: string; active: boolean }>) => {
         tabList.innerHTML = '';
         tabs.forEach((tab) => {
             const btn = document.createElement('button');
-            btn.textContent = `${tab.tabId.slice(0, 6)}… ${tab.title || tab.url || ''}`;
+            btn.textContent = `${tab.tabName.slice(0, 6)}… ${tab.title || tab.url || ''}`;
             if (tab.active) {
                 btn.classList.add('primary');
-                activeTabId = tab.tabId;
+                activeTabName = tab.tabName;
             }
             btn.addEventListener('click', () => {
-                activeTabId = tab.tabId;
-                if (activeWorkspaceId) {
-                    void sendPanelAction('tab.setActive', { workspaceId: activeWorkspaceId, tabId: tab.tabId });
+                activeTabName = tab.tabName;
+                if (activeWorkspaceName) {
+                    void sendPanelAction('tab.setActive', { tabName: tab.tabName }, { workspaceName: activeWorkspaceName });
                 } else {
-                    void sendPanelAction('tab.setActive', { tabId: tab.tabId });
+                    void sendPanelAction('tab.setActive', { tabName: tab.tabName });
                 }
                 refreshTabs();
             });
@@ -236,8 +343,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     const refreshTabs = () => {
-        if (activeWorkspaceId) {
-            void sendPanelAction('tab.list', { workspaceId: activeWorkspaceId });
+        if (activeWorkspaceName) {
+            void sendPanelAction('tab.list', {}, { workspaceName: activeWorkspaceName });
         } else {
             void sendPanelAction('tab.list', {});
         }
@@ -246,39 +353,39 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     newWorkspaceBtn.addEventListener('click', () => {
         void (async () => {
             const action = await sendPanelAction('workspace.create', {});
-            const payload = (action.payload ?? {}) as { workspaceId?: string };
-            if (payload.workspaceId) {activeWorkspaceId = payload.workspaceId;}
+            const payload = (action.payload ?? {}) as { workspaceName?: string };
+            if (payload.workspaceName) {activeWorkspaceName = payload.workspaceName;}
             refreshWorkspaces();
             refreshTabs();
         })();
     });
 
     closeTabBtn.addEventListener('click', () => {
-        if (!activeTabId) {return;}
+        if (!activeTabName) {return;}
         void (async () => {
-            if (activeWorkspaceId) {
-                await sendPanelAction('tab.close', { workspaceId: activeWorkspaceId, tabId: activeTabId });
+            if (activeWorkspaceName) {
+                await sendPanelAction('tab.close', { tabName: activeTabName }, { workspaceName: activeWorkspaceName });
             } else {
-                await sendPanelAction('tab.close', { tabId: activeTabId });
+                await sendPanelAction('tab.close', { tabName: activeTabName });
             }
 
             const listed = await sendPanelAction('workspace.list', {});
             const listPayload = (listed.payload ?? {}) as {
-                workspaces?: Array<{ workspaceId: string }>;
+                workspaces?: Array<{ workspaceName: string }>;
             };
             const workspaces = listPayload.workspaces ?? [];
 
             if (!workspaces.length) {
                 const created = await sendPanelAction('workspace.create', {});
-                const createdPayload = (created.payload ?? {}) as { workspaceId?: string };
-                activeWorkspaceId = createdPayload.workspaceId ?? null;
+                const createdPayload = (created.payload ?? {}) as { workspaceName?: string };
+                activeWorkspaceName = createdPayload.workspaceName ?? null;
                 refreshWorkspaces();
                 refreshTabs();
                 return;
             }
 
-            activeWorkspaceId = workspaces[0].workspaceId;
-            await sendPanelAction('workspace.setActive', { workspaceId: activeWorkspaceId });
+            activeWorkspaceName = workspaces[0].workspaceName;
+            await sendPanelAction('workspace.setActive', { workspaceName: activeWorkspaceName });
             refreshTabs();
         })();
     });
@@ -286,13 +393,13 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const interceptAction = (action: Action) => {
         if (action.type.endsWith('.failed')) {return;}
         const payload = (action.payload ?? {}) as {
-            activeWorkspaceId?: string;
-            workspaces?: Array<{ workspaceId: string; activeTabId?: string; tabCount: number }>;
-            tabs?: Array<{ tabId: string; url: string; title: string; active: boolean }>;
+            activeWorkspaceName?: string;
+            workspaces?: Array<{ workspaceName: string; activeTabName?: string; tabCount: number }>;
+            tabs?: Array<{ tabName: string; url: string; title: string; active: boolean }>;
         };
         if (payload.workspaces) {
-            if (payload.activeWorkspaceId) {
-                activeWorkspaceId = payload.activeWorkspaceId;
+            if (payload.activeWorkspaceName) {
+                activeWorkspaceName = payload.activeWorkspaceName;
             }
             renderWorkspaces(payload.workspaces);
         }
@@ -308,6 +415,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     refreshWorkspaces();
     refreshTabs();
+    updateInitVisibility();
 
     let refreshPending = false;
     const scheduleRefresh = () => {
