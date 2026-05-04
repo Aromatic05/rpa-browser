@@ -81,9 +81,9 @@ test('tool_registry.ts does not import WorkspaceRegistry', () => {
     assert.ok(!/WorkspaceRegistry/.test(content));
 });
 
-test('mcp_main.ts starts MCP via workspace.mcp.handle', () => {
+test('mcp_main.ts starts MCP via workspace.mcp.start', () => {
     const content = fs.readFileSync(path.join(projectRoot, 'src/mcp_main.ts'), 'utf8');
-    assert.ok(content.includes("workspace.mcp.handle"));
+    assert.ok(content.includes('workspace.mcp.start'));
 });
 
 test('mcp_main.ts does not reference startMcpServer', () => {
@@ -147,4 +147,19 @@ test('all MCP tool name keys in createWorkspaceToolHandlers start with browser.'
     for (const name of toolNames) {
         assert.ok(name.startsWith('browser.'), `MCP tool name must start with browser.: ${name}`);
     }
+});
+
+test('McpControl type does not have getLifecycle', () => {
+    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/control.ts'), 'utf8');
+    assert.ok(!content.includes('getLifecycle'));
+});
+
+test('McpControl does not call serviceLifecycle', () => {
+    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/control.ts'), 'utf8');
+    assert.ok(!content.includes('serviceLifecycle'));
+});
+
+test('mcp runtime passes workspace.tabs.ensurePage as getPage', () => {
+    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/runtime.ts'), 'utf8');
+    assert.ok(content.includes('ensurePage'));
 });
