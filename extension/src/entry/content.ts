@@ -173,7 +173,7 @@ const loadFloatingUI = (() => {
     const PING_INTERVAL_MS = 15000;
     let pingTimer: ReturnType<typeof setInterval> | null = null;
     const sendPing = async () => {
-        const tabName = await ensureToken();
+        const { tabName } = await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
