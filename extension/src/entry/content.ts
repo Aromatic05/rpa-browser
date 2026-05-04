@@ -173,14 +173,15 @@ const loadFloatingUI = (() => {
     const PING_INTERVAL_MS = 15000;
     let pingTimer: ReturnType<typeof setInterval> | null = null;
     const sendPing = async () => {
-        const { tabName } = await ensureToken();
+        const { tabName, workspaceName } = await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.ping',
+            workspaceName,
             payload: {
-                tabName: tabName,
+                tabName,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
