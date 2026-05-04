@@ -1,4 +1,10 @@
+import crypto from 'node:crypto';
 import type { Page } from 'playwright';
+import { replyAction } from '../../actions/action_protocol';
+import { ActionError } from '../../actions/results';
+import { ERROR_CODES } from '../../actions/results';
+import type { WorkspaceRouterInput } from './router';
+import type { ControlPlaneResult } from '../control_plane';
 
 export type RuntimeTab = {
     name: string;
@@ -167,3 +173,139 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         reassignTab,
     };
 };
+
+export type TabsControl = {
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+};
+
+const requireTabName = (payload: Record<string, unknown>): string => {
+    const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+    if (!tabName) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'tabName is required');
+    }
+    return tabName;
+};
+
+export const createTabsControl = (): TabsControl => ({
+    handle: async (input) => {
+        const { action, workspace } = input;
+        const payload = (action.payload ?? {}) as Record<string, unknown>;
+
+        switch (action.type) {
+            case 'tab.list': {
+                const active = workspace.tabs.getActiveTab()?.name;
+                return {
+                    reply: replyAction(action, {
+                        workspaceName: workspace.name,
+                        tabs: workspace.tabs.listTabs().map((tab) => ({
+                            tabName: tab.name,
+                            url: tab.url,
+                            title: tab.title,
+                            active: active === tab.name,
+                            createdAt: tab.createdAt,
+                            updatedAt: tab.updatedAt,
+                        })),
+                    }),
+                    events: [],
+                };
+            }
+
+            case 'tab.create': {
+                const tabName = crypto.randomUUID();
+                const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
+                await workspace.tabs.ensurePage(tabName, startUrl);
+                workspace.tabs.setActiveTab(tabName);
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
+            }
+
+            case 'tab.close': {
+                const tabName = requireTabName(payload);
+                await workspace.tabs.closeTab(tabName);
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
+            }
+
+            case 'tab.setActive': {
+                const tabName = requireTabName(payload);
+                workspace.tabs.setActiveTab(tabName);
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
+            }
+
+            case 'tab.opened': {
+                const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : '';
+                const title = typeof payload.title === 'string' ? payload.title : '';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                if (!workspace.tabs.hasTab(tabName)) {
+                    workspace.tabs.createMetadataTab({ tabName, url, title, at });
+                } else {
+                    workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
+                }
+                workspace.tabs.setActiveTab(tabName);
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
+            }
+
+            case 'tab.report': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : undefined;
+                const title = typeof payload.title === 'string' ? payload.title : undefined;
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                if (!tabName || !workspace.tabs.hasTab(tabName)) {
+                    return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
+                }
+                workspace.tabs.reportTab(tabName, { url, title, at });
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.closed': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                if (!tabName) {
+                    return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
+                }
+                await workspace.tabs.closeTab(tabName);
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.ping': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : undefined;
+                const title = typeof payload.title === 'string' ? payload.title : undefined;
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                if (!tabName || !workspace.tabs.hasTab(tabName)) {
+                    return { reply: replyAction(action, { source, reportedAt: at, stale: true }), events: [] };
+                }
+                workspace.tabs.pingTab(tabName, { url, title, at });
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.reassign': {
+                const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const windowId = typeof payload.windowId === 'number' ? payload.windowId : undefined;
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                workspace.tabs.reassignTab(tabName, { at });
+                return {
+                    reply: replyAction(action, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        source,
+                        windowId,
+                        reportedAt: at,
+                    }),
+                    events: [],
+                };
+            }
+
+            case 'tab.activated': {
+                throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
+            }
+
+            default:
+                throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported tab action: ${action.type}`);
+        }
+    },
+});
