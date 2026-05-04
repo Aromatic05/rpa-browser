@@ -165,6 +165,32 @@ test('mcp.status is forwarded to mcpControl', async () => {
     assert.equal(mcpControl.calls.length, 1);
 });
 
+test('WorkspaceRouter does not handle tab.init', async () => {
+    const { router, tabsControl } = createRouterWithStubs();
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('tab.init', { workspaceName: 'ws-1' });
+
+    // Router forwards tab.init to tabsControl (prefix forwarding), but
+    // real TabsControl rejects it (tested separately).
+    const result = await router.handle(action, workspace, registry);
+    assert.equal(tabsControl.calls.length, 1);
+    assert.equal(tabsControl.calls[0].action.type, 'tab.init');
+    assert.equal(result.reply.type, 'tab.init.result');
+});
+
+test('TabsControl rejects tab.init', async () => {
+    const tabsControl = createTabsControl();
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('tab.init', { workspaceName: 'ws-1' });
+
+    await assert.rejects(
+        () => tabsControl.handle({ action, workspace, workspaceRegistry: registry }),
+        /unsupported tab action/,
+    );
+});
+
 test('WorkspaceRouter does not handle workspace.setActive', async () => {
     const { router } = createRouterWithStubs();
     const workspace = createMinimalWorkspace('ws-1');
