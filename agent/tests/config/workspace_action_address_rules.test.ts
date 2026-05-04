@@ -7,7 +7,7 @@ import { createWorkflowOnFs } from '../../src/workflow';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: 'a1', type, ...extra });
 
-test('workspace.create and workspace.list and tab.init go through runtime control', async () => {
+test('workspace.create and workspace.list go through runtime control', async () => {
     const { registry } = createTestWorkspaceRegistry();
     const wsName = `ws-${crypto.randomUUID()}`;
 
@@ -23,16 +23,22 @@ test('workspace.create and workspace.list and tab.init go through runtime contro
     });
     assert.equal(listReply.reply.type, 'workspace.list.result');
     assert.equal(Array.isArray((listReply.reply.payload as any).workspaces), true);
-
-    const initReply = await handleRuntimeControlAction({
-        action: action('tab.init'),
-        workspaceRegistry: registry,
-    });
-    assert.equal(initReply.reply.type, 'tab.init.result');
-    assert.equal(typeof (initReply.reply.payload as any).tabName, 'string');
 });
 
-test('workspace.setActive and tab actions go through workspace control', async () => {
+test('workspace.setActive uses payload.workspaceName through control plane', async () => {
+    const { registry } = createTestWorkspaceRegistry();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+
+    const setActiveReply = await handleRuntimeControlAction({
+        action: action('workspace.setActive', { payload: { workspaceName: wsName } }),
+        workspaceRegistry: registry,
+    });
+    assert.equal(setActiveReply.reply.type, 'workspace.setActive.result');
+    assert.equal((setActiveReply.reply.payload as any).workspaceName, wsName);
+});
+
+test('tab actions go through workspace router', async () => {
     let createdWithStartUrl: string | undefined;
     const { registry } = createTestWorkspaceRegistry({
         getPage: async (_tabName: string, startUrl?: string) => {
@@ -47,13 +53,6 @@ test('workspace.setActive and tab actions go through workspace control', async (
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
-
-    const setActiveReply = await ws.router.handle(
-        action('workspace.setActive', { workspaceName: wsName }),
-        ws,
-        registry,
-    );
-    assert.equal(setActiveReply.reply.type, 'workspace.setActive.result');
 
     const listReply = await ws.router.handle(action('tab.list', { workspaceName: wsName }), ws, registry);
     assert.equal(listReply.reply.type, 'tab.list.result');
@@ -99,17 +98,4 @@ test('tab.reassign uses action.workspaceName and ignores payload.workspaceName',
     assert.equal(reply.reply.type, 'tab.reassign.result');
     assert.equal((reply.reply.payload as any).workspaceName, wsName);
     assert.equal(ws.tabs.hasTab('tab-9'), true);
-});
-
-test('workspace.save and workspace.restore are routed from workspace control to workflow control', async () => {
-    const { registry } = createTestWorkspaceRegistry();
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabs.createTab({ tabName: 'tab-1', url: 'https://example.com', title: 'Example' });
-    ws.tabs.setActiveTab('tab-1');
-    const saveReply = await ws.router.handle(action('workspace.save', { workspaceName: wsName }), ws, registry);
-    assert.equal(saveReply.reply.type, 'workspace.save.result');
-
-    const restoreReply = await ws.router.handle(action('workspace.restore', { workspaceName: wsName }), ws, registry);
-    assert.equal(restoreReply.reply.type, 'workspace.restore.result');
 });

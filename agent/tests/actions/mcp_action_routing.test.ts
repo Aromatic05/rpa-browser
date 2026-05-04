@@ -52,30 +52,27 @@ const createMinimalWorkspaceRegistry = () => {
     });
 };
 
-test('mcp.start without workspaceName is not a control action', () => {
+test('mcp.start without workspaceName routes to control', () => {
     const action = stubAction('mcp.start');
-    assert.equal(isControlAction(action), false);
+    assert.equal(isControlAction(action), true);
+    assert.equal(isWorkspaceAction(action), false);
+    assert.equal(classifyActionRoute(action), 'control');
 });
 
-test('mcp.stop without workspaceName is not a control action', () => {
+test('mcp.stop without workspaceName routes to control', () => {
     const action = stubAction('mcp.stop');
-    assert.equal(isControlAction(action), false);
+    assert.equal(classifyActionRoute(action), 'control');
 });
 
-test('mcp.status without workspaceName is not a control action', () => {
+test('mcp.status without workspaceName routes to control', () => {
     const action = stubAction('mcp.status');
-    assert.equal(isControlAction(action), false);
-});
-
-test('mcp.start without workspaceName is a workspace action type but routes invalid', () => {
-    const action = stubAction('mcp.start');
-    assert.equal(isWorkspaceAction(action), true);
-    assert.equal(classifyActionRoute(action), 'invalid');
+    assert.equal(classifyActionRoute(action), 'control');
 });
 
 test('mcp.start with workspaceName is a workspace action', () => {
     const action = stubAction('mcp.start', { workspaceName: 'test-ws' });
     assert.equal(isWorkspaceAction(action), true);
+    assert.equal(isControlAction(action), false);
 });
 
 test('mcp.stop with workspaceName is a workspace action', () => {
@@ -93,14 +90,14 @@ test('mcp.start routes to workspace when workspaceName present', () => {
     assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-test('mcp.start routes to invalid when workspaceName missing', () => {
+test('mcp.start routes to control when workspaceName missing', () => {
     const action = stubAction('mcp.start');
-    assert.equal(classifyActionRoute(action), 'invalid');
+    assert.equal(classifyActionRoute(action), 'control');
 });
 
-test('mcp.status routes to invalid when workspaceName missing', () => {
+test('mcp.status routes to control when workspaceName missing', () => {
     const action = stubAction('mcp.status');
-    assert.equal(classifyActionRoute(action), 'invalid');
+    assert.equal(classifyActionRoute(action), 'control');
 });
 
 test('mcp.start is a registered request action type', () => {
@@ -129,7 +126,7 @@ test('browser.click is not a request action type', () => {
     assert.equal(isRequestActionType('browser.click'), false);
 });
 
-test('control action set does not include mcp.start', () => {
+test('mcp.start with workspaceName is not a control action', () => {
     const action = stubAction('mcp.start', { workspaceName: 'test-ws' });
     assert.equal(isControlAction(action), false);
 });
