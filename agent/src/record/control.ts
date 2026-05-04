@@ -20,7 +20,7 @@ import {
 import { setRecorderRuntimeEnabled, type RecorderEvent } from './recorder';
 import { ingestRecordPayload } from './ingest';
 import { replayRecording, type ReplayEvent, type ReplayOptions } from './replay';
-import type { StepUnion } from '../runner/steps/types';
+import type { StepResolve, StepUnion } from '../runner/steps/types';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
 
 const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
@@ -106,6 +106,14 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const workflow = workspace.workflow;
             const bundle = getRecordingBundle(services.recordingState, '', { workspaceName });
             const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
+            const stepResolves: Record<string, StepResolve> = {};
+            if (payload.includeStepResolve === true) {
+                for (const step of bundle.steps) {
+                    if (step.resolve) {
+                        stepResolves[step.id] = step.resolve;
+                    }
+                }
+            }
             const artifact: WorkflowRecording = {
                 kind: 'recording',
                 name: recordingName,
@@ -122,7 +130,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     stepCount: bundle.steps.length,
                 },
                 steps: bundle.steps,
-                stepResolves: payload.includeStepResolve === true ? {} : {},
+                stepResolves,
             };
             services.log('[RPA:agent]', 'record.save: saving artifact', {
                 workspaceName,
@@ -159,6 +167,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 name: step.name,
                 args: step.args,
                 meta: { source: 'record', ts: now, workspaceName },
+                resolve: loaded.stepResolves?.[step.id],
             })) as StepUnion[];
             services.recordingState.recordings.set(recordingToken, steps);
             services.recordingState.recordingEnhancements.set(recordingToken, {});

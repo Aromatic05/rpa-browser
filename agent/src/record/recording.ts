@@ -581,7 +581,7 @@ export const ensureRecorder = async (
     tabName: string,
     navDedupeWindowMs: number,
 ): Promise<void> => {
-    await installRecorder(page, (event) => {
+    await installRecorder(page, tabName, (event) => {
         if (recorderEventSink) {
             return recorderEventSink(event, page, tabName);
         }
