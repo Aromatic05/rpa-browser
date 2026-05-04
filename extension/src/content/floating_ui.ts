@@ -309,7 +309,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             }
             btn.addEventListener('click', () => {
                 activeWorkspaceName = ws.workspaceName;
-                void sendPanelAction('workspace.setActive', {}, { workspaceName: ws.workspaceName });
+                void sendPanelAction('workspace.setActive', { workspaceName: ws.workspaceName });
                 refreshTabs();
             });
             wsList.appendChild(btn);
@@ -385,7 +385,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             }
 
             activeWorkspaceName = workspaces[0].workspaceName;
-            await sendPanelAction('workspace.setActive', {}, { workspaceName: activeWorkspaceName });
+            await sendPanelAction('workspace.setActive', { workspaceName: activeWorkspaceName });
             refreshTabs();
         })();
     });

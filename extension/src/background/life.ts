@@ -306,7 +306,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             }
             options.state.setActiveWorkspaceName(mapped.workspaceName);
             options.state.setWindowWorkspace(windowId, mapped.workspaceName);
-            await options.sendAction({ v: 1, id: crypto.randomUUID(), type: ACTION_TYPES.WORKSPACE_SET_ACTIVE, workspaceName: mapped.workspaceName, payload: {} });
+            await options.sendAction({ v: 1, id: crypto.randomUUID(), type: ACTION_TYPES.WORKSPACE_SET_ACTIVE, payload: { workspaceName: mapped.workspaceName } });
             options.onRefresh();
         })();
     };

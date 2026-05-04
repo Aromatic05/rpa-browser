@@ -222,18 +222,6 @@ const loadFloatingUI = (() => {
                               },
                           }
                         : (payload ?? {});
-                if (isRecord(normalizedPayload) && 'workspaceName' in normalizedPayload) {
-                    return {
-                        v: 1 as const,
-                        id: crypto.randomUUID(),
-                        type: type ? `${type}.failed` : 'action.dispatch.failed',
-                        payload: {
-                            code: 'ERR_BAD_ARGS',
-                            message: 'payload.workspaceName is not allowed',
-                        },
-                        at: Date.now(),
-                    };
-                }
                 const action = {
                     v: 1 as const,
                     id: crypto.randomUUID(),
