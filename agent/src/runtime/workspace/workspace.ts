@@ -16,7 +16,6 @@ import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
 import { createWorkspaceMcpService } from '../../mcp/service';
-import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../service/types';
 
 export type RuntimeWorkspace = {
     name: string;
@@ -33,34 +32,6 @@ export type RuntimeWorkspace = {
     updatedAt: number;
 };
 
-type ServiceLifecycle = {
-    register: (service: WorkspaceService) => void;
-    start: (serviceName: WorkspaceServiceName) => Promise<WorkspaceServiceStartResult>;
-    stop: (serviceName: WorkspaceServiceName) => Promise<WorkspaceServiceStopResult>;
-    status: (serviceName: WorkspaceServiceName) => WorkspaceServiceStatusResult;
-};
-
-const createServiceLifecycle = (workspaceName: string): ServiceLifecycle => {
-    const services = new Map<WorkspaceServiceName, WorkspaceService>();
-    return {
-        register(service) { services.set(service.name, service); },
-        async start(serviceName) {
-            const service = services.get(serviceName);
-            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
-            return await service.start();
-        },
-        async stop(serviceName) {
-            const service = services.get(serviceName);
-            if (!service) { throw new Error(`service not registered: ${serviceName}`); }
-            return await service.stop();
-        },
-        status(serviceName) {
-            const service = services.get(serviceName);
-            if (!service) { return { serviceName, workspaceName, port: null, status: 'stopped' as const }; }
-            return service.status();
-        },
-    };
-};
 
 export type CreateRuntimeWorkspaceDeps = {
     name: string;
@@ -113,16 +84,13 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         updatedAt: now,
     };
 
-    const lifecycle = createServiceLifecycle(deps.name);
-    const mcp = createMcpControl(() => lifecycle);
     const mcpService = createWorkspaceMcpService({
         workspace: workspace as any,
         portAllocator: deps.portAllocator,
         runStepsDeps: deps.runStepsDeps,
         config: deps.runnerConfig,
     });
-    lifecycle.register(mcpService);
-    (workspace as any).mcp = mcp;
+    (workspace as any).mcp = createMcpControl(mcpService);
 
     return workspace;
 };
