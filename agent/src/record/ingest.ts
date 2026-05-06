@@ -15,13 +15,10 @@ export type RecordPayloadIngestResult = {
 };
 
 const resolveEnabledToken = (state: RecordingState, tabName: string): string | null => {
-    if (state.recordingEnabled.has(tabName)) {
-        return tabName;
-    }
-    if (state.recordingEnabled.size === 1) {
-        return Array.from(state.recordingEnabled)[0];
-    }
-    return null;
+    const workspaceName = state.tabWorkspaceName.get(tabName);
+    if (!workspaceName) {return null;}
+    const token = state.workspaceUnsavedRecording.get(workspaceName) || `unsaved:${workspaceName}`;
+    return state.recordingEnabled.has(token) ? token : null;
 };
 
 export const ingestRecorderEvent = async (input: {

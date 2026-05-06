@@ -9,7 +9,7 @@ import { createExecutionBindings } from './runtime/execution/bindings';
 import {
     createRecordingState,
     ensureRecorder,
-    getWorkspaceActiveRecordingToken,
+    getWorkspaceActiveUnsavedRecordingToken,
     attachTabToRecordingManifest,
     cleanupRecording,
 } from './record/recording';
@@ -150,7 +150,7 @@ const lifecycle = createRuntimeLifecycle({
     ensureWorkflow: ensureWorkflowOnFs,
     ensureRecorder,
     setRecorderRuntimeEnabled,
-    getWorkspaceActiveRecordingToken,
+    getWorkspaceActiveUnsavedRecordingToken,
     attachTabToRecordingManifest,
     cleanupRecording,
 });

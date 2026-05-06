@@ -17,7 +17,7 @@ type PersistedRecordingStateV1 = {
     version: 1;
     savedAt: number;
     bundles: PersistedRecordingBundle[];
-    workspaceLatestRecording: Record<string, string>;
+    workspaceUnsavedRecording: Record<string, string>;
     workspaceSnapshots: Record<string, WorkspaceSavedSnapshot>;
 };
 
@@ -35,7 +35,7 @@ const toPersistedState = (state: RecordingState): PersistedRecordingStateV1 => {
         version: 1,
         savedAt: Date.now(),
         bundles,
-        workspaceLatestRecording: Object.fromEntries(state.workspaceLatestRecording.entries()),
+        workspaceUnsavedRecording: Object.fromEntries(state.workspaceUnsavedRecording.entries()),
         workspaceSnapshots: Object.fromEntries(state.workspaceSnapshots.entries()),
     };
 };
@@ -44,7 +44,7 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
     state.recordings.clear();
     state.recordingEnhancements.clear();
     state.recordingManifests.clear();
-    state.workspaceLatestRecording.clear();
+    state.workspaceUnsavedRecording.clear();
     state.workspaceSnapshots.clear();
 
     for (const bundle of persisted.bundles) {
@@ -55,14 +55,14 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
         }
     }
 
-    for (const [workspaceName, recordingToken] of Object.entries(persisted.workspaceLatestRecording)) {
+    for (const [workspaceName, recordingToken] of Object.entries(persisted.workspaceUnsavedRecording || {})) {
         if (
             typeof workspaceName === 'string' &&
             typeof recordingToken === 'string' &&
             recordingToken.length > 0 &&
             state.recordings.has(recordingToken)
         ) {
-            state.workspaceLatestRecording.set(workspaceName, recordingToken);
+            state.workspaceUnsavedRecording.set(workspaceName, recordingToken);
         }
     }
 

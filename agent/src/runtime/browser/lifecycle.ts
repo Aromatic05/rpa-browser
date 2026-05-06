@@ -19,7 +19,7 @@ export type RuntimeLifecycleDeps = {
     ensureWorkflow: (workspaceName: string) => Workflow;
     ensureRecorder: (state: RecordingState, page: Page, tabName: string, navDedupeWindowMs: number) => Promise<void>;
     setRecorderRuntimeEnabled: (page: Page, enabled: boolean) => Promise<void>;
-    getWorkspaceActiveRecordingToken: (state: RecordingState, workspaceName: string) => string | null;
+    getWorkspaceActiveUnsavedRecordingToken: (state: RecordingState, workspaceName: string) => string | null;
     attachTabToRecordingManifest: (
         state: RecordingState,
         recordingToken: string,
@@ -80,7 +80,7 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
         workspace.tabs.setActiveTab(bindingName);
         deps.runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page });
 
-        const activeRecordingToken = deps.getWorkspaceActiveRecordingToken(deps.recordingState, workspaceName);
+        const activeRecordingToken = deps.getWorkspaceActiveUnsavedRecordingToken(deps.recordingState, workspaceName);
         if (activeRecordingToken) {
             deps.attachTabToRecordingManifest(deps.recordingState, activeRecordingToken, bindingName, {
                 tabRef: bindingName,
