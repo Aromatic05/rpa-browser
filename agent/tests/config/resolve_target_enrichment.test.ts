@@ -348,3 +348,205 @@ test('browser.scroll with empty resolve keeps page scrolling semantics', async (
     assert.equal(calls.some((call) => call.name === 'scrollBy'), true);
     assert.equal(calls.some((call) => call.name === 'scrollIntoView'), false);
 });
+
+test('resolve candidates prefer step.resolve over args.selector', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        selector: 'main.docMainContainer_bad > a:nth-of-type(2)',
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#submit-btn', fallback: '#delete-btn' } },
+                capture: { source: 'record_enrichment', confidence: 0.9, reason: ['direct_selector_exact_match'], warnings: [] },
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.candidates[0]?.selector, '#submit-btn');
+    assert.equal(resolved.target.candidates[resolved.target.candidates.length - 1]?.path, 'input.selector');
+});
+
+test('resolve candidates build executable role/text/placeholder selectors', async () => {
+    const root = { id: 'root', role: 'root', children: [] as any[] };
+    const a = { id: 'node_a', role: 'link', name: '下一页 使用', children: [] as any[] };
+    const i = { id: 'node_i', role: 'textbox', name: '', children: [] as any[] };
+    root.children.push(a, i);
+    setNodeAttr(a as any, 'tag', 'a');
+    setNodeAttr(a as any, 'id', 'next-link');
+    setNodeAttr(i as any, 'tag', 'input');
+    setNodeAttr(i as any, 'placeholder', 'Search...');
+    const snapshot = {
+        root,
+        nodeIndex: { root, node_a: a, node_i: i },
+        attrIndex: { node_a: {}, node_i: {} },
+        entityIndex: { entities: {}, byNodeId: {} },
+        locatorIndex: {
+            node_a: { origin: { primaryDomId: '1' }, direct: { kind: 'css', query: '#next-link', source: 'id' } },
+            node_i: { origin: { primaryDomId: '2' }, direct: { kind: 'css', query: 'input[placeholder=\"Search...\"]', source: 'attr' } },
+        },
+        contentStore: {},
+    };
+    const { binding } = createBinding(snapshot as any);
+    const resolved = await resolveTarget(binding, {
+        resolve: {
+            hint: {
+                raw: {
+                    locatorCandidates: [
+                        { kind: 'role', role: 'link', name: '下一页 使用' },
+                        { kind: 'label', text: '下一页 使用' },
+                        { kind: 'text', text: '下一页 使用' },
+                        { kind: 'placeholder', text: 'Search...' },
+                    ],
+                },
+                capture: { source: 'record_enrichment', confidence: 0.4, reason: ['text_or_a11y_only'], warnings: [] },
+            },
+            policy: { requireVisible: true },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(
+        resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.role_name' || item.path === 'resolve.hint.raw.text'),
+        true,
+    );
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.placeholder'), true);
+    assert.equal(resolved.target.candidates.every((item) => item.selector.length > 0), true);
+});
+
+test('click tries next candidate after first selector fails', async () => {
+    const snapshot = createSnapshotForId() as any;
+    const { deps, calls } = createBinding(snapshot);
+    deps.runtime.resolveBinding = async () => ({
+        ...(await deps.runtime.ensureActivePage()),
+        traceTools: {
+            ...(await deps.runtime.ensureActivePage()).traceTools,
+            'trace.locator.waitForVisible': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'waitForVisible', payload });
+                if (payload.selector === '#broken') {
+                    return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'not found' } };
+                }
+                return { ok: true, data: {} };
+            },
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 'click-fallback',
+        name: 'browser.click',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#broken', fallback: '#submit-btn' } },
+                capture: { source: 'record_enrichment', confidence: 0.92, reason: ['direct_selector_exact_match'], warnings: [] },
+            },
+        },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
+    const waitCalls = calls.filter((call) => call.name === 'waitForVisible');
+    assert.equal(waitCalls.length >= 2, true);
+    assert.equal(waitCalls[0].payload.selector, '#broken');
+    assert.equal(waitCalls[1].payload.selector, '#submit-btn');
+});
+
+test('click without target returns ERR_BAD_ARGS', async () => {
+    const { deps } = createBinding();
+    const step: Step<'browser.click'> = {
+        id: 'click-bad-args',
+        name: 'browser.click',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws-test');
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_BAD_ARGS');
+});
+
+test('scroll tries next candidate when first target fails', async () => {
+    const { deps, calls } = createBinding(createSnapshotForId() as any);
+    deps.runtime.resolveBinding = async () => ({
+        ...(await deps.runtime.ensureActivePage()),
+        traceTools: {
+            ...(await deps.runtime.ensureActivePage()).traceTools,
+            'trace.locator.scrollIntoView': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'scrollIntoView', payload });
+                if (payload.selector === '#broken') {
+                    return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'not found' } };
+                }
+                return { ok: true, data: {} };
+            },
+        },
+    });
+    const step: Step<'browser.scroll'> = {
+        id: 'scroll-fallback',
+        name: 'browser.scroll',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#broken', fallback: '#submit-btn' } },
+                capture: { source: 'record_enrichment', confidence: 0.92, reason: ['direct_selector_exact_match'], warnings: [] },
+            },
+        },
+    };
+    const result = await executeBrowserScroll(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
+    const scrollCalls = calls.filter((call) => call.name === 'scrollIntoView');
+    assert.equal(scrollCalls.length >= 2, true);
+    assert.equal(scrollCalls[0].payload.selector, '#broken');
+    assert.equal(scrollCalls[1].payload.selector, '#submit-btn');
+});
+
+test('resolve candidates are deduplicated', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        resolve: {
+            hint: {
+                raw: {
+                    selector: '#submit-btn',
+                    locatorCandidates: [
+                        { kind: 'css', selector: '#submit-btn' },
+                        { kind: 'css', selector: '#submit-btn' },
+                    ],
+                },
+                capture: { source: 'record_enrichment', confidence: 0.7, reason: ['raw_selector_only'], warnings: [] },
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    const submitSelectors = resolved.target.candidates.filter((item) => item.selector === '#submit-btn');
+    assert.equal(submitSelectors.length, 1);
+});
+
+test('click failure includes real audit attempts', async () => {
+    const { deps, calls } = createBinding(createSnapshotForId() as any);
+    deps.runtime.resolveBinding = async () => ({
+        ...(await deps.runtime.ensureActivePage()),
+        traceTools: {
+            ...(await deps.runtime.ensureActivePage()).traceTools,
+            'trace.locator.waitForVisible': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'waitForVisible', payload });
+                return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'nope' } };
+            },
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 'click-audit-fail',
+        name: 'browser.click',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#broken', fallback: '#also-broken' } },
+                capture: { source: 'record_enrichment', confidence: 0.9, reason: ['direct_selector_exact_match'], warnings: ['AMBIGUOUS_TARGET'] },
+            },
+        },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws-test');
+    assert.equal(result.ok, false);
+    const details = (result.error?.details || {}) as Record<string, unknown>;
+    assert.equal(Array.isArray(details.attempts), true);
+    assert.equal((details.attempts as any[]).length >= 2, true);
+    assert.equal((details.attempts as any[])[0]?.stage, 'waitForVisible');
+});
