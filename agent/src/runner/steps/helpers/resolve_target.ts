@@ -359,7 +359,7 @@ const buildRawLocatorCandidates = (
         if (targetPath === 'resolve.hint.raw.role_name' && candidate.kind === 'role') {
             out.push(...buildNodeCandidatesFromRoleName(binding, hint, policy, confidence, warnings, candidate.role, candidate.name, Boolean(candidate.exact)));
         }
-        if (targetPath === 'resolve.hint.raw.text' && candidate.kind === 'text' && candidate.text) {
+        if (targetPath === 'resolve.hint.raw.text' && (candidate.kind === 'text' || candidate.kind === 'label') && candidate.text) {
             out.push(...buildNodeCandidatesFromText(binding, hint, policy, confidence, warnings, candidate.text, Boolean(candidate.exact)));
         }
     }
