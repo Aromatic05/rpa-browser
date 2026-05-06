@@ -5,6 +5,8 @@ import { ActionError } from '../../actions/results';
 import { ERROR_CODES } from '../../actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
+import { appendWorkspaceRecordingStep, isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';
+import type { StepUnion } from '../../runner/steps/types';
 
 export type RuntimeTab = {
     name: string;
@@ -188,10 +190,15 @@ const requireTabName = (payload: Record<string, unknown>): string => {
     return tabName;
 };
 
-export const createTabsControl = (): TabsControl => ({
+export const createTabsControl = (deps: { recordingState: RecordingState; navDedupeWindowMs: number }): TabsControl => ({
     handle: async (input) => {
         const { action, workspace } = input;
         const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const appendTabLifecycleStep = (step: StepUnion, tabName: string) => {
+            if (workspace.state !== 'recording') {return;}
+            if (!isWorkspaceRecordingEnabled(deps.recordingState, workspace.name)) {return;}
+            appendWorkspaceRecordingStep(deps.recordingState, workspace.name, tabName, step, deps.navDedupeWindowMs);
+        };
 
         switch (action.type) {
             case 'tab.list': {
@@ -244,6 +251,22 @@ export const createTabsControl = (): TabsControl => ({
                     workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 }
                 workspace.tabs.setActiveTab(tabName);
+                appendTabLifecycleStep(
+                    {
+                        id: crypto.randomUUID(),
+                        name: 'browser.create_tab',
+                        args: { url },
+                        meta: {
+                            source: 'record',
+                            ts: at ?? Date.now(),
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            urlAtRecord: url,
+                        },
+                    },
+                    tabName,
+                );
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
             }
 
@@ -268,6 +291,21 @@ export const createTabsControl = (): TabsControl => ({
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
                 await workspace.tabs.closeTab(tabName);
+                appendTabLifecycleStep(
+                    {
+                        id: crypto.randomUUID(),
+                        name: 'browser.close_tab',
+                        args: { tabRef: tabName },
+                        meta: {
+                            source: 'record',
+                            ts: at ?? Date.now(),
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                        },
+                    },
+                    tabName,
+                );
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
@@ -303,7 +341,31 @@ export const createTabsControl = (): TabsControl => ({
             }
 
             case 'tab.activated': {
-                throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
+                const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : '';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                workspace.tabs.setActiveTab(tabName);
+                if (url) {
+                    workspace.tabs.updateTab(tabName, { url, updatedAt: at });
+                }
+                appendTabLifecycleStep(
+                    {
+                        id: crypto.randomUUID(),
+                        name: 'browser.switch_tab',
+                        args: { tabRef: tabName, tabUrl: url },
+                        meta: {
+                            source: 'record',
+                            ts: at ?? Date.now(),
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            urlAtRecord: url,
+                        },
+                    },
+                    tabName,
+                );
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
             default:

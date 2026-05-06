@@ -30,7 +30,15 @@ export type RecordingManifest = {
     recordingToken: string;
     workspaceName?: string;
     entryTabRef?: string;
+    activeTabRef?: string;
     entryUrl?: string;
+    initialTabs: Array<{
+        tabName: string;
+        tabRef: string;
+        url: string;
+        title: string;
+        active: boolean;
+    }>;
     startedAt: number;
     tabs: RecordingTabManifest[];
 };
@@ -113,7 +121,12 @@ const unsavedRecordingToken = (workspaceName: string): string => `unsaved:${work
 export const resetWorkspaceUnsavedRecording = (
     state: RecordingState,
     workspaceName: string,
-    seed?: { entryTabRef?: string; entryUrl?: string },
+    seed?: {
+        entryTabRef?: string;
+        activeTabRef?: string;
+        entryUrl?: string;
+        initialTabs?: RecordingManifest['initialTabs'];
+    },
 ): string => {
     const token = unsavedRecordingToken(workspaceName);
     state.workspaceUnsavedRecording.set(workspaceName, token);
@@ -123,7 +136,9 @@ export const resetWorkspaceUnsavedRecording = (
         recordingToken: token,
         workspaceName,
         entryTabRef: seed?.entryTabRef,
+        activeTabRef: seed?.activeTabRef,
         entryUrl: seed?.entryUrl,
+        initialTabs: seed?.initialTabs || [],
         startedAt: Date.now(),
         tabs: [],
     });
@@ -343,6 +358,7 @@ const ensureManifest = (
             recordingToken,
             workspaceName: seed?.workspaceName,
             entryTabRef: seed?.entryTabRef,
+            initialTabs: [],
             entryUrl: seed?.entryUrl,
             startedAt: Date.now(),
             tabs: [],
