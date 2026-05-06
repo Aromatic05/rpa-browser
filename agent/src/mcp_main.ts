@@ -4,7 +4,7 @@ import { createContextManager, resolvePaths } from './runtime/browser/context_ma
 import { createPageRegistry } from './runtime/browser/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace/registry';
 import { createExecutionBindings } from './runtime/execution/bindings';
-import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
+import { createRecordingState, cleanupRecording, ensureRecorder, isWorkspaceRecordingEnabled } from './record/recording';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
@@ -96,10 +96,10 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
 };
 
 onPageBoundHook = (page, tabName) => {
-    if (recordingState.recordingEnabled.has(tabName)) {
-        void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
-    }
     const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+    if (isWorkspaceRecordingEnabled(recordingState, workspaceName)) {
+        void ensureRecorder(recordingState, workspaceName, page, tabName, NAV_DEDUPE_WINDOW_MS);
+    }
     const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
     if (!workspace.tabs.hasTab(tabName)) {
         workspace.tabs.createTab({ tabName, page, url: page.url() });

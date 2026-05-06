@@ -9,12 +9,11 @@ import { createExecutionBindings } from './runtime/execution/bindings';
 import {
     createRecordingState,
     ensureRecorder,
-    getWorkspaceActiveUnsavedRecordingToken,
+    isWorkspaceRecordingEnabled,
     attachTabToRecordingManifest,
     cleanupRecording,
 } from './record/recording';
 import { setRecorderRuntimeEnabled } from './record/recorder';
-import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { failedAction, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/results';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
@@ -57,12 +56,6 @@ let broadcast: (action: Action) => void = () => undefined;
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
-const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.json');
-await loadRecordingStateFromFile(recordingState, recordingStatePath);
-const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
-    intervalMs: 1500,
-    onError: (error) => { actionLog.error('[RPA:agent]', 'recording persistence error', String(error)); },
-});
 
 let onPageBoundHook: (page: Page, bindingName: string) => void = () => undefined;
 let onBindingClosedHook: (bindingName: string) => void = () => undefined;
@@ -150,7 +143,7 @@ const lifecycle = createRuntimeLifecycle({
     ensureWorkflow: ensureWorkflowOnFs,
     ensureRecorder,
     setRecorderRuntimeEnabled,
-    getWorkspaceActiveUnsavedRecordingToken,
+    isWorkspaceRecordingEnabled,
     attachTabToRecordingManifest,
     cleanupRecording,
 });
@@ -203,11 +196,7 @@ const actionWsClient = startActionWsClient({
     host: '127.0.0.1',
     workspaceRegistry,
     dispatchAction: async (action) => {
-        try {
-            return await handleAction(action);
-        } finally {
-            void recordingPersistence.flush();
-        }
+        return await handleAction(action);
     },
     onError: (error) => {
         const message = error instanceof Error ? error.message : String(error);
