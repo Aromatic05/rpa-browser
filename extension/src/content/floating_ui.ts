@@ -330,7 +330,10 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const saveAsRow = document.createElement('div');
         saveAsRow.className = 'row';
         saveAsRow.append(createButton('workflow.saveAs', async () => {
-            const reply = await sendPanelAction('workflow.saveAs', { targetName: state.targetName.trim() });
+            const reply = await sendPanelAction('workflow.saveAs', {
+                sourceName: state.activeWorkspaceName.trim(),
+                targetName: state.targetName.trim(),
+            });
             if (!reply.type.endsWith('.failed')) {
                 await refreshWorkspaces();
                 await refreshTabs();
@@ -391,9 +394,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             createButton('Save Recording', () => sendPanelAction('record.save', { recordingName: state.recordingName.trim(), includeStepResolve: true }), true),
             createButton('record.list', () => sendPanelAction('record.list', {})),
         );
-        const row4 = document.createElement('div');
-        row4.className = 'row';
-        row4.append(createButton('record.load', () => sendPanelAction('record.load', { recordingName: state.recordingName.trim() })));
         const list = document.createElement('div');
         list.className = 'list';
         const unsaved = document.createElement('div');
@@ -406,7 +406,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             line.textContent = `${item.recordingName} (${item.stepCount})`;
             list.append(line);
         });
-        box.append(row1, row2, row3, row4, list);
+        box.append(row1, row2, row3, list);
         return box;
     };
 

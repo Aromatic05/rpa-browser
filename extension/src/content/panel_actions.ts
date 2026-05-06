@@ -32,7 +32,7 @@ const CONTROL_ACTIONS = new Set([
 
 export const classifyPanelAction = (type: string): PanelActionKind => {
     if (CONTROL_ACTIONS.has(type)) {return 'control';}
-    if (type === 'workflow.saveAs') {return 'workspace';}
+    if (type === 'workflow.saveAs') {return 'control';}
     if (WORKSPACE_REQUIRED_PREFIXES.some((prefix) => type.startsWith(prefix))) {return 'workspace';}
     return 'control';
 };
