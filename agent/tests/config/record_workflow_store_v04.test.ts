@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
-import { createRecordingState } from '../../src/record/recording';
+import { createRecordingState, enableWorkspaceRecording, resetWorkspaceUnsavedRecording } from '../../src/record/recording';
 import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../src/workflow';
 import { handleRecordControlAction, setRecordControlServices } from '../../src/record/control';
 
@@ -17,8 +17,16 @@ test('record.save uses workspace.workflow and persists recording artifact', asyn
     const registry = createWorkspaceRegistry();
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     const recordingState = createRecordingState();
-    recordingState.recordings.set('token-a', []);
-    recordingState.workspaceLatestRecording.set(wsName, 'token-a');
+    resetWorkspaceUnsavedRecording(recordingState, wsName, { activeTabRef: 'tab-1', entryTabRef: 'tab-1', initialTabs: [] });
+    enableWorkspaceRecording(recordingState, wsName);
+    recordingState.recordings.set(`unsaved:${wsName}`, [
+        {
+            id: 's1',
+            name: 'browser.goto',
+            args: { url: 'https://example.com' },
+            meta: { source: 'record', ts: Date.now(), tabName: 'tab-1' },
+        } as any,
+    ]);
     setRecordControlServices({
         recordingState,
         replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
