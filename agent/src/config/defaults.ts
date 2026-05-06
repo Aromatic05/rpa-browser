@@ -12,6 +12,8 @@ export const defaultRunnerConfig: RunnerConfig = {
         navigationTimeoutMs: 15000,
         a11ySnapshotTimeoutMs: 5000,
         visibleTimeoutMs: 5000,
+        pageReadyTimeoutMs: 1500,
+        candidateClickTimeoutMs: 800,
         settleTimeoutMs: 800,
     },
     retryPolicy: {

@@ -18,6 +18,10 @@ export type WaitPolicy = {
     a11ySnapshotTimeoutMs: number;
     /** 元素可见等待超时 */
     visibleTimeoutMs: number;
+    /** 页面就绪等待超时 */
+    pageReadyTimeoutMs: number;
+    /** click 候选单次尝试超时 */
+    candidateClickTimeoutMs: number;
     /** 稳定等待（页面 settle） */
     settleTimeoutMs: number;
 };
