@@ -8,6 +8,7 @@ import { createEntityRulesControl, type EntityRulesControl } from '../../entity_
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
 import { createMcpControl, type McpControl } from '../../mcp/control';
 import { createWorkspaceRouter, type WorkspaceRouter } from './router';
+import { createWorkflowControl, type WorkflowControl } from '../../workflow/control';
 import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
@@ -27,7 +28,15 @@ export type RuntimeWorkspace = {
     entityRules: EntityRulesControl;
     runner: RunnerControl;
     mcp: McpControl;
+    workflowControl: WorkflowControl;
     router: WorkspaceRouter;
+    lifecycle: {
+        getRecordPlayState: () => 'idle' | 'recording' | 'playing';
+        startRecording: () => void;
+        stopRecording: () => void;
+        startPlaying: () => void;
+        stopPlaying: () => void;
+    };
     createdAt: number;
     updatedAt: number;
 };
@@ -48,6 +57,7 @@ export type CreateRuntimeWorkspaceDeps = {
 
 export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): RuntimeWorkspace => {
     const now = Date.now();
+    let recordPlayState: 'idle' | 'recording' | 'playing' = 'idle';
     const tabs = createWorkspaceTabs({ getPage: deps.pageRegistry.getPage, touchBinding: deps.pageRegistry.touchBinding });
     const record = createRecordControl({
         recordingState: deps.recordingState,
@@ -69,6 +79,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         config: deps.runnerConfig,
     });
     const mcp = createMcpControl(mcpService);
+    const workflowControl = createWorkflowControl({ recordingState: deps.recordingState });
 
     const router = createWorkspaceRouter({
         tabsControl,
@@ -78,7 +89,35 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         entityRulesControl: entityRules,
         runnerControl: runner,
         mcpControl: mcp,
+        workflowControl,
     });
+    const lifecycle: RuntimeWorkspace['lifecycle'] = {
+        getRecordPlayState: () => recordPlayState,
+        startRecording: () => {
+            if (recordPlayState !== 'idle') {
+                throw new Error(`invalid workspace state transition: ${recordPlayState} -> recording`);
+            }
+            recordPlayState = 'recording';
+        },
+        stopRecording: () => {
+            if (recordPlayState !== 'recording') {
+                throw new Error(`invalid workspace state transition: ${recordPlayState} -> idle`);
+            }
+            recordPlayState = 'idle';
+        },
+        startPlaying: () => {
+            if (recordPlayState !== 'idle') {
+                throw new Error(`invalid workspace state transition: ${recordPlayState} -> playing`);
+            }
+            recordPlayState = 'playing';
+        },
+        stopPlaying: () => {
+            if (recordPlayState !== 'playing') {
+                throw new Error(`invalid workspace state transition: ${recordPlayState} -> idle`);
+            }
+            recordPlayState = 'idle';
+        },
+    };
 
     return {
         name: deps.name,
@@ -90,7 +129,9 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         entityRules,
         runner,
         mcp,
+        workflowControl,
         router,
+        lifecycle,
         createdAt: now,
         updatedAt: now,
     };
