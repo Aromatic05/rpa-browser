@@ -82,7 +82,7 @@ export class RunnerPluginHost {
         try {
             const plugin = await this.importPlugin();
             this.plugin = plugin;
-            // Use warning level so it is visible under default actionLogLevel=warning.
+            // Use warning level so it is visible under default consoleLogLevel=warning.
             log.warning('[runner] hot reload OK');
             this.emitReload(plugin);
             return plugin;

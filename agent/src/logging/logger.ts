@@ -25,7 +25,8 @@ type LogTarget = {
     consoleEnabled: boolean;
     fileEnabled: boolean;
     filePath: string;
-    minLevel: LogLevel;
+    consoleMinLevel: LogLevel;
+    fileMinLevel: LogLevel;
 };
 
 let loggerConfig: RunnerConfig | null = null;
@@ -53,14 +54,15 @@ const ensureStream = (type: LogType, filePath: string) => {
 const getTarget = (type: LogType): LogTarget => {
     const obs = loggerConfig?.observability;
     if (!obs) {
-        return { consoleEnabled: false, fileEnabled: false, filePath: '', minLevel: 'warning' };
+        return { consoleEnabled: false, fileEnabled: false, filePath: '', consoleMinLevel: 'warning', fileMinLevel: 'warning' };
     }
+    const baseLevels = { consoleMinLevel: obs.consoleLogLevel, fileMinLevel: obs.fileLogLevel } as const;
     if (type === 'action') {
         return {
             consoleEnabled: obs.actionConsoleEnabled,
             fileEnabled: obs.actionFileEnabled,
             filePath: resolveLogPath(obs.actionFilePath),
-            minLevel: obs.actionLogLevel,
+            ...baseLevels,
         };
     }
     if (type === 'record') {
@@ -68,7 +70,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.recordConsoleEnabled,
             fileEnabled: obs.recordFileEnabled,
             filePath: resolveLogPath(obs.recordFilePath),
-            minLevel: obs.recordLogLevel,
+            ...baseLevels,
         };
     }
     if (type === 'trace') {
@@ -76,23 +78,31 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.traceConsoleEnabled,
             fileEnabled: obs.traceFileEnabled,
             filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel,
+            ...baseLevels,
         };
     }
     if (type === 'entity') {
         return {
-            consoleEnabled: obs.traceConsoleEnabled,
-            fileEnabled: obs.traceFileEnabled,
-            filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel,
+            consoleEnabled: obs.entityConsoleEnabled,
+            fileEnabled: obs.entityFileEnabled,
+            filePath: resolveLogPath(obs.entityFilePath),
+            ...baseLevels,
         };
     }
     if (type === 'dsl') {
         return {
-            consoleEnabled: obs.traceConsoleEnabled,
-            fileEnabled: obs.traceFileEnabled,
-            filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel,
+            consoleEnabled: obs.dslConsoleEnabled,
+            fileEnabled: obs.dslFileEnabled,
+            filePath: resolveLogPath(obs.dslFilePath),
+            ...baseLevels,
+        };
+    }
+    if (type === 'step') {
+        return {
+            consoleEnabled: obs.stepConsoleEnabled,
+            fileEnabled: obs.stepFileEnabled,
+            filePath: resolveLogPath(obs.stepFilePath),
+            ...baseLevels,
         };
     }
     if (type === 'infra') {
@@ -100,7 +110,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.infraConsoleEnabled,
             fileEnabled: obs.infraFileEnabled,
             filePath: resolveLogPath(obs.infraFilePath),
-            minLevel: obs.infraLogLevel,
+            ...baseLevels,
         };
     }
     if (type === 'ext') {
@@ -108,14 +118,15 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.extConsoleEnabled,
             fileEnabled: obs.extFileEnabled,
             filePath: resolveLogPath(obs.extFilePath),
-            minLevel: obs.extLogLevel,
+            ...baseLevels,
         };
     }
     return {
         consoleEnabled: false,
         fileEnabled: false,
         filePath: '',
-        minLevel: obs.stepLogLevel,
+        consoleMinLevel: 'warning',
+        fileMinLevel: 'warning',
     };
 };
 
@@ -126,10 +137,7 @@ export const initLogger = (config: RunnerConfig): void => {
 const emit = (type: LogType, level: LogLevel, args: unknown[]) => {
     const target = getTarget(type);
     const levelRank = { debug: 10, info: 20, warning: 30, error: 40 } as const;
-    if (levelRank[level] < levelRank[target.minLevel]) {
-        return;
-    }
-    if (target.consoleEnabled) {
+    if (target.consoleEnabled && levelRank[level] >= levelRank[target.consoleMinLevel]) {
         if (level === 'error') {
             console.error(`[${type}]`, ...args);
         } else if (level === 'warning') {
@@ -138,7 +146,7 @@ const emit = (type: LogType, level: LogLevel, args: unknown[]) => {
             console.warn(`[${type}][${level}]`, ...args);
         }
     }
-    if (target.fileEnabled && target.filePath) {
+    if (target.fileEnabled && target.filePath && levelRank[level] >= levelRank[target.fileMinLevel]) {
         const payload = {
             ts: Date.now(),
             type,

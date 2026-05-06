@@ -5,15 +5,15 @@ import { loadRunnerConfig } from '../../src/config/loader';
 
 test('logger supports entity log type and emits with trace console policy', () => {
     const config = loadRunnerConfig({ configPath: '__non_exist__.json' });
-    config.observability.traceConsoleEnabled = true;
-    config.observability.traceLogLevel = 'info';
-    config.observability.traceFileEnabled = false;
+    config.observability.entityConsoleEnabled = true;
+    config.observability.entityFileEnabled = false;
+    config.observability.consoleLogLevel = 'info';
 
     initLogger(config);
 
     const logs: unknown[][] = [];
-    const originalLog = console.log;
-    console.log = (...args: unknown[]) => {
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
         logs.push(args);
     };
 
@@ -21,7 +21,7 @@ test('logger supports entity log type and emits with trace console policy', () =
         const logger = getLogger('entity');
         logger.info('entity.rules.match.hit', { profile: 'oa-ant-orders', ruleId: 'main' });
     } finally {
-        console.log = originalLog;
+        console.warn = originalWarn;
     }
 
     assert.equal(logs.length > 0, true);

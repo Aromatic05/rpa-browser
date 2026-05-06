@@ -49,16 +49,10 @@ export type HumanPolicy = {
 };
 
 export type Observability = {
-    /** action 最低日志级别 */
-    actionLogLevel: 'debug' | 'info' | 'warning' | 'error';
-    /** record 最低日志级别 */
-    recordLogLevel: 'debug' | 'info' | 'warning' | 'error';
-    /** trace 最低日志级别 */
-    traceLogLevel: 'debug' | 'info' | 'warning' | 'error';
-    /** step 最低日志级别 */
-    stepLogLevel: 'debug' | 'info' | 'warning' | 'error';
-    /** infra 最低日志级别 */
-    infraLogLevel: 'debug' | 'info' | 'warning' | 'error';
+    /** console 输出最低日志级别（所有类型统一） */
+    consoleLogLevel: 'debug' | 'info' | 'warning' | 'error';
+    /** file 输出最低日志级别（所有类型统一） */
+    fileLogLevel: 'debug' | 'info' | 'warning' | 'error';
     /** 是否启用 trace */
     traceEnabled: boolean;
     /** 是否输出 trace 参数（默认 false，避免泄露） */
@@ -69,6 +63,12 @@ export type Observability = {
     traceFileEnabled: boolean;
     /** trace 日志输出路径 */
     traceFilePath: string;
+    /** 是否在控制台输出 step 日志 */
+    stepConsoleEnabled: boolean;
+    /** 是否将 step 日志写入文件 */
+    stepFileEnabled: boolean;
+    /** step 日志输出路径 */
+    stepFilePath: string;
     /** 是否在控制台输出 action 日志 */
     actionConsoleEnabled: boolean;
     /** 是否将 action/execute 日志写入文件 */
@@ -87,14 +87,24 @@ export type Observability = {
     infraFileEnabled: boolean;
     /** infra 日志输出路径 */
     infraFilePath: string;
-    /** ext 最低日志级别（Chrome 扩展转发日志） */
-    extLogLevel: 'debug' | 'info' | 'warning' | 'error';
     /** 是否在控制台输出 ext 转发日志 */
     extConsoleEnabled: boolean;
     /** 是否将 ext 转发日志写入文件 */
     extFileEnabled: boolean;
     /** ext 转发日志输出路径 */
     extFilePath: string;
+    /** 是否在控制台输出 entity 日志 */
+    entityConsoleEnabled: boolean;
+    /** 是否将 entity 日志写入文件 */
+    entityFileEnabled: boolean;
+    /** entity 日志输出路径 */
+    entityFilePath: string;
+    /** 是否在控制台输出 dsl 日志 */
+    dslConsoleEnabled: boolean;
+    /** 是否将 dsl 日志写入文件 */
+    dslFileEnabled: boolean;
+    /** dsl 日志输出路径 */
+    dslFilePath: string;
     /** 出错时截图 */
     screenshotOnError: boolean;
 };
