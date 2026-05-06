@@ -7,6 +7,7 @@ import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
 import { enterWorkspaceState, getWorkspaceState, leaveWorkspaceState, requireWorkspaceState } from '../runtime/workspace/workspace';
 import {
+    awaitRecordingEnhancements,
     beginReplay,
     cancelReplay,
     clearWorkspaceUnsavedRecording,
@@ -15,6 +16,7 @@ import {
     endReplay,
     ensureRecorder,
     getWorkspaceUnsavedRecordingBundle,
+    normalizeRecordingStepOrder,
     resetWorkspaceUnsavedRecording,
     type RecordingState,
 } from './recording';
@@ -27,6 +29,7 @@ import type { WorkflowDummy, WorkflowRecording } from '../workflow';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
 import type { Logger } from '../logging/logger';
+import { getLogger } from '../logging/logger';
 
 const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
 
@@ -161,14 +164,20 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const workspaceName = requireWorkspaceName(action, action.type);
             const payload = (action.payload || {}) as { recordingName?: string; includeStepResolve?: boolean };
             const workflow = workspace.workflow;
+            const recordLog = getLogger('record');
+            const token = services.recordingState.workspaceUnsavedRecording.get(workspaceName) || `unsaved:${workspaceName}`;
+            const pendingCount = services.recordingState.pendingEnhancements.get(token)?.size || 0;
+            recordLog('save_wait_enrichment', { workspaceName, pendingCount });
+            await awaitRecordingEnhancements(services.recordingState, workspaceName);
             const bundle = getWorkspaceUnsavedRecordingBundle(services.recordingState, workspaceName);
             if (!bundle.steps.length) {
                 throw new ActionError(ERROR_CODES.ERR_RECORDING_EMPTY, 'unsaved recording is empty');
             }
             const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
+            const orderedSteps = normalizeRecordingStepOrder(bundle.steps, services.navDedupeWindowMs);
             const stepResolves: Record<string, StepResolve> = {};
             if (payload.includeStepResolve === true) {
-                for (const step of bundle.steps) {
+                for (const step of orderedSteps) {
                     const fromEnrichment = bundle.enrichments?.[step.id]
                         ? {
                               hint: bundle.enrichments[step.id].resolveHint,
@@ -198,14 +207,14 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         url: item.lastSeenUrl || item.firstSeenUrl,
                     })),
                     createdAt: Date.now(),
-                    stepCount: bundle.steps.length,
+                    stepCount: orderedSteps.length,
                 },
-                steps: bundle.steps,
+                steps: orderedSteps,
                 stepResolves,
             };
             workflow.save(artifact);
             return {
-                reply: replyAction(action, { saved: true, recordingName, workspaceName, stepCount: bundle.steps.length }),
+                reply: replyAction(action, { saved: true, recordingName, workspaceName, stepCount: orderedSteps.length }),
                 events: [],
             };
         }
