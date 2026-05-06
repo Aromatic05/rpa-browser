@@ -10,11 +10,12 @@ import {
     beginReplay,
     cancelReplay,
     clearWorkspaceUnsavedRecording,
+    disableWorkspaceRecording,
+    enableWorkspaceRecording,
     endReplay,
     ensureRecorder,
     getWorkspaceUnsavedRecordingBundle,
     resetWorkspaceUnsavedRecording,
-    stopRecording,
     type RecordingState,
 } from './recording';
 import { setRecorderRuntimeEnabled, type RecorderEvent } from './recorder';
@@ -76,16 +77,15 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             }
             const primary = boundTabs[0];
             const primaryPage = primary.page!;
-            const unsavedToken = resetWorkspaceUnsavedRecording(services.recordingState, workspaceName, {
+            resetWorkspaceUnsavedRecording(services.recordingState, workspaceName, {
                 entryTabRef: primary.name,
                 entryUrl: primaryPage.url(),
             });
             enterWorkspaceState(workspace, 'recording', action.type);
-            services.recordingState.recordingEnabled.add(unsavedToken);
+            enableWorkspaceRecording(services.recordingState, workspaceName);
             for (const tab of boundTabs) {
-                services.recordingState.tabWorkspaceName.set(tab.name, workspaceName);
                 if (!tab.page) {continue;}
-                await ensureRecorder(services.recordingState, tab.page, tab.name, services.navDedupeWindowMs);
+                await ensureRecorder(services.recordingState, workspaceName, tab.page, tab.name, services.navDedupeWindowMs);
                 await setRecorderRuntimeEnabled(tab.page, true);
             }
             return { reply: replyAction(action, { pageUrl: primaryPage.url() }), events: [] };
@@ -96,8 +96,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const workspaceName = requireWorkspaceName(action, action.type);
             const tabs = workspace.tabs.listTabs();
             const firstBoundPage = tabs.find((tab) => Boolean(tab.page))?.page;
-            const bundle = getWorkspaceUnsavedRecordingBundle(services.recordingState, workspaceName);
-            stopRecording(services.recordingState, bundle.recordingToken, { workspaceName });
+            disableWorkspaceRecording(services.recordingState, workspaceName);
             leaveWorkspaceState(workspace, 'recording', action.type);
             for (const tab of tabs) {
                 if (!tab.page) {continue;}
