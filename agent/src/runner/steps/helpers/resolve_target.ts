@@ -2,6 +2,7 @@ import type { ExecutionBinding } from '../../../runtime/execution/bindings';
 import type { ResolveHint, ResolvePolicy, StepResolve, StepResult } from '../types';
 import type { SnapshotResult } from '../executors/snapshot/core/types';
 import { getNodeAttr, getNodeSemanticHints, normalizeText } from '../executors/snapshot/core/runtime_store';
+import { isValidStepResolve } from '../resolve_utils';
 
 export type ResolveTargetInput = {
     nodeId?: string;
@@ -9,18 +10,38 @@ export type ResolveTargetInput = {
     resolve?: StepResolve;
 };
 
+export type TargetCandidate = {
+    selector: string;
+    path: string;
+    confidence: number;
+    warnings: string[];
+    source: string;
+};
+
+export type ResolveAuditAttempt = {
+    path: string;
+    selector: string;
+    source: string;
+    confidence: number;
+    ok: boolean;
+    stage: 'waitForVisible' | 'scrollIntoView' | 'action' | 'resolve';
+    errorCode?: string;
+    errorMessage?: string;
+};
+
 export type ResolvedTarget = {
     selector: string;
+    candidates: TargetCandidate[];
     resolution: {
         source: 'nodeId' | 'selector' | 'resolve';
         path: string;
         appliedPolicy?: string[];
-        audit?: {
+        audit: {
             stepId?: string;
             stepName?: string;
             confidence?: number;
             chosenPath?: string;
-            attempts: string[];
+            attempts: ResolveAuditAttempt[];
             warnings: string[];
             finalSelector?: string;
             failedPath?: string;
@@ -31,148 +52,439 @@ export type ResolvedTarget = {
 
 type ResolveResult = { ok: true; target: ResolvedTarget } | { ok: false; error: StepResult['error'] };
 
+type CandidateCollector = {
+    push: (candidate: TargetCandidate) => void;
+    list: () => TargetCandidate[];
+};
+
 export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTargetInput): Promise<ResolveResult> => {
     const { nodeId, selector, resolve } = input;
-    const hint = resolve?.hint;
-    const policy = resolve?.policy;
     if (!nodeId && !selector && !resolve) {
         return { ok: false, error: { code: 'ERR_BAD_ARGS', message: 'missing target input' } };
     }
 
-    if (selector) {
-        const confidence = hint?.capture?.confidence;
-        const warnings = hint?.capture?.warnings || [];
-        return {
-            ok: true,
-            target: {
-                selector: withVisibilityConstraint(withHintScope(binding, hint, selector, policy), policy?.requireVisible),
-                resolution: {
-                    source: 'selector',
-                    path: 'input.selector',
-                    appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
-                    audit: {
-                        confidence,
-                        chosenPath: 'input.selector',
-                        attempts: ['input.selector'],
-                        warnings: [...warnings],
-                        finalSelector: selector,
-                    },
-                },
-            },
-        };
-    }
+    const hasValidResolve = isValidStepResolve(resolve);
+    const hint = resolve?.hint;
+    const policy = resolve?.policy;
+    const confidence = hint?.capture?.confidence ?? (hasValidResolve ? 0.6 : 0.4);
+    const warnings = [...(hint?.capture?.warnings || [])];
+    const collector = createCandidateCollector();
 
     if (nodeId) {
-        const resolved = resolveBySnapshotNodeId(binding, nodeId, hint, policy);
-        if (resolved.ok) {
-            const warnings = hint?.capture?.warnings || [];
-            return {
-                ok: true,
-                target: {
-                    selector: resolved.selector,
-                    resolution: {
-                        source: 'nodeId',
-                        path: resolved.path,
-                        appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
-                        audit: {
-                            confidence: hint?.capture?.confidence,
-                            chosenPath: resolved.path,
-                            attempts: [resolved.path],
-                            warnings: [...warnings],
-                            finalSelector: resolved.selector,
-                        },
-                    },
-                },
-            };
-        }
-        if (!resolve) {
-            return { ok: false, error: resolved.error };
+        addNodeIdCandidate(collector, binding, nodeId, hint, policy, confidence, warnings, 'input.nodeId', 'input');
+    }
+
+    if (hasValidResolve && hint) {
+        const order = buildResolveOrder(confidence);
+        for (const sourcePath of order) {
+            if (sourcePath === 'resolve.hint.target.nodeId' && hint.target?.nodeId) {
+                addNodeIdCandidate(collector, binding, hint.target.nodeId, hint, policy, confidence, warnings, sourcePath, 'resolve');
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.entity') {
+                const byEntity = resolveByEntityHint(binding, hint, policy || {});
+                if (byEntity) {
+                    collector.push({ selector: byEntity, path: sourcePath, confidence, warnings, source: 'resolve.entity' });
+                }
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.locator.direct.query') {
+                const query = hint.locator?.direct?.query;
+                if (query) {
+                    collector.push({
+                        selector: withVisibilityConstraint(withHintScope(binding, hint, query, policy), policy?.requireVisible),
+                        path: sourcePath,
+                        confidence,
+                        warnings,
+                        source: 'resolve.direct.query',
+                    });
+                }
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.locator.direct.fallback') {
+                const fallback = hint.locator?.direct?.fallback;
+                if (fallback) {
+                    collector.push({
+                        selector: withVisibilityConstraint(withHintScope(binding, hint, fallback, policy), policy?.requireVisible),
+                        path: sourcePath,
+                        confidence,
+                        warnings,
+                        source: 'resolve.direct.fallback',
+                    });
+                }
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.target.domId') {
+                for (const candidate of buildDomIdCandidates(binding, hint, policy || {}, confidence, warnings)) {
+                    collector.push(candidate);
+                }
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.target.semantic') {
+                for (const candidate of buildTargetSemanticCandidates(binding, hint, policy || {}, confidence, warnings)) {
+                    collector.push(candidate);
+                }
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.raw.css' || sourcePath === 'resolve.hint.raw.testid' || sourcePath === 'resolve.hint.raw.role_name' || sourcePath === 'resolve.hint.raw.text' || sourcePath === 'resolve.hint.raw.placeholder') {
+                for (const candidate of buildRawLocatorCandidates(binding, hint, policy || {}, confidence, warnings, sourcePath)) {
+                    collector.push(candidate);
+                }
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.raw.selector') {
+                const rawSelector = hint.raw?.selector;
+                if (rawSelector) {
+                    collector.push({
+                        selector: withVisibilityConstraint(withHintScope(binding, hint, rawSelector, policy), policy?.requireVisible),
+                        path: sourcePath,
+                        confidence,
+                        warnings,
+                        source: 'resolve.raw.selector',
+                    });
+                }
+                continue;
+            }
+            if (sourcePath === 'resolve.hint.fuzzy' && policy?.allowFuzzy) {
+                const byFuzzy = resolveByHintFuzzy(binding, hint, policy || {});
+                if (byFuzzy) {
+                    collector.push({ selector: byFuzzy, path: sourcePath, confidence, warnings, source: 'resolve.fuzzy' });
+                }
+            }
         }
     }
 
-    const byResolve = resolveByHint(binding, hint!, policy || {});
-    if (byResolve.ok) {
-        const attempts = buildHintResolveOrder(hint?.capture?.confidence ?? 0.5);
-        const chosenAt = Math.max(attempts.indexOf(byResolve.path), 0);
+    if (selector) {
+        collector.push({
+            selector: withVisibilityConstraint(withHintScope(binding, hint, selector, policy), policy?.requireVisible),
+            path: 'input.selector',
+            confidence: hasValidResolve ? Math.min(0.4, confidence) : 0.9,
+            warnings,
+            source: 'input.selector',
+        });
+    }
+
+    const candidates = collector.list();
+    if (candidates.length === 0) {
         return {
-            ok: true,
-            target: {
-                selector: byResolve.selector,
-                resolution: {
-                    source: 'resolve',
-                    path: byResolve.path,
-                    appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
-                    audit: {
-                        confidence: hint?.capture?.confidence,
-                        chosenPath: byResolve.path,
-                        attempts: attempts.slice(0, chosenAt + 1),
-                        warnings: [...(hint?.capture?.warnings || [])],
-                        finalSelector: byResolve.selector,
-                    },
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'target hint not resolvable to selector',
+                details: {
+                    confidence,
+                    warnings,
+                    hasNodeId: Boolean(nodeId),
+                    hasSelector: Boolean(selector),
+                    hasResolve: hasValidResolve,
                 },
             },
         };
     }
 
-    return { ok: false, error: byResolve.error };
-};
-
-const resolveByHint = (
-    binding: ExecutionBinding,
-    hint: ResolveHint,
-    policy: ResolvePolicy,
-): { ok: true; selector: string; path: string } | { ok: false; error: StepResult['error'] } => {
-    const confidence = hint.capture?.confidence ?? 0.5;
-    const attemptOrder = buildHintResolveOrder(confidence);
-    for (const path of attemptOrder) {
-        if (path === 'resolve.hint.target.nodeId' && hint.target?.nodeId) {
-            const byNode = resolveBySnapshotNodeId(binding, hint.target.nodeId, hint, policy);
-            if (byNode.ok) {return { ok: true, selector: byNode.selector, path };}
-            continue;
-        }
-        if (path === 'resolve.hint.entity') {
-            const byEntity = resolveByEntityHint(binding, hint, policy);
-            if (byEntity) {return { ok: true, selector: byEntity, path };}
-            continue;
-        }
-        if (path === 'resolve.hint.locator.direct') {
-            const byLocator = resolveFromHintLocator(binding, hint, policy);
-            if (byLocator) {return { ok: true, selector: byLocator, path };}
-            continue;
-        }
-        if (path === 'resolve.hint.target.primaryDomId') {
-            const byDom = resolveByDomFingerprint(binding, hint, policy);
-            if (byDom) {return { ok: true, selector: byDom, path };}
-            continue;
-        }
-        if (path === 'resolve.hint.raw') {
-            const byRaw = resolveFromHintRaw(binding, hint, policy);
-            if (byRaw) {return { ok: true, selector: byRaw, path };}
-            continue;
-        }
-        if (path === 'resolve.hint.fuzzy' && policy.allowFuzzy) {
-            const byFuzzy = resolveByHintFuzzy(binding, hint, policy);
-            if (byFuzzy) {return { ok: true, selector: byFuzzy, path };}
-        }
-    }
-
+    const first = candidates[0];
     return {
-        ok: false,
-        error: {
-            code: 'ERR_NOT_FOUND',
-            message: 'target hint not resolvable to selector',
-            details: {
-                confidence: hint.capture?.confidence,
-                attempts: buildHintResolveOrder(hint.capture?.confidence ?? 0.5),
-                warnings: hint.capture?.warnings || [],
-                hasTargetNodeId: Boolean(hint.target?.nodeId),
-                hasPrimaryDomId: Boolean(hint.target?.primaryDomId),
-                hasLocatorDirect: Boolean(hint.locator?.direct?.query),
-                hasRawSelector: Boolean(hint.raw?.selector),
-                hasEntityHint: Boolean(hint.entity?.businessTag || hint.entity?.fieldKey || hint.entity?.actionIntent),
+        ok: true,
+        target: {
+            selector: first.selector,
+            candidates,
+            resolution: {
+                source: hasValidResolve ? 'resolve' : (nodeId ? 'nodeId' : 'selector'),
+                path: first.path,
+                appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
+                audit: {
+                    confidence,
+                    chosenPath: first.path,
+                    attempts: [],
+                    warnings,
+                    finalSelector: first.selector,
+                },
             },
         },
     };
+};
+
+const createCandidateCollector = (): CandidateCollector => {
+    const seen = new Set<string>();
+    const out: TargetCandidate[] = [];
+    return {
+        push: (candidate) => {
+            const selector = candidate.selector.trim();
+            if (!selector) {return;}
+            const key = selector;
+            if (seen.has(key)) {return;}
+            seen.add(key);
+            out.push({ ...candidate, selector });
+        },
+        list: () => out,
+    };
+};
+
+const addNodeIdCandidate = (
+    collector: CandidateCollector,
+    binding: ExecutionBinding,
+    nodeId: string,
+    hint: ResolveHint | undefined,
+    policy: ResolvePolicy | undefined,
+    confidence: number,
+    warnings: string[],
+    path: string,
+    sourcePrefix: 'input' | 'resolve',
+) => {
+    const resolved = resolveBySnapshotNodeId(binding, nodeId, hint, policy);
+    if (!resolved.ok) {return;}
+    collector.push({
+        selector: resolved.selector,
+        path,
+        confidence,
+        warnings,
+        source: `${sourcePrefix}.nodeId`,
+    });
+};
+
+const buildResolveOrder = (confidence: number): string[] => {
+    if (confidence >= 0.8) {
+        return [
+            'resolve.hint.target.nodeId',
+            'resolve.hint.entity',
+            'resolve.hint.locator.direct.query',
+            'resolve.hint.locator.direct.fallback',
+            'resolve.hint.target.domId',
+            'resolve.hint.target.semantic',
+            'resolve.hint.raw.role_name',
+            'resolve.hint.raw.testid',
+            'resolve.hint.raw.text',
+            'resolve.hint.raw.css',
+            'resolve.hint.raw.selector',
+            'resolve.hint.fuzzy',
+        ];
+    }
+    if (confidence >= 0.55) {
+        return [
+            'resolve.hint.target.nodeId',
+            'resolve.hint.entity',
+            'resolve.hint.raw.role_name',
+            'resolve.hint.raw.testid',
+            'resolve.hint.locator.direct.query',
+            'resolve.hint.locator.direct.fallback',
+            'resolve.hint.target.domId',
+            'resolve.hint.target.semantic',
+            'resolve.hint.raw.text',
+            'resolve.hint.raw.css',
+            'resolve.hint.raw.selector',
+            'resolve.hint.fuzzy',
+        ];
+    }
+    return [
+        'resolve.hint.target.nodeId',
+        'resolve.hint.entity',
+        'resolve.hint.raw.role_name',
+        'resolve.hint.raw.testid',
+        'resolve.hint.raw.text',
+        'resolve.hint.raw.placeholder',
+            'resolve.hint.locator.direct.fallback',
+            'resolve.hint.target.domId',
+            'resolve.hint.target.semantic',
+            'resolve.hint.fuzzy',
+            'resolve.hint.raw.selector',
+            'resolve.hint.raw.css',
+            'resolve.hint.locator.direct.query',
+    ];
+};
+
+const buildDomIdCandidates = (
+    binding: ExecutionBinding,
+    hint: ResolveHint,
+    policy: ResolvePolicy,
+    confidence: number,
+    warnings: string[],
+): TargetCandidate[] => {
+    const snapshot = getSnapshot(binding);
+    if (!snapshot || !hint.target) {return [];}
+    const domIds = [hint.target.primaryDomId, ...(hint.target.sourceDomIds || [])].filter(Boolean) as string[];
+    const out: TargetCandidate[] = [];
+    for (const domId of domIds) {
+        const matchedNodeId = findNodeIdByDomId(snapshot, domId);
+        if (!matchedNodeId) {continue;}
+        const resolved = resolveBySnapshotNodeId(binding, matchedNodeId, hint, policy);
+        if (!resolved.ok) {continue;}
+        out.push({
+            selector: resolved.selector,
+            path: 'resolve.hint.target.domId',
+            confidence,
+            warnings,
+            source: 'resolve.domId',
+        });
+    }
+    return out;
+};
+
+const buildRawLocatorCandidates = (
+    binding: ExecutionBinding,
+    hint: ResolveHint,
+    policy: ResolvePolicy,
+    confidence: number,
+    warnings: string[],
+    targetPath: string,
+): TargetCandidate[] => {
+    const out: TargetCandidate[] = [];
+    for (const candidate of hint.raw?.locatorCandidates || []) {
+        if (targetPath === 'resolve.hint.raw.css' && candidate.kind === 'css' && candidate.selector) {
+            out.push({
+                selector: withVisibilityConstraint(withHintScope(binding, hint, candidate.selector, policy), policy.requireVisible),
+                path: targetPath,
+                confidence,
+                warnings,
+                source: 'resolve.raw.css',
+            });
+        }
+        if (targetPath === 'resolve.hint.raw.testid' && candidate.kind === 'testid' && candidate.testId) {
+            out.push({
+                selector: withVisibilityConstraint(withHintScope(binding, hint, `[data-testid="${escapeCssText(candidate.testId)}"]`, policy), policy.requireVisible),
+                path: targetPath,
+                confidence,
+                warnings,
+                source: 'resolve.raw.testid',
+            });
+        }
+        if (targetPath === 'resolve.hint.raw.placeholder' && candidate.kind === 'placeholder' && candidate.text) {
+            out.push({
+                selector: withVisibilityConstraint(withHintScope(binding, hint, `[placeholder="${escapeCssText(candidate.text)}"]`, policy), policy.requireVisible),
+                path: targetPath,
+                confidence,
+                warnings,
+                source: 'resolve.raw.placeholder',
+            });
+        }
+        if (targetPath === 'resolve.hint.raw.role_name' && candidate.kind === 'role') {
+            out.push(...buildNodeCandidatesFromRoleName(binding, hint, policy, confidence, warnings, candidate.role, candidate.name, Boolean(candidate.exact)));
+        }
+        if (targetPath === 'resolve.hint.raw.text' && candidate.kind === 'text' && candidate.text) {
+            out.push(...buildNodeCandidatesFromText(binding, hint, policy, confidence, warnings, candidate.text, Boolean(candidate.exact)));
+        }
+    }
+    return out;
+};
+
+const buildTargetSemanticCandidates = (
+    binding: ExecutionBinding,
+    hint: ResolveHint,
+    policy: ResolvePolicy,
+    confidence: number,
+    warnings: string[],
+): TargetCandidate[] => {
+    const snapshot = getSnapshot(binding);
+    if (!snapshot || !hint.target) {return [];}
+    const targetRole = normalizeTag(hint.target.role);
+    const targetName = normalizeTag(hint.target.name);
+    const targetText = normalizeTag(hint.target.text);
+    const targetTag = normalizeTag(hint.target.tag);
+    if (!targetRole && !targetName && !targetText && !targetTag) {return [];}
+
+    const out: TargetCandidate[] = [];
+    for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
+        const attrs = snapshot.attrIndex[nodeId] || {};
+        const role = normalizeTag(node.role);
+        const name = normalizeTag(node.name);
+        const text = normalizeTag(normalizeNodeText(snapshot, nodeId));
+        const tag = normalizeTag((attrs.tag || attrs.tagName || ''));
+        if (targetRole && role && targetRole !== role) {continue;}
+        if (targetTag && tag && targetTag !== tag) {continue;}
+        if (targetName && name && !name.includes(targetName)) {continue;}
+        if (targetText && text && !text.includes(targetText)) {continue;}
+        const resolved = resolveBySnapshotNodeId(binding, nodeId, hint, policy);
+        if (!resolved.ok) {continue;}
+        out.push({
+            selector: resolved.selector,
+            path: 'resolve.hint.target.semantic',
+            confidence,
+            warnings,
+            source: 'resolve.target.semantic',
+        });
+    }
+    return out;
+};
+
+const buildNodeCandidatesFromRoleName = (
+    binding: ExecutionBinding,
+    hint: ResolveHint,
+    policy: ResolvePolicy,
+    confidence: number,
+    warnings: string[],
+    roleValue?: string,
+    nameValue?: string,
+    exact?: boolean,
+): TargetCandidate[] => {
+    const snapshot = getSnapshot(binding);
+    if (!snapshot) {return [];}
+    const role = normalizeTag(roleValue);
+    const name = normalizeTag(nameValue);
+    if (!role && !name) {return [];}
+
+    const out: TargetCandidate[] = [];
+    const scopeNodeId = hint.locator?.scope?.id ? resolveScopeNodeId(snapshot, hint.locator.scope.id) : undefined;
+    const parentById = scopeNodeId ? buildNodeParentById(snapshot.root) : undefined;
+    for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
+        if (scopeNodeId && parentById && !isInAnyScope(nodeId, new Set([scopeNodeId]), parentById)) {continue;}
+        const nodeRole = normalizeTag(node.role);
+        const nodeName = normalizeTag(node.name || normalizeNodeText(snapshot, nodeId));
+        if (role && nodeRole !== role) {continue;}
+        if (name && (exact ? nodeName !== name : !nodeName.includes(name))) {continue;}
+        const resolved = resolveBySnapshotNodeId(binding, nodeId, hint, policy);
+        if (!resolved.ok) {continue;}
+        out.push({
+            selector: resolved.selector,
+            path: 'resolve.hint.raw.role_name',
+            confidence,
+            warnings,
+            source: 'resolve.raw.role_name',
+        });
+    }
+    return out;
+};
+
+const buildNodeCandidatesFromText = (
+    binding: ExecutionBinding,
+    hint: ResolveHint,
+    policy: ResolvePolicy,
+    confidence: number,
+    warnings: string[],
+    textValue: string,
+    exact: boolean,
+): TargetCandidate[] => {
+    const snapshot = getSnapshot(binding);
+    if (!snapshot) {return [];}
+    const text = normalizeTag(textValue);
+    if (!text) {return [];}
+    const out: TargetCandidate[] = [];
+    const scopeNodeId = hint.locator?.scope?.id ? resolveScopeNodeId(snapshot, hint.locator.scope.id) : undefined;
+    const parentById = scopeNodeId ? buildNodeParentById(snapshot.root) : undefined;
+    for (const [nodeId] of Object.entries(snapshot.nodeIndex)) {
+        if (scopeNodeId && parentById && !isInAnyScope(nodeId, new Set([scopeNodeId]), parentById)) {continue;}
+        const nodeText = normalizeTag(normalizeNodeText(snapshot, nodeId));
+        if (!nodeText) {continue;}
+        if (exact ? nodeText !== text : !nodeText.includes(text)) {continue;}
+        const resolved = resolveBySnapshotNodeId(binding, nodeId, hint, policy);
+        if (!resolved.ok) {continue;}
+        out.push({
+            selector: resolved.selector,
+            path: 'resolve.hint.raw.text',
+            confidence,
+            warnings,
+            source: 'resolve.raw.text',
+        });
+    }
+    return out;
+};
+
+const normalizeNodeText = (snapshot: SnapshotResult, nodeId: string): string => {
+    const node = snapshot.nodeIndex[nodeId];
+    if (!node) {return '';}
+    if (typeof node.content === 'string') {return node.content;}
+    if (node.content && typeof node.content === 'object' && node.content.ref) {
+        return snapshot.contentStore[node.content.ref] || '';
+    }
+    return node.name || '';
 };
 
 const resolveByEntityHint = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
@@ -320,25 +632,6 @@ const resolveBySnapshotNodeId = (
     };
 };
 
-const resolveByDomFingerprint = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
-    const snapshot = getSnapshot(binding);
-    if (!snapshot || !hint.target) {return undefined;}
-
-    const domIds = [hint.target.primaryDomId, ...(hint.target.sourceDomIds || [])].filter(Boolean) as string[];
-    for (const domId of domIds) {
-        const matchedNodeId = findNodeIdByDomId(snapshot, domId);
-        if (!matchedNodeId) {continue;}
-        const resolved = resolveBySnapshotNodeId(binding, matchedNodeId, hint, policy);
-        if (resolved.ok) {return resolved.selector;}
-    }
-
-    if (!policy.allowIndexDrift) {return undefined;}
-    const fuzzyNodeId = findNodeIdByFuzzyFingerprint(snapshot, hint);
-    if (!fuzzyNodeId) {return undefined;}
-    const fuzzy = resolveBySnapshotNodeId(binding, fuzzyNodeId, hint, policy);
-    return fuzzy.ok ? fuzzy.selector : undefined;
-};
-
 const resolveByHintFuzzy = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
     const snapshot = getSnapshot(binding);
     if (!snapshot || !hint.target) {return undefined;}
@@ -346,72 +639,6 @@ const resolveByHintFuzzy = (binding: ExecutionBinding, hint: ResolveHint, policy
     if (!fuzzyNodeId) {return undefined;}
     const resolved = resolveBySnapshotNodeId(binding, fuzzyNodeId, hint, policy);
     return resolved.ok ? resolved.selector : undefined;
-};
-
-const resolveFromHintLocator = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
-    const direct = hint.locator?.direct;
-    if (!direct) {return undefined;}
-
-    if (direct.kind === 'css' && direct.query) {
-        return withVisibilityConstraint(withHintScope(binding, hint, direct.query, policy), policy.requireVisible);
-    }
-
-    if (direct.fallback) {
-        return withVisibilityConstraint(withHintScope(binding, hint, direct.fallback, policy), policy.requireVisible);
-    }
-
-    return undefined;
-};
-
-const resolveFromHintRaw = (binding: ExecutionBinding, hint: ResolveHint, policy: ResolvePolicy): string | undefined => {
-    if (hint.raw?.selector) {
-        return withVisibilityConstraint(withHintScope(binding, hint, hint.raw.selector, policy), policy.requireVisible);
-    }
-
-    for (const candidate of hint.raw?.locatorCandidates || []) {
-        if (candidate.kind === 'css' && candidate.selector) {
-            return withVisibilityConstraint(withHintScope(binding, hint, candidate.selector, policy), policy.requireVisible);
-        }
-        if (candidate.kind === 'testid' && candidate.testId) {
-            return withVisibilityConstraint(
-                withHintScope(binding, hint, `[data-testid="${escapeCssText(candidate.testId)}"]`, policy),
-                policy.requireVisible,
-            );
-        }
-    }
-
-    return undefined;
-};
-
-const buildHintResolveOrder = (confidence: number): string[] => {
-    if (confidence >= 0.8) {
-        return [
-            'resolve.hint.target.nodeId',
-            'resolve.hint.entity',
-            'resolve.hint.locator.direct',
-            'resolve.hint.target.primaryDomId',
-            'resolve.hint.raw',
-            'resolve.hint.fuzzy',
-        ];
-    }
-    if (confidence >= 0.55) {
-        return [
-            'resolve.hint.target.nodeId',
-            'resolve.hint.entity',
-            'resolve.hint.raw',
-            'resolve.hint.locator.direct',
-            'resolve.hint.target.primaryDomId',
-            'resolve.hint.fuzzy',
-        ];
-    }
-    return [
-        'resolve.hint.target.nodeId',
-        'resolve.hint.entity',
-        'resolve.hint.locator.direct',
-        'resolve.hint.target.primaryDomId',
-        'resolve.hint.raw',
-        'resolve.hint.fuzzy',
-    ];
 };
 
 const getSnapshot = (binding: ExecutionBinding): SnapshotResult | undefined => {
