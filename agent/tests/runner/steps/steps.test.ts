@@ -15,17 +15,21 @@ import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
 import { setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
 
 const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unknown> = {}): RunStepsDeps => {
+    const pageWithDefaults = {
+        waitForLoadState: async () => undefined,
+        evaluate: async () => 'domcontentloaded',
+        ...page,
+    };
     const binding = {
         workspaceName: 'ws1',
         tabName: 'tab1',
-        tabName: 'token1',
-        page: page as any,
+        page: pageWithDefaults as any,
         traceTools,
         traceCtx: { cache: { ...cache } },
     };
     return {
         runtime: {
-            ensureActivePage: async () => binding,
+            resolveBinding: async () => binding,
         } as any,
         config: getRunnerConfig(),
         pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
@@ -442,6 +446,87 @@ test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async 
     assert.ok(elapsedMs < 500, `expected timeout fallback quickly, got ${elapsedMs}ms`);
 });
 
+test('click waits page readiness once, uses candidate click timeout, and stops after fallback success', async () => {
+    const waitForLoadStateCalls: Array<{ state: string; timeout?: number }> = [];
+    const clickCalls: any[] = [];
+    const traceTools = {
+        'trace.locator.scrollIntoView': async () => ({ ok: true }),
+        'trace.locator.waitForVisible': async () => ({ ok: true }),
+        'trace.locator.click': async (args: any) => {
+            clickCalls.push(args);
+            if (args.candidateIndex === 0) {
+                return { ok: false, error: { code: 'ERR_TIMEOUT', message: 'first candidate timeout' } };
+            }
+            return { ok: true };
+        },
+    };
+    const deps = createDeps(traceTools, {
+        waitForLoadState: async (state: string, opts?: { timeout?: number }) => {
+            waitForLoadStateCalls.push({ state, timeout: opts?.timeout });
+        },
+        evaluate: async () => 'load',
+    });
+    deps.config.waitPolicy.visibleTimeoutMs = 5000;
+    deps.config.waitPolicy.pageReadyTimeoutMs = 1500;
+    deps.config.waitPolicy.candidateClickTimeoutMs = 800;
+    const step: Step<'browser.click'> = {
+        id: 's2e',
+        name: 'browser.click',
+        args: {},
+        resolve: {
+            hint: {
+                raw: {
+                    locatorCandidates: [
+                        { kind: 'css', selector: '#first' },
+                        { kind: 'css', selector: '#second' },
+                    ],
+                },
+            },
+            policy: { targetPath: 'resolve.hint.raw.css' },
+        },
+    };
+
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal(waitForLoadStateCalls.length, 1);
+    assert.equal(waitForLoadStateCalls[0].state, 'domcontentloaded');
+    assert.equal(waitForLoadStateCalls[0].timeout, 1500);
+    assert.equal(clickCalls.length, 2);
+    assert.equal(clickCalls[0].timeout, 800);
+    assert.equal(clickCalls[1].timeout, 800);
+    assert.equal(clickCalls[0].candidateTimeoutMs, 800);
+    assert.equal(clickCalls[0].candidateIndex, 0);
+    assert.equal(clickCalls[1].candidateIndex, 1);
+    assert.equal(clickCalls[0].loadStateBeforeClick, 'load');
+    assert.equal(typeof clickCalls[0].pageReadyWaitMs, 'number');
+});
+
+test('click returns structured error when page readiness wait fails', async () => {
+    const traceTools = {
+        'trace.locator.scrollIntoView': async () => ({ ok: true }),
+        'trace.locator.waitForVisible': async () => ({ ok: true }),
+        'trace.locator.click': async () => ({ ok: true }),
+    };
+    const deps = createDeps(traceTools, {
+        waitForLoadState: async () => {
+            throw new Error('timeout');
+        },
+        evaluate: async () => 'domcontentloaded',
+    });
+    deps.config.waitPolicy.pageReadyTimeoutMs = 1500;
+    const step: Step<'browser.click'> = {
+        id: 's2f',
+        name: 'browser.click',
+        args: { selector: '#save' },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_PAGE_NOT_READY');
+    assert.equal((result.error?.details as any)?.targetLoadState, 'domcontentloaded');
+    assert.equal((result.error?.details as any)?.pageReadyTimeoutMs, 1500);
+    assert.equal(typeof (result.error?.details as any)?.pageReadyWaitMs, 'number');
+});
+
 test('fill uses trace.locator.fill', async () => {
     const calls: string[] = [];
     const traceTools = {
@@ -621,7 +706,7 @@ test('not found returns error code and message', async () => {
 
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, false);
-    assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+    assert.equal(result.error?.code, 'ERR_BAD_ARGS');
     assert.ok(result.error?.message);
 });
 
