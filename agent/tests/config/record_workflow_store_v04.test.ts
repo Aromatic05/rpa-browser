@@ -29,7 +29,7 @@ test('record.save uses workspace.workflow and persists recording artifact', asyn
     ]);
     setRecordControlServices({
         recordingState,
-        replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        replayOptions: { clickDelayMs: 0, stepIntervalMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1200,
     });
 

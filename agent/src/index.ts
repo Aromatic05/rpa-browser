@@ -38,7 +38,7 @@ const TAB_PING_TIMEOUT_MS = 45000;
 const TAB_PING_WATCHDOG_INTERVAL_MS = 5000;
 const REPLAY_OPTIONS = {
     clickDelayMs: 300,
-    stepDelayMs: 900,
+    stepIntervalMs: 900,
     scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
 };
 const NAV_DEDUPE_WINDOW_MS = 1200;

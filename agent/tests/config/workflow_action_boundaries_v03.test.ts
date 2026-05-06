@@ -16,7 +16,7 @@ test('record.load fails when recording artifact is missing in workspace workflow
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     setRecordControlServices({
         recordingState: createRecordingState(),
-        replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        replayOptions: { clickDelayMs: 0, stepIntervalMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1200,
     });
 

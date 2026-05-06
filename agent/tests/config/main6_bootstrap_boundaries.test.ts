@@ -35,7 +35,7 @@ const createEnv = () => {
     const workspaceRegistry = createWorkspaceRegistry({
         pageRegistry,
         recordingState,
-        replayOptions: { clickDelayMs: 1, stepDelayMs: 1, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        replayOptions: { clickDelayMs: 1, stepIntervalMs: 1, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1200,
         runStepsDeps: runStepsDeps as any,
         runnerConfig: { checkpointPolicy: { enabled: false, filePath: '.tmp', flushIntervalMs: 1000 } } as any,

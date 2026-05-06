@@ -17,10 +17,11 @@ import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
 import { isValidStepResolve } from '../runner/steps/resolve_utils';
+import { getLogger } from '../logging/logger';
 
 export type ReplayOptions = {
     clickDelayMs: number;
-    stepDelayMs: number;
+    stepIntervalMs: number;
     scroll: { minDelta: number; maxDelta: number; minSteps: number; maxSteps: number };
 };
 
@@ -58,6 +59,9 @@ export type ReplayEvent =
           stepId: string;
           stepName: string;
           ok: boolean;
+          stepDurationMs: number;
+          stepIntervalMs: number;
+          sleepMs: number;
           data?: unknown;
           error?: { code: string; message: string; details?: unknown };
       }
@@ -93,9 +97,10 @@ const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnha
  */
 export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult> => {
     const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const stepDelayMs =
-        typeof req.replayOptions?.stepDelayMs === 'number' && req.replayOptions.stepDelayMs > 0
-            ? Math.floor(req.replayOptions.stepDelayMs)
+    const stepLogger = getLogger('step');
+    const stepIntervalMs =
+        typeof req.replayOptions?.stepIntervalMs === 'number' && req.replayOptions.stepIntervalMs > 0
+            ? Math.floor(req.replayOptions.stepIntervalMs)
             : 0;
     const runOne = async (step: StepUnion): Promise<RunStepsResult> => {
         const { pipe, checkpoint } = await runStepList(req.workspaceName, [step], req.deps, { stopOnError: true, stepResolves: req.stepResolves });
@@ -161,6 +166,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     const stepResults: RunStepsResult['results'] = [];
 
     for (let index = 0; index < req.steps.length; index += 1) {
+        const startedAt = Date.now();
         const originalStep = withResolveFromEnhancement(
             req.steps[index],
             req.enrichments?.[req.steps[index].id],
@@ -228,6 +234,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
 
         const response = await runOne(remappedStep);
+        const stepDurationMs = Date.now() - startedAt;
+        const sleepMs = Math.max(0, stepIntervalMs - stepDurationMs);
         stepResults.push(...response.results);
         const primary = response.results[response.results.length - 1];
         await req.onEvent?.({
@@ -237,8 +245,20 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             stepId: remappedStep.id,
             stepName: remappedStep.name,
             ok: response.ok,
+            stepDurationMs,
+            stepIntervalMs,
+            sleepMs,
             data: primary.data,
             error: primary.error,
+        });
+        stepLogger.info('[RPA:replay:step]', {
+            workspaceName: req.workspaceName,
+            stepId: remappedStep.id,
+            stepName: remappedStep.name,
+            stepDurationMs,
+            stepIntervalMs,
+            sleepMs,
+            ok: response.ok,
         });
         await req.onEvent?.({
             type: 'progress',
@@ -262,8 +282,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (recordedTabName && remappedStep.name === 'browser.close_tab' && response.ok) {
             upsertMapping(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
         }
-        if (stepDelayMs > 0) {
-            await wait(stepDelayMs);
+        if (sleepMs > 0) {
+            await wait(sleepMs);
         }
     }
 

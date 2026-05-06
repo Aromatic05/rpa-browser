@@ -140,7 +140,7 @@ workspaceRegistry = createWorkspaceRegistry({
     recordingState,
     replayOptions: {
         clickDelayMs: 300,
-        stepDelayMs: 900,
+        stepIntervalMs: 900,
         scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
     },
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,

@@ -53,7 +53,7 @@ export const createTestWorkspaceRegistry = (options: TestWorkspaceRegistryOption
         pageRegistry: testPageRegistry,
         runtime: runStepsDeps.runtime,
         recordingState,
-        replayOptions: { clickDelayMs: 1, stepDelayMs: 1, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        replayOptions: { clickDelayMs: 1, stepIntervalMs: 1, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1200,
         emit: options.emit,
         runStepsDeps,

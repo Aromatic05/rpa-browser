@@ -20,7 +20,7 @@ const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
 const REPLAY_OPTIONS = {
     clickDelayMs: 300,
-    stepDelayMs: 900,
+    stepIntervalMs: 900,
     scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
 };
 if (!process.env.RPA_USER_DATA_DIR) {
