@@ -2,12 +2,12 @@ import type { Action } from '../shared/types.js';
 
 export type PanelActionKind = 'control' | 'workspace';
 
-export type PanelActionScope = { workspaceName?: string };
+export type PanelActionAddress = { workspaceName?: string };
 
 export type PreparedPanelAction = {
     type: string;
     payload?: Record<string, unknown>;
-    scope?: PanelActionScope;
+    address?: PanelActionAddress;
 };
 
 const WORKSPACE_REQUIRED_PREFIXES = [
@@ -27,10 +27,12 @@ const CONTROL_ACTIONS = new Set([
     'workflow.list',
     'workflow.create',
     'workflow.open',
+    'workflow.resetDefault',
 ]);
 
 export const classifyPanelAction = (type: string): PanelActionKind => {
     if (CONTROL_ACTIONS.has(type)) {return 'control';}
+    if (type === 'workflow.saveAs') {return 'workspace';}
     if (WORKSPACE_REQUIRED_PREFIXES.some((prefix) => type.startsWith(prefix))) {return 'workspace';}
     return 'control';
 };
@@ -55,7 +57,7 @@ export const preparePanelAction = (
         return {
             type,
             payload,
-            scope: { workspaceName: selectedWorkspaceName },
+            address: { workspaceName: selectedWorkspaceName },
         };
     }
     return { type, payload };

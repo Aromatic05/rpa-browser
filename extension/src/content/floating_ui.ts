@@ -7,7 +7,7 @@ export type FloatingUIOptions = {
     onAction: (
         type: string,
         payload?: Record<string, unknown>,
-        scope?: { workspaceName?: string; tabName?: string },
+        address?: { workspaceName?: string; tabName?: string },
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
 };
@@ -35,11 +35,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         workspaces: [] as WorkspaceItem[],
         tabs: [] as TabItem[],
         workflowName: '',
+        targetName: '',
         recordingName: '',
-        tabToCreate: '',
         lastReply: '' as string,
         logs: [] as PanelLogEntry[],
         playEvents: [] as string[],
+        replaySource: 'unsaved' as string,
+        savedRecordings: [] as Array<{ recordingName: string; stepCount: number }>,
+        unsavedStepCount: 0,
         dslRaw: '{}',
         checkpointRaw: '{}',
         entityRulesRaw: '{}',
@@ -66,7 +69,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .tabs button { border:none; border-right:1px solid #e2e8f0; border-radius:0; background:transparent; padding:8px 10px; font-size:12px; cursor:pointer; }
       .tabs button.active { background:#dbeafe; color:#1d4ed8; font-weight:700; }
       .body { padding:10px; max-height:360px; overflow:auto; }
-      .row { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px; }
+      .row { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px; align-items:center; }
+      .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-bottom:6px; align-items:center; }
       .section { margin-bottom:10px; border:1px solid #e2e8f0; border-radius:8px; padding:8px; }
       .title { font-size:11px; color:#475569; margin-bottom:6px; font-weight:700; }
       button { padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; }
@@ -129,11 +133,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             v: 1,
             id: crypto.randomUUID(),
             type: prepared.type,
-            ...(prepared.scope?.workspaceName ? { workspaceName: prepared.scope.workspaceName } : {}),
+            ...(prepared.address?.workspaceName ? { workspaceName: prepared.address.workspaceName } : {}),
             ...(prepared.payload ? { payload: prepared.payload } : {}),
         };
         logAction('request', request);
-        const reply = await opts.onAction(prepared.type, prepared.payload, prepared.scope);
+        const reply = await opts.onAction(prepared.type, prepared.payload, prepared.address);
         logAction(reply.type.endsWith('.failed') ? 'failed' : 'reply', reply);
         setOutput(reply);
         interceptAction(reply, prepared.type);
@@ -146,6 +150,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
     const refreshTabs = async () => {
         await sendPanelAction('tab.list', {});
+    };
+    const refreshRecordings = async () => {
+        await sendPanelAction('record.list', {});
     };
 
     const parseJsonOrErr = (raw: string): Record<string, unknown> | null => {
@@ -186,15 +193,42 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             const activeTab = state.tabs.find((t) => t.active);
             state.activeTabName = activeTab?.tabName || '';
         }
+        if (Array.isArray(payload.recordings)) {
+            state.savedRecordings = payload.recordings
+                .filter((item) => item && typeof item === 'object')
+                .map((item) => {
+                    const row = item as Record<string, unknown>;
+                    return {
+                        recordingName: String(row.recordingName || ''),
+                        stepCount: Number(row.stepCount || 0),
+                    };
+                })
+                .filter((item) => Boolean(item.recordingName));
+        }
+        if (payload.unsaved && typeof payload.unsaved === 'object') {
+            const unsaved = payload.unsaved as Record<string, unknown>;
+            state.unsavedStepCount = Number(unsaved.stepCount || 0);
+        }
         if (requestType === 'workspace.setActive' && !action.type.endsWith('.failed')) {
             void refreshTabs();
         }
         if (requestType === 'workflow.open' && !action.type.endsWith('.failed')) {
             void refreshWorkspaces();
             void refreshTabs();
+            void refreshRecordings();
         }
         if (requestType === 'tab.setActive' && !action.type.endsWith('.failed')) {
             void refreshTabs();
+        }
+        if (requestType === 'workflow.saveAs' && !action.type.endsWith('.failed')) {
+            void refreshWorkspaces();
+            void refreshTabs();
+            void refreshRecordings();
+        }
+        if (requestType === 'workflow.resetDefault' && !action.type.endsWith('.failed')) {
+            void refreshWorkspaces();
+            void refreshTabs();
+            void refreshRecordings();
         }
         addPlayEvent(action);
     };
@@ -224,8 +258,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         row.className = 'row';
         row.append(
             createButton('Refresh', async () => { await refreshWorkspaces(); await refreshTabs(); }, true),
-            createButton('Clear Output', () => setOutput({})),
+            createButton('Reset Default', async () => { await sendPanelAction('workflow.resetDefault', {}); }),
         );
+        const row2 = document.createElement('div');
+        row2.className = 'row';
+        row2.append(
+            createButton('Clear Output', () => setOutput({})),
+            createButton('record.list', refreshRecordings),
+        );
+        box.appendChild(row2);
         box.appendChild(row);
         return box;
     };
@@ -273,7 +314,31 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             if (!reply.type.endsWith('.failed')) { await refreshWorkspaces(); await refreshTabs(); }
         }, true));
         wfBox.append(wfRow1, wfRow2);
-        root.append(wsBox, wfBox);
+        const resetRow = document.createElement('div');
+        resetRow.className = 'row';
+        resetRow.append(createButton('workflow.resetDefault', () => sendPanelAction('workflow.resetDefault', {})));
+        wfBox.append(resetRow);
+
+        const saveAsBox = document.createElement('div');
+        saveAsBox.className = 'section';
+        saveAsBox.appendChild(Object.assign(document.createElement('div'), { className: 'title', textContent: 'Save As' }));
+        const targetInput = document.createElement('input');
+        targetInput.placeholder = 'targetName';
+        targetInput.value = state.targetName;
+        targetInput.addEventListener('input', () => { state.targetName = targetInput.value; });
+        saveAsBox.append(targetInput);
+        const saveAsRow = document.createElement('div');
+        saveAsRow.className = 'row';
+        saveAsRow.append(createButton('workflow.saveAs', async () => {
+            const reply = await sendPanelAction('workflow.saveAs', { targetName: state.targetName.trim() });
+            if (!reply.type.endsWith('.failed')) {
+                await refreshWorkspaces();
+                await refreshTabs();
+                await refreshRecordings();
+            }
+        }, true));
+        saveAsBox.append(saveAsRow);
+        root.append(wsBox, wfBox, saveAsBox);
         return root;
     };
 
@@ -288,16 +353,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             list.appendChild(createButton(`${tab.tabName} ${tab.title || tab.url || ''}`.slice(0, 60), () => sendPanelAction('tab.setActive', { tabName: tab.tabName }), tab.active));
         });
         box.append(list);
-        const tabInput = document.createElement('input');
-        tabInput.placeholder = 'new tabName(optional)';
-        tabInput.value = state.tabToCreate;
-        tabInput.addEventListener('input', () => { state.tabToCreate = tabInput.value; });
-        box.append(tabInput);
         const row1 = document.createElement('div');
         row1.className = 'row';
         row1.append(
             createButton('tab.list', refreshTabs),
-            createButton('tab.create', () => sendPanelAction('tab.create', state.tabToCreate.trim() ? { tabName: state.tabToCreate.trim() } : {})),
+            createButton('tab.create', () => sendPanelAction('tab.create', {})),
         );
         const row2 = document.createElement('div');
         row2.className = 'row';
@@ -314,24 +374,39 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const box = document.createElement('div');
         box.className = 'section';
         box.appendChild(Object.assign(document.createElement('div'), { className: 'title', textContent: 'Record' }));
-        const input = document.createElement('input');
-        input.placeholder = 'recordingName';
-        input.value = state.recordingName;
-        input.addEventListener('input', () => { state.recordingName = input.value; });
-        box.append(input);
         const row1 = document.createElement('div');
         row1.className = 'row';
         row1.append(createButton('record.start', () => sendPanelAction('record.start', {}), true), createButton('record.stop', () => sendPanelAction('record.stop', {})));
         const row2 = document.createElement('div');
         row2.className = 'row';
-        row2.append(createButton('record.get', () => sendPanelAction('record.get', {})), createButton('record.clear', () => sendPanelAction('record.clear', {})));
+        row2.append(createButton('Get Unsaved', () => sendPanelAction('record.get', {})), createButton('Clear Unsaved', () => sendPanelAction('record.clear', {})));
         const row3 = document.createElement('div');
-        row3.className = 'row';
-        row3.append(createButton('record.list', () => sendPanelAction('record.list', {})), createButton('record.save', () => sendPanelAction('record.save', { recordingName: state.recordingName.trim(), includeStepResolve: true })));
+        row3.className = 'row3';
+        const input = document.createElement('input');
+        input.placeholder = 'recordingName';
+        input.value = state.recordingName;
+        input.addEventListener('input', () => { state.recordingName = input.value; });
+        row3.append(
+            input,
+            createButton('Save Recording', () => sendPanelAction('record.save', { recordingName: state.recordingName.trim(), includeStepResolve: true }), true),
+            createButton('record.list', () => sendPanelAction('record.list', {})),
+        );
         const row4 = document.createElement('div');
         row4.className = 'row';
         row4.append(createButton('record.load', () => sendPanelAction('record.load', { recordingName: state.recordingName.trim() })));
-        box.append(row1, row2, row3, row4);
+        const list = document.createElement('div');
+        list.className = 'list';
+        const unsaved = document.createElement('div');
+        unsaved.className = 'hint';
+        unsaved.textContent = `unsaved stepCount: ${state.unsavedStepCount}`;
+        list.append(unsaved);
+        state.savedRecordings.forEach((item) => {
+            const line = document.createElement('div');
+            line.className = 'hint';
+            line.textContent = `${item.recordingName} (${item.stepCount})`;
+            list.append(line);
+        });
+        box.append(row1, row2, row3, row4, list);
         return box;
     };
 
@@ -340,9 +415,27 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const box = document.createElement('div');
         box.className = 'section';
         box.appendChild(Object.assign(document.createElement('div'), { className: 'title', textContent: 'Play' }));
+        const source = document.createElement('select');
+        source.innerHTML = '';
+        const unsavedOption = document.createElement('option');
+        unsavedOption.value = 'unsaved';
+        unsavedOption.textContent = 'Unsaved current recording';
+        source.appendChild(unsavedOption);
+        state.savedRecordings.forEach((item) => {
+            const option = document.createElement('option');
+            option.value = item.recordingName;
+            option.textContent = `${item.recordingName} (${item.stepCount})`;
+            source.appendChild(option);
+        });
+        source.value = state.replaySource;
+        source.addEventListener('change', () => { state.replaySource = source.value; });
+        box.append(source);
         const row = document.createElement('div');
         row.className = 'row';
-        row.append(createButton('play.start', () => sendPanelAction('play.start', {}), true), createButton('play.stop', () => sendPanelAction('play.stop', {})));
+        row.append(
+            createButton('Play', () => sendPanelAction('play.start', state.replaySource === 'unsaved' ? {} : { recordingName: state.replaySource }), true),
+            createButton('Stop', () => sendPanelAction('play.stop', {})),
+        );
         box.append(row);
         const events = document.createElement('div');
         events.className = 'list';
@@ -469,6 +562,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     void refreshWorkspaces();
     void refreshTabs();
+    void refreshRecordings();
     renderActiveView();
 
     let refreshPending = false;
