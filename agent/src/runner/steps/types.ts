@@ -156,7 +156,7 @@ export type ResolveHint = {
         targetHint?: string;
     };
     capture?: {
-        source: 'capture_resolve';
+        source: 'capture_resolve' | 'record_enrichment';
         confidence: number;
         reason: string[];
         warnings: string[];

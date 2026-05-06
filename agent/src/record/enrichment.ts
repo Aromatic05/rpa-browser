@@ -5,6 +5,7 @@ import { getNodeSemanticHints } from '../runner/steps/executors/snapshot/core/ru
 import type { SnapshotResult, UnifiedNode } from '../runner/steps/executors/snapshot/core/types';
 import type { ResolveHint } from '../runner/steps/types';
 import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from './types';
+import { buildResolveFromSnapshotCandidate } from '../runner/steps/resolve_builder';
 
 export type RecordSnapshotCacheEntry = {
     snapshot: SnapshotResult;
@@ -23,7 +24,7 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     const { event, page, snapshotCache, cacheKey } = input;
     const snapshot = await resolveSnapshotForEvent({ event, page, snapshotCache, cacheKey });
     if (!snapshot) {
-        return withRawContext(event);
+        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
     }
 
     const bestNodeId = pickBestNodeId(snapshot, event);
@@ -44,6 +45,23 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     const locator = snapshot.locatorIndex[bestNodeId];
     const target = buildTargetFingerprint(snapshot, node, bestNodeId, locator.origin);
     const entityBindings = buildEntityBindings(snapshot, bestNodeId);
+    const confidenceInfo = computeRecordConfidence(event, snapshot, bestNodeId);
+    const resolveDraft = buildResolveFromSnapshotCandidate({
+        snapshot,
+        candidate: {
+            nodeId: target.nodeId,
+            selector: event.selector || locator.direct?.query,
+            role: target.role,
+            name: target.name,
+            text: target.content,
+            confidence: confidenceInfo.confidence,
+            reason: confidenceInfo.reason,
+        },
+        rawSelector: event.selector,
+        rawLocatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
+        source: 'record_enrichment',
+        warnings: confidenceInfo.warnings,
+    });
     const enhancement: RecordedStepEnhancement = {
         version: 1,
         eventType: event.type,
@@ -55,45 +73,8 @@ export const enrichRecordedStepWithSnapshot = async (input: {
         },
         target,
         entityBindings,
-        resolveHint: {
-            target: {
-                nodeId: target.nodeId,
-                primaryDomId: target.primaryDomId,
-                sourceDomIds: target.sourceDomIds,
-                role: target.role,
-                tag: target.tag,
-                name: target.name,
-                text: target.content,
-            },
-            locator: {
-                direct: locator.direct
-                    ? {
-                          kind: locator.direct.kind,
-                          query: locator.direct.query,
-                          fallback: locator.direct.fallback,
-                      }
-                    : undefined,
-                scope: locator.scope
-                    ? {
-                          id: locator.scope.id,
-                          kind: locator.scope.kind,
-                      }
-                    : undefined,
-                origin: {
-                    primaryDomId: locator.origin.primaryDomId,
-                    sourceDomIds: locator.origin.sourceDomIds,
-                },
-            },
-        },
-        resolvePolicy: locator.policy
-            ? {
-                  preferDirect: locator.policy.preferDirect,
-                  preferScoped: locator.policy.preferScopedSearch,
-                  requireVisible: locator.policy.requireVisible,
-                  allowFuzzy: locator.policy.allowFuzzy,
-                  allowIndexDrift: locator.policy.allowIndexDrift,
-              }
-            : undefined,
+        resolveHint: resolveDraft.hint,
+        resolvePolicy: resolveDraft.policy,
     };
 
     return withRawContext(event, enhancement);
@@ -381,4 +362,66 @@ const safePageUrl = (page: Page): string => {
     } catch {
         return '';
     }
+};
+
+const buildLowConfidenceRawOnlyResolve = (event: RecorderEvent): Pick<RecordedStepEnhancement, 'resolveHint' | 'resolvePolicy'> => ({
+    resolveHint: {
+        target: {
+            role: event.a11yHint?.role,
+            name: event.a11yHint?.name,
+            text: event.a11yHint?.text,
+        },
+        raw: {
+            selector: event.selector,
+            locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
+            scopeHint: event.scopeHint || undefined,
+            targetHint: event.targetHint,
+        },
+        capture: {
+            source: 'record_enrichment',
+            confidence: 0.25,
+            reason: ['raw_selector_or_text_only_without_snapshot'],
+            warnings: ['LOW_CONFIDENCE_RAW_ONLY'],
+        },
+    },
+    resolvePolicy: {
+        preferDirect: true,
+        requireVisible: true,
+        allowFuzzy: true,
+        allowIndexDrift: true,
+    },
+});
+
+const computeRecordConfidence = (
+    event: RecorderEvent,
+    snapshot: SnapshotResult,
+    nodeId: string,
+): { confidence: number; reason: string[]; warnings: string[] } => {
+    const locator = snapshot.locatorIndex[nodeId];
+    const role = normalizeText(snapshot.nodeIndex[nodeId]?.role);
+    const name = normalizeText(snapshot.nodeIndex[nodeId]?.name);
+    const reasons: string[] = [];
+    const warnings: string[] = [];
+    let confidence = 0.45;
+    if (event.selector && locator?.direct?.query && normalizeText(event.selector) === normalizeText(locator.direct.query)) {
+        confidence = 0.95;
+        reasons.push('direct_selector_exact_match');
+    } else if (event.a11yHint?.role && event.a11yHint?.name && normalizeText(event.a11yHint.role) === role && name.includes(normalizeText(event.a11yHint.name))) {
+        confidence = 0.8;
+        reasons.push('role_and_name_match');
+    } else if (event.selector) {
+        confidence = 0.5;
+        reasons.push('raw_selector_only');
+    } else {
+        confidence = 0.35;
+        reasons.push('text_or_a11y_only');
+    }
+    if ((event.locatorCandidates || []).length > 1) {
+        confidence = Math.max(0.2, confidence - 0.15);
+        warnings.push('AMBIGUOUS_TARGET');
+    }
+    if (confidence < 0.55) {
+        warnings.push('LOW_CONFIDENCE_RAW_ONLY');
+    }
+    return { confidence, reason: reasons, warnings };
 };

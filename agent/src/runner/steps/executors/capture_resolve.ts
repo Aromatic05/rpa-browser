@@ -4,6 +4,7 @@ import type { SnapshotResult, UnifiedNode } from './snapshot/core/types';
 import { normalizeText } from './snapshot/core/runtime_store';
 import type { Step, StepResolve, StepResult } from '../types';
 import { resolveTarget } from '../helpers/resolve_target';
+import { buildResolveFromSnapshotCandidate } from '../resolve_builder';
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 20;
@@ -99,7 +100,13 @@ export const executeBrowserCaptureResolve = async (
     }
 
     const data: CaptureResolveData = {
-        resolve: buildResolveDraft(snapshot, candidates[0], args.selector, warnings),
+        resolve: buildResolveFromSnapshotCandidate({
+            snapshot,
+            candidate: candidates[0],
+            rawSelector: args.selector,
+            source: 'capture_resolve',
+            warnings,
+        }),
         candidates: candidates.map((candidate) => ({
             selector: candidate.selector,
             role: candidate.role,
@@ -257,105 +264,6 @@ const buildCandidate = (
     };
 };
 
-const buildResolveDraft = (
-    snapshot: SnapshotResult,
-    candidate: CaptureResolveCandidate,
-    rawSelector: string | undefined,
-    warnings: string[],
-): StepResolve => {
-    const node = snapshot.nodeIndex[candidate.nodeId];
-    const attrs = snapshot.attrIndex[candidate.nodeId];
-    const locator = snapshot.locatorIndex[candidate.nodeId];
-    const bbox = snapshot.bboxIndex[candidate.nodeId];
-    const directQuery = locator?.direct?.kind === 'css' ? locator.direct.query : undefined;
-    const selector = candidate.selector || directQuery || rawSelector;
-
-    return {
-        hint: {
-            target: {
-                nodeId: candidate.nodeId,
-                primaryDomId: locator?.origin.primaryDomId,
-                sourceDomIds: locator?.origin.sourceDomIds,
-                role: candidate.role,
-                tag: attrs?.tag || attrs?.tagName,
-                name: candidate.name,
-                text: candidate.text,
-                attrs: attrs && Object.keys(attrs).length > 0 ? attrs : undefined,
-                bbox,
-            },
-            locator: {
-                direct:
-                    selector
-                        ? {
-                              kind: 'css',
-                              query: selector,
-                              fallback: locator?.direct?.fallback,
-                          }
-                        : undefined,
-                scope: locator?.scope
-                    ? {
-                          id: locator.scope.id,
-                          kind: locator.scope.kind,
-                      }
-                    : undefined,
-                origin: locator?.origin
-                    ? {
-                          primaryDomId: locator.origin.primaryDomId,
-                          sourceDomIds: locator.origin.sourceDomIds,
-                      }
-                    : undefined,
-            },
-            raw: {
-                selector: rawSelector || selector,
-                locatorCandidates: buildLocatorCandidates(candidate, attrs),
-                targetHint: normalizeText([node?.role, node?.name, candidate.text].filter(Boolean).join(' > ')),
-            },
-            capture: {
-                source: 'capture_resolve',
-                confidence: candidate.confidence,
-                reason: [...candidate.reason],
-                warnings: [...warnings],
-            },
-        },
-        policy: {
-            preferDirect: true,
-            requireVisible: true,
-            allowFuzzy: candidate.confidence < 0.8,
-            allowIndexDrift: true,
-        },
-    };
-};
-
-const buildLocatorCandidates = (
-    candidate: CaptureResolveCandidate,
-    attrs: Record<string, string> | undefined,
-): NonNullable<NonNullable<StepResolve['hint']>['raw']>['locatorCandidates'] => {
-    const out: NonNullable<NonNullable<StepResolve['hint']>['raw']>['locatorCandidates'] = [];
-    if (candidate.selector) {
-        out.push({ kind: 'css', selector: candidate.selector, note: 'capture_resolve preferred selector' });
-    }
-    if (attrs?.['data-testid']) {
-        out.push({ kind: 'testid', testId: attrs['data-testid'], note: 'capture_resolve data-testid' });
-    }
-    if (candidate.role || candidate.name) {
-        out.push({
-            kind: 'role',
-            role: candidate.role,
-            name: candidate.name,
-            exact: true,
-            note: 'capture_resolve role locator',
-        });
-    }
-    if (candidate.text) {
-        out.push({
-            kind: 'text',
-            text: candidate.text,
-            exact: true,
-            note: 'capture_resolve text locator',
-        });
-    }
-    return out.length > 0 ? out : undefined;
-};
 
 const selectorMatchesNode = (snapshot: SnapshotResult, node: UnifiedNode, selector: string): boolean => {
     const normalizedSelector = selector.trim();
