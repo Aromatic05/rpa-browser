@@ -1,18 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTarget } from '../../src/runner/steps/helpers/resolve_target';
+import { resolveNeedsSnapshot, resolveTarget } from '../../src/runner/steps/helpers/resolve_target';
 import { executeBrowserClick } from '../../src/runner/steps/executors/click';
 import { executeBrowserFill } from '../../src/runner/steps/executors/fill';
 import { executeBrowserSelectOption } from '../../src/runner/steps/executors/select_option';
 import { executeBrowserScroll } from '../../src/runner/steps/executors/scroll';
 import type { Step } from '../../src/runner/steps/types';
 import { setNodeAttr } from '../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { ensureSnapshotSessionEntry, markSnapshotSessionDirty } from '../../src/runner/steps/executors/snapshot/core/session_store';
 
 const createBinding = (snapshot?: Record<string, unknown>) => {
     const calls: Array<{ name: string; payload: Record<string, unknown> }> = [];
     const binding = {
         workspaceName: 'ws-test',
-        page: {},
+        tabName: 'tab-test',
+        page: { url: () => 'https://example.test/current' },
         traceCtx: { cache: { latestSnapshot: snapshot } },
         traceTools: {
             'trace.locator.waitForVisible': async (payload: Record<string, unknown>) => {
@@ -80,6 +82,14 @@ const createBinding = (snapshot?: Record<string, unknown>) => {
     return { binding, deps, calls };
 };
 
+const resolveCtx = (deps: any) => ({
+    deps,
+    workspaceName: 'ws-test',
+    reason: 'test',
+    stepId: 's-test',
+    stepName: 'browser.click',
+});
+
 const createSnapshotForId = () => {
     const root = { id: 'root', role: 'root', children: [] as any[] };
     const form = { id: 'form_1', role: 'form', children: [] as any[] };
@@ -100,6 +110,15 @@ const createSnapshotForId = () => {
     setNodeAttr(deleteNode as any, 'actionIntent', 'delete');
 
     return {
+        snapshotMeta: {
+            mode: 'full',
+            snapshotId: 'snap-fixture-1',
+            pageIdentity: {
+                workspaceName: 'ws-test',
+                tabName: 'tab-test',
+                url: 'https://example.test/current',
+            },
+        },
         root,
         nodeIndex: {
             root,
@@ -170,7 +189,7 @@ const createSnapshotForId = () => {
 
 test('resolveTarget selector path keeps direct source', async () => {
     const { binding } = createBinding();
-    const resolved = await resolveTarget(binding, { selector: '#legacy' });
+    const resolved = await resolveTarget(binding, { selector: '#legacy' }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#legacy');
@@ -179,7 +198,7 @@ test('resolveTarget selector path keeps direct source', async () => {
 
 test('resolveTarget nodeId path resolves from snapshot locator index', async () => {
     const { binding } = createBinding(createSnapshotForId());
-    const resolved = await resolveTarget(binding, { nodeId: 'node_1' });
+    const resolved = await resolveTarget(binding, { nodeId: 'node_1' }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#submit-btn');
@@ -190,7 +209,7 @@ test('resolveTarget resolve path resolves from resolve.hint.raw.selector', async
     const { binding } = createBinding();
     const resolved = await resolveTarget(binding, {
         resolve: { hint: { raw: { selector: '#from-hint' } } },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#from-hint');
@@ -212,7 +231,7 @@ test('resolveTarget applies ResolvePolicy preferScoped + requireVisible', async 
                 requireVisible: true,
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, 'form:nth-of-type(1) button.submit:visible');
@@ -226,7 +245,7 @@ test('resolveTarget no longer supports A11yHint-only fallback path', async () =>
                 target: { role: 'button', name: 'Save', text: 'Save' },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, false);
     if (resolved.ok) {return;}
     assert.equal(resolved.error?.code, 'ERR_NOT_FOUND');
@@ -242,7 +261,7 @@ test('resolveTarget resolves from resolve.hint.entity.businessTag', async () => 
                 },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#form-main');
@@ -258,7 +277,7 @@ test('resolveTarget resolves from resolve.hint.entity.fieldKey', async () => {
                 },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#submit-btn');
@@ -274,7 +293,7 @@ test('resolveTarget resolves from resolve.hint.entity.actionIntent', async () =>
                 },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#delete-btn');
@@ -359,7 +378,7 @@ test('resolve candidates prefer step.resolve over args.selector', async () => {
                 capture: { source: 'record_enrichment', confidence: 0.9, reason: ['direct_selector_exact_match'], warnings: [] },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.candidates[0]?.selector, '#submit-btn');
@@ -376,6 +395,11 @@ test('resolve candidates build executable role/text/placeholder selectors', asyn
     setNodeAttr(i as any, 'tag', 'input');
     setNodeAttr(i as any, 'placeholder', 'Search...');
     const snapshot = {
+        snapshotMeta: {
+            mode: 'full',
+            snapshotId: 'snap-fixture-2',
+            pageIdentity: { workspaceName: 'ws-test', tabName: 'tab-test', url: 'https://example.test/current' },
+        },
         root,
         nodeIndex: { root, node_a: a, node_i: i },
         attrIndex: { node_a: {}, node_i: {} },
@@ -402,7 +426,7 @@ test('resolve candidates build executable role/text/placeholder selectors', asyn
             },
             policy: { requireVisible: true },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(
@@ -549,4 +573,64 @@ test('click failure includes real audit attempts', async () => {
     assert.equal(Array.isArray(details.attempts), true);
     assert.equal((details.attempts as any[]).length >= 2, true);
     assert.equal((details.attempts as any[])[0]?.stage, 'waitForVisible');
+});
+
+test('resolveNeedsSnapshot only selector/direct query is false', () => {
+    assert.equal(resolveNeedsSnapshot({ selector: '#x' }), false);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { locator: { direct: { kind: 'css', query: '#x' } } } } }), false);
+});
+
+test('resolveNeedsSnapshot role/text/entity/domId/fuzzy are true', () => {
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'link', name: 'next' }] } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { raw: { locatorCandidates: [{ kind: 'text', text: 'next' }] } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { target: { primaryDomId: '42' } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { entity: { businessTag: 'order.form.main' } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: {}, policy: { allowFuzzy: true } } }), true);
+});
+
+test('resolveTarget auto refreshes snapshot on missing/dirty/url_changed and writes audit', async () => {
+    const { binding } = createBinding();
+    const deps = { runtime: { resolveBinding: async () => binding } } as any;
+    let refreshReason = '';
+    const ensureFreshSnapshot = async (args: { refreshReason: string }) => {
+        refreshReason = args.refreshReason;
+        const snap = createSnapshotForId() as any;
+        snap.snapshotMeta = {
+            mode: 'full',
+            snapshotId: 'snap-refresh-1',
+            pageIdentity: { workspaceName: 'ws-test', tabName: 'tab-test', url: 'https://example.test/current' },
+        };
+        (binding.traceCtx.cache as any).latestSnapshot = snap;
+        const entry = ensureSnapshotSessionEntry(binding as any);
+        entry.baseSnapshot = snap;
+        entry.finalSnapshot = snap;
+        entry.dirty = false;
+        entry.staleReason = undefined;
+        return { snapshot: snap };
+    };
+
+    const first = await resolveTarget(binding, {
+        resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'button' }] } } },
+    }, { ...resolveCtx(deps), ensureFreshSnapshot });
+    assert.equal(first.ok, true);
+    if (!first.ok) {return;}
+    assert.equal(first.target.resolution.audit.snapshotRequired, true);
+    assert.equal(first.target.resolution.audit.snapshotRefreshed, true);
+    assert.equal(refreshReason.includes('missing_snapshot'), true);
+    assert.equal(first.target.resolution.audit.snapshotId, 'snap-refresh-1');
+
+    markSnapshotSessionDirty(binding, 'step:browser.click');
+    const second = await resolveTarget(binding, {
+        resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'button' }] } } },
+    }, { ...resolveCtx(deps), ensureFreshSnapshot });
+    assert.equal(second.ok, true);
+    assert.equal(refreshReason.includes('dirty_snapshot'), true);
+
+    const latest = (binding.traceCtx.cache as any).latestSnapshot;
+    latest.snapshotMeta.pageIdentity.url = 'https://example.test/old';
+    const third = await resolveTarget(binding, {
+        resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'button' }] } } },
+    }, { ...resolveCtx(deps), ensureFreshSnapshot });
+    assert.equal(third.ok, true);
+    assert.equal(refreshReason.includes('url_changed'), true);
 });
