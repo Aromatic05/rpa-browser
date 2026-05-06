@@ -274,6 +274,76 @@ test('replayRecording does not inject resolve from empty enhancement', async () 
     assert.equal(Boolean(seen[0].resolve), false);
 });
 
+test('replay interval pacing sleeps for short step', async () => {
+    const events: any[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'p1', name: 'browser.scroll', args: { direction: 'down', amount: 1 }, meta: { source: 'record', tabName: 'tab-now' } },
+        ] as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        replayOptions: { clickDelayMs: 0, stepIntervalMs: 60, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () =>
+                    ({
+                        'browser.scroll': async (step: StepUnion) => ({ stepId: step.id, ok: true }),
+                    }) as any,
+            } as any,
+        } as RunStepsDeps,
+        onEvent: (event) => {
+            if (event.type === 'step.finished') {events.push(event);}
+        },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].stepIntervalMs, 60);
+    assert.equal(events[0].sleepMs > 0, true);
+});
+
+test('replay interval pacing does not sleep for long step and ignores stepDelayMs', async () => {
+    const events: any[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'p2', name: 'browser.scroll', args: { direction: 'down', amount: 1 }, meta: { source: 'record', tabName: 'tab-now' } },
+        ] as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        replayOptions: { clickDelayMs: 0, stepIntervalMs: 20, stepDelayMs: 9999, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } } as any,
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () =>
+                    ({
+                        'browser.scroll': async (step: StepUnion) => {
+                            await new Promise((resolve) => setTimeout(resolve, 40));
+                            return { stepId: step.id, ok: true };
+                        },
+                    }) as any,
+            } as any,
+        } as RunStepsDeps,
+        onEvent: (event) => {
+            if (event.type === 'step.finished') {events.push(event);}
+        },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].stepDurationMs >= 40, true);
+    assert.equal(events[0].stepIntervalMs, 20);
+    assert.equal(events[0].sleepMs, 0);
+});
+
 test('saved replay forwards stepResolves into runStepList resolveId injection', async () => {
     const steps: StepUnion[] = [{ id: 'x2', name: 'browser.click', args: { resolveId: 'rid-1' }, meta: { source: 'record', tabName: 'tab-now' } } as any];
     let resolvedSelector = '';
