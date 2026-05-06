@@ -36,7 +36,7 @@ test('record.start fails clearly when workspace has no bound page', async () => 
     );
 });
 
-test('record.start/get/save/load/clear/list/stop are handled in record control', async () => {
+test('record/play state discipline and unsaved slot behavior', async () => {
     const recordingState = createRecordingState();
     const { registry } = createTestWorkspaceRegistry({ recordingState });
     const wsName = `ws-${Date.now()}-b`;
@@ -47,23 +47,34 @@ test('record.start/get/save/load/clear/list/stop are handled in record control',
     const started = await ws.record.handle({ action: { v: 1, id: 's1', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(started.reply.type, 'record.start.result');
 
-    const got = await ws.record.handle({ action: { v: 1, id: 's2', type: 'record.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(got.reply.type, 'record.get.result');
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's2', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_BAD_STATE|state/i,
+    );
 
-    const saved = await ws.record.handle({ action: { v: 1, id: 's3', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(saved.reply.type, 'record.save.result');
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's3', type: 'play.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_BAD_STATE|state/i,
+    );
 
-    const loaded = await ws.record.handle({ action: { v: 1, id: 's4', type: 'record.load', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(loaded.reply.type, 'record.load.result');
+    const stopped = await ws.record.handle({ action: { v: 1, id: 's4', type: 'record.stop', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    assert.equal(stopped.reply.type, 'record.stop.result');
 
-    const listed = await ws.record.handle({ action: { v: 1, id: 's5', type: 'record.list', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's5', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_RECORDING_EMPTY|empty/i,
+    );
+
+    const listed = await ws.record.handle({ action: { v: 1, id: 's6', type: 'record.list', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(listed.reply.type, 'record.list.result');
 
-    const cleared = await ws.record.handle({ action: { v: 1, id: 's6', type: 'record.clear', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(cleared.reply.type, 'record.clear.result');
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's7', type: 'play.start', workspaceName: wsName, payload: {} } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_RECORDING_EMPTY|empty/i,
+    );
 
-    const stopped = await ws.record.handle({ action: { v: 1, id: 's7', type: 'record.stop', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(stopped.reply.type, 'record.stop.result');
+    const cleared = await ws.record.handle({ action: { v: 1, id: 's8', type: 'record.clear', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    assert.equal(cleared.reply.type, 'record.clear.result');
 });
 
 test('record.event is ingested in record domain and not routed through actions execute', async () => {

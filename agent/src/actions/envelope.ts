@@ -22,6 +22,12 @@ export const parseActionEnvelope = (action: Action): Action => {
     if ('scope' in action.payload) {
         throw new Error('legacy payload address fields are not allowed: scope');
     }
+    if ('workspaceName' in action.payload) {
+        throw new Error('payload.workspaceName is not allowed');
+    }
+    if ('tabToken' in action.payload) {
+        throw new Error('legacy payload address fields are not allowed: tabToken');
+    }
 
     return action;
 };

@@ -111,16 +111,16 @@ test('task.run.start with workspaceName routes to workspace', () => {
     assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-// ---- workspaceName missing on command → control ----
+// ---- workspace-only command family is still workspace route even before validation ----
 
-test('workspace action type without workspaceName routes to control', () => {
+test('workspace action type without workspaceName routes to workspace', () => {
     const action = stubAction('tab.list');
-    assert.equal(classifyActionRoute(action), 'control');
+    assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-test('mcp.start without workspaceName routes to control', () => {
+test('mcp.start without workspaceName routes to workspace', () => {
     const action = stubAction('mcp.start');
-    assert.equal(classifyActionRoute(action), 'control');
+    assert.equal(classifyActionRoute(action), 'workspace');
 });
 
 // ---- workspaceName coexistence → invalid ----
@@ -163,9 +163,9 @@ test('workspace.setActive with action.workspaceName and payload.workspaceName is
     assert.equal(classifyActionRoute(action), 'invalid');
 });
 
-test('workspace.setActive with action.workspaceName only routes to workspace', () => {
+test('workspace.setActive with action.workspaceName only routes to control', () => {
     const action = stubAction('workspace.setActive', { workspaceName: 'ws-1' });
-    assert.equal(classifyActionRoute(action), 'workspace');
+    assert.equal(classifyActionRoute(action), 'control');
 });
 
 // ---- reply and event classification ----

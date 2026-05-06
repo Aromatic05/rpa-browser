@@ -49,10 +49,18 @@ const createMinimalWorkspace = (name: string): RuntimeWorkspace =>
             hasTab: () => false,
         } as any,
         record: {} as any,
+        lifecycle: {
+            getRecordPlayState: () => 'idle',
+            startRecording: () => undefined,
+            stopRecording: () => undefined,
+            startPlaying: () => undefined,
+            stopPlaying: () => undefined,
+        } as any,
         dsl: {} as any,
         checkpoint: {} as any,
         entityRules: {} as any,
         runner: {} as any,
+        workflowControl: {} as any,
         mcp: {
             start: async () => ({ workspaceName: name, serviceName: 'mcp', port: 0, status: 'running' }),
             stop: async () => ({ workspaceName: name, serviceName: 'mcp', status: 'stopped' }),
@@ -78,6 +86,7 @@ const createRouterWithStubs = () => {
     const entityRulesControl = createStubControl();
     const runnerControl = createStubControl();
     const mcpControl = createStubControl();
+    const workflowControl = createStubControl();
 
     const deps: WorkspaceRouterDeps = {
         tabsControl,
@@ -87,6 +96,7 @@ const createRouterWithStubs = () => {
         entityRulesControl,
         runnerControl,
         mcpControl,
+        workflowControl,
     };
 
     const router = createWorkspaceRouter(deps);
@@ -100,6 +110,7 @@ const createRouterWithStubs = () => {
         entityRulesControl,
         runnerControl,
         mcpControl,
+        workflowControl,
     };
 };
 
@@ -232,16 +243,14 @@ test('WorkspaceRouter does not handle workspace.restore', async () => {
     );
 });
 
-test('WorkspaceRouter does not handle workflow.status', async () => {
-    const { router } = createRouterWithStubs();
+test('WorkspaceRouter forwards workflow.status by workflow.* prefix', async () => {
+    const { router, workflowControl } = createRouterWithStubs() as any;
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('workflow.status', { workspaceName: 'ws-1' });
 
-    await assert.rejects(
-        () => router.handle(action, workspace, registry),
-        /unsupported action/,
-    );
+    await router.handle(action, workspace, registry);
+    assert.equal(workflowControl.calls.length, 1);
 });
 
 test('WorkspaceRouter does not parse tab payload', async () => {
@@ -289,6 +298,16 @@ test('play.* is forwarded to recordControl', async () => {
 
     await router.handle(action, workspace, registry);
     assert.equal(recordControl.calls.length, 1);
+});
+
+test('workflow.saveAs is forwarded to workflowControl', async () => {
+    const { router, workflowControl } = createRouterWithStubs() as any;
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('workflow.saveAs', { workspaceName: 'ws-1', payload: { targetName: 'ws-2' } });
+
+    await router.handle(action, workspace, registry);
+    assert.equal(workflowControl.calls.length, 1);
 });
 
 test('dsl.* is forwarded to dslControl', async () => {
@@ -554,16 +573,14 @@ test('WorkspaceRouter does not handle workspace.list', async () => {
     );
 });
 
-test('WorkspaceRouter does not handle workflow.create', async () => {
-    const { router } = createRouterWithStubs();
+test('WorkspaceRouter forwards workflow.create by workflow.* prefix', async () => {
+    const { router, workflowControl } = createRouterWithStubs() as any;
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('workflow.create', { workspaceName: 'ws-1' });
 
-    await assert.rejects(
-        () => router.handle(action, workspace, registry),
-        /unsupported action/,
-    );
+    await router.handle(action, workspace, registry);
+    assert.equal(workflowControl.calls.length, 1);
 });
 
 // ---- Router source discipline ----

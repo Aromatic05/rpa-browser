@@ -25,6 +25,7 @@ test('checkpoint/entity_rules without workspaceName fail dispatch', async () => 
 test('checkpoint/entity_rules with workspaceName route into workspace checkpoint/entityRules controls', async () => {
     const calls: string[] = [];
     const control = createWorkspaceRouter({
+        tabsControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,
         workflowControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,
         recordControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,
         dslControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,
@@ -41,6 +42,7 @@ test('checkpoint/entity_rules with workspaceName route into workspace checkpoint
             },
         } as any,
         runnerControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,
+        mcpControl: { handle: async () => ({ reply: action('noop.result'), events: [] }) } as any,
     });
 
     const ws = {
