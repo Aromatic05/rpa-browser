@@ -8,15 +8,17 @@ import { createEntityRulesControl, type EntityRulesControl } from '../../entity_
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
 import { createMcpControl, type McpControl } from '../../mcp/control';
 import { createWorkspaceRouter, type WorkspaceRouter } from './router';
-import { createWorkflowControl, type WorkflowControl } from '../../workflow/control';
 import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
 import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
+import { ActionError, ERROR_CODES } from '../../actions/results';
 import type { PortAllocator } from '../service/ports';
 import { createWorkspaceMcpService } from '../../mcp/service';
 import { getLogger } from '../../logging/logger';
+
+export type WorkspaceState = 'idle' | 'recording' | 'playing';
 
 export type RuntimeWorkspace = {
     name: string;
@@ -28,19 +30,11 @@ export type RuntimeWorkspace = {
     entityRules: EntityRulesControl;
     runner: RunnerControl;
     mcp: McpControl;
-    workflowControl: WorkflowControl;
     router: WorkspaceRouter;
-    lifecycle: {
-        getRecordPlayState: () => 'idle' | 'recording' | 'playing';
-        startRecording: () => void;
-        stopRecording: () => void;
-        startPlaying: () => void;
-        stopPlaying: () => void;
-    };
+    state: WorkspaceState;
     createdAt: number;
     updatedAt: number;
 };
-
 
 export type CreateRuntimeWorkspaceDeps = {
     name: string;
@@ -55,9 +49,44 @@ export type CreateRuntimeWorkspaceDeps = {
     portAllocator: PortAllocator;
 };
 
+export const getWorkspaceState = (workspace: RuntimeWorkspace): WorkspaceState => workspace.state;
+
+export const requireWorkspaceState = (
+    workspace: RuntimeWorkspace,
+    expected: WorkspaceState,
+    actionType: string,
+): void => {
+    if (workspace.state !== expected) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=${expected}, current=${workspace.state}`);
+    }
+};
+
+export const enterWorkspaceState = (
+    workspace: RuntimeWorkspace,
+    next: WorkspaceState,
+    actionType: string,
+): void => {
+    if (workspace.state !== 'idle') {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=idle, current=${workspace.state}`);
+    }
+    workspace.state = next;
+    workspace.updatedAt = Date.now();
+};
+
+export const leaveWorkspaceState = (
+    workspace: RuntimeWorkspace,
+    expected: WorkspaceState,
+    actionType: string,
+): void => {
+    if (workspace.state !== expected) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=${expected}, current=${workspace.state}`);
+    }
+    workspace.state = 'idle';
+    workspace.updatedAt = Date.now();
+};
+
 export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): RuntimeWorkspace => {
     const now = Date.now();
-    let recordPlayState: 'idle' | 'recording' | 'playing' = 'idle';
     const tabs = createWorkspaceTabs({ getPage: deps.pageRegistry.getPage, touchBinding: deps.pageRegistry.touchBinding });
     const record = createRecordControl({
         recordingState: deps.recordingState,
@@ -79,7 +108,6 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         config: deps.runnerConfig,
     });
     const mcp = createMcpControl(mcpService);
-    const workflowControl = createWorkflowControl({ recordingState: deps.recordingState });
 
     const router = createWorkspaceRouter({
         tabsControl,
@@ -89,37 +117,9 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         entityRulesControl: entityRules,
         runnerControl: runner,
         mcpControl: mcp,
-        workflowControl,
     });
-    const lifecycle: RuntimeWorkspace['lifecycle'] = {
-        getRecordPlayState: () => recordPlayState,
-        startRecording: () => {
-            if (recordPlayState !== 'idle') {
-                throw new Error(`invalid workspace state transition: ${recordPlayState} -> recording`);
-            }
-            recordPlayState = 'recording';
-        },
-        stopRecording: () => {
-            if (recordPlayState !== 'recording') {
-                throw new Error(`invalid workspace state transition: ${recordPlayState} -> idle`);
-            }
-            recordPlayState = 'idle';
-        },
-        startPlaying: () => {
-            if (recordPlayState !== 'idle') {
-                throw new Error(`invalid workspace state transition: ${recordPlayState} -> playing`);
-            }
-            recordPlayState = 'playing';
-        },
-        stopPlaying: () => {
-            if (recordPlayState !== 'playing') {
-                throw new Error(`invalid workspace state transition: ${recordPlayState} -> idle`);
-            }
-            recordPlayState = 'idle';
-        },
-    };
 
-    return {
+    const workspace: RuntimeWorkspace = {
         name: deps.name,
         workflow: deps.workflow,
         tabs,
@@ -129,10 +129,10 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         entityRules,
         runner,
         mcp,
-        workflowControl,
         router,
-        lifecycle,
+        state: 'idle',
         createdAt: now,
         updatedAt: now,
     };
+    return workspace;
 };

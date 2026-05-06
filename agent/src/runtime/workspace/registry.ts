@@ -1,12 +1,5 @@
 import { createRuntimeWorkspace, type RuntimeWorkspace, type CreateRuntimeWorkspaceDeps } from './workspace';
 import type { Workflow } from '../../workflow';
-import type { WorkflowControl } from '../../workflow/control';
-import type { RecordControl } from '../../record/control';
-import type { DslControl } from '../../dsl/control';
-import type { CheckpointControl } from '../../checkpoint/control';
-import type { EntityRulesControl } from '../../entity_rules/control';
-import type { RunnerControl } from '../../runner/control';
-import type { McpControl } from '../../mcp/control';
 import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
