@@ -47,7 +47,14 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
         return result;
     },
 
-    'trace.locator.click': async (args: LocatorTarget & { timeout?: number; button?: 'left' | 'right' | 'middle' }) => {
+    'trace.locator.click': async (args: LocatorTarget & {
+        timeout?: number;
+        button?: 'left' | 'right' | 'middle';
+        candidateIndex?: number;
+        candidateTimeoutMs?: number;
+        loadStateBeforeClick?: 'domcontentloaded' | 'load';
+        pageReadyWaitMs?: number;
+    }) => {
         const result = await base.run('trace.locator.click', args, async () => {
             const locator = await resolveLocator(base, args);
             await locator.click({ timeout: args.timeout, button: args.button });
