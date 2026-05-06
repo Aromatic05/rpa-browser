@@ -90,6 +90,24 @@ export const getSnapshotSessionEntry = (binding: ExecutionBinding): SnapshotSess
     return store.entries[getSnapshotSessionEntryKey(binding)];
 };
 
+export const readSnapshotSessionFreshness = (binding: ExecutionBinding): {
+    dirty: boolean;
+    staleReason?: string;
+    pageUrl?: string;
+    snapshotUrl?: string;
+} => {
+    const entry = getSnapshotSessionEntry(binding);
+    if (!entry) {
+        return { dirty: false };
+    }
+    return {
+        dirty: entry.dirty === true,
+        staleReason: entry.staleReason,
+        pageUrl: entry.pageIdentity?.url,
+        snapshotUrl: entry.baseSnapshot?.snapshotMeta?.pageIdentity?.url,
+    };
+};
+
 export const ensureSnapshotSessionEntry = (binding: ExecutionBinding): SnapshotSessionEntry => {
     const store = getSnapshotSessionStore(binding);
     const key = getSnapshotSessionEntryKey(binding);
