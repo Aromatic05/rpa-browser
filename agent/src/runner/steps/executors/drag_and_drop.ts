@@ -14,6 +14,12 @@ export const executeBrowserDragAndDrop = async (
         nodeId: step.args.sourceNodeId,
         selector: step.args.sourceSelector,
         resolve: step.resolve,
+    }, {
+        deps,
+        workspaceName,
+        reason: 'browser.drag_and_drop.source',
+        stepId: step.id,
+        stepName: step.name,
     });
     if (!source.ok) {return { stepId: step.id, ok: false, error: source.error };}
 
@@ -22,6 +28,12 @@ export const executeBrowserDragAndDrop = async (
             nodeId: step.args.destNodeId,
             selector: step.args.destSelector,
             resolve: step.resolve,
+        }, {
+            deps,
+            workspaceName,
+            reason: 'browser.drag_and_drop.dest',
+            stepId: step.id,
+            stepName: step.name,
         });
         if (!dest.ok) {return { stepId: step.id, ok: false, error: dest.error };}
         const result = await binding.traceTools['trace.locator.dragDrop']({

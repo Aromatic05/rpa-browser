@@ -79,7 +79,7 @@ export const executeBrowserCaptureResolve = async (
     const snapshot =
         cachedSnapshot ||
         (await ensureFreshEntityContext(deps, workspaceName, 'browser.capture_resolve')).snapshot;
-    const candidates = await findCandidates(binding, snapshot, step).then((items) => items.slice(0, normalizedLimit.value));
+    const candidates = await findCandidates(binding, snapshot, step, deps, workspaceName).then((items) => items.slice(0, normalizedLimit.value));
     if (candidates.length === 0) {
         return {
             stepId: step.id,
@@ -142,10 +142,19 @@ const findCandidates = async (
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>,
     snapshot: SnapshotResult,
     step: Step<'browser.capture_resolve'>,
+    deps?: RunStepsDeps,
+    workspaceName?: string,
 ): Promise<CaptureResolveCandidate[]> => {
     const args = step.args;
     if (step.resolve) {
-        const resolved = await resolveTarget(binding, { resolve: step.resolve });
+        if (!deps || !workspaceName) {return [];}
+        const resolved = await resolveTarget(binding, { resolve: step.resolve }, {
+            deps,
+            workspaceName,
+            reason: 'browser.capture_resolve',
+            stepId: step.id,
+            stepName: step.name,
+        });
         if (!resolved.ok) {
             return [];
         }

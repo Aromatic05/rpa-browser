@@ -113,6 +113,12 @@ export const executeBrowserClick = async (
             nodeId: step.args.nodeId,
             selector: step.args.selector,
             resolve: step.resolve,
+        }, {
+            deps,
+            workspaceName,
+            reason: 'browser.click',
+            stepId: step.id,
+            stepName: step.name,
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
@@ -175,6 +181,11 @@ export const executeBrowserClick = async (
                         warnings: resolved.target.resolution.audit.warnings,
                         chosenPath: candidate.path,
                         finalSelector: candidate.selector,
+                        snapshotRequired: resolved.target.resolution.audit.snapshotRequired,
+                        snapshotRefreshed: resolved.target.resolution.audit.snapshotRefreshed,
+                        snapshotRefreshReason: resolved.target.resolution.audit.snapshotRefreshReason,
+                        snapshotId: resolved.target.resolution.audit.snapshotId,
+                        snapshotUrl: resolved.target.resolution.audit.snapshotUrl,
                         attempts,
                     },
                 },
@@ -190,6 +201,11 @@ export const executeBrowserClick = async (
                     ...((lastError?.details as Record<string, unknown>) || {}),
                     confidence: resolved.target.resolution.audit.confidence,
                     warnings: resolved.target.resolution.audit.warnings,
+                    snapshotRequired: resolved.target.resolution.audit.snapshotRequired,
+                    snapshotRefreshed: resolved.target.resolution.audit.snapshotRefreshed,
+                    snapshotRefreshReason: resolved.target.resolution.audit.snapshotRefreshReason,
+                    snapshotId: resolved.target.resolution.audit.snapshotId,
+                    snapshotUrl: resolved.target.resolution.audit.snapshotUrl,
                     chosenPath: resolved.target.resolution.path,
                     finalSelector: resolved.target.selector,
                     failedPath: attempts.length > 0 ? attempts[attempts.length - 1].path : undefined,

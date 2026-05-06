@@ -14,6 +14,12 @@ export const executeBrowserHover = async (
         nodeId: step.args.nodeId,
         selector: step.args.selector,
         resolve: step.resolve,
+    }, {
+        deps,
+        workspaceName,
+        reason: 'browser.hover',
+        stepId: step.id,
+        stepName: step.name,
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
