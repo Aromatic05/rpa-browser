@@ -62,7 +62,9 @@ export const executeBrowserClick = async (
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
     const coord = step.args.coord;
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const visibleTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const pageReadyTimeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs;
+    const candidateClickTimeoutMs = deps.config.waitPolicy.candidateClickTimeoutMs;
     const hardTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.interactionTimeoutMs;
 
     return await runWithHardTimeout(step.id, hardTimeoutMs, async () => {
@@ -124,11 +126,38 @@ export const executeBrowserClick = async (
 
         const attempts: ResolveAuditAttempt[] = [];
         let lastError: StepResult['error'] | undefined;
+        const pageReadyTargetState: 'domcontentloaded' | 'load' = 'domcontentloaded';
+        const pageReadyStartAt = Date.now();
+        try {
+            await binding.page.waitForLoadState(pageReadyTargetState, { timeout: pageReadyTimeoutMs });
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            return {
+                stepId: step.id,
+                ok: false,
+                error: {
+                    code: 'ERR_PAGE_NOT_READY',
+                    message: `page readiness wait failed: ${pageReadyTargetState}`,
+                    details: {
+                        targetLoadState: pageReadyTargetState,
+                        pageReadyTimeoutMs,
+                        pageReadyWaitMs: Date.now() - pageReadyStartAt,
+                        reason,
+                    },
+                },
+            };
+        }
+        const pageReadyWaitMs = Date.now() - pageReadyStartAt;
+        const loadStateBeforeClick = await binding.page.evaluate(() => {
+            const state = document.readyState;
+            return state === 'complete' ? 'load' : 'domcontentloaded';
+        }) as 'domcontentloaded' | 'load';
 
-        for (const candidate of resolved.target.candidates) {
-            const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: candidate.selector, timeout });
+        for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
+            const candidate = resolved.target.candidates[candidateIndex];
+            const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: candidate.selector, timeout: visibleTimeoutMs });
             if (!visible.ok) {
-                const error = mapTraceError(visible.error);
+                const error = mapTraceError(visible.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
                 lastError = error;
                 pushAttempt(attempts, candidate, 'waitForVisible', false, { code: error.code, message: error.message });
                 continue;
@@ -137,7 +166,7 @@ export const executeBrowserClick = async (
 
             const scrolled = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
             if (!scrolled.ok) {
-                const error = mapTraceError(scrolled.error);
+                const error = mapTraceError(scrolled.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
                 lastError = error;
                 pushAttempt(attempts, candidate, 'scrollIntoView', false, { code: error.code, message: error.message });
                 continue;
@@ -149,11 +178,15 @@ export const executeBrowserClick = async (
             for (let i = 0; i < count; i += 1) {
                 const click = await binding.traceTools['trace.locator.click']({
                     selector: candidate.selector,
-                    timeout,
+                    timeout: candidateClickTimeoutMs,
                     button: step.args.options?.button,
+                    candidateIndex,
+                    candidateTimeoutMs: candidateClickTimeoutMs,
+                    loadStateBeforeClick,
+                    pageReadyWaitMs,
                 });
                 if (!click.ok) {
-                    const error = mapTraceError(click.error);
+                    const error = mapTraceError(click.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
                     actionError = error;
                     pushAttempt(attempts, candidate, 'action', false, { code: error.code, message: error.message });
                     break;
@@ -197,8 +230,11 @@ export const executeBrowserClick = async (
             ok: false,
             error: {
                 ...(lastError || { code: 'ERR_NOT_FOUND', message: 'no target candidate matched' }),
-                details: {
+                    details: {
                     ...((lastError?.details as Record<string, unknown>) || {}),
+                    pageReadyWaitMs,
+                    loadStateBeforeClick,
+                    candidateClickTimeoutMs,
                     confidence: resolved.target.resolution.audit.confidence,
                     warnings: resolved.target.resolution.audit.warnings,
                     snapshotRequired: resolved.target.resolution.audit.snapshotRequired,
