@@ -60,7 +60,13 @@ await log('control action keeps workspaceName out of scope and payload', async (
     }
 });
 
-await log('workflow.saveAs is workspace action and workflow.resetDefault is control action', async () => {
-    assert.equal(classifyPanelAction('workflow.saveAs'), 'workspace');
+await log('workflow.saveAs and workflow.resetDefault are control actions', async () => {
+    assert.equal(classifyPanelAction('workflow.saveAs'), 'control');
     assert.equal(classifyPanelAction('workflow.resetDefault'), 'control');
+    const prepared = preparePanelAction('workflow.saveAs', { sourceName: 'default', targetName: 'x' }, null);
+    assert.equal('error' in prepared, false);
+    if (!('error' in prepared)) {
+        assert.equal(prepared.address, undefined);
+        assert.deepEqual(prepared.payload, { sourceName: 'default', targetName: 'x' });
+    }
 });

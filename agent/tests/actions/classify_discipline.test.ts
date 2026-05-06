@@ -66,6 +66,11 @@ test('workflow.list without workspaceName routes to control', () => {
     assert.equal(classifyActionRoute(action), 'control');
 });
 
+test('workflow.saveAs without workspaceName routes to control', () => {
+    const action = stubAction('workflow.saveAs', { payload: { sourceName: 'a', targetName: 'b' } });
+    assert.equal(classifyActionRoute(action), 'control');
+});
+
 // ---- workspaceName-based routing: command with workspaceName → workspace ----
 
 test('command action with workspaceName routes to workspace', () => {

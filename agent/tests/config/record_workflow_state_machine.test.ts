@@ -50,7 +50,7 @@ test('record/play state machine enforces workspace order and unsaved slot overwr
     assert.match(String(playUnsavedEmpty?.code || playUnsavedEmpty), /ERR_RECORDING_EMPTY|RECORDING_EMPTY/);
 });
 
-test('workflow.saveAs routes in workspace and keeps source, resetDefault routes in control', async () => {
+test('workflow.saveAs routes in control and keeps source, resetDefault routes in control', async () => {
     const recordingState = createRecordingState();
     const { registry } = createTestWorkspaceRegistry({ recordingState });
     const sourceName = `ws-${Date.now()}-source`;
@@ -60,9 +60,9 @@ test('workflow.saveAs routes in workspace and keeps source, resetDefault routes 
     const sourceWs = registry.createWorkspace(sourceName, createWorkflowOnFs(sourceName));
     registry.createWorkspace(otherName, createWorkflowOnFs(otherName));
 
-    const saveAsReply = await routeWorkspaceAction(
+    const saveAsReply = await routeControlAction(
         mkDeps(registry),
-        { v: 1, id: 'w1', type: 'workflow.saveAs', workspaceName: sourceName, payload: { targetName } } as any,
+        { v: 1, id: 'w1', type: 'workflow.saveAs', payload: { sourceName, targetName } } as any,
     );
     assert.equal(saveAsReply.type, 'workflow.saveAs.result');
     assert.equal((saveAsReply.payload as any).workspaceName, targetName);
@@ -70,6 +70,11 @@ test('workflow.saveAs routes in workspace and keeps source, resetDefault routes 
     assert.equal(listWorkflowNames().includes(targetName), true);
     assert.equal(registry.getActiveWorkspace()?.name, targetName);
     assert.equal(sourceWs.name, sourceName);
+    const invalidWorkspaceRouted = await routeWorkspaceAction(
+        mkDeps(registry),
+        { v: 1, id: 'w1b', type: 'workflow.saveAs', workspaceName: sourceName, payload: { sourceName, targetName: `${targetName}-x` } } as any,
+    );
+    assert.equal(invalidWorkspaceRouted.type, 'workflow.saveAs.failed');
 
     const resetReply = await routeControlAction(
         mkDeps(registry),
@@ -83,6 +88,17 @@ test('workflow.saveAs routes in workspace and keeps source, resetDefault routes 
     deleteWorkflowFromFs(targetName);
     deleteWorkflowFromFs(otherName);
     deleteWorkflowFromFs('default');
+});
+
+test('RuntimeWorkspace uses state field only for runtime status', async () => {
+    const recordingState = createRecordingState();
+    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const wsName = `ws-${Date.now()}-shape`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    assert.equal('state' in ws, true);
+    assert.equal('lifecycle' in (ws as any), false);
+    assert.equal('workflowControl' in (ws as any), false);
+    deleteWorkflowFromFs(wsName);
 });
 
 test('play.start with missing saved recording returns ERR_RECORDING_NOT_FOUND', async () => {
