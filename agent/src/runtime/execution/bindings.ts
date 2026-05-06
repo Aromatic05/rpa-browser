@@ -3,6 +3,8 @@ import { createTraceTools, type BrowserAutomationTools } from '../../runner/trac
 import type { RunnerPluginHost } from '../../runner/hotreload/plugin_host';
 import type { CreateTraceToolsFn } from '../../runner/plugin_entry';
 import type { TraceContext, TraceHooks, TraceSink } from '../../runner/trace/types';
+import type { RuntimeWorkspace } from '../workspace/workspace';
+import type { PageRegistry } from '../browser/page_registry';
 
 export type ExecutionBinding = {
     workspaceName: string;
@@ -14,6 +16,12 @@ export type ExecutionBinding = {
 
 export type ExecutionBindings = {
     bindPage: (input: { workspaceName: string; tabName: string; page: Page }) => ExecutionBinding;
+    ensureExecutableTab: (input: {
+        workspace: RuntimeWorkspace;
+        pageRegistry: PageRegistry;
+        tabName: string;
+        urlHint?: string;
+    }) => Promise<ExecutionBinding>;
     resolveBinding: (workspaceName: string, tabName?: string) => Promise<ExecutionBinding>;
     getBinding: (workspaceName: string, tabName: string) => ExecutionBinding | null;
 };
@@ -92,6 +100,18 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         return createBinding(input.workspaceName, input.tabName, input.page);
     };
 
+    const ensureExecutableTab: ExecutionBindings['ensureExecutableTab'] = async (input) => {
+        const { workspace, pageRegistry, tabName, urlHint } = input;
+        const page = await pageRegistry.getPage(tabName, urlHint);
+        if (!workspace.tabs.hasTab(tabName)) {
+            workspace.tabs.createMetadataTab({ tabName });
+        }
+        workspace.tabs.bindPage(tabName, page);
+        workspace.tabs.updateTab(tabName, { url: page.url() });
+        workspace.tabs.setActiveTab(tabName);
+        return bindPage({ workspaceName: workspace.name, tabName, page });
+    };
+
     const resolveBinding = async (workspaceName: string, tabName?: string): Promise<ExecutionBinding> => {
         if (tabName) {
             const bound = bindings.get(keyOf(workspaceName, tabName));
@@ -115,6 +135,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
 
     return {
         bindPage,
+        ensureExecutableTab,
         resolveBinding,
         getBinding: (workspaceName, tabName) => bindings.get(keyOf(workspaceName, tabName)) || null,
     };
