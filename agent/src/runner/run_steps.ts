@@ -22,6 +22,7 @@ import type {
     StepsQueue,
 } from './run_steps_types';
 import type { StepResolve } from './steps/types';
+import { isValidStepResolve } from './steps/resolve_utils';
 
 export type {
     Checkpoint,
@@ -158,6 +159,16 @@ const injectStepResolve = (
     const resolveId = typeof argsRecord.resolveId === 'string' ? argsRecord.resolveId : undefined;
 
     if (!resolveId) {
+        if (step.resolve && !isValidStepResolve(step.resolve)) {
+            return {
+                ok: false,
+                error: {
+                    code: 'ERR_BAD_ARGS',
+                    message: `step ${step.id} has invalid resolve`,
+                    details: { stepId: step.id, reason: 'empty_resolve_hint' },
+                },
+            };
+        }
         return { ok: true, step };
     }
     if (step.resolve) {
@@ -186,6 +197,16 @@ const injectStepResolve = (
                 code: 'ERR_BAD_ARGS',
                 message: `step resolve not found: ${resolveId}`,
                 details: { stepId: step.id, resolveId },
+            },
+        };
+    }
+    if (!isValidStepResolve(stepResolves[resolveId])) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `step resolve is invalid: ${resolveId}`,
+                details: { stepId: step.id, resolveId, reason: 'empty_resolve_hint' },
             },
         };
     }

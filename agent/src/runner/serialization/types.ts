@@ -1,5 +1,6 @@
 import type { Checkpoint } from '../checkpoint/types';
 import type { StepArgsMap, StepName, StepResolve } from '../steps/types';
+import { isValidStepResolve } from '../steps/resolve_utils';
 
 export type SerializedStep<TName extends StepName = StepName> = {
     id: string;
@@ -103,6 +104,9 @@ export const validateStepResolveFileForSerialization = (file: StepResolveFile): 
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
             throw new Error(`step resolve ${resolveId} must be an object`);
         }
+        if (!isValidStepResolve(value)) {
+            throw new Error(`step resolve ${resolveId} is invalid: resolve must include at least one usable hint anchor`);
+        }
     }
 };
 
@@ -157,6 +161,9 @@ export const validateCheckpointResolveFileForSerialization = (file: CheckpointRe
     for (const [resolveId, value] of Object.entries(file.resolves)) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
             throw new Error(`checkpoint resolve ${resolveId} must be an object`);
+        }
+        if (!isValidStepResolve(value)) {
+            throw new Error(`checkpoint resolve ${resolveId} is invalid: resolve must include at least one usable hint anchor`);
         }
     }
 };

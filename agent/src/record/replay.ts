@@ -15,6 +15,7 @@ import type { RecordingEnhancementMap } from './types';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
+import { isValidStepResolve } from '../runner/steps/resolve_utils';
 
 export type ReplayOptions = {
     clickDelayMs: number;
@@ -78,7 +79,7 @@ const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnha
         hint: enhancement.resolveHint,
         policy: enhancement.resolvePolicy,
     };
-    if (!nextResolve.hint && !nextResolve.policy) {return step;}
+    if (!isValidStepResolve(nextResolve)) {return step;}
     return {
         ...step,
         resolve: nextResolve,

@@ -14,7 +14,9 @@ export type WorkflowRecording = {
         recordingName: string;
         workspaceName: string;
         entryUrl?: string;
-        tabs?: Array<{ tabName: string; url?: string }>;
+        activeTabRef: string;
+        initialTabs: Array<{ tabName: string; tabRef: string; url: string; title: string; active: boolean }>;
+        tabs: Array<{ tabName: string; url?: string }>;
         createdAt?: number;
         stepCount?: number;
     };

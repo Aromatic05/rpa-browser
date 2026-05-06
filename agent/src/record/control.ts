@@ -25,6 +25,7 @@ import type { StepResolve, StepUnion } from '../runner/steps/types';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
+import type { Logger } from '../logging/logger';
 
 const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
 
@@ -35,7 +36,27 @@ export type RecordControlServices = {
     runtime: ExecutionBindings;
     pageRegistry: PageRegistry;
     emit?: (action: Action) => void;
-    log: (...args: unknown[]) => void;
+    log: Logger | ((...args: unknown[]) => void);
+};
+
+const logWarning = (log: RecordControlServices['log'], ...args: unknown[]) => {
+    if (typeof log === 'function' && 'warning' in log && typeof (log as Logger).warning === 'function') {
+        (log as Logger).warning(...args);
+        return;
+    }
+    if (typeof log === 'function') {
+        log(...args);
+    }
+};
+
+const logError = (log: RecordControlServices['log'], ...args: unknown[]) => {
+    if (typeof log === 'function' && 'error' in log && typeof (log as Logger).error === 'function') {
+        (log as Logger).error(...args);
+        return;
+    }
+    if (typeof log === 'function') {
+        log(...args);
+    }
 };
 
 export type RecordControl = {
@@ -152,6 +173,9 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     }
                 }
             }
+            if (!bundle.manifest?.activeTabRef) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'recording manifest missing activeTabRef');
+            }
             const artifact: WorkflowRecording = {
                 kind: 'recording',
                 name: recordingName,
@@ -159,6 +183,8 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     version: 1,
                     recordingName,
                     workspaceName,
+                    activeTabRef: bundle.manifest.activeTabRef,
+                    initialTabs: bundle.manifest.initialTabs || [],
                     entryUrl: bundle.manifest?.entryUrl,
                     tabs: (bundle.manifest?.tabs || []).map((item) => ({
                         tabName: item.tabName || item.tabRef,
@@ -225,25 +251,25 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 if (!loaded || loaded.kind !== 'recording') {
                     throw new ActionError(ERROR_CODES.ERR_RECORDING_NOT_FOUND, `recording not found: ${sourceRecordingName}`);
                 }
+                if (!loaded.recording.activeTabRef) {
+                    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `recording missing activeTabRef: ${sourceRecordingName}`);
+                }
+                if (!Array.isArray(loaded.recording.initialTabs)) {
+                    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `recording missing initialTabs: ${sourceRecordingName}`);
+                }
                 return {
                     recordingToken: `saved:${sourceRecordingName}`,
                     steps: loaded.steps,
                     manifest: {
                         recordingToken: `saved:${sourceRecordingName}`,
                         workspaceName: currentWorkspaceName,
-                        activeTabRef: loaded.recording.tabs?.[0]?.tabName || undefined,
+                        activeTabRef: loaded.recording.activeTabRef,
                         entryUrl: loaded.recording.entryUrl,
-                        initialTabs: (Array.isArray(loaded.recording.tabs) ? loaded.recording.tabs : []).map((tab, index) => ({
-                            tabName: tab.tabName || 'main',
-                            tabRef: tab.tabName || 'main',
-                            url: tab.url || '',
-                            title: '',
-                            active: index === 0,
-                        })),
+                        initialTabs: loaded.recording.initialTabs,
                         startedAt: loaded.recording.createdAt || Date.now(),
-                        tabs: (Array.isArray(loaded.recording.tabs) ? loaded.recording.tabs : []).map((tab) => ({
-                            tabName: tab.tabName || 'main',
-                            tabRef: tab.tabName || 'main',
+                        tabs: loaded.recording.tabs.map((tab) => ({
+                            tabName: tab.tabName,
+                            tabRef: tab.tabName,
                             firstSeenUrl: tab.url,
                             lastSeenUrl: tab.url,
                             firstSeenAt: Date.now(),
@@ -321,11 +347,25 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         onEvent: publishReplayEvent,
                     });
                     if (replayed.error?.code === 'ERR_CANCELED') {
+                        logWarning(services.log, '[RPA:play]', 'replay canceled', {
+                            workspaceName: replayWorkspaceName,
+                            tabName: initialTabName,
+                            reason: replayed.error?.message || 'canceled',
+                        });
                         emitPlayEvent(ACTION_TYPES.PLAY_CANCELED, { workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results });
                         return;
                     }
                     if (!replayed.ok && stopOnError) {
                         const firstFailed = replayed.results.find((item) => !item.ok);
+                        const failedStep = bundle.steps.find((step) => step.id === firstFailed?.stepId);
+                        logError(services.log, '[RPA:play]', 'replay failed', {
+                            workspaceName: replayWorkspaceName,
+                            tabName: initialTabName,
+                            stepId: firstFailed?.stepId,
+                            stepName: failedStep?.name,
+                            message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
+                            error: firstFailed?.error || replayed.error,
+                        });
                         emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
                             workspaceName: replayWorkspaceName,
                             tabName: initialTabName,
@@ -338,7 +378,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, { workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
-                    services.log('[RPA:agent]', 'replay crashed', {
+                    logError(services.log, '[RPA:play]', 'replay crashed', {
                         workspaceName: replayWorkspaceName,
                         tabName: initialTabName,
                         message,
