@@ -41,16 +41,19 @@ const runSelectorClick = async (input: {
     deps: RunStepsDeps;
     binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>;
     timeout: number;
+    audit?: Record<string, unknown>;
 }): Promise<StepResult> => {
-    const { selector, step, deps, binding, timeout } = input;
+    const { selector, step, deps, binding, timeout, audit } = input;
     const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector, timeout });
     if (!visible.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
+        const error = mapTraceError(visible.error);
+        return { stepId: step.id, ok: false, error: { ...error, details: { ...(error.details as any), ...(audit || {}) } } };
     }
 
     const scrolled = await binding.traceTools['trace.locator.scrollIntoView']({ selector });
     if (!scrolled.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(scrolled.error) };
+        const error = mapTraceError(scrolled.error);
+        return { stepId: step.id, ok: false, error: { ...error, details: { ...(error.details as any), ...(audit || {}) } } };
     }
 
     const count = step.args.options?.double ? 2 : 1;
@@ -61,7 +64,8 @@ const runSelectorClick = async (input: {
             button: step.args.options?.button,
         });
         if (!click.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(click.error) };
+            const error = mapTraceError(click.error);
+            return { stepId: step.id, ok: false, error: { ...error, details: { ...(error.details as any), ...(audit || {}) } } };
         }
 
         if (deps.config.humanPolicy.enabled) {
@@ -130,6 +134,7 @@ export const executeBrowserClick = async (
             deps,
             binding,
             timeout,
+            audit: resolved.target.resolution.audit as Record<string, unknown> | undefined,
         });
     });
 };

@@ -15,6 +15,17 @@ export type ResolvedTarget = {
         source: 'nodeId' | 'selector' | 'resolve';
         path: string;
         appliedPolicy?: string[];
+        audit?: {
+            stepId?: string;
+            stepName?: string;
+            confidence?: number;
+            chosenPath?: string;
+            attempts: string[];
+            warnings: string[];
+            finalSelector?: string;
+            failedPath?: string;
+            failedReason?: string;
+        };
     };
 };
 
@@ -25,10 +36,12 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
     const hint = resolve?.hint;
     const policy = resolve?.policy;
     if (!nodeId && !selector && !resolve) {
-        return { ok: false, error: { code: 'ERR_INTERNAL', message: 'missing target input' } };
+        return { ok: false, error: { code: 'ERR_BAD_ARGS', message: 'missing target input' } };
     }
 
     if (selector) {
+        const confidence = hint?.capture?.confidence;
+        const warnings = hint?.capture?.warnings || [];
         return {
             ok: true,
             target: {
@@ -37,6 +50,13 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
                     source: 'selector',
                     path: 'input.selector',
                     appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
+                    audit: {
+                        confidence,
+                        chosenPath: 'input.selector',
+                        attempts: ['input.selector'],
+                        warnings: [...warnings],
+                        finalSelector: selector,
+                    },
                 },
             },
         };
@@ -45,6 +65,7 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
     if (nodeId) {
         const resolved = resolveBySnapshotNodeId(binding, nodeId, hint, policy);
         if (resolved.ok) {
+            const warnings = hint?.capture?.warnings || [];
             return {
                 ok: true,
                 target: {
@@ -53,6 +74,13 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
                         source: 'nodeId',
                         path: resolved.path,
                         appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
+                        audit: {
+                            confidence: hint?.capture?.confidence,
+                            chosenPath: resolved.path,
+                            attempts: [resolved.path],
+                            warnings: [...warnings],
+                            finalSelector: resolved.selector,
+                        },
                     },
                 },
             };
@@ -64,6 +92,8 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
 
     const byResolve = resolveByHint(binding, hint!, policy || {});
     if (byResolve.ok) {
+        const attempts = buildHintResolveOrder(hint?.capture?.confidence ?? 0.5);
+        const chosenAt = Math.max(attempts.indexOf(byResolve.path), 0);
         return {
             ok: true,
             target: {
@@ -72,6 +102,13 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
                     source: 'resolve',
                     path: byResolve.path,
                     appliedPolicy: collectAppliedPolicy(policy, Boolean(hint?.locator?.scope?.id)),
+                    audit: {
+                        confidence: hint?.capture?.confidence,
+                        chosenPath: byResolve.path,
+                        attempts: attempts.slice(0, chosenAt + 1),
+                        warnings: [...(hint?.capture?.warnings || [])],
+                        finalSelector: byResolve.selector,
+                    },
                 },
             },
         };
@@ -85,33 +122,38 @@ const resolveByHint = (
     hint: ResolveHint,
     policy: ResolvePolicy,
 ): { ok: true; selector: string; path: string } | { ok: false; error: StepResult['error'] } => {
-    const preferDirect = policy.preferDirect === true;
-
-    if (preferDirect) {
-        const directFirst = resolveFromHintLocator(binding, hint, policy);
-        if (directFirst) {return { ok: true, selector: directFirst, path: 'resolve.hint.locator.direct' };}
-    }
-
-    const byEntity = resolveByEntityHint(binding, hint, policy);
-    if (byEntity) {return { ok: true, selector: byEntity, path: 'resolve.hint.entity' };}
-
-    if (hint.target?.nodeId) {
-        const byNode = resolveBySnapshotNodeId(binding, hint.target.nodeId, hint, policy);
-        if (byNode.ok) {return { ok: true, selector: byNode.selector, path: 'resolve.hint.target.nodeId' };}
-    }
-
-    const byDom = resolveByDomFingerprint(binding, hint, policy);
-    if (byDom) {return { ok: true, selector: byDom, path: 'resolve.hint.target.primaryDomId' };}
-
-    const byLocator = resolveFromHintLocator(binding, hint, policy);
-    if (byLocator) {return { ok: true, selector: byLocator, path: 'resolve.hint.locator.direct' };}
-
-    const byRaw = resolveFromHintRaw(binding, hint, policy);
-    if (byRaw) {return { ok: true, selector: byRaw, path: 'resolve.hint.raw' };}
-
-    if (policy.allowFuzzy) {
-        const byFuzzy = resolveByHintFuzzy(binding, hint, policy);
-        if (byFuzzy) {return { ok: true, selector: byFuzzy, path: 'resolve.hint.fuzzy' };}
+    const confidence = hint.capture?.confidence ?? 0.5;
+    const attemptOrder = buildHintResolveOrder(confidence);
+    for (const path of attemptOrder) {
+        if (path === 'resolve.hint.target.nodeId' && hint.target?.nodeId) {
+            const byNode = resolveBySnapshotNodeId(binding, hint.target.nodeId, hint, policy);
+            if (byNode.ok) {return { ok: true, selector: byNode.selector, path };}
+            continue;
+        }
+        if (path === 'resolve.hint.entity') {
+            const byEntity = resolveByEntityHint(binding, hint, policy);
+            if (byEntity) {return { ok: true, selector: byEntity, path };}
+            continue;
+        }
+        if (path === 'resolve.hint.locator.direct') {
+            const byLocator = resolveFromHintLocator(binding, hint, policy);
+            if (byLocator) {return { ok: true, selector: byLocator, path };}
+            continue;
+        }
+        if (path === 'resolve.hint.target.primaryDomId') {
+            const byDom = resolveByDomFingerprint(binding, hint, policy);
+            if (byDom) {return { ok: true, selector: byDom, path };}
+            continue;
+        }
+        if (path === 'resolve.hint.raw') {
+            const byRaw = resolveFromHintRaw(binding, hint, policy);
+            if (byRaw) {return { ok: true, selector: byRaw, path };}
+            continue;
+        }
+        if (path === 'resolve.hint.fuzzy' && policy.allowFuzzy) {
+            const byFuzzy = resolveByHintFuzzy(binding, hint, policy);
+            if (byFuzzy) {return { ok: true, selector: byFuzzy, path };}
+        }
     }
 
     return {
@@ -120,6 +162,9 @@ const resolveByHint = (
             code: 'ERR_NOT_FOUND',
             message: 'target hint not resolvable to selector',
             details: {
+                confidence: hint.capture?.confidence,
+                attempts: buildHintResolveOrder(hint.capture?.confidence ?? 0.5),
+                warnings: hint.capture?.warnings || [],
                 hasTargetNodeId: Boolean(hint.target?.nodeId),
                 hasPrimaryDomId: Boolean(hint.target?.primaryDomId),
                 hasLocatorDirect: Boolean(hint.locator?.direct?.query),
@@ -155,8 +200,8 @@ const resolveByEntityHint = (binding: ExecutionBinding, hint: ResolveHint, polic
 
         const semantic = getNodeSemanticHints(node);
         const attr = snapshot.attrIndex[nodeId];
-        const nodeFieldKey = normalizeTag(semantic?.fieldKey || attr.fieldKey);
-        const nodeActionIntent = normalizeTag(semantic?.actionIntent || attr.actionIntent);
+        const nodeFieldKey = normalizeTag(semantic?.fieldKey || attr?.fieldKey);
+        const nodeActionIntent = normalizeTag(semantic?.actionIntent || attr?.actionIntent);
 
         if (fieldKey && fieldKey !== nodeFieldKey) {continue;}
         if (actionIntent && actionIntent !== nodeActionIntent) {continue;}
@@ -336,6 +381,37 @@ const resolveFromHintRaw = (binding: ExecutionBinding, hint: ResolveHint, policy
     }
 
     return undefined;
+};
+
+const buildHintResolveOrder = (confidence: number): string[] => {
+    if (confidence >= 0.8) {
+        return [
+            'resolve.hint.target.nodeId',
+            'resolve.hint.entity',
+            'resolve.hint.locator.direct',
+            'resolve.hint.target.primaryDomId',
+            'resolve.hint.raw',
+            'resolve.hint.fuzzy',
+        ];
+    }
+    if (confidence >= 0.55) {
+        return [
+            'resolve.hint.target.nodeId',
+            'resolve.hint.entity',
+            'resolve.hint.raw',
+            'resolve.hint.locator.direct',
+            'resolve.hint.target.primaryDomId',
+            'resolve.hint.fuzzy',
+        ];
+    }
+    return [
+        'resolve.hint.target.nodeId',
+        'resolve.hint.entity',
+        'resolve.hint.locator.direct',
+        'resolve.hint.target.primaryDomId',
+        'resolve.hint.raw',
+        'resolve.hint.fuzzy',
+    ];
 };
 
 const getSnapshot = (binding: ExecutionBinding): SnapshotResult | undefined => {
