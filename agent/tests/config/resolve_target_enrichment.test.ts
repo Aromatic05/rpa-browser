@@ -4,6 +4,7 @@ import { resolveTarget } from '../../src/runner/steps/helpers/resolve_target';
 import { executeBrowserClick } from '../../src/runner/steps/executors/click';
 import { executeBrowserFill } from '../../src/runner/steps/executors/fill';
 import { executeBrowserSelectOption } from '../../src/runner/steps/executors/select_option';
+import { executeBrowserScroll } from '../../src/runner/steps/executors/scroll';
 import type { Step } from '../../src/runner/steps/types';
 import { setNodeAttr } from '../../src/runner/steps/executors/snapshot/core/runtime_store';
 
@@ -42,12 +43,17 @@ const createBinding = (snapshot?: Record<string, unknown>) => {
                 calls.push({ name: 'readSelectState', payload });
                 return { ok: true, data: { selectedValues: ['v'], selectedLabels: ['审批中'] } };
             },
+            'trace.page.scrollBy': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'scrollBy', payload });
+                return { ok: true, data: {} };
+            },
         },
     } as any;
 
     const deps = {
         runtime: {
             ensureActivePage: async () => binding,
+            resolveBinding: async () => binding,
         },
         config: {
             waitPolicy: {
@@ -326,4 +332,19 @@ test('select_option executor resolves from step.resolve.hint', async () => {
     const selectCall = calls.find((call) => call.name === 'selectOption');
     assert.ok(selectCall);
     assert.equal(selectCall?.payload.selector, '#select-from-resolve');
+});
+
+test('browser.scroll with empty resolve keeps page scrolling semantics', async () => {
+    const { deps, calls } = createBinding();
+    const step: Step<'browser.scroll'> = {
+        id: 'scroll-empty-resolve',
+        name: 'browser.scroll',
+        args: { direction: 'down', amount: 120 },
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {} as any,
+    };
+    const result = await executeBrowserScroll(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
+    assert.equal(calls.some((call) => call.name === 'scrollBy'), true);
+    assert.equal(calls.some((call) => call.name === 'scrollIntoView'), false);
 });

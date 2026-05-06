@@ -251,3 +251,54 @@ test('replayRecording creates tab with recorded switch url when target tab is mi
     assert.equal(executed[1].name, 'browser.switch_tab');
     assert.equal((executed[1].args as any).tabName, 'tab-created');
 });
+
+test('replayRecording does not inject resolve from empty enhancement', async () => {
+    const steps: StepUnion[] = [{ id: 'x1', name: 'browser.click', args: { selector: '#x' }, meta: { source: 'record', tabName: 'tab-now' } }];
+    const seen: Array<StepUnion> = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps,
+        enrichments: { x1: { version: 1, eventType: 'click', resolveHint: {} as any } },
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: { getExecutors: () => ({ 'browser.click': async (step: StepUnion) => { seen.push(step); return { stepId: step.id, ok: true }; } }) as any } as any,
+        } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(Boolean(seen[0].resolve), false);
+});
+
+test('saved replay forwards stepResolves into runStepList resolveId injection', async () => {
+    const steps: StepUnion[] = [{ id: 'x2', name: 'browser.click', args: { resolveId: 'rid-1' }, meta: { source: 'record', tabName: 'tab-now' } } as any];
+    let resolvedSelector = '';
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps,
+        stepResolves: { 'rid-1': { hint: { raw: { selector: '#from-resolve-file' } } } },
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () => ({
+                    'browser.click': async (step: StepUnion) => {
+                        resolvedSelector = step.resolve?.hint?.raw?.selector || '';
+                        return { stepId: step.id, ok: true };
+                    },
+                }) as any,
+            } as any,
+        } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(resolvedSelector, '#from-resolve-file');
+});
