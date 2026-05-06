@@ -2,7 +2,8 @@ import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { resolveTarget } from '../helpers/resolve_target';
+import { resolveTarget, type ResolveAuditAttempt, type TargetCandidate } from '../helpers/resolve_target';
+import { isValidStepResolve } from '../resolve_utils';
 
 const runWithHardTimeout = async (
     stepId: string,
@@ -35,48 +36,23 @@ const runWithHardTimeout = async (
     }
 };
 
-const runSelectorClick = async (input: {
-    selector: string;
-    step: Step<'browser.click'>;
-    deps: RunStepsDeps;
-    binding: Awaited<ReturnType<RunStepsDeps['runtime']['resolveBinding']>>;
-    timeout: number;
-    audit?: Record<string, unknown>;
-}): Promise<StepResult> => {
-    const { selector, step, deps, binding, timeout, audit } = input;
-    const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector, timeout });
-    if (!visible.ok) {
-        const error = mapTraceError(visible.error);
-        return { stepId: step.id, ok: false, error: { ...error, details: { ...(error.details as any), ...(audit || {}) } } };
-    }
-
-    const scrolled = await binding.traceTools['trace.locator.scrollIntoView']({ selector });
-    if (!scrolled.ok) {
-        const error = mapTraceError(scrolled.error);
-        return { stepId: step.id, ok: false, error: { ...error, details: { ...(error.details as any), ...(audit || {}) } } };
-    }
-
-    const count = step.args.options?.double ? 2 : 1;
-    for (let i = 0; i < count; i += 1) {
-        const click = await binding.traceTools['trace.locator.click']({
-            selector,
-            timeout,
-            button: step.args.options?.button,
-        });
-        if (!click.ok) {
-            const error = mapTraceError(click.error);
-            return { stepId: step.id, ok: false, error: { ...error, details: { ...(error.details as any), ...(audit || {}) } } };
-        }
-
-        if (deps.config.humanPolicy.enabled) {
-            const delayMs = pickDelayMs(
-                deps.config.humanPolicy.clickDelayMsRange.min,
-                deps.config.humanPolicy.clickDelayMsRange.max,
-            );
-            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
-        }
-    }
-    return { stepId: step.id, ok: true };
+const pushAttempt = (
+    attempts: ResolveAuditAttempt[],
+    candidate: TargetCandidate,
+    stage: ResolveAuditAttempt['stage'],
+    ok: boolean,
+    error?: { code?: string; message?: string },
+) => {
+    attempts.push({
+        path: candidate.path,
+        selector: candidate.selector,
+        source: candidate.source,
+        confidence: candidate.confidence,
+        ok,
+        stage,
+        errorCode: error?.code,
+        errorMessage: error?.message,
+    });
 };
 
 export const executeBrowserClick = async (
@@ -121,6 +97,18 @@ export const executeBrowserClick = async (
             return { stepId: step.id, ok: true };
         }
 
+        const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || isValidStepResolve(step.resolve));
+        if (!hasTarget) {
+            return {
+                stepId: step.id,
+                ok: false,
+                error: {
+                    code: 'ERR_BAD_ARGS',
+                    message: 'browser.click requires coord or target selector/nodeId/resolve',
+                },
+            };
+        }
+
         const resolved = await resolveTarget(binding, {
             nodeId: step.args.nodeId,
             selector: step.args.selector,
@@ -128,13 +116,87 @@ export const executeBrowserClick = async (
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-        return await runSelectorClick({
-            selector: resolved.target.selector,
-            step,
-            deps,
-            binding,
-            timeout,
-            audit: resolved.target.resolution.audit as Record<string, unknown> | undefined,
-        });
+        const attempts: ResolveAuditAttempt[] = [];
+        let lastError: StepResult['error'] | undefined;
+
+        for (const candidate of resolved.target.candidates) {
+            const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: candidate.selector, timeout });
+            if (!visible.ok) {
+                const error = mapTraceError(visible.error);
+                lastError = error;
+                pushAttempt(attempts, candidate, 'waitForVisible', false, { code: error.code, message: error.message });
+                continue;
+            }
+            pushAttempt(attempts, candidate, 'waitForVisible', true);
+
+            const scrolled = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
+            if (!scrolled.ok) {
+                const error = mapTraceError(scrolled.error);
+                lastError = error;
+                pushAttempt(attempts, candidate, 'scrollIntoView', false, { code: error.code, message: error.message });
+                continue;
+            }
+            pushAttempt(attempts, candidate, 'scrollIntoView', true);
+
+            const count = step.args.options?.double ? 2 : 1;
+            let actionError: StepResult['error'] | undefined;
+            for (let i = 0; i < count; i += 1) {
+                const click = await binding.traceTools['trace.locator.click']({
+                    selector: candidate.selector,
+                    timeout,
+                    button: step.args.options?.button,
+                });
+                if (!click.ok) {
+                    const error = mapTraceError(click.error);
+                    actionError = error;
+                    pushAttempt(attempts, candidate, 'action', false, { code: error.code, message: error.message });
+                    break;
+                }
+                pushAttempt(attempts, candidate, 'action', true);
+                if (deps.config.humanPolicy.enabled) {
+                    const delayMs = pickDelayMs(
+                        deps.config.humanPolicy.clickDelayMsRange.min,
+                        deps.config.humanPolicy.clickDelayMsRange.max,
+                    );
+                    if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
+                }
+            }
+            if (actionError) {
+                lastError = actionError;
+                continue;
+            }
+
+            return {
+                stepId: step.id,
+                ok: true,
+                data: {
+                    audit: {
+                        confidence: resolved.target.resolution.audit.confidence,
+                        warnings: resolved.target.resolution.audit.warnings,
+                        chosenPath: candidate.path,
+                        finalSelector: candidate.selector,
+                        attempts,
+                    },
+                },
+            };
+        }
+
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                ...(lastError || { code: 'ERR_NOT_FOUND', message: 'no target candidate matched' }),
+                details: {
+                    ...((lastError?.details as Record<string, unknown>) || {}),
+                    confidence: resolved.target.resolution.audit.confidence,
+                    warnings: resolved.target.resolution.audit.warnings,
+                    chosenPath: resolved.target.resolution.path,
+                    finalSelector: resolved.target.selector,
+                    failedPath: attempts.length > 0 ? attempts[attempts.length - 1].path : undefined,
+                    failedReason: lastError?.message,
+                    attempts,
+                },
+            },
+        };
     });
 };

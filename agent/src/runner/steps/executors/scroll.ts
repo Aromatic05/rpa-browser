@@ -2,8 +2,26 @@ import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { resolveTarget } from '../helpers/resolve_target';
+import { resolveTarget, type ResolveAuditAttempt, type TargetCandidate } from '../helpers/resolve_target';
 import { isValidStepResolve } from '../resolve_utils';
+
+const pushAttempt = (
+    attempts: ResolveAuditAttempt[],
+    candidate: TargetCandidate,
+    ok: boolean,
+    error?: { code?: string; message?: string },
+) => {
+    attempts.push({
+        path: candidate.path,
+        selector: candidate.selector,
+        source: candidate.source,
+        confidence: candidate.confidence,
+        ok,
+        stage: 'scrollIntoView',
+        errorCode: error?.code,
+        errorMessage: error?.message,
+    });
+};
 
 export const executeBrowserScroll = async (
     step: Step<'browser.scroll'>,
@@ -19,26 +37,57 @@ export const executeBrowserScroll = async (
             resolve: step.resolve,
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
-        const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
-        if (!scroll.ok) {
-            const error = mapTraceError(scroll.error);
+
+        const attempts: ResolveAuditAttempt[] = [];
+        let lastError: StepResult['error'] | undefined;
+        for (const candidate of resolved.target.candidates) {
+            const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
+            if (!scroll.ok) {
+                const error = mapTraceError(scroll.error);
+                lastError = error;
+                pushAttempt(attempts, candidate, false, { code: error.code, message: error.message });
+                continue;
+            }
+            pushAttempt(attempts, candidate, true);
+            if (deps.config.humanPolicy.enabled) {
+                const delayMs = pickDelayMs(
+                    deps.config.humanPolicy.scrollDelayMsRange.min,
+                    deps.config.humanPolicy.scrollDelayMsRange.max,
+                );
+                if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
+            }
             return {
                 stepId: step.id,
-                ok: false,
-                error: {
-                    ...error,
-                    details: { ...(error.details as any), ...(resolved.target.resolution.audit as any) },
+                ok: true,
+                data: {
+                    audit: {
+                        confidence: resolved.target.resolution.audit.confidence,
+                        warnings: resolved.target.resolution.audit.warnings,
+                        chosenPath: candidate.path,
+                        finalSelector: candidate.selector,
+                        attempts,
+                    },
                 },
             };
         }
-        if (deps.config.humanPolicy.enabled) {
-            const delayMs = pickDelayMs(
-                deps.config.humanPolicy.scrollDelayMsRange.min,
-                deps.config.humanPolicy.scrollDelayMsRange.max,
-            );
-            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
-        }
-        return { stepId: step.id, ok: true };
+
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                ...(lastError || { code: 'ERR_NOT_FOUND', message: 'no scroll target candidate matched' }),
+                details: {
+                    ...((lastError?.details as Record<string, unknown>) || {}),
+                    confidence: resolved.target.resolution.audit.confidence,
+                    warnings: resolved.target.resolution.audit.warnings,
+                    chosenPath: resolved.target.resolution.path,
+                    finalSelector: resolved.target.selector,
+                    failedPath: attempts.length > 0 ? attempts[attempts.length - 1].path : undefined,
+                    failedReason: lastError?.message,
+                    attempts,
+                },
+            },
+        };
     }
 
     const amount = step.args.amount ?? 600;
