@@ -38,6 +38,7 @@ export const classifyActionRoute = (action: Action): ActionRouteKind => {
         || action.type === 'workflow.list'
         || action.type === 'workflow.create'
         || action.type === 'workflow.open'
+        || action.type === 'workflow.saveAs'
         || action.type === 'workflow.rename'
         || action.type === 'workflow.resetDefault'
         || action.type === 'log.ext';
@@ -48,8 +49,7 @@ export const classifyActionRoute = (action: Action): ActionRouteKind => {
         || action.type.startsWith('checkpoint.')
         || action.type.startsWith('entity_rules.')
         || action.type.startsWith('task.run.')
-        || action.type.startsWith('mcp.')
-        || action.type === 'workflow.saveAs';
+        || action.type.startsWith('mcp.');
 
     if (actionWN && payloadWN) {return 'invalid';}
     if (isControlCommand) {return 'control';}

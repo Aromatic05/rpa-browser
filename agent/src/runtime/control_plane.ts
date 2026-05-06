@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { replyAction, type Action } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
-import { createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
+import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
 import { getLogger } from '../logging/logger';
 
 export type ControlPlaneResult = { reply: Action; events: Action[] };
@@ -101,6 +101,39 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after rename');
             }
             return { reply: replyAction(action, { fromName, toName, workspaceName: workspace.name, renamed: true }), events: [] };
+        }
+        case 'workflow.saveAs': {
+            const payload = (action.payload ?? {}) as { sourceName?: string; targetName?: string };
+            const sourceName = (payload.sourceName || '').trim();
+            const targetName = (payload.targetName || '').trim();
+            if (!sourceName || !targetName) {
+                throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'sourceName and targetName are required');
+            }
+            if (sourceName === targetName) {
+                throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'targetName must differ from sourceName');
+            }
+            if (!listWorkflowNames().includes(sourceName)) {
+                throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workflow not found: ${sourceName}`);
+            }
+            if (listWorkflowNames().includes(targetName)) {
+                throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, `workflow already exists: ${targetName}`);
+            }
+            copyWorkflowOnFs(sourceName, targetName);
+            const targetWorkflow = loadWorkflowFromFs(targetName);
+            const targetWorkspace = workspaceRegistry.createWorkspace(targetName, targetWorkflow);
+            workspaceRegistry.setActiveWorkspace(targetName);
+            const event: Action = {
+                v: 1,
+                id: crypto.randomUUID(),
+                type: 'workspace.changed',
+                payload: { workspaceName: targetName, activeWorkspaceName: targetName },
+                at: Date.now(),
+                traceId: action.traceId,
+            };
+            return {
+                reply: replyAction(action, { sourceName, targetName, workspaceName: targetWorkspace.name, savedAs: true }),
+                events: [event],
+            };
         }
         case 'workflow.resetDefault': {
             deleteWorkflowFromFs('default');
