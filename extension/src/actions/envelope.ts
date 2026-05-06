@@ -37,13 +37,14 @@ export const validateActionEnvelope = (incoming: unknown): EnvelopeOk | Envelope
     if (
         isRecord(payload)
         && (
-            has(payload, 'scope')
+            has(payload, 'workspaceName')
+            || has(payload, 'scope')
             || has(payload, 'workspaceId')
             || has(payload, 'tabToken')
             || has(payload, 'tabId')
         )
     ) {
-        return { ok: false, code: 'ERR_BAD_ARGS', message: 'legacy address fields are not allowed in payload' };
+        return { ok: false, code: 'ERR_BAD_ARGS', message: 'payload.workspaceName is not allowed' };
     }
     if (!isRequestActionType(type)) {
         return { ok: false, code: 'ERR_BAD_ARGS', message: `unsupported command type '${type}'` };
