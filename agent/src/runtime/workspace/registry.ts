@@ -6,6 +6,7 @@ import type { RunStepsDeps } from '../../runner/run_steps';
 import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
+import type { ExecutionBindings } from '../execution/bindings';
 
 export type { RuntimeWorkspace };
 
@@ -25,6 +26,7 @@ export type WorkspaceRuntimeDeps = {
         getPage: (tabName: string, startUrl?: string) => Promise<import('playwright').Page>;
         touchBinding?: (bindingName: string) => void;
     };
+    runtime: ExecutionBindings;
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
@@ -49,6 +51,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             name: workspaceName,
             workflow,
             pageRegistry: runtimeDeps.pageRegistry,
+            runtime: runtimeDeps.runtime,
             recordingState: runtimeDeps.recordingState,
             replayOptions: runtimeDeps.replayOptions,
             navDedupeWindowMs: runtimeDeps.navDedupeWindowMs,

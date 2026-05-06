@@ -23,6 +23,8 @@ import { ingestRecordPayload } from './ingest';
 import { replayRecording, type ReplayEvent, type ReplayOptions } from './replay';
 import type { StepResolve, StepUnion } from '../runner/steps/types';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
+import type { ExecutionBindings } from '../runtime/execution/bindings';
+import type { PageRegistry } from '../runtime/browser/page_registry';
 
 const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
 
@@ -30,6 +32,8 @@ export type RecordControlServices = {
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
+    runtime: ExecutionBindings;
+    pageRegistry: PageRegistry;
     emit?: (action: Action) => void;
     log: (...args: unknown[]) => void;
 };
@@ -63,27 +67,38 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             requireWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
             const tabs = workspace.tabs.listTabs();
-            for (const tab of tabs) {
-                if (!tab.page || tab.page.isClosed()) {
-                    await workspace.tabs.ensurePage(tab.name).catch(() => null);
-                }
+            const activeTab = workspace.tabs.getActiveTab();
+            if (!activeTab) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
             }
-            const boundTabs = workspace.tabs.listTabs().filter((tab) => Boolean(tab.page));
-            if (!boundTabs.length) {
+            const binding = await services.runtime.ensureExecutableTab({
+                workspace,
+                pageRegistry: services.pageRegistry,
+                tabName: activeTab.name,
+            });
+            const executableTabs = workspace.tabs.listTabs().filter((tab) => Boolean(tab.page) && !tab.page?.isClosed());
+            if (!executableTabs.length) {
                 throw new ActionError(
                     ERROR_CODES.ERR_BAD_ARGS,
                     `record.start requires at least one bound page in workspace: ${workspaceName}`,
                 );
             }
-            const primary = boundTabs[0];
-            const primaryPage = primary.page!;
+            const primaryPage = binding.page;
             resetWorkspaceUnsavedRecording(services.recordingState, workspaceName, {
-                entryTabRef: primary.name,
+                entryTabRef: activeTab.name,
+                activeTabRef: activeTab.name,
                 entryUrl: primaryPage.url(),
+                initialTabs: workspace.tabs.listTabs().map((tab) => ({
+                    tabName: tab.name,
+                    tabRef: tab.name,
+                    url: tab.url,
+                    title: tab.title,
+                    active: tab.name === activeTab.name,
+                })),
             });
             enterWorkspaceState(workspace, 'recording', action.type);
             enableWorkspaceRecording(services.recordingState, workspaceName);
-            for (const tab of boundTabs) {
+            for (const tab of executableTabs) {
                 if (!tab.page) {continue;}
                 await ensureRecorder(services.recordingState, workspaceName, tab.page, tab.name, services.navDedupeWindowMs);
                 await setRecorderRuntimeEnabled(tab.page, true);
@@ -216,7 +231,15 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     manifest: {
                         recordingToken: `saved:${sourceRecordingName}`,
                         workspaceName: currentWorkspaceName,
+                        activeTabRef: loaded.recording.tabs?.[0]?.tabName || undefined,
                         entryUrl: loaded.recording.entryUrl,
+                        initialTabs: (Array.isArray(loaded.recording.tabs) ? loaded.recording.tabs : []).map((tab, index) => ({
+                            tabName: tab.tabName || 'main',
+                            tabRef: tab.tabName || 'main',
+                            url: tab.url || '',
+                            title: '',
+                            active: index === 0,
+                        })),
                         startedAt: loaded.recording.createdAt || Date.now(),
                         tabs: (Array.isArray(loaded.recording.tabs) ? loaded.recording.tabs : []).map((tab) => ({
                             tabName: tab.tabName || 'main',
@@ -237,14 +260,16 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
             const replayWorkspaceName = currentWorkspaceName;
             const initialTabName = currentTab.name;
+            const initialBinding = await services.runtime.ensureExecutableTab({
+                workspace,
+                pageRegistry: services.pageRegistry,
+                tabName: initialTabName,
+                urlHint: bundle.manifest?.entryUrl,
+            });
 
-            if (!currentTab.page) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `page not bound: ${currentWorkspaceName}/${initialTabName}`);
-            }
-
-            if (bundle.manifest?.entryUrl && currentTab.page.url() !== bundle.manifest.entryUrl) {
+            if (bundle.manifest?.entryUrl && initialBinding.page.url() !== bundle.manifest.entryUrl) {
                 try {
-                    await currentTab.page.goto(bundle.manifest.entryUrl, { waitUntil: 'domcontentloaded' });
+                    await initialBinding.page.goto(bundle.manifest.entryUrl, { waitUntil: 'domcontentloaded' });
                 } catch {}
             }
 
@@ -289,15 +314,9 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         recordingManifest: bundle.manifest,
                         stopOnError,
                         replayOptions: services.replayOptions,
-                        pageRegistry: {
-                            listTabs: async () =>
-                                workspace.tabs.listTabs().map((tab) => ({
-                                    tabName: tab.name,
-                                    active: workspace.tabs.getActiveTab()?.name === tab.name,
-                                })),
-                            resolveTabNameFromToken: (tabName: string) => tabName,
-                            resolveTabNameFromRef: (tabRef: string) => tabRef || undefined,
-                        },
+                        workspace,
+                        runtime: services.runtime,
+                        pageRegistry: services.pageRegistry,
                         isCanceled: () => services.recordingState.replayCancel.has(currentTab.name),
                         onEvent: publishReplayEvent,
                     });

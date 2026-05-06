@@ -70,6 +70,14 @@ const runtimeRegistry = createExecutionBindings({
 
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
+    resolveWorkspace: (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            throw new Error(`workspace not found: ${workspaceName}`);
+        }
+        return workspace;
+    },
+    pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
@@ -80,6 +88,7 @@ const portAllocator = createPortAllocator();
 
 const workspaceRegistry = createWorkspaceRegistry({
     pageRegistry,
+    runtime: runtimeRegistry,
     recordingState,
     replayOptions: REPLAY_OPTIONS,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,

@@ -17,6 +17,8 @@ import { ActionError, ERROR_CODES } from '../../actions/results';
 import type { PortAllocator } from '../service/ports';
 import { createWorkspaceMcpService } from '../../mcp/service';
 import { getLogger } from '../../logging/logger';
+import type { PageRegistry } from '../browser/page_registry';
+import type { ExecutionBindings } from '../execution/bindings';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing';
 
@@ -40,6 +42,7 @@ export type CreateRuntimeWorkspaceDeps = {
     name: string;
     workflow: Workflow;
     pageRegistry: { getPage: (tabName: string, startUrl?: string) => Promise<Page>; touchBinding?: (bindingName: string) => void };
+    runtime: ExecutionBindings;
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
@@ -92,6 +95,8 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         recordingState: deps.recordingState,
         replayOptions: deps.replayOptions,
         navDedupeWindowMs: deps.navDedupeWindowMs,
+        runtime: deps.runtime,
+        pageRegistry: deps.pageRegistry as PageRegistry,
         emit: deps.emit,
         log: getLogger('action'),
     });
@@ -99,7 +104,10 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     const checkpoint = createCheckpointControl();
     const entityRules = createEntityRulesControl();
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({
+        recordingState: deps.recordingState,
+        navDedupeWindowMs: deps.navDedupeWindowMs,
+    });
 
     const mcpService = createWorkspaceMcpService({
         workspace: { name: deps.name, tabs },

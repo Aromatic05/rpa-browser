@@ -106,23 +106,18 @@ if (process.env.NODE_ENV !== 'production') {
 
 const runStepsDeps: RunStepsDeps = {
     runtime: null as unknown as ReturnType<typeof createExecutionBindings>,
+    resolveWorkspace: (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            throw new Error(`workspace not found: ${workspaceName}`);
+        }
+        return workspace;
+    },
+    pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
 };
-workspaceRegistry = createWorkspaceRegistry({
-    pageRegistry,
-    recordingState,
-    replayOptions: {
-        clickDelayMs: 300,
-        stepDelayMs: 900,
-        scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
-    },
-    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-    runStepsDeps,
-    runnerConfig: config,
-    portAllocator: createPortAllocator(),
-});
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
     if (!workspace) {
@@ -139,6 +134,20 @@ const runtimeRegistry: ReturnType<typeof createExecutionBindings> = createExecut
     pluginHost: runnerPluginHost,
 });
 runStepsDeps.runtime = runtimeRegistry;
+workspaceRegistry = createWorkspaceRegistry({
+    pageRegistry,
+    runtime: runStepsDeps.runtime,
+    recordingState,
+    replayOptions: {
+        clickDelayMs: 300,
+        stepDelayMs: 900,
+        scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+    },
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    runStepsDeps,
+    runnerConfig: config,
+    portAllocator: createPortAllocator(),
+});
 setRunStepsDeps(runStepsDeps);
 
 const buildToolDeps = (): WorkspaceMcpToolDeps => {

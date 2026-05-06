@@ -7,7 +7,6 @@ export const executeBrowserSwitchTab = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
     const tabName = step.args.tabName || step.args.tabRef;
     if (!tabName) {
         return {
@@ -16,6 +15,13 @@ export const executeBrowserSwitchTab = async (
             error: { code: 'ERR_BAD_ARGS', message: 'browser.switch_tab requires tabName or tabRef' },
         };
     }
+    const workspace = deps.resolveWorkspace(workspaceName);
+    const binding = await deps.runtime.ensureExecutableTab({
+        workspace,
+        pageRegistry: deps.pageRegistry,
+        tabName,
+        urlHint: step.args.tabUrl,
+    });
     const result = await binding.traceTools['trace.tabs.switch']({
         workspaceName,
         tabName,
@@ -23,5 +29,6 @@ export const executeBrowserSwitchTab = async (
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
     }
+    await deps.runtime.resolveBinding(workspaceName, tabName);
     return { stepId: step.id, ok: true };
 };
