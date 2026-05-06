@@ -3,11 +3,23 @@ import type { ResolveHint, ResolvePolicy, StepResolve, StepResult } from '../typ
 import type { SnapshotResult } from '../executors/snapshot/core/types';
 import { getNodeAttr, getNodeSemanticHints, normalizeText } from '../executors/snapshot/core/runtime_store';
 import { isValidStepResolve } from '../resolve_utils';
+import type { RunStepsDeps } from '../../run_steps';
+import { ensureFreshEntityContext } from '../executors/entity_context';
+import { readSnapshotSessionFreshness } from '../executors/snapshot/core/session_store';
 
 export type ResolveTargetInput = {
     nodeId?: string;
     selector?: string;
     resolve?: StepResolve;
+};
+
+export type ResolveTargetContext = {
+    deps: RunStepsDeps;
+    workspaceName: string;
+    reason: string;
+    stepId?: string;
+    stepName?: string;
+    ensureFreshSnapshot?: (args: { deps: RunStepsDeps; workspaceName: string; refreshReason: string }) => Promise<{ snapshot: SnapshotResult }>;
 };
 
 export type TargetCandidate = {
@@ -46,6 +58,11 @@ export type ResolvedTarget = {
             finalSelector?: string;
             failedPath?: string;
             failedReason?: string;
+            snapshotRequired?: boolean;
+            snapshotRefreshed?: boolean;
+            snapshotRefreshReason?: string;
+            snapshotId?: string;
+            snapshotUrl?: string;
         };
     };
 };
@@ -57,7 +74,11 @@ type CandidateCollector = {
     list: () => TargetCandidate[];
 };
 
-export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTargetInput): Promise<ResolveResult> => {
+export const resolveTarget = async (
+    binding: ExecutionBinding,
+    input: ResolveTargetInput,
+    context: ResolveTargetContext,
+): Promise<ResolveResult> => {
     const { nodeId, selector, resolve } = input;
     if (!nodeId && !selector && !resolve) {
         return { ok: false, error: { code: 'ERR_BAD_ARGS', message: 'missing target input' } };
@@ -68,6 +89,21 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
     const policy = resolve?.policy;
     const confidence = hint?.capture?.confidence ?? (hasValidResolve ? 0.6 : 0.4);
     const warnings = [...(hint?.capture?.warnings || [])];
+    const snapshotState = await ensureFreshResolveSnapshot(binding, input, context);
+    if (!snapshotState.ok) {
+        return {
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'resolve snapshot unavailable',
+                details: {
+                    reason: snapshotState.reason,
+                    stepId: context.stepId,
+                    stepName: context.stepName,
+                },
+            },
+        };
+    }
     const collector = createCandidateCollector();
 
     if (nodeId) {
@@ -198,9 +234,98 @@ export const resolveTarget = async (binding: ExecutionBinding, input: ResolveTar
                     attempts: [],
                     warnings,
                     finalSelector: first.selector,
+                    snapshotRequired: snapshotState.snapshotRequired,
+                    snapshotRefreshed: snapshotState.snapshotRefreshed,
+                    snapshotRefreshReason: snapshotState.snapshotRefreshReason,
+                    snapshotId: snapshotState.snapshotId,
+                    snapshotUrl: snapshotState.snapshotUrl,
                 },
             },
         },
+    };
+};
+
+export const resolveNeedsSnapshot = (input: ResolveTargetInput): boolean => {
+    if (input.nodeId) {return true;}
+    const hint = input.resolve?.hint;
+    if (!hint) {return false;}
+    if (hint.target?.nodeId) {return true;}
+    if (hint.target?.primaryDomId) {return true;}
+    if ((hint.target?.sourceDomIds || []).length > 0) {return true;}
+    if (hint.entity?.businessTag || hint.entity?.fieldKey || hint.entity?.actionIntent) {return true;}
+    if (input.resolve?.policy?.allowFuzzy === true) {return true;}
+    if (hint.target?.role || hint.target?.name || hint.target?.text || hint.target?.tag) {return true;}
+    for (const candidate of hint.raw?.locatorCandidates || []) {
+        if (candidate.kind === 'role' || candidate.kind === 'text' || candidate.kind === 'placeholder' || candidate.kind === 'label') {
+            return true;
+        }
+    }
+    return false;
+};
+
+const ensureFreshResolveSnapshot = async (
+    binding: ExecutionBinding,
+    input: ResolveTargetInput,
+    context: ResolveTargetContext,
+): Promise<{
+    ok: boolean;
+    snapshotRequired: boolean;
+    snapshotRefreshed: boolean;
+    snapshotRefreshReason?: 'missing_snapshot' | 'dirty_snapshot' | 'url_changed';
+    snapshotId?: string;
+    snapshotUrl?: string;
+    reason?: string;
+}> => {
+    const snapshotRequired = resolveNeedsSnapshot(input);
+    if (!snapshotRequired) {
+        return { ok: true, snapshotRequired, snapshotRefreshed: false };
+    }
+
+    const latest = getSnapshot(binding);
+    const freshness = readSnapshotSessionFreshness(binding);
+    const currentUrl = safeReadBindingUrl(binding);
+    let refreshReason: 'missing_snapshot' | 'dirty_snapshot' | 'url_changed' | undefined;
+    if (!latest) {
+        refreshReason = 'missing_snapshot';
+    } else if (freshness.dirty) {
+        refreshReason = 'dirty_snapshot';
+    } else if ((latest.snapshotMeta?.pageIdentity?.url || '') !== currentUrl) {
+        refreshReason = 'url_changed';
+    }
+    if (refreshReason) {
+        try {
+            const ensured = context.ensureFreshSnapshot
+                ? await context.ensureFreshSnapshot({
+                      deps: context.deps,
+                      workspaceName: context.workspaceName,
+                      refreshReason: `resolve_target:${refreshReason}:${context.reason}`,
+                  })
+                : await ensureFreshEntityContext(context.deps, context.workspaceName, `resolve_target:${refreshReason}:${context.reason}`);
+            return {
+                ok: true,
+                snapshotRequired,
+                snapshotRefreshed: true,
+                snapshotRefreshReason: refreshReason,
+                snapshotId: ensured.snapshot.snapshotMeta?.snapshotId,
+                snapshotUrl: ensured.snapshot.snapshotMeta?.pageIdentity?.url,
+            };
+        } catch {
+            return {
+                ok: false,
+                snapshotRequired,
+                snapshotRefreshed: false,
+                snapshotRefreshReason: refreshReason,
+                reason: refreshReason,
+            };
+        }
+    }
+
+    return {
+        ok: true,
+        snapshotRequired,
+        snapshotRefreshed: false,
+        snapshotId: latest.snapshotMeta?.snapshotId,
+        snapshotUrl: latest.snapshotMeta?.pageIdentity?.url,
     };
 };
 
@@ -895,3 +1020,10 @@ const isAbsoluteDomSelector = (selector: string): boolean => {
 const normalizeTag = (value: string | undefined): string => normalizeText(value)?.toLowerCase() || '';
 const escapeCssText = (value: string): string => value.replace(/"/g, '\\"');
 const escapeCssIdentifier = (value: string): string => value.replace(/[^A-Za-z0-9_-]/g, '\\$&');
+const safeReadBindingUrl = (binding: ExecutionBinding): string => {
+    try {
+        return normalizeText(binding.page.url()) || '';
+    } catch {
+        return '';
+    }
+};
