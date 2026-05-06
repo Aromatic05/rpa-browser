@@ -13,6 +13,7 @@ const createMockPage = (url: string) => ({
     frames: () => [],
     exposeBinding: async () => {},
     addInitScript: async () => {},
+    waitForTimeout: async () => {},
     evaluate: async () => {},
     goto: async () => {},
     isClosed: () => false,
@@ -32,7 +33,7 @@ test('record.start fails clearly when workspace has no bound page', async () => 
                 workspace: ws as any,
                 workspaceRegistry: registry as any,
             }),
-        /bound page/i,
+        /active tab not found/i,
     );
 });
 

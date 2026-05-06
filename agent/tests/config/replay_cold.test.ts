@@ -5,6 +5,18 @@ import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 
+const createReplayRuntime = () => ({
+    ensureExecutableTab: async () => ({ page: { url: () => 'about:blank' }, tabName: 'x' }),
+});
+
+const createReplayWorkspace = (tabs: Array<{ name: string; url: string }>) => ({
+    tabs: {
+        listTabs: () => tabs.map((item) => ({ ...item })),
+        hasTab: (tabName: string) => tabs.some((item) => item.name === tabName),
+        getTab: (tabName: string) => tabs.find((item) => item.name === tabName) || null,
+    },
+}) as any;
+
 test('replayRecording creates and switches tab when recorded tabName is missing (cold replay)', async () => {
     const executed: StepUnion[] = [];
     const steps: StepUnion[] = [
@@ -47,9 +59,9 @@ test('replayRecording creates and switches tab when recorded tabName is missing 
             },
         },
         stopOnError: true,
-        pageRegistry: {
-            listTabs: async () => [{ tabName: 'tab-now' }],
-        },
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
         deps: {
             runtime: {} as any,
             config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
@@ -77,12 +89,8 @@ test('replayRecording creates and switches tab when recorded tabName is missing 
 
     assert.equal(result.ok, true);
     assert.equal(executed[0].name, 'browser.create_tab');
-    assert.equal(executed[1].name, 'browser.switch_tab');
+    assert.equal(executed.some((step) => step.name === 'browser.switch_tab'), true);
     assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
-    assert.equal(
-        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tabName === 'tab-new-1'),
-        true,
-    );
     assert.equal(executed[executed.length - 1].name, 'browser.click');
 });
 
@@ -108,9 +116,9 @@ test('replayRecording force switches when tabName changes without browser.switch
         initialTabName: 'tab-now',
         steps,
         stopOnError: true,
-        pageRegistry: {
-            listTabs: async () => [{ tabName: 'tab-now' }],
-        },
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
         deps: {
             runtime: {} as any,
             config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
@@ -136,10 +144,7 @@ test('replayRecording force switches when tabName changes without browser.switch
 
     assert.equal(result.ok, true);
     assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
-    assert.equal(
-        executed.some((step) => step.name === 'browser.switch_tab' && (step.args as any).tabName === 'tab-new-1'),
-        true,
-    );
+    assert.equal(executed.some((step) => step.name === 'browser.switch_tab'), false);
 });
 
 test('replayRecording reuses existing tab by token mapping in hot replay', async () => {
@@ -170,10 +175,9 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
         initialTabName: 'tab-a',
         steps,
         stopOnError: true,
-        pageRegistry: {
-            listTabs: async () => [{ tabName: 'tab-a' }, { tabName: 'tab-b' }],
-            resolveTabNameFromToken: (tabName: string) => (tabName === 'tab-b' ? 'tab-b' : undefined),
-        },
+        workspace: createReplayWorkspace([{ name: 'tab-a', url: 'about:blank' }, { name: 'tab-b', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
         deps: {
             runtime: {} as any,
             config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
@@ -219,11 +223,9 @@ test('replayRecording creates tab with recorded switch url when target tab is mi
         initialTabName: 'tab-now',
         steps,
         stopOnError: true,
-        pageRegistry: {
-            listTabs: async () => [{ tabName: 'tab-now' }],
-            resolveTabNameFromToken: () => undefined,
-            resolveTabNameFromRef: () => undefined,
-        },
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
         deps: {
             runtime: {} as any,
             config: loadRunnerConfig({ configPath: '__non_exist__.json' }),

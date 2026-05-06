@@ -345,3 +345,27 @@ test('bindPage with different page for same key replaces binding', () => {
     const binding = bindings.getBinding('ws-1', 't1');
     assert.equal(binding!.page, page2);
 });
+
+test('ensureExecutableTab materializes metadata tab and syncs active binding', async () => {
+    const tabs = createWorkspaceTabs({ getPage: async () => createStubPage({ url: () => 'https://materialized.test' }) });
+    tabs.createMetadataTab({ tabName: 'meta-a', url: 'https://seed.test' });
+    tabs.setActiveTab('meta-a');
+    const workspace = {
+        name: 'ws-materialize',
+        tabs,
+    } as any;
+    const bindings = createExecutionBindings({});
+    const binding = await bindings.ensureExecutableTab({
+        workspace,
+        pageRegistry: {
+            getPage: async () => createStubPage({ url: () => 'https://materialized.test' }),
+        } as any,
+        tabName: 'meta-a',
+        urlHint: 'https://entry.test',
+    });
+    assert.equal(binding.tabName, 'meta-a');
+    assert.equal(workspace.tabs.getTab('meta-a')?.page !== null, true);
+    assert.equal(workspace.tabs.getActiveTab()?.name, 'meta-a');
+    const active = await bindings.resolveBinding('ws-materialize');
+    assert.equal(active.tabName, 'meta-a');
+});

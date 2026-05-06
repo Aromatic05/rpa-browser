@@ -183,7 +183,7 @@ test('WorkspaceRouter does not handle tab.init', async () => {
 });
 
 test('TabsControl rejects tab.init', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.init', { workspaceName: 'ws-1' });
@@ -361,7 +361,7 @@ import { createTabsControl } from '../../src/runtime/workspace/tabs';
 import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
 
 test('TabsControl handles tab.list', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         getPage: async () => {
             throw new Error('not implemented');
@@ -381,7 +381,7 @@ test('TabsControl handles tab.list', async () => {
 });
 
 test('TabsControl handles tab.create', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     let pageCreated = false;
     const tabs = createWorkspaceTabs({
         getPage: async () => {
@@ -404,7 +404,7 @@ test('TabsControl handles tab.create', async () => {
 });
 
 test('TabsControl handles tab.close', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     let pageClosed = false;
     const tabs = createWorkspaceTabs({
         getPage: async () => {
@@ -436,7 +436,7 @@ test('TabsControl handles tab.close', async () => {
 });
 
 test('TabsControl tab.activated returns unsupported', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.activated', { workspaceName: 'ws-1' });
@@ -448,7 +448,7 @@ test('TabsControl tab.activated returns unsupported', async () => {
 });
 
 test('TabsControl unknown tab action returns unsupported', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.unknown', { workspaceName: 'ws-1' });
