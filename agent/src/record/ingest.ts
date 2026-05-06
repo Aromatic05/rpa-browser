@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { recordEvent, recordStep, type RecordingState } from './recording';
+import { appendWorkspaceRecordingEvent, appendWorkspaceRecordingStep, type RecordingState } from './recording';
 import type { RecorderEvent } from './recorder';
 import type { StepUnion } from '../runner/steps/types';
 
@@ -14,27 +14,25 @@ export type RecordPayloadIngestResult = {
     reason?: 'recording_not_enabled';
 };
 
-const resolveEnabledToken = (state: RecordingState, tabName: string): string | null => {
-    const workspaceName = state.tabWorkspaceName.get(tabName);
-    if (!workspaceName) {return null;}
-    const token = state.workspaceUnsavedRecording.get(workspaceName) || `unsaved:${workspaceName}`;
-    return state.recordingEnabled.has(token) ? token : null;
-};
-
 export const ingestRecorderEvent = async (input: {
     state: RecordingState;
+    workspaceName: string;
     event: RecorderEvent;
     page: Page;
     tabName: string;
     navDedupeWindowMs: number;
 }): Promise<RecorderIngestResult> => {
-    const effectiveToken = resolveEnabledToken(input.state, input.tabName);
-    if (!effectiveToken) {
+    const appended = await appendWorkspaceRecordingEvent(
+        input.state,
+        input.workspaceName,
+        input.tabName,
+        input.event,
+        input.navDedupeWindowMs,
+        input.page,
+    );
+    if (!appended.accepted) {
         return { accepted: false, reason: 'recording_not_enabled' };
     }
-
-    const event = effectiveToken === input.tabName ? input.event : { ...input.event, tabName: effectiveToken };
-    await recordEvent(input.state, event, input.navDedupeWindowMs, input.page);
     return { accepted: true };
 };
 
@@ -51,16 +49,20 @@ export const ingestRecordPayload = async (input: {
     workspaceName: string;
     navDedupeWindowMs: number;
 }): Promise<RecordPayloadIngestResult> => {
-    const effectiveToken = resolveEnabledToken(input.state, input.tabName);
-    if (!effectiveToken) {
-        return { accepted: false, mode: 'step', reason: 'recording_not_enabled' };
-    }
-
     if (isRawRecorderEventPayload(input.payload)) {
-        const event = effectiveToken === input.payload.tabName
-            ? input.payload
-            : { ...input.payload, tabName: effectiveToken };
-        await recordEvent(input.state, event, input.navDedupeWindowMs, input.page || undefined);
+        const sourceTabName = (input.payload.tabName || '').trim() || input.tabName;
+        const event = { ...input.payload, tabName: sourceTabName };
+        const appended = await appendWorkspaceRecordingEvent(
+            input.state,
+            input.workspaceName,
+            sourceTabName,
+            event,
+            input.navDedupeWindowMs,
+            input.page || undefined,
+        );
+        if (!appended.accepted) {
+            return { accepted: false, mode: 'raw-event', reason: 'recording_not_enabled' };
+        }
         return { accepted: true, mode: 'raw-event' };
     }
 
@@ -75,11 +77,20 @@ export const ingestRecordPayload = async (input: {
             source: input.payload.meta?.source ?? 'record',
             ts: input.payload.meta?.ts ?? Date.now(),
             workspaceName: input.workspaceName,
-            tabName: effectiveToken,
-            tabRef: input.payload.meta?.tabRef || effectiveToken,
+            tabName: input.payload.meta?.tabName || input.tabName,
+            tabRef: input.payload.meta?.tabRef || input.tabName,
             urlAtRecord: input.payload.meta?.urlAtRecord || currentUrl || undefined,
         },
     };
-    recordStep(input.state, effectiveToken, normalizedStep, input.navDedupeWindowMs);
+    const appended = appendWorkspaceRecordingStep(
+        input.state,
+        input.workspaceName,
+        input.tabName,
+        normalizedStep,
+        input.navDedupeWindowMs,
+    );
+    if (!appended.accepted) {
+        return { accepted: false, mode: 'step', reason: 'recording_not_enabled' };
+    }
     return { accepted: true, mode: 'step' };
 };
