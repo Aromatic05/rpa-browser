@@ -3,6 +3,7 @@ import type { RunStepsDeps } from '../../run_steps';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { resolveTarget } from '../helpers/resolve_target';
+import { isValidStepResolve } from '../resolve_utils';
 
 export const executeBrowserScroll = async (
     step: Step<'browser.scroll'>,
@@ -10,7 +11,7 @@ export const executeBrowserScroll = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
+    const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || isValidStepResolve(step.resolve));
     if (hasTarget) {
         const resolved = await resolveTarget(binding, {
             nodeId: step.args.nodeId,
@@ -20,7 +21,15 @@ export const executeBrowserScroll = async (
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
         if (!scroll.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };
+            const error = mapTraceError(scroll.error);
+            return {
+                stepId: step.id,
+                ok: false,
+                error: {
+                    ...error,
+                    details: { ...(error.details as any), ...(resolved.target.resolution.audit as any) },
+                },
+            };
         }
         if (deps.config.humanPolicy.enabled) {
             const delayMs = pickDelayMs(
