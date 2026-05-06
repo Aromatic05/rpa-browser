@@ -21,6 +21,7 @@ import type { EntityRulesControl } from '../../entity_rules/control';
 import type { RunnerControl } from '../../runner/control';
 import type { TabsControl } from './tabs';
 import type { McpControl } from '../../mcp/control';
+import type { WorkflowControl } from '../../workflow/control';
 
 export type WorkspaceRouterInput = {
     action: Action;
@@ -36,6 +37,7 @@ export type WorkspaceRouterDeps = {
     entityRulesControl: EntityRulesControl;
     runnerControl: RunnerControl;
     mcpControl: McpControl;
+    workflowControl: WorkflowControl;
 };
 
 export type WorkspaceRouter = {
@@ -70,6 +72,10 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
 
         if (action.type.startsWith('mcp.')) {
             return await deps.mcpControl.handle({ action, workspace, workspaceRegistry });
+        }
+
+        if (action.type.startsWith('workflow.')) {
+            return await deps.workflowControl.handle({ action, workspace, workspaceRegistry });
         }
 
         throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);

@@ -241,5 +241,27 @@ export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
     } satisfies WorkflowManifest);
 };
 
+export const copyWorkflowOnFs = (sourceName: string, targetName: string): void => {
+    const sourceDir = workflowRootDir(sourceName);
+    const targetDir = workflowRootDir(targetName);
+    if (!existsDir(sourceDir)) {
+        throw new DslRuntimeError(`workflow not found: ${sourceName}`, 'ERR_WORKFLOW_NOT_FOUND');
+    }
+    if (existsDir(targetDir)) {
+        throw new DslRuntimeError(`workflow already exists: ${targetName}`, 'ERR_WORKFLOW_BAD_ARGS');
+    }
+    fs.cpSync(sourceDir, targetDir, { recursive: true });
+    const copiedManifestPath = workflowManifestPath(targetName);
+    const manifest = readYamlFile<WorkflowManifest>(copiedManifestPath);
+    if (!manifest || typeof manifest !== 'object' || manifest.version !== 1) {
+        throw new DslRuntimeError(`invalid workflow manifest after copy: ${targetName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+    }
+    writeYamlFile(copiedManifestPath, {
+        ...manifest,
+        name: targetName,
+        updatedAt: Date.now(),
+    } satisfies WorkflowManifest);
+};
+
 export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir());
 export const deleteWorkflowFromFs = (workflowName: string): void => removePath(workflowRootDir(workflowName));

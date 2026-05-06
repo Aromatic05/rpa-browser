@@ -57,6 +57,11 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     };
 
     const bootstrapState = async () => {
+        const resetReply = await sendAction({ v: 1, id: crypto.randomUUID(), type: ACTION_TYPES.WORKFLOW_RESET_DEFAULT, payload: {} });
+        if (isFailedReply(resetReply)) {
+            const error = payloadOf(resetReply);
+            throw new Error(`bootstrap.workflow_reset_failed: ${String(error.code || 'UNKNOWN')}:${String(error.message || 'unknown')}`);
+        }
         const reply = await sendAction({ v: 1, id: crypto.randomUUID(), type: ACTION_TYPES.WORKSPACE_LIST, payload: {} });
         if (isFailedReply(reply)) {
             const error = payloadOf(reply);

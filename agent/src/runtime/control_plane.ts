@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { replyAction, type Action } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
-import { createWorkflowOnFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
+import { createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
 import { getLogger } from '../logging/logger';
 
 export type ControlPlaneResult = { reply: Action; events: Action[] };
@@ -13,6 +13,13 @@ export type RuntimeControlInput = {
 };
 
 const randomName = () => crypto.randomUUID();
+const toWorkspaceSummary = (workspace: any) => ({
+    workspaceName: workspace.name,
+    activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
+    tabCount: workspace.tabs.listTabs().length,
+    createdAt: workspace.createdAt,
+    updatedAt: workspace.updatedAt,
+});
 
 export const handleRuntimeControlAction = async (input: RuntimeControlInput): Promise<ControlPlaneResult> => {
     const { action, workspaceRegistry } = input;
@@ -22,13 +29,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             const active = workspaceRegistry.getActiveWorkspace();
             return {
                 reply: replyAction(action, {
-                    workspaces: workspaceRegistry.listWorkspaces().map((workspace: any) => ({
-                        workspaceName: workspace.name,
-                        activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
-                        tabCount: workspace.tabs.listTabs().length,
-                        createdAt: workspace.createdAt,
-                        updatedAt: workspace.updatedAt,
-                    })),
+                    workspaces: workspaceRegistry.listWorkspaces().map((workspace: any) => toWorkspaceSummary(workspace)),
                     activeWorkspaceName: active?.name ?? null,
                 }),
                 events: [],
@@ -100,6 +101,25 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after rename');
             }
             return { reply: replyAction(action, { fromName, toName, workspaceName: workspace.name, renamed: true }), events: [] };
+        }
+        case 'workflow.resetDefault': {
+            deleteWorkflowFromFs('default');
+            const workflow = createWorkflowOnFs('default');
+            workspaceRegistry.removeWorkspace('default');
+            const workspace = workspaceRegistry.createWorkspace('default', workflow);
+            workspaceRegistry.setActiveWorkspace('default');
+            const event: Action = {
+                v: 1,
+                id: crypto.randomUUID(),
+                type: 'workspace.changed',
+                payload: { workspaceName: 'default', activeWorkspaceName: 'default' },
+                at: Date.now(),
+                traceId: action.traceId,
+            };
+            return {
+                reply: replyAction(action, { workspace: toWorkspaceSummary(workspace), activeWorkspaceName: 'default', reset: true }),
+                events: [event],
+            };
         }
         case 'log.ext': {
             const payload = (action.payload ?? {}) as { entries?: Array<{ scope: string; level: string; ts: number; args: unknown[] }> };
