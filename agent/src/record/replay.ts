@@ -8,6 +8,7 @@
 
 import type { RunStepsResult } from '../runner/steps/types';
 import type { StepUnion } from '../runner/steps/types';
+import type { StepResolve } from '../runner/steps/types';
 import type { RunStepsDeps } from '../runner/run_steps';
 import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from './recording';
@@ -28,6 +29,7 @@ type ReplayRequest = {
     initialTabName: string;
     steps: StepUnion[];
     enrichments?: RecordingEnhancementMap;
+    stepResolves?: Record<string, StepResolve>;
     recordingManifest?: RecordingManifest;
     stopOnError: boolean;
     workspace: RuntimeWorkspace;
@@ -96,7 +98,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             ? Math.floor(req.replayOptions.stepDelayMs)
             : 0;
     const runOne = async (step: StepUnion): Promise<RunStepsResult> => {
-        const { pipe, checkpoint } = await runStepList(req.workspaceName, [step], req.deps, { stopOnError: true });
+        const { pipe, checkpoint } = await runStepList(req.workspaceName, [step], req.deps, { stopOnError: true, stepResolves: req.stepResolves });
         const items = pipe.items;
         const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };

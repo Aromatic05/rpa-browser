@@ -56,7 +56,24 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
             .filter((item): item is WorkflowRecording => item !== null),
     save: (value) => {
         const dir = recordingDir(workflowName, value.name);
-        const stepsFile: StepFile = { version: 1, steps: value.steps.map((step) => ({ id: step.id, name: step.name, args: step.args })) as StepFile['steps'] };
+        const stepsFile: StepFile = {
+            version: 1,
+            steps: value.steps.map((step) => ({
+                id: step.id,
+                name: step.name,
+                args: step.args,
+                meta: step.meta
+                    ? {
+                          source: step.meta.source,
+                          ts: step.meta.ts,
+                          workspaceName: step.meta.workspaceName,
+                          tabName: step.meta.tabName,
+                          tabRef: step.meta.tabRef,
+                          urlAtRecord: step.meta.urlAtRecord,
+                      }
+                    : undefined,
+            })) as StepFile['steps'],
+        };
         validateStepFileForSerialization(stepsFile);
         const stepResolveFile: StepResolveFile = { version: 1, resolves: value.stepResolves || {} };
         validateStepResolveFileForSerialization(stepResolveFile);

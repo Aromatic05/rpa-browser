@@ -22,6 +22,7 @@ import { setRecorderRuntimeEnabled, type RecorderEvent } from './recorder';
 import { ingestRecordPayload } from './ingest';
 import { replayRecording, type ReplayEvent, type ReplayOptions } from './replay';
 import type { StepResolve, StepUnion } from '../runner/steps/types';
+import { isValidStepResolve } from '../runner/steps/resolve_utils';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
@@ -168,9 +169,15 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const stepResolves: Record<string, StepResolve> = {};
             if (payload.includeStepResolve === true) {
                 for (const step of bundle.steps) {
-                    if (step.resolve) {
-                        stepResolves[step.id] = step.resolve;
-                    }
+                    const fromEnrichment = bundle.enrichments?.[step.id]
+                        ? {
+                              hint: bundle.enrichments[step.id].resolveHint,
+                              policy: bundle.enrichments[step.id].resolvePolicy,
+                          }
+                        : undefined;
+                    const candidate = fromEnrichment || step.resolve;
+                    if (!isValidStepResolve(candidate)) {continue;}
+                    stepResolves[step.id] = candidate;
                 }
             }
             if (!bundle.manifest?.activeTabRef) {
@@ -243,9 +250,9 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const sourceRecordingName = (payload.recordingName || '').trim();
             const stopOnError = payload.stopOnError ?? true;
 
-            const bundle = (() => {
+            const bundle: ReturnType<typeof getWorkspaceUnsavedRecordingBundle> & { stepResolves?: Record<string, StepResolve> } = (() => {
                 if (!sourceRecordingName) {
-                    return getWorkspaceUnsavedRecordingBundle(services.recordingState, currentWorkspaceName);
+                    return { ...getWorkspaceUnsavedRecordingBundle(services.recordingState, currentWorkspaceName), stepResolves: {} };
                 }
                 const loaded = workspace.workflow.get(sourceRecordingName, RECORDING_DUMMY);
                 if (!loaded || loaded.kind !== 'recording') {
@@ -277,6 +284,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         })),
                     },
                     enrichments: {},
+                    stepResolves: loaded.stepResolves || {},
                 };
             })();
 
@@ -337,6 +345,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         initialTabName,
                         steps: bundle.steps,
                         enrichments: bundle.enrichments,
+                        stepResolves: bundle.stepResolves,
                         recordingManifest: bundle.manifest,
                         stopOnError,
                         replayOptions: services.replayOptions,
@@ -363,6 +372,10 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                             tabName: initialTabName,
                             stepId: firstFailed?.stepId,
                             stepName: failedStep?.name,
+                            confidence: (firstFailed?.error?.details as any)?.confidence,
+                            chosenPath: (firstFailed?.error?.details as any)?.chosenPath,
+                            attempts: (firstFailed?.error?.details as any)?.attempts,
+                            warnings: (firstFailed?.error?.details as any)?.warnings,
                             message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
                             error: firstFailed?.error || replayed.error,
                         });

@@ -671,10 +671,9 @@ const sanitizeSavedManifest = (manifest?: RecordingManifest): SavedRecordingMani
 
 const sanitizeSavedStep = (step: StepUnion): StepUnion => {
     if (!step.meta) {return { ...step };}
-    const { tabName: _dropTabName, ...metaNoToken } = step.meta;
     return {
         ...step,
-        meta: metaNoToken,
+        meta: { ...step.meta },
     };
 };
 

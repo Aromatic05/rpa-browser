@@ -6,6 +6,14 @@ export type SerializedStep<TName extends StepName = StepName> = {
     id: string;
     name: TName;
     args: StepArgsMap[TName];
+    meta?: {
+        source?: string;
+        ts?: number;
+        workspaceName?: string;
+        tabName?: string;
+        tabRef?: string;
+        urlAtRecord?: string;
+    };
 };
 
 export type SerializedStepUnion = {
@@ -58,7 +66,7 @@ export type CheckpointHintFile = {
     hints: Record<string, CheckpointHint>;
 };
 
-const CORE_FORBIDDEN_FIELDS = new Set(['resolve', 'hint', 'rawContext', 'locatorCandidates', 'replayHints', 'meta']);
+const CORE_FORBIDDEN_FIELDS = new Set(['resolve', 'hint', 'rawContext', 'locatorCandidates', 'replayHints']);
 const ACTION_STEP_NAMES = new Set([
     'browser.take_screenshot',
     'browser.click',
