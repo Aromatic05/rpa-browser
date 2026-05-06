@@ -8,12 +8,11 @@ import type { ControlPlaneResult } from '../runtime/control_plane';
 import {
     beginReplay,
     cancelReplay,
-    clearRecording,
+    clearWorkspaceUnsavedRecording,
     endReplay,
     ensureRecorder,
-    getRecordingBundle,
-    listWorkspaceRecordings,
-    startRecording,
+    getWorkspaceUnsavedRecordingBundle,
+    resetWorkspaceUnsavedRecording,
     stopRecording,
     type RecordingState,
 } from './recording';
@@ -45,11 +44,32 @@ const requireWorkspaceName = (action: Action, type: string): string => {
     return workspaceName;
 };
 
+const ensureWorkspaceState = (
+    workspace: WorkspaceRouterInput['workspace'],
+    expected: 'idle' | 'recording' | 'playing',
+    actionType: string,
+) => {
+    const current = workspace.lifecycle.getRecordPlayState();
+    if (current !== expected) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=${expected}, current=${current}`);
+    }
+};
+
+const toSavedRecordingList = (workspace: WorkspaceRouterInput['workspace']) =>
+    workspace.workflow
+        .list(RECORDING_DUMMY)
+        .map((item) => {
+            const loaded = workspace.workflow.get(item.name, RECORDING_DUMMY);
+            const steps = loaded && loaded.kind === 'recording' ? loaded.steps : [];
+            return { recordingName: item.name, stepCount: steps.length };
+        });
+
 export const createRecordControl = (services: RecordControlServices): RecordControl => ({
     handle: async (input) => {
         const { action, workspace } = input;
 
         if (action.type === 'record.start') {
+            ensureWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
             const tabs = workspace.tabs.listTabs();
             for (const tab of tabs) {
@@ -66,11 +86,12 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             }
             const primary = boundTabs[0];
             const primaryPage = primary.page!;
-            await startRecording(services.recordingState, primaryPage, primary.name, services.navDedupeWindowMs, {
-                workspaceName,
-                tabRef: primary.name,
+            const unsavedToken = resetWorkspaceUnsavedRecording(services.recordingState, workspaceName, {
+                entryTabRef: primary.name,
                 entryUrl: primaryPage.url(),
             });
+            workspace.lifecycle.startRecording();
+            services.recordingState.recordingEnabled.add(unsavedToken);
             for (const tab of boundTabs) {
                 if (!tab.page) {continue;}
                 await ensureRecorder(services.recordingState, tab.page, tab.name, services.navDedupeWindowMs);
@@ -80,10 +101,13 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
         }
 
         if (action.type === 'record.stop') {
+            ensureWorkspaceState(workspace, 'recording', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
             const tabs = workspace.tabs.listTabs();
             const firstBoundPage = tabs.find((tab) => Boolean(tab.page))?.page;
-            stopRecording(services.recordingState, '', { workspaceName });
+            const bundle = getWorkspaceUnsavedRecordingBundle(services.recordingState, workspaceName);
+            stopRecording(services.recordingState, bundle.recordingToken, { workspaceName });
+            workspace.lifecycle.stopRecording();
             for (const tab of tabs) {
                 if (!tab.page) {continue;}
                 await setRecorderRuntimeEnabled(tab.page, false);
@@ -93,18 +117,27 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
         if (action.type === 'record.get') {
             const workspaceName = requireWorkspaceName(action, action.type);
-            const bundle = getRecordingBundle(services.recordingState, '', { workspaceName });
+            const bundle = getWorkspaceUnsavedRecordingBundle(services.recordingState, workspaceName);
             return {
-                reply: replyAction(action, { steps: bundle.steps, manifest: bundle.manifest, enrichments: bundle.enrichments }),
+                reply: replyAction(action, {
+                    steps: bundle.steps,
+                    manifest: bundle.manifest,
+                    enrichments: bundle.enrichments,
+                    unsaved: { stepCount: bundle.steps.length },
+                }),
                 events: [],
             };
         }
 
         if (action.type === 'record.save') {
+            ensureWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
             const payload = (action.payload || {}) as { recordingName?: string; includeStepResolve?: boolean };
             const workflow = workspace.workflow;
-            const bundle = getRecordingBundle(services.recordingState, '', { workspaceName });
+            const bundle = getWorkspaceUnsavedRecordingBundle(services.recordingState, workspaceName);
+            if (!bundle.steps.length) {
+                throw new ActionError(ERROR_CODES.ERR_RECORDING_EMPTY, 'unsaved recording is empty');
+            }
             const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
             const stepResolves: Record<string, StepResolve> = {};
             if (payload.includeStepResolve === true) {
@@ -132,16 +165,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 steps: bundle.steps,
                 stepResolves,
             };
-            services.log('[RPA:agent]', 'record.save: saving artifact', {
-                workspaceName,
-                recordingName,
-                stepCount: bundle.steps.length,
-            });
             workflow.save(artifact);
-            services.log('[RPA:agent]', 'record.save: artifact saved', {
-                workspaceName,
-                recordingName,
-            });
             return {
                 reply: replyAction(action, { saved: true, recordingName, workspaceName, stepCount: bundle.steps.length }),
                 events: [],
@@ -149,19 +173,19 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
         }
 
         if (action.type === 'record.load') {
+            ensureWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
             const payload = (action.payload || {}) as { recordingName?: string };
-            const workflow = workspace.workflow;
-            const recordingName = (payload.recordingName || '').trim() || workflow.list(RECORDING_DUMMY)[0]?.name || '';
+            const recordingName = (payload.recordingName || '').trim();
             if (!recordingName) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'record.load requires recordingName or existing records');
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'record.load requires recordingName');
             }
-            const loaded = workflow.get(recordingName, RECORDING_DUMMY);
+            const loaded = workspace.workflow.get(recordingName, RECORDING_DUMMY);
             if (!loaded || loaded.kind !== 'recording') {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `recording not found: ${recordingName}`);
+                throw new ActionError(ERROR_CODES.ERR_RECORDING_NOT_FOUND, `recording not found: ${recordingName}`);
             }
-            const recordingToken = crypto.randomUUID();
             const now = Date.now();
+            const token = resetWorkspaceUnsavedRecording(services.recordingState, workspaceName);
             const steps: StepUnion[] = loaded.steps.map((step) => ({
                 id: step.id,
                 name: step.name,
@@ -169,10 +193,10 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 meta: { source: 'record', ts: now, workspaceName },
                 resolve: loaded.stepResolves?.[step.id],
             })) as StepUnion[];
-            services.recordingState.recordings.set(recordingToken, steps);
-            services.recordingState.recordingEnhancements.set(recordingToken, {});
-            services.recordingState.recordingManifests.set(recordingToken, {
-                recordingToken,
+            services.recordingState.recordings.set(token, steps);
+            services.recordingState.recordingEnhancements.set(token, {});
+            services.recordingState.recordingManifests.set(token, {
+                recordingToken: token,
                 workspaceName,
                 entryUrl: typeof loaded.recording.entryUrl === 'string' ? loaded.recording.entryUrl : undefined,
                 startedAt: now,
@@ -185,47 +209,82 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     lastSeenAt: now,
                 })),
             });
-            services.recordingState.workspaceLatestRecording.set(workspaceName, recordingToken);
             return {
-                reply: replyAction(action, { imported: true, recordingName, stepCount: steps.length, workspaceName, recordingToken }),
+                reply: replyAction(action, { imported: true, recordingName, stepCount: steps.length, workspaceName }),
                 events: [],
             };
         }
 
         if (action.type === 'record.clear') {
+            ensureWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
-            clearRecording(services.recordingState, '', { workspaceName });
+            clearWorkspaceUnsavedRecording(services.recordingState, workspaceName);
             return { reply: replyAction(action, { cleared: true }), events: [] };
         }
 
         if (action.type === 'record.list') {
-            const recordings = listWorkspaceRecordings(services.recordingState);
-            return { reply: replyAction(action, { recordings }), events: [] };
+            const workspaceName = requireWorkspaceName(action, action.type);
+            const unsaved = getWorkspaceUnsavedRecordingBundle(services.recordingState, workspaceName);
+            const recordings = toSavedRecordingList(workspace);
+            return { reply: replyAction(action, { recordings, unsaved: { stepCount: unsaved.steps.length } }), events: [] };
         }
 
         if (action.type === 'play.stop') {
+            ensureWorkspaceState(workspace, 'playing', action.type);
             const activeTab = workspace.tabs.getActiveTab();
             if (!activeTab) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
             }
             cancelReplay(services.recordingState, activeTab.name);
+            workspace.lifecycle.stopPlaying();
             return { reply: replyAction(action, { stopped: true }), events: [] };
         }
 
         if (action.type === 'play.start') {
-            const payload = (action.payload || {}) as { stopOnError?: boolean };
+            ensureWorkspaceState(workspace, 'idle', action.type);
+            const payload = (action.payload || {}) as { stopOnError?: boolean; recordingName?: string };
             const currentTab = workspace.tabs.getActiveTab();
             if (!currentTab) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
             }
             const currentWorkspaceName = workspace.name;
-            const bundle = getRecordingBundle(services.recordingState, currentTab.name, { workspaceName: currentWorkspaceName });
-            const steps = bundle.steps;
+            const sourceRecordingName = (payload.recordingName || '').trim();
             const stopOnError = payload.stopOnError ?? true;
-            const replayWorkspaceName = bundle.manifest?.workspaceName || currentWorkspaceName;
-            if (replayWorkspaceName !== currentWorkspaceName) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'recording workspace mismatch');
+
+            const bundle = (() => {
+                if (!sourceRecordingName) {
+                    return getWorkspaceUnsavedRecordingBundle(services.recordingState, currentWorkspaceName);
+                }
+                const loaded = workspace.workflow.get(sourceRecordingName, RECORDING_DUMMY);
+                if (!loaded || loaded.kind !== 'recording') {
+                    throw new ActionError(ERROR_CODES.ERR_RECORDING_NOT_FOUND, `recording not found: ${sourceRecordingName}`);
+                }
+                return {
+                    recordingToken: `saved:${sourceRecordingName}`,
+                    steps: loaded.steps,
+                    manifest: {
+                        recordingToken: `saved:${sourceRecordingName}`,
+                        workspaceName: currentWorkspaceName,
+                        entryUrl: loaded.recording.entryUrl,
+                        startedAt: loaded.recording.createdAt || Date.now(),
+                        tabs: (Array.isArray(loaded.recording.tabs) ? loaded.recording.tabs : []).map((tab) => ({
+                            tabName: tab.tabName || 'main',
+                            tabRef: tab.tabName || 'main',
+                            firstSeenUrl: tab.url,
+                            lastSeenUrl: tab.url,
+                            firstSeenAt: Date.now(),
+                            lastSeenAt: Date.now(),
+                        })),
+                    },
+                    enrichments: {},
+                };
+            })();
+
+            if (!bundle.steps.length) {
+                throw new ActionError(ERROR_CODES.ERR_RECORDING_EMPTY, 'recording is empty');
             }
+
+            const replayWorkspaceName = currentWorkspaceName;
             const initialTabName = currentTab.name;
 
             if (!currentTab.page) {
@@ -238,6 +297,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 } catch {}
             }
 
+            workspace.lifecycle.startPlaying();
             beginReplay(services.recordingState, currentTab.name);
             const emitPlayEvent = (type: string, payloadData: Record<string, unknown>) => {
                 services.emit?.({
@@ -273,7 +333,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     const replayed = await replayRecording({
                         workspaceName: replayWorkspaceName,
                         initialTabName,
-                        steps,
+                        steps: bundle.steps,
                         enrichments: bundle.enrichments,
                         recordingManifest: bundle.manifest,
                         stopOnError,
@@ -321,13 +381,23 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     });
                 } finally {
                     endReplay(services.recordingState, currentTab.name);
+                    if (workspace.lifecycle.getRecordPlayState() === 'playing') {
+                        workspace.lifecycle.stopPlaying();
+                    }
                 }
             })();
 
             return {
                 reply: replyAction(
                     action,
-                    { started: true, workspaceName: replayWorkspaceName, tabName: initialTabName, stepCount: steps.length, stopOnError },
+                    {
+                        started: true,
+                        workspaceName: replayWorkspaceName,
+                        tabName: initialTabName,
+                        stepCount: bundle.steps.length,
+                        stopOnError,
+                        source: sourceRecordingName || 'unsaved',
+                    },
                     ACTION_TYPES.PLAY_STARTED,
                 ),
                 events: [],

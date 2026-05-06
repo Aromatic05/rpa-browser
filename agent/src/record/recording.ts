@@ -72,6 +72,7 @@ export type RecordingState = {
     recordingEnhancements: Map<string, RecordingEnhancementMap>;
     recordingManifests: Map<string, RecordingManifest>;
     workspaceLatestRecording: Map<string, string>;
+    workspaceUnsavedRecording: Map<string, string>;
     workspaceSnapshots: Map<string, WorkspaceSavedSnapshot>;
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
@@ -99,6 +100,7 @@ export const createRecordingState = (): RecordingState => ({
     recordingEnhancements: new Map(),
     recordingManifests: new Map(),
     workspaceLatestRecording: new Map(),
+    workspaceUnsavedRecording: new Map(),
     workspaceSnapshots: new Map(),
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
@@ -107,6 +109,62 @@ export const createRecordingState = (): RecordingState => ({
     replaying: new Set(),
     replayCancel: new Set(),
 });
+
+const unsavedRecordingToken = (workspaceName: string): string => `unsaved:${workspaceName}`;
+
+export const resetWorkspaceUnsavedRecording = (
+    state: RecordingState,
+    workspaceName: string,
+    seed?: { entryTabRef?: string; entryUrl?: string },
+): string => {
+    const token = unsavedRecordingToken(workspaceName);
+    state.workspaceUnsavedRecording.set(workspaceName, token);
+    state.recordings.set(token, []);
+    state.recordingEnhancements.delete(token);
+    state.recordingManifests.set(token, {
+        recordingToken: token,
+        workspaceName,
+        entryTabRef: seed?.entryTabRef,
+        entryUrl: seed?.entryUrl,
+        startedAt: Date.now(),
+        tabs: [],
+    });
+    state.lastNavigateTs.set(token, 0);
+    state.lastClickTs.set(token, 0);
+    state.lastScrollY.set(token, 0);
+    state.recordSnapshotCache.delete(token);
+    return token;
+};
+
+export const getWorkspaceUnsavedRecordingBundle = (
+    state: RecordingState,
+    workspaceName: string,
+): {
+    recordingToken: string;
+    steps: StepUnion[];
+    manifest: RecordingManifest | undefined;
+    enrichments: RecordingEnhancementMap;
+} => {
+    const token = state.workspaceUnsavedRecording.get(workspaceName) || unsavedRecordingToken(workspaceName);
+    return {
+        recordingToken: token,
+        steps: state.recordings.get(token) || [],
+        manifest: state.recordingManifests.get(token),
+        enrichments: getRecordingEnhancements(state, token),
+    };
+};
+
+export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceName: string): void => {
+    const token = state.workspaceUnsavedRecording.get(workspaceName) || unsavedRecordingToken(workspaceName);
+    state.workspaceUnsavedRecording.set(workspaceName, token);
+    state.recordings.set(token, []);
+    state.recordingEnhancements.delete(token);
+    state.recordingManifests.delete(token);
+    state.lastNavigateTs.set(token, 0);
+    state.lastClickTs.set(token, 0);
+    state.lastScrollY.set(token, 0);
+    state.recordSnapshotCache.delete(token);
+};
 
 const resolveSingleRecordingToken = (
     state: RecordingState,
