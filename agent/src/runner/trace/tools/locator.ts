@@ -47,6 +47,34 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
         return result;
     },
 
+    'trace.locator.highlight': async (args: LocatorTarget & {
+        highlightMs: number;
+        candidateIndex: number;
+        stepId: string;
+        stepName: string;
+    }) =>
+        await base.run('trace.locator.highlight', args, async () => {
+            const locator = await resolveLocator(base, args);
+            await locator.evaluate(async (node, ms) => {
+                const element = node as HTMLElement | null;
+                if (!element) {
+                    throw new Error('highlight target is not an element');
+                }
+                const prevOutline = element.style.outline;
+                const prevOutlineOffset = element.style.outlineOffset;
+                const prevBoxShadow = element.style.boxShadow;
+                element.style.outline = '2px solid #ff7a00';
+                element.style.outlineOffset = '2px';
+                element.style.boxShadow = '0 0 0 4px rgba(255,122,0,0.32)';
+                await new Promise<void>((resolve) => {
+                    window.setTimeout(() => resolve(), Math.max(0, Math.floor(ms)));
+                });
+                element.style.outline = prevOutline;
+                element.style.outlineOffset = prevOutlineOffset;
+                element.style.boxShadow = prevBoxShadow;
+            }, args.highlightMs);
+        }),
+
     'trace.locator.click': async (args: LocatorTarget & {
         timeout?: number;
         button?: 'left' | 'right' | 'middle';

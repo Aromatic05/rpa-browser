@@ -59,6 +59,12 @@ export type BrowserAutomationTools = {
     'trace.a11y.resolveByNodeId': (args: { a11yNodeId: string }) => Promise<ToolResult<{ a11yNodeId: string }>>;
     'trace.locator.waitForVisible': (args: TraceLocatorTarget & { timeout?: number }) => Promise<ToolResult>;
     'trace.locator.scrollIntoView': (args: TraceLocatorTarget) => Promise<ToolResult>;
+    'trace.locator.highlight': (args: TraceLocatorTarget & {
+        highlightMs: number;
+        candidateIndex: number;
+        stepId: string;
+        stepName: string;
+    }) => Promise<ToolResult>;
     'trace.locator.click': (args: TraceLocatorTarget & {
         timeout?: number;
         button?: 'left' | 'right' | 'middle';

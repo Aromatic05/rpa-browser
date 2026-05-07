@@ -27,6 +27,7 @@ export type TraceOpName =
     | 'trace.a11y.resolveByNodeId'
     | 'trace.locator.waitForVisible'
     | 'trace.locator.scrollIntoView'
+    | 'trace.locator.highlight'
     | 'trace.locator.click'
     | 'trace.locator.focus'
     | 'trace.locator.fill'
