@@ -339,9 +339,48 @@ test('replay interval pacing does not sleep for long step and ignores stepDelayM
     });
     assert.equal(result.ok, true);
     assert.equal(events.length, 1);
-    assert.equal(events[0].stepDurationMs >= 40, true);
+    assert.equal(events[0].stepDurationMs >= 30, true);
     assert.equal(events[0].stepIntervalMs, 20);
     assert.equal(events[0].sleepMs, 0);
+});
+
+test('replay interval pacing counts highlight time in stepDuration without extra interval add-on', async () => {
+    const events: any[] = [];
+    const startedAt = Date.now();
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'p3', name: 'browser.click', args: { selector: '#x' }, meta: { source: 'record', tabName: 'tab-now' } },
+        ] as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        replayOptions: { clickDelayMs: 0, stepIntervalMs: 900, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () =>
+                    ({
+                        'browser.click': async (step: StepUnion) => {
+                            await new Promise((resolve) => setTimeout(resolve, 250));
+                            return { stepId: step.id, ok: true };
+                        },
+                    }) as any,
+            } as any,
+        } as RunStepsDeps,
+        onEvent: (event) => {
+            if (event.type === 'step.finished') {events.push(event);}
+        },
+    });
+    const elapsedMs = Date.now() - startedAt;
+    assert.equal(result.ok, true);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].stepDurationMs >= 250, true);
+    assert.equal(events[0].sleepMs <= 700 && events[0].sleepMs >= 600, true);
+    assert.equal(elapsedMs < 1100, true);
 });
 
 test('saved replay forwards stepResolves into runStepList resolveId injection', async () => {

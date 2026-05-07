@@ -11,10 +11,16 @@ import { executeBrowserPressKey, normalizeBrowserPressKey } from '../../../src/r
 import { executeBrowserSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
 import { executeBrowserMouse } from '../../../src/runner/steps/executors/mouse';
 import { executeBrowserGetContent } from '../../../src/runner/steps/executors/get_content';
+import { executeBrowserScroll } from '../../../src/runner/steps/executors/scroll';
+import { executeBrowserHover } from '../../../src/runner/steps/executors/hover';
 import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
 import { setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
 
 const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unknown> = {}): RunStepsDeps => {
+    const traceToolsWithDefaults = {
+        'trace.locator.highlight': async () => ({ ok: true }),
+        ...traceTools,
+    };
     const pageWithDefaults = {
         waitForLoadState: async () => undefined,
         evaluate: async () => 'domcontentloaded',
@@ -24,7 +30,7 @@ const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unkno
         workspaceName: 'ws1',
         tabName: 'tab1',
         page: pageWithDefaults as any,
-        traceTools,
+        traceTools: traceToolsWithDefaults,
         traceCtx: { cache: { ...cache } },
     };
     return {
@@ -130,6 +136,10 @@ test('click(resolve hint) resolves then scrolls/waits/clicks', async () => {
             calls.push('trace.locator.waitForVisible');
             return { ok: true };
         },
+        'trace.locator.highlight': async () => {
+            calls.push('trace.locator.highlight');
+            return { ok: true };
+        },
         'trace.locator.click': async () => {
             calls.push('trace.locator.click');
             return { ok: true };
@@ -148,6 +158,7 @@ test('click(resolve hint) resolves then scrolls/waits/clicks', async () => {
     assert.deepEqual(calls, [
         'trace.locator.waitForVisible',
         'trace.locator.scrollIntoView',
+        'trace.locator.highlight',
         'trace.locator.click',
     ]);
 });
@@ -527,12 +538,64 @@ test('click returns structured error when page readiness wait fails', async () =
     assert.equal(typeof (result.error?.details as any)?.pageReadyWaitMs, 'number');
 });
 
+test('click highlight failure falls through to next candidate', async () => {
+    const calls: Array<{ name: string; selector?: string; candidateIndex?: number }> = [];
+    const deps = createDeps({
+        'trace.locator.waitForVisible': async (args: any) => {
+            calls.push({ name: 'wait', selector: args.selector });
+            return { ok: true };
+        },
+        'trace.locator.scrollIntoView': async (args: any) => {
+            calls.push({ name: 'scroll', selector: args.selector });
+            return { ok: true };
+        },
+        'trace.locator.highlight': async (args: any) => {
+            calls.push({ name: 'highlight', selector: args.selector, candidateIndex: args.candidateIndex });
+            if (args.candidateIndex === 0) {
+                return { ok: false, error: { code: 'ERR_TIMEOUT', message: 'highlight failed' } };
+            }
+            return { ok: true };
+        },
+        'trace.locator.click': async (args: any) => {
+            calls.push({ name: 'click', selector: args.selector, candidateIndex: args.candidateIndex });
+            return { ok: true };
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 's2g',
+        name: 'browser.click',
+        args: {},
+        resolve: {
+            hint: {
+                raw: {
+                    locatorCandidates: [
+                        { kind: 'css', selector: '#first' },
+                        { kind: 'css', selector: '#second' },
+                    ],
+                },
+            },
+            policy: { targetPath: 'resolve.hint.raw.css' },
+        },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.equal(calls.some((item) => item.name === 'click' && item.candidateIndex === 0), false);
+    assert.equal(calls.some((item) => item.name === 'click' && item.candidateIndex === 1), true);
+});
+
 test('fill uses trace.locator.fill', async () => {
     const calls: string[] = [];
     const traceTools = {
         'trace.locator.scrollIntoView': async () => ({ ok: true }),
         'trace.locator.waitForVisible': async () => ({ ok: true }),
-        'trace.locator.focus': async () => ({ ok: true }),
+        'trace.locator.highlight': async () => {
+            calls.push('trace.locator.highlight');
+            return { ok: true };
+        },
+        'trace.locator.focus': async () => {
+            calls.push('trace.locator.focus');
+            return { ok: true };
+        },
         'trace.locator.fill': async () => {
             calls.push('trace.locator.fill');
             return { ok: true };
@@ -547,7 +610,75 @@ test('fill uses trace.locator.fill', async () => {
 
     const result = await executeBrowserFill(step, deps, 'ws1');
     assert.equal(result.ok, true);
-    assert.deepEqual(calls, ['trace.locator.fill']);
+    assert.deepEqual(calls, ['trace.locator.highlight', 'trace.locator.focus', 'trace.locator.fill']);
+});
+
+test('hover highlights before hover action', async () => {
+    const calls: string[] = [];
+    const traceTools = {
+        'trace.locator.scrollIntoView': async () => ({ ok: true }),
+        'trace.locator.waitForVisible': async () => ({ ok: true }),
+        'trace.locator.highlight': async () => {
+            calls.push('trace.locator.highlight');
+            return { ok: true };
+        },
+        'trace.locator.hover': async () => {
+            calls.push('trace.locator.hover');
+            return { ok: true };
+        },
+    };
+    const deps = createDeps(traceTools);
+    const step: Step<'browser.hover'> = {
+        id: 's3-hover',
+        name: 'browser.hover',
+        args: { selector: '#menu' },
+    };
+    const result = await executeBrowserHover(step, deps, 'ws1');
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls, ['trace.locator.highlight', 'trace.locator.hover']);
+});
+
+test('target scroll highlights and page scroll does not highlight', async () => {
+    const targetCalls: string[] = [];
+    const targetDeps = createDeps({
+        'trace.locator.highlight': async () => {
+            targetCalls.push('trace.locator.highlight');
+            return { ok: true };
+        },
+        'trace.locator.scrollIntoView': async () => {
+            targetCalls.push('trace.locator.scrollIntoView');
+            return { ok: true };
+        },
+    });
+    const targetStep: Step<'browser.scroll'> = {
+        id: 's-scroll-target',
+        name: 'browser.scroll',
+        args: { selector: '#panel' },
+    };
+    const targetResult = await executeBrowserScroll(targetStep, targetDeps, 'ws1');
+    assert.equal(targetResult.ok, true);
+    assert.deepEqual(targetCalls, ['trace.locator.highlight', 'trace.locator.scrollIntoView']);
+
+    const pageCalls: string[] = [];
+    const pageDeps = createDeps({
+        'trace.page.scrollBy': async () => {
+            pageCalls.push('trace.page.scrollBy');
+            return { ok: true };
+        },
+        'trace.locator.highlight': async () => {
+            pageCalls.push('trace.locator.highlight');
+            return { ok: true };
+        },
+    });
+    const pageStep: Step<'browser.scroll'> = {
+        id: 's-scroll-page',
+        name: 'browser.scroll',
+        args: { direction: 'down', amount: 200 },
+    };
+    const pageResult = await executeBrowserScroll(pageStep, pageDeps, 'ws1');
+    assert.equal(pageResult.ok, true);
+    assert.equal(pageCalls.includes('trace.locator.highlight'), false);
+    assert.equal(pageCalls.includes('trace.page.scrollBy'), true);
 });
 
 test('select_option validates against selected labels after action', async () => {
