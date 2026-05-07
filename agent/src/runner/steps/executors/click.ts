@@ -65,6 +65,7 @@ export const executeBrowserClick = async (
     const visibleTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
     const pageReadyTimeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs;
     const candidateClickTimeoutMs = deps.config.waitPolicy.candidateClickTimeoutMs;
+    const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     const hardTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.interactionTimeoutMs;
 
     return await runWithHardTimeout(step.id, hardTimeoutMs, async () => {
@@ -172,6 +173,21 @@ export const executeBrowserClick = async (
                 continue;
             }
             pushAttempt(attempts, candidate, 'scrollIntoView', true);
+
+            const highlight = await binding.traceTools['trace.locator.highlight']({
+                selector: candidate.selector,
+                highlightMs: highlightBeforeActionMs,
+                candidateIndex,
+                stepId: step.id,
+                stepName: step.name,
+            });
+            if (!highlight.ok) {
+                const error = mapTraceError(highlight.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
+                lastError = error;
+                pushAttempt(attempts, candidate, 'highlight', false, { code: error.code, message: error.message });
+                continue;
+            }
+            pushAttempt(attempts, candidate, 'highlight', true);
 
             const count = step.args.options?.double ? 2 : 1;
             let actionError: StepResult['error'] | undefined;

@@ -53,10 +53,12 @@ export const executeBrowserFill = async (
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     const attempts: ResolveAuditAttempt[] = [];
     let lastError: StepResult['error'] | undefined;
 
-    for (const candidate of resolved.target.candidates) {
+    for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
+        const candidate = resolved.target.candidates[candidateIndex];
         const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: candidate.selector, timeout });
         if (!visible.ok) {
             const error = mapTraceError(visible.error);
@@ -74,6 +76,21 @@ export const executeBrowserFill = async (
             continue;
         }
         pushAttempt(attempts, candidate, 'scrollIntoView', true);
+
+        const highlight = await binding.traceTools['trace.locator.highlight']({
+            selector: candidate.selector,
+            highlightMs: highlightBeforeActionMs,
+            candidateIndex,
+            stepId: step.id,
+            stepName: step.name,
+        });
+        if (!highlight.ok) {
+            const error = mapTraceError(highlight.error);
+            lastError = error;
+            pushAttempt(attempts, candidate, 'highlight', false, { code: error.code, message: error.message });
+            continue;
+        }
+        pushAttempt(attempts, candidate, 'highlight', true);
 
         const focus = await binding.traceTools['trace.locator.focus']({ selector: candidate.selector });
         if (!focus.ok) {

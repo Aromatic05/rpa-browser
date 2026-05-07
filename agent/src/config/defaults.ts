@@ -14,6 +14,7 @@ export const defaultRunnerConfig: RunnerConfig = {
         visibleTimeoutMs: 5000,
         pageReadyTimeoutMs: 1500,
         candidateClickTimeoutMs: 800,
+        highlightBeforeActionMs: 250,
         settleTimeoutMs: 800,
     },
     retryPolicy: {

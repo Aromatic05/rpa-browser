@@ -77,6 +77,7 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['waitPolicy', 'visibleTimeoutMs'], envNumber('RUNNER_VISIBLE_TIMEOUT_MS'));
     set(['waitPolicy', 'pageReadyTimeoutMs'], envNumber('RUNNER_PAGE_READY_TIMEOUT_MS'));
     set(['waitPolicy', 'candidateClickTimeoutMs'], envNumber('RUNNER_CANDIDATE_CLICK_TIMEOUT_MS'));
+    set(['waitPolicy', 'highlightBeforeActionMs'], envNumber('RUNNER_HIGHLIGHT_BEFORE_ACTION_MS'));
     set(['waitPolicy', 'settleTimeoutMs'], envNumber('RUNNER_SETTLE_TIMEOUT_MS'));
     set(['retryPolicy', 'enabled'], envBool('RUNNER_RETRY_ENABLED'));
     set(['retryPolicy', 'maxAttempts'], envNumber('RUNNER_RETRY_MAX_ATTEMPTS'));

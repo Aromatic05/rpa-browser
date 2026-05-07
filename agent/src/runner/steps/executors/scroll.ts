@@ -8,6 +8,7 @@ import { isValidStepResolve } from '../resolve_utils';
 const pushAttempt = (
     attempts: ResolveAuditAttempt[],
     candidate: TargetCandidate,
+    stage: ResolveAuditAttempt['stage'],
     ok: boolean,
     error?: { code?: string; message?: string },
 ) => {
@@ -17,7 +18,7 @@ const pushAttempt = (
         source: candidate.source,
         confidence: candidate.confidence,
         ok,
-        stage: 'scrollIntoView',
+        stage,
         errorCode: error?.code,
         errorMessage: error?.message,
     });
@@ -44,17 +45,33 @@ export const executeBrowserScroll = async (
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
+        const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
         const attempts: ResolveAuditAttempt[] = [];
         let lastError: StepResult['error'] | undefined;
-        for (const candidate of resolved.target.candidates) {
+        for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
+            const candidate = resolved.target.candidates[candidateIndex];
+            const highlight = await binding.traceTools['trace.locator.highlight']({
+                selector: candidate.selector,
+                highlightMs: highlightBeforeActionMs,
+                candidateIndex,
+                stepId: step.id,
+                stepName: step.name,
+            });
+            if (!highlight.ok) {
+                const error = mapTraceError(highlight.error);
+                lastError = error;
+                pushAttempt(attempts, candidate, 'highlight', false, { code: error.code, message: error.message });
+                continue;
+            }
+            pushAttempt(attempts, candidate, 'highlight', true);
             const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
             if (!scroll.ok) {
                 const error = mapTraceError(scroll.error);
                 lastError = error;
-                pushAttempt(attempts, candidate, false, { code: error.code, message: error.message });
+                pushAttempt(attempts, candidate, 'scrollIntoView', false, { code: error.code, message: error.message });
                 continue;
             }
-            pushAttempt(attempts, candidate, true);
+            pushAttempt(attempts, candidate, 'scrollIntoView', true);
             if (deps.config.humanPolicy.enabled) {
                 const delayMs = pickDelayMs(
                     deps.config.humanPolicy.scrollDelayMsRange.min,

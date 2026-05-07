@@ -36,7 +36,7 @@ export type ResolveAuditAttempt = {
     source: string;
     confidence: number;
     ok: boolean;
-    stage: 'waitForVisible' | 'scrollIntoView' | 'action' | 'resolve';
+    stage: 'waitForVisible' | 'scrollIntoView' | 'highlight' | 'action' | 'resolve';
     errorCode?: string;
     errorMessage?: string;
 };

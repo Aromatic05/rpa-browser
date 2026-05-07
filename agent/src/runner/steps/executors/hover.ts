@@ -24,27 +24,47 @@ export const executeBrowserHover = async (
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
-    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
-    if (!scroll.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };
+    const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
+    let lastError: StepResult['error'] | undefined;
+    for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
+        const candidate = resolved.target.candidates[candidateIndex];
+        const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
+        if (!scroll.ok) {
+            lastError = mapTraceError(scroll.error);
+            continue;
+        }
+        const visible = await binding.traceTools['trace.locator.waitForVisible']({
+            selector: candidate.selector,
+            timeout,
+        });
+        if (!visible.ok) {
+            lastError = mapTraceError(visible.error);
+            continue;
+        }
+        const highlight = await binding.traceTools['trace.locator.highlight']({
+            selector: candidate.selector,
+            highlightMs: highlightBeforeActionMs,
+            candidateIndex,
+            stepId: step.id,
+            stepName: step.name,
+        });
+        if (!highlight.ok) {
+            lastError = mapTraceError(highlight.error);
+            continue;
+        }
+        const hover = await binding.traceTools['trace.locator.hover']({ selector: candidate.selector });
+        if (!hover.ok) {
+            lastError = mapTraceError(hover.error);
+            continue;
+        }
+        if (deps.config.humanPolicy.enabled) {
+            const delayMs = pickDelayMs(
+                deps.config.humanPolicy.clickDelayMsRange.min,
+                deps.config.humanPolicy.clickDelayMsRange.max,
+            );
+            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
+        }
+        return { stepId: step.id, ok: true };
     }
-    const visible = await binding.traceTools['trace.locator.waitForVisible']({
-        selector: resolved.target.selector,
-        timeout,
-    });
-    if (!visible.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
-    }
-    const hover = await binding.traceTools['trace.locator.hover']({ selector: resolved.target.selector });
-    if (!hover.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(hover.error) };
-    }
-    if (deps.config.humanPolicy.enabled) {
-        const delayMs = pickDelayMs(
-            deps.config.humanPolicy.clickDelayMsRange.min,
-            deps.config.humanPolicy.clickDelayMsRange.max,
-        );
-        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
-    }
-    return { stepId: step.id, ok: true };
+    return { stepId: step.id, ok: false, error: lastError || { code: 'ERR_NOT_FOUND', message: 'no hover target candidate matched' } };
 };

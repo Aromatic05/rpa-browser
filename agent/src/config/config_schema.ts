@@ -22,6 +22,8 @@ export type WaitPolicy = {
     pageReadyTimeoutMs: number;
     /** click 候选单次尝试超时 */
     candidateClickTimeoutMs: number;
+    /** action 前目标高亮时长 */
+    highlightBeforeActionMs: number;
     /** 稳定等待（页面 settle） */
     settleTimeoutMs: number;
 };
