@@ -1,6 +1,7 @@
 import type { SnapshotResult } from './executors/snapshot/core/types';
 import { normalizeText } from './executors/snapshot/core/runtime_store';
 import type { StepResolve } from './types';
+import { normalizeStepResolve } from './resolve_utils';
 
 type ResolveBuilderCandidate = {
     nodeId?: string;
@@ -11,8 +12,6 @@ type ResolveBuilderCandidate = {
     confidence: number;
     reason: string[];
 };
-
-const normalize = (value: string | undefined): string => normalizeText(value)?.toLowerCase() || '';
 
 export const buildResolveFromSnapshotCandidate = (input: {
     snapshot?: SnapshotResult;
@@ -25,14 +24,15 @@ export const buildResolveFromSnapshotCandidate = (input: {
     const { snapshot, candidate, rawSelector, rawLocatorCandidates, source } = input;
     const warnings = input.warnings || [];
     const isLowConfidenceRawOnly = warnings.includes('LOW_CONFIDENCE_RAW_ONLY');
-    const preferRawSelector = source === 'record_enrichment' && Boolean(rawSelector);
     const nodeId = candidate.nodeId || '';
     const locator = nodeId ? snapshot?.locatorIndex[nodeId] : undefined;
     const attrs = nodeId ? snapshot?.attrIndex[nodeId] : undefined;
     const bbox = nodeId ? snapshot?.bboxIndex[nodeId] : undefined;
     const directQuery = locator?.direct?.kind === 'css' ? locator.direct.query : undefined;
     const directFallback = locator?.direct?.fallback;
-    const directSelector = preferRawSelector ? rawSelector : (directQuery || candidate.selector || rawSelector);
+    const directSelector = source === 'record_enrichment'
+        ? (rawSelector || candidate.selector || directQuery)
+        : (directQuery || candidate.selector || rawSelector);
     const mergedCandidates = [
         ...(rawLocatorCandidates || []),
         ...(directSelector ? [{ kind: 'css', selector: directSelector, note: `${source} preferred selector` }] : []),
@@ -43,7 +43,7 @@ export const buildResolveFromSnapshotCandidate = (input: {
         ...(candidate.text ? [{ kind: 'text', text: candidate.text, exact: true, note: `${source} text locator` }] : []),
     ] as NonNullable<NonNullable<StepResolve['hint']>['raw']>['locatorCandidates'];
 
-    return {
+    const resolve: StepResolve = {
         hint: {
             target: {
                 nodeId: isLowConfidenceRawOnly ? undefined : candidate.nodeId,
@@ -74,7 +74,7 @@ export const buildResolveFromSnapshotCandidate = (input: {
             },
             raw: {
                 selector: rawSelector || directSelector,
-                locatorCandidates: mergedCandidates.length > 0 ? dedupeLocatorCandidates(mergedCandidates) : undefined,
+                locatorCandidates: mergedCandidates.length > 0 ? mergedCandidates : undefined,
                 targetHint: normalizeText([candidate.role, candidate.name, candidate.text].filter(Boolean).join(' > ')),
             },
             capture: {
@@ -91,26 +91,5 @@ export const buildResolveFromSnapshotCandidate = (input: {
             allowIndexDrift: true,
         },
     };
-};
-
-const dedupeLocatorCandidates = (
-    candidates: NonNullable<NonNullable<StepResolve['hint']>['raw']>['locatorCandidates'],
-): NonNullable<NonNullable<StepResolve['hint']>['raw']>['locatorCandidates'] => {
-    const seen = new Set<string>();
-    const out: NonNullable<NonNullable<StepResolve['hint']>['raw']>['locatorCandidates'] = [];
-    for (const item of candidates) {
-        const key = [
-            item.kind,
-            normalize(item.selector),
-            normalize(item.testId),
-            normalize(item.role),
-            normalize(item.name),
-            normalize(item.text),
-            item.exact ? '1' : '0',
-        ].join('|');
-        if (seen.has(key)) {continue;}
-        seen.add(key);
-        out.push(item);
-    }
-    return out;
+    return normalizeStepResolve(resolve) || {};
 };

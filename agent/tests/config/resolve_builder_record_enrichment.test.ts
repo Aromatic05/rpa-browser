@@ -33,6 +33,10 @@ test('record_enrichment keeps raw selector as highest priority', () => {
 
     assert.equal(resolve.hint?.raw?.selector, 'table tr:nth-of-type(5) input');
     assert.equal(resolve.hint?.locator?.direct?.query, 'table tr:nth-of-type(5) input');
+    assert.equal(
+        (resolve.hint?.raw?.locatorCandidates || []).some((item) => item.kind === 'css' && item.selector === 'table tr:nth-of-type(5) input'),
+        false,
+    );
 });
 
 test('record_enrichment LOW_CONFIDENCE_RAW_ONLY excludes strong target fields', () => {
@@ -52,5 +56,38 @@ test('record_enrichment LOW_CONFIDENCE_RAW_ONLY excludes strong target fields', 
     assert.equal(resolve.hint?.target?.nodeId, undefined);
     assert.equal(resolve.hint?.target?.primaryDomId, undefined);
     assert.equal(resolve.hint?.locator?.origin?.primaryDomId, undefined);
+    assert.equal(resolve.hint?.raw?.selector, 'table tr:nth-of-type(5) input');
+});
+
+test('capture_resolve drops duplicated css when rawSelector equals snapshot direct selector', () => {
+    const resolve = buildResolveFromSnapshotCandidate({
+        snapshot,
+        candidate: {
+            nodeId: 'row_1',
+            confidence: 0.9,
+            reason: ['direct_selector_exact_match'],
+        },
+        rawSelector: 'table tr:nth-of-type(1) input',
+        source: 'capture_resolve',
+    });
+    const candidates = resolve.hint?.raw?.locatorCandidates || [];
+    assert.equal(candidates.filter((item) => item.kind === 'css').length, 0);
+});
+
+test('capture_resolve keeps different selectors as candidates', () => {
+    const resolve = buildResolveFromSnapshotCandidate({
+        snapshot,
+        candidate: {
+            nodeId: 'row_1',
+            selector: 'table tr:nth-of-type(5) input',
+            confidence: 0.9,
+            reason: ['mixed_sources'],
+        },
+        rawSelector: 'table tr:nth-of-type(5) input',
+        source: 'capture_resolve',
+    });
+    const candidates = resolve.hint?.raw?.locatorCandidates || [];
+    assert.equal(candidates.some((item) => item.kind === 'css' && item.selector === 'table tr:nth-of-type(5) input'), false);
+    assert.equal(resolve.hint?.locator?.direct?.query, 'table tr:nth-of-type(1) input');
     assert.equal(resolve.hint?.raw?.selector, 'table tr:nth-of-type(5) input');
 });
