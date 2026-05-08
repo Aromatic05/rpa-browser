@@ -85,6 +85,7 @@ test('record enrichment target event without selector does not generate strong t
     });
 
     assert.equal(out.target?.nodeId, undefined);
+    assert.equal(out.resolveHint?.target?.role, undefined);
     assert.equal(out.resolveHint?.locator?.direct?.query, undefined);
     assert.equal(out.resolveHint?.capture?.warnings?.includes('MISSING_SELECTOR_FOR_TARGET_EVENT'), true);
 });
@@ -103,5 +104,6 @@ test('record enrichment does not write target nodeId and direct locator when sel
 
     assert.equal(out.target?.nodeId, undefined);
     assert.equal(out.resolveHint?.target?.nodeId, undefined);
+    assert.equal(out.resolveHint?.target?.role, undefined);
     assert.equal(out.resolveHint?.locator?.direct?.query, undefined);
 });

@@ -176,12 +176,7 @@ const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancem
         eventType: event.type,
         resolveHint: {
             ...(existingHint || {}),
-            target: {
-                ...(existingHint?.target || {}),
-                role: existingHint?.target?.role || event.a11yHint?.role,
-                name: existingHint?.target?.name || event.a11yHint?.name,
-                text: existingHint?.target?.text || event.a11yHint?.text,
-            },
+            target: existingHint?.target,
             raw: mergedRaw,
         },
         rawContext: {
@@ -300,11 +295,6 @@ const buildLowConfidenceRawOnlyResolve = (
     overrides?: { reason?: string[]; warnings?: string[]; confidence?: number },
 ): Pick<RecordedStepEnhancement, 'resolveHint' | 'resolvePolicy'> => ({
     resolveHint: {
-        target: {
-            role: event.a11yHint?.role,
-            name: event.a11yHint?.name,
-            text: event.a11yHint?.text,
-        },
         raw: {
             selector: event.selector,
             locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
