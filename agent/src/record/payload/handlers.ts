@@ -2,6 +2,8 @@ import type { DebugTargetFn, EmitFn } from './emitter';
 import {
     buildA11yHint,
     buildCandidates,
+    buildTargetAttrs,
+    buildTargetState,
     findCheckboxInput,
     getScopeHint,
     getValue,
@@ -48,7 +50,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector,
                 targetHint: interactive.tagName.toLowerCase(),
                 a11yHint: buildA11yHint(interactive),
-                locatorCandidates: buildCandidates(interactive),
+                locatorCandidates: buildCandidates(interactive, selector),
+                targetAttrs: buildTargetAttrs(interactive),
+                targetState: buildTargetState(interactive),
                 scopeHint: getScopeHint(interactive),
             });
             return;
@@ -65,7 +69,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector: fallbackSelector,
                 targetHint: fallback.tagName.toLowerCase(),
                 a11yHint: buildA11yHint(fallback),
-                locatorCandidates: buildCandidates(fallback),
+                locatorCandidates: buildCandidates(fallback, fallbackSelector),
+                targetAttrs: buildTargetAttrs(fallback),
+                targetState: buildTargetState(fallback),
                 scopeHint: getScopeHint(fallback),
             });
             return;
@@ -104,7 +110,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },
@@ -131,7 +139,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                         checked: element.checked,
                         inputType,
                         a11yHint: buildA11yHint(element),
-                        locatorCandidates: buildCandidates(element),
+                        locatorCandidates: buildCandidates(element, rawSelector),
+                        targetAttrs: buildTargetAttrs(element),
+                        targetState: buildTargetState(element),
                         scopeHint: getScopeHint(element),
                     });
                     return;
@@ -142,7 +152,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                         selector: rawSelector,
                         value: element.value,
                         a11yHint: buildA11yHint(element),
-                        locatorCandidates: buildCandidates(element),
+                        locatorCandidates: buildCandidates(element, rawSelector),
+                        targetAttrs: buildTargetAttrs(element),
+                        targetState: buildTargetState(element),
                         scopeHint: getScopeHint(element),
                     });
                     return;
@@ -156,7 +168,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                     value: element.value,
                     label: option.label,
                     a11yHint: buildA11yHint(element),
-                    locatorCandidates: buildCandidates(element),
+                    locatorCandidates: buildCandidates(element, rawSelector),
+                    targetAttrs: buildTargetAttrs(element),
+                    targetState: buildTargetState(element),
                     scopeHint: getScopeHint(element),
                 });
                 return;
@@ -166,7 +180,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },
@@ -186,7 +202,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector,
                 key: event.key,
                 a11yHint: element instanceof Element ? buildA11yHint(element) : undefined,
-                locatorCandidates: element instanceof Element ? buildCandidates(element) : undefined,
+                locatorCandidates: element instanceof Element ? buildCandidates(element, selector || undefined) : undefined,
+                targetAttrs: element instanceof Element ? buildTargetAttrs(element) : undefined,
+                targetState: element instanceof Element ? buildTargetState(element) : undefined,
                 scopeHint: element instanceof Element ? getScopeHint(element) : undefined,
             });
         },
@@ -210,7 +228,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },
@@ -230,7 +250,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 type: 'copy',
                 selector,
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, selector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },

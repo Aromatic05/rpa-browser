@@ -6,6 +6,7 @@ import type { SnapshotResult, UnifiedNode } from '../runner/steps/executors/snap
 import type { ResolveHint } from '../runner/steps/types';
 import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from './types';
 import { buildResolveFromSnapshotCandidate } from '../runner/steps/resolve_builder';
+import { normalizeResolveHint } from '../runner/steps/resolve_utils';
 
 export type RecordSnapshotCacheEntry = {
     snapshot: SnapshotResult;
@@ -61,6 +62,7 @@ export const enrichRecordedStepWithSnapshot = async (input: {
                 pageIdentity: snapshot.snapshotMeta?.pageIdentity,
                 capturedAt: Date.now(),
             },
+            ...buildLowConfidenceRawOnlyResolve(event),
         });
     }
 
@@ -176,7 +178,13 @@ const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancem
         eventType: event.type,
         resolveHint: {
             ...(existingHint || {}),
-            target: existingHint?.target,
+            target: {
+                ...(existingHint?.target || {}),
+                tag: existingHint?.target?.tag || event.targetHint,
+                role: existingHint?.target?.role || event.a11yHint?.role,
+                attrs: existingHint?.target?.attrs || event.targetAttrs,
+                state: existingHint?.target?.state || event.targetState,
+            },
             raw: mergedRaw,
         },
         rawContext: {
@@ -185,6 +193,7 @@ const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancem
             recorderVersion: event.recorderVersion,
         },
     };
+    next.resolveHint = normalizeResolveHint(next.resolveHint);
     return next;
 };
 
@@ -295,6 +304,12 @@ const buildLowConfidenceRawOnlyResolve = (
     overrides?: { reason?: string[]; warnings?: string[]; confidence?: number },
 ): Pick<RecordedStepEnhancement, 'resolveHint' | 'resolvePolicy'> => ({
     resolveHint: {
+        target: {
+            tag: event.targetHint,
+            role: event.a11yHint?.role,
+            attrs: event.targetAttrs,
+            state: event.targetState,
+        },
         raw: {
             selector: event.selector,
             locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),

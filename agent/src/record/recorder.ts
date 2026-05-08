@@ -99,6 +99,17 @@ export type RecorderEvent = {
     locatorCandidates?: LocatorCandidate[];
     scopeHint?: ScopeHint;
     targetHint?: string;
+    targetAttrs?: Record<string, string>;
+    targetState?: {
+        checked?: boolean;
+        focused?: boolean;
+        disabled?: boolean;
+        readonly?: boolean;
+        ariaChecked?: string;
+        ariaSelected?: string;
+        ariaExpanded?: string;
+        ariaDisabled?: string;
+    };
     value?: string;
     label?: string;
     checked?: boolean;

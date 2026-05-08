@@ -121,7 +121,15 @@ export const getTextCandidate = (el: Element): string | null => {
     return null;
 };
 
-export const buildCandidates = (el: Element): Array<Record<string, unknown>> => {
+const buildAttrSelectorCandidate = (el: Element): string | null => {
+    const name = el.getAttribute('name');
+    if (name) {return `[name="${safeEscape(name)}"]`;}
+    const title = el.getAttribute('title');
+    if (title) {return `[title="${safeEscape(title)}"]`;}
+    return null;
+};
+
+export const buildCandidates = (el: Element, rawSelector?: string): Array<Record<string, unknown>> => {
     const candidates: Array<Record<string, unknown>> = [];
     const testId = getTestId(el);
     if (testId) {
@@ -149,11 +157,86 @@ export const buildCandidates = (el: Element): Array<Record<string, unknown>> => 
     if (text) {
         candidates.push({ kind: 'text', text, exact: true });
     }
+    const attrSelector = buildAttrSelectorCandidate(el);
+    if (attrSelector) {
+        candidates.push({ kind: 'attr', selector: attrSelector, exact: true });
+    }
     const css = selectorFor(el);
-    if (css) {
+    if (css && normalizeText(css) !== normalizeText(rawSelector)) {
         candidates.push({ kind: 'css', selector: css });
     }
     return candidates;
+};
+
+export const buildTargetAttrs = (el: Element): Record<string, string> | undefined => {
+    const out: Record<string, string> = {};
+    const tag = el.tagName.toLowerCase();
+    if (tag) {out.tag = tag;}
+    const pairs: Array<[string, string]> = [
+        ['type', 'type'],
+        ['class', 'class'],
+        ['name', 'name'],
+        ['placeholder', 'placeholder'],
+        ['title', 'title'],
+        ['aria-label', 'ariaLabel'],
+        ['aria-labelledby', 'ariaLabelledBy'],
+        ['autocomplete', 'autocomplete'],
+        ['data-testid', 'dataTestId'],
+        ['data-test', 'dataTest'],
+        ['data-qa', 'dataQa'],
+    ];
+    for (const [attr, key] of pairs) {
+        const value = el.getAttribute(attr);
+        if (value && value.trim()) {
+            out[key] = value.trim();
+        }
+    }
+    return Object.keys(out).length ? out : undefined;
+};
+
+export const buildTargetState = (el: Element): {
+    checked?: boolean;
+    focused?: boolean;
+    disabled?: boolean;
+    readonly?: boolean;
+    ariaChecked?: string;
+    ariaSelected?: string;
+    ariaExpanded?: string;
+    ariaDisabled?: string;
+} | undefined => {
+    const out: {
+        checked?: boolean;
+        focused?: boolean;
+        disabled?: boolean;
+        readonly?: boolean;
+        ariaChecked?: string;
+        ariaSelected?: string;
+        ariaExpanded?: string;
+        ariaDisabled?: string;
+    } = {};
+    if (el instanceof HTMLInputElement) {
+        out.checked = Boolean(el.checked);
+    }
+    out.focused = document.activeElement === el;
+    if ('disabled' in el) {
+        out.disabled = Boolean((el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled);
+    }
+    if ('readOnly' in el) {
+        out.readonly = Boolean((el as HTMLInputElement | HTMLTextAreaElement).readOnly);
+    }
+    const ariaPairs: Array<[string, 'ariaChecked' | 'ariaSelected' | 'ariaExpanded' | 'ariaDisabled']> = [
+        ['aria-checked', 'ariaChecked'],
+        ['aria-selected', 'ariaSelected'],
+        ['aria-expanded', 'ariaExpanded'],
+        ['aria-disabled', 'ariaDisabled'],
+    ];
+    for (const [attr, key] of ariaPairs) {
+        const value = el.getAttribute(attr);
+        if (value && value.trim()) {
+            out[key] = value.trim();
+        }
+    }
+    return Object.keys(out).length ? out : undefined;
 };
 
 export const buildA11yHint = (el: Element): Record<string, string> => {
