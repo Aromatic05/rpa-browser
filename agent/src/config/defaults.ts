@@ -51,7 +51,7 @@ export const defaultRunnerConfig: RunnerConfig = {
         infraConsoleEnabled: true,
         infraFileEnabled: true,
         infraFilePath: '.artifacts/logs/infra/infra-{ts}.log',
-        extConsoleEnabled: true,
+        extConsoleEnabled: false,
         extFileEnabled: true,
         extFilePath: '.artifacts/logs/ext/ext-{ts}.log',
         entityConsoleEnabled: false,
