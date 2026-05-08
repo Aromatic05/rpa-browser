@@ -24,13 +24,15 @@ export const buildResolveFromSnapshotCandidate = (input: {
 }): StepResolve => {
     const { snapshot, candidate, rawSelector, rawLocatorCandidates, source } = input;
     const warnings = input.warnings || [];
+    const isLowConfidenceRawOnly = warnings.includes('LOW_CONFIDENCE_RAW_ONLY');
+    const preferRawSelector = source === 'record_enrichment' && Boolean(rawSelector);
     const nodeId = candidate.nodeId || '';
     const locator = nodeId ? snapshot?.locatorIndex[nodeId] : undefined;
     const attrs = nodeId ? snapshot?.attrIndex[nodeId] : undefined;
     const bbox = nodeId ? snapshot?.bboxIndex[nodeId] : undefined;
     const directQuery = locator?.direct?.kind === 'css' ? locator.direct.query : undefined;
     const directFallback = locator?.direct?.fallback;
-    const directSelector = directQuery || candidate.selector || rawSelector;
+    const directSelector = preferRawSelector ? rawSelector : (directQuery || candidate.selector || rawSelector);
     const mergedCandidates = [
         ...(rawLocatorCandidates || []),
         ...(directSelector ? [{ kind: 'css', selector: directSelector, note: `${source} preferred selector` }] : []),
@@ -44,15 +46,15 @@ export const buildResolveFromSnapshotCandidate = (input: {
     return {
         hint: {
             target: {
-                nodeId: candidate.nodeId,
-                primaryDomId: locator?.origin?.primaryDomId,
-                sourceDomIds: locator?.origin?.sourceDomIds,
+                nodeId: isLowConfidenceRawOnly ? undefined : candidate.nodeId,
+                primaryDomId: isLowConfidenceRawOnly ? undefined : locator?.origin?.primaryDomId,
+                sourceDomIds: isLowConfidenceRawOnly ? undefined : locator?.origin?.sourceDomIds,
                 role: candidate.role,
                 tag: attrs?.tag || attrs?.tagName,
                 name: candidate.name,
                 text: candidate.text,
-                attrs: attrs && Object.keys(attrs).length > 0 ? attrs : undefined,
-                bbox,
+                attrs: isLowConfidenceRawOnly ? undefined : (attrs && Object.keys(attrs).length > 0 ? attrs : undefined),
+                bbox: isLowConfidenceRawOnly ? undefined : bbox,
             },
             locator: {
                 direct: directSelector
@@ -63,7 +65,7 @@ export const buildResolveFromSnapshotCandidate = (input: {
                       }
                     : undefined,
                 scope: locator?.scope ? { id: locator.scope.id, kind: locator.scope.kind } : undefined,
-                origin: locator?.origin
+                origin: !isLowConfidenceRawOnly && locator?.origin
                     ? {
                           primaryDomId: locator.origin.primaryDomId,
                           sourceDomIds: locator.origin.sourceDomIds,
