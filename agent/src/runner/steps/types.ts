@@ -123,6 +123,16 @@ export type ResolveHint = {
         name?: string;
         text?: string;
         attrs?: Record<string, string>;
+        state?: {
+            checked?: boolean;
+            focused?: boolean;
+            disabled?: boolean;
+            readonly?: boolean;
+            ariaChecked?: string;
+            ariaSelected?: string;
+            ariaExpanded?: string;
+            ariaDisabled?: string;
+        };
         bbox?: BBox;
     };
     locator?: {

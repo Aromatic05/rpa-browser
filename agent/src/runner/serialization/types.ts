@@ -1,6 +1,6 @@
 import type { Checkpoint } from '../checkpoint/types';
 import type { StepArgsMap, StepName, StepResolve } from '../steps/types';
-import { isValidStepResolve } from '../steps/resolve_utils';
+import { isValidStepResolve, normalizeStepResolve } from '../steps/resolve_utils';
 
 export type SerializedStep<TName extends StepName = StepName> = {
     id: string;
@@ -112,9 +112,13 @@ export const validateStepResolveFileForSerialization = (file: StepResolveFile): 
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
             throw new Error(`step resolve ${resolveId} must be an object`);
         }
+        if (hasDuplicateCssCandidateAgainstRawSelector(value)) {
+            throw new Error(`step resolve ${resolveId} is invalid: raw.selector must not be duplicated in raw.locatorCandidates css`);
+        }
         if (!isValidStepResolve(value)) {
             throw new Error(`step resolve ${resolveId} is invalid: resolve must include at least one usable hint anchor`);
         }
+        file.resolves[resolveId] = normalizeStepResolve(value) || value;
     }
 };
 
@@ -170,10 +174,26 @@ export const validateCheckpointResolveFileForSerialization = (file: CheckpointRe
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
             throw new Error(`checkpoint resolve ${resolveId} must be an object`);
         }
+        if (hasDuplicateCssCandidateAgainstRawSelector(value)) {
+            throw new Error(`checkpoint resolve ${resolveId} is invalid: raw.selector must not be duplicated in raw.locatorCandidates css`);
+        }
         if (!isValidStepResolve(value)) {
             throw new Error(`checkpoint resolve ${resolveId} is invalid: resolve must include at least one usable hint anchor`);
         }
+        file.resolves[resolveId] = normalizeStepResolve(value) || value;
     }
+};
+
+const hasDuplicateCssCandidateAgainstRawSelector = (resolve: StepResolve): boolean => {
+    const rawSelector = (resolve.hint?.raw?.selector || '').trim().toLowerCase();
+    if (!rawSelector) {return false;}
+    for (const candidate of resolve.hint?.raw?.locatorCandidates || []) {
+        if (candidate.kind !== 'css') {continue;}
+        if (((candidate.selector || '').trim().toLowerCase()) === rawSelector) {
+            return true;
+        }
+    }
+    return false;
 };
 
 const assertNoCoreHintFields = (value: unknown, currentPath: string): void => {
