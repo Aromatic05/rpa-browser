@@ -97,9 +97,11 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element instanceof HTMLSelectElement) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
             emit({
                 type: 'input',
-                selector,
+                selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
                 locatorCandidates: buildCandidates(element),
@@ -118,12 +120,14 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
             if (element instanceof HTMLInputElement) {
                 const inputType = (element.type || '').toLowerCase();
                 if (inputType === 'checkbox' || inputType === 'radio') {
                     emit({
                         type: 'check',
-                        selector,
+                        selector: rawSelector,
                         checked: element.checked,
                         inputType,
                         a11yHint: buildA11yHint(element),
@@ -135,7 +139,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 if (inputType === 'date') {
                     emit({
                         type: 'date',
-                        selector,
+                        selector: rawSelector,
                         value: element.value,
                         a11yHint: buildA11yHint(element),
                         locatorCandidates: buildCandidates(element),
@@ -147,8 +151,8 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element instanceof HTMLSelectElement) {
                 const option = element.selectedOptions[0];
                 emit({
-                    type: 'select',
-                    selector,
+                type: 'select',
+                    selector: rawSelector,
                     value: element.value,
                     label: option.label,
                     a11yHint: buildA11yHint(element),
@@ -159,7 +163,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             }
             emit({
                 type: 'change',
-                selector,
+                selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
                 locatorCandidates: buildCandidates(element),
@@ -198,10 +202,12 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
             if (isPassword(element)) {return;}
             emit({
                 type: 'paste',
-                selector,
+                selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
                 locatorCandidates: buildCandidates(element),

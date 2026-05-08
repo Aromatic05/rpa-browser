@@ -203,3 +203,85 @@ test('normalizeRecordingStepOrder does not cross-tab reorder for click/goto over
     const ordered = normalizeRecordingStepOrder(steps, 20);
     assert.deepEqual(ordered.map((step) => step.id), ['g', 'c']);
 });
+
+test('coalesce fill events keeps only final value for same selector', async () => {
+    const state = createRecordingState();
+    resetWorkspaceUnsavedRecording(state, 'ws-1');
+    enableWorkspaceRecording(state, 'ws-1');
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 1,
+        type: 'input',
+        selector: 'table tr:nth-of-type(1) input',
+        value: '1',
+    }, 1200);
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 2,
+        type: 'input',
+        selector: 'table tr:nth-of-type(1) input',
+        value: '10',
+    }, 1200);
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 3,
+        type: 'input',
+        selector: 'table tr:nth-of-type(1) input',
+        value: '109',
+    }, 1200);
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 4,
+        type: 'change',
+        selector: 'table tr:nth-of-type(1) input',
+        value: '109',
+    }, 1200);
+    disableWorkspaceRecording(state, 'ws-1');
+    const bundle = getWorkspaceUnsavedRecordingBundle(state, 'ws-1');
+    const fills = bundle.steps.filter((step) => step.name === 'browser.fill');
+    assert.equal(fills.length, 1);
+    assert.equal((fills[0].args as any).selector, 'table tr:nth-of-type(1) input');
+    assert.equal((fills[0].args as any).value, '109');
+});
+
+test('coalesce fill events keeps separate rows and flushes before click on another target', async () => {
+    const state = createRecordingState();
+    resetWorkspaceUnsavedRecording(state, 'ws-1');
+    enableWorkspaceRecording(state, 'ws-1');
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 1,
+        type: 'input',
+        selector: 'table tr:nth-of-type(1) input',
+        value: 'a',
+    }, 1200);
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 2,
+        type: 'input',
+        selector: 'table tr:nth-of-type(2) input',
+        value: 'b',
+    }, 1200);
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 3,
+        type: 'input',
+        selector: 'table tr:nth-of-type(3) input',
+        value: 'c',
+    }, 1200);
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a',
+        ts: 4,
+        type: 'click',
+        selector: '#submit',
+    }, 1200);
+    const bundle = getWorkspaceUnsavedRecordingBundle(state, 'ws-1');
+    const fills = bundle.steps.filter((step) => step.name === 'browser.fill');
+    assert.equal(fills.length, 3);
+    assert.deepEqual(fills.map((step) => (step.args as any).selector), [
+        'table tr:nth-of-type(1) input',
+        'table tr:nth-of-type(2) input',
+        'table tr:nth-of-type(3) input',
+    ]);
+    assert.equal(bundle.steps[3].name, 'browser.click');
+});
