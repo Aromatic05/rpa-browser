@@ -22,13 +22,36 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     cacheKey: string;
 }): Promise<RecordedStepEnhancement> => {
     const { event, page, snapshotCache, cacheKey } = input;
+    if (isPageLevelEvent(event)) {
+        const snapshot = await resolveSnapshotForEvent({ event, page, snapshotCache, cacheKey });
+        if (!snapshot) {
+            return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
+        }
+        return withRawContext(event, {
+            version: 1,
+            eventType: event.type,
+            snapshot: {
+                mode: snapshot.snapshotMeta?.mode,
+                snapshotId: snapshot.snapshotMeta?.snapshotId,
+                pageIdentity: snapshot.snapshotMeta?.pageIdentity,
+                capturedAt: Date.now(),
+            },
+        });
+    }
+    if (requiresTargetSelector(event) && !event.selector) {
+        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event, {
+            reason: ['missing_selector_for_target_event'],
+            warnings: ['MISSING_SELECTOR_FOR_TARGET_EVENT', 'LOW_CONFIDENCE_RAW_ONLY'],
+            confidence: 0.2,
+        }));
+    }
     const snapshot = await resolveSnapshotForEvent({ event, page, snapshotCache, cacheKey });
     if (!snapshot) {
         return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
     }
 
-    const bestNodeId = pickBestNodeId(snapshot, event);
-    if (!bestNodeId) {
+    const matchedNodeId = findSnapshotNodeIdByRawSelector(snapshot, event.selector);
+    if (!matchedNodeId) {
         return withRawContext(event, {
             version: 1,
             eventType: event.type,
@@ -41,16 +64,16 @@ export const enrichRecordedStepWithSnapshot = async (input: {
         });
     }
 
-    const node = snapshot.nodeIndex[bestNodeId];
-    const locator = snapshot.locatorIndex[bestNodeId];
-    const target = buildTargetFingerprint(snapshot, node, bestNodeId, locator.origin);
-    const entityBindings = buildEntityBindings(snapshot, bestNodeId);
-    const confidenceInfo = computeRecordConfidence(event, snapshot, bestNodeId);
+    const node = snapshot.nodeIndex[matchedNodeId];
+    const locator = snapshot.locatorIndex[matchedNodeId];
+    const target = buildTargetFingerprint(snapshot, node, matchedNodeId, locator.origin);
+    const entityBindings = buildEntityBindings(snapshot, matchedNodeId);
+    const confidenceInfo = computeRecordConfidence(event, snapshot, matchedNodeId);
     const resolveDraft = buildResolveFromSnapshotCandidate({
         snapshot,
         candidate: {
             nodeId: target.nodeId,
-            selector: event.selector || locator.direct?.query,
+            selector: event.selector,
             role: target.role,
             name: target.name,
             text: target.content,
@@ -120,8 +143,22 @@ const resolveSnapshotForEvent = async (input: {
 };
 
 const shouldUseSnapshotForEvent = (event: RecorderEvent): boolean => {
-    if (event.type === 'navigate' || event.type === 'scroll' || event.type === 'copy') {return false;}
+    if (isPageLevelEvent(event) || event.type === 'copy') {return false;}
     return true;
+};
+
+const isPageLevelEvent = (event: RecorderEvent): boolean => event.type === 'navigate' || event.type === 'scroll';
+
+const requiresTargetSelector = (event: RecorderEvent): boolean => {
+    return event.type === 'click'
+        || event.type === 'input'
+        || event.type === 'change'
+        || event.type === 'date'
+        || event.type === 'select'
+        || event.type === 'check'
+        || event.type === 'paste'
+        || event.type === 'copy'
+        || event.type === 'keydown';
 };
 
 const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancement): RecordedStepEnhancement => {
@@ -205,124 +242,18 @@ const resolveNodeContent = (snapshot: SnapshotResult, node: UnifiedNode): string
     return undefined;
 };
 
-const pickBestNodeId = (snapshot: SnapshotResult, event: RecorderEvent): string | undefined => {
-    let bestScore = Number.NEGATIVE_INFINITY;
-    let bestNodeId: string | undefined;
-
-    for (const [nodeId, node] of Object.entries(snapshot.nodeIndex)) {
-        const score = scoreNode(snapshot, nodeId, node, event);
-        if (score > bestScore) {
-            bestScore = score;
-            bestNodeId = nodeId;
+const findSnapshotNodeIdByRawSelector = (snapshot: SnapshotResult, selector?: string): string | undefined => {
+    const normalizedSelector = normalizeText(selector);
+    if (!normalizedSelector) {return undefined;}
+    const matched: string[] = [];
+    for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
+        const directQuery = normalizeText(locator.direct?.query);
+        if (directQuery && directQuery === normalizedSelector) {
+            matched.push(nodeId);
         }
     }
-
-    if (bestScore < 12) {return undefined;}
-    return bestNodeId;
-};
-
-const scoreNode = (snapshot: SnapshotResult, nodeId: string, node: UnifiedNode, event: RecorderEvent): number => {
-    const locator = snapshot.locatorIndex[nodeId] || {};
-    const attrs = snapshot.attrIndex[nodeId] || {};
-    const tag = normalizeText(attrs.tag || attrs.tagName);
-    const name = normalizeText(node.name);
-    const content = normalizeText(resolveNodeContent(snapshot, node));
-    let score = 0;
-
-    if (event.selector) {
-        const selector = normalizeText(event.selector);
-        if (selector) {
-            const directQuery = normalizeText(locator.direct?.query);
-            const directFallback = normalizeText(locator.direct?.fallback);
-            if (selector === directQuery || selector === directFallback) {score += 80;}
-            if (directQuery && (selector.includes(directQuery) || directQuery.includes(selector))) {score += 30;}
-            if (directFallback && (selector.includes(directFallback) || directFallback.includes(selector))) {score += 25;}
-            if (attrs.id && selector.includes(`#${attrs.id}`)) {score += 20;}
-            const testId = attrs['data-testid'] || attrs['data-test-id'] || attrs['data-test'] || attrs['data-qa'];
-            if (testId && selector.includes(testId)) {score += 24;}
-        }
-    }
-
-    score += scoreByA11yHint(event.a11yHint, node.role, name, content);
-    score += scoreByCandidates(event, node.role, tag, name, content, attrs, locator.direct?.query);
-
-    if (event.targetHint && tag && normalizeText(event.targetHint) === tag) {score += 6;}
-
-    return score;
-};
-
-const scoreByA11yHint = (
-    hint: { role?: string; name?: string; text?: string } | undefined,
-    role: string | undefined,
-    name: string | undefined,
-    content: string | undefined,
-): number => {
-    if (!hint) {return 0;}
-    let score = 0;
-    const roleNorm = normalizeText(role);
-    const hintRole = normalizeText(hint.role);
-    if (hintRole) {
-        if (hintRole === roleNorm) {score += 28;}
-        else {score -= 14;}
-    }
-
-    const mergedText = `${name || ''} ${content || ''}`.trim();
-    const hintName = normalizeText(hint.name);
-    if (hintName) {
-        if (mergedText.includes(hintName)) {score += 34;}
-        else {score -= 10;}
-    }
-
-    const hintText = normalizeText(hint.text);
-    if (hintText) {
-        if (mergedText.includes(hintText)) {score += 22;}
-        else {score -= 8;}
-    }
-
-    return score;
-};
-
-const scoreByCandidates = (
-    event: RecorderEvent,
-    role: string | undefined,
-    tag: string | undefined,
-    name: string | undefined,
-    content: string | undefined,
-    attrs: Record<string, string>,
-    directQuery: string | undefined,
-): number => {
-    const candidates = event.locatorCandidates || [];
-    if (!candidates.length) {return 0;}
-    let score = 0;
-    const mergedText = `${name || ''} ${content || ''}`.trim();
-
-    for (const candidate of candidates) {
-        if (candidate.kind === 'css') {
-            const selector = normalizeText(candidate.selector);
-            if (!selector) {continue;}
-            if (selector === normalizeText(directQuery)) {score += 25;}
-            else if (directQuery && selector.includes(normalizeText(directQuery) || '')) {score += 12;}
-            continue;
-        }
-
-        if (candidate.kind === 'testid') {
-            const actualTestId = attrs['data-testid'] || attrs['data-test-id'] || attrs['data-test'] || attrs['data-qa'];
-            if (actualTestId && normalizeText(candidate.testId) === normalizeText(actualTestId)) {score += 30;}
-            continue;
-        }
-
-        if (candidate.kind === 'role') {
-            if (normalizeText(candidate.role) === normalizeText(role)) {score += 18;}
-            if (candidate.name && mergedText.includes(normalizeText(candidate.name) || '')) {score += 16;}
-            continue;
-        }
-
-        const text = normalizeText(candidate.text);
-        if (text && mergedText.includes(text)) {score += 12;}
-        if (candidate.kind === 'placeholder' && text && normalizeText(attrs.placeholder).includes(text)) {score += 10;}
-    }
-
-    return score;
+    if (matched.length !== 1) {return undefined;}
+    return matched[0];
 };
 
 const pickRuntimeState = (attrs: Record<string, string> | undefined): Record<string, string> | undefined => {
@@ -364,7 +295,10 @@ const safePageUrl = (page: Page): string => {
     }
 };
 
-const buildLowConfidenceRawOnlyResolve = (event: RecorderEvent): Pick<RecordedStepEnhancement, 'resolveHint' | 'resolvePolicy'> => ({
+const buildLowConfidenceRawOnlyResolve = (
+    event: RecorderEvent,
+    overrides?: { reason?: string[]; warnings?: string[]; confidence?: number },
+): Pick<RecordedStepEnhancement, 'resolveHint' | 'resolvePolicy'> => ({
     resolveHint: {
         target: {
             role: event.a11yHint?.role,
@@ -379,9 +313,9 @@ const buildLowConfidenceRawOnlyResolve = (event: RecorderEvent): Pick<RecordedSt
         },
         capture: {
             source: 'record_enrichment',
-            confidence: 0.25,
-            reason: ['raw_selector_or_text_only_without_snapshot'],
-            warnings: ['LOW_CONFIDENCE_RAW_ONLY'],
+            confidence: overrides?.confidence ?? 0.25,
+            reason: overrides?.reason || ['raw_selector_or_text_only_without_snapshot'],
+            warnings: overrides?.warnings || ['LOW_CONFIDENCE_RAW_ONLY'],
         },
     },
     resolvePolicy: {
