@@ -184,7 +184,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                               policy: bundle.enrichments[step.id].resolvePolicy,
                           }
                         : undefined;
-                    const candidate = fromEnrichment || step.resolve;
+                    const candidate = fromEnrichment;
                     if (!isValidStepResolve(candidate)) {continue;}
                     stepResolves[step.id] = candidate;
                 }

@@ -172,3 +172,38 @@ test('play.start for unsaved does not wait pending enrichment', async () => {
         deleteWorkflowFromFs(wsName);
     }
 });
+
+test('record.save includeStepResolve does not fallback to step.resolve when enrichment is missing', async () => {
+    const wsName = uniqueName('record-save-no-fallback');
+    const recordingState = createRecordingState();
+    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabs.createTab({ tabName: 'tab-1', page: createMockPage('https://example.com'), url: 'https://example.com' });
+    ws.tabs.setActiveTab('tab-1');
+    resetWorkspaceUnsavedRecording(recordingState, wsName, { activeTabRef: 'tab-1', entryTabRef: 'tab-1', initialTabs: [] });
+    enableWorkspaceRecording(recordingState, wsName);
+    setRecordedStepEnricherForTest(async ({ event }) => ({ version: 1, eventType: event.type }));
+    try {
+        await appendWorkspaceRecordingEvent(recordingState, wsName, 'tab-1', {
+            tabName: 'tab-1',
+            ts: Date.now(),
+            type: 'click',
+            selector: '#save-btn',
+            a11yHint: { role: 'button', name: 'Save' },
+        }, 1200);
+        const saved = await ws.record.handle({
+            action: { v: 1, id: 's1', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'rec-no-fallback', includeStepResolve: true } } as any,
+            workspace: ws as any,
+            workspaceRegistry: registry as any,
+        });
+        assert.equal(saved.reply.type, 'record.save.result');
+        const loaded = ws.workflow.get('rec-no-fallback', { kind: 'recording' });
+        assert.equal(loaded?.kind, 'recording');
+        const stepId = loaded?.steps[0]?.id || '';
+        assert.equal(Boolean(stepId), true);
+        assert.equal(Boolean(loaded?.stepResolves?.[stepId]), false);
+    } finally {
+        setRecordedStepEnricherForTest(null);
+        deleteWorkflowFromFs(wsName);
+    }
+});
