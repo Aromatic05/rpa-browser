@@ -89,6 +89,7 @@ export const resolveTarget = async (
     const policy = resolve?.policy;
     const confidence = hint?.capture?.confidence ?? (hasValidResolve ? 0.6 : 0.4);
     const warnings = [...(hint?.capture?.warnings || [])];
+    const isRecordEnrichment = hint?.capture?.source === 'record_enrichment';
     const snapshotState = await ensureFreshResolveSnapshot(binding, input, context);
     if (!snapshotState.ok) {
         return {
@@ -105,11 +106,7 @@ export const resolveTarget = async (
         };
     }
     const collector = createCandidateCollector();
-    const preferInputSelectorFirst = Boolean(
-        selector
-        && hint?.capture?.source === 'record_enrichment'
-        && confidence < 0.8,
-    );
+    const preferInputSelectorFirst = Boolean(selector && isRecordEnrichment);
 
     if (nodeId) {
         addNodeIdCandidate(collector, binding, nodeId, hint, policy, confidence, warnings, 'input.nodeId', 'input');
@@ -129,6 +126,7 @@ export const resolveTarget = async (
         const order = buildResolveOrder(confidence);
         for (const sourcePath of order) {
             if (sourcePath === 'resolve.hint.target.nodeId' && hint.target?.nodeId) {
+                if (isRecordEnrichment) {continue;}
                 addNodeIdCandidate(collector, binding, hint.target.nodeId, hint, policy, confidence, warnings, sourcePath, 'resolve');
                 continue;
             }
@@ -140,6 +138,7 @@ export const resolveTarget = async (
                 continue;
             }
             if (sourcePath === 'resolve.hint.locator.direct.query') {
+                if (isRecordEnrichment) {continue;}
                 const query = hint.locator?.direct?.query;
                 if (query) {
                     collector.push({
@@ -153,6 +152,7 @@ export const resolveTarget = async (
                 continue;
             }
             if (sourcePath === 'resolve.hint.locator.direct.fallback') {
+                if (isRecordEnrichment) {continue;}
                 const fallback = hint.locator?.direct?.fallback;
                 if (fallback) {
                     collector.push({
@@ -166,6 +166,7 @@ export const resolveTarget = async (
                 continue;
             }
             if (sourcePath === 'resolve.hint.target.domId') {
+                if (isRecordEnrichment) {continue;}
                 for (const candidate of buildDomIdCandidates(binding, hint, policy || {}, confidence, warnings)) {
                     collector.push(candidate);
                 }
@@ -177,7 +178,14 @@ export const resolveTarget = async (
                 }
                 continue;
             }
-            if (sourcePath === 'resolve.hint.raw.css' || sourcePath === 'resolve.hint.raw.testid' || sourcePath === 'resolve.hint.raw.role_name' || sourcePath === 'resolve.hint.raw.text' || sourcePath === 'resolve.hint.raw.placeholder') {
+            if (
+                sourcePath === 'resolve.hint.raw.css'
+                || sourcePath === 'resolve.hint.raw.testid'
+                || sourcePath === 'resolve.hint.raw.role_name'
+                || sourcePath === 'resolve.hint.raw.text'
+                || sourcePath === 'resolve.hint.raw.placeholder'
+                || sourcePath === 'resolve.hint.raw.attr'
+            ) {
                 for (const candidate of buildRawLocatorCandidates(binding, hint, policy || {}, confidence, warnings, sourcePath)) {
                     collector.push(candidate);
                 }
@@ -394,6 +402,7 @@ const buildResolveOrder = (confidence: number): string[] => {
             'resolve.hint.raw.role_name',
             'resolve.hint.raw.testid',
             'resolve.hint.raw.text',
+            'resolve.hint.raw.attr',
             'resolve.hint.raw.css',
             'resolve.hint.raw.selector',
             'resolve.hint.fuzzy',
@@ -410,6 +419,7 @@ const buildResolveOrder = (confidence: number): string[] => {
             'resolve.hint.target.domId',
             'resolve.hint.target.semantic',
             'resolve.hint.raw.text',
+            'resolve.hint.raw.attr',
             'resolve.hint.raw.css',
             'resolve.hint.raw.selector',
             'resolve.hint.fuzzy',
@@ -421,7 +431,8 @@ const buildResolveOrder = (confidence: number): string[] => {
         'resolve.hint.raw.role_name',
         'resolve.hint.raw.testid',
         'resolve.hint.raw.text',
-        'resolve.hint.raw.placeholder',
+            'resolve.hint.raw.placeholder',
+            'resolve.hint.raw.attr',
             'resolve.hint.locator.direct.fallback',
             'resolve.hint.target.domId',
             'resolve.hint.target.semantic',
@@ -498,6 +509,15 @@ const buildRawLocatorCandidates = (
         }
         if (targetPath === 'resolve.hint.raw.role_name' && candidate.kind === 'role') {
             out.push(...buildNodeCandidatesFromRoleName(binding, hint, policy, confidence, warnings, candidate.role, candidate.name, Boolean(candidate.exact)));
+        }
+        if (targetPath === 'resolve.hint.raw.attr' && candidate.kind === 'attr' && candidate.selector) {
+            out.push({
+                selector: withVisibilityConstraint(withHintScope(binding, hint, candidate.selector, policy), policy.requireVisible),
+                path: targetPath,
+                confidence,
+                warnings,
+                source: 'resolve.raw.attr',
+            });
         }
         if (targetPath === 'resolve.hint.raw.text' && (candidate.kind === 'text' || candidate.kind === 'label') && candidate.text) {
             out.push(...buildNodeCandidatesFromText(binding, hint, policy, confidence, warnings, candidate.text, Boolean(candidate.exact)));

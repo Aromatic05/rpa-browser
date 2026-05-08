@@ -61,5 +61,45 @@ test('input.selector is preferred over low confidence record_enrichment resolve 
     assert.equal(resolved.target.candidates[0]?.path, 'input.selector');
     assert.equal(resolved.target.resolution.audit.chosenPath, 'input.selector');
     const nodePathIndex = resolved.target.candidates.findIndex((item) => item.path === 'resolve.hint.target.nodeId');
-    assert.equal(nodePathIndex > 0, true);
+    assert.equal(nodePathIndex, -1);
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.locator.direct.query'), false);
+});
+
+test('record_enrichment keeps recovery candidates after input.selector and never uses state as primary locator', async () => {
+    const binding = createBinding();
+    const resolved = await resolveTarget(binding, {
+        selector: 'table tr:nth-of-type(5) input',
+        resolve: {
+            hint: {
+                raw: {
+                    selector: 'table tr:nth-of-type(5) input',
+                    locatorCandidates: [
+                        { kind: 'label', text: '价格', exact: true },
+                        { kind: 'placeholder', text: '请输入', exact: true },
+                        { kind: 'role', role: 'textbox', exact: true },
+                        { kind: 'testid', testId: 'price-input' },
+                        { kind: 'attr', selector: '[name=\"price\"]' },
+                    ],
+                },
+                target: {
+                    state: { focused: true, disabled: false, readonly: false },
+                },
+                capture: {
+                    source: 'record_enrichment',
+                    confidence: 0.4,
+                    reason: ['raw_selector_only'],
+                    warnings: [],
+                },
+            },
+        },
+    }, resolveCtx(binding));
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.candidates[0]?.path, 'input.selector');
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.placeholder'), true);
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.role_name'), true);
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.testid'), true);
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.attr'), true);
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.target.nodeId'), false);
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.locator.direct.query'), false);
 });
