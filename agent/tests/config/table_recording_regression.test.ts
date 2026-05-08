@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    awaitRecordingEnhancements,
     appendWorkspaceRecordingEvent,
     createRecordingState,
     disableWorkspaceRecording,
@@ -73,6 +74,16 @@ test('table recording regression keeps per-row selectors and replay selector con
             type: 'input',
             selector,
             value: `${row}`,
+            targetHint: 'input',
+            a11yHint: { role: 'textbox' },
+            targetAttrs: { tag: 'input', class: 'ant-input', name: `price-${row}`, placeholder: '请输入价格' },
+            targetState: { focused: true, disabled: false, readonly: false, ariaDisabled: 'false' },
+            locatorCandidates: [
+                { kind: 'css', selector },
+                { kind: 'role', role: 'textbox', name: `price-${row}`, exact: true },
+                { kind: 'placeholder', text: '请输入价格', exact: true },
+                { kind: 'attr', selector: `[name=\"price-${row}\"]`, exact: true },
+            ] as any,
         }, 1200);
         await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
             tabName: 'tab-a',
@@ -80,10 +91,21 @@ test('table recording regression keeps per-row selectors and replay selector con
             type: 'change',
             selector,
             value: `${row}-final`,
+            targetHint: 'input',
+            a11yHint: { role: 'textbox' },
+            targetAttrs: { tag: 'input', class: 'ant-input', name: `price-${row}`, placeholder: '请输入价格' },
+            targetState: { focused: true, disabled: false, readonly: false, ariaDisabled: 'false' },
+            locatorCandidates: [
+                { kind: 'css', selector },
+                { kind: 'role', role: 'textbox', name: `price-${row}`, exact: true },
+                { kind: 'placeholder', text: '请输入价格', exact: true },
+                { kind: 'attr', selector: `[name=\"price-${row}\"]`, exact: true },
+            ] as any,
         }, 1200);
     }
 
     disableWorkspaceRecording(state, 'ws-1');
+    await awaitRecordingEnhancements(state, 'ws-1');
     const bundle = getWorkspaceUnsavedRecordingBundle(state, 'ws-1');
     const fills = bundle.steps.filter((step) => step.name === 'browser.fill');
 
@@ -94,15 +116,27 @@ test('table recording regression keeps per-row selectors and replay selector con
         assert.equal(selectors.includes(`table tr:nth-of-type(${row}) input`), true);
     }
 
-    const targetNodeIds = fills
-        .map((step) => bundle.enrichments[step.id]?.target?.nodeId)
-        .filter((item): item is string => Boolean(item));
-    assert.equal(new Set(targetNodeIds).size, targetNodeIds.length);
-
     const binding = createBindingForRows(8);
     for (const step of fills) {
         const selector = (step.args as any).selector as string;
         const enhancement = bundle.enrichments[step.id];
+        assert.equal(Boolean(enhancement?.resolveHint?.capture), true);
+        assert.equal(Boolean(enhancement?.resolvePolicy), true);
+        assert.equal(enhancement?.resolveHint?.target?.nodeId, undefined);
+        assert.equal(enhancement?.resolveHint?.target?.primaryDomId, undefined);
+        assert.equal(enhancement?.resolveHint?.locator?.direct?.query, undefined);
+        assert.equal(Boolean(enhancement?.resolveHint?.target?.attrs?.name), true);
+        assert.equal(typeof enhancement?.resolveHint?.target?.state?.focused, 'boolean');
+        const candidates = enhancement?.resolveHint?.raw?.locatorCandidates || [];
+        assert.equal(candidates.some((item) => item.kind === 'css' && item.selector === selector), false);
+        assert.equal(
+            candidates.some((item) => item.kind === 'label')
+            || candidates.some((item) => item.kind === 'placeholder')
+            || candidates.some((item) => item.kind === 'role')
+            || candidates.some((item) => item.kind === 'attr')
+            || candidates.some((item) => item.kind === 'testid'),
+            true,
+        );
         const resolved = await resolveTarget(binding, {
             selector,
             resolve: enhancement?.resolveHint || enhancement?.resolvePolicy
@@ -114,6 +148,6 @@ test('table recording regression keeps per-row selectors and replay selector con
         }, resolveCtx(binding));
         assert.equal(resolved.ok, true);
         if (!resolved.ok) {continue;}
-        assert.equal(resolved.target.resolution.audit.finalSelector, selector);
+        assert.equal((resolved.target.resolution.audit.finalSelector || '').replace(/:visible$/, ''), selector);
     }
 });
