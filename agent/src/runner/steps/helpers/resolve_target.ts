@@ -105,9 +105,24 @@ export const resolveTarget = async (
         };
     }
     const collector = createCandidateCollector();
+    const preferInputSelectorFirst = Boolean(
+        selector
+        && hint?.capture?.source === 'record_enrichment'
+        && confidence < 0.8,
+    );
 
     if (nodeId) {
         addNodeIdCandidate(collector, binding, nodeId, hint, policy, confidence, warnings, 'input.nodeId', 'input');
+    }
+
+    if (preferInputSelectorFirst && selector) {
+        collector.push({
+            selector: withVisibilityConstraint(withHintScope(binding, hint, selector, policy), policy?.requireVisible),
+            path: 'input.selector',
+            confidence: hasValidResolve ? Math.min(0.4, confidence) : 0.9,
+            warnings,
+            source: 'input.selector',
+        });
     }
 
     if (hasValidResolve && hint) {
@@ -190,7 +205,7 @@ export const resolveTarget = async (
         }
     }
 
-    if (selector) {
+    if (selector && !preferInputSelectorFirst) {
         collector.push({
             selector: withVisibilityConstraint(withHintScope(binding, hint, selector, policy), policy?.requireVisible),
             path: 'input.selector',
