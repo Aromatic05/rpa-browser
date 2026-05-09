@@ -331,10 +331,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             stepName: originalStep.name,
         });
 
-        const tabStepRecordedTabName = originalStep.name === 'browser.create_tab' || originalStep.name === 'browser.switch_tab' || originalStep.name === 'browser.close_tab'
+        const isLifecycleStep = originalStep.name === 'browser.create_tab' || originalStep.name === 'browser.switch_tab' || originalStep.name === 'browser.close_tab';
+        const tabStepRecordedTabName = isLifecycleStep
             ? readStepStringArg(originalStep, 'tabName')
             : undefined;
-        const recordedTabName = tabStepRecordedTabName || recordedActiveTabName;
+        const recordedTabName = isLifecycleStep ? tabStepRecordedTabName : recordedActiveTabName;
         let targetTabName: string | undefined = recordedTabName ? tabBindings.get(recordedTabName)?.runtimeTabName : undefined;
         let remappedStep = originalStep;
         let syntheticResponse: RunStepsResult | undefined;

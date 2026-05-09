@@ -457,3 +457,91 @@ test('close_tab does not implicitly switch recordedActiveTabName', async () => {
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
 });
+
+test('create_tab fails without args.tabName', async () => {
+    const result = await replay({
+        tabs: [{ name: 'runtime-b', url: 'about:blank' }],
+        steps: [step('ct', 'browser.create_tab', {} as any)],
+        handlers: {
+            'browser.create_tab': async (item) => ({ stepId: item.id, ok: true, data: { tab_id: 'unexpected' } }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
+
+test('create_tab successfully establishes a new binding via executor', async () => {
+    const tabs: RuntimeTab[] = [{ name: 'runtime-b', url: 'about:blank' }];
+    const executed: StepUnion[] = [];
+    const result = await replay({
+        tabs,
+        steps: [step('ct', 'browser.create_tab', { tabName: 'tab-new' })],
+        handlers: {
+            'browser.create_tab': async (item) => {
+                executed.push(item);
+                tabs.push({ name: 'runtime-new', url: 'about:blank' });
+                return { stepId: item.id, ok: true, data: { tab_id: 'runtime-new' } };
+            },
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 1);
+    assert.equal((executed[0].args as { tabName: string }).tabName, 'tab-new');
+});
+
+test('create_tab URL mismatch prevents trace.tabs.create execution', async () => {
+    const tabs: RuntimeTab[] = [{ name: 'runtime-b', url: 'about:blank' }];
+    const executed: StepUnion[] = [];
+    const result = await replay({
+        tabs,
+        steps: [
+            step('click-create', 'browser.click', { selector: '#open' }),
+            step('create-c', 'browser.create_tab', { tabName: 'tab-c' }),
+            step('switch-c', 'browser.switch_tab', { tabName: 'tab-c' }),
+            step('goto-c', 'browser.goto', { url: 'https://expected.example/' }),
+        ],
+        handlers: {
+            'browser.click': async (item) => {
+                executed.push(item);
+                // Click creates a tab with wrong URL
+                tabs.push({ name: 'runtime-wrong', url: 'https://wrong.example/' });
+                return { stepId: item.id, ok: true };
+            },
+            'browser.create_tab': async (item) => {
+                executed.push(item);
+                return { stepId: item.id, ok: true, data: { tab_id: 'unexpected' } };
+            },
+            'browser.switch_tab': async (item) => (executed.push(item), { stepId: item.id, ok: true }),
+            'browser.goto': async (item) => (executed.push(item), { stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_EFFECT_MISMATCH');
+    // trace.tabs.create should not have been executed
+    assert.ok(!executed.find((item) => item.id === 'create-c'));
+});
+
+test('create_tab does not change recordedActiveTabName', async () => {
+    const tabs: RuntimeTab[] = [{ name: 'runtime-b', url: 'about:blank' }];
+    const result = await replay({
+        tabs,
+        steps: [
+            step('create-new', 'browser.create_tab', { tabName: 'tab-new' }),
+            // Normal click should still use the original active tab (tab-b → runtime-b)
+            // not the newly created tab
+            step('click-on-active', 'browser.click', { selector: '#active' }),
+        ],
+        handlers: {
+            'browser.create_tab': async (item) => {
+                tabs.push({ name: 'runtime-new', url: 'about:blank' });
+                return { stepId: item.id, ok: true, data: { tab_id: 'runtime-new' } };
+            },
+            'browser.click': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, true);
+});
