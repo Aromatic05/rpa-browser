@@ -246,8 +246,19 @@ const isTabLifecycleStep = (stepName: StepName): boolean =>
 
 export const normalizeRecordingStepOrder = (steps: StepUnion[], navDedupeWindowMs: number): StepUnion[] => {
     const indexed = steps.map((step, index) => ({ step, index }));
+    const lifecycleGotoIds = new Set<string>();
+    for (let index = 1; index < steps.length; index += 1) {
+        const step = steps[index];
+        const previous = steps[index - 1];
+        if (step.name !== 'browser.goto') {continue;}
+        if (!isTabLifecycleStep(previous.name)) {continue;}
+        if (step.meta?.tabName && previous.meta?.tabName && step.meta.tabName !== previous.meta.tabName) {continue;}
+        lifecycleGotoIds.add(step.id);
+    }
+    const isLifecycleBarrier = (step: StepUnion): boolean =>
+        isTabLifecycleStep(step.name) || lifecycleGotoIds.has(step.id);
     const compare = (a: (typeof indexed)[number], b: (typeof indexed)[number]): number => {
-        if (isTabLifecycleStep(a.step.name) || isTabLifecycleStep(b.step.name)) {
+        if (isLifecycleBarrier(a.step) || isLifecycleBarrier(b.step)) {
             return a.index - b.index;
         }
         const aTs = a.step.meta?.ts;
@@ -729,12 +740,15 @@ export const appendWorkspaceRecordingStep = (
     tabName: string,
     step: StepUnion,
     navDedupeWindowMs: number,
+    options?: { flushPendingFill?: boolean; updateNavigateDedupe?: boolean },
 ): { accepted: boolean } => {
     const recordLog = getLogger('record');
     if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
     if (state.replaying.has(tabName) || state.replaying.has(effectiveToken)) {return { accepted: false };}
-    flushPendingFillEvents(state, effectiveToken, { workspaceName });
+    if (options?.flushPendingFill !== false) {
+        flushPendingFillEvents(state, effectiveToken, { workspaceName });
+    }
 
     const ts = step.meta?.ts ?? Date.now();
     const normalized = enrichRecordedStep(state, effectiveToken, tabName, {
@@ -752,8 +766,10 @@ export const appendWorkspaceRecordingStep = (
     }
     if (normalized.name === 'browser.goto') {
         const last = state.lastNavigateTs.get(effectiveToken) || 0;
-        if (ts - last < navDedupeWindowMs) {return { accepted: false };}
-        state.lastNavigateTs.set(effectiveToken, ts);
+        if (options?.updateNavigateDedupe !== false) {
+            if (ts - last < navDedupeWindowMs) {return { accepted: false };}
+            state.lastNavigateTs.set(effectiveToken, ts);
+        }
     }
 
     const list = state.recordings.get(effectiveToken) || [];

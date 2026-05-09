@@ -77,6 +77,16 @@ test('recordFirstTabPageUrl dedupes same first url for same tab', () => {
     assert.equal(gotos.length, 1);
 });
 
+test('recordFirstTabPageUrl records only one first url for same tab', () => {
+    const { state, workspaceName } = setupRecording();
+    recordTabCreated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'about:blank', navDedupeWindowMs: 0 });
+    recordFirstTabPageUrl(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', url: 'https://catos.info/', navDedupeWindowMs: 0 });
+    recordFirstTabPageUrl(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', url: 'https://catos.info/docs/intro', navDedupeWindowMs: 0 });
+    const gotos = getSteps(state, workspaceName).filter((step) => step.name === 'browser.goto');
+    assert.equal(gotos.length, 1);
+    assert.equal((gotos[0].args as { url?: string }).url, 'https://catos.info/');
+});
+
 test('recordTabCreated does not append switch_tab', () => {
     const { state, workspaceName } = setupRecording();
     recordTabCreated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });

@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import { appendWorkspaceRecordingEvent, appendWorkspaceRecordingStep, type RecordingState } from './recording';
 import type { RecorderEvent } from './recorder';
 import type { StepUnion } from '../runner/steps/types';
+import { recordFirstTabPageUrl } from './tab_lifecycle_recorder';
 
 export type RecorderIngestResult = {
     accepted: boolean;
@@ -22,6 +23,16 @@ export const ingestRecorderEvent = async (input: {
     tabName: string;
     navDedupeWindowMs: number;
 }): Promise<RecorderIngestResult> => {
+    if (input.event.type !== 'navigate') {
+        flushFirstTabGotoAtIngestBoundary({
+            state: input.state,
+            workspaceName: input.workspaceName,
+            tabName: input.tabName,
+            page: input.page,
+            at: input.event.ts,
+            navDedupeWindowMs: input.navDedupeWindowMs,
+        });
+    }
     const appended = await appendWorkspaceRecordingEvent(
         input.state,
         input.workspaceName,
@@ -41,17 +52,59 @@ const isRawRecorderEventPayload = (payload: StepUnion | RecorderEvent): payload 
     return typeof maybe.type === 'string' && typeof maybe.tabName === 'string' && typeof maybe.ts === 'number';
 };
 
+const readPageUrl = (page: Page | null | undefined): string => {
+    try {
+        return page?.url?.() || '';
+    } catch {
+        return '';
+    }
+};
+
+const flushFirstTabGotoAtIngestBoundary = (input: {
+    state: RecordingState;
+    workspaceName: string;
+    tabName: string;
+    url?: string;
+    page?: Page | null;
+    at?: number;
+    navDedupeWindowMs: number;
+}): void => {
+    const url = input.url || readPageUrl(input.page);
+    if (!url) {return;}
+    recordFirstTabPageUrl(input.state, {
+        workspaceName: input.workspaceName,
+        tabName: input.tabName,
+        tabRef: input.tabName,
+        url,
+        urlAtRecord: url,
+        at: input.at,
+        navDedupeWindowMs: input.navDedupeWindowMs,
+    });
+};
+
 export const ingestRecordPayload = async (input: {
     state: RecordingState;
     payload: StepUnion | RecorderEvent;
     page: Page | null;
     tabName: string;
+    currentUrl?: string;
     workspaceName: string;
     navDedupeWindowMs: number;
 }): Promise<RecordPayloadIngestResult> => {
     if (isRawRecorderEventPayload(input.payload)) {
         const sourceTabName = (input.payload.tabName || '').trim() || input.tabName;
         const event = { ...input.payload, tabName: sourceTabName };
+        if (event.type !== 'navigate') {
+            flushFirstTabGotoAtIngestBoundary({
+                state: input.state,
+                workspaceName: input.workspaceName,
+                tabName: sourceTabName,
+                url: typeof event.url === 'string' ? event.url : input.currentUrl,
+                page: input.page,
+                at: event.ts,
+                navDedupeWindowMs: input.navDedupeWindowMs,
+            });
+        }
         const appended = await appendWorkspaceRecordingEvent(
             input.state,
             input.workspaceName,
@@ -66,10 +119,20 @@ export const ingestRecordPayload = async (input: {
         return { accepted: true, mode: 'raw-event' };
     }
 
-    let currentUrl = '';
-    try {
-        currentUrl = input.page?.url?.() || '';
-    } catch {}
+    const currentUrl = input.currentUrl || readPageUrl(input.page);
+    if (input.payload.name !== 'browser.goto') {
+        const stepMeta = input.payload.meta || {};
+        const stepTabName = stepMeta.tabName || input.tabName;
+        flushFirstTabGotoAtIngestBoundary({
+            state: input.state,
+            workspaceName: input.workspaceName,
+            tabName: stepTabName,
+            url: currentUrl,
+            page: input.page,
+            at: stepMeta.ts,
+            navDedupeWindowMs: input.navDedupeWindowMs,
+        });
+    }
     const normalizedStep: StepUnion = {
         ...input.payload,
         meta: {

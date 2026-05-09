@@ -460,6 +460,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 payload,
                 page,
                 tabName,
+                currentUrl: activeTab?.url,
                 workspaceName: workspace.name,
                 navDedupeWindowMs: services.navDedupeWindowMs,
             });

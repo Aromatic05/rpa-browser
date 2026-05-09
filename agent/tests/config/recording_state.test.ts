@@ -195,6 +195,28 @@ test('normalizeRecordingStepOrder keeps same-tab click before goto within nav wi
     assert.deepEqual(ordered.map((step) => step.id), ['c', 'g']);
 });
 
+test('normalizeRecordingStepOrder keeps lifecycle goto before first dom step', () => {
+    const steps: StepUnion[] = [
+        { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', ts: 10, tabName: 'tab-a' } } as any,
+        { id: 'switch', name: 'browser.switch_tab', args: { tabName: 'tab-a' }, meta: { source: 'record', ts: 20, tabName: 'tab-a' } } as any,
+        { id: 'goto', name: 'browser.goto', args: { url: 'https://catos.info/' }, meta: { source: 'record', ts: 100, tabName: 'tab-a' } } as any,
+        { id: 'click', name: 'browser.click', args: {}, meta: { source: 'record', ts: 101, tabName: 'tab-a' } } as any,
+    ];
+    const ordered = normalizeRecordingStepOrder(steps, 20);
+    assert.deepEqual(ordered.map((step) => step.id), ['create', 'switch', 'goto', 'click']);
+});
+
+test('normalizeRecordingStepOrder keeps pending fill after lifecycle goto', () => {
+    const steps: StepUnion[] = [
+        { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', ts: 10, tabName: 'tab-a' } } as any,
+        { id: 'switch', name: 'browser.switch_tab', args: { tabName: 'tab-a' }, meta: { source: 'record', ts: 20, tabName: 'tab-a' } } as any,
+        { id: 'goto', name: 'browser.goto', args: { url: 'https://catos.info/' }, meta: { source: 'record', ts: 100, tabName: 'tab-a' } } as any,
+        { id: 'fill', name: 'browser.fill', args: { selector: '#q', value: 'catos' }, meta: { source: 'record', ts: 101, tabName: 'tab-a' } } as any,
+    ];
+    const ordered = normalizeRecordingStepOrder(steps, 20);
+    assert.deepEqual(ordered.map((step) => step.id), ['create', 'switch', 'goto', 'fill']);
+});
+
 test('normalizeRecordingStepOrder does not cross-tab reorder for click/goto override', () => {
     const steps: StepUnion[] = [
         { id: 'g', name: 'browser.goto', args: { url: 'u' }, meta: { source: 'record', ts: 1000, tabName: 'tab-b' } } as any,

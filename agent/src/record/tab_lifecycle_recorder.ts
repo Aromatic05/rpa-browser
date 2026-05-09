@@ -108,6 +108,7 @@ export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput
             },
         },
         input.navDedupeWindowMs,
+        { flushPendingFill: false, updateNavigateDedupe: false },
     );
 };
 
@@ -136,6 +137,7 @@ export const recordFirstTabPageUrl = (state: RecordingState, input: FirstPageUrl
             },
         },
         input.navDedupeWindowMs,
+        { flushPendingFill: false, updateNavigateDedupe: false },
     );
 };
 
