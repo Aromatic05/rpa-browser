@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTabEffectRegisterForTest, recordClosedTabEffectForTest, recordCreatedTabEffectForTest, replayRecording } from '../../src/record/replay';
+import { collectTabEffectsFromDiffForTest, createTabEffectRegisterForTest, recordClosedTabEffectForTest, recordCreatedTabEffectForTest, replayRecording } from '../../src/record/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
@@ -501,4 +501,28 @@ test('tab effect register marks closed effect as conflict when second arrives', 
     recordClosedTabEffectForTest(register, 'tab-1');
     recordClosedTabEffectForTest(register, 'tab-2');
     assert.equal(register.pendingClosedTab.state, 'conflict');
+});
+
+test('normal step created tab diff writes pendingCreatedTab', () => {
+    const register = createTabEffectRegisterForTest();
+    collectTabEffectsFromDiffForTest(register, new Set(['tab-a']), new Set(['tab-a', 'tab-b']), 'browser.click');
+    assert.equal(register.pendingCreatedTab.state, 'ready');
+});
+
+test('browser.create_tab step created tab diff does not write pendingCreatedTab', () => {
+    const register = createTabEffectRegisterForTest();
+    collectTabEffectsFromDiffForTest(register, new Set(['tab-a']), new Set(['tab-a', 'tab-b']), 'browser.create_tab');
+    assert.equal(register.pendingCreatedTab.state, 'empty');
+});
+
+test('normal step closed tab diff writes pendingClosedTab', () => {
+    const register = createTabEffectRegisterForTest();
+    collectTabEffectsFromDiffForTest(register, new Set(['tab-a', 'tab-b']), new Set(['tab-a']), 'browser.click');
+    assert.equal(register.pendingClosedTab.state, 'ready');
+});
+
+test('browser.close_tab step closed tab diff does not write pendingClosedTab', () => {
+    const register = createTabEffectRegisterForTest();
+    collectTabEffectsFromDiffForTest(register, new Set(['tab-a', 'tab-b']), new Set(['tab-a']), 'browser.close_tab');
+    assert.equal(register.pendingClosedTab.state, 'empty');
 });

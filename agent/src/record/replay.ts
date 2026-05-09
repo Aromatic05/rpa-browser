@@ -130,6 +130,27 @@ export const recordClosedTabEffectForTest = (register: TabEffectRegister, runtim
     register.pendingClosedTab = { state: 'ready', value: { runtimeTabName } };
 };
 
+const snapshotRuntimeTabNames = (workspace: RuntimeWorkspace): Set<string> =>
+    new Set(workspace.tabs.listTabs().map((tab) => tab.name));
+
+export const collectTabEffectsFromDiffForTest = (
+    register: TabEffectRegister,
+    before: Set<string>,
+    after: Set<string>,
+    currentStepName: string,
+): void => {
+    for (const tabName of after) {
+        if (!before.has(tabName) && currentStepName !== 'browser.create_tab') {
+            recordCreatedTabEffectForTest(register, tabName);
+        }
+    }
+    for (const tabName of before) {
+        if (!after.has(tabName) && currentStepName !== 'browser.close_tab') {
+            recordClosedTabEffectForTest(register, tabName);
+        }
+    }
+};
+
 const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnhancementMap[string]): StepUnion => {
     if (!enhancement) {return step;}
     const nextResolve = {
@@ -225,6 +246,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const recordedUrl = originalStep.meta?.urlAtRecord || readStepStringArg(originalStep, 'tabUrl') || readStepStringArg(originalStep, 'url');
         let targetTabName: string | undefined = recordedTabName ? tabBindings.get(recordedTabName)?.runtimeTabName : undefined;
         let remappedStep = originalStep;
+        const runtimeTabsBeforeStep = snapshotRuntimeTabNames(req.workspace);
         if (recordedTabName && !targetTabName) {
             const runtimeTabs = req.workspace.tabs.listTabs();
             const exactByName = runtimeTabs.find((tab) => tab.name === recordedTabName && (!recordedUrl || urlMatches(tab.url, recordedUrl)));
@@ -272,6 +294,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
 
         const response = await runOne(remappedStep);
+        const runtimeTabsAfterStep = snapshotRuntimeTabNames(req.workspace);
+        collectTabEffectsFromDiffForTest(tabEffectRegister, runtimeTabsBeforeStep, runtimeTabsAfterStep, remappedStep.name);
         const stepDurationMs = Date.now() - startedAt;
         const sleepMs = Math.max(0, stepIntervalMs - stepDurationMs);
         stepResults.push(...response.results);
