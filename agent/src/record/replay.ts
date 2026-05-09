@@ -318,6 +318,36 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 ...originalStep,
                 args: { ...asRecord(originalStep.args), tabName: targetTabName },
             };
+        } else if (originalStep.name === 'browser.close_tab' && recordedTabName) {
+            const mapped = tabBindings.get(recordedTabName);
+            const mappedRuntimeTabName = mapped?.runtimeTabName;
+            if (mapped?.closed) {
+                syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true }] };
+            } else if (tabEffectRegister.pendingClosedTab.state === 'conflict') {
+                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_EFFECT_CONFLICT', message: tabEffectRegister.pendingClosedTab.reason } };
+            } else if (tabEffectRegister.pendingClosedTab.state === 'ready') {
+                if (!mappedRuntimeTabName || tabEffectRegister.pendingClosedTab.value.runtimeTabName !== mappedRuntimeTabName) {
+                    return {
+                        ok: false,
+                        results: stepResults,
+                        error: {
+                            code: 'ERR_REPLAY_TAB_EFFECT_MISMATCH',
+                            message: `pending closed tab mismatch: expected ${mappedRuntimeTabName || 'unbound'}, got ${tabEffectRegister.pendingClosedTab.value.runtimeTabName}`,
+                        },
+                    };
+                }
+                upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
+                clearPendingClosedTabEffect(tabEffectRegister);
+                syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true }] };
+            } else if (mappedRuntimeTabName && req.workspace.tabs.hasTab(mappedRuntimeTabName)) {
+                remappedStep = {
+                    ...originalStep,
+                    args: { ...asRecord(originalStep.args), tabName: mappedRuntimeTabName },
+                };
+            } else {
+                upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
+                syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true }] };
+            }
         } else if (originalStep.name === 'browser.create_tab' && recordedTabName) {
             const mapped = tabBindings.get(recordedTabName);
             if (mapped?.runtimeTabName && req.workspace.tabs.hasTab(mapped.runtimeTabName) && !mapped.closed) {

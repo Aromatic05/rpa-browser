@@ -688,3 +688,90 @@ test('switch_tab does not create tabs', async () => {
     assert.equal(result.ok, false);
     assert.equal(executed.includes('create'), false);
 });
+
+test('close_tab is no-op when tab already marked closed', async () => {
+    const executed: string[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'close-1', name: 'browser.close_tab', args: { tabRef: 'tab-a-ref' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any,
+            { id: 'close-2', name: 'browser.close_tab', args: { tabRef: 'tab-a-ref' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any,
+        ],
+        recordingManifest: { recordingToken: 't-close-1', initialTabs: [{ tabName: 'tab-a', tabRef: 'tab-a-ref', url: 'about:blank', title: 'x', active: true }], startedAt: Date.now(), tabs: [] } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({ 'browser.close_tab': async () => (executed.push('close'), { stepId: 'x', ok: true }) }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 1);
+});
+
+test('close_tab consumes matching pending closed effect', async () => {
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'mk', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any,
+            { id: 'pre-close', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'close-match', name: 'browser.close_tab', args: { tabRef: 'tab-a-ref' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any,
+        ],
+        recordingManifest: { recordingToken: 't-close-2', initialTabs: [{ tabName: 'tab-a', tabRef: 'tab-a-ref', url: 'about:blank', title: 'x', active: true }], startedAt: Date.now(), tabs: [] } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.switch_tab': async (step: StepUnion) => ({ stepId: step.id, ok: true }),
+            'browser.click': async () => (tabs.splice(0, tabs.length, ...tabs.filter((t) => t.name !== 'tab-now')), { stepId: 'pre-close', ok: true }),
+            'browser.close_tab': async () => ({ stepId: 'close-match', ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+});
+
+test('close_tab fails when pending closed effect mismatches tab binding', async () => {
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }, { name: 'tab-other', url: 'about:blank' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'pre-mismatch', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'close-mismatch', name: 'browser.close_tab', args: { tabRef: 'tab-a-ref' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any,
+        ],
+        recordingManifest: { recordingToken: 't-close-3', initialTabs: [{ tabName: 'tab-a', tabRef: 'tab-a-ref', url: 'about:blank', title: 'x', active: true }], startedAt: Date.now(), tabs: [] } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.click': async () => (tabs.splice(0, tabs.length, { name: 'tab-now', url: 'about:blank' }), { stepId: 'pre-mismatch', ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_EFFECT_MISMATCH');
+});
+
+test('close_tab does not switch tabs implicitly', async () => {
+    const executed: string[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'close-run', name: 'browser.close_tab', args: { tabRef: 'tab-a-ref' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any],
+        recordingManifest: { recordingToken: 't-close-4', initialTabs: [{ tabName: 'tab-a', tabRef: 'tab-a-ref', url: 'about:blank', title: 'x', active: true }], startedAt: Date.now(), tabs: [] } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.close_tab': async () => (executed.push('close'), { stepId: 'close-run', ok: true }),
+            'browser.switch_tab': async () => (executed.push('switch'), { stepId: 'sw', ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.includes('close'), true);
+    assert.equal(executed.includes('switch'), false);
+});
