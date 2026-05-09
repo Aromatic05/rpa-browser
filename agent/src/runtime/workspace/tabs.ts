@@ -5,8 +5,8 @@ import { ActionError } from '../../actions/results';
 import { ERROR_CODES } from '../../actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
-import { appendWorkspaceRecordingStep, isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';
-import type { StepUnion } from '../../runner/steps/types';
+import { isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';
+import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeTab = {
     name: string;
@@ -194,11 +194,7 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
     handle: async (input) => {
         const { action, workspace } = input;
         const payload = (action.payload ?? {}) as Record<string, unknown>;
-        const appendTabLifecycleStep = (step: StepUnion, tabName: string) => {
-            if (workspace.state !== 'recording') {return;}
-            if (!isWorkspaceRecordingEnabled(deps.recordingState, workspace.name)) {return;}
-            appendWorkspaceRecordingStep(deps.recordingState, workspace.name, tabName, step, deps.navDedupeWindowMs);
-        };
+        const shouldRecordLifecycle = () => workspace.state === 'recording' && isWorkspaceRecordingEnabled(deps.recordingState, workspace.name);
 
         switch (action.type) {
             case 'tab.list': {
@@ -245,28 +241,36 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 const url = typeof payload.url === 'string' ? payload.url : '';
                 const title = typeof payload.title === 'string' ? payload.title : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
+                const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
+                const wasTabPresent = workspace.tabs.hasTab(tabName);
                 if (!workspace.tabs.hasTab(tabName)) {
                     workspace.tabs.createMetadataTab({ tabName, url, title, at });
                 } else {
                     workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 }
                 workspace.tabs.setActiveTab(tabName);
-                appendTabLifecycleStep(
-                    {
-                        id: crypto.randomUUID(),
-                        name: 'browser.create_tab',
-                        args: { url },
-                        meta: {
-                            source: 'record',
-                            ts: at ?? Date.now(),
+                if (shouldRecordLifecycle()) {
+                    if (!wasTabPresent) {
+                        recordTabCreated(deps.recordingState, {
                             workspaceName: workspace.name,
                             tabName,
                             tabRef: tabName,
                             urlAtRecord: url,
-                        },
-                    },
-                    tabName,
-                );
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                    if (prevActiveTab !== tabName) {
+                        recordTabActivated(deps.recordingState, {
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            urlAtRecord: url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
             }
 
@@ -290,22 +294,30 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 if (!tabName) {
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
+                const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
+                const closingTab = workspace.tabs.getTab(tabName);
                 await workspace.tabs.closeTab(tabName);
-                appendTabLifecycleStep(
-                    {
-                        id: crypto.randomUUID(),
-                        name: 'browser.close_tab',
-                        args: { tabRef: tabName },
-                        meta: {
-                            source: 'record',
-                            ts: at ?? Date.now(),
+                if (shouldRecordLifecycle()) {
+                    recordTabClosed(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: closingTab?.url || '',
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                    const nextActiveTab = workspace.tabs.getActiveTab();
+                    if (prevActiveTab === tabName && nextActiveTab && nextActiveTab.name !== tabName) {
+                        recordTabActivated(deps.recordingState, {
                             workspaceName: workspace.name,
-                            tabName,
-                            tabRef: tabName,
-                        },
-                    },
-                    tabName,
-                );
+                            tabName: nextActiveTab.name,
+                            tabRef: nextActiveTab.name,
+                            urlAtRecord: nextActiveTab.url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
@@ -345,26 +357,22 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
                 const url = typeof payload.url === 'string' ? payload.url : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
+                const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
                 workspace.tabs.setActiveTab(tabName);
                 if (url) {
                     workspace.tabs.updateTab(tabName, { url, updatedAt: at });
                 }
-                appendTabLifecycleStep(
-                    {
-                        id: crypto.randomUUID(),
-                        name: 'browser.switch_tab',
-                        args: { tabRef: tabName, tabUrl: url },
-                        meta: {
-                            source: 'record',
-                            ts: at ?? Date.now(),
-                            workspaceName: workspace.name,
-                            tabName,
-                            tabRef: tabName,
-                            urlAtRecord: url,
-                        },
-                    },
-                    tabName,
-                );
+                if (shouldRecordLifecycle() && prevActiveTab !== tabName) {
+                    const runtimeTab = workspace.tabs.getTab(tabName);
+                    recordTabActivated(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: runtimeTab?.url || url,
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
