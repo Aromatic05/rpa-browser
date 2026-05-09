@@ -141,6 +141,18 @@ const clearPendingClosedTabEffect = (register: TabEffectRegister): void => {
 const snapshotRuntimeTabNames = (workspace: RuntimeWorkspace): Set<string> =>
     new Set(workspace.tabs.listTabs().map((tab) => tab.name));
 
+const findRuntimeTabNameForRecorded = (
+    workspace: RuntimeWorkspace,
+    recordedTabName: string,
+    recordedUrl: string | undefined,
+    urlMatches: (left?: string, right?: string) => boolean,
+): string | undefined => {
+    const runtimeTabs = workspace.tabs.listTabs();
+    const exactByName = runtimeTabs.find((tab) => tab.name === recordedTabName && (!recordedUrl || urlMatches(tab.url, recordedUrl)));
+    const byUrl = !exactByName && recordedUrl ? runtimeTabs.find((tab) => urlMatches(tab.url, recordedUrl)) : undefined;
+    return exactByName?.name || byUrl?.name;
+};
+
 export const collectTabEffectsFromDiffForTest = (
     register: TabEffectRegister,
     before: Set<string>,
@@ -256,7 +268,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         let remappedStep = originalStep;
         let syntheticResponse: RunStepsResult | undefined;
         const runtimeTabsBeforeStep = snapshotRuntimeTabNames(req.workspace);
-        if (recordedTabName && !targetTabName && originalStep.name !== 'browser.create_tab') {
+        if (recordedTabName && !targetTabName && originalStep.name !== 'browser.create_tab' && originalStep.name !== 'browser.switch_tab') {
             const runtimeTabs = req.workspace.tabs.listTabs();
             const exactByName = runtimeTabs.find((tab) => tab.name === recordedTabName && (!recordedUrl || urlMatches(tab.url, recordedUrl)));
             const byUrl = !exactByName && recordedUrl ? runtimeTabs.find((tab) => urlMatches(tab.url, recordedUrl)) : undefined;
@@ -282,7 +294,25 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
         if (originalStep.name === 'browser.switch_tab') {
             if (!targetTabName) {
-                return { ok: false, results: stepResults, error: { code: 'ERR_NOT_FOUND', message: 'replay target tab not found' } };
+                if (recordedTabName) {
+                    targetTabName = findRuntimeTabNameForRecorded(req.workspace, recordedTabName, recordedUrl, urlMatches);
+                    if (targetTabName) {
+                        upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: req.workspace.tabs.getTab(targetTabName)?.url, status: 'reused', closed: false });
+                    }
+                }
+            }
+            if (!targetTabName) {
+                if (tabEffectRegister.pendingCreatedTab.state === 'conflict') {
+                    return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_EFFECT_CONFLICT', message: tabEffectRegister.pendingCreatedTab.reason } };
+                }
+                if (tabEffectRegister.pendingCreatedTab.state === 'ready' && recordedTabName) {
+                    targetTabName = tabEffectRegister.pendingCreatedTab.value.runtimeTabName;
+                    upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: req.workspace.tabs.getTab(targetTabName)?.url, closed: false, status: 'created' });
+                    clearPendingCreatedTabEffect(tabEffectRegister);
+                }
+            }
+            if (!targetTabName) {
+                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_NOT_BOUND', message: 'replay target tab not bound' } };
             }
             remappedStep = {
                 ...originalStep,

@@ -17,7 +17,7 @@ const createReplayWorkspace = (tabs: Array<{ name: string; url: string }>) => ({
     },
 }) as any;
 
-test('replayRecording creates and switches tab when recorded tabName is missing (cold replay)', async () => {
+test('replayRecording fails switch_tab when target is not bound in cold replay', async () => {
     const executed: StepUnion[] = [];
     const steps: StepUnion[] = [
         {
@@ -87,11 +87,10 @@ test('replayRecording creates and switches tab when recorded tabName is missing 
         } as RunStepsDeps,
     });
 
-    assert.equal(result.ok, true);
-    assert.equal(executed[0].name, 'browser.create_tab');
-    assert.equal(executed.some((step) => step.name === 'browser.switch_tab'), true);
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
     assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
-    assert.equal(executed[executed.length - 1].name, 'browser.click');
+    assert.equal(executed.some((step) => step.id === 's-switch'), false);
 });
 
 test('replayRecording force switches when tabName changes without browser.switch_tab', async () => {
@@ -207,7 +206,7 @@ test('replayRecording reuses existing tab by token mapping in hot replay', async
     assert.equal((switched?.args as any)?.tabName, 'tab-b');
 });
 
-test('replayRecording creates tab with recorded switch url when target tab is missing', async () => {
+test('replayRecording does not create tab for missing switch target', async () => {
     const executed: StepUnion[] = [];
     const steps: StepUnion[] = [
         {
@@ -245,11 +244,9 @@ test('replayRecording creates tab with recorded switch url when target tab is mi
         } as RunStepsDeps,
     });
 
-    assert.equal(result.ok, true);
-    assert.equal(executed[0].name, 'browser.create_tab');
-    assert.equal((executed[0].args as any).url, 'https://example.com/target');
-    assert.equal(executed[1].name, 'browser.switch_tab');
-    assert.equal((executed[1].args as any).tabName, 'tab-created');
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), false);
 });
 
 test('replayRecording does not inject resolve from empty enhancement', async () => {
@@ -616,4 +613,78 @@ test('create_tab does not inject extra switch', async () => {
     assert.equal(result.ok, true);
     assert.equal(executed.includes('create'), true);
     assert.equal(executed.includes('switch'), false);
+});
+
+test('switch_tab works with existing binding', async () => {
+    let switchedTo = '';
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'sw-ok', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any],
+        recordingManifest: { recordingToken: 't-sw-1', initialTabs: [{ tabName: 'tab-a', tabRef: 'tab-a-ref', url: 'about:blank', title: 'x', active: true }], startedAt: Date.now(), tabs: [] } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({ 'browser.switch_tab': async (step: StepUnion) => (switchedTo = (step.args as any).tabName, { stepId: step.id, ok: true }) }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(switchedTo, 'tab-now');
+});
+
+test('switch_tab binds from pending created effect when unbound', async () => {
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }];
+    let switchedTo = '';
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'pre', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'sw-ready', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'tab-new', tabRef: 'tab-new-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.click': async () => (tabs.push({ name: 'tab-runtime-new', url: 'https://x' }), { stepId: 'pre', ok: true }),
+            'browser.switch_tab': async (step: StepUnion) => (switchedTo = (step.args as any).tabName, { stepId: step.id, ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(switchedTo, 'tab-runtime-new');
+});
+
+test('switch_tab fails when unbound and no pending created effect', async () => {
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'sw-fail', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'tab-missing', tabRef: 'tab-missing-ref' } } as any],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({ 'browser.switch_tab': async () => ({ stepId: 'sw-fail', ok: true }) }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
+
+test('switch_tab does not create tabs', async () => {
+    const executed: string[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'sw-no-create', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'tab-missing', tabRef: 'tab-missing-ref' } } as any],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'x', ok: true, data: { tab_id: 'x' } }),
+            'browser.switch_tab': async () => ({ stepId: 'sw-no-create', ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(executed.includes('create'), false);
 });
