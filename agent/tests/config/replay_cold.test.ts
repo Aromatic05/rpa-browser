@@ -366,3 +366,94 @@ test('normal step uses new recordedActiveTabName after switch_tab', async () => 
     // ensureExecutableTab called with runtime-a after switch
     assert.ok(ensuredTabs.includes('runtime-a'));
 });
+
+test('close_tab succeeds for closed binding (idempotent)', async () => {
+    const tabs: RuntimeTab[] = [
+        { name: 'runtime-b', url: 'about:blank' },
+        { name: 'runtime-a', url: 'https://a.example/' },
+    ];
+    const result = await replay({
+        tabs,
+        manifestOverrides: { activeTabRef: 'tab-a' },
+        steps: [
+            step('close-a-1', 'browser.close_tab', { tabName: 'tab-a' }),
+            step('close-a-2', 'browser.close_tab', { tabName: 'tab-a' }),
+        ],
+        handlers: {
+            'browser.close_tab': async (item) => {
+                const tabName = (item.args as { tabName: string }).tabName;
+                const index = tabs.findIndex((tab) => tab.name === tabName);
+                if (index >= 0) {tabs.splice(index, 1);}
+                return { stepId: item.id, ok: true };
+            },
+        },
+    });
+
+    assert.equal(result.ok, true);
+});
+
+test('close_tab fails for unbound recorded tab', async () => {
+    const result = await replay({
+        tabs: [{ name: 'runtime-b', url: 'about:blank' }],
+        steps: [step('close-x', 'browser.close_tab', { tabName: 'tab-unknown' })],
+        handlers: {
+            'browser.close_tab': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
+
+test('close_tab does not close active tab as fallback', async () => {
+    const tabs: RuntimeTab[] = [{ name: 'runtime-b', url: 'about:blank' }];
+    // close_tab for unbound tab should fail, not close runtime-b
+    const result = await replay({
+        tabs,
+        steps: [step('close-unknown', 'browser.close_tab', { tabName: 'tab-unknown' })],
+        handlers: {
+            'browser.close_tab': async (item) => {
+                // If called, it would remove the tab
+                const tabName = (item.args as { tabName: string }).tabName;
+                const index = tabs.findIndex((tab) => tab.name === tabName);
+                if (index >= 0) {tabs.splice(index, 1);}
+                return { stepId: item.id, ok: true };
+            },
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+    // runtime-b was never closed — the handler shouldn't have been called
+    assert.equal(tabs.length, 1);
+    assert.equal(tabs[0].name, 'runtime-b');
+});
+
+test('close_tab does not implicitly switch recordedActiveTabName', async () => {
+    const tabs: RuntimeTab[] = [
+        { name: 'runtime-b', url: 'about:blank' },
+        { name: 'runtime-a', url: 'https://a.example/' },
+    ];
+    const result = await replay({
+        tabs,
+        manifestOverrides: { activeTabRef: 'tab-a' },
+        steps: [
+            step('close-a', 'browser.close_tab', { tabName: 'tab-a' }),
+            // After closing tab-a (which was active), a normal click should fail
+            // because recordedActiveTabName was cleared, not switched to tab-b
+            step('click-after-close', 'browser.click', { selector: '#x' }),
+        ],
+        handlers: {
+            'browser.close_tab': async (item) => {
+                const tabName = (item.args as { tabName: string }).tabName;
+                const index = tabs.findIndex((tab) => tab.name === tabName);
+                if (index >= 0) {tabs.splice(index, 1);}
+                return { stepId: item.id, ok: true };
+            },
+            'browser.click': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
