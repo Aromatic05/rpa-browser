@@ -1,0 +1,127 @@
+import crypto from 'node:crypto';
+import type { RecordingState } from './recording';
+import { appendWorkspaceRecordingStep, getWorkspaceUnsavedToken } from './recording';
+import type { StepUnion } from '../runner/steps/types';
+
+type TabLifecycleInput = {
+    workspaceName: string;
+    tabName: string;
+    tabRef: string;
+    urlAtRecord?: string;
+    at?: number;
+    navDedupeWindowMs: number;
+};
+
+const getRecordedSteps = (state: RecordingState, workspaceName: string): StepUnion[] => {
+    const token = getWorkspaceUnsavedToken(state, workspaceName);
+    return state.recordings.get(token) || [];
+};
+
+const isSameTab = (step: StepUnion, tabRef: string): boolean => {
+    const args = (step.args || {}) as Record<string, unknown>;
+    const stepTabRef = typeof args.tabRef === 'string' ? args.tabRef : undefined;
+    const stepTabName = typeof args.tabName === 'string' ? args.tabName : undefined;
+    const metaTabRef = typeof step.meta?.tabRef === 'string' ? step.meta.tabRef : undefined;
+    const metaTabName = typeof step.meta?.tabName === 'string' ? step.meta.tabName : undefined;
+    return stepTabRef === tabRef || stepTabName === tabRef || metaTabRef === tabRef || metaTabName === tabRef;
+};
+
+const shouldSkipCreated = (steps: StepUnion[], tabRef: string): boolean => {
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+        const step = steps[i];
+        if (!isSameTab(step, tabRef)) {continue;}
+        if (step.name === 'browser.close_tab') {return false;}
+        if (step.name === 'browser.create_tab') {return true;}
+        return false;
+    }
+    return false;
+};
+
+const shouldSkipClosed = (steps: StepUnion[], tabRef: string): boolean => {
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+        const step = steps[i];
+        if (!isSameTab(step, tabRef)) {continue;}
+        return step.name === 'browser.close_tab';
+    }
+    return false;
+};
+
+const shouldSkipActivated = (steps: StepUnion[], tabRef: string): boolean => {
+    const last = steps[steps.length - 1];
+    return !!last && last.name === 'browser.switch_tab' && isSameTab(last, tabRef);
+};
+
+export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
+    const steps = getRecordedSteps(state, input.workspaceName);
+    if (shouldSkipCreated(steps, input.tabRef)) {return { accepted: false };}
+    const ts = input.at ?? Date.now();
+    return appendWorkspaceRecordingStep(
+        state,
+        input.workspaceName,
+        input.tabName,
+        {
+            id: crypto.randomUUID(),
+            name: 'browser.create_tab',
+            args: { url: input.urlAtRecord || '' },
+            meta: {
+                source: 'record',
+                ts,
+                workspaceName: input.workspaceName,
+                tabName: input.tabName,
+                tabRef: input.tabRef,
+                urlAtRecord: input.urlAtRecord || '',
+            },
+        },
+        input.navDedupeWindowMs,
+    );
+};
+
+export const recordTabActivated = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
+    const steps = getRecordedSteps(state, input.workspaceName);
+    if (shouldSkipActivated(steps, input.tabRef)) {return { accepted: false };}
+    const ts = input.at ?? Date.now();
+    return appendWorkspaceRecordingStep(
+        state,
+        input.workspaceName,
+        input.tabName,
+        {
+            id: crypto.randomUUID(),
+            name: 'browser.switch_tab',
+            args: { tabName: input.tabName, tabRef: input.tabRef },
+            meta: {
+                source: 'record',
+                ts,
+                workspaceName: input.workspaceName,
+                tabName: input.tabName,
+                tabRef: input.tabRef,
+                urlAtRecord: input.urlAtRecord || '',
+            },
+        },
+        input.navDedupeWindowMs,
+    );
+};
+
+export const recordTabClosed = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
+    const steps = getRecordedSteps(state, input.workspaceName);
+    if (shouldSkipClosed(steps, input.tabRef)) {return { accepted: false };}
+    const ts = input.at ?? Date.now();
+    return appendWorkspaceRecordingStep(
+        state,
+        input.workspaceName,
+        input.tabName,
+        {
+            id: crypto.randomUUID(),
+            name: 'browser.close_tab',
+            args: { tabName: input.tabName, tabRef: input.tabRef },
+            meta: {
+                source: 'record',
+                ts,
+                workspaceName: input.workspaceName,
+                tabName: input.tabName,
+                tabRef: input.tabRef,
+                urlAtRecord: input.urlAtRecord || '',
+            },
+        },
+        input.navDedupeWindowMs,
+    );
+};
