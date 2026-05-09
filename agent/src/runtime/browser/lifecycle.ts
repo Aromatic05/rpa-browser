@@ -7,7 +7,7 @@ import type { WorkspaceRegistry } from '../workspace/registry';
 import type { PageRegistry } from './page_registry';
 import type { RecordingState } from '../../record/recording';
 import type { Workflow } from '../../workflow';
-import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
+import { recordFirstTabPageUrl, recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeLifecycleDeps = {
     workspaceRegistry: WorkspaceRegistry;
@@ -106,6 +106,14 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
                     navDedupeWindowMs: deps.navDedupeWindowMs,
                 });
             }
+            recordFirstTabPageUrl(deps.recordingState, {
+                workspaceName,
+                tabName: bindingName,
+                tabRef: bindingName,
+                url: page.url(),
+                urlAtRecord: page.url(),
+                navDedupeWindowMs: deps.navDedupeWindowMs,
+            });
             void deps.ensureRecorder(deps.recordingState, workspaceName, page, bindingName, deps.navDedupeWindowMs);
             void deps.setRecorderRuntimeEnabled(page, true);
         }

@@ -6,7 +6,7 @@ import { ERROR_CODES } from '../../actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
 import { isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';
-import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
+import { recordFirstTabPageUrl, recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeTab = {
     name: string;
@@ -270,6 +270,15 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                             navDedupeWindowMs: deps.navDedupeWindowMs,
                         });
                     }
+                    recordFirstTabPageUrl(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        url,
+                        urlAtRecord: url,
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
                 }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
             }
@@ -284,6 +293,17 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                     return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
                 }
                 workspace.tabs.reportTab(tabName, { url, title, at });
+                if (shouldRecordLifecycle() && url) {
+                    recordFirstTabPageUrl(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        url,
+                        urlAtRecord: url,
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 
@@ -359,6 +379,17 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                         at,
                         navDedupeWindowMs: deps.navDedupeWindowMs,
                     });
+                    if (runtimeTab?.url || url) {
+                        recordFirstTabPageUrl(deps.recordingState, {
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            url: runtimeTab?.url || url,
+                            urlAtRecord: runtimeTab?.url || url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
                 }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }

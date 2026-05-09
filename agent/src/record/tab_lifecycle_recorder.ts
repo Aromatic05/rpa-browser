@@ -12,6 +12,10 @@ type TabLifecycleInput = {
     navDedupeWindowMs: number;
 };
 
+type FirstPageUrlInput = TabLifecycleInput & {
+    url: string;
+};
+
 const getRecordedSteps = (state: RecordingState, workspaceName: string): StepUnion[] => {
     const token = getWorkspaceUnsavedToken(state, workspaceName);
     return state.recordings.get(token) || [];
@@ -47,8 +51,39 @@ const shouldSkipClosed = (steps: StepUnion[], tabRef: string): boolean => {
 };
 
 const shouldSkipActivated = (steps: StepUnion[], tabRef: string): boolean => {
-    const last = steps[steps.length - 1];
-    return !!last && last.name === 'browser.switch_tab' && isSameTab(last, tabRef);
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+        const step = steps[i];
+        if (!isSameTab(step, tabRef)) {continue;}
+        if (step.name === 'browser.goto') {continue;}
+        return step.name === 'browser.switch_tab';
+    }
+    return false;
+};
+
+const isOrdinaryPageUrl = (url: string): boolean =>
+    url.startsWith('http://') || url.startsWith('https://');
+
+const hasCreatedTab = (steps: StepUnion[], tabRef: string): boolean => {
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+        const step = steps[i];
+        if (!isSameTab(step, tabRef)) {continue;}
+        if (step.name === 'browser.close_tab') {return false;}
+        if (step.name === 'browser.create_tab') {return true;}
+    }
+    return false;
+};
+
+const shouldSkipFirstPageGoto = (steps: StepUnion[], tabRef: string): boolean => {
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+        const step = steps[i];
+        if (!isSameTab(step, tabRef)) {continue;}
+        if (step.name === 'browser.close_tab') {return false;}
+        if (step.name === 'browser.goto') {
+            return true;
+        }
+        if (step.name === 'browser.create_tab') {return false;}
+    }
+    return false;
 };
 
 export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
@@ -70,6 +105,34 @@ export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput
                 tabName: input.tabName,
                 tabRef: input.tabRef,
                 urlAtRecord: input.urlAtRecord || '',
+            },
+        },
+        input.navDedupeWindowMs,
+    );
+};
+
+export const recordFirstTabPageUrl = (state: RecordingState, input: FirstPageUrlInput): { accepted: boolean } => {
+    if (!isOrdinaryPageUrl(input.url)) {return { accepted: false };}
+    const steps = getRecordedSteps(state, input.workspaceName);
+    if (!hasCreatedTab(steps, input.tabRef) || shouldSkipFirstPageGoto(steps, input.tabRef)) {
+        return { accepted: false };
+    }
+    const ts = input.at ?? Date.now();
+    return appendWorkspaceRecordingStep(
+        state,
+        input.workspaceName,
+        input.tabName,
+        {
+            id: crypto.randomUUID(),
+            name: 'browser.goto',
+            args: { url: input.url },
+            meta: {
+                source: 'record',
+                ts,
+                workspaceName: input.workspaceName,
+                tabName: input.tabName,
+                tabRef: input.tabRef,
+                urlAtRecord: input.url,
             },
         },
         input.navDedupeWindowMs,
