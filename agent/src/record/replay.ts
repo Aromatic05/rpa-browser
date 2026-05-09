@@ -193,6 +193,31 @@ export const inferExpectedCreatedTabUrlForTest = (steps: StepUnion[], createTabI
     return createStep.meta?.urlAtRecord || undefined;
 };
 
+const createdTabEffectMatchesExpectedUrl = (
+    effect: TabCreatedEffect,
+    expectedUrl: string | undefined,
+    urlMatches: (left?: string, right?: string) => boolean,
+): boolean => !expectedUrl || urlMatches(effect.url, expectedUrl);
+
+const createTabEffectMismatchError = (
+    effect: TabCreatedEffect,
+    expectedUrl: string | undefined,
+    recordedTabName: string,
+    recordedTabRef: string | undefined,
+    createTabStepId: string,
+): ReplayResult['error'] => ({
+    code: REPLAY_ERROR_CODES.TAB_EFFECT_MISMATCH,
+    message: `pending created tab url mismatch: expected ${expectedUrl || ''}, got ${effect.url}`,
+    details: {
+        expectedUrl: expectedUrl || '',
+        actualUrl: effect.url,
+        runtimeTabName: effect.runtimeTabName,
+        recordedTabName,
+        recordedTabRef: recordedTabRef || recordedTabName,
+        createTabStepId,
+    },
+});
+
 export const collectTabEffectsFromDiffForTest = (
     register: TabEffectRegister,
     before: Set<string>,
@@ -396,10 +421,19 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             }
         } else if (originalStep.name === 'browser.create_tab' && recordedTabName) {
             const mapped = tabBindings.get(recordedTabName);
+            const expectedCreatedTabUrl = inferExpectedCreatedTabUrlForTest(req.steps, index);
             if (mapped?.runtimeTabName && req.workspace.tabs.hasTab(mapped.runtimeTabName) && !mapped.closed) {
                 syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: mapped.runtimeTabName } }] };
             } else if (tabEffectRegister.pendingCreatedTab.state === 'ready') {
-                const runtimeTab = tabEffectRegister.pendingCreatedTab.value.runtimeTabName;
+                const createdEffect = tabEffectRegister.pendingCreatedTab.value;
+                if (!createdTabEffectMatchesExpectedUrl(createdEffect, expectedCreatedTabUrl, urlMatches)) {
+                    return {
+                        ok: false,
+                        results: stepResults,
+                        error: createTabEffectMismatchError(createdEffect, expectedCreatedTabUrl, recordedTabName, recordedTabRef, originalStep.id),
+                    };
+                }
+                const runtimeTab = createdEffect.runtimeTabName;
                 upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: runtimeTab, runtimeUrl: req.workspace.tabs.getTab(runtimeTab)?.url, closed: false, status: 'created' });
                 clearPendingCreatedTabEffect(tabEffectRegister);
                 logEffectStateChange(originalStep.id, 'consume_pending_created_effect', effectBeforeStep);
