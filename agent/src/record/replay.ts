@@ -25,6 +25,12 @@ export type ReplayOptions = {
     scroll: { minDelta: number; maxDelta: number; minSteps: number; maxSteps: number };
 };
 
+const REPLAY_ERROR_CODES = {
+    TAB_NOT_BOUND: 'ERR_REPLAY_TAB_NOT_BOUND',
+    TAB_EFFECT_CONFLICT: 'ERR_REPLAY_TAB_EFFECT_CONFLICT',
+    TAB_EFFECT_MISMATCH: 'ERR_REPLAY_TAB_EFFECT_MISMATCH',
+} as const;
+
 type ReplayRequest = {
     workspaceName: string;
     initialTabName: string;
@@ -209,9 +215,19 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
 
     const tabBindings: ReplayTabBindings = new Map();
     const tabEffectRegister = createTabEffectRegisterForTest();
-    void tabEffectRegister;
+    const effectStateSnapshot = () => ({
+        pendingCreatedTab: tabEffectRegister.pendingCreatedTab.state,
+        pendingClosedTab: tabEffectRegister.pendingClosedTab.state,
+    });
+    const logEffectStateChange = (stepId: string, reason: string, before: ReturnType<typeof effectStateSnapshot>) => {
+        const after = effectStateSnapshot();
+        if (before.pendingCreatedTab !== after.pendingCreatedTab || before.pendingClosedTab !== after.pendingClosedTab) {
+            stepLogger.info('[RPA:replay:tab-effects]', { stepId, reason, before, after });
+        }
+    };
     const upsertTabBinding = (recordedTabName: string, patch: Partial<ReplayTabBinding>) => {
-        const current = tabBindings.get(recordedTabName) || {
+        const before = tabBindings.get(recordedTabName);
+        const current = before || {
             recordedTabName,
             recordedTabRef: patch.recordedTabRef || recordedTabName,
             recordedUrl: patch.recordedUrl,
@@ -220,7 +236,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             status: patch.status || 'reused',
             closed: patch.closed,
         };
-        tabBindings.set(recordedTabName, { ...current, ...patch });
+        const next = { ...current, ...patch };
+        tabBindings.set(recordedTabName, next);
+        if (!before || JSON.stringify(before) !== JSON.stringify(next)) {
+            stepLogger.info('[RPA:replay:tab-binding]', { recordedTabName, before, after: next });
+        }
     };
     for (const item of req.recordingManifest?.initialTabs || []) {
         upsertTabBinding(item.tabName, {
@@ -246,6 +266,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
 
     for (let index = 0; index < req.steps.length; index += 1) {
         const startedAt = Date.now();
+        const effectBeforeStep = effectStateSnapshot();
         const originalStep = withResolveFromEnhancement(
             req.steps[index],
             req.enrichments?.[req.steps[index].id],
@@ -273,7 +294,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (targetTabName) {
                 upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: req.workspace.tabs.getTab(targetTabName)?.url, status: 'reused' });
             } else {
-                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_NOT_BOUND', message: 'replay target tab not bound' } };
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
             }
         }
         if (originalStep.name === 'browser.switch_tab') {
@@ -287,7 +308,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             }
             if (!targetTabName) {
                 if (tabEffectRegister.pendingCreatedTab.state === 'conflict') {
-                    return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_EFFECT_CONFLICT', message: tabEffectRegister.pendingCreatedTab.reason } };
+                    return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
                 }
                 if (tabEffectRegister.pendingCreatedTab.state === 'ready' && recordedTabName) {
                     targetTabName = tabEffectRegister.pendingCreatedTab.value.runtimeTabName;
@@ -296,7 +317,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 }
             }
             if (!targetTabName) {
-                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_NOT_BOUND', message: 'replay target tab not bound' } };
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
             }
             remappedStep = {
                 ...originalStep,
@@ -308,20 +329,21 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (mapped?.closed) {
                 syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true }] };
             } else if (tabEffectRegister.pendingClosedTab.state === 'conflict') {
-                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_EFFECT_CONFLICT', message: tabEffectRegister.pendingClosedTab.reason } };
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingClosedTab.reason } };
             } else if (tabEffectRegister.pendingClosedTab.state === 'ready') {
                 if (!mappedRuntimeTabName || tabEffectRegister.pendingClosedTab.value.runtimeTabName !== mappedRuntimeTabName) {
                     return {
                         ok: false,
                         results: stepResults,
                         error: {
-                            code: 'ERR_REPLAY_TAB_EFFECT_MISMATCH',
+                            code: REPLAY_ERROR_CODES.TAB_EFFECT_MISMATCH,
                             message: `pending closed tab mismatch: expected ${mappedRuntimeTabName || 'unbound'}, got ${tabEffectRegister.pendingClosedTab.value.runtimeTabName}`,
                         },
                     };
                 }
                 upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
                 clearPendingClosedTabEffect(tabEffectRegister);
+                logEffectStateChange(originalStep.id, 'consume_pending_closed_effect', effectBeforeStep);
                 syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true }] };
             } else if (mappedRuntimeTabName && req.workspace.tabs.hasTab(mappedRuntimeTabName)) {
                 remappedStep = {
@@ -340,9 +362,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 const runtimeTab = tabEffectRegister.pendingCreatedTab.value.runtimeTabName;
                 upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: runtimeTab, runtimeUrl: req.workspace.tabs.getTab(runtimeTab)?.url, closed: false, status: 'created' });
                 clearPendingCreatedTabEffect(tabEffectRegister);
+                logEffectStateChange(originalStep.id, 'consume_pending_created_effect', effectBeforeStep);
                 syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: runtimeTab } }] };
             } else if (tabEffectRegister.pendingCreatedTab.state === 'conflict') {
-                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_EFFECT_CONFLICT', message: tabEffectRegister.pendingCreatedTab.reason } };
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
             }
         } else if (targetTabName) {
             await req.runtime.ensureExecutableTab({ workspace: req.workspace, pageRegistry: req.pageRegistry, tabName: targetTabName, urlHint: recordedUrl });
@@ -351,6 +374,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const response = syntheticResponse || await runOne(remappedStep);
         const runtimeTabsAfterStep = snapshotRuntimeTabNames(req.workspace);
         collectTabEffectsFromDiffForTest(tabEffectRegister, runtimeTabsBeforeStep, runtimeTabsAfterStep, remappedStep.name);
+        logEffectStateChange(originalStep.id, 'collect_step_tab_diff', effectBeforeStep);
         const stepDurationMs = Date.now() - startedAt;
         const sleepMs = Math.max(0, stepIntervalMs - stepDurationMs);
         stepResults.push(...response.results);
@@ -391,6 +415,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (createdTabName) {
                 upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: createdTabName, runtimeUrl: req.workspace.tabs.getTab(createdTabName)?.url, status: 'created', closed: false });
                 clearPendingCreatedTabEffect(tabEffectRegister);
+                logEffectStateChange(originalStep.id, 'create_tab_success', effectBeforeStep);
             }
         }
         if (recordedTabName && remappedStep.name === 'browser.switch_tab' && response.ok) {
@@ -400,6 +425,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (recordedTabName && remappedStep.name === 'browser.close_tab' && response.ok) {
             upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
             clearPendingClosedTabEffect(tabEffectRegister);
+            logEffectStateChange(originalStep.id, 'close_tab_success', effectBeforeStep);
         }
         if (sleepMs > 0) {
             await wait(sleepMs);

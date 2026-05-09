@@ -798,3 +798,51 @@ test('normal click/fill/select_option fail when target tab is unbound and do not
     }
     assert.equal(executed.includes('create'), false);
 });
+
+test('error codes remain stable for tab effect conflict mismatch and not bound', async () => {
+    const notBound = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'nb', name: 'browser.switch_tab', args: {}, meta: { source: 'record', tabName: 'missing', tabRef: 'missing' } } as any],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({}) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(notBound.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+
+    const conflictTabs = [{ name: 'tab-now', url: 'about:blank' }];
+    const conflict = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'c1', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'c2', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-x', tabRef: 'tab-x' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace(conflictTabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({ 'browser.click': async (step: StepUnion) => (conflictTabs.push({ name: `n-${step.id}`, url: 'u' }), { stepId: step.id, ok: true }) }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(conflict.error?.code, 'ERR_REPLAY_TAB_EFFECT_CONFLICT');
+
+    const mismatchTabs = [{ name: 'tab-now', url: 'about:blank' }, { name: 'tab-other', url: 'about:blank' }];
+    const mismatch = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'pre', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'close', name: 'browser.close_tab', args: {}, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any,
+        ],
+        recordingManifest: { recordingToken: 'x', initialTabs: [{ tabName: 'tab-a', tabRef: 'tab-a-ref', url: 'about:blank', title: 'x', active: true }], startedAt: Date.now(), tabs: [] } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace(mismatchTabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({ 'browser.click': async () => (mismatchTabs.splice(1, 1), { stepId: 'pre', ok: true }) }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(mismatch.error?.code, 'ERR_REPLAY_TAB_EFFECT_MISMATCH');
+});
