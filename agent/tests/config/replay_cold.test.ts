@@ -12,13 +12,14 @@ type StepHandler = (step: StepUnion) => Promise<{ stepId: string; ok: boolean; d
 const step = <TName extends StepName>(id: string, name: TName, args: Extract<StepUnion, { name: TName }>['args']): StepUnion =>
     ({ id, name, args }) as StepUnion;
 
-const createManifest = (): RecordingManifest => ({
+const createManifest = (overrides?: Partial<RecordingManifest>): RecordingManifest => ({
     recordingToken: 'recording-test',
     workspaceName: 'recorded-ws',
     activeTabRef: 'tab-b',
     initialTabs: [],
     startedAt: 1,
     tabs: [],
+    ...overrides,
 });
 
 const createReplayWorkspace = (tabs: RuntimeTab[]) => ({
@@ -49,6 +50,7 @@ const replay = async (input: {
     tabs: RuntimeTab[];
     ensuredTabs?: string[];
     handlers: Partial<Record<StepName, StepHandler>>;
+    manifestOverrides?: Partial<RecordingManifest>;
 }) => replayRecording({
     workspaceName: 'runtime-ws',
     initialTabName: 'runtime-b',
@@ -57,7 +59,7 @@ const replay = async (input: {
     workspace: createReplayWorkspace(input.tabs),
     runtime: createReplayRuntime(input.ensuredTabs || []) as any,
     pageRegistry: {} as any,
-    recordingManifest: createManifest(),
+    recordingManifest: createManifest(input.manifestOverrides),
     deps: createDeps(input.handlers),
 });
 
@@ -162,4 +164,105 @@ test('canonical persisted replay actively creates only when no created tab effec
     assert.equal(result.ok, true);
     assert.deepEqual(executed.map((item) => item.name), ['browser.create_tab']);
     assert.equal((executed[0].args as { tabName: string }).tabName, 'tab-c');
+});
+
+test('normal click without recordedActiveTabName fails', async () => {
+    const result = await replayRecording({
+        workspaceName: 'runtime-ws',
+        initialTabName: 'runtime-b',
+        steps: [step('clk', 'browser.click', { selector: '#x' })],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'runtime-b', url: 'about:blank' }]),
+        runtime: { ensureExecutableTab: async () => ({}) } as any,
+        pageRegistry: {} as any,
+        deps: createDeps({
+            'browser.click': async (item) => ({ stepId: item.id, ok: true }),
+        }),
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
+
+test('normal click with recordedActiveTabName but no binding fails', async () => {
+    const result = await replay({
+        tabs: [{ name: 'runtime-b', url: 'about:blank' }],
+        steps: [step('clk', 'browser.click', { selector: '#x' })],
+        manifestOverrides: { activeTabRef: undefined },
+        handlers: {
+            'browser.click': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
+
+test('create_tab does not auto-bind to unbound runtime tab present in workspace', async () => {
+    const tabs: RuntimeTab[] = [
+        { name: 'runtime-b', url: 'about:blank' },
+        { name: 'runtime-extra', url: 'https://extra.example/' },
+    ];
+    const executed: StepUnion[] = [];
+    const result = await replay({
+        tabs,
+        steps: [step('ct', 'browser.create_tab', { tabName: 'tab-new' })],
+        handlers: {
+            'browser.create_tab': async (item) => {
+                executed.push(item);
+                tabs.push({ name: 'runtime-explicit', url: 'about:blank' });
+                return { stepId: item.id, ok: true, data: { tab_id: 'runtime-explicit' } };
+            },
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 1);
+    assert.equal((executed[0].args as { tabName: string }).tabName, 'tab-new');
+});
+
+test('create_tab does not auto-bind to runtime tab with same name', async () => {
+    const tabs: RuntimeTab[] = [
+        { name: 'runtime-b', url: 'about:blank' },
+        { name: 'tab-new', url: 'https://same.example/' },
+    ];
+    const executed: StepUnion[] = [];
+    const result = await replay({
+        tabs,
+        steps: [step('ct', 'browser.create_tab', { tabName: 'tab-new' })],
+        handlers: {
+            'browser.create_tab': async (item) => {
+                executed.push(item);
+                tabs.push({ name: 'runtime-via-executor', url: 'about:blank' });
+                return { stepId: item.id, ok: true, data: { tab_id: 'runtime-via-executor' } };
+            },
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 1);
+    assert.equal((executed[0].args as { tabName: string }).tabName, 'tab-new');
+});
+
+test('create_tab does not auto-bind to active runtime tab', async () => {
+    const tabs: RuntimeTab[] = [
+        { name: 'runtime-b', url: 'about:blank' },
+        { name: 'runtime-active', url: 'https://active.example/' },
+    ];
+    const executed: StepUnion[] = [];
+    const result = await replay({
+        tabs,
+        steps: [step('ct', 'browser.create_tab', { tabName: 'tab-new' })],
+        handlers: {
+            'browser.create_tab': async (item) => {
+                executed.push(item);
+                tabs.push({ name: 'runtime-via-executor', url: 'about:blank' });
+                return { stepId: item.id, ok: true, data: { tab_id: 'runtime-via-executor' } };
+            },
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 1);
+    assert.equal((executed[0].args as { tabName: string }).tabName, 'tab-new');
 });

@@ -211,32 +211,6 @@ const createTabEffectMismatchError = (
     },
 });
 
-const runtimeTabNamesFromBindings = (bindings: ReplayTabBindings): Set<string> => {
-    const runtimeTabNames = new Set<string>();
-    for (const binding of bindings.values()) {
-        if (binding.runtimeTabName && !binding.closed) {
-            runtimeTabNames.add(binding.runtimeTabName);
-        }
-    }
-    return runtimeTabNames;
-};
-
-const scanUnboundCreatedTabs = (
-    workspace: RuntimeWorkspace,
-    bindings: ReplayTabBindings,
-    initialTabName: string,
-): TabCreatedEffect[] => {
-    const boundRuntimeTabNames = runtimeTabNamesFromBindings(bindings);
-    return workspace.tabs.listTabs()
-        .filter((tab) => tab.name !== initialTabName && !boundRuntimeTabNames.has(tab.name))
-        .map((tab) => ({
-            runtimeTabName: tab.name,
-            url: typeof tab.url === 'string' ? tab.url : '',
-            title: typeof tab.title === 'string' ? tab.title : '',
-            createdAt: typeof tab.createdAt === 'number' ? tab.createdAt : Date.now(),
-        }));
-};
-
 const collectTabEffectsFromDiff = (
     register: TabEffectRegister,
     before: Set<string>,
@@ -377,10 +351,16 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 ...originalStep,
                 args: { ...asRecord(originalStep.args), tabName: targetTabName },
             };
-        } else if (originalStep.name === 'browser.close_tab' && recordedTabName) {
+        } else if (originalStep.name === 'browser.close_tab') {
+            if (!recordedTabName) {
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
+            }
             const mapped = tabBindings.get(recordedTabName);
-            const mappedRuntimeTabName = mapped?.runtimeTabName;
-            if (mapped?.closed) {
+            if (!mapped) {
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
+            }
+            const mappedRuntimeTabName = mapped.runtimeTabName;
+            if (mapped.closed) {
                 syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true }] };
             } else if (tabEffectRegister.pendingClosedTab.state === 'conflict') {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingClosedTab.reason } };
@@ -408,7 +388,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 upsertTabBinding(recordedTabName, { closed: true });
                 syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true }] };
             }
-        } else if (originalStep.name === 'browser.create_tab' && recordedTabName) {
+        } else if (originalStep.name === 'browser.create_tab') {
+            if (!recordedTabName) {
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
+            }
             const mapped = tabBindings.get(recordedTabName);
             const expectedCreatedTabUrl = inferExpectedCreatedTabUrl(req.steps, index);
             if (mapped?.runtimeTabName && req.workspace.tabs.hasTab(mapped.runtimeTabName) && !mapped.closed) {
@@ -430,32 +413,6 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             }
             if (!syntheticResponse && tabEffectRegister.pendingCreatedTab.state === 'conflict') {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
-            }
-            if (!syntheticResponse && tabEffectRegister.pendingCreatedTab.state === 'empty') {
-                const unboundCreatedTabs = scanUnboundCreatedTabs(req.workspace, tabBindings, req.initialTabName);
-                if (unboundCreatedTabs.length > 1) {
-                    return {
-                        ok: false,
-                        results: stepResults,
-                        error: {
-                            code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT,
-                            message: `multiple unbound created tab effects: ${unboundCreatedTabs.map((tab) => tab.runtimeTabName).join(', ')}`,
-                        },
-                    };
-                }
-                if (unboundCreatedTabs.length === 1) {
-                    const createdEffect = unboundCreatedTabs[0];
-                    if (!createdTabEffectMatchesExpectedUrl(createdEffect, expectedCreatedTabUrl, urlMatches)) {
-                        return {
-                            ok: false,
-                            results: stepResults,
-                            error: createTabEffectMismatchError(createdEffect, expectedCreatedTabUrl, recordedTabName, originalStep.id),
-                        };
-                    }
-                    const runtimeTab = createdEffect.runtimeTabName;
-                    upsertTabBinding(recordedTabName, { runtimeTabName: runtimeTab, runtimeUrl: req.workspace.tabs.getTab(runtimeTab)?.url, closed: false, status: 'created' });
-                    syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: runtimeTab } }] };
-                }
             }
             if (!syntheticResponse) {
                 remappedStep = {
