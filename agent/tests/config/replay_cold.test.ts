@@ -979,6 +979,88 @@ test('click opened new tab flow still consumes pending created tab without dupli
     assert.deepEqual(executed, ['click', 'switch:runtime-new-from-click']);
 });
 
+test('replay fails mismatched created tab effect after click and stops later tab steps', async () => {
+    const executed: string[] = [];
+    const tabs = [{ name: 'runtime-old', url: 'https://old.example/' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'runtime-old',
+        steps: [
+            { id: 'reg-click', name: 'browser.click', args: { selector: '#open' }, meta: { source: 'record', tabName: 'recorded-old', tabRef: 'recorded-old-ref' } } as any,
+            { id: 'reg-create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'reg-switch', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'reg-goto', name: 'browser.goto', args: { url: 'https://expected.example/' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'reg-close', name: 'browser.close_tab', args: { tabRef: 'recorded-new-ref' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+        ],
+        recordingManifest: {
+            recordingToken: 'created-mismatch-regression',
+            initialTabs: [{ tabName: 'recorded-old', tabRef: 'recorded-old-ref', url: 'https://old.example/', title: 'old', active: true }],
+            startedAt: Date.now(),
+            tabs: [],
+        } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.click': async () => (tabs.push({ name: 'runtime-wrong-new', url: 'https://wrong.example/' }), executed.push('click'), { stepId: 'reg-click', ok: true }),
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'reg-create', ok: true, data: { tab_id: 'should-not-create' } }),
+            'browser.switch_tab': async () => (executed.push('switch'), { stepId: 'reg-switch', ok: true }),
+            'browser.goto': async () => (executed.push('goto'), { stepId: 'reg-goto', ok: true }),
+            'browser.close_tab': async () => (executed.push('close'), { stepId: 'reg-close', ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_EFFECT_MISMATCH');
+    assert.equal(executed.includes('create'), false);
+    assert.deepEqual(result.error?.details, {
+        expectedUrl: 'https://expected.example/',
+        actualUrl: 'https://wrong.example/',
+        runtimeTabName: 'runtime-wrong-new',
+        recordedTabName: 'recorded-new',
+        recordedTabRef: 'recorded-new-ref',
+        createTabStepId: 'reg-create',
+    });
+    assert.deepEqual(executed, ['click']);
+});
+
+test('replay consumes matching created tab effect after click and switch uses binding', async () => {
+    const executed: string[] = [];
+    const tabs = [{ name: 'runtime-old', url: 'https://old.example/' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'runtime-old',
+        steps: [
+            { id: 'reg-ok-click', name: 'browser.click', args: { selector: '#open' }, meta: { source: 'record', tabName: 'recorded-old', tabRef: 'recorded-old-ref' } } as any,
+            { id: 'reg-ok-create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'reg-ok-switch', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'reg-ok-goto', name: 'browser.goto', args: { url: 'https://expected.example/' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+        ],
+        recordingManifest: {
+            recordingToken: 'created-match-regression',
+            initialTabs: [{ tabName: 'recorded-old', tabRef: 'recorded-old-ref', url: 'https://old.example/', title: 'old', active: true }],
+            startedAt: Date.now(),
+            tabs: [],
+        } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.click': async () => (tabs.push({ name: 'runtime-expected-new', url: 'https://expected.example/#fragment' }), executed.push('click'), { stepId: 'reg-ok-click', ok: true }),
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'reg-ok-create', ok: true, data: { tab_id: 'should-not-create' } }),
+            'browser.switch_tab': async (step: StepUnion) => (executed.push(`switch:${(step.args as any).tabName}`), { stepId: step.id, ok: true }),
+            'browser.goto': async (step: StepUnion) => {
+                executed.push(`goto:${(step.args as any).url}`);
+                return { stepId: step.id, ok: true };
+            },
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.includes('create'), false);
+    assert.deepEqual(executed, ['click', 'switch:runtime-expected-new', 'goto:https://expected.example/']);
+});
+
 test('switch_tab works with existing binding', async () => {
     let switchedTo = '';
     const result = await replayRecording({
