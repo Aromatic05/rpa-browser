@@ -91,6 +91,45 @@ type ReplayTabBinding = {
 
 type ReplayTabBindings = Map<string, ReplayTabBinding>;
 
+type TabEffectSlot<T> =
+    | { state: 'empty' }
+    | { state: 'ready'; value: T }
+    | { state: 'conflict'; reason: string };
+
+type TabEffectRegister = {
+    pendingCreatedTab: TabEffectSlot<{ runtimeTabName: string }>;
+    pendingClosedTab: TabEffectSlot<{ runtimeTabName: string }>;
+};
+
+export const createTabEffectRegisterForTest = (): TabEffectRegister => ({
+    pendingCreatedTab: { state: 'empty' },
+    pendingClosedTab: { state: 'empty' },
+});
+
+export const recordCreatedTabEffectForTest = (register: TabEffectRegister, runtimeTabName: string): void => {
+    if (register.pendingCreatedTab.state === 'conflict') {return;}
+    if (register.pendingCreatedTab.state === 'ready') {
+        register.pendingCreatedTab = {
+            state: 'conflict',
+            reason: `duplicate created tab effect: ${register.pendingCreatedTab.value.runtimeTabName}, ${runtimeTabName}`,
+        };
+        return;
+    }
+    register.pendingCreatedTab = { state: 'ready', value: { runtimeTabName } };
+};
+
+export const recordClosedTabEffectForTest = (register: TabEffectRegister, runtimeTabName: string): void => {
+    if (register.pendingClosedTab.state === 'conflict') {return;}
+    if (register.pendingClosedTab.state === 'ready') {
+        register.pendingClosedTab = {
+            state: 'conflict',
+            reason: `duplicate closed tab effect: ${register.pendingClosedTab.value.runtimeTabName}, ${runtimeTabName}`,
+        };
+        return;
+    }
+    register.pendingClosedTab = { state: 'ready', value: { runtimeTabName } };
+};
+
 const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnhancementMap[string]): StepUnion => {
     if (!enhancement) {return step;}
     const nextResolve = {
@@ -128,6 +167,8 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     };
 
     const tabBindings: ReplayTabBindings = new Map();
+    const tabEffectRegister = createTabEffectRegisterForTest();
+    void tabEffectRegister;
     const upsertTabBinding = (recordedTabName: string, patch: Partial<ReplayTabBinding>) => {
         const current = tabBindings.get(recordedTabName) || {
             recordedTabName,

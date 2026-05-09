@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { replayRecording } from '../../src/record/replay';
+import { createTabEffectRegisterForTest, recordClosedTabEffectForTest, recordCreatedTabEffectForTest, replayRecording } from '../../src/record/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
@@ -475,4 +475,30 @@ test('replayRecording keeps entryTabRef and activeTabRef binding usable for norm
     });
     assert.equal(result.ok, true);
     assert.equal(executed.length, 1);
+});
+
+test('tab effect register accepts single created effect as ready', () => {
+    const register = createTabEffectRegisterForTest();
+    recordCreatedTabEffectForTest(register, 'tab-1');
+    assert.equal(register.pendingCreatedTab.state, 'ready');
+});
+
+test('tab effect register marks created effect as conflict when second arrives', () => {
+    const register = createTabEffectRegisterForTest();
+    recordCreatedTabEffectForTest(register, 'tab-1');
+    recordCreatedTabEffectForTest(register, 'tab-2');
+    assert.equal(register.pendingCreatedTab.state, 'conflict');
+});
+
+test('tab effect register accepts single closed effect as ready', () => {
+    const register = createTabEffectRegisterForTest();
+    recordClosedTabEffectForTest(register, 'tab-1');
+    assert.equal(register.pendingClosedTab.state, 'ready');
+});
+
+test('tab effect register marks closed effect as conflict when second arrives', () => {
+    const register = createTabEffectRegisterForTest();
+    recordClosedTabEffectForTest(register, 'tab-1');
+    recordClosedTabEffectForTest(register, 'tab-2');
+    assert.equal(register.pendingClosedTab.state, 'conflict');
 });
