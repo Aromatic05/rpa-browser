@@ -122,3 +122,97 @@ test('onPageBound does not use create_tab to imply active switch conditions', ()
     assert.equal(steps.some((step) => step.name === 'browser.create_tab'), false);
     assert.equal(steps.some((step) => step.name === 'browser.switch_tab'), false);
 });
+
+test('onBindingClosed records close_tab for manually closed tab', () => {
+    const recordingState = createRecordingState();
+    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const workspaceName = `ws-lifecycle-close-${crypto.randomUUID()}`;
+    const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    workspace.tabs.createTab({ tabName: 'tab-close', page: createMockPage('https://close'), url: 'https://close' });
+    resetWorkspaceUnsavedRecording(recordingState, workspaceName);
+    enableWorkspaceRecording(recordingState, workspaceName);
+
+    const lifecycle = createRuntimeLifecycle({
+        workspaceRegistry: registry,
+        runtimeRegistry: runStepsDeps.runtime as any,
+        recordingState,
+        navDedupeWindowMs: 1200,
+        pingTimeoutMs: 30000,
+        pingWatchdogIntervalMs: 10000,
+        emit: () => undefined,
+        ensureWorkflow: (name) => registry.getWorkspace(name)?.workflow || workspace.workflow,
+        ensureRecorder: async () => undefined,
+        setRecorderRuntimeEnabled: async () => undefined,
+        isWorkspaceRecordingEnabled: (state, name) => state.recordingEnabled.has(getWorkspaceUnsavedToken(state, name)),
+        attachTabToRecordingManifest: () => undefined,
+        cleanupRecording: () => undefined,
+    });
+    lifecycle.onBindingClosed('tab-close');
+    const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
+    assert.equal(steps.some((step) => step.name === 'browser.close_tab'), true);
+    assert.equal(steps.some((step) => step.name === 'browser.switch_tab'), false);
+});
+
+test('onBindingClosed records close_tab before cleanupRecording', () => {
+    const recordingState = createRecordingState();
+    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const workspaceName = `ws-lifecycle-cleanup-${crypto.randomUUID()}`;
+    const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    workspace.tabs.createTab({ tabName: 'tab-close', page: createMockPage('https://close'), url: 'https://close' });
+    resetWorkspaceUnsavedRecording(recordingState, workspaceName);
+    enableWorkspaceRecording(recordingState, workspaceName);
+
+    let closeRecordedBeforeCleanup = false;
+    const lifecycle = createRuntimeLifecycle({
+        workspaceRegistry: registry,
+        runtimeRegistry: runStepsDeps.runtime as any,
+        recordingState,
+        navDedupeWindowMs: 1200,
+        pingTimeoutMs: 30000,
+        pingWatchdogIntervalMs: 10000,
+        emit: () => undefined,
+        ensureWorkflow: (name) => registry.getWorkspace(name)?.workflow || workspace.workflow,
+        ensureRecorder: async () => undefined,
+        setRecorderRuntimeEnabled: async () => undefined,
+        isWorkspaceRecordingEnabled: (state, name) => state.recordingEnabled.has(getWorkspaceUnsavedToken(state, name)),
+        attachTabToRecordingManifest: () => undefined,
+        cleanupRecording: () => {
+            const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
+            closeRecordedBeforeCleanup = steps.some((step) => step.name === 'browser.close_tab');
+        },
+    });
+    lifecycle.onBindingClosed('tab-close');
+    assert.equal(closeRecordedBeforeCleanup, true);
+});
+
+test('onBindingClosed for non-active tab records close_tab only', () => {
+    const recordingState = createRecordingState();
+    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const workspaceName = `ws-lifecycle-close-non-active-${crypto.randomUUID()}`;
+    const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    workspace.tabs.createTab({ tabName: 'tab-active', page: createMockPage('https://active'), url: 'https://active' });
+    workspace.tabs.createTab({ tabName: 'tab-close', page: createMockPage('https://close'), url: 'https://close' });
+    workspace.tabs.setActiveTab('tab-active');
+    resetWorkspaceUnsavedRecording(recordingState, workspaceName);
+    enableWorkspaceRecording(recordingState, workspaceName);
+
+    const lifecycle = createRuntimeLifecycle({
+        workspaceRegistry: registry,
+        runtimeRegistry: runStepsDeps.runtime as any,
+        recordingState,
+        navDedupeWindowMs: 1200,
+        pingTimeoutMs: 30000,
+        pingWatchdogIntervalMs: 10000,
+        emit: () => undefined,
+        ensureWorkflow: (name) => registry.getWorkspace(name)?.workflow || workspace.workflow,
+        ensureRecorder: async () => undefined,
+        setRecorderRuntimeEnabled: async () => undefined,
+        isWorkspaceRecordingEnabled: (state, name) => state.recordingEnabled.has(getWorkspaceUnsavedToken(state, name)),
+        attachTabToRecordingManifest: () => undefined,
+        cleanupRecording: () => undefined,
+    });
+    lifecycle.onBindingClosed('tab-close');
+    const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
+    assert.equal(steps.filter((step) => step.name === 'browser.close_tab').length, 1);
+    assert.equal(steps.some((step) => step.name === 'browser.switch_tab'), false);
+});
