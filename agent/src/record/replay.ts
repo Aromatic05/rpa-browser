@@ -102,8 +102,15 @@ type TabEffectSlot<T> =
     | { state: 'ready'; value: T }
     | { state: 'conflict'; reason: string };
 
+type TabCreatedEffect = {
+    runtimeTabName: string;
+    url: string;
+    title: string;
+    createdAt: number;
+};
+
 type TabEffectRegister = {
-    pendingCreatedTab: TabEffectSlot<{ runtimeTabName: string }>;
+    pendingCreatedTab: TabEffectSlot<TabCreatedEffect>;
     pendingClosedTab: TabEffectSlot<{ runtimeTabName: string }>;
 };
 
@@ -112,7 +119,7 @@ export const createTabEffectRegisterForTest = (): TabEffectRegister => ({
     pendingClosedTab: { state: 'empty' },
 });
 
-export const recordCreatedTabEffectForTest = (register: TabEffectRegister, runtimeTabName: string): void => {
+export const recordCreatedTabEffectForTest = (register: TabEffectRegister, runtimeTabName: string, facts?: Partial<Omit<TabCreatedEffect, 'runtimeTabName'>>): void => {
     if (register.pendingCreatedTab.state === 'conflict') {return;}
     if (register.pendingCreatedTab.state === 'ready') {
         register.pendingCreatedTab = {
@@ -121,7 +128,15 @@ export const recordCreatedTabEffectForTest = (register: TabEffectRegister, runti
         };
         return;
     }
-    register.pendingCreatedTab = { state: 'ready', value: { runtimeTabName } };
+    register.pendingCreatedTab = {
+        state: 'ready',
+        value: {
+            runtimeTabName,
+            url: facts?.url || '',
+            title: facts?.title || '',
+            createdAt: facts?.createdAt || Date.now(),
+        },
+    };
 };
 
 export const recordClosedTabEffectForTest = (register: TabEffectRegister, runtimeTabName: string): void => {
@@ -164,10 +179,16 @@ export const collectTabEffectsFromDiffForTest = (
     before: Set<string>,
     after: Set<string>,
     currentStepName: string,
+    workspace?: RuntimeWorkspace,
 ): void => {
     for (const tabName of after) {
         if (!before.has(tabName) && currentStepName !== 'browser.create_tab') {
-            recordCreatedTabEffectForTest(register, tabName);
+            const tab = workspace?.tabs.getTab(tabName);
+            recordCreatedTabEffectForTest(register, tabName, {
+                url: typeof tab?.url === 'string' ? tab.url : '',
+                title: typeof tab?.title === 'string' ? tab.title : '',
+                createdAt: Date.now(),
+            });
         }
     }
     for (const tabName of before) {
@@ -395,7 +416,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
 
         const response = syntheticResponse || await runOne(remappedStep);
         const runtimeTabsAfterStep = snapshotRuntimeTabNames(req.workspace);
-        collectTabEffectsFromDiffForTest(tabEffectRegister, runtimeTabsBeforeStep, runtimeTabsAfterStep, remappedStep.name);
+        collectTabEffectsFromDiffForTest(tabEffectRegister, runtimeTabsBeforeStep, runtimeTabsAfterStep, remappedStep.name, req.workspace);
         logEffectStateChange(originalStep.id, 'collect_step_tab_diff', effectBeforeStep);
         const stepDurationMs = Date.now() - startedAt;
         const sleepMs = Math.max(0, stepIntervalMs - stepDurationMs);

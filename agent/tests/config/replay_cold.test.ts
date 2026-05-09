@@ -9,7 +9,7 @@ const createReplayRuntime = () => ({
     ensureExecutableTab: async () => ({ page: { url: () => 'about:blank' }, tabName: 'x' }),
 });
 
-const createReplayWorkspace = (tabs: Array<{ name: string; url: string }>) => ({
+const createReplayWorkspace = (tabs: Array<{ name: string; url: string; title?: string }>) => ({
     tabs: {
         listTabs: () => tabs.map((item) => ({ ...item })),
         hasTab: (tabName: string) => tabs.some((item) => item.name === tabName),
@@ -477,8 +477,13 @@ test('replayRecording keeps entryTabRef and activeTabRef binding usable for norm
 
 test('tab effect register accepts single created effect as ready', () => {
     const register = createTabEffectRegisterForTest();
-    recordCreatedTabEffectForTest(register, 'tab-1');
+    recordCreatedTabEffectForTest(register, 'tab-1', { url: 'https://created.example', title: 'Created', createdAt: 123 });
     assert.equal(register.pendingCreatedTab.state, 'ready');
+    if (register.pendingCreatedTab.state === 'ready') {
+        assert.equal(register.pendingCreatedTab.value.runtimeTabName, 'tab-1');
+        assert.equal(register.pendingCreatedTab.value.url, 'https://created.example');
+        assert.equal(register.pendingCreatedTab.value.title, 'Created');
+    }
 });
 
 test('tab effect register marks created effect as conflict when second arrives', () => {
@@ -503,8 +508,14 @@ test('tab effect register marks closed effect as conflict when second arrives', 
 
 test('normal step created tab diff writes pendingCreatedTab', () => {
     const register = createTabEffectRegisterForTest();
-    collectTabEffectsFromDiffForTest(register, new Set(['tab-a']), new Set(['tab-a', 'tab-b']), 'browser.click');
+    const workspace = createReplayWorkspace([{ name: 'tab-a', url: 'about:blank' }, { name: 'tab-b', url: 'https://tab-b.example', title: 'Tab B' }]);
+    collectTabEffectsFromDiffForTest(register, new Set(['tab-a']), new Set(['tab-a', 'tab-b']), 'browser.click', workspace);
     assert.equal(register.pendingCreatedTab.state, 'ready');
+    if (register.pendingCreatedTab.state === 'ready') {
+        assert.equal(register.pendingCreatedTab.value.runtimeTabName, 'tab-b');
+        assert.equal(register.pendingCreatedTab.value.url, 'https://tab-b.example');
+        assert.equal(register.pendingCreatedTab.value.title, 'Tab B');
+    }
 });
 
 test('browser.create_tab step created tab diff does not write pendingCreatedTab', () => {
