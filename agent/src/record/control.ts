@@ -84,6 +84,12 @@ const toSavedRecordingList = (workspace: WorkspaceRouterInput['workspace']) =>
             return { recordingName: item.name, stepCount: steps.length };
         });
 
+const stripStepForPersistence = (step: StepUnion): StepUnion => ({
+    id: step.id,
+    name: step.name,
+    args: step.args,
+} as StepUnion);
+
 export const createRecordControl = (services: RecordControlServices): RecordControl => ({
     handle: async (input) => {
         const { action, workspace } = input;
@@ -175,6 +181,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             }
             const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
             const orderedSteps = normalizeRecordingStepOrder(bundle.steps, services.navDedupeWindowMs);
+            const persistedSteps = orderedSteps.map(stripStepForPersistence);
             const stepResolves: Record<string, StepResolve> = {};
             if (payload.includeStepResolve === true) {
                 for (const step of orderedSteps) {
@@ -209,7 +216,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     createdAt: Date.now(),
                     stepCount: orderedSteps.length,
                 },
-                steps: orderedSteps,
+                steps: persistedSteps,
                 stepResolves,
             };
             workflow.save(artifact);

@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createRecordingState, enableWorkspaceRecording, resetWorkspaceUnsavedRecording, setRecordedStepEnricherForTest } from '../../src/record/recording';
 import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
+import { workflowRootDir } from '../../src/workflow/fs';
 import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
 import { appendWorkspaceRecordingEvent } from '../../src/record/recording';
 
@@ -63,6 +66,10 @@ test('record.save waits pending enrichment and saves resolved enhancement', asyn
         assert.equal(saved.reply.type, 'record.save.result');
         const loaded = ws.workflow.get('rec-a', { kind: 'recording' });
         assert.equal(loaded?.kind, 'recording');
+        assert.deepEqual(Object.keys((loaded?.steps[0] || {}) as Record<string, unknown>).sort(), ['args', 'id', 'name']);
+        assert.equal((loaded?.steps[0] as any)?.meta, undefined);
+        const stepsYaml = fs.readFileSync(path.join(workflowRootDir(wsName), 'recordings', 'rec-a', 'steps.yaml'), 'utf8');
+        assert.equal(stepsYaml.includes('meta:'), false);
         const stepId = loaded?.steps[0]?.id || '';
         assert.equal(Boolean(stepId), true);
         assert.equal(Boolean(loaded?.stepResolves?.[stepId]), true);
