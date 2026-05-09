@@ -84,7 +84,7 @@ test('new tab first navigation records and replays as explicit goto before click
         pageRegistry: {} as any,
         deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
             'browser.create_tab': async (step: StepUnion) => {
-                assert.deepEqual(step.args, {});
+                assert.deepEqual(step.args, { tabName: 'tab-new' });
                 replayEvents.push('create:about:blank');
                 runtimeTabs.push({ name: 'runtime-catos', url: 'about:blank' });
                 return { stepId: step.id, ok: true, data: { tab_id: 'runtime-catos' } };
