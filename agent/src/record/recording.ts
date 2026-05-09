@@ -241,9 +241,15 @@ const getPendingEnhancementSet = (state: RecordingState, recordingToken: string)
 const isUserActionBeforeGoto = (stepName: StepName): boolean =>
     stepName === 'browser.click' || stepName === 'browser.fill' || stepName === 'browser.press_key';
 
+const isTabLifecycleStep = (stepName: StepName): boolean =>
+    stepName === 'browser.create_tab' || stepName === 'browser.switch_tab' || stepName === 'browser.close_tab';
+
 export const normalizeRecordingStepOrder = (steps: StepUnion[], navDedupeWindowMs: number): StepUnion[] => {
     const indexed = steps.map((step, index) => ({ step, index }));
     const compare = (a: (typeof indexed)[number], b: (typeof indexed)[number]): number => {
+        if (isTabLifecycleStep(a.step.name) || isTabLifecycleStep(b.step.name)) {
+            return a.index - b.index;
+        }
         const aTs = a.step.meta?.ts;
         const bTs = b.step.meta?.ts;
         const aTab = a.step.meta?.tabName;

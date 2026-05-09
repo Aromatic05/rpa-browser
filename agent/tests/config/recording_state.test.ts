@@ -204,6 +204,15 @@ test('normalizeRecordingStepOrder does not cross-tab reorder for click/goto over
     assert.deepEqual(ordered.map((step) => step.id), ['g', 'c']);
 });
 
+test('normalizeRecordingStepOrder keeps tab lifecycle close->switch enqueue order even when ts is reversed', () => {
+    const steps: StepUnion[] = [
+        { id: 'close', name: 'browser.close_tab', args: { tabRef: 't2' }, meta: { source: 'record', ts: 2002, tabName: 't2' } } as any,
+        { id: 'switch', name: 'browser.switch_tab', args: { tabRef: 't1', tabName: 't1' }, meta: { source: 'record', ts: 2000, tabName: 't1' } } as any,
+    ];
+    const ordered = normalizeRecordingStepOrder(steps, 20);
+    assert.deepEqual(ordered.map((step) => step.id), ['close', 'switch']);
+});
+
 test('coalesce fill events keeps only final value for same selector', async () => {
     const state = createRecordingState();
     resetWorkspaceUnsavedRecording(state, 'ws-1');
