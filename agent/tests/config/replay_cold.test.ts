@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectTabEffectsFromDiffForTest, createTabEffectRegisterForTest, recordClosedTabEffectForTest, recordCreatedTabEffectForTest, replayRecording } from '../../src/record/replay';
+import { collectTabEffectsFromDiffForTest, createTabEffectRegisterForTest, inferExpectedCreatedTabUrlForTest, recordClosedTabEffectForTest, recordCreatedTabEffectForTest, replayRecording } from '../../src/record/replay';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
@@ -534,6 +534,46 @@ test('browser.close_tab step closed tab diff does not write pendingClosedTab', (
     const register = createTabEffectRegisterForTest();
     collectTabEffectsFromDiffForTest(register, new Set(['tab-a', 'tab-b']), new Set(['tab-a']), 'browser.close_tab');
     assert.equal(register.pendingClosedTab.state, 'empty');
+});
+
+test('created tab expected url is inferred from first later goto with same tabRef', () => {
+    const steps = [
+        { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-new', tabRef: 'ref-new', urlAtRecord: 'https://fallback.example' } },
+        { id: 'other', name: 'browser.goto', args: { url: 'https://other.example' }, meta: { source: 'record', tabName: 'tab-other', tabRef: 'ref-other' } },
+        { id: 'goto', name: 'browser.goto', args: { url: 'https://expected.example' }, meta: { source: 'record', tabName: 'renamed-tab', tabRef: 'ref-new' } },
+        { id: 'later', name: 'browser.goto', args: { url: 'https://later.example' }, meta: { source: 'record', tabName: 'tab-new', tabRef: 'ref-new' } },
+    ] as StepUnion[];
+    assert.equal(inferExpectedCreatedTabUrlForTest(steps, 0), 'https://expected.example');
+});
+
+test('created tab expected url is inferred from first later goto with same tabName', () => {
+    const steps = [
+        { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-new', urlAtRecord: 'https://fallback.example' } },
+        { id: 'goto', name: 'browser.goto', args: { url: 'https://expected-name.example' }, meta: { source: 'record', tabName: 'tab-new' } },
+    ] as StepUnion[];
+    assert.equal(inferExpectedCreatedTabUrlForTest(steps, 0), 'https://expected-name.example');
+});
+
+test('created tab expected url ignores later goto for different recorded tab', () => {
+    const steps = [
+        { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-new', tabRef: 'ref-new', urlAtRecord: 'https://fallback.example' } },
+        { id: 'goto-other', name: 'browser.goto', args: { url: 'https://other.example' }, meta: { source: 'record', tabName: 'tab-other', tabRef: 'ref-other' } },
+    ] as StepUnion[];
+    assert.equal(inferExpectedCreatedTabUrlForTest(steps, 0), 'https://fallback.example');
+});
+
+test('created tab expected url falls back to create_tab meta urlAtRecord without later goto', () => {
+    const steps = [
+        { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-new', tabRef: 'ref-new', urlAtRecord: 'https://fallback.example' } },
+    ] as StepUnion[];
+    assert.equal(inferExpectedCreatedTabUrlForTest(steps, 0), 'https://fallback.example');
+});
+
+test('created tab expected url is empty when no later goto and no meta urlAtRecord', () => {
+    const steps = [
+        { id: 'create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-new', tabRef: 'ref-new' } },
+    ] as StepUnion[];
+    assert.equal(inferExpectedCreatedTabUrlForTest(steps, 0), undefined);
 });
 
 test('create_tab is no-op when recorded tab is already bound and exists', async () => {

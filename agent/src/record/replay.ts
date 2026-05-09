@@ -174,6 +174,25 @@ const findRuntimeTabNameForRecorded = (
     return exactByName?.name || byUrl?.name;
 };
 
+const isSameRecordedTab = (left: StepUnion, right: StepUnion): boolean => {
+    const leftTabName = left.meta?.tabName;
+    const leftTabRef = left.meta?.tabRef;
+    const rightTabName = right.meta?.tabName;
+    const rightTabRef = right.meta?.tabRef;
+    return Boolean((leftTabRef && rightTabRef && leftTabRef === rightTabRef) || (leftTabName && rightTabName && leftTabName === rightTabName));
+};
+
+export const inferExpectedCreatedTabUrlForTest = (steps: StepUnion[], createTabIndex: number): string | undefined => {
+    const createStep = steps[createTabIndex];
+    if (!createStep || createStep.name !== 'browser.create_tab') {return undefined;}
+    for (let index = createTabIndex + 1; index < steps.length; index += 1) {
+        const step = steps[index];
+        if (step.name !== 'browser.goto' || !isSameRecordedTab(createStep, step)) {continue;}
+        return readStepStringArg(step, 'url') || undefined;
+    }
+    return createStep.meta?.urlAtRecord || undefined;
+};
+
 export const collectTabEffectsFromDiffForTest = (
     register: TabEffectRegister,
     before: Set<string>,
