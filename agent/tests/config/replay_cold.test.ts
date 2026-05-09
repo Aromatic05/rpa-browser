@@ -660,6 +660,99 @@ test('create_tab does not inject extra switch', async () => {
     assert.equal(executed.includes('switch'), false);
 });
 
+test('create_tab without args url replays as empty tab creation', async () => {
+    const executed: StepUnion[] = [];
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'c-no-url', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-new', tabRef: 'tab-new-ref' } } as any],
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async (step: StepUnion) => {
+                executed.push(step);
+                tabs.push({ name: 'runtime-empty-tab', url: 'about:blank' });
+                return { stepId: step.id, ok: true, data: { tab_id: 'runtime-empty-tab' } };
+            },
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(executed.map((step) => step.args), [{}]);
+});
+
+test('create_tab strips recorded url and later goto performs business navigation', async () => {
+    const executed: string[] = [];
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'c-business', name: 'browser.create_tab', args: { url: 'https://catos.info/' }, meta: { source: 'record', tabName: 'tab-new', tabRef: 'tab-new-ref', urlAtRecord: 'https://catos.info/' } } as any,
+            { id: 'g-business', name: 'browser.goto', args: { url: 'https://catos.info/' }, meta: { source: 'record', tabName: 'tab-new', tabRef: 'tab-new-ref', urlAtRecord: 'https://catos.info/' } } as any,
+            { id: 'click-business', name: 'browser.click', args: { selector: '#intro' }, meta: { source: 'record', tabName: 'tab-new', tabRef: 'tab-new-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async (step: StepUnion) => {
+                assert.deepEqual(step.args, {});
+                executed.push('create');
+                tabs.push({ name: 'runtime-catos', url: 'about:blank' });
+                return { stepId: step.id, ok: true, data: { tab_id: 'runtime-catos' } };
+            },
+            'browser.goto': async (step: StepUnion) => {
+                executed.push(`goto:${(step.args as any).url}`);
+                const tab = tabs.find((item) => item.name === 'runtime-catos');
+                if (tab) {tab.url = (step.args as any).url;}
+                return { stepId: step.id, ok: true };
+            },
+            'browser.click': async (step: StepUnion) => {
+                executed.push(`click:${(step.args as any).selector}`);
+                assert.equal(tabs.find((item) => item.name === 'runtime-catos')?.url, 'https://catos.info/');
+                return { stepId: step.id, ok: true };
+            },
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(executed, ['create', 'goto:https://catos.info/', 'click:#intro']);
+});
+
+test('click opened new tab flow still consumes pending created tab without duplicate create', async () => {
+    const executed: string[] = [];
+    const tabs = [{ name: 'runtime-old', url: 'https://old' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'runtime-old',
+        steps: [
+            { id: 'open-click', name: 'browser.click', args: { selector: '#open' }, meta: { source: 'record', tabName: 'recorded-old', tabRef: 'recorded-old-ref' } } as any,
+            { id: 'new-create', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'new-switch', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+        ],
+        recordingManifest: {
+            recordingToken: 'pending-created',
+            initialTabs: [{ tabName: 'recorded-old', tabRef: 'recorded-old-ref', url: 'https://old', title: 'old', active: true }],
+            startedAt: Date.now(),
+            tabs: [],
+        } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.click': async () => (tabs.push({ name: 'runtime-new-from-click', url: 'about:blank' }), executed.push('click'), { stepId: 'open-click', ok: true }),
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'new-create', ok: true, data: { tab_id: 'duplicate' } }),
+            'browser.switch_tab': async (step: StepUnion) => (executed.push(`switch:${(step.args as any).tabName}`), { stepId: step.id, ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(executed, ['click', 'switch:runtime-new-from-click']);
+});
+
 test('switch_tab works with existing binding', async () => {
     let switchedTo = '';
     const result = await replayRecording({

@@ -383,6 +383,12 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (!syntheticResponse && tabEffectRegister.pendingCreatedTab.state === 'conflict') {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
             }
+            if (!syntheticResponse) {
+                remappedStep = {
+                    ...originalStep,
+                    args: {},
+                };
+            }
         } else if (targetTabName) {
             await req.runtime.ensureExecutableTab({ workspace: req.workspace, pageRegistry: req.pageRegistry, tabName: targetTabName, urlHint: recordedUrl });
         }
