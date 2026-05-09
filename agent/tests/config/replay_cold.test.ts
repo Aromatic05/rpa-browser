@@ -266,3 +266,103 @@ test('create_tab does not auto-bind to active runtime tab', async () => {
     assert.equal(executed.length, 1);
     assert.equal((executed[0].args as { tabName: string }).tabName, 'tab-new');
 });
+
+test('switch_tab succeeds for bound open tab', async () => {
+    const result = await replay({
+        tabs: [{ name: 'runtime-b', url: 'about:blank' }],
+        steps: [step('sw', 'browser.switch_tab', { tabName: 'tab-b' })],
+        handlers: {
+            'browser.switch_tab': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, true);
+});
+
+test('switch_tab fails for unbound recorded tab', async () => {
+    const result = await replay({
+        tabs: [{ name: 'runtime-b', url: 'about:blank' }],
+        steps: [step('sw', 'browser.switch_tab', { tabName: 'tab-unknown' })],
+        handlers: {
+            'browser.switch_tab': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
+
+test('switch_tab fails for closed binding', async () => {
+    const tabs: RuntimeTab[] = [
+        { name: 'runtime-b', url: 'about:blank' },
+        { name: 'runtime-a', url: 'https://a.example/' },
+    ];
+    const result = await replay({
+        tabs,
+        manifestOverrides: { activeTabRef: 'tab-a' },
+        steps: [
+            step('close-a', 'browser.close_tab', { tabName: 'tab-a' }),
+            step('sw-a', 'browser.switch_tab', { tabName: 'tab-a' }),
+        ],
+        handlers: {
+            'browser.close_tab': async (item) => {
+                const tabName = (item.args as { tabName: string }).tabName;
+                const index = tabs.findIndex((tab) => tab.name === tabName);
+                if (index >= 0) {tabs.splice(index, 1);}
+                return { stepId: item.id, ok: true };
+            },
+            'browser.switch_tab': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+});
+
+test('switch_tab does not create a new runtime tab', async () => {
+    const tabs: RuntimeTab[] = [{ name: 'runtime-b', url: 'about:blank' }];
+    const executed: StepUnion[] = [];
+    const result = await replay({
+        tabs,
+        steps: [step('sw', 'browser.switch_tab', { tabName: 'tab-b' })],
+        handlers: {
+            'browser.switch_tab': async (item) => {
+                executed.push(item);
+                return { stepId: item.id, ok: true };
+            },
+            'browser.create_tab': async (item) => (executed.push(item), { stepId: item.id, ok: true, data: { tab_id: 'unexpected' } }),
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 1);
+    assert.equal(executed[0].name, 'browser.switch_tab');
+});
+
+test('normal step uses new recordedActiveTabName after switch_tab', async () => {
+    const tabs: RuntimeTab[] = [
+        { name: 'runtime-b', url: 'about:blank' },
+    ];
+    const ensuredTabs: string[] = [];
+    const result = await replay({
+        tabs,
+        ensuredTabs,
+        steps: [
+            step('create-a', 'browser.create_tab', { tabName: 'tab-a' }),
+            step('sw-a', 'browser.switch_tab', { tabName: 'tab-a' }),
+            step('click-a', 'browser.click', { selector: '#a' }),
+        ],
+        handlers: {
+            'browser.create_tab': async (item) => {
+                tabs.push({ name: 'runtime-a', url: 'about:blank' });
+                return { stepId: item.id, ok: true, data: { tab_id: 'runtime-a' } };
+            },
+            'browser.switch_tab': async (item) => ({ stepId: item.id, ok: true }),
+            'browser.click': async (item) => ({ stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, true);
+    // ensureExecutableTab called with runtime-a after switch
+    assert.ok(ensuredTabs.includes('runtime-a'));
+});

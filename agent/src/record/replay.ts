@@ -344,12 +344,16 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (!recordedTabName) {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
             }
-            if (!targetTabName) {
+            const switchBinding = tabBindings.get(recordedTabName);
+            if (!switchBinding?.runtimeTabName) {
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
+            }
+            if (switchBinding.closed) {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
             }
             remappedStep = {
                 ...originalStep,
-                args: { ...asRecord(originalStep.args), tabName: targetTabName },
+                args: { ...asRecord(originalStep.args), tabName: switchBinding.runtimeTabName },
             };
         } else if (originalStep.name === 'browser.close_tab') {
             if (!recordedTabName) {
