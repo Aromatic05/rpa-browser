@@ -165,6 +165,22 @@ const clearPendingClosedTabEffect = (register: TabEffectRegister): void => {
 const snapshotRuntimeTabNames = (workspace: RuntimeWorkspace): Set<string> =>
     new Set(workspace.tabs.listTabs().map((tab) => tab.name));
 
+const waitForNewTabEffect = async (
+    workspace: RuntimeWorkspace,
+    before: Set<string>,
+    timeoutMs: number,
+): Promise<Set<string>> => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const current = snapshotRuntimeTabNames(workspace);
+        if ([...current].some((name) => !before.has(name))) {
+            return current;
+        }
+    }
+    return snapshotRuntimeTabNames(workspace);
+};
+
 const inferExpectedCreatedTabUrl = (steps: StepUnion[], createTabIndex: number): string | undefined => {
     const createStep = steps[createTabIndex];
     if (!createStep || createStep.name !== 'browser.create_tab') {return undefined;}
@@ -442,7 +458,16 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
 
         const response = syntheticResponse || await runOne(remappedStep);
-        const runtimeTabsAfterStep = snapshotRuntimeTabNames(req.workspace);
+        let runtimeTabsAfterStep = snapshotRuntimeTabNames(req.workspace);
+        if (!isLifecycleStep) {
+            const hasNewTabs = [...runtimeTabsAfterStep].some((name) => !runtimeTabsBeforeStep.has(name));
+            if (!hasNewTabs) {
+                const nextStep = req.steps[index + 1];
+                if (nextStep?.name === 'browser.create_tab') {
+                    runtimeTabsAfterStep = await waitForNewTabEffect(req.workspace, runtimeTabsBeforeStep, 2000);
+                }
+            }
+        }
         collectTabEffectsFromDiff(tabEffectRegister, runtimeTabsBeforeStep, runtimeTabsAfterStep, remappedStep.name, req.workspace);
         logEffectStateChange(originalStep.id, 'collect_step_tab_diff', effectBeforeStep);
         const stepDurationMs = Date.now() - startedAt;
