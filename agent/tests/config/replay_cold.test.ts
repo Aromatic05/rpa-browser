@@ -411,3 +411,68 @@ test('saved replay forwards stepResolves into runStepList resolveId injection', 
     assert.equal(result.ok, true);
     assert.equal(resolvedSelector, '#from-resolve-file');
 });
+
+test('replayRecording initializes bindings from manifest initialTabs', async () => {
+    const executed: StepUnion[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'sw-1', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'recorded-active', tabRef: 'recorded-active-ref' } } as any],
+        recordingManifest: {
+            recordingToken: 't-1',
+            workspaceName: 'old-ws',
+            entryTabRef: 'recorded-active-ref',
+            activeTabRef: 'recorded-active-ref',
+            initialTabs: [{ tabName: 'recorded-active', tabRef: 'recorded-active-ref', url: 'about:blank', title: 'x', active: true }],
+            startedAt: Date.now(),
+            tabs: [],
+        },
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () => ({ 'browser.switch_tab': async (step: StepUnion) => (executed.push(step), { stepId: step.id, ok: true }) }) as any,
+            } as any,
+        } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal((executed[0].args as any).tabName, 'tab-now');
+});
+
+test('replayRecording keeps entryTabRef and activeTabRef binding usable for normal step', async () => {
+    const executed: StepUnion[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'click-1', name: 'browser.click', args: { selector: '#a' }, meta: { source: 'record', tabName: 'recorded-entry', tabRef: 'recorded-entry-ref' } } as any],
+        recordingManifest: {
+            recordingToken: 't-2',
+            workspaceName: 'old-ws',
+            entryTabRef: 'recorded-entry-ref',
+            activeTabRef: 'recorded-entry-ref',
+            initialTabs: [{ tabName: 'recorded-entry', tabRef: 'recorded-entry-ref', url: 'about:blank', title: 'x', active: false }],
+            startedAt: Date.now(),
+            tabs: [],
+        },
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () => ({
+                    'browser.click': async (step: StepUnion) => (executed.push(step), { stepId: step.id, ok: true }),
+                    'browser.create_tab': async () => ({ stepId: 'unexpected-create', ok: true, data: { tab_id: 'x' } }),
+                }) as any,
+            } as any,
+        } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 1);
+});

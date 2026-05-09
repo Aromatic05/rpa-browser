@@ -79,6 +79,18 @@ const readStepStringArg = (step: StepUnion, key: string): string | undefined => 
     return typeof args[key] === 'string' ? args[key] : undefined;
 };
 
+type ReplayTabBinding = {
+    recordedTabName: string;
+    recordedTabRef: string;
+    recordedUrl?: string;
+    runtimeTabName?: string;
+    runtimeUrl?: string;
+    status: 'reused' | 'created';
+    closed?: boolean;
+};
+
+type ReplayTabBindings = Map<string, ReplayTabBinding>;
+
 const withResolveFromEnhancement = (step: StepUnion, enhancement?: RecordingEnhancementMap[string]): StepUnion => {
     if (!enhancement) {return step;}
     const nextResolve = {
@@ -115,24 +127,9 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         return normalize(left) === normalize(right);
     };
 
-    const mappings = new Map<string, {
-        recordedTabName: string;
-        recordedTabRef: string;
-        recordedUrl?: string;
-        runtimeTabName?: string;
-        runtimeUrl?: string;
-        status: 'reused' | 'created';
-        closed?: boolean;
-    }>();
-    const upsertMapping = (recordedTabName: string, patch: Partial<{
-        recordedTabRef: string;
-        recordedUrl?: string;
-        runtimeTabName?: string;
-        runtimeUrl?: string;
-        status: 'reused' | 'created';
-        closed?: boolean;
-    }>) => {
-        const current = mappings.get(recordedTabName) || {
+    const tabBindings: ReplayTabBindings = new Map();
+    const upsertTabBinding = (recordedTabName: string, patch: Partial<ReplayTabBinding>) => {
+        const current = tabBindings.get(recordedTabName) || {
             recordedTabName,
             recordedTabRef: patch.recordedTabRef || recordedTabName,
             recordedUrl: patch.recordedUrl,
@@ -141,10 +138,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             status: patch.status || 'reused',
             closed: patch.closed,
         };
-        mappings.set(recordedTabName, { ...current, ...patch });
+        tabBindings.set(recordedTabName, { ...current, ...patch });
     };
     for (const item of req.recordingManifest?.initialTabs || []) {
-        upsertMapping(item.tabName, {
+        upsertTabBinding(item.tabName, {
             recordedTabRef: item.tabRef,
             recordedUrl: item.url,
             runtimeTabName: item.active ? req.initialTabName : undefined,
@@ -154,13 +151,13 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
     if (req.recordingManifest?.activeTabRef) {
         const activeFromManifest = req.recordingManifest.initialTabs.find((tab) => tab.tabRef === req.recordingManifest?.activeTabRef);
         if (activeFromManifest) {
-            upsertMapping(activeFromManifest.tabName, { runtimeTabName: req.initialTabName, status: 'reused' });
+            upsertTabBinding(activeFromManifest.tabName, { runtimeTabName: req.initialTabName, status: 'reused' });
         }
     }
     if (req.recordingManifest?.entryTabRef) {
         const entryFromManifest = req.recordingManifest.initialTabs.find((tab) => tab.tabRef === req.recordingManifest?.entryTabRef);
         if (entryFromManifest) {
-            upsertMapping(entryFromManifest.tabName, { runtimeTabName: req.initialTabName, status: 'reused' });
+            upsertTabBinding(entryFromManifest.tabName, { runtimeTabName: req.initialTabName, status: 'reused' });
         }
     }
     const stepResults: RunStepsResult['results'] = [];
@@ -185,7 +182,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const recordedTabName = originalStep.meta?.tabName;
         const recordedTabRef = originalStep.meta?.tabRef || recordedTabName;
         const recordedUrl = originalStep.meta?.urlAtRecord || readStepStringArg(originalStep, 'tabUrl') || readStepStringArg(originalStep, 'url');
-        let targetTabName: string | undefined = recordedTabName ? mappings.get(recordedTabName)?.runtimeTabName : undefined;
+        let targetTabName: string | undefined = recordedTabName ? tabBindings.get(recordedTabName)?.runtimeTabName : undefined;
         let remappedStep = originalStep;
         if (recordedTabName && !targetTabName) {
             const runtimeTabs = req.workspace.tabs.listTabs();
@@ -206,9 +203,9 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 if (!targetTabName) {
                     return { ok: false, results: stepResults, error: { code: 'ERR_ASSERTION_FAILED', message: 'failed to create replay tab' } };
                 }
-                upsertMapping(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: recordedUrl, status: 'created' });
+                upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: recordedUrl, status: 'created' });
             } else {
-                upsertMapping(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: req.workspace.tabs.getTab(targetTabName)?.url, status: 'reused' });
+                upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: req.workspace.tabs.getTab(targetTabName)?.url, status: 'reused' });
             }
         }
         if (originalStep.name === 'browser.switch_tab') {
@@ -220,7 +217,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 args: { ...asRecord(originalStep.args), tabName: targetTabName },
             };
         } else if (originalStep.name === 'browser.create_tab' && recordedTabName) {
-            const mapped = mappings.get(recordedTabName);
+            const mapped = tabBindings.get(recordedTabName);
             if (mapped?.runtimeTabName && req.workspace.tabs.hasTab(mapped.runtimeTabName)) {
                 remappedStep = {
                     id: `${originalStep.id}-switch-existing`,
@@ -272,15 +269,15 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             const data = asRecord(primary.data);
             const createdTabName = typeof data.tab_id === 'string' ? data.tab_id : undefined;
             if (createdTabName) {
-                upsertMapping(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: createdTabName, runtimeUrl: req.workspace.tabs.getTab(createdTabName)?.url, status: 'created', closed: false });
+                upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: createdTabName, runtimeUrl: req.workspace.tabs.getTab(createdTabName)?.url, status: 'created', closed: false });
             }
         }
         if (recordedTabName && remappedStep.name === 'browser.switch_tab' && response.ok) {
             const switchedTo = readStepStringArg(remappedStep, 'tabName');
-            if (switchedTo) { upsertMapping(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: switchedTo, runtimeUrl: req.workspace.tabs.getTab(switchedTo)?.url, closed: false }); }
+            if (switchedTo) { upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: switchedTo, runtimeUrl: req.workspace.tabs.getTab(switchedTo)?.url, closed: false }); }
         }
         if (recordedTabName && remappedStep.name === 'browser.close_tab' && response.ok) {
-            upsertMapping(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
+            upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
         }
         if (sleepMs > 0) {
             await wait(sleepMs);
