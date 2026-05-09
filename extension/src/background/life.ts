@@ -224,7 +224,18 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             const now = Date.now();
             const key = `${String(info.windowId)}:${String(chromeTabNo)}:${bound.bindingName}`;
             if (options.state.shouldThrottleTabActivated(key, now, LIFECYCLE_THROTTLE_MS)) {return;}
-            await emitLifecycleAction(ACTION_TYPES.TAB_ACTIVATED, { source: 'extension.sw', url: bound.urlHint || '', at: now, windowId: info.windowId }, bound.workspaceName);
+            await emitLifecycleAction(
+                ACTION_TYPES.TAB_ACTIVATED,
+                {
+                    source: 'extension.sw',
+                    tabName: bound.bindingName,
+                    tabRef: bound.bindingName,
+                    url: bound.urlHint || '',
+                    at: now,
+                    windowId: info.windowId,
+                },
+                bound.workspaceName,
+            );
         })();
 
         if (previousActiveChromeTabNo === chromeTabNo && previousActiveWindowId === info.windowId) {return;}
@@ -236,7 +247,17 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (options.state.getActiveChromeTabNo() === chromeTabNo) {options.state.setActiveChromeTabNo(null);}
         if (removed?.bindingName) {
             const mapped = options.state.getBindingWorkspaceTab(removed.bindingName);
-            void emitLifecycleAction(ACTION_TYPES.TAB_CLOSED, { source: 'extension.sw', at: Date.now(), windowId: removed.windowId }, mapped?.workspaceName);
+            void emitLifecycleAction(
+                ACTION_TYPES.TAB_CLOSED,
+                {
+                    source: 'extension.sw',
+                    tabName: removed.bindingName,
+                    tabRef: removed.bindingName,
+                    at: Date.now(),
+                    windowId: removed.windowId,
+                },
+                mapped?.workspaceName,
+            );
             options.state.removeBindingWorkspaceTab(removed.bindingName);
         }
         options.onRefresh();

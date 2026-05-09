@@ -294,7 +294,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 if (!tabName) {
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
-                const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
                 const closingTab = workspace.tabs.getTab(tabName);
                 await workspace.tabs.closeTab(tabName);
                 if (shouldRecordLifecycle()) {
@@ -306,17 +305,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                         at,
                         navDedupeWindowMs: deps.navDedupeWindowMs,
                     });
-                    const nextActiveTab = workspace.tabs.getActiveTab();
-                    if (prevActiveTab === tabName && nextActiveTab && nextActiveTab.name !== tabName) {
-                        recordTabActivated(deps.recordingState, {
-                            workspaceName: workspace.name,
-                            tabName: nextActiveTab.name,
-                            tabRef: nextActiveTab.name,
-                            urlAtRecord: nextActiveTab.url,
-                            at,
-                            navDedupeWindowMs: deps.navDedupeWindowMs,
-                        });
-                    }
                 }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
@@ -357,12 +345,11 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
                 const url = typeof payload.url === 'string' ? payload.url : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
-                const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
                 workspace.tabs.setActiveTab(tabName);
                 if (url) {
                     workspace.tabs.updateTab(tabName, { url, updatedAt: at });
                 }
-                if (shouldRecordLifecycle() && prevActiveTab !== tabName) {
+                if (shouldRecordLifecycle()) {
                     const runtimeTab = workspace.tabs.getTab(tabName);
                     recordTabActivated(deps.recordingState, {
                         workspaceName: workspace.name,

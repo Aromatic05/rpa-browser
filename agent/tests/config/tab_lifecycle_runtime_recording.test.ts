@@ -35,10 +35,11 @@ const setup = async () => {
     return { recordingState, registry, ws, workspaceName };
 };
 
-test('closing active new tab records close_tab then switch_tab back to old tab', async () => {
+test('closing active new tab records close_tab; switch_tab comes from later tab.activated event', async () => {
     const { recordingState, registry, ws, workspaceName } = await setup();
     await ws.router.handle(action('tab.opened', workspaceName, { tabName: 'tab-new', url: 'https://new', source: 'cdp' }), ws, registry);
     await ws.router.handle(action('tab.closed', workspaceName, { tabName: 'tab-new', source: 'cdp' }), ws, registry);
+    await ws.router.handle(action('tab.activated', workspaceName, { tabName: 'tab-old', url: 'https://old', source: 'cdp' }), ws, registry);
     const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
     assert.deepEqual(steps.map((s) => s.name), ['browser.create_tab', 'browser.switch_tab', 'browser.close_tab', 'browser.switch_tab']);
 });
@@ -52,11 +53,12 @@ test('repeated active events do not duplicate switch_tab', async () => {
     assert.equal(steps.filter((s) => s.name === 'browser.switch_tab').length, 1);
 });
 
-test('tab.activated does not record switch_tab when active tab is unchanged', async () => {
+test('tab.activated dedupes unchanged active tab when repeated', async () => {
     const { recordingState, registry, ws, workspaceName } = await setup();
     await ws.router.handle(action('tab.activated', workspaceName, { tabName: 'tab-old', url: 'https://old', source: 'cdp' }), ws, registry);
+    await ws.router.handle(action('tab.activated', workspaceName, { tabName: 'tab-old', url: 'https://old', source: 'cdp' }), ws, registry);
     const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
-    assert.equal(steps.some((s) => s.name === 'browser.switch_tab'), false);
+    assert.equal(steps.filter((s) => s.name === 'browser.switch_tab').length, 1);
 });
 
 test('click create switch close switch order remains stable', async () => {
@@ -74,6 +76,7 @@ test('click create switch close switch order remains stable', async () => {
     });
     await ws.router.handle(action('tab.opened', workspaceName, { tabName: 'tab-new', url: 'https://new', source: 'cdp' }), ws, registry);
     await ws.router.handle(action('tab.closed', workspaceName, { tabName: 'tab-new', source: 'cdp' }), ws, registry);
+    await ws.router.handle(action('tab.activated', workspaceName, { tabName: 'tab-old', url: 'https://old', source: 'cdp' }), ws, registry);
     const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
     assert.deepEqual(steps.map((s) => s.name), ['browser.click', 'browser.create_tab', 'browser.switch_tab', 'browser.close_tab', 'browser.switch_tab']);
     const created = steps.find((s) => s.name === 'browser.create_tab')!;
@@ -86,4 +89,12 @@ test('click create switch close switch order remains stable', async () => {
     const switchedAfterClose = steps[4];
     assert.equal(switchedAfterCreate.name, 'browser.switch_tab');
     assert.equal(switchedAfterClose.name, 'browser.switch_tab');
+});
+
+test('tab.closed alone does not generate switch_tab', async () => {
+    const { recordingState, registry, ws, workspaceName } = await setup();
+    await ws.router.handle(action('tab.opened', workspaceName, { tabName: 'tab-new', url: 'https://new', source: 'cdp' }), ws, registry);
+    await ws.router.handle(action('tab.closed', workspaceName, { tabName: 'tab-new', source: 'cdp' }), ws, registry);
+    const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
+    assert.deepEqual(steps.map((s) => s.name), ['browser.create_tab', 'browser.switch_tab', 'browser.close_tab']);
 });
