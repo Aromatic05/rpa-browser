@@ -49,3 +49,24 @@ test('recordTabClosed does not append switch_tab', () => {
     recordTabClosed(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
     assert.equal(getSteps(state, workspaceName).some((step) => step.name === 'browser.switch_tab'), false);
 });
+
+test('recordTabActivated dedupes consecutive same switch_tab', () => {
+    const { state, workspaceName } = setupRecording();
+    recordTabActivated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
+    recordTabActivated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
+    assert.equal(getSteps(state, workspaceName).filter((step) => step.name === 'browser.switch_tab').length, 1);
+});
+
+test('recordTabCreated dedupes repeated create_tab for same tab', () => {
+    const { state, workspaceName } = setupRecording();
+    recordTabCreated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
+    recordTabCreated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
+    assert.equal(getSteps(state, workspaceName).filter((step) => step.name === 'browser.create_tab').length, 1);
+});
+
+test('recordTabClosed dedupes repeated close_tab for same tab', () => {
+    const { state, workspaceName } = setupRecording();
+    recordTabClosed(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
+    recordTabClosed(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
+    assert.equal(getSteps(state, workspaceName).filter((step) => step.name === 'browser.close_tab').length, 1);
+});

@@ -58,3 +58,22 @@ test('tab.activated does not record switch_tab when active tab is unchanged', as
     const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
     assert.equal(steps.some((s) => s.name === 'browser.switch_tab'), false);
 });
+
+test('click create switch close switch order remains stable', async () => {
+    const { recordingState, registry, ws, workspaceName } = await setup();
+    await ws.record.handle({
+        action: {
+            v: 1,
+            id: 'evt-click',
+            type: 'record.event',
+            workspaceName,
+            payload: { id: 'click-1', name: 'browser.click', args: { selector: '#open' }, meta: { source: 'record', ts: Date.now() } },
+        } as any,
+        workspace: ws as any,
+        workspaceRegistry: registry as any,
+    });
+    await ws.router.handle(action('tab.opened', workspaceName, { tabName: 'tab-new', url: 'https://new', source: 'cdp' }), ws, registry);
+    await ws.router.handle(action('tab.closed', workspaceName, { tabName: 'tab-new', source: 'cdp' }), ws, registry);
+    const steps = recordingState.recordings.get(getWorkspaceUnsavedToken(recordingState, workspaceName)) || [];
+    assert.deepEqual(steps.map((s) => s.name), ['browser.click', 'browser.create_tab', 'browser.switch_tab', 'browser.close_tab', 'browser.switch_tab']);
+});
