@@ -729,6 +729,96 @@ test('create_tab binds existing runtime tab when pendingCreatedTab is empty', as
     assert.equal(executed.length, 0);
 });
 
+test('create_tab binds one unbound workspace tab before active create when url matches', async () => {
+    const executed: string[] = [];
+    let switchedTo = '';
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'create-scan-match', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'switch-scan-match', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'goto-scan-match', name: 'browser.goto', args: { url: 'https://matched.example/path' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }, { name: 'runtime-unbound', url: 'https://matched.example/path#x' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'create-scan-match', ok: true, data: { tab_id: 'should-not-create' } }),
+            'browser.switch_tab': async (step: StepUnion) => (switchedTo = (step.args as any).tabName, { stepId: step.id, ok: true }),
+            'browser.goto': async () => ({ stepId: 'goto-scan-match', ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.includes('create'), false);
+    assert.equal(switchedTo, 'runtime-unbound');
+});
+
+test('create_tab fails on one unbound workspace tab with mismatched url before active create', async () => {
+    const executed: string[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'create-scan-mismatch', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 'goto-scan-mismatch', name: 'browser.goto', args: { url: 'https://expected.example/' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }, { name: 'runtime-wrong-unbound', url: 'https://wrong.example/' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'create-scan-mismatch', ok: true, data: { tab_id: 'should-not-create' } }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_EFFECT_MISMATCH');
+    assert.equal(executed.includes('create'), false);
+});
+
+test('create_tab fails with conflict when two unbound workspace tabs exist before active create', async () => {
+    const executed: string[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'create-scan-conflict', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }, { name: 'runtime-a', url: 'https://a.example/' }, { name: 'runtime-b', url: 'https://b.example/' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'create-scan-conflict', ok: true, data: { tab_id: 'should-not-create' } }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_EFFECT_CONFLICT');
+    assert.equal(executed.includes('create'), false);
+});
+
+test('create_tab actively creates only when no pending effect and no unbound workspace tab exists', async () => {
+    const executed: string[] = [];
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'create-no-scan', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async () => (executed.push('create'), tabs.push({ name: 'runtime-created-active', url: 'about:blank' }), { stepId: 'create-no-scan', ok: true, data: { tab_id: 'runtime-created-active' } }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(executed, ['create']);
+});
+
 test('create_tab prefers pendingCreatedTab ready over workspace url match', async () => {
     const tabs = [{ name: 'tab-now', url: 'about:blank' }, { name: 'runtime-url-match', url: 'https://matched/x' }];
     let switchedTo = '';
