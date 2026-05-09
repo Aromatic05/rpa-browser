@@ -939,3 +939,52 @@ test('replay tab flow reuses runtime tab after click without calling create exec
     assert.equal(executed.includes('close:tab-new-runtime'), true);
     assert.equal(executed.includes('switch:tab-old-runtime'), true);
 });
+
+test('replay multi-tab sequence click/create/switch/close/switch succeeds without missing page registry', async () => {
+    const executedSteps: string[] = [];
+    const tabs = [{ name: 'runtime-old', url: 'https://old' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'runtime-old',
+        steps: [
+            { id: 's-click', name: 'browser.click', args: { selector: '#open' }, meta: { source: 'record', tabName: 'recorded-old', tabRef: 'recorded-old-ref' } } as any,
+            { id: 's-create', name: 'browser.create_tab', args: { url: 'https://new' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref', urlAtRecord: 'https://new' } } as any,
+            { id: 's-switch-new', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 's-close', name: 'browser.close_tab', args: { tabRef: 'recorded-new-ref' }, meta: { source: 'record', tabName: 'recorded-new', tabRef: 'recorded-new-ref' } } as any,
+            { id: 's-switch-old', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'recorded-old', tabRef: 'recorded-old-ref' } } as any,
+        ],
+        recordingManifest: {
+            recordingToken: 'flow-2',
+            initialTabs: [{ tabName: 'recorded-old', tabRef: 'recorded-old-ref', url: 'https://old', title: 'old', active: true }],
+            startedAt: Date.now(),
+            tabs: [],
+        } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: {
+            runtime: {} as any,
+            config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
+            pluginHost: {
+                getExecutors: () => ({
+                    'browser.click': async () => (tabs.push({ name: 'runtime-new', url: 'https://new' }), executedSteps.push('browser.click'), { stepId: 's-click', ok: true }),
+                    'browser.create_tab': async () => ({ stepId: 's-create', ok: false, error: { code: 'ERR_UNEXPECTED_CREATE', message: 'should not create' } }),
+                    'browser.switch_tab': async (step: StepUnion) => (executedSteps.push(`browser.switch_tab:${(step.args as any).tabName}`), { stepId: step.id, ok: true }),
+                    'browser.close_tab': async (step: StepUnion) => {
+                        const tabName = (step.args as any).tabName;
+                        const idx = tabs.findIndex((item) => item.name === tabName);
+                        if (idx >= 0) {tabs.splice(idx, 1);}
+                        executedSteps.push(`browser.close_tab:${tabName}`);
+                        return { stepId: step.id, ok: true };
+                    },
+                }) as any,
+            } as any,
+        } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executedSteps.includes('browser.switch_tab:runtime-new'), true);
+    assert.equal(executedSteps.includes('browser.close_tab:runtime-new'), true);
+    assert.equal(executedSteps.includes('browser.switch_tab:runtime-old'), true);
+    assert.equal(result.error?.message?.includes('missing page registry') ?? false, false);
+});
