@@ -269,27 +269,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         let syntheticResponse: RunStepsResult | undefined;
         const runtimeTabsBeforeStep = snapshotRuntimeTabNames(req.workspace);
         if (recordedTabName && !targetTabName && originalStep.name !== 'browser.create_tab' && originalStep.name !== 'browser.switch_tab') {
-            const runtimeTabs = req.workspace.tabs.listTabs();
-            const exactByName = runtimeTabs.find((tab) => tab.name === recordedTabName && (!recordedUrl || urlMatches(tab.url, recordedUrl)));
-            const byUrl = !exactByName && recordedUrl ? runtimeTabs.find((tab) => urlMatches(tab.url, recordedUrl)) : undefined;
-            targetTabName = exactByName?.name || byUrl?.name;
-            if (!targetTabName) {
-                const created = await runOne({
-                    id: `replay-create-${Date.now()}`,
-                    name: 'browser.create_tab',
-                    args: { url: recordedUrl },
-                    meta: { source: 'play', ts: Date.now() },
-                });
-                stepResults.push(...created.results);
-                if (!created.ok) { return { ok: false, results: stepResults }; }
-                const createdData = asRecord(created.results[0]?.data);
-                targetTabName = typeof createdData.tab_id === 'string' ? createdData.tab_id : undefined;
-                if (!targetTabName) {
-                    return { ok: false, results: stepResults, error: { code: 'ERR_ASSERTION_FAILED', message: 'failed to create replay tab' } };
-                }
-                upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: recordedUrl, status: 'created' });
-            } else {
+            targetTabName = findRuntimeTabNameForRecorded(req.workspace, recordedTabName, recordedUrl, urlMatches);
+            if (targetTabName) {
                 upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: targetTabName, runtimeUrl: req.workspace.tabs.getTab(targetTabName)?.url, status: 'reused' });
+            } else {
+                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_NOT_BOUND', message: 'replay target tab not bound' } };
             }
         }
         if (originalStep.name === 'browser.switch_tab') {

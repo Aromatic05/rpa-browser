@@ -17,7 +17,7 @@ const createReplayWorkspace = (tabs: Array<{ name: string; url: string }>) => ({
     },
 }) as any;
 
-test('replayRecording fails switch_tab when target is not bound in cold replay', async () => {
+test('replayRecording fails normal step when target tab is not bound in cold replay', async () => {
     const executed: StepUnion[] = [];
     const steps: StepUnion[] = [
         {
@@ -89,11 +89,11 @@ test('replayRecording fails switch_tab when target is not bound in cold replay',
 
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
-    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
-    assert.equal(executed.some((step) => step.id === 's-switch'), false);
+    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), false);
+    assert.equal(executed.some((step) => step.id === 's1'), false);
 });
 
-test('replayRecording force switches when tabName changes without browser.switch_tab', async () => {
+test('replayRecording does not auto create when tabName changes without browser.switch_tab', async () => {
     const executed: StepUnion[] = [];
     const steps: StepUnion[] = [
         {
@@ -141,8 +141,9 @@ test('replayRecording force switches when tabName changes without browser.switch
         } as RunStepsDeps,
     });
 
-    assert.equal(result.ok, true);
-    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), true);
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+    assert.equal(executed.some((step) => step.name === 'browser.create_tab'), false);
     assert.equal(executed.some((step) => step.name === 'browser.switch_tab'), false);
 });
 
@@ -774,4 +775,26 @@ test('close_tab does not switch tabs implicitly', async () => {
     assert.equal(result.ok, true);
     assert.equal(executed.includes('close'), true);
     assert.equal(executed.includes('switch'), false);
+});
+
+test('normal click/fill/select_option fail when target tab is unbound and do not create tabs', async () => {
+    const executed: string[] = [];
+    for (const stepName of ['browser.click', 'browser.fill', 'browser.select_option'] as const) {
+        const result = await replayRecording({
+            workspaceName: 'ws-now',
+            initialTabName: 'tab-now',
+            steps: [{ id: `no-bind-${stepName}`, name: stepName as any, args: {}, meta: { source: 'record', tabName: 'tab-missing', tabRef: 'tab-missing-ref' } } as any],
+            stopOnError: true,
+            workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+            runtime: createReplayRuntime() as any,
+            pageRegistry: {} as any,
+            deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+                'browser.create_tab': async () => (executed.push('create'), { stepId: 'create', ok: true, data: { tab_id: 'x' } }),
+                [stepName]: async (step: StepUnion) => ({ stepId: step.id, ok: true }),
+            }) as any } as any } as RunStepsDeps,
+        });
+        assert.equal(result.ok, false);
+        assert.equal(result.error?.code, 'ERR_REPLAY_TAB_NOT_BOUND');
+    }
+    assert.equal(executed.includes('create'), false);
 });
