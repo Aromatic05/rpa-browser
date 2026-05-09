@@ -20,10 +20,11 @@ test('recordTabCreated appends browser.create_tab only', () => {
     const steps = getSteps(state, workspaceName);
     assert.equal(steps.length, 1);
     assert.equal(steps[0].name, 'browser.create_tab');
+    assert.deepEqual(steps[0].args, { tabName: 'tab-a' });
     assert.equal(Object.hasOwn(steps[0].args as Record<string, unknown>, 'url'), false);
     assert.equal(steps[0].meta?.tabName, 'tab-a');
-    assert.equal(steps[0].meta?.tabRef, 'tab-a');
-    assert.equal(steps[0].meta?.urlAtRecord, 'https://a');
+    assert.equal(Object.hasOwn(steps[0].meta as Record<string, unknown>, 'tabRef'), false);
+    assert.equal(Object.hasOwn(steps[0].meta as Record<string, unknown>, 'urlAtRecord'), false);
 });
 
 test('recordTabActivated appends browser.switch_tab only', () => {
@@ -32,6 +33,8 @@ test('recordTabActivated appends browser.switch_tab only', () => {
     const steps = getSteps(state, workspaceName);
     assert.equal(steps.length, 1);
     assert.equal(steps[0].name, 'browser.switch_tab');
+    assert.deepEqual(steps[0].args, { tabName: 'tab-a' });
+    assert.equal(Object.hasOwn(steps[0].args as Record<string, unknown>, 'tabRef'), false);
 });
 
 test('recordTabClosed appends browser.close_tab only', () => {
@@ -40,6 +43,8 @@ test('recordTabClosed appends browser.close_tab only', () => {
     const steps = getSteps(state, workspaceName);
     assert.equal(steps.length, 1);
     assert.equal(steps[0].name, 'browser.close_tab');
+    assert.deepEqual(steps[0].args, { tabName: 'tab-a' });
+    assert.equal(Object.hasOwn(steps[0].args as Record<string, unknown>, 'tabRef'), false);
 });
 
 test('recordFirstTabPageUrl records first ordinary page url after new tab lifecycle', () => {
@@ -54,7 +59,6 @@ test('recordFirstTabPageUrl records first ordinary page url after new tab lifecy
     assert.equal(steps[2].meta?.ts, 3);
     assert.equal(steps[2].meta?.workspaceName, workspaceName);
     assert.equal(steps[2].meta?.tabName, 'tab-a');
-    assert.equal(steps[2].meta?.tabRef, 'tab-a');
     assert.equal(steps[2].meta?.urlAtRecord, 'https://catos.info/');
 });
 

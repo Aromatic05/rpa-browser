@@ -62,15 +62,6 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
                 id: step.id,
                 name: step.name,
                 args: step.args,
-                meta: step.meta
-                    ? {
-                          source: step.meta.source,
-                          ts: step.meta.ts,
-                          workspaceName: step.meta.workspaceName,
-                          tabName: step.meta.tabName,
-                          urlAtRecord: step.meta.urlAtRecord,
-                      }
-                    : undefined,
             })) as StepFile['steps'],
         };
         validateStepFileForSerialization(stepsFile);

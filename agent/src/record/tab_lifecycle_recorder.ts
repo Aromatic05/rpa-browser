@@ -23,11 +23,9 @@ const getRecordedSteps = (state: RecordingState, workspaceName: string): StepUni
 
 const isSameTab = (step: StepUnion, tabRef: string): boolean => {
     const args = (step.args || {}) as Record<string, unknown>;
-    const stepTabRef = typeof args.tabRef === 'string' ? args.tabRef : undefined;
     const stepTabName = typeof args.tabName === 'string' ? args.tabName : undefined;
-    const metaTabRef = typeof step.meta?.tabRef === 'string' ? step.meta.tabRef : undefined;
     const metaTabName = typeof step.meta?.tabName === 'string' ? step.meta.tabName : undefined;
-    return stepTabRef === tabRef || stepTabName === tabRef || metaTabRef === tabRef || metaTabName === tabRef;
+    return stepTabName === tabRef || metaTabName === tabRef;
 };
 
 const shouldSkipCreated = (steps: StepUnion[], tabRef: string): boolean => {
@@ -97,14 +95,12 @@ export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput
         {
             id: crypto.randomUUID(),
             name: 'browser.create_tab',
-            args: {},
+            args: { tabName: input.tabName },
             meta: {
                 source: 'record',
                 ts,
                 workspaceName: input.workspaceName,
                 tabName: input.tabName,
-                tabRef: input.tabRef,
-                urlAtRecord: input.urlAtRecord || '',
             },
         },
         input.navDedupeWindowMs,
@@ -132,7 +128,6 @@ export const recordFirstTabPageUrl = (state: RecordingState, input: FirstPageUrl
                 ts,
                 workspaceName: input.workspaceName,
                 tabName: input.tabName,
-                tabRef: input.tabRef,
                 urlAtRecord: input.url,
             },
         },
@@ -152,14 +147,12 @@ export const recordTabActivated = (state: RecordingState, input: TabLifecycleInp
         {
             id: crypto.randomUUID(),
             name: 'browser.switch_tab',
-            args: { tabName: input.tabName, tabRef: input.tabRef },
+            args: { tabName: input.tabName },
             meta: {
                 source: 'record',
                 ts,
                 workspaceName: input.workspaceName,
                 tabName: input.tabName,
-                tabRef: input.tabRef,
-                urlAtRecord: input.urlAtRecord || '',
             },
         },
         input.navDedupeWindowMs,
@@ -177,14 +170,12 @@ export const recordTabClosed = (state: RecordingState, input: TabLifecycleInput)
         {
             id: crypto.randomUUID(),
             name: 'browser.close_tab',
-            args: { tabName: input.tabName, tabRef: input.tabRef },
+            args: { tabName: input.tabName },
             meta: {
                 source: 'record',
                 ts,
                 workspaceName: input.workspaceName,
                 tabName: input.tabName,
-                tabRef: input.tabRef,
-                urlAtRecord: input.urlAtRecord || '',
             },
         },
         input.navDedupeWindowMs,

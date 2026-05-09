@@ -86,8 +86,8 @@ test('onPageBound records switch_tab after create_tab when active changes', () =
     assert.equal(steps.length >= 2, true);
     assert.equal(steps[0].name, 'browser.create_tab');
     assert.equal(steps[1].name, 'browser.switch_tab');
-    assert.deepEqual(Object.keys((steps[0].args || {}) as object), []);
-    assert.deepEqual(Object.keys((steps[1].args || {}) as object), ['tabName', 'tabRef']);
+    assert.deepEqual(steps[0].args, { tabName: 'tab-new' });
+    assert.deepEqual(steps[1].args, { tabName: 'tab-new' });
 });
 
 test('onPageBound does not use create_tab to imply active switch conditions', () => {

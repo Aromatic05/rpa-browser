@@ -628,6 +628,7 @@ const enrichRecordedStep = (
     });
     if (!manifest.entryTabRef) {manifest.entryTabRef = tab.tabRef;}
     if (!manifest.entryUrl && stepUrl) {manifest.entryUrl = stepUrl;}
+    const lifecycleStep = isTabLifecycleStep(step.name);
     return {
         ...step,
         meta: {
@@ -635,7 +636,7 @@ const enrichRecordedStep = (
             source: step.meta?.source ?? 'record',
             ts,
             tabName: stepTabName,
-            urlAtRecord: step.meta?.urlAtRecord || stepUrl || undefined,
+            ...(lifecycleStep ? {} : { urlAtRecord: step.meta?.urlAtRecord || stepUrl || undefined }),
         },
     };
 };

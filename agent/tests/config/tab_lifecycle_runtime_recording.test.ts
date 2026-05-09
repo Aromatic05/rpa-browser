@@ -82,9 +82,9 @@ test('click create switch close switch order remains stable', async () => {
     const created = steps.find((s) => s.name === 'browser.create_tab')!;
     const closed = steps.find((s) => s.name === 'browser.close_tab')!;
     assert.equal(typeof created.meta?.tabName, 'string');
-    assert.equal(typeof created.meta?.tabRef, 'string');
+    assert.equal(Object.hasOwn(created.meta as Record<string, unknown>, 'tabRef'), false);
     assert.equal(typeof closed.meta?.tabName, 'string');
-    assert.equal(typeof closed.meta?.tabRef, 'string');
+    assert.equal(Object.hasOwn(closed.meta as Record<string, unknown>, 'tabRef'), false);
     const switchedAfterCreate = steps[2];
     const switchedAfterClose = steps[5];
     assert.equal(switchedAfterCreate.name, 'browser.switch_tab');
