@@ -20,6 +20,10 @@ test('recordTabCreated appends browser.create_tab only', () => {
     const steps = getSteps(state, workspaceName);
     assert.equal(steps.length, 1);
     assert.equal(steps[0].name, 'browser.create_tab');
+    assert.equal(Object.hasOwn(steps[0].args as Record<string, unknown>, 'url'), false);
+    assert.equal(steps[0].meta?.tabName, 'tab-a');
+    assert.equal(steps[0].meta?.tabRef, 'tab-a');
+    assert.equal(steps[0].meta?.urlAtRecord, 'https://a');
 });
 
 test('recordTabActivated appends browser.switch_tab only', () => {
@@ -42,6 +46,12 @@ test('recordTabCreated does not append switch_tab', () => {
     const { state, workspaceName } = setupRecording();
     recordTabCreated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
     assert.equal(getSteps(state, workspaceName).some((step) => step.name === 'browser.switch_tab'), false);
+});
+
+test('recordTabCreated does not append goto', () => {
+    const { state, workspaceName } = setupRecording();
+    recordTabCreated(state, { workspaceName, tabName: 'tab-a', tabRef: 'tab-a', urlAtRecord: 'https://a', navDedupeWindowMs: 1200 });
+    assert.equal(getSteps(state, workspaceName).some((step) => step.name === 'browser.goto'), false);
 });
 
 test('recordTabClosed does not append switch_tab', () => {
