@@ -526,3 +526,94 @@ test('browser.close_tab step closed tab diff does not write pendingClosedTab', (
     collectTabEffectsFromDiffForTest(register, new Set(['tab-a', 'tab-b']), new Set(['tab-a']), 'browser.close_tab');
     assert.equal(register.pendingClosedTab.state, 'empty');
 });
+
+test('create_tab is no-op when recorded tab is already bound and exists', async () => {
+    const executed: string[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'c1', name: 'browser.create_tab', args: { url: 'https://x' }, meta: { source: 'record', tabName: 'tab-a', tabRef: 'tab-a-ref' } } as any],
+        recordingManifest: {
+            recordingToken: 't-3',
+            workspaceName: 'old-ws',
+            initialTabs: [{ tabName: 'tab-a', tabRef: 'tab-a-ref', url: 'https://x', title: 'x', active: true }],
+            startedAt: Date.now(),
+            tabs: [],
+        } as any,
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'https://x' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({ 'browser.create_tab': async () => (executed.push('create'), { stepId: 'x', ok: true, data: { tab_id: 'new' } }) }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 0);
+});
+
+test('create_tab consumes pending created effect and binds without executing create', async () => {
+    const executed: string[] = [];
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }];
+    const workspace = createReplayWorkspace(tabs);
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 's1', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'c2', name: 'browser.create_tab', args: { url: 'https://x' }, meta: { source: 'record', tabName: 'tab-b', tabRef: 'tab-b-ref' } } as any,
+            { id: 'sw2', name: 'browser.switch_tab', args: { tabName: 'legacy' }, meta: { source: 'record', tabName: 'tab-b', tabRef: 'tab-b-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace,
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.click': async () => (tabs.push({ name: 'tab-runtime-b', url: 'https://x' }), { stepId: 's1', ok: true }),
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'c2', ok: true, data: { tab_id: 'new' } }),
+            'browser.switch_tab': async (step: StepUnion) => ({ stepId: step.id, ok: true, data: step.args }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.length, 0);
+});
+
+test('create_tab fails on pending created effect conflict', async () => {
+    const tabs = [{ name: 'tab-now', url: 'about:blank' }];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [
+            { id: 'p1', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'p2', name: 'browser.click', args: {}, meta: { source: 'record', tabName: 'tab-now' } } as any,
+            { id: 'c3', name: 'browser.create_tab', args: { url: 'https://x' }, meta: { source: 'record', tabName: 'tab-c', tabRef: 'tab-c-ref' } } as any,
+        ],
+        stopOnError: true,
+        workspace: createReplayWorkspace(tabs),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.click': async (step: StepUnion) => (tabs.push({ name: `tab-${step.id}`, url: 'https://x' }), { stepId: step.id, ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_EFFECT_CONFLICT');
+});
+
+test('create_tab does not inject extra switch', async () => {
+    const executed: string[] = [];
+    const result = await replayRecording({
+        workspaceName: 'ws-now',
+        initialTabName: 'tab-now',
+        steps: [{ id: 'c4', name: 'browser.create_tab', args: { url: 'https://x' }, meta: { source: 'record', tabName: 'tab-d' } } as any],
+        stopOnError: true,
+        workspace: createReplayWorkspace([{ name: 'tab-now', url: 'about:blank' }]),
+        runtime: createReplayRuntime() as any,
+        pageRegistry: {} as any,
+        deps: { runtime: {} as any, config: loadRunnerConfig({ configPath: '__non_exist__.json' }), pluginHost: { getExecutors: () => ({
+            'browser.create_tab': async () => (executed.push('create'), { stepId: 'c4', ok: true, data: { tab_id: 'tab-d-runtime' } }),
+            'browser.switch_tab': async () => (executed.push('switch'), { stepId: 'sw', ok: true }),
+        }) as any } as any } as RunStepsDeps,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(executed.includes('create'), true);
+    assert.equal(executed.includes('switch'), false);
+});

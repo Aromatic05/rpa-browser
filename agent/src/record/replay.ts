@@ -130,6 +130,14 @@ export const recordClosedTabEffectForTest = (register: TabEffectRegister, runtim
     register.pendingClosedTab = { state: 'ready', value: { runtimeTabName } };
 };
 
+const clearPendingCreatedTabEffect = (register: TabEffectRegister): void => {
+    register.pendingCreatedTab = { state: 'empty' };
+};
+
+const clearPendingClosedTabEffect = (register: TabEffectRegister): void => {
+    register.pendingClosedTab = { state: 'empty' };
+};
+
 const snapshotRuntimeTabNames = (workspace: RuntimeWorkspace): Set<string> =>
     new Set(workspace.tabs.listTabs().map((tab) => tab.name));
 
@@ -246,8 +254,9 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const recordedUrl = originalStep.meta?.urlAtRecord || readStepStringArg(originalStep, 'tabUrl') || readStepStringArg(originalStep, 'url');
         let targetTabName: string | undefined = recordedTabName ? tabBindings.get(recordedTabName)?.runtimeTabName : undefined;
         let remappedStep = originalStep;
+        let syntheticResponse: RunStepsResult | undefined;
         const runtimeTabsBeforeStep = snapshotRuntimeTabNames(req.workspace);
-        if (recordedTabName && !targetTabName) {
+        if (recordedTabName && !targetTabName && originalStep.name !== 'browser.create_tab') {
             const runtimeTabs = req.workspace.tabs.listTabs();
             const exactByName = runtimeTabs.find((tab) => tab.name === recordedTabName && (!recordedUrl || urlMatches(tab.url, recordedUrl)));
             const byUrl = !exactByName && recordedUrl ? runtimeTabs.find((tab) => urlMatches(tab.url, recordedUrl)) : undefined;
@@ -281,19 +290,21 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             };
         } else if (originalStep.name === 'browser.create_tab' && recordedTabName) {
             const mapped = tabBindings.get(recordedTabName);
-            if (mapped?.runtimeTabName && req.workspace.tabs.hasTab(mapped.runtimeTabName)) {
-                remappedStep = {
-                    id: `${originalStep.id}-switch-existing`,
-                    name: 'browser.switch_tab',
-                    args: { tabName: mapped.runtimeTabName, tabRef: mapped.recordedTabRef, tabUrl: mapped.recordedUrl },
-                    meta: originalStep.meta,
-                };
+            if (mapped?.runtimeTabName && req.workspace.tabs.hasTab(mapped.runtimeTabName) && !mapped.closed) {
+                syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: mapped.runtimeTabName } }] };
+            } else if (tabEffectRegister.pendingCreatedTab.state === 'ready') {
+                const runtimeTab = tabEffectRegister.pendingCreatedTab.value.runtimeTabName;
+                upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: runtimeTab, runtimeUrl: req.workspace.tabs.getTab(runtimeTab)?.url, closed: false, status: 'created' });
+                clearPendingCreatedTabEffect(tabEffectRegister);
+                syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: runtimeTab } }] };
+            } else if (tabEffectRegister.pendingCreatedTab.state === 'conflict') {
+                return { ok: false, results: stepResults, error: { code: 'ERR_REPLAY_TAB_EFFECT_CONFLICT', message: tabEffectRegister.pendingCreatedTab.reason } };
             }
         } else if (targetTabName) {
             await req.runtime.ensureExecutableTab({ workspace: req.workspace, pageRegistry: req.pageRegistry, tabName: targetTabName, urlHint: recordedUrl });
         }
 
-        const response = await runOne(remappedStep);
+        const response = syntheticResponse || await runOne(remappedStep);
         const runtimeTabsAfterStep = snapshotRuntimeTabNames(req.workspace);
         collectTabEffectsFromDiffForTest(tabEffectRegister, runtimeTabsBeforeStep, runtimeTabsAfterStep, remappedStep.name);
         const stepDurationMs = Date.now() - startedAt;
@@ -335,6 +346,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             const createdTabName = typeof data.tab_id === 'string' ? data.tab_id : undefined;
             if (createdTabName) {
                 upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, runtimeTabName: createdTabName, runtimeUrl: req.workspace.tabs.getTab(createdTabName)?.url, status: 'created', closed: false });
+                clearPendingCreatedTabEffect(tabEffectRegister);
             }
         }
         if (recordedTabName && remappedStep.name === 'browser.switch_tab' && response.ok) {
@@ -343,6 +355,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
         if (recordedTabName && remappedStep.name === 'browser.close_tab' && response.ok) {
             upsertTabBinding(recordedTabName, { recordedTabRef: recordedTabRef || recordedTabName, recordedUrl, closed: true });
+            clearPendingClosedTabEffect(tabEffectRegister);
         }
         if (sleepMs > 0) {
             await wait(sleepMs);
