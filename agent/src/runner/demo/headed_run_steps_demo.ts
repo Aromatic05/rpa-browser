@@ -81,6 +81,7 @@ const run = async () => {
     });
     const traceSink = new MemorySink();
     const runtimeRegistry = createExecutionBindings({
+        pageRegistry,
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
         pluginHost,

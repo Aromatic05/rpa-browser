@@ -27,6 +27,7 @@ export type ExecutionBindings = {
 };
 
 type ExecutionBindingsOptions = {
+    pageRegistry: PageRegistry;
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
@@ -45,6 +46,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
                 const { tools, ctx } = plugin.createTraceTools({
                     page: binding.page,
                     context: binding.page.context(),
+                    pageRegistry: options.pageRegistry,
                     workspaceName: binding.workspaceName,
                     sinks: options.traceSinks,
                     hooks: options.traceHooks,
@@ -60,6 +62,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         const { tools, ctx } = resolveCreateTraceTools()({
             page,
             context: page.context(),
+            pageRegistry: options.pageRegistry,
             workspaceName: workspaceName,
             sinks: options.traceSinks,
             hooks: options.traceHooks,

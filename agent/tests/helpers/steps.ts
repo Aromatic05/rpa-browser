@@ -42,6 +42,7 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
     });
     runtimeWorkspace.tabs.setActiveTab(tabName);
     const runtime = createExecutionBindings({
+        pageRegistry,
         traceHooks: createNoopHooks(),
         pluginHost,
     });

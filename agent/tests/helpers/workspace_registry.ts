@@ -38,7 +38,7 @@ export const createTestWorkspaceRegistry = (options: TestWorkspaceRegistryOption
         createPendingBindingClaim: () => undefined,
         claimPendingBinding: async () => false,
     };
-    const runtime = createExecutionBindings({});
+    const runtime = createExecutionBindings({ pageRegistry: testPageRegistry });
     const runStepsDeps = options.runStepsDeps || ({
         runtime,
         pageRegistry: testPageRegistry,

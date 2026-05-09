@@ -102,6 +102,7 @@ const pageRegistry = createPageRegistry({
 });
 
 const runtimeRegistry = createExecutionBindings({
+    pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,

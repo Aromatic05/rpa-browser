@@ -127,6 +127,7 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
 };
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 const runtimeRegistry: ReturnType<typeof createExecutionBindings> = createExecutionBindings({
+    pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()

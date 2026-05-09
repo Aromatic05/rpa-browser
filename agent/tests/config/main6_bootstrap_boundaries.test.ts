@@ -25,7 +25,12 @@ const createMockPage = (urlValue = 'https://example.com') => {
 const createEnv = () => {
     const recordingState = createRecordingState();
     const pageRegistry = { getPage: async () => createMockPage() } as any;
-    const runtimeRegistry = createExecutionBindings({});
+    const runtimeRegistry = createExecutionBindings({
+        pageRegistry: {
+            getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+            closePage: async () => undefined,
+        } as any,
+    });
     const runStepsDeps = {
         runtime: runtimeRegistry,
         stepSinks: [],
