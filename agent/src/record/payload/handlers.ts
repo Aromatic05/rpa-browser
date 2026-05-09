@@ -9,6 +9,7 @@ import {
     getValue,
     isCheckboxOrRadio,
     isPassword,
+    pickClickTarget,
     selectorFor,
 } from './utils';
 
@@ -42,7 +43,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
         if (isCheckboxOrRadio(element) || element.closest('label input[type="checkbox"], label input[type="radio"]')) {return;}
         const checkboxInput = findCheckboxInput(element);
         if (checkboxInput) {return;}
-        const interactive = element.closest('button, a, input, select, textarea, [role]') || element;
+        const interactive = pickClickTarget(element);
         const selector = selectorFor(interactive);
         if (selector) {
             emit({
@@ -57,37 +58,18 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             });
             return;
         }
-        const fallback = interactive.closest('button, a, input, select, textarea, [role]');
-        if (!fallback) {
-            debugTarget('click', interactive, 'no selector and no fallback');
-            return;
-        }
-        const fallbackSelector = selectorFor(fallback);
-        if (fallbackSelector) {
-            emit({
-                type: 'click',
-                selector: fallbackSelector,
-                targetHint: fallback.tagName.toLowerCase(),
-                a11yHint: buildA11yHint(fallback),
-                locatorCandidates: buildCandidates(fallback, fallbackSelector),
-                targetAttrs: buildTargetAttrs(fallback),
-                targetState: buildTargetState(fallback),
-                scopeHint: getScopeHint(fallback),
-            });
-            return;
-        }
-        const hintOnly = buildA11yHint(fallback);
+        const hintOnly = buildA11yHint(element);
         if (hintOnly.role || hintOnly.name || hintOnly.text) {
             emit({
                 type: 'click',
-                targetHint: fallback.tagName.toLowerCase(),
+                targetHint: element.tagName.toLowerCase(),
                 a11yHint: hintOnly,
-                locatorCandidates: buildCandidates(fallback),
-                scopeHint: getScopeHint(fallback),
+                locatorCandidates: buildCandidates(element),
+                scopeHint: getScopeHint(element),
             });
             return;
         }
-        debugTarget('click', fallback, 'fallback selector missing');
+        debugTarget('click', element, 'no selector and no a11y hint');
     };
 
     document.addEventListener('click', handleClick, true);

@@ -29,6 +29,7 @@ const REPLAY_ERROR_CODES = {
     TAB_NOT_BOUND: 'ERR_REPLAY_TAB_NOT_BOUND',
     TAB_EFFECT_CONFLICT: 'ERR_REPLAY_TAB_EFFECT_CONFLICT',
     TAB_EFFECT_MISMATCH: 'ERR_REPLAY_TAB_EFFECT_MISMATCH',
+    TAB_EFFECT_MISSING: 'ERR_REPLAY_TAB_EFFECT_MISSING',
 } as const;
 
 type ReplayRequest = {
@@ -79,6 +80,10 @@ export type ReplayEvent =
 
 const asRecord = (value: unknown): Record<string, unknown> =>
     (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+
+const TAB_LIFECYCLE_STEPS = new Set(['browser.create_tab', 'browser.switch_tab', 'browser.close_tab']);
+
+const isTabLifecycleStep = (stepName: string): boolean => TAB_LIFECYCLE_STEPS.has(stepName);
 
 const readStepStringArg = (step: StepUnion, key: string): string | undefined => {
     const args = asRecord(step.args);
@@ -331,7 +336,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             stepName: originalStep.name,
         });
 
-        const isLifecycleStep = originalStep.name === 'browser.create_tab' || originalStep.name === 'browser.switch_tab' || originalStep.name === 'browser.close_tab';
+        const isLifecycleStep = isTabLifecycleStep(originalStep.name);
         const tabStepRecordedTabName = isLifecycleStep
             ? readStepStringArg(originalStep, 'tabName')
             : undefined;
@@ -418,6 +423,10 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             }
             if (!syntheticResponse && tabEffectRegister.pendingCreatedTab.state === 'conflict') {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
+            }
+            if (!syntheticResponse && tabEffectRegister.pendingCreatedTab.state === 'empty' && expectedCreatedTabUrl
+                && index > 0 && !isTabLifecycleStep(req.steps[index - 1].name)) {
+                return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_MISSING, message: 'expected created tab effect missing' } };
             }
             if (!syntheticResponse) {
                 remappedStep = {

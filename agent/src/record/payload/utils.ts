@@ -255,6 +255,80 @@ export const buildA11yHint = (el: Element): Record<string, string> => {
     return hint;
 };
 
+const NATIVE_INTERACTIVE_TAGS = new Set([
+    'button', 'input', 'select', 'textarea', 'summary', 'label',
+]);
+
+const INTERACTIVE_ROLES = new Set([
+    'button', 'link', 'menuitem', 'option', 'radio', 'checkbox',
+    'switch', 'tab', 'treeitem', 'combobox',
+]);
+
+const FRAMEWORK_BUTTON_CLASSES = new Set([
+    'ant-btn', 'el-button', 'arco-btn', 'semi-button', 'btn', 'button',
+]);
+
+const CONTAINER_ROLES = new Set([
+    'tabpanel', 'region', 'main', 'form', 'group', 'presentation',
+    'none', 'row', 'cell', 'grid', 'table', 'list', 'listitem',
+]);
+
+const MAX_CURSOR_POINTER_STEPS = 3;
+
+export const pickClickTarget = (element: Element): Element => {
+    let node: Element | null = element;
+    let candidate: Element | null = null;
+    let cursorSteps = 0;
+
+    while (node && node !== document.body && node !== document.documentElement) {
+        const tag = node.tagName.toLowerCase();
+        const role = node.getAttribute('role');
+
+        if (NATIVE_INTERACTIVE_TAGS.has(tag)) {
+            return node;
+        }
+        if (tag === 'a' && node.hasAttribute('href')) {
+            return node;
+        }
+
+        if (role && INTERACTIVE_ROLES.has(role)) {
+            return node;
+        }
+
+        if (role && CONTAINER_ROLES.has(role)) {
+            return candidate || element;
+        }
+
+        if (!candidate) {
+            const classList = (node as HTMLElement).classList;
+            if (classList) {
+                for (const cls of Array.from(classList)) {
+                    if (FRAMEWORK_BUTTON_CLASSES.has(cls)) {
+                        candidate = node;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!candidate && cursorSteps < MAX_CURSOR_POINTER_STEPS) {
+            cursorSteps += 1;
+            try {
+                const style = window.getComputedStyle(node);
+                if (style.cursor === 'pointer') {
+                    candidate = node;
+                }
+            } catch {
+                // ignore
+            }
+        }
+
+        node = node.parentElement;
+    }
+
+    return candidate || element;
+};
+
 export const isPassword = (el: Element): boolean => {
     const type = (el.getAttribute('type') || '').toLowerCase();
     return type === 'password' || el.getAttribute('autocomplete') === 'current-password';

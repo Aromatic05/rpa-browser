@@ -545,3 +545,35 @@ test('create_tab does not change recordedActiveTabName', async () => {
 
     assert.equal(result.ok, true);
 });
+
+test('create_tab fails with missing effect when expected URL is defined', async () => {
+    const tabs: RuntimeTab[] = [{ name: 'runtime-b', url: 'about:blank' }];
+    const executed: StepUnion[] = [];
+    const result = await replay({
+        tabs,
+        steps: [
+            step('click-no-effect', 'browser.click', { selector: '#btn' }),
+            step('create-c', 'browser.create_tab', { tabName: 'tab-c' }),
+            step('switch-c', 'browser.switch_tab', { tabName: 'tab-c' }),
+            step('goto-c', 'browser.goto', { url: 'https://expected.example/' }),
+        ],
+        handlers: {
+            'browser.click': async (item) => {
+                executed.push(item);
+                // click does NOT create any tab
+                return { stepId: item.id, ok: true };
+            },
+            'browser.create_tab': async (item) => {
+                executed.push(item);
+                return { stepId: item.id, ok: true, data: { tab_id: 'unexpected' } };
+            },
+            'browser.switch_tab': async (item) => (executed.push(item), { stepId: item.id, ok: true }),
+            'browser.goto': async (item) => (executed.push(item), { stepId: item.id, ok: true }),
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_REPLAY_TAB_EFFECT_MISSING');
+    // trace.tabs.create must not have been called
+    assert.ok(!executed.find((item) => item.id === 'create-c'));
+});
