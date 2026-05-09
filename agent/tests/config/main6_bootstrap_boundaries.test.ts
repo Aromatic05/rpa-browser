@@ -25,7 +25,12 @@ const createMockPage = (urlValue = 'https://example.com') => {
 const createEnv = () => {
     const recordingState = createRecordingState();
     const pageRegistry = { getPage: async () => createMockPage() } as any;
-    const runtimeRegistry = createExecutionBindings({});
+    const runtimeRegistry = createExecutionBindings({
+        pageRegistry: {
+            getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+            closePage: async () => undefined,
+        } as any,
+    });
     const runStepsDeps = {
         runtime: runtimeRegistry,
         stepSinks: [],
@@ -35,7 +40,7 @@ const createEnv = () => {
     const workspaceRegistry = createWorkspaceRegistry({
         pageRegistry,
         recordingState,
-        replayOptions: { clickDelayMs: 1, stepDelayMs: 1, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        replayOptions: { clickDelayMs: 1, stepIntervalMs: 1, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1200,
         runStepsDeps: runStepsDeps as any,
         runnerConfig: { checkpointPolicy: { enabled: false, filePath: '.tmp', flushIntervalMs: 1000 } } as any,
@@ -57,7 +62,7 @@ test('runtime lifecycle binds workspace/tab on page bound', () => {
         ensureWorkflow: ensureWorkflowOnFs,
         ensureRecorder: async () => undefined,
         setRecorderRuntimeEnabled: async () => undefined,
-        getWorkspaceActiveRecordingToken: () => null,
+        isWorkspaceRecordingEnabled: () => false,
         attachTabToRecordingManifest: () => undefined,
         cleanupRecording: () => undefined,
     });
@@ -72,8 +77,7 @@ test('runtime lifecycle binds workspace/tab on page bound', () => {
 
 test('runtime lifecycle cleans recording on binding close', () => {
     const env = createEnv();
-    env.recordingState.recordingEnabled.add('tab-close');
-
+    let cleanupTabName: string | null = null;
     const lifecycle = createRuntimeLifecycle({
         workspaceRegistry: env.workspaceRegistry,
         runtimeRegistry: env.runtimeRegistry,
@@ -85,15 +89,13 @@ test('runtime lifecycle cleans recording on binding close', () => {
         ensureWorkflow: ensureWorkflowOnFs,
         ensureRecorder: async () => undefined,
         setRecorderRuntimeEnabled: async () => undefined,
-        getWorkspaceActiveRecordingToken: () => null,
+        isWorkspaceRecordingEnabled: () => false,
         attachTabToRecordingManifest: () => undefined,
-        cleanupRecording: (state, tabName) => {
-            state.recordingEnabled.delete(tabName);
-        },
+        cleanupRecording: (_state, tabName) => { cleanupTabName = tabName; },
     });
 
     lifecycle.onBindingClosed('tab-close');
-    assert.equal(env.recordingState.recordingEnabled.has('tab-close'), false);
+    assert.equal(cleanupTabName, 'tab-close');
 });
 
 test('runtime lifecycle watchdog emits ping-timeout sync', async () => {
@@ -114,7 +116,7 @@ test('runtime lifecycle watchdog emits ping-timeout sync', async () => {
         ensureWorkflow: ensureWorkflowOnFs,
         ensureRecorder: async () => undefined,
         setRecorderRuntimeEnabled: async () => undefined,
-        getWorkspaceActiveRecordingToken: () => null,
+        isWorkspaceRecordingEnabled: () => false,
         attachTabToRecordingManifest: () => undefined,
         cleanupRecording: () => undefined,
     });
@@ -133,7 +135,9 @@ test('runtime lifecycle watchdog emits ping-timeout sync', async () => {
 
 test('recorder sink handler ingests and emits record.event', async () => {
     const recordingState = createRecordingState();
-    recordingState.recordingEnabled.add('tab-1');
+    recordingState.workspaceUnsavedRecording.set('ws-1', 'unsaved:ws-1');
+    recordingState.recordingEnabled.add('unsaved:ws-1');
+    recordingState.recordings.set('unsaved:ws-1', []);
     const emitted: string[] = [];
 
     const sink = createRecorderEventSinkHandler({
@@ -146,7 +150,7 @@ test('recorder sink handler ingests and emits record.event', async () => {
     await sink({ tabName: 'tab-1', ts: Date.now(), type: 'click', selector: '#a' }, createMockPage(), 'tab-1');
 
     assert.equal(emitted.includes('record.event'), true);
-    const steps = recordingState.recordings.get('tab-1') || [];
+    const steps = recordingState.recordings.get('unsaved:ws-1') || [];
     assert.equal(steps.length >= 1, true);
 });
 

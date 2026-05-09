@@ -49,6 +49,7 @@ const createMinimalWorkspace = (name: string): RuntimeWorkspace =>
             hasTab: () => false,
         } as any,
         record: {} as any,
+        state: 'idle',
         dsl: {} as any,
         checkpoint: {} as any,
         entityRules: {} as any,
@@ -86,7 +87,7 @@ const createRouterWithStubs = () => {
         checkpointControl,
         entityRulesControl,
         runnerControl,
-        mcpControl,
+        mcpControl
     };
 
     const router = createWorkspaceRouter(deps);
@@ -99,7 +100,7 @@ const createRouterWithStubs = () => {
         checkpointControl,
         entityRulesControl,
         runnerControl,
-        mcpControl,
+        mcpControl
     };
 };
 
@@ -182,7 +183,7 @@ test('WorkspaceRouter does not handle tab.init', async () => {
 });
 
 test('TabsControl rejects tab.init', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.init', { workspaceName: 'ws-1' });
@@ -291,6 +292,18 @@ test('play.* is forwarded to recordControl', async () => {
     assert.equal(recordControl.calls.length, 1);
 });
 
+test('WorkspaceRouter does not handle workflow.saveAs', async () => {
+    const { router } = createRouterWithStubs();
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('workflow.saveAs', { workspaceName: 'ws-1', payload: { targetName: 'ws-2' } });
+
+    await assert.rejects(
+        () => router.handle(action, workspace, registry),
+        /unsupported action/,
+    );
+});
+
 test('dsl.* is forwarded to dslControl', async () => {
     const { router, dslControl } = createRouterWithStubs();
     const workspace = createMinimalWorkspace('ws-1');
@@ -348,7 +361,7 @@ import { createTabsControl } from '../../src/runtime/workspace/tabs';
 import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
 
 test('TabsControl handles tab.list', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         getPage: async () => {
             throw new Error('not implemented');
@@ -368,7 +381,7 @@ test('TabsControl handles tab.list', async () => {
 });
 
 test('TabsControl handles tab.create', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     let pageCreated = false;
     const tabs = createWorkspaceTabs({
         getPage: async () => {
@@ -391,7 +404,7 @@ test('TabsControl handles tab.create', async () => {
 });
 
 test('TabsControl handles tab.close', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     let pageClosed = false;
     const tabs = createWorkspaceTabs({
         getPage: async () => {
@@ -423,7 +436,7 @@ test('TabsControl handles tab.close', async () => {
 });
 
 test('TabsControl tab.activated returns unsupported', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.activated', { workspaceName: 'ws-1' });
@@ -435,7 +448,7 @@ test('TabsControl tab.activated returns unsupported', async () => {
 });
 
 test('TabsControl unknown tab action returns unsupported', async () => {
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.unknown', { workspaceName: 'ws-1' });

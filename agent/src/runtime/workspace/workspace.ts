@@ -13,8 +13,14 @@ import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
 import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
+import { ActionError, ERROR_CODES } from '../../actions/results';
 import type { PortAllocator } from '../service/ports';
 import { createWorkspaceMcpService } from '../../mcp/service';
+import { getLogger } from '../../logging/logger';
+import type { PageRegistry } from '../browser/page_registry';
+import type { ExecutionBindings } from '../execution/bindings';
+
+export type WorkspaceState = 'idle' | 'recording' | 'playing';
 
 export type RuntimeWorkspace = {
     name: string;
@@ -27,15 +33,16 @@ export type RuntimeWorkspace = {
     runner: RunnerControl;
     mcp: McpControl;
     router: WorkspaceRouter;
+    state: WorkspaceState;
     createdAt: number;
     updatedAt: number;
 };
 
-
 export type CreateRuntimeWorkspaceDeps = {
     name: string;
     workflow: Workflow;
-    pageRegistry: { getPage: (tabName: string, startUrl?: string) => Promise<Page> };
+    pageRegistry: { getPage: (tabName: string, startUrl?: string) => Promise<Page>; touchBinding?: (bindingName: string) => void };
+    runtime: ExecutionBindings;
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
@@ -45,20 +52,62 @@ export type CreateRuntimeWorkspaceDeps = {
     portAllocator: PortAllocator;
 };
 
+export const getWorkspaceState = (workspace: RuntimeWorkspace): WorkspaceState => workspace.state;
+
+export const requireWorkspaceState = (
+    workspace: RuntimeWorkspace,
+    expected: WorkspaceState,
+    actionType: string,
+): void => {
+    if (workspace.state !== expected) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=${expected}, current=${workspace.state}`);
+    }
+};
+
+export const enterWorkspaceState = (
+    workspace: RuntimeWorkspace,
+    next: WorkspaceState,
+    actionType: string,
+): void => {
+    if (workspace.state !== 'idle') {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=idle, current=${workspace.state}`);
+    }
+    workspace.state = next;
+    workspace.updatedAt = Date.now();
+};
+
+export const leaveWorkspaceState = (
+    workspace: RuntimeWorkspace,
+    expected: WorkspaceState,
+    actionType: string,
+): void => {
+    if (workspace.state !== expected) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=${expected}, current=${workspace.state}`);
+    }
+    workspace.state = 'idle';
+    workspace.updatedAt = Date.now();
+};
+
 export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): RuntimeWorkspace => {
     const now = Date.now();
-    const tabs = createWorkspaceTabs({ getPage: deps.pageRegistry.getPage });
+    const tabs = createWorkspaceTabs({ getPage: deps.pageRegistry.getPage, touchBinding: deps.pageRegistry.touchBinding });
     const record = createRecordControl({
         recordingState: deps.recordingState,
         replayOptions: deps.replayOptions,
         navDedupeWindowMs: deps.navDedupeWindowMs,
+        runtime: deps.runtime,
+        pageRegistry: deps.pageRegistry as PageRegistry,
         emit: deps.emit,
+        log: getLogger('action'),
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
     const entityRules = createEntityRulesControl();
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
-    const tabsControl = createTabsControl();
+    const tabsControl = createTabsControl({
+        recordingState: deps.recordingState,
+        navDedupeWindowMs: deps.navDedupeWindowMs,
+    });
 
     const mcpService = createWorkspaceMcpService({
         workspace: { name: deps.name, tabs },
@@ -78,7 +127,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         mcpControl: mcp,
     });
 
-    return {
+    const workspace: RuntimeWorkspace = {
         name: deps.name,
         workflow: deps.workflow,
         tabs,
@@ -89,7 +138,9 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         runner,
         mcp,
         router,
+        state: 'idle',
         createdAt: now,
         updatedAt: now,
     };
+    return workspace;
 };

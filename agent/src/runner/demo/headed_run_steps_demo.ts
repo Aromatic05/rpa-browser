@@ -53,16 +53,25 @@ const run = async () => {
     await pluginHost.load();
     const runStepsDeps: RunStepsDeps = {
         runtime: null as unknown as ReturnType<typeof createExecutionBindings>,
+        resolveWorkspace: (workspaceName: string) => {
+            const workspace = workspaceRegistry.getWorkspace(workspaceName);
+            if (!workspace) {
+                throw new Error(`workspace not found: ${workspaceName}`);
+            }
+            return workspace;
+        },
+        pageRegistry,
         stepSinks: [createConsoleStepSink('[step]')],
         config: getRunnerConfig(),
         pluginHost,
     };
     const workspaceRegistry = createWorkspaceRegistry({
         pageRegistry,
+        runtime: runStepsDeps.runtime,
         recordingState: createRecordingState(),
         replayOptions: {
             clickDelayMs: 300,
-            stepDelayMs: 900,
+            stepIntervalMs: 900,
             scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
         },
         navDedupeWindowMs: 1200,
@@ -72,6 +81,7 @@ const run = async () => {
     });
     const traceSink = new MemorySink();
     const runtimeRegistry = createExecutionBindings({
+        pageRegistry,
         traceSinks: [traceSink],
         traceHooks: createLoggingHooks(),
         pluginHost,

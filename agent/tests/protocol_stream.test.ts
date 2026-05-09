@@ -56,9 +56,10 @@ test('play.start returns play.started immediately and emits completion event fro
     const emitted: string[] = [];
     const recordControl = createRecordControl({
         recordingState,
-        replayOptions: { clickDelayMs: 0, stepDelayMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
+        replayOptions: { clickDelayMs: 0, stepIntervalMs: 0, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
         navDedupeWindowMs: 1000,
         emit: (action) => emitted.push(action.type),
+        log: () => undefined,
     });
 
     const started = await recordControl.handle({

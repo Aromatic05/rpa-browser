@@ -1,18 +1,12 @@
 import { createRuntimeWorkspace, type RuntimeWorkspace, type CreateRuntimeWorkspaceDeps } from './workspace';
 import type { Workflow } from '../../workflow';
-import type { WorkflowControl } from '../../workflow/control';
-import type { RecordControl } from '../../record/control';
-import type { DslControl } from '../../dsl/control';
-import type { CheckpointControl } from '../../checkpoint/control';
-import type { EntityRulesControl } from '../../entity_rules/control';
-import type { RunnerControl } from '../../runner/control';
-import type { McpControl } from '../../mcp/control';
 import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
 import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
+import type { ExecutionBindings } from '../execution/bindings';
 
 export type { RuntimeWorkspace };
 
@@ -30,7 +24,9 @@ export type WorkspaceRegistry = {
 export type WorkspaceRuntimeDeps = {
     pageRegistry: {
         getPage: (tabName: string, startUrl?: string) => Promise<import('playwright').Page>;
+        touchBinding?: (bindingName: string) => void;
     };
+    runtime: ExecutionBindings;
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
     navDedupeWindowMs: number;
@@ -55,6 +51,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             name: workspaceName,
             workflow,
             pageRegistry: runtimeDeps.pageRegistry,
+            runtime: runtimeDeps.runtime,
             recordingState: runtimeDeps.recordingState,
             replayOptions: runtimeDeps.replayOptions,
             navDedupeWindowMs: runtimeDeps.navDedupeWindowMs,

@@ -2,11 +2,14 @@ import type { DebugTargetFn, EmitFn } from './emitter';
 import {
     buildA11yHint,
     buildCandidates,
+    buildTargetAttrs,
+    buildTargetState,
     findCheckboxInput,
     getScopeHint,
     getValue,
     isCheckboxOrRadio,
     isPassword,
+    pickClickTarget,
     selectorFor,
 } from './utils';
 
@@ -40,7 +43,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
         if (isCheckboxOrRadio(element) || element.closest('label input[type="checkbox"], label input[type="radio"]')) {return;}
         const checkboxInput = findCheckboxInput(element);
         if (checkboxInput) {return;}
-        const interactive = element.closest('button, a, input, select, textarea, [role]') || element;
+        const interactive = pickClickTarget(element);
         const selector = selectorFor(interactive);
         if (selector) {
             emit({
@@ -48,40 +51,25 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector,
                 targetHint: interactive.tagName.toLowerCase(),
                 a11yHint: buildA11yHint(interactive),
-                locatorCandidates: buildCandidates(interactive),
+                locatorCandidates: buildCandidates(interactive, selector),
+                targetAttrs: buildTargetAttrs(interactive),
+                targetState: buildTargetState(interactive),
                 scopeHint: getScopeHint(interactive),
             });
             return;
         }
-        const fallback = interactive.closest('button, a, input, select, textarea, [role]');
-        if (!fallback) {
-            debugTarget('click', interactive, 'no selector and no fallback');
-            return;
-        }
-        const fallbackSelector = selectorFor(fallback);
-        if (fallbackSelector) {
-            emit({
-                type: 'click',
-                selector: fallbackSelector,
-                targetHint: fallback.tagName.toLowerCase(),
-                a11yHint: buildA11yHint(fallback),
-                locatorCandidates: buildCandidates(fallback),
-                scopeHint: getScopeHint(fallback),
-            });
-            return;
-        }
-        const hintOnly = buildA11yHint(fallback);
+        const hintOnly = buildA11yHint(element);
         if (hintOnly.role || hintOnly.name || hintOnly.text) {
             emit({
                 type: 'click',
-                targetHint: fallback.tagName.toLowerCase(),
+                targetHint: element.tagName.toLowerCase(),
                 a11yHint: hintOnly,
-                locatorCandidates: buildCandidates(fallback),
-                scopeHint: getScopeHint(fallback),
+                locatorCandidates: buildCandidates(element),
+                scopeHint: getScopeHint(element),
             });
             return;
         }
-        debugTarget('click', fallback, 'fallback selector missing');
+        debugTarget('click', element, 'no selector and no a11y hint');
     };
 
     document.addEventListener('click', handleClick, true);
@@ -97,12 +85,16 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element instanceof HTMLSelectElement) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
             emit({
                 type: 'input',
-                selector,
+                selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },
@@ -118,16 +110,20 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
             if (element instanceof HTMLInputElement) {
                 const inputType = (element.type || '').toLowerCase();
                 if (inputType === 'checkbox' || inputType === 'radio') {
                     emit({
                         type: 'check',
-                        selector,
+                        selector: rawSelector,
                         checked: element.checked,
                         inputType,
                         a11yHint: buildA11yHint(element),
-                        locatorCandidates: buildCandidates(element),
+                        locatorCandidates: buildCandidates(element, rawSelector),
+                        targetAttrs: buildTargetAttrs(element),
+                        targetState: buildTargetState(element),
                         scopeHint: getScopeHint(element),
                     });
                     return;
@@ -135,10 +131,12 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 if (inputType === 'date') {
                     emit({
                         type: 'date',
-                        selector,
+                        selector: rawSelector,
                         value: element.value,
                         a11yHint: buildA11yHint(element),
-                        locatorCandidates: buildCandidates(element),
+                        locatorCandidates: buildCandidates(element, rawSelector),
+                        targetAttrs: buildTargetAttrs(element),
+                        targetState: buildTargetState(element),
                         scopeHint: getScopeHint(element),
                     });
                     return;
@@ -147,22 +145,26 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element instanceof HTMLSelectElement) {
                 const option = element.selectedOptions[0];
                 emit({
-                    type: 'select',
-                    selector,
+                type: 'select',
+                    selector: rawSelector,
                     value: element.value,
                     label: option.label,
                     a11yHint: buildA11yHint(element),
-                    locatorCandidates: buildCandidates(element),
+                    locatorCandidates: buildCandidates(element, rawSelector),
+                    targetAttrs: buildTargetAttrs(element),
+                    targetState: buildTargetState(element),
                     scopeHint: getScopeHint(element),
                 });
                 return;
             }
             emit({
                 type: 'change',
-                selector,
+                selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },
@@ -182,7 +184,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 selector,
                 key: event.key,
                 a11yHint: element instanceof Element ? buildA11yHint(element) : undefined,
-                locatorCandidates: element instanceof Element ? buildCandidates(element) : undefined,
+                locatorCandidates: element instanceof Element ? buildCandidates(element, selector || undefined) : undefined,
+                targetAttrs: element instanceof Element ? buildTargetAttrs(element) : undefined,
+                targetState: element instanceof Element ? buildTargetState(element) : undefined,
                 scopeHint: element instanceof Element ? getScopeHint(element) : undefined,
             });
         },
@@ -198,13 +202,17 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
             if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
             if (isPassword(element)) {return;}
             emit({
                 type: 'paste',
-                selector,
+                selector: rawSelector,
                 value: getValue(element),
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },
@@ -224,7 +232,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 type: 'copy',
                 selector,
                 a11yHint: buildA11yHint(element),
-                locatorCandidates: buildCandidates(element),
+                locatorCandidates: buildCandidates(element, selector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
             });
         },

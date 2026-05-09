@@ -3,6 +3,8 @@ import { createTraceTools, type BrowserAutomationTools } from '../../runner/trac
 import type { RunnerPluginHost } from '../../runner/hotreload/plugin_host';
 import type { CreateTraceToolsFn } from '../../runner/plugin_entry';
 import type { TraceContext, TraceHooks, TraceSink } from '../../runner/trace/types';
+import type { RuntimeWorkspace } from '../workspace/workspace';
+import type { PageRegistry } from '../browser/page_registry';
 
 export type ExecutionBinding = {
     workspaceName: string;
@@ -14,11 +16,18 @@ export type ExecutionBinding = {
 
 export type ExecutionBindings = {
     bindPage: (input: { workspaceName: string; tabName: string; page: Page }) => ExecutionBinding;
+    ensureExecutableTab: (input: {
+        workspace: RuntimeWorkspace;
+        pageRegistry: PageRegistry;
+        tabName: string;
+        urlHint?: string;
+    }) => Promise<ExecutionBinding>;
     resolveBinding: (workspaceName: string, tabName?: string) => Promise<ExecutionBinding>;
     getBinding: (workspaceName: string, tabName: string) => ExecutionBinding | null;
 };
 
 type ExecutionBindingsOptions = {
+    pageRegistry: PageRegistry;
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
@@ -37,6 +46,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
                 const { tools, ctx } = plugin.createTraceTools({
                     page: binding.page,
                     context: binding.page.context(),
+                    pageRegistry: options.pageRegistry,
                     workspaceName: binding.workspaceName,
                     sinks: options.traceSinks,
                     hooks: options.traceHooks,
@@ -52,6 +62,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         const { tools, ctx } = resolveCreateTraceTools()({
             page,
             context: page.context(),
+            pageRegistry: options.pageRegistry,
             workspaceName: workspaceName,
             sinks: options.traceSinks,
             hooks: options.traceHooks,
@@ -70,14 +81,9 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             tabsForWorkspace?.delete(tabName);
             if (tabsForWorkspace && tabsForWorkspace.size === 0) {
                 workspaceTabs.delete(workspaceName);
+            }
+            if (activeTabs.get(workspaceName) === tabName) {
                 activeTabs.delete(workspaceName);
-            } else if (activeTabs.get(workspaceName) === tabName) {
-                const nextTab = tabsForWorkspace ? tabsForWorkspace.values().next().value : undefined;
-                if (nextTab) {
-                    activeTabs.set(workspaceName, nextTab);
-                } else {
-                    activeTabs.delete(workspaceName);
-                }
             }
         });
         return binding;
@@ -92,6 +98,18 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         return createBinding(input.workspaceName, input.tabName, input.page);
     };
 
+    const ensureExecutableTab: ExecutionBindings['ensureExecutableTab'] = async (input) => {
+        const { workspace, pageRegistry, tabName, urlHint } = input;
+        const page = await pageRegistry.getPage(tabName, urlHint);
+        if (!workspace.tabs.hasTab(tabName)) {
+            workspace.tabs.createMetadataTab({ tabName });
+        }
+        workspace.tabs.bindPage(tabName, page);
+        workspace.tabs.updateTab(tabName, { url: page.url() });
+        workspace.tabs.setActiveTab(tabName);
+        return bindPage({ workspaceName: workspace.name, tabName, page });
+    };
+
     const resolveBinding = async (workspaceName: string, tabName?: string): Promise<ExecutionBinding> => {
         if (tabName) {
             const bound = bindings.get(keyOf(workspaceName, tabName));
@@ -104,17 +122,12 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             const bound = bindings.get(keyOf(workspaceName, activeTab));
             if (bound) {return bound;}
         }
-        const tabs = workspaceTabs.get(workspaceName);
-        const fallbackTab = tabs?.values().next().value as string | undefined;
-        if (!fallbackTab) {throw new Error(`page not bound: ${workspaceName}`);}
-        const bound = bindings.get(keyOf(workspaceName, fallbackTab));
-        if (!bound) {throw new Error(`page not bound: ${workspaceName}/${fallbackTab}`);}
-        activeTabs.set(workspaceName, fallbackTab);
-        return bound;
+        throw new Error(`no active binding: ${workspaceName}`);
     };
 
     return {
         bindPage,
+        ensureExecutableTab,
         resolveBinding,
         getBinding: (workspaceName, tabName) => bindings.get(keyOf(workspaceName, tabName)) || null,
     };

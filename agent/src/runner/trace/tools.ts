@@ -59,7 +59,20 @@ export type BrowserAutomationTools = {
     'trace.a11y.resolveByNodeId': (args: { a11yNodeId: string }) => Promise<ToolResult<{ a11yNodeId: string }>>;
     'trace.locator.waitForVisible': (args: TraceLocatorTarget & { timeout?: number }) => Promise<ToolResult>;
     'trace.locator.scrollIntoView': (args: TraceLocatorTarget) => Promise<ToolResult>;
-    'trace.locator.click': (args: TraceLocatorTarget & { timeout?: number; button?: 'left' | 'right' | 'middle' }) => Promise<ToolResult>;
+    'trace.locator.highlight': (args: TraceLocatorTarget & {
+        highlightMs: number;
+        candidateIndex: number;
+        stepId: string;
+        stepName: string;
+    }) => Promise<ToolResult>;
+    'trace.locator.click': (args: TraceLocatorTarget & {
+        timeout?: number;
+        button?: 'left' | 'right' | 'middle';
+        candidateIndex?: number;
+        candidateTimeoutMs?: number;
+        loadStateBeforeClick?: 'domcontentloaded' | 'load';
+        pageReadyWaitMs?: number;
+    }) => Promise<ToolResult>;
     'trace.locator.focus': (args: TraceLocatorTarget) => Promise<ToolResult>;
     'trace.locator.fill': (args: TraceLocatorTarget & { value: string }) => Promise<ToolResult>;
     'trace.locator.type': (args: TraceLocatorTarget & { text: string; delayMs?: number }) => Promise<ToolResult>;

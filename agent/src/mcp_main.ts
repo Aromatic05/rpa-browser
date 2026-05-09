@@ -4,7 +4,7 @@ import { createContextManager, resolvePaths } from './runtime/browser/context_ma
 import { createPageRegistry } from './runtime/browser/page_registry';
 import { createWorkspaceRegistry } from './runtime/workspace/registry';
 import { createExecutionBindings } from './runtime/execution/bindings';
-import { createRecordingState, cleanupRecording, ensureRecorder } from './record/recording';
+import { createRecordingState, cleanupRecording, ensureRecorder, isWorkspaceRecordingEnabled } from './record/recording';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
@@ -20,7 +20,7 @@ const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
 const REPLAY_OPTIONS = {
     clickDelayMs: 300,
-    stepDelayMs: 900,
+    stepIntervalMs: 900,
     scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
 };
 if (!process.env.RPA_USER_DATA_DIR) {
@@ -61,6 +61,7 @@ const pageRegistry = createPageRegistry({
 });
 
 const runtimeRegistry = createExecutionBindings({
+    pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
@@ -70,6 +71,14 @@ const runtimeRegistry = createExecutionBindings({
 
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
+    resolveWorkspace: (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            throw new Error(`workspace not found: ${workspaceName}`);
+        }
+        return workspace;
+    },
+    pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
@@ -80,6 +89,7 @@ const portAllocator = createPortAllocator();
 
 const workspaceRegistry = createWorkspaceRegistry({
     pageRegistry,
+    runtime: runtimeRegistry,
     recordingState,
     replayOptions: REPLAY_OPTIONS,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
@@ -96,10 +106,10 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
 };
 
 onPageBoundHook = (page, tabName) => {
-    if (recordingState.recordingEnabled.has(tabName)) {
-        void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
-    }
     const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+    if (isWorkspaceRecordingEnabled(recordingState, workspaceName)) {
+        void ensureRecorder(recordingState, workspaceName, page, tabName, NAV_DEDUPE_WINDOW_MS);
+    }
     const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
     if (!workspace.tabs.hasTab(tabName)) {
         workspace.tabs.createTab({ tabName, page, url: page.url() });

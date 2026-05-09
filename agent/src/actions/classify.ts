@@ -32,9 +32,28 @@ export const classifyActionRoute = (action: Action): ActionRouteKind => {
 
     const actionWN = hasActionWorkspaceName(action);
     const payloadWN = hasPayloadWorkspaceName(action);
+    const isControlCommand = action.type === 'workspace.list'
+        || action.type === 'workspace.create'
+        || action.type === 'workspace.setActive'
+        || action.type === 'workflow.list'
+        || action.type === 'workflow.create'
+        || action.type === 'workflow.open'
+        || action.type === 'workflow.saveAs'
+        || action.type === 'workflow.rename'
+        || action.type === 'workflow.resetDefault'
+        || action.type === 'log.ext';
+    const isWorkspaceCommand = action.type.startsWith('tab.')
+        || action.type.startsWith('record.')
+        || action.type.startsWith('play.')
+        || action.type.startsWith('dsl.')
+        || action.type.startsWith('checkpoint.')
+        || action.type.startsWith('entity_rules.')
+        || action.type.startsWith('task.run.')
+        || action.type.startsWith('mcp.');
 
     if (actionWN && payloadWN) {return 'invalid';}
-
+    if (isControlCommand) {return 'control';}
+    if (isWorkspaceCommand) {return 'workspace';}
     if (actionWN) {return 'workspace';}
     return 'control';
 };

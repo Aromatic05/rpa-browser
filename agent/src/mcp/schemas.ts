@@ -74,19 +74,15 @@ export const browserReloadInputSchema = z.object({
 });
 
 export const browserCreateTabInputSchema = z.object({
-    tabName: z.string().optional(),
-    url: z.string().optional(),
+    tabName: z.string(),
 });
 
 export const browserSwitchTabInputSchema = z.object({
-    tabName: z.string().optional(),
-    tabRef: z.string().optional(),
-    tabUrl: z.string().optional(),
+    tabName: z.string(),
 });
 
 export const browserCloseTabInputSchema = z.object({
-    tabName: z.string().optional(),
-    tabRef: z.string().optional(),
+    tabName: z.string(),
 });
 
 export const browserGetPageInfoInputSchema = z.object({
@@ -472,29 +468,25 @@ export const toolInputJsonSchemas = {
     },
     'browser.create_tab': {
         type: 'object',
-        required: [],
+        required: ['tabName'],
         properties: {
             tabName: { type: 'string' },
-            url: { type: 'string' },
         },
         additionalProperties: false,
     },
     'browser.switch_tab': {
         type: 'object',
-        required: [],
+        required: ['tabName'],
         properties: {
             tabName: { type: 'string' },
-            tabRef: { type: 'string' },
-            tabUrl: { type: 'string' },
         },
         additionalProperties: false,
     },
     'browser.close_tab': {
         type: 'object',
-        required: [],
+        required: ['tabName'],
         properties: {
             tabName: { type: 'string' },
-            tabRef: { type: 'string' },
         },
         additionalProperties: false,
     },

@@ -54,6 +54,14 @@ test(
         assert.ok(buttonId);
         assert.ok(inputId);
 
+        const highlightResult = await tools['trace.locator.highlight']({
+            a11yNodeId: buttonId!,
+            highlightMs: 20,
+            candidateIndex: 0,
+            stepId: 'step-1',
+            stepName: 'browser.click',
+        });
+        assert.equal(highlightResult.ok, true);
         const clickResult = await tools['trace.locator.click']({ a11yNodeId: buttonId! });
         assert.equal(clickResult.ok, true);
         assert.ok((ctx.cache.a11yCacheGen ?? 0) > genBefore);
@@ -71,9 +79,16 @@ test(
         assert.equal(inputValue, 'hello');
 
         const ops = sink.getEvents().filter((e) => e.type === 'op.end').map((e) => e.op);
+        const highlightEvent = sink.getEvents().find((e) => e.type === 'op.end' && e.op === 'trace.locator.highlight') as any;
+        assert.ok(highlightEvent);
+        assert.equal(highlightEvent.args.highlightMs, 20);
+        assert.equal(highlightEvent.args.candidateIndex, 0);
+        assert.equal(highlightEvent.args.stepId, 'step-1');
+        assert.equal(highlightEvent.args.stepName, 'browser.click');
         assert.deepEqual(ops, [
             'trace.page.goto',
             'trace.page.snapshotA11y',
+            'trace.locator.highlight',
             'trace.locator.click',
             'trace.locator.fill',
         ]);

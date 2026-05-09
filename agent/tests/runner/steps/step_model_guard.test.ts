@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../../../src/runner/serialization/types';
+import type { Step } from '../../../src/runner/steps/types';
 
 const repoRoot = process.cwd();
 const read = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -76,21 +77,17 @@ test('resolve target source and serialization source keep resolve sidecar bounda
 });
 
 test('step file validation rejects runtime-only fields and legacy target args', () => {
-    assert.throws(
-        () =>
-            validateStepFileForSerialization({
-                version: 1,
-                steps: [
-                    {
-                        id: 's1',
-                        name: 'browser.click',
-                        args: { selector: '#submit' },
-                        meta: { source: 'record' },
-                    },
-                ],
-            } as any),
-        /meta/,
-    );
+    assert.doesNotThrow(() =>
+        validateStepFileForSerialization({
+            version: 1,
+            steps: [
+                {
+                    id: 's1',
+                    name: 'browser.click',
+                    args: { selector: '#submit' },
+                },
+            ],
+        } as any));
 
     assert.throws(
         () =>
@@ -100,12 +97,11 @@ test('step file validation rejects runtime-only fields and legacy target args', 
                     {
                         id: 's1',
                         name: 'browser.click',
-                        args: { selector: '#submit' },
-                        resolve: { hint: { raw: { selector: '#submit' } } },
+                        args: { selector: '#submit', target: { selector: '#submit' } },
                     },
                 ],
             } as any),
-        /resolve/,
+        /args\.target/,
     );
 
     assert.throws(
@@ -142,17 +138,21 @@ test('step file validation rejects runtime-only fields and legacy target args', 
 test('run steps request supports step resolves and tab args stay camelCase', () => {
     assert.equal(runStepsTypesSource.includes('stepResolves?: Record<string, StepResolve>;'), true);
 
+    const createTabBlock = readStepArgsBlock('browser.create_tab');
+    assert.equal(createTabBlock.includes('tabName: string'), true);
+    assert.equal(createTabBlock.includes('url?'), false);
+
     const switchTabBlock = readStepArgsBlock('browser.switch_tab');
-    assert.equal(switchTabBlock.includes('tabName?: string;'), true);
-    assert.equal(switchTabBlock.includes('tabUrl?: string;'), true);
-    assert.equal(switchTabBlock.includes('tabRef?: string'), true);
+    assert.equal(switchTabBlock.includes('tabName: string'), true);
+    assert.equal(switchTabBlock.includes('tabUrl'), false);
+    assert.equal(switchTabBlock.includes('tabRef'), false);
     assert.equal(switchTabBlock.includes('tab_id'), false);
     assert.equal(switchTabBlock.includes('tab_url'), false);
     assert.equal(switchTabBlock.includes('tab_ref'), false);
 
     const closeTabBlock = readStepArgsBlock('browser.close_tab');
-    assert.equal(closeTabBlock.includes('tabName?: string'), true);
-    assert.equal(closeTabBlock.includes('tabRef?: string'), true);
+    assert.equal(closeTabBlock.includes('tabName: string'), true);
+    assert.equal(closeTabBlock.includes('tabRef'), false);
     assert.equal(closeTabBlock.includes('tab_id'), false);
     assert.equal(closeTabBlock.includes('tab_ref'), false);
 
@@ -162,6 +162,29 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
     assert.equal(captureResolveExecutorSource.includes('does not support step.resolve'), false);
     assert.equal(runStepsSource.includes('topLevelResolveId'), false);
     assert.equal(checkpointRuntimeSource.includes('.resolveId ? { resolveId:'), false);
+});
+
+test('canonical tab step args reject missing tabName and legacy fields at type level', () => {
+    const createOk: Step<'browser.create_tab'> = { id: 'c-ok', name: 'browser.create_tab', args: { tabName: 'tab-a' } };
+    const switchOk: Step<'browser.switch_tab'> = { id: 's-ok', name: 'browser.switch_tab', args: { tabName: 'tab-a' } };
+    const closeOk: Step<'browser.close_tab'> = { id: 'x-ok', name: 'browser.close_tab', args: { tabName: 'tab-a' } };
+    assert.equal(createOk.args.tabName, 'tab-a');
+    assert.equal(switchOk.args.tabName, 'tab-a');
+    assert.equal(closeOk.args.tabName, 'tab-a');
+
+    // @ts-expect-error browser.create_tab requires tabName.
+    const createMissing: Step<'browser.create_tab'> = { id: 'c-missing', name: 'browser.create_tab', args: {} };
+    // @ts-expect-error browser.switch_tab requires tabName.
+    const switchMissing: Step<'browser.switch_tab'> = { id: 's-missing', name: 'browser.switch_tab', args: {} };
+    // @ts-expect-error browser.close_tab requires tabName.
+    const closeMissing: Step<'browser.close_tab'> = { id: 'x-missing', name: 'browser.close_tab', args: {} };
+    // @ts-expect-error tabRef is not part of canonical switch_tab args.
+    const switchTabRef: Step<'browser.switch_tab'> = { id: 's-ref', name: 'browser.switch_tab', args: { tabName: 'tab-a', tabRef: 'tab-a' } };
+    // @ts-expect-error tabRef is not part of canonical close_tab args.
+    const closeTabRef: Step<'browser.close_tab'> = { id: 'x-ref', name: 'browser.close_tab', args: { tabName: 'tab-a', tabRef: 'tab-a' } };
+    // @ts-expect-error create_tab.url is not part of canonical create_tab args.
+    const createUrl: Step<'browser.create_tab'> = { id: 'c-url', name: 'browser.create_tab', args: { tabName: 'tab-a', url: 'https://example.com' } };
+    assert.equal(Boolean(createMissing || switchMissing || closeMissing || switchTabRef || closeTabRef || createUrl), true);
 });
 
 test('step resolve sidecar validation accepts basic resolve file shape', () => {

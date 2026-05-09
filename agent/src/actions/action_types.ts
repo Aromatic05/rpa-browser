@@ -2,6 +2,8 @@ export const REQUEST_ACTION_TYPES = {
     WORKFLOW_LIST: 'workflow.list',
     WORKFLOW_CREATE: 'workflow.create',
     WORKFLOW_OPEN: 'workflow.open',
+    WORKFLOW_SAVE_AS: 'workflow.saveAs',
+    WORKFLOW_RESET_DEFAULT: 'workflow.resetDefault',
     WORKFLOW_RENAME: 'workflow.rename',
     DSL_GET: 'dsl.get',
     DSL_SAVE: 'dsl.save',
@@ -54,6 +56,8 @@ export const REQUEST_ACTION_TYPES = {
     MCP_START: 'mcp.start',
     MCP_STOP: 'mcp.stop',
     MCP_STATUS: 'mcp.status',
+
+    LOG_EXT: 'log.ext',
 } as const;
 
 const FIXED_EVENT_ACTION_TYPES = {

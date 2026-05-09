@@ -8,6 +8,7 @@ import { createLogger, type Logger } from '../shared/logger.js';
 
 export type WsClient = {
     sendAction: (action: Action) => Promise<Action>;
+    sendFireAndForget: (action: Action) => void;
 };
 
 export type WsClientOptions = {
@@ -151,5 +152,15 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         });
     };
 
-    return { sendAction };
+    const sendFireAndForget = (action: Action) => {
+        connect()
+            .then(() => {
+                wsRef?.send(JSON.stringify(action));
+            })
+            .catch(() => {
+                // silently drop — log forwarding doesn't retry
+            });
+    };
+
+    return { sendAction, sendFireAndForget };
 };

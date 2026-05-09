@@ -99,6 +99,17 @@ export type RecorderEvent = {
     locatorCandidates?: LocatorCandidate[];
     scopeHint?: ScopeHint;
     targetHint?: string;
+    targetAttrs?: Record<string, string>;
+    targetState?: {
+        checked?: boolean;
+        focused?: boolean;
+        disabled?: boolean;
+        readonly?: boolean;
+        ariaChecked?: string;
+        ariaSelected?: string;
+        ariaExpanded?: string;
+        ariaDisabled?: string;
+    };
     value?: string;
     label?: string;
     checked?: boolean;
@@ -115,7 +126,11 @@ export type RecorderEvent = {
 /**
  * 在 Page 上安装录制脚本，并通过 binding 把事件转发回 Node 侧。
  */
-export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent) => void | Promise<void>) => {
+export const installRecorder = async (
+    page: Page,
+    tabName: string,
+    onEvent: (event: RecorderEvent) => void | Promise<void>,
+) => {
     if (installedPages.has(page)) {return;}
     installedPages.add(page);
 
@@ -133,12 +148,16 @@ export const installRecorder = async (page: Page, onEvent: (event: RecorderEvent
     }
 
     await page.addInitScript({ content: `window.__rpa_recorder_binding = ${JSON.stringify(bindingName)};` });
+    await page.addInitScript({ content: `window.__rpa_tab_token = ${JSON.stringify(tabName)};` });
     await page.addInitScript({ path: payloadBundlePath });
     for (const frame of page.frames()) {
         try {
             await frame.evaluate((name) => {
                 (window as any).__rpa_recorder_binding = name;
             }, bindingName);
+            await frame.evaluate((name) => {
+                (window as any).__rpa_tab_token = name;
+            }, tabName);
             await frame.addScriptTag({ path: payloadBundlePath });
         } catch {
             // ignore if frame is not ready or cross-origin

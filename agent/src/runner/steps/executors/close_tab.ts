@@ -8,12 +8,12 @@ export const executeBrowserCloseTab = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const tabName = step.args.tabName || step.args.tabRef;
+    const tabName = step.args.tabName;
     if (!tabName) {
         return {
             stepId: step.id,
             ok: false,
-            error: { code: 'ERR_BAD_ARGS', message: 'browser.close_tab requires tabName or tabRef' },
+            error: { code: 'ERR_BAD_ARGS', message: 'browser.close_tab requires tabName' },
         };
     }
     const result = await binding.traceTools['trace.tabs.close']({

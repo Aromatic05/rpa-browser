@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getLogger } from '../../logging/logger';
 
 export type CdpLaunchOptions = {
     port: number;
@@ -9,12 +10,14 @@ export type CdpLaunchOptions = {
     extensionPaths?: string[];
     logger?: (...args: unknown[]) => void;
     timeoutMs?: number;
+    onExit?: (code: number | null, signal: string | null) => void;
 };
 
 export type CdpLaunchResult = {
     endpoint: string;
     stop: () => Promise<void>;
     pid: number;
+    stderr: () => string;
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -100,6 +103,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         args.unshift(`--disable-extensions-except=${extensionArg}`);
     }
     opts.logger?.('cdp.launch.start', { chromePath, endpoint, userDataDir: opts.userDataDir });
+    const infraLog = getLogger('infra');
     const proc = spawn(chromePath, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
@@ -108,6 +112,18 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     let stderr = '';
     proc.stderr?.on('data', (chunk) => {
         stderr += String(chunk);
+    });
+
+    proc.on('exit', (code, signal) => {
+        const isError = code !== 0 && code !== null;
+        infraLog.warning('[RPA:infra]', 'Chrome process exited', {
+            pid: proc.pid,
+            exitCode: code,
+            signal: signal || null,
+            isError,
+            stderrTail: stderr.slice(-2000) || null,
+        });
+        opts.onExit?.(code, signal);
     });
 
     const stop = async () =>
@@ -134,5 +150,6 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         endpoint,
         stop,
         pid: proc.pid ?? -1,
+        stderr: () => stderr,
     };
 };

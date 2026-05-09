@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import { classifyPanelAction, preparePanelAction } from '../../dist/content/panel_actions.js';
 
 const log = async (name, fn) => {
     try {
@@ -11,35 +11,62 @@ const log = async (name, fn) => {
     }
 };
 
-const floatingSrc = fs.readFileSync(new URL('../content/floating_ui.ts', import.meta.url), 'utf8');
-const entrySrc = fs.readFileSync(new URL('../entry/content.ts', import.meta.url), 'utf8');
-
-await log('tab.list uses scope workspaceName with empty payload', async () => {
-    assert.equal(floatingSrc.includes("sendPanelAction('tab.list', {}, { workspaceName: activeWorkspaceName })"), true);
+await log('workspace actions are classified correctly', async () => {
+    assert.equal(classifyPanelAction('tab.list'), 'workspace');
+    assert.equal(classifyPanelAction('record.start'), 'workspace');
+    assert.equal(classifyPanelAction('play.start'), 'workspace');
+    assert.equal(classifyPanelAction('dsl.save'), 'workspace');
+    assert.equal(classifyPanelAction('checkpoint.list'), 'workspace');
+    assert.equal(classifyPanelAction('entity_rules.delete'), 'workspace');
+    assert.equal(classifyPanelAction('task.run.once'), 'workspace');
 });
 
-await log('tab.list payload does not include workspaceName', async () => {
-    assert.equal(floatingSrc.includes("sendPanelAction('tab.list', { workspaceName: activeWorkspaceName })"), false);
+await log('control actions are classified correctly', async () => {
+    assert.equal(classifyPanelAction('workspace.list'), 'control');
+    assert.equal(classifyPanelAction('workspace.create'), 'control');
+    assert.equal(classifyPanelAction('workspace.setActive'), 'control');
+    assert.equal(classifyPanelAction('workflow.list'), 'control');
+    assert.equal(classifyPanelAction('workflow.create'), 'control');
+    assert.equal(classifyPanelAction('workflow.open'), 'control');
 });
 
-await log('tab.setActive payload only includes tabName', async () => {
-    assert.equal(floatingSrc.includes("sendPanelAction('tab.setActive', { tabName: tab.tabName }, { workspaceName: activeWorkspaceName })"), true);
+await log('workspace action requires selected workspaceName', async () => {
+    const prepared = preparePanelAction('record.start', {}, null);
+    assert.equal('error' in prepared, true);
+    if ('error' in prepared) {
+        assert.equal(prepared.error.type, 'record.start.failed');
+        assert.equal(prepared.error.workspaceName, undefined);
+    }
 });
 
-await log('workspace.setActive payload is empty', async () => {
-    assert.equal(floatingSrc.includes("sendPanelAction('workspace.setActive', {}, { workspaceName: ws.workspaceName })"), true);
-    assert.equal(floatingSrc.includes("sendPanelAction('workspace.setActive', { workspaceName: ws.workspaceName })"), false);
+await log('workspace action uses top-level workspaceName and payload tabName only', async () => {
+    const prepared = preparePanelAction('tab.setActive', { tabName: 'tab-1' }, 'ws-1');
+    assert.equal('error' in prepared, false);
+    if (!('error' in prepared)) {
+        assert.deepEqual(prepared.address, { workspaceName: 'ws-1' });
+        assert.deepEqual(prepared.payload, { tabName: 'tab-1' });
+        assert.equal('workspaceName' in (prepared.payload ?? {}), false);
+        assert.equal('scope' in (prepared.payload ?? {}), false);
+        assert.equal('tabToken' in (prepared.payload ?? {}), false);
+    }
 });
 
-await log('record.start uses scope workspaceName', async () => {
-    assert.equal(floatingSrc.includes("sendPanelAction('record.start', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined)"), true);
+await log('control action keeps workspaceName out of scope and payload', async () => {
+    const prepared = preparePanelAction('workflow.list', {}, 'ws-1');
+    assert.equal('error' in prepared, false);
+    if (!('error' in prepared)) {
+        assert.equal(prepared.address, undefined);
+        assert.deepEqual(prepared.payload, {});
+    }
 });
 
-await log('play.start uses scope workspaceName', async () => {
-    assert.equal(floatingSrc.includes("sendPanelAction('play.start', {}, activeWorkspaceName ? { workspaceName: activeWorkspaceName } : undefined)"), true);
-});
-
-await log('onAction rejects payload.workspaceName', async () => {
-    assert.equal(entrySrc.includes("'workspaceName' in normalizedPayload"), true);
-    assert.equal(entrySrc.includes("message: 'payload.workspaceName is not allowed'"), true);
+await log('workflow.saveAs and workflow.resetDefault are control actions', async () => {
+    assert.equal(classifyPanelAction('workflow.saveAs'), 'control');
+    assert.equal(classifyPanelAction('workflow.resetDefault'), 'control');
+    const prepared = preparePanelAction('workflow.saveAs', { sourceName: 'default', targetName: 'x' }, null);
+    assert.equal('error' in prepared, false);
+    if (!('error' in prepared)) {
+        assert.equal(prepared.address, undefined);
+        assert.deepEqual(prepared.payload, { sourceName: 'default', targetName: 'x' });
+    }
 });

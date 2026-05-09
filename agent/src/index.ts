@@ -9,12 +9,11 @@ import { createExecutionBindings } from './runtime/execution/bindings';
 import {
     createRecordingState,
     ensureRecorder,
-    getWorkspaceActiveRecordingToken,
+    isWorkspaceRecordingEnabled,
     attachTabToRecordingManifest,
     cleanupRecording,
 } from './record/recording';
 import { setRecorderRuntimeEnabled } from './record/recorder';
-import { loadRecordingStateFromFile, startRecordingStateAutoSave } from './record/persistence';
 import { failedAction, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/results';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
@@ -39,7 +38,7 @@ const TAB_PING_TIMEOUT_MS = 45000;
 const TAB_PING_WATCHDOG_INTERVAL_MS = 5000;
 const REPLAY_OPTIONS = {
     clickDelayMs: 300,
-    stepDelayMs: 900,
+    stepIntervalMs: 900,
     scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
 };
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -54,15 +53,10 @@ const wsTap = (stage: string, data: Record<string, unknown>) => {
     actionLog.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });
 };
 let broadcast: (action: Action) => void = () => undefined;
+let workspaceRegistry: ReturnType<typeof createWorkspaceRegistry>;
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
-const recordingStatePath = path.resolve(paths.userDataDir, 'recordings.state.json');
-await loadRecordingStateFromFile(recordingState, recordingStatePath);
-const recordingPersistence = startRecordingStateAutoSave(recordingState, recordingStatePath, {
-    intervalMs: 1500,
-    onError: (error) => { actionLog.error('[RPA:agent]', 'recording persistence error', String(error)); },
-});
 
 let onPageBoundHook: (page: Page, bindingName: string) => void = () => undefined;
 let onBindingClosedHook: (bindingName: string) => void = () => undefined;
@@ -77,6 +71,19 @@ const contextManager = createContextManager({
 
 const config = getRunnerConfig();
 initLogger(config);
+
+process.on('unhandledRejection', (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    actionLog.error('[RPA:agent]', 'unhandled rejection', { message, stack: reason instanceof Error ? reason.stack : undefined });
+});
+process.on('uncaughtException', (error) => {
+    actionLog.error('[RPA:agent]', 'uncaught exception', {
+        message: error.message,
+        stack: error.stack,
+    });
+    process.exit(1);
+});
+
 const actionLogger = getLogger('action');
 const traceSinks = config.observability.traceFileEnabled
     ? [new FileSink(resolveLogPath(config.observability.traceFilePath))]
@@ -95,6 +102,7 @@ const pageRegistry = createPageRegistry({
 });
 
 const runtimeRegistry = createExecutionBindings({
+    pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,
@@ -102,14 +110,23 @@ const runtimeRegistry = createExecutionBindings({
 
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
+    resolveWorkspace: (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            throw new Error(`workspace not found: ${workspaceName}`);
+        }
+        return workspace;
+    },
+    pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
 };
 setRunStepsDeps(runStepsDeps);
 
-const workspaceRegistry = createWorkspaceRegistry({
+workspaceRegistry = createWorkspaceRegistry({
     pageRegistry,
+    runtime: runtimeRegistry,
     recordingState,
     replayOptions: REPLAY_OPTIONS,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
@@ -137,7 +154,7 @@ const lifecycle = createRuntimeLifecycle({
     ensureWorkflow: ensureWorkflowOnFs,
     ensureRecorder,
     setRecorderRuntimeEnabled,
-    getWorkspaceActiveRecordingToken,
+    isWorkspaceRecordingEnabled,
     attachTabToRecordingManifest,
     cleanupRecording,
 });
@@ -190,11 +207,7 @@ const actionWsClient = startActionWsClient({
     host: '127.0.0.1',
     workspaceRegistry,
     dispatchAction: async (action) => {
-        try {
-            return await handleAction(action);
-        } finally {
-            void recordingPersistence.flush();
-        }
+        return await handleAction(action);
     },
     onError: (error) => {
         const message = error instanceof Error ? error.message : String(error);

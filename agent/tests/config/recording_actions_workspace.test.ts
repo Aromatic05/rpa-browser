@@ -13,6 +13,7 @@ const createMockPage = (url: string) => ({
     frames: () => [],
     exposeBinding: async () => {},
     addInitScript: async () => {},
+    waitForTimeout: async () => {},
     evaluate: async () => {},
     goto: async () => {},
     isClosed: () => false,
@@ -32,11 +33,11 @@ test('record.start fails clearly when workspace has no bound page', async () => 
                 workspace: ws as any,
                 workspaceRegistry: registry as any,
             }),
-        /bound page/i,
+        /active tab not found/i,
     );
 });
 
-test('record.start/get/save/load/clear/list/stop are handled in record control', async () => {
+test('record/play state discipline and unsaved slot behavior', async () => {
     const recordingState = createRecordingState();
     const { registry } = createTestWorkspaceRegistry({ recordingState });
     const wsName = `ws-${Date.now()}-b`;
@@ -47,23 +48,34 @@ test('record.start/get/save/load/clear/list/stop are handled in record control',
     const started = await ws.record.handle({ action: { v: 1, id: 's1', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(started.reply.type, 'record.start.result');
 
-    const got = await ws.record.handle({ action: { v: 1, id: 's2', type: 'record.get', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(got.reply.type, 'record.get.result');
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's2', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_BAD_STATE|state/i,
+    );
 
-    const saved = await ws.record.handle({ action: { v: 1, id: 's3', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(saved.reply.type, 'record.save.result');
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's3', type: 'play.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_BAD_STATE|state/i,
+    );
 
-    const loaded = await ws.record.handle({ action: { v: 1, id: 's4', type: 'record.load', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(loaded.reply.type, 'record.load.result');
+    const stopped = await ws.record.handle({ action: { v: 1, id: 's4', type: 'record.stop', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    assert.equal(stopped.reply.type, 'record.stop.result');
 
-    const listed = await ws.record.handle({ action: { v: 1, id: 's5', type: 'record.list', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's5', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'rec-b' } } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_RECORDING_EMPTY|empty/i,
+    );
+
+    const listed = await ws.record.handle({ action: { v: 1, id: 's6', type: 'record.list', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
     assert.equal(listed.reply.type, 'record.list.result');
 
-    const cleared = await ws.record.handle({ action: { v: 1, id: 's6', type: 'record.clear', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(cleared.reply.type, 'record.clear.result');
+    await assert.rejects(
+        async () => await ws.record.handle({ action: { v: 1, id: 's7', type: 'play.start', workspaceName: wsName, payload: {} } as any, workspace: ws as any, workspaceRegistry: registry as any }),
+        /ERR_RECORDING_EMPTY|empty/i,
+    );
 
-    const stopped = await ws.record.handle({ action: { v: 1, id: 's7', type: 'record.stop', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
-    assert.equal(stopped.reply.type, 'record.stop.result');
+    const cleared = await ws.record.handle({ action: { v: 1, id: 's8', type: 'record.clear', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    assert.equal(cleared.reply.type, 'record.clear.result');
 });
 
 test('record.event is ingested in record domain and not routed through actions execute', async () => {
@@ -91,4 +103,70 @@ test('record.event is ingested in record domain and not routed through actions e
 
     const indexSource = fs.readFileSync(path.resolve(process.cwd(), 'src/index.ts'), 'utf8');
     assert.equal(indexSource.includes('executeAction('), false);
+});
+
+test('record.event flushes first tab goto before dom step and save preserves order', async () => {
+    const recordingState = createRecordingState();
+    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const wsName = `ws-${Date.now()}-first-goto`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });
+    ws.tabs.setActiveTab('tab-old');
+    await ws.record.handle({ action: { v: 1, id: 's-first-goto', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    await ws.router.handle({ v: 1, id: 'open-first-goto', type: 'tab.opened', workspaceName: wsName, payload: { tabName: 'tab-new', url: 'about:blank', source: 'cdp' } } as any, ws as any, registry as any);
+    ws.tabs.updateTab('tab-new', { url: 'https://catos.info/' });
+    ws.tabs.bindPage('tab-new', createMockPage('https://catos.info/'));
+    ws.tabs.setActiveTab('tab-new');
+
+    await ws.record.handle({
+        action: {
+            v: 1,
+            id: 'click-first-goto',
+            type: 'record.event',
+            workspaceName: wsName,
+            payload: { tabName: 'tab-new', ts: 100, type: 'click', selector: '#home' },
+        } as any,
+        workspace: ws as any,
+        workspaceRegistry: registry as any,
+    });
+    const beforeSave = recordingState.recordings.get(`unsaved:${wsName}`) || [];
+    assert.deepEqual(beforeSave.map((step) => step.name), ['browser.create_tab', 'browser.switch_tab', 'browser.goto', 'browser.click']);
+    assert.equal((beforeSave[2].args as { url?: string }).url, 'https://catos.info/');
+
+    await ws.record.handle({ action: { v: 1, id: 'stop-first-goto', type: 'record.stop', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    await ws.record.handle({
+        action: { v: 1, id: 'save-first-goto', type: 'record.save', workspaceName: wsName, payload: { recordingName: 'first-goto-order' } } as any,
+        workspace: ws as any,
+        workspaceRegistry: registry as any,
+    });
+    const saved = ws.workflow.get('first-goto-order', { kind: 'recording' }) as { steps?: Array<{ name: string }> } | null;
+    assert.ok(saved);
+    assert.deepEqual((saved.steps || []).map((step) => step.name), ['browser.create_tab', 'browser.switch_tab', 'browser.goto', 'browser.click']);
+});
+
+test('record.event pending fill flush stays after first tab goto', async () => {
+    const recordingState = createRecordingState();
+    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const wsName = `ws-${Date.now()}-fill-first-goto`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });
+    ws.tabs.setActiveTab('tab-old');
+    await ws.record.handle({ action: { v: 1, id: 's-fill-first-goto', type: 'record.start', workspaceName: wsName } as any, workspace: ws as any, workspaceRegistry: registry as any });
+    await ws.router.handle({ v: 1, id: 'open-fill-first-goto', type: 'tab.opened', workspaceName: wsName, payload: { tabName: 'tab-new', url: 'about:blank', source: 'cdp' } } as any, ws as any, registry as any);
+    ws.tabs.updateTab('tab-new', { url: 'https://catos.info/' });
+    ws.tabs.bindPage('tab-new', createMockPage('https://catos.info/'));
+    ws.tabs.setActiveTab('tab-new');
+
+    await ws.record.handle({
+        action: { v: 1, id: 'fill-first-goto', type: 'record.event', workspaceName: wsName, payload: { tabName: 'tab-new', ts: 100, type: 'input', selector: '#q', value: 'catos' } } as any,
+        workspace: ws as any,
+        workspaceRegistry: registry as any,
+    });
+    await ws.record.handle({
+        action: { v: 1, id: 'click-after-fill-first-goto', type: 'record.event', workspaceName: wsName, payload: { tabName: 'tab-new', ts: 120, type: 'click', selector: '#go' } } as any,
+        workspace: ws as any,
+        workspaceRegistry: registry as any,
+    });
+    const steps = recordingState.recordings.get(`unsaved:${wsName}`) || [];
+    assert.deepEqual(steps.map((step) => step.name), ['browser.create_tab', 'browser.switch_tab', 'browser.goto', 'browser.fill', 'browser.click']);
 });

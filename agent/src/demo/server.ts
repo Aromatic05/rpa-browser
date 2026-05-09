@@ -8,7 +8,7 @@ import { createPageRegistry } from '../runtime/browser/page_registry';
 import { createWorkspaceRegistry } from '../runtime/workspace/registry';
 import { createExecutionBindings } from '../runtime/execution/bindings';
 import { createWorkspaceManager } from './workspace_manager';
-import { cleanupRecording, createRecordingState, ensureRecorder } from '../record/recording';
+import { cleanupRecording, createRecordingState, ensureRecorder, isWorkspaceRecordingEnabled } from '../record/recording';
 import { runAgentLoop } from './agent_loop';
 import { createChatCompletion } from './openai_compat_client';
 import { createConsoleStepSink, setRunStepsDeps } from '../runner/run_steps';
@@ -73,10 +73,10 @@ const pageRegistry = createPageRegistry({
     tabNameKey: TAB_NAME_KEY,
     getContext: contextManager.getContext,
     onPageBound: (page, tabName) => {
-        if (recordingState.recordingEnabled.has(tabName)) {
-            void ensureRecorder(recordingState, page, tabName, NAV_DEDUPE_WINDOW_MS);
-        }
         const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+        if (isWorkspaceRecordingEnabled(recordingState, workspaceName)) {
+            void ensureRecorder(recordingState, workspaceName, page, tabName, NAV_DEDUPE_WINDOW_MS);
+        }
         const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
         if (!workspace.tabs.hasTab(tabName)) {
             workspace.tabs.createTab({ tabName, page, url: page.url() });
@@ -106,23 +106,18 @@ if (process.env.NODE_ENV !== 'production') {
 
 const runStepsDeps: RunStepsDeps = {
     runtime: null as unknown as ReturnType<typeof createExecutionBindings>,
+    resolveWorkspace: (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            throw new Error(`workspace not found: ${workspaceName}`);
+        }
+        return workspace;
+    },
+    pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
 };
-workspaceRegistry = createWorkspaceRegistry({
-    pageRegistry,
-    recordingState,
-    replayOptions: {
-        clickDelayMs: 300,
-        stepDelayMs: 900,
-        scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
-    },
-    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-    runStepsDeps,
-    runnerConfig: config,
-    portAllocator: createPortAllocator(),
-});
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
     if (!workspace) {
@@ -132,6 +127,7 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
 };
 // 仅用于 demo；runSteps 直接通过 runtimeRegistry 执行
 const runtimeRegistry: ReturnType<typeof createExecutionBindings> = createExecutionBindings({
+    pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
@@ -139,6 +135,20 @@ const runtimeRegistry: ReturnType<typeof createExecutionBindings> = createExecut
     pluginHost: runnerPluginHost,
 });
 runStepsDeps.runtime = runtimeRegistry;
+workspaceRegistry = createWorkspaceRegistry({
+    pageRegistry,
+    runtime: runStepsDeps.runtime,
+    recordingState,
+    replayOptions: {
+        clickDelayMs: 300,
+        stepIntervalMs: 900,
+        scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
+    },
+    navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
+    runStepsDeps,
+    runnerConfig: config,
+    portAllocator: createPortAllocator(),
+});
 setRunStepsDeps(runStepsDeps);
 
 const buildToolDeps = (): WorkspaceMcpToolDeps => {

@@ -18,8 +18,19 @@ export type RecorderSinkDeps = {
 export const createRecorderEventSinkHandler = (deps: RecorderSinkDeps) => {
     const wsTap = deps.wsTap || (() => undefined);
     return async (event: RecorderEvent, page: Page, tabName: string) => {
+        const workspaceName = deps.findWorkspaceNameByTabName(tabName);
+        if (!workspaceName) {
+            wsTap('agent.record_event.drop', {
+                reason: 'workspace_not_found',
+                sourceTabName: tabName,
+                activeRecordingCount: deps.recordingState.recordingEnabled.size,
+            });
+            return;
+        }
+
         const ingest = await ingestRecorderEvent({
             state: deps.recordingState,
+            workspaceName,
             event,
             page,
             tabName,
@@ -34,12 +45,11 @@ export const createRecorderEventSinkHandler = (deps: RecorderSinkDeps) => {
             return;
         }
 
-        const workspaceName = deps.findWorkspaceNameByTabName(tabName) || undefined;
         deps.emit({
             v: 1,
             id: crypto.randomUUID(),
             type: ACTION_TYPES.RECORD_EVENT,
-            workspaceName,
+            workspaceName: workspaceName || undefined,
             payload: event,
             at: event.ts || Date.now(),
         });

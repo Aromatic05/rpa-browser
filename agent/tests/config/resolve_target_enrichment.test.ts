@@ -1,17 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTarget } from '../../src/runner/steps/helpers/resolve_target';
+import { resolveNeedsSnapshot, resolveTarget } from '../../src/runner/steps/helpers/resolve_target';
 import { executeBrowserClick } from '../../src/runner/steps/executors/click';
 import { executeBrowserFill } from '../../src/runner/steps/executors/fill';
 import { executeBrowserSelectOption } from '../../src/runner/steps/executors/select_option';
+import { executeBrowserScroll } from '../../src/runner/steps/executors/scroll';
 import type { Step } from '../../src/runner/steps/types';
 import { setNodeAttr } from '../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { ensureSnapshotSessionEntry, markSnapshotSessionDirty } from '../../src/runner/steps/executors/snapshot/core/session_store';
 
 const createBinding = (snapshot?: Record<string, unknown>) => {
     const calls: Array<{ name: string; payload: Record<string, unknown> }> = [];
     const binding = {
         workspaceName: 'ws-test',
-        page: {},
+        tabName: 'tab-test',
+        page: { url: () => 'https://example.test/current' },
         traceCtx: { cache: { latestSnapshot: snapshot } },
         traceTools: {
             'trace.locator.waitForVisible': async (payload: Record<string, unknown>) => {
@@ -42,12 +45,17 @@ const createBinding = (snapshot?: Record<string, unknown>) => {
                 calls.push({ name: 'readSelectState', payload });
                 return { ok: true, data: { selectedValues: ['v'], selectedLabels: ['审批中'] } };
             },
+            'trace.page.scrollBy': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'scrollBy', payload });
+                return { ok: true, data: {} };
+            },
         },
     } as any;
 
     const deps = {
         runtime: {
             ensureActivePage: async () => binding,
+            resolveBinding: async () => binding,
         },
         config: {
             waitPolicy: {
@@ -74,6 +82,14 @@ const createBinding = (snapshot?: Record<string, unknown>) => {
     return { binding, deps, calls };
 };
 
+const resolveCtx = (deps: any) => ({
+    deps,
+    workspaceName: 'ws-test',
+    reason: 'test',
+    stepId: 's-test',
+    stepName: 'browser.click',
+});
+
 const createSnapshotForId = () => {
     const root = { id: 'root', role: 'root', children: [] as any[] };
     const form = { id: 'form_1', role: 'form', children: [] as any[] };
@@ -94,6 +110,15 @@ const createSnapshotForId = () => {
     setNodeAttr(deleteNode as any, 'actionIntent', 'delete');
 
     return {
+        snapshotMeta: {
+            mode: 'full',
+            snapshotId: 'snap-fixture-1',
+            pageIdentity: {
+                workspaceName: 'ws-test',
+                tabName: 'tab-test',
+                url: 'https://example.test/current',
+            },
+        },
         root,
         nodeIndex: {
             root,
@@ -164,7 +189,7 @@ const createSnapshotForId = () => {
 
 test('resolveTarget selector path keeps direct source', async () => {
     const { binding } = createBinding();
-    const resolved = await resolveTarget(binding, { selector: '#legacy' });
+    const resolved = await resolveTarget(binding, { selector: '#legacy' }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#legacy');
@@ -173,7 +198,7 @@ test('resolveTarget selector path keeps direct source', async () => {
 
 test('resolveTarget nodeId path resolves from snapshot locator index', async () => {
     const { binding } = createBinding(createSnapshotForId());
-    const resolved = await resolveTarget(binding, { nodeId: 'node_1' });
+    const resolved = await resolveTarget(binding, { nodeId: 'node_1' }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#submit-btn');
@@ -184,7 +209,7 @@ test('resolveTarget resolve path resolves from resolve.hint.raw.selector', async
     const { binding } = createBinding();
     const resolved = await resolveTarget(binding, {
         resolve: { hint: { raw: { selector: '#from-hint' } } },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#from-hint');
@@ -206,7 +231,7 @@ test('resolveTarget applies ResolvePolicy preferScoped + requireVisible', async 
                 requireVisible: true,
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, 'form:nth-of-type(1) button.submit:visible');
@@ -220,7 +245,7 @@ test('resolveTarget no longer supports A11yHint-only fallback path', async () =>
                 target: { role: 'button', name: 'Save', text: 'Save' },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, false);
     if (resolved.ok) {return;}
     assert.equal(resolved.error?.code, 'ERR_NOT_FOUND');
@@ -236,7 +261,7 @@ test('resolveTarget resolves from resolve.hint.entity.businessTag', async () => 
                 },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#form-main');
@@ -252,7 +277,7 @@ test('resolveTarget resolves from resolve.hint.entity.fieldKey', async () => {
                 },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#submit-btn');
@@ -268,7 +293,7 @@ test('resolveTarget resolves from resolve.hint.entity.actionIntent', async () =>
                 },
             },
         },
-    });
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
     assert.equal(resolved.ok, true);
     if (!resolved.ok) {return;}
     assert.equal(resolved.target.selector, '#delete-btn');
@@ -326,4 +351,286 @@ test('select_option executor resolves from step.resolve.hint', async () => {
     const selectCall = calls.find((call) => call.name === 'selectOption');
     assert.ok(selectCall);
     assert.equal(selectCall?.payload.selector, '#select-from-resolve');
+});
+
+test('browser.scroll with empty resolve keeps page scrolling semantics', async () => {
+    const { deps, calls } = createBinding();
+    const step: Step<'browser.scroll'> = {
+        id: 'scroll-empty-resolve',
+        name: 'browser.scroll',
+        args: { direction: 'down', amount: 120 },
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {} as any,
+    };
+    const result = await executeBrowserScroll(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
+    assert.equal(calls.some((call) => call.name === 'scrollBy'), true);
+    assert.equal(calls.some((call) => call.name === 'scrollIntoView'), false);
+});
+
+test('resolve candidates prefer step.resolve over args.selector', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        selector: 'main.docMainContainer_bad > a:nth-of-type(2)',
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#submit-btn', fallback: '#delete-btn' } },
+                capture: { source: 'record_enrichment', confidence: 0.9, reason: ['direct_selector_exact_match'], warnings: [] },
+            },
+        },
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.target.candidates[0]?.selector, '#submit-btn');
+    assert.equal(resolved.target.candidates[resolved.target.candidates.length - 1]?.path, 'input.selector');
+});
+
+test('resolve candidates build executable role/text/placeholder selectors', async () => {
+    const root = { id: 'root', role: 'root', children: [] as any[] };
+    const a = { id: 'node_a', role: 'link', name: '下一页 使用', children: [] as any[] };
+    const i = { id: 'node_i', role: 'textbox', name: '', children: [] as any[] };
+    root.children.push(a, i);
+    setNodeAttr(a as any, 'tag', 'a');
+    setNodeAttr(a as any, 'id', 'next-link');
+    setNodeAttr(i as any, 'tag', 'input');
+    setNodeAttr(i as any, 'placeholder', 'Search...');
+    const snapshot = {
+        snapshotMeta: {
+            mode: 'full',
+            snapshotId: 'snap-fixture-2',
+            pageIdentity: { workspaceName: 'ws-test', tabName: 'tab-test', url: 'https://example.test/current' },
+        },
+        root,
+        nodeIndex: { root, node_a: a, node_i: i },
+        attrIndex: { node_a: {}, node_i: {} },
+        entityIndex: { entities: {}, byNodeId: {} },
+        locatorIndex: {
+            node_a: { origin: { primaryDomId: '1' }, direct: { kind: 'css', query: '#next-link', source: 'id' } },
+            node_i: { origin: { primaryDomId: '2' }, direct: { kind: 'css', query: 'input[placeholder=\"Search...\"]', source: 'attr' } },
+        },
+        contentStore: {},
+    };
+    const { binding } = createBinding(snapshot as any);
+    const resolved = await resolveTarget(binding, {
+        resolve: {
+            hint: {
+                raw: {
+                    locatorCandidates: [
+                        { kind: 'role', role: 'link', name: '下一页 使用' },
+                        { kind: 'label', text: '下一页 使用' },
+                        { kind: 'text', text: '下一页 使用' },
+                        { kind: 'placeholder', text: 'Search...' },
+                    ],
+                },
+                capture: { source: 'record_enrichment', confidence: 0.4, reason: ['text_or_a11y_only'], warnings: [] },
+            },
+            policy: { requireVisible: true },
+        },
+    }, resolveCtx({ runtime: { resolveBinding: async () => binding } } as any));
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(
+        resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.role_name' || item.path === 'resolve.hint.raw.text'),
+        true,
+    );
+    assert.equal(resolved.target.candidates.some((item) => item.path === 'resolve.hint.raw.placeholder'), true);
+    assert.equal(resolved.target.candidates.every((item) => item.selector.length > 0), true);
+});
+
+test('click tries next candidate after first selector fails', async () => {
+    const snapshot = createSnapshotForId() as any;
+    const { deps, calls } = createBinding(snapshot);
+    deps.runtime.resolveBinding = async () => ({
+        ...(await deps.runtime.ensureActivePage()),
+        traceTools: {
+            ...(await deps.runtime.ensureActivePage()).traceTools,
+            'trace.locator.waitForVisible': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'waitForVisible', payload });
+                if (payload.selector === '#broken') {
+                    return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'not found' } };
+                }
+                return { ok: true, data: {} };
+            },
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 'click-fallback',
+        name: 'browser.click',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#broken', fallback: '#submit-btn' } },
+                capture: { source: 'record_enrichment', confidence: 0.92, reason: ['direct_selector_exact_match'], warnings: [] },
+            },
+        },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
+    const waitCalls = calls.filter((call) => call.name === 'waitForVisible');
+    assert.equal(waitCalls.length >= 2, true);
+    assert.equal(waitCalls[0].payload.selector, '#broken');
+    assert.equal(waitCalls[1].payload.selector, '#submit-btn');
+});
+
+test('click without target returns ERR_BAD_ARGS', async () => {
+    const { deps } = createBinding();
+    const step: Step<'browser.click'> = {
+        id: 'click-bad-args',
+        name: 'browser.click',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws-test');
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_BAD_ARGS');
+});
+
+test('scroll tries next candidate when first target fails', async () => {
+    const { deps, calls } = createBinding(createSnapshotForId() as any);
+    deps.runtime.resolveBinding = async () => ({
+        ...(await deps.runtime.ensureActivePage()),
+        traceTools: {
+            ...(await deps.runtime.ensureActivePage()).traceTools,
+            'trace.locator.scrollIntoView': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'scrollIntoView', payload });
+                if (payload.selector === '#broken') {
+                    return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'not found' } };
+                }
+                return { ok: true, data: {} };
+            },
+        },
+    });
+    const step: Step<'browser.scroll'> = {
+        id: 'scroll-fallback',
+        name: 'browser.scroll',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#broken', fallback: '#submit-btn' } },
+                capture: { source: 'record_enrichment', confidence: 0.92, reason: ['direct_selector_exact_match'], warnings: [] },
+            },
+        },
+    };
+    const result = await executeBrowserScroll(step, deps, 'ws-test');
+    assert.equal(result.ok, true);
+    const scrollCalls = calls.filter((call) => call.name === 'scrollIntoView');
+    assert.equal(scrollCalls.length >= 2, true);
+    assert.equal(scrollCalls[0].payload.selector, '#broken');
+    assert.equal(scrollCalls[1].payload.selector, '#submit-btn');
+});
+
+test('resolve candidates are deduplicated', async () => {
+    const { binding } = createBinding(createSnapshotForId());
+    const resolved = await resolveTarget(binding, {
+        resolve: {
+            hint: {
+                raw: {
+                    selector: '#submit-btn',
+                    locatorCandidates: [
+                        { kind: 'css', selector: '#submit-btn' },
+                        { kind: 'css', selector: '#submit-btn' },
+                    ],
+                },
+                capture: { source: 'record_enrichment', confidence: 0.7, reason: ['raw_selector_only'], warnings: [] },
+            },
+        },
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    const submitSelectors = resolved.target.candidates.filter((item) => item.selector === '#submit-btn');
+    assert.equal(submitSelectors.length, 1);
+});
+
+test('click failure includes real audit attempts', async () => {
+    const { deps, calls } = createBinding(createSnapshotForId() as any);
+    deps.runtime.resolveBinding = async () => ({
+        ...(await deps.runtime.ensureActivePage()),
+        traceTools: {
+            ...(await deps.runtime.ensureActivePage()).traceTools,
+            'trace.locator.waitForVisible': async (payload: Record<string, unknown>) => {
+                calls.push({ name: 'waitForVisible', payload });
+                return { ok: false, error: { code: 'ERR_NOT_FOUND', message: 'nope' } };
+            },
+        },
+    });
+    const step: Step<'browser.click'> = {
+        id: 'click-audit-fail',
+        name: 'browser.click',
+        args: {},
+        meta: { source: 'play', ts: Date.now() },
+        resolve: {
+            hint: {
+                locator: { direct: { kind: 'css', query: '#broken', fallback: '#also-broken' } },
+                capture: { source: 'record_enrichment', confidence: 0.9, reason: ['direct_selector_exact_match'], warnings: ['AMBIGUOUS_TARGET'] },
+            },
+        },
+    };
+    const result = await executeBrowserClick(step, deps, 'ws-test');
+    assert.equal(result.ok, false);
+    const details = (result.error?.details || {}) as Record<string, unknown>;
+    assert.equal(Array.isArray(details.attempts), true);
+    assert.equal((details.attempts as any[]).length >= 2, true);
+    assert.equal((details.attempts as any[])[0]?.stage, 'waitForVisible');
+});
+
+test('resolveNeedsSnapshot only selector/direct query is false', () => {
+    assert.equal(resolveNeedsSnapshot({ selector: '#x' }), false);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { locator: { direct: { kind: 'css', query: '#x' } } } } }), false);
+});
+
+test('resolveNeedsSnapshot role/text/entity/domId/fuzzy are true', () => {
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'link', name: 'next' }] } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { raw: { locatorCandidates: [{ kind: 'text', text: 'next' }] } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { target: { primaryDomId: '42' } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: { entity: { businessTag: 'order.form.main' } } } }), true);
+    assert.equal(resolveNeedsSnapshot({ resolve: { hint: {}, policy: { allowFuzzy: true } } }), true);
+});
+
+test('resolveTarget auto refreshes snapshot on missing/dirty/url_changed and writes audit', async () => {
+    const { binding } = createBinding();
+    const deps = { runtime: { resolveBinding: async () => binding } } as any;
+    let refreshReason = '';
+    const ensureFreshSnapshot = async (args: { refreshReason: string }) => {
+        refreshReason = args.refreshReason;
+        const snap = createSnapshotForId() as any;
+        snap.snapshotMeta = {
+            mode: 'full',
+            snapshotId: 'snap-refresh-1',
+            pageIdentity: { workspaceName: 'ws-test', tabName: 'tab-test', url: 'https://example.test/current' },
+        };
+        (binding.traceCtx.cache as any).latestSnapshot = snap;
+        const entry = ensureSnapshotSessionEntry(binding as any);
+        entry.baseSnapshot = snap;
+        entry.finalSnapshot = snap;
+        entry.dirty = false;
+        entry.staleReason = undefined;
+        return { snapshot: snap };
+    };
+
+    const first = await resolveTarget(binding, {
+        resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'button' }] } } },
+    }, { ...resolveCtx(deps), ensureFreshSnapshot });
+    assert.equal(first.ok, true);
+    if (!first.ok) {return;}
+    assert.equal(first.target.resolution.audit.snapshotRequired, true);
+    assert.equal(first.target.resolution.audit.snapshotRefreshed, true);
+    assert.equal(refreshReason.includes('missing_snapshot'), true);
+    assert.equal(first.target.resolution.audit.snapshotId, 'snap-refresh-1');
+
+    markSnapshotSessionDirty(binding, 'step:browser.click');
+    const second = await resolveTarget(binding, {
+        resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'button' }] } } },
+    }, { ...resolveCtx(deps), ensureFreshSnapshot });
+    assert.equal(second.ok, true);
+    assert.equal(refreshReason.includes('dirty_snapshot'), true);
+
+    const latest = (binding.traceCtx.cache as any).latestSnapshot;
+    latest.snapshotMeta.pageIdentity.url = 'https://example.test/old';
+    const third = await resolveTarget(binding, {
+        resolve: { hint: { raw: { locatorCandidates: [{ kind: 'role', role: 'button' }] } } },
+    }, { ...resolveCtx(deps), ensureFreshSnapshot });
+    assert.equal(third.ok, true);
+    assert.equal(refreshReason.includes('url_changed'), true);
 });

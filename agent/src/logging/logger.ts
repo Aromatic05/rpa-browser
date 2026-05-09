@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { RunnerConfig } from '../config';
 
-export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity' | 'dsl';
+export type LogType = 'action' | 'record' | 'trace' | 'step' | 'entity' | 'dsl' | 'infra' | 'ext';
 export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
 export type Logger = ((...args: unknown[]) => void) & {
     debug: (...args: unknown[]) => void;
@@ -25,7 +25,8 @@ type LogTarget = {
     consoleEnabled: boolean;
     fileEnabled: boolean;
     filePath: string;
-    minLevel: LogLevel;
+    consoleMinLevel: LogLevel;
+    fileMinLevel: LogLevel;
 };
 
 let loggerConfig: RunnerConfig | null = null;
@@ -53,14 +54,15 @@ const ensureStream = (type: LogType, filePath: string) => {
 const getTarget = (type: LogType): LogTarget => {
     const obs = loggerConfig?.observability;
     if (!obs) {
-        return { consoleEnabled: false, fileEnabled: false, filePath: '', minLevel: 'warning' };
+        return { consoleEnabled: false, fileEnabled: false, filePath: '', consoleMinLevel: 'warning', fileMinLevel: 'warning' };
     }
+    const baseLevels = { consoleMinLevel: obs.consoleLogLevel, fileMinLevel: obs.fileLogLevel } as const;
     if (type === 'action') {
         return {
             consoleEnabled: obs.actionConsoleEnabled,
             fileEnabled: obs.actionFileEnabled,
             filePath: resolveLogPath(obs.actionFilePath),
-            minLevel: obs.actionLogLevel,
+            ...baseLevels,
         };
     }
     if (type === 'record') {
@@ -68,7 +70,7 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.recordConsoleEnabled,
             fileEnabled: obs.recordFileEnabled,
             filePath: resolveLogPath(obs.recordFilePath),
-            minLevel: obs.recordLogLevel,
+            ...baseLevels,
         };
     }
     if (type === 'trace') {
@@ -76,30 +78,55 @@ const getTarget = (type: LogType): LogTarget => {
             consoleEnabled: obs.traceConsoleEnabled,
             fileEnabled: obs.traceFileEnabled,
             filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel,
+            ...baseLevels,
         };
     }
     if (type === 'entity') {
         return {
-            consoleEnabled: obs.traceConsoleEnabled,
-            fileEnabled: obs.traceFileEnabled,
-            filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel,
+            consoleEnabled: obs.entityConsoleEnabled,
+            fileEnabled: obs.entityFileEnabled,
+            filePath: resolveLogPath(obs.entityFilePath),
+            ...baseLevels,
         };
     }
     if (type === 'dsl') {
         return {
-            consoleEnabled: obs.traceConsoleEnabled,
-            fileEnabled: obs.traceFileEnabled,
-            filePath: resolveLogPath(obs.traceFilePath),
-            minLevel: obs.traceLogLevel,
+            consoleEnabled: obs.dslConsoleEnabled,
+            fileEnabled: obs.dslFileEnabled,
+            filePath: resolveLogPath(obs.dslFilePath),
+            ...baseLevels,
+        };
+    }
+    if (type === 'step') {
+        return {
+            consoleEnabled: obs.stepConsoleEnabled,
+            fileEnabled: obs.stepFileEnabled,
+            filePath: resolveLogPath(obs.stepFilePath),
+            ...baseLevels,
+        };
+    }
+    if (type === 'infra') {
+        return {
+            consoleEnabled: obs.infraConsoleEnabled,
+            fileEnabled: obs.infraFileEnabled,
+            filePath: resolveLogPath(obs.infraFilePath),
+            ...baseLevels,
+        };
+    }
+    if (type === 'ext') {
+        return {
+            consoleEnabled: obs.extConsoleEnabled,
+            fileEnabled: obs.extFileEnabled,
+            filePath: resolveLogPath(obs.extFilePath),
+            ...baseLevels,
         };
     }
     return {
         consoleEnabled: false,
         fileEnabled: false,
         filePath: '',
-        minLevel: obs.stepLogLevel,
+        consoleMinLevel: 'warning',
+        fileMinLevel: 'warning',
     };
 };
 
@@ -110,10 +137,7 @@ export const initLogger = (config: RunnerConfig): void => {
 const emit = (type: LogType, level: LogLevel, args: unknown[]) => {
     const target = getTarget(type);
     const levelRank = { debug: 10, info: 20, warning: 30, error: 40 } as const;
-    if (levelRank[level] < levelRank[target.minLevel]) {
-        return;
-    }
-    if (target.consoleEnabled) {
+    if (target.consoleEnabled && levelRank[level] >= levelRank[target.consoleMinLevel]) {
         if (level === 'error') {
             console.error(`[${type}]`, ...args);
         } else if (level === 'warning') {
@@ -122,15 +146,24 @@ const emit = (type: LogType, level: LogLevel, args: unknown[]) => {
             console.warn(`[${type}][${level}]`, ...args);
         }
     }
-    if (target.fileEnabled && target.filePath) {
-        const stream = ensureStream(type, target.filePath);
+    if (target.fileEnabled && target.filePath && levelRank[level] >= levelRank[target.fileMinLevel]) {
         const payload = {
             ts: Date.now(),
             type,
             level,
             message: args,
         };
-        stream.write(`${JSON.stringify(payload)}\n`);
+        const line = `${JSON.stringify(payload)}\n`;
+        if (level === 'error' && type === 'infra') {
+            const dir = path.dirname(target.filePath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.appendFileSync(target.filePath, line);
+        } else {
+            const stream = ensureStream(type, target.filePath);
+            stream.write(line);
+        }
     }
 };
 

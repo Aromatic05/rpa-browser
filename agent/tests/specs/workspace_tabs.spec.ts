@@ -54,6 +54,7 @@ test('workspace isolation & parallel', async ({ browser, fixtureURL }) => {
     const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createExecutionBindings({
+        pageRegistry,
         traceHooks: createNoopHooks(),
         pluginHost,
     });
@@ -90,6 +91,7 @@ test('workspace serial queue', async ({ browser, fixtureURL }) => {
     const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createExecutionBindings({
+        pageRegistry,
         traceHooks: createNoopHooks(),
         pluginHost,
     });
@@ -125,6 +127,7 @@ test('multi-tab scope correctness', async ({ browser, fixtureURL }) => {
     const workspaceRegistry = createTestWorkspaceRegistry().registry;
     const pluginHost = await createTestPluginHost();
     const runtimeRegistry = createExecutionBindings({
+        pageRegistry,
         traceHooks: createNoopHooks(),
         pluginHost,
     });

@@ -5,6 +5,8 @@ import { ActionError } from '../../actions/results';
 import { ERROR_CODES } from '../../actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
+import { isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';
+import { recordFirstTabPageUrl, recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeTab = {
     name: string;
@@ -35,6 +37,7 @@ export type WorkspaceTabs = {
 
 export type WorkspaceTabsDeps = {
     getPage: (tabName: string, startUrl?: string) => Promise<Page>;
+    touchBinding?: (bindingName: string) => void;
 };
 
 const now = () => Date.now();
@@ -123,6 +126,7 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         if (typeof input.url === 'string') { tab.url = input.url; }
         if (typeof input.title === 'string') { tab.title = input.title; }
         tab.updatedAt = input.at ?? now();
+        deps.touchBinding?.(tabName);
         return tab;
     };
 
@@ -186,10 +190,11 @@ const requireTabName = (payload: Record<string, unknown>): string => {
     return tabName;
 };
 
-export const createTabsControl = (): TabsControl => ({
+export const createTabsControl = (deps: { recordingState: RecordingState; navDedupeWindowMs: number }): TabsControl => ({
     handle: async (input) => {
         const { action, workspace } = input;
         const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const shouldRecordLifecycle = () => workspace.state === 'recording' && isWorkspaceRecordingEnabled(deps.recordingState, workspace.name);
 
         switch (action.type) {
             case 'tab.list': {
@@ -236,12 +241,45 @@ export const createTabsControl = (): TabsControl => ({
                 const url = typeof payload.url === 'string' ? payload.url : '';
                 const title = typeof payload.title === 'string' ? payload.title : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
+                const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
+                const wasTabPresent = workspace.tabs.hasTab(tabName);
                 if (!workspace.tabs.hasTab(tabName)) {
                     workspace.tabs.createMetadataTab({ tabName, url, title, at });
                 } else {
                     workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 }
                 workspace.tabs.setActiveTab(tabName);
+                if (shouldRecordLifecycle()) {
+                    if (!wasTabPresent) {
+                        recordTabCreated(deps.recordingState, {
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            urlAtRecord: url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                    if (prevActiveTab !== tabName) {
+                        recordTabActivated(deps.recordingState, {
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            urlAtRecord: url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                    recordFirstTabPageUrl(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        url,
+                        urlAtRecord: url,
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
             }
 
@@ -255,6 +293,17 @@ export const createTabsControl = (): TabsControl => ({
                     return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
                 }
                 workspace.tabs.reportTab(tabName, { url, title, at });
+                if (shouldRecordLifecycle() && url) {
+                    recordFirstTabPageUrl(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        url,
+                        urlAtRecord: url,
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 
@@ -265,7 +314,18 @@ export const createTabsControl = (): TabsControl => ({
                 if (!tabName) {
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
+                const closingTab = workspace.tabs.getTab(tabName);
                 await workspace.tabs.closeTab(tabName);
+                if (shouldRecordLifecycle()) {
+                    recordTabClosed(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: closingTab?.url || '',
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
@@ -301,7 +361,37 @@ export const createTabsControl = (): TabsControl => ({
             }
 
             case 'tab.activated': {
-                throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
+                const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : '';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                workspace.tabs.setActiveTab(tabName);
+                if (url) {
+                    workspace.tabs.updateTab(tabName, { url, updatedAt: at });
+                }
+                if (shouldRecordLifecycle()) {
+                    const runtimeTab = workspace.tabs.getTab(tabName);
+                    recordTabActivated(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: runtimeTab?.url || url,
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                    if (runtimeTab?.url || url) {
+                        recordFirstTabPageUrl(deps.recordingState, {
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            url: runtimeTab?.url || url,
+                            urlAtRecord: runtimeTab?.url || url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                }
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
             default:

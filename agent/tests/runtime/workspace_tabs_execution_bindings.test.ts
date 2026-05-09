@@ -24,6 +24,14 @@ const createStubPage = (overrides?: Partial<Page>): Page => {
     } as unknown as Page;
 };
 
+const createStubPageRegistry = () =>
+    ({
+        getPage: async (_tabName: string, startUrl?: string) => createStubPage({ url: () => startUrl || 'about:blank', bringToFront: async () => undefined } as any),
+        closePage: async () => undefined,
+    }) as any;
+
+const createBindings = () => createExecutionBindings({ pageRegistry: createStubPageRegistry() });
+
 // ── WorkspaceTabs ──
 
 test('createTab adds a tab and sets it as active when first', () => {
@@ -258,7 +266,7 @@ test('reassignTab sets active without changing existing tab data', () => {
 // ── ExecutionBindings ──
 
 test('bindPage creates a binding and returns it', () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     const page = createStubPage();
     const binding = bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page });
     assert.equal(binding.workspaceName, 'ws-1');
@@ -269,7 +277,7 @@ test('bindPage creates a binding and returns it', () => {
 });
 
 test('bindPage returns existing binding when same page is re-bound', () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     const page = createStubPage();
     const first = bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page });
     const second = bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page });
@@ -277,7 +285,7 @@ test('bindPage returns existing binding when same page is re-bound', () => {
 });
 
 test('bindPage creates a new binding when page differs', () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     const page1 = createStubPage();
     const page2 = createStubPage();
     const first = bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: page1 });
@@ -286,7 +294,7 @@ test('bindPage creates a new binding when page differs', () => {
 });
 
 test('getBinding returns the binding for workspace + tab', () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     const page = createStubPage();
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page });
     const found = bindings.getBinding('ws-1', 't1');
@@ -295,12 +303,12 @@ test('getBinding returns the binding for workspace + tab', () => {
 });
 
 test('getBinding returns null for unknown workspace/tab', () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     assert.equal(bindings.getBinding('ws-1', 'ghost'), null);
 });
 
 test('resolveBinding returns the active tab when tabName is omitted', async () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     const page = createStubPage();
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page });
     const resolved = await bindings.resolveBinding('ws-1');
@@ -308,7 +316,7 @@ test('resolveBinding returns the active tab when tabName is omitted', async () =
 });
 
 test('resolveBinding returns specific tab when tabName is provided', async () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: createStubPage() });
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't2', page: createStubPage() });
     const resolved = await bindings.resolveBinding('ws-1', 't2');
@@ -316,32 +324,132 @@ test('resolveBinding returns specific tab when tabName is provided', async () =>
 });
 
 test('resolveBinding throws when no binding exists', async () => {
-    const bindings = createExecutionBindings({});
-    await assert.rejects(() => bindings.resolveBinding('ghost'), /page not bound/);
+    const bindings = createBindings();
+    await assert.rejects(() => bindings.resolveBinding('ghost'), /no active binding/);
 });
 
 test('resolveBinding throws when tabName is provided but not found', async () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     await assert.rejects(() => bindings.resolveBinding('ws-1', 'ghost'), /page not bound/);
 });
 
-test('resolveBinding falls back to remaining tab when active is unset', async () => {
-    const bindings = createExecutionBindings({});
+test('resolveBinding throws when active is unset and no fallback', async () => {
+    const bindings = createBindings();
+    const page1 = createStubPage();
+    const page2 = createStubPage();
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: page1 });
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't2', page: page2 });
+    // Close t2's page (the active one), active should be cleared
+    page2._emit('close');
+    await assert.rejects(() => bindings.resolveBinding('ws-1'), /no active binding/);
+});
+
+test('resolveBinding does not return first tab when active cleared', async () => {
+    const bindings = createBindings();
     const page = createStubPage();
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page });
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't2', page: createStubPage() });
-    // Simulate active being cleared by emitting close on the active tab's page
+    // Close t1's page, active is cleared
     page._emit('close');
-    const resolved = await bindings.resolveBinding('ws-1');
+    // With explicit tabName it still works
+    const resolved = await bindings.resolveBinding('ws-1', 't2');
     assert.equal(resolved.tabName, 't2');
 });
 
+test('page close cleans up binding but does not auto-select next tab', async () => {
+    const bindings = createBindings();
+    const page1 = createStubPage();
+    const page2 = createStubPage();
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: page1 });
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't2', page: page2 });
+    // Active is t2 (last bound)
+    assert.equal((await bindings.resolveBinding('ws-1')).tabName, 't2');
+    // Close t2's page
+    page2._emit('close');
+    // t1 is still bound but not active — resolveBinding without tabName should fail
+    await assert.rejects(() => bindings.resolveBinding('ws-1'), /no active binding/);
+    // But t1 is still reachable by explicit name
+    const t1 = await bindings.resolveBinding('ws-1', 't1');
+    assert.equal(t1.tabName, 't1');
+    // And getBinding still returns t1
+    assert.notEqual(bindings.getBinding('ws-1', 't1'), null);
+    assert.equal(bindings.getBinding('ws-1', 't2'), null);
+});
+
 test('bindPage with different page for same key replaces binding', () => {
-    const bindings = createExecutionBindings({});
+    const bindings = createBindings();
     const page1 = createStubPage();
     const page2 = createStubPage();
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: page1 });
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: page2 });
     const binding = bindings.getBinding('ws-1', 't1');
     assert.equal(binding!.page, page2);
+});
+
+test('ensureExecutableTab materializes metadata tab and syncs active binding', async () => {
+    const tabs = createWorkspaceTabs({ getPage: async () => createStubPage({ url: () => 'https://materialized.test' }) });
+    tabs.createMetadataTab({ tabName: 'meta-a', url: 'https://seed.test' });
+    tabs.setActiveTab('meta-a');
+    const workspace = {
+        name: 'ws-materialize',
+        tabs,
+    } as any;
+    const bindings = createBindings();
+    const binding = await bindings.ensureExecutableTab({
+        workspace,
+        pageRegistry: {
+            getPage: async () => createStubPage({ url: () => 'https://materialized.test' }),
+        } as any,
+        tabName: 'meta-a',
+        urlHint: 'https://entry.test',
+    });
+    assert.equal(binding.tabName, 'meta-a');
+    assert.equal(workspace.tabs.getTab('meta-a')?.page !== null, true);
+    assert.equal(workspace.tabs.getActiveTab()?.name, 'meta-a');
+    const active = await bindings.resolveBinding('ws-materialize');
+    assert.equal(active.tabName, 'meta-a');
+});
+
+test('trace tabs tools receive pageRegistry in created bindings', async () => {
+    const bindings = createBindings();
+    const binding = bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: createStubPage({ bringToFront: async () => undefined } as any) });
+    const created = await binding.traceTools['trace.tabs.create']({ workspaceName: 'ws-1', url: 'https://example.com' });
+    const switched = await binding.traceTools['trace.tabs.switch']({ workspaceName: 'ws-1', tabName: (created.data as any)?.tabName || 't1' });
+    const closed = await binding.traceTools['trace.tabs.close']({ workspaceName: 'ws-1', tabName: (created.data as any)?.tabName || 't1' });
+    assert.equal(created.ok, true);
+    assert.equal(switched.ok, true);
+    assert.equal(closed.ok, true);
+});
+
+test('plugin reload rebuilds trace tools with pageRegistry injected', async () => {
+    let reloadHandler: ((plugin: any) => void) | null = null;
+    const pluginHost = {
+        getTraceToolsFactory: () => (opts: any) => ({
+            tools: {
+                'trace.tabs.create': async () => ({ ok: !!opts.pageRegistry, data: { tabName: 'x' } }),
+                'trace.tabs.switch': async () => ({ ok: !!opts.pageRegistry }),
+                'trace.tabs.close': async () => ({ ok: !!opts.pageRegistry }),
+            },
+            ctx: { sinks: [], hooks: {} as any, cache: {} },
+        }),
+        onReload: (handler: (plugin: any) => void) => {
+            reloadHandler = handler;
+            return () => undefined;
+        },
+    } as any;
+    const pageRegistry = createStubPageRegistry();
+    const bindings = createExecutionBindings({ pageRegistry, pluginHost });
+    const binding = bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: createStubPage() });
+    reloadHandler?.({
+        createTraceTools: (opts: any) => ({
+            tools: {
+                'trace.tabs.create': async () => ({ ok: !!opts.pageRegistry, data: { tabName: 'x' } }),
+                'trace.tabs.switch': async () => ({ ok: !!opts.pageRegistry }),
+                'trace.tabs.close': async () => ({ ok: !!opts.pageRegistry }),
+            },
+            ctx: { sinks: [], hooks: {} as any, cache: {} },
+        }),
+    });
+    const created = await binding.traceTools['trace.tabs.create']({ workspaceName: 'ws-1', url: 'https://example.com' });
+    assert.equal(created.ok, true);
 });

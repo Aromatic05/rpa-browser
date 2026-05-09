@@ -19,21 +19,18 @@ export const executeBrowserType = async (
         nodeId: step.args.nodeId,
         selector: step.args.selector,
         resolve: step.resolve,
+    }, {
+        deps,
+        workspaceName,
+        reason: 'browser.type',
+        stepId: step.id,
+        stepName: step.name,
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
-    const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
-    if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
-
-    const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: resolved.target.selector, timeout });
-    if (!visible.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
-    }
-    const focus = await binding.traceTools['trace.locator.focus']({ selector: resolved.target.selector });
-    if (!focus.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
-    }
+    const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
+    let lastError: StepResult['error'] | undefined;
     const delayMs =
         typeof step.args.delay_ms === 'number'
             ? step.args.delay_ms
@@ -43,13 +40,44 @@ export const executeBrowserType = async (
                     deps.config.humanPolicy.typeDelayMsRange.max,
                 )
               : undefined;
-    const typed = await binding.traceTools['trace.locator.type']({
-        selector: resolved.target.selector,
-        text: step.args.text,
-        delayMs,
-    });
-    if (!typed.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(typed.error) };
+    for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
+        const candidate = resolved.target.candidates[candidateIndex];
+        const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
+        if (!scroll.ok) {
+            lastError = mapTraceError(scroll.error);
+            continue;
+        }
+        const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: candidate.selector, timeout });
+        if (!visible.ok) {
+            lastError = mapTraceError(visible.error);
+            continue;
+        }
+        const highlight = await binding.traceTools['trace.locator.highlight']({
+            selector: candidate.selector,
+            highlightMs: highlightBeforeActionMs,
+            candidateIndex,
+            stepId: step.id,
+            stepName: step.name,
+        });
+        if (!highlight.ok) {
+            lastError = mapTraceError(highlight.error);
+            continue;
+        }
+        const focus = await binding.traceTools['trace.locator.focus']({ selector: candidate.selector });
+        if (!focus.ok) {
+            lastError = mapTraceError(focus.error);
+            continue;
+        }
+        const typed = await binding.traceTools['trace.locator.type']({
+            selector: candidate.selector,
+            text: step.args.text,
+            delayMs,
+        });
+        if (!typed.ok) {
+            lastError = mapTraceError(typed.error);
+            continue;
+        }
+        return { stepId: step.id, ok: true };
     }
-    return { stepId: step.id, ok: true };
+    return { stepId: step.id, ok: false, error: lastError || { code: 'ERR_NOT_FOUND', message: 'no type target candidate matched' } };
 };

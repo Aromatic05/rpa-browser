@@ -14,7 +14,9 @@ export type WorkflowRecording = {
         recordingName: string;
         workspaceName: string;
         entryUrl?: string;
-        tabs?: Array<{ tabName: string; url?: string }>;
+        activeTabRef: string;
+        initialTabs: Array<{ tabName: string; tabRef: string; url: string; title: string; active: boolean }>;
+        tabs: Array<{ tabName: string; url?: string }>;
         createdAt?: number;
         stepCount?: number;
     };
@@ -54,7 +56,14 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
             .filter((item): item is WorkflowRecording => item !== null),
     save: (value) => {
         const dir = recordingDir(workflowName, value.name);
-        const stepsFile: StepFile = { version: 1, steps: value.steps.map((step) => ({ id: step.id, name: step.name, args: step.args })) as StepFile['steps'] };
+        const stepsFile: StepFile = {
+            version: 1,
+            steps: value.steps.map((step) => ({
+                id: step.id,
+                name: step.name,
+                args: step.args,
+            })) as StepFile['steps'],
+        };
         validateStepFileForSerialization(stepsFile);
         const stepResolveFile: StepResolveFile = { version: 1, resolves: value.stepResolves || {} };
         validateStepResolveFileForSerialization(stepResolveFile);

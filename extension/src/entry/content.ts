@@ -28,6 +28,7 @@ type ActionShape = {
 type FloatingUIExports = {
     mountFloatingUI: (opts: {
         tabName: string;
+        workspaceName: string;
         onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
         onEvent?: (handler: (action: ActionShape) => void) => void;
     }) => { scheduleRefresh: () => void };
@@ -35,7 +36,7 @@ type FloatingUIExports = {
 
 type TokenBridgeExports = {
     ensureTabName: () => string;
-    ensureTabNameAsync: () => Promise<string>;
+    ensureTabNameAsync: () => Promise<{ tabName: string; workspaceName: string }>;
     bindHello: (tabName: string, onHello?: () => void) => () => void;
 };
 
@@ -105,16 +106,16 @@ const loadFloatingUI = (() => {
     window.__rpaTokenInjected = true;
 
     // tabName + hello 绑定（异步初始化，所有使用点需 await）
-    let tokenReady: Promise<string> | null = null;
-    const sendReport = async (tabName?: string) => {
-        const token = tabName ?? (await ensureToken());
+    let tokenReady: Promise<{ tabName: string; workspaceName: string }> | null = null;
+    const sendReport = async (tabName?: string, workspaceName?: string) => {
+        const resolved = tabName ? { tabName, workspaceName: workspaceName ?? '' } : await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.report',
             payload: {
-                tabName: token,
+                tabName: resolved.tabName,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -125,13 +126,13 @@ const loadFloatingUI = (() => {
     const ensureToken = () => {
         tokenReady ??= (async () => {
                 const mod = await loadTokenBridge();
-                const token = await mod.ensureTabNameAsync();
-                mod.bindHello(token, () => {
-                    void sendReport(token);
+                const result = await mod.ensureTabNameAsync();
+                mod.bindHello(result.tabName, () => {
+                    void sendReport(result.tabName, result.workspaceName);
                 });
-                return token;
+                return result;
             })();
-        return tokenReady;
+        return tokenReady!;
     };
 
     chrome.runtime.onMessage.addListener(
@@ -172,14 +173,15 @@ const loadFloatingUI = (() => {
     const PING_INTERVAL_MS = 15000;
     let pingTimer: ReturnType<typeof setInterval> | null = null;
     const sendPing = async () => {
-        const tabName = await ensureToken();
+        const { tabName, workspaceName } = await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
             id: crypto.randomUUID(),
             type: 'tab.ping',
+            workspaceName,
             payload: {
-                tabName: tabName,
+                tabName,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -201,11 +203,12 @@ const loadFloatingUI = (() => {
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
-        const tabName = await ensureToken();
+        const { tabName, workspaceName } = await ensureToken();
         void sendReport(tabName);
         startHeartbeat();
         uiHandle = mountFloatingUI({
             tabName,
+            workspaceName,
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;

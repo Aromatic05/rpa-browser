@@ -378,86 +378,121 @@ export const executeBrowserSelectOption = async (
         nodeId: step.args.nodeId,
         selector: step.args.selector,
         resolve: step.resolve,
+    }, {
+        deps,
+        workspaceName,
+        reason: 'browser.select_option',
+        stepId: step.id,
+        stepName: step.name,
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
     const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
-    const visible = await ensureVisible(binding, resolved.target.selector, timeout);
-    if (!visible.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
-    }
-
-    if (!canResolvePageLocator(binding.page)) {
-        const select = await binding.traceTools['trace.locator.selectOption']({
-            selector: resolved.target.selector,
-            values: step.args.values,
-            timeout,
-        });
-        if (!select.ok) {return { stepId: step.id, ok: false, error: mapTraceError(select.error) };}
-        const state = await binding.traceTools['trace.locator.readSelectState']({
-            selector: resolved.target.selector,
-        });
-        if (!state.ok) {return { stepId: step.id, ok: false, error: mapTraceError(state.error) };}
-        const result = validateExpectedAndChanged(
-            step.id,
-            { controlType: 'unknown', expanded: false, selectedValues: [], selectedLabels: [], multiple: false },
-            {
-                controlType: 'unknown',
-                expanded: false,
-                selectedValues: normalizeChoiceList(state.data?.selectedValues),
-                selectedLabels: normalizeChoiceList(state.data?.selectedLabels),
-                displayText: normalizeChoiceToken((state.data?.selectedLabels || [])[0]),
-                multiple: false,
-            },
-            step.args.values,
-            { target: resolved.target, path: 'trace-fallback' },
-        );
-        if (result) {return result;}
-    } else {
-        const pageLocatorResolved = await resolvePageLocator(binding.page, resolved.target.selector);
-        if (!pageLocatorResolved.ok) {
-            return { stepId: step.id, ok: false, error: pageLocatorResolved.error };
+    const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
+    let lastError: StepResult['error'] | undefined;
+    for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
+        const candidate = resolved.target.candidates[candidateIndex];
+        const visible = await ensureVisible(binding, candidate.selector, timeout);
+        if (!visible.ok) {
+            lastError = mapTraceError(visible.error);
+            continue;
         }
-        const control = pageLocatorResolved.locator;
-        const before = await readChoiceState(control);
+        const highlight = await binding.traceTools['trace.locator.highlight']({
+            selector: candidate.selector,
+            highlightMs: highlightBeforeActionMs,
+            candidateIndex,
+            stepId: step.id,
+            stepName: step.name,
+        });
+        if (!highlight.ok) {
+            lastError = mapTraceError(highlight.error);
+            continue;
+        }
 
-        if (before.controlType === 'native-select') {
+        if (!canResolvePageLocator(binding.page)) {
             const select = await binding.traceTools['trace.locator.selectOption']({
-                selector: resolved.target.selector,
+                selector: candidate.selector,
                 values: step.args.values,
                 timeout,
             });
             if (!select.ok) {
-                return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
+                lastError = mapTraceError(select.error);
+                continue;
             }
-        } else if (before.controlType === 'combobox' || before.controlType === 'popup-choice' || before.controlType === 'autocomplete') {
-            const custom = await chooseInCustomChoicePopup(binding.page, control, before, step.args.values, timeout);
-            if (!custom.ok) {
-                return { stepId: step.id, ok: false, error: custom.error };
+            const state = await binding.traceTools['trace.locator.readSelectState']({
+                selector: candidate.selector,
+            });
+            if (!state.ok) {
+                lastError = mapTraceError(state.error);
+                continue;
+            }
+            const result = validateExpectedAndChanged(
+                step.id,
+                { controlType: 'unknown', expanded: false, selectedValues: [], selectedLabels: [], multiple: false },
+                {
+                    controlType: 'unknown',
+                    expanded: false,
+                    selectedValues: normalizeChoiceList(state.data?.selectedValues),
+                    selectedLabels: normalizeChoiceList(state.data?.selectedLabels),
+                    displayText: normalizeChoiceToken((state.data?.selectedLabels || [])[0]),
+                    multiple: false,
+                },
+                step.args.values,
+                { target: resolved.target, path: 'trace-fallback' },
+            );
+            if (result) {
+                lastError = result.error;
+                continue;
             }
         } else {
-            return {
-                stepId: step.id,
-                ok: false,
-                error: {
+            const pageLocatorResolved = await resolvePageLocator(binding.page, candidate.selector);
+            if (!pageLocatorResolved.ok) {
+                lastError = pageLocatorResolved.error;
+                continue;
+            }
+            const control = pageLocatorResolved.locator;
+            const before = await readChoiceState(control);
+
+            if (before.controlType === 'native-select') {
+                const select = await binding.traceTools['trace.locator.selectOption']({
+                    selector: candidate.selector,
+                    values: step.args.values,
+                    timeout,
+                });
+                if (!select.ok) {
+                    lastError = mapTraceError(select.error);
+                    continue;
+                }
+            } else if (before.controlType === 'combobox' || before.controlType === 'popup-choice' || before.controlType === 'autocomplete') {
+                const custom = await chooseInCustomChoicePopup(binding.page, control, before, step.args.values, timeout);
+                if (!custom.ok) {
+                    lastError = custom.error;
+                    continue;
+                }
+            } else {
+                lastError = {
                     code: 'ERR_BAD_ARGS',
                     message: 'control type unsupported',
                     details: { target: resolved.target, state: before },
-                },
-            };
+                };
+                continue;
+            }
+
+            const after = await readChoiceState(control);
+            const result = validateExpectedAndChanged(step.id, before, after, step.args.values, {
+                target: resolved.target,
+                controlType: before.controlType,
+            });
+            if (result) {
+                lastError = result.error;
+                continue;
+            }
         }
-
-        const after = await readChoiceState(control);
-        const result = validateExpectedAndChanged(step.id, before, after, step.args.values, {
-            target: resolved.target,
-            controlType: before.controlType,
-        });
-        if (result) {return result;}
+        if (deps.config.humanPolicy.enabled) {
+            const delayMs = pickDelayMs(deps.config.humanPolicy.typeDelayMsRange.min, deps.config.humanPolicy.typeDelayMsRange.max);
+            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
+        }
+        return { stepId: step.id, ok: true };
     }
-
-    if (deps.config.humanPolicy.enabled) {
-        const delayMs = pickDelayMs(deps.config.humanPolicy.typeDelayMsRange.min, deps.config.humanPolicy.typeDelayMsRange.max);
-        if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
-    }
-    return { stepId: step.id, ok: true };
+    return { stepId: step.id, ok: false, error: lastError || { code: 'ERR_NOT_FOUND', message: 'no select target candidate matched' } };
 };
