@@ -325,7 +325,7 @@ test('resolveBinding returns specific tab when tabName is provided', async () =>
 
 test('resolveBinding throws when no binding exists', async () => {
     const bindings = createBindings();
-    await assert.rejects(() => bindings.resolveBinding('ghost'), /page not bound/);
+    await assert.rejects(() => bindings.resolveBinding('ghost'), /no active binding/);
 });
 
 test('resolveBinding throws when tabName is provided but not found', async () => {
@@ -333,15 +333,47 @@ test('resolveBinding throws when tabName is provided but not found', async () =>
     await assert.rejects(() => bindings.resolveBinding('ws-1', 'ghost'), /page not bound/);
 });
 
-test('resolveBinding falls back to remaining tab when active is unset', async () => {
+test('resolveBinding throws when active is unset and no fallback', async () => {
+    const bindings = createBindings();
+    const page1 = createStubPage();
+    const page2 = createStubPage();
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: page1 });
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't2', page: page2 });
+    // Close t2's page (the active one), active should be cleared
+    page2._emit('close');
+    await assert.rejects(() => bindings.resolveBinding('ws-1'), /no active binding/);
+});
+
+test('resolveBinding does not return first tab when active cleared', async () => {
     const bindings = createBindings();
     const page = createStubPage();
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page });
     bindings.bindPage({ workspaceName: 'ws-1', tabName: 't2', page: createStubPage() });
-    // Simulate active being cleared by emitting close on the active tab's page
+    // Close t1's page, active is cleared
     page._emit('close');
-    const resolved = await bindings.resolveBinding('ws-1');
+    // With explicit tabName it still works
+    const resolved = await bindings.resolveBinding('ws-1', 't2');
     assert.equal(resolved.tabName, 't2');
+});
+
+test('page close cleans up binding but does not auto-select next tab', async () => {
+    const bindings = createBindings();
+    const page1 = createStubPage();
+    const page2 = createStubPage();
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't1', page: page1 });
+    bindings.bindPage({ workspaceName: 'ws-1', tabName: 't2', page: page2 });
+    // Active is t2 (last bound)
+    assert.equal((await bindings.resolveBinding('ws-1')).tabName, 't2');
+    // Close t2's page
+    page2._emit('close');
+    // t1 is still bound but not active — resolveBinding without tabName should fail
+    await assert.rejects(() => bindings.resolveBinding('ws-1'), /no active binding/);
+    // But t1 is still reachable by explicit name
+    const t1 = await bindings.resolveBinding('ws-1', 't1');
+    assert.equal(t1.tabName, 't1');
+    // And getBinding still returns t1
+    assert.notEqual(bindings.getBinding('ws-1', 't1'), null);
+    assert.equal(bindings.getBinding('ws-1', 't2'), null);
 });
 
 test('bindPage with different page for same key replaces binding', () => {

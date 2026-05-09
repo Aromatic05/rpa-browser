@@ -81,14 +81,9 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             tabsForWorkspace?.delete(tabName);
             if (tabsForWorkspace && tabsForWorkspace.size === 0) {
                 workspaceTabs.delete(workspaceName);
+            }
+            if (activeTabs.get(workspaceName) === tabName) {
                 activeTabs.delete(workspaceName);
-            } else if (activeTabs.get(workspaceName) === tabName) {
-                const nextTab = tabsForWorkspace ? tabsForWorkspace.values().next().value : undefined;
-                if (nextTab) {
-                    activeTabs.set(workspaceName, nextTab);
-                } else {
-                    activeTabs.delete(workspaceName);
-                }
             }
         });
         return binding;
@@ -127,13 +122,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             const bound = bindings.get(keyOf(workspaceName, activeTab));
             if (bound) {return bound;}
         }
-        const tabs = workspaceTabs.get(workspaceName);
-        const fallbackTab = tabs?.values().next().value as string | undefined;
-        if (!fallbackTab) {throw new Error(`page not bound: ${workspaceName}`);}
-        const bound = bindings.get(keyOf(workspaceName, fallbackTab));
-        if (!bound) {throw new Error(`page not bound: ${workspaceName}/${fallbackTab}`);}
-        activeTabs.set(workspaceName, fallbackTab);
-        return bound;
+        throw new Error(`no active binding: ${workspaceName}`);
     };
 
     return {
