@@ -141,7 +141,6 @@ export const ingestRecordPayload = async (input: {
             ts: input.payload.meta?.ts ?? Date.now(),
             workspaceName: input.workspaceName,
             tabName: input.payload.meta?.tabName || input.tabName,
-            tabRef: input.payload.meta?.tabRef || input.tabName,
             urlAtRecord: input.payload.meta?.urlAtRecord || currentUrl || undefined,
         },
     };

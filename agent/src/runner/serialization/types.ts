@@ -6,14 +6,6 @@ export type SerializedStep<TName extends StepName = StepName> = {
     id: string;
     name: TName;
     args: StepArgsMap[TName];
-    meta?: {
-        source?: string;
-        ts?: number;
-        workspaceName?: string;
-        tabName?: string;
-        tabRef?: string;
-        urlAtRecord?: string;
-    };
 };
 
 export type SerializedStepUnion = {

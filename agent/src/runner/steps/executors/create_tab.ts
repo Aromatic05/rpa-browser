@@ -10,7 +10,6 @@ export const executeBrowserCreateTab = async (
     const binding = await deps.runtime.resolveBinding(workspaceName);
     const result = await binding.traceTools['trace.tabs.create']({
         workspaceName,
-        url: step.args.url,
     });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
@@ -24,7 +23,6 @@ export const executeBrowserCreateTab = async (
         workspace,
         pageRegistry: deps.pageRegistry,
         tabName,
-        urlHint: step.args.url,
     });
     return { stepId: step.id, ok: true, data: { tab_id: tabName } };
 };

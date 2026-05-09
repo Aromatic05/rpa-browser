@@ -202,7 +202,7 @@ const handleCreateTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async 
     const result = await runSingleStepWs(deps, sourceTabName, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
-        args: { url: input.url },
+        args: { tabName: sourceTabName },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
@@ -217,7 +217,7 @@ const handleSwitchTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async 
     const result = await runSingleStepWs(deps, sourceTabName, {
         id: crypto.randomUUID(),
         name: 'browser.switch_tab',
-        args: { tabName: input.tabName, tabRef: input.tabRef, tabUrl: input.tabUrl },
+        args: { tabName: sourceTabName },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
@@ -231,7 +231,7 @@ const handleCloseTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (
     return await runSingleStepWs(deps, input.tabName, {
         id: crypto.randomUUID(),
         name: 'browser.close_tab',
-        args: { tabName: input.tabName, tabRef: input.tabRef },
+        args: { tabName: input.tabName },
         meta: { source: 'mcp' },
     });
 };

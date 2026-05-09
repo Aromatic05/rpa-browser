@@ -182,9 +182,9 @@ export type StepArgsMap = {
     'browser.goto': { url: string; timeout?: number };
     'browser.go_back': { timeout?: number };
     'browser.reload': { timeout?: number };
-    'browser.create_tab': { url?: string };
-    'browser.switch_tab': { tabName?: string; tabUrl?: string; tabRef?: string };
-    'browser.close_tab': { tabName?: string; tabRef?: string };
+    'browser.create_tab': { tabName: string };
+    'browser.switch_tab': { tabName: string };
+    'browser.close_tab': { tabName: string };
     'browser.get_page_info': Record<string, never>;
     'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
@@ -398,7 +398,6 @@ export type StepMeta = {
     ts?: number;
     workspaceName?: string;
     tabName?: string;
-    tabRef?: string;
     urlAtRecord?: string;
 };
 

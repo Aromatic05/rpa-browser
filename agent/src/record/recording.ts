@@ -349,7 +349,7 @@ const createStep = <TName extends StepName>(
     name: TName,
     args: StepArgsMap[TName],
     ts: number,
-    metaExtra?: Partial<Pick<StepMeta, 'workspaceName' | 'tabName' | 'tabRef' | 'urlAtRecord'>>,
+    metaExtra?: Partial<Pick<StepMeta, 'workspaceName' | 'tabName' | 'urlAtRecord'>>,
     resolve?: StepResolve,
 ): Step<TName> => ({
     id: crypto.randomUUID(),
@@ -618,14 +618,11 @@ const enrichRecordedStep = (
     const stepTabName = step.meta?.tabName || sourceTabName;
     const args = step.args as unknown;
     const gotoUrl = isRecord(args) && typeof args.url === 'string' ? args.url : undefined;
-    const switchTabUrl = isRecord(args) && typeof args.tabUrl === 'string' ? args.tabUrl : undefined;
     const stepUrl =
         step.meta?.urlAtRecord ||
         (step.name === 'browser.goto' ? gotoUrl : undefined) ||
-        (step.name === 'browser.switch_tab' ? switchTabUrl : undefined) ||
         undefined;
     const tab = ensureTabInManifest(manifest, stepTabName, {
-        tabRef: step.meta?.tabRef,
         url: stepUrl || undefined,
         at: ts,
     });
@@ -638,7 +635,6 @@ const enrichRecordedStep = (
             source: step.meta?.source ?? 'record',
             ts,
             tabName: stepTabName,
-            tabRef: step.meta?.tabRef || tab.tabRef,
             urlAtRecord: step.meta?.urlAtRecord || stepUrl || undefined,
         },
     };

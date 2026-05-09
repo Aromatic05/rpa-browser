@@ -68,7 +68,6 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
                           ts: step.meta.ts,
                           workspaceName: step.meta.workspaceName,
                           tabName: step.meta.tabName,
-                          tabRef: step.meta.tabRef,
                           urlAtRecord: step.meta.urlAtRecord,
                       }
                     : undefined,

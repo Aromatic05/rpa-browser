@@ -52,14 +52,11 @@ const ROOT = path.resolve(__dirname, '..', '..');
 test('mcp zod schemas accept expected tab args', () => {
     const switchResult = browserSwitchTabInputSchema.safeParse({
         tabName: 'tab-a',
-        tabRef: 'ref-a',
-        tabUrl: 'https://example.com',
     });
     assert.equal(switchResult.success, true);
 
     const closeResult = browserCloseTabInputSchema.safeParse({
         tabName: 'tab-a',
-        tabRef: 'ref-a',
     });
     assert.equal(closeResult.success, true);
 });
@@ -68,8 +65,8 @@ test('mcp tool schemas expose single tabName fields', () => {
     const switchProps = toolInputJsonSchemas['browser.switch_tab'].properties as Record<string, unknown>;
     const closeProps = toolInputJsonSchemas['browser.close_tab'].properties as Record<string, unknown>;
 
-    assert.deepEqual(Object.keys(switchProps).sort(), ['tabName', 'tabRef', 'tabUrl'].sort());
-    assert.deepEqual(Object.keys(closeProps).sort(), ['tabName', 'tabRef'].sort());
+    assert.deepEqual(Object.keys(switchProps).sort(), ['tabName']);
+    assert.deepEqual(Object.keys(closeProps).sort(), ['tabName']);
 });
 
 test('guards avoid duplicate legacy address checks', () => {
