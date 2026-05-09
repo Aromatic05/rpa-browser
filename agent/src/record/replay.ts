@@ -364,7 +364,23 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 clearPendingCreatedTabEffect(tabEffectRegister);
                 logEffectStateChange(originalStep.id, 'consume_pending_created_effect', effectBeforeStep);
                 syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: runtimeTab } }] };
-            } else if (tabEffectRegister.pendingCreatedTab.state === 'conflict') {
+            } else {
+                const existingRuntimeTab = findRuntimeTabNameForRecorded(req.workspace, recordedTabName, recordedUrl, urlMatches);
+                if (existingRuntimeTab) {
+                    upsertTabBinding(recordedTabName, {
+                        recordedTabRef: recordedTabRef || recordedTabName,
+                        recordedUrl,
+                        runtimeTabName: existingRuntimeTab,
+                        runtimeUrl: req.workspace.tabs.getTab(existingRuntimeTab)?.url,
+                        closed: false,
+                        status: 'reused',
+                    });
+                    syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: existingRuntimeTab } }] };
+                } else if (tabEffectRegister.pendingCreatedTab.state === 'conflict') {
+                    return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
+                }
+            }
+            if (!syntheticResponse && tabEffectRegister.pendingCreatedTab.state === 'conflict') {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
             }
         } else if (targetTabName) {
