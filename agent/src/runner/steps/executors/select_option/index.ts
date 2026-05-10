@@ -78,7 +78,7 @@ export const executeBrowserSelectOption = async (
     }
 
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     const resolved = await resolveTarget(binding, {
         nodeId: step.args.nodeId,

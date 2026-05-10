@@ -23,7 +23,7 @@ export const executeBrowserHover = async (
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     let lastError: StepResult['error'] | undefined;
     for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {

@@ -440,10 +440,11 @@ test('click returns ERR_TIMEOUT when interaction exceeds timeout budget', async 
         'trace.locator.click': async () => new Promise(() => {}),
     };
     const deps = createDeps(traceTools);
+    deps.config.waitPolicy.interactionTimeoutMs = 30;
     const step: Step<'browser.click'> = {
         id: 's2d',
         name: 'browser.click',
-        args: { selector: '#save', timeout: 30 },
+        args: { selector: '#save' },
     };
 
     const startedAt = Date.now();

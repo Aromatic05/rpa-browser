@@ -25,7 +25,7 @@ export const executeBrowserPressKey = async (
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-        const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+        const timeout = deps.config.waitPolicy.visibleTimeoutMs;
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
         if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
         const visible = await binding.traceTools['trace.locator.waitForVisible']({

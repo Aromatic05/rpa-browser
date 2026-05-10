@@ -179,9 +179,9 @@ export type StepResolve = {
 };
 
 export type StepArgsMap = {
-    'browser.goto': { url: string; timeout?: number };
-    'browser.go_back': { timeout?: number };
-    'browser.reload': { timeout?: number };
+    'browser.goto': { url: string };
+    'browser.go_back': Record<string, never>;
+    'browser.reload': Record<string, never>;
     'browser.create_tab': { tabName: string };
     'browser.switch_tab': { tabName: string };
     'browser.close_tab': { tabName: string };
@@ -221,14 +221,12 @@ export type StepArgsMap = {
         resolveId?: string;
         coord?: { x: number; y: number };
         options?: { button?: 'left' | 'right' | 'middle'; double?: boolean };
-        timeout?: number;
     };
     'browser.fill': {
         nodeId?: string;
         selector?: string;
         resolveId?: string;
         value: string;
-        timeout?: number;
     };
     'browser.type': {
         nodeId?: string;
@@ -236,7 +234,6 @@ export type StepArgsMap = {
         resolveId?: string;
         text: string;
         delay_ms?: number;
-        timeout?: number;
     };
     'browser.select_option': {
         nodeId?: string;
@@ -246,13 +243,11 @@ export type StepArgsMap = {
         controlRef?: string;
         values: string[];
         searchText?: string;
-        timeout?: number;
     };
     'browser.hover': {
         nodeId?: string;
         selector?: string;
         resolveId?: string;
-        timeout?: number;
     };
     'browser.scroll': {
         nodeId?: string;
@@ -260,14 +255,12 @@ export type StepArgsMap = {
         resolveId?: string;
         direction?: 'up' | 'down';
         amount?: number;
-        timeout?: number;
     };
     'browser.press_key': {
         key: string;
         nodeId?: string;
         selector?: string;
         resolveId?: string;
-        timeout?: number;
     };
     'browser.drag_and_drop': {
         sourceNodeId?: string;
@@ -277,7 +270,6 @@ export type StepArgsMap = {
         destSelector?: string;
         destResolveId?: string;
         destCoord?: { x: number; y: number };
-        timeout?: number;
     };
     'browser.mouse': {
         action: 'move' | 'down' | 'up' | 'wheel' | 'click' | 'dblclick';

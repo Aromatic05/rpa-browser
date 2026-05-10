@@ -62,11 +62,11 @@ export const executeBrowserClick = async (
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
     const coord = step.args.coord;
-    const visibleTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const visibleTimeoutMs = deps.config.waitPolicy.visibleTimeoutMs;
     const pageReadyTimeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs;
     const candidateClickTimeoutMs = deps.config.waitPolicy.candidateClickTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
-    const hardTimeoutMs = step.args.timeout ?? deps.config.waitPolicy.interactionTimeoutMs;
+    const hardTimeoutMs = deps.config.waitPolicy.interactionTimeoutMs;
 
     return await runWithHardTimeout(step.id, hardTimeoutMs, async () => {
         if (coord) {

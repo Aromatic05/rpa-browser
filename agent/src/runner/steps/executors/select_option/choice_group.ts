@@ -50,7 +50,7 @@ export const executeRadioGroup = async (
     control: SelectOptionControl,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     if (step.args.values.length !== 1) {
         return badArgs(step.id, 'radio_group requires exactly 1 value', {
@@ -115,7 +115,7 @@ export const executeCheckboxGroup = async (
     control: SelectOptionControl,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     const options = toSelectOptions(control.component);
     const targetValues = step.args.values;

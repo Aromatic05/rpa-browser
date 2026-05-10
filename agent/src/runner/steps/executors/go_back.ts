@@ -8,7 +8,7 @@ export const executeBrowserGoBack = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const result = await binding.traceTools['trace.page.goBack']({ timeout: step.args.timeout });
+    const result = await binding.traceTools['trace.page.goBack']({ timeout: deps.config.waitPolicy.navigationTimeoutMs });
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
     }

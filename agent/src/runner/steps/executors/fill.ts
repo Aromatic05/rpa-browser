@@ -52,7 +52,7 @@ export const executeBrowserFill = async (
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     const attempts: ResolveAuditAttempt[] = [];
     let lastError: StepResult['error'] | undefined;

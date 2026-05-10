@@ -12,7 +12,7 @@ export const executeNativeSelect = async (
     selector: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     const before = await binding.traceTools['trace.locator.readSelectState']({ selector });
 

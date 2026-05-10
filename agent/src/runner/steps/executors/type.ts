@@ -28,7 +28,7 @@ export const executeBrowserType = async (
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     let lastError: StepResult['error'] | undefined;
     const delayMs =
