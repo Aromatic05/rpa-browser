@@ -66,26 +66,31 @@ export const executeRadioGroup = async (
 
     const targetOption = matchResult.option;
 
-    // Already selected: no click needed
-    if (targetOption.selected) {
-        return { stepId: step.id, ok: true };
+    if (!targetOption.selected) {
+        const snapshot = await generateSemanticSnapshot(binding.page);
+        const optionSelector = resolveNodeSelector(snapshot, targetOption.nodeId);
+        if (!optionSelector) {
+            return assertionFailed(step.id, 'no selector for radio option', {
+                nodeId: targetOption.nodeId,
+            });
+        }
+
+        const clickError = await clickNode(binding, optionSelector, timeout);
+        if (clickError) {
+            return { stepId: step.id, ok: false, error: clickError };
+        }
     }
 
-    const snapshot = await generateSemanticSnapshot(binding.page);
-    const optionSelector = resolveNodeSelector(snapshot, targetOption.nodeId);
-    if (!optionSelector) {
+    const page = binding.page;
+    const finalSnapshot = await generateSemanticSnapshot(binding.page);
+
+    const targetSelector = resolveNodeSelector(finalSnapshot, targetOption.nodeId);
+    if (!targetSelector) {
         return assertionFailed(step.id, 'no selector for radio option', {
             nodeId: targetOption.nodeId,
         });
     }
-
-    const clickError = await clickNode(binding, optionSelector, timeout);
-    if (clickError) {
-        return { stepId: step.id, ok: false, error: clickError };
-    }
-
-    const page = binding.page;
-    const targetChecked = await page.locator(optionSelector).isChecked();
+    const targetChecked = await page.locator(targetSelector).isChecked();
     if (!targetChecked) {
         return assertionFailed(step.id, 'target radio not selected after action', {
             targetValue,
@@ -95,7 +100,7 @@ export const executeRadioGroup = async (
 
     for (const opt of options) {
         if (opt.nodeId === targetOption.nodeId) {continue;}
-        const sel = resolveNodeSelector(snapshot, opt.nodeId);
+        const sel = resolveNodeSelector(finalSnapshot, opt.nodeId);
         if (!sel) {continue;}
         const checked = await page.locator(sel).isChecked();
         if (checked) {

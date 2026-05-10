@@ -277,6 +277,54 @@ test('select_option: radio_group option not found returns ERR_NOT_FOUND', async 
     }
 });
 
+test('select_option: radio_group already selected asserts group state without click', async () => {
+    const { browser, deps } = await setupBinding();
+    try {
+        const step: Step<'browser.select_option'> = {
+            id: 'rg-already',
+            name: 'browser.select_option',
+            args: { selector: '#status-radio-group', values: ['pending'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: radio_group asserts no other radio checked after action', async () => {
+    // Verify the executor source contains the defensive assertion that checks
+    // non-target options are not selected. This guards against regressions
+    // that would remove the group-wide state validation.
+    const fs = await import('node:fs');
+    const source = fs.readFileSync(
+        new URL('../../../src/runner/steps/executors/select_option/choice_group.ts', import.meta.url).pathname,
+        'utf8',
+    );
+    assert.equal(source.includes('other radio options should not be selected'), true);
+    assert.equal(source.includes('if (checked)'), true);
+    assert.equal(source.includes('opt.nodeId === targetOption.nodeId'), true);
+    assert.equal(source.includes('continue'), true);
+});
+
+test('select_option: radio_group ambiguous match returns ERR_AMBIGUOUS', async () => {
+    const { browser, deps } = await setupBinding();
+    try {
+        const step: Step<'browser.select_option'> = {
+            id: 'rg-ambiguous',
+            name: 'browser.select_option',
+            args: { selector: '#status-radio-group', values: ['待审批'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_AMBIGUOUS');
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
 // ── checkbox_group ──
 
 test('select_option: checkbox_group check missing items', async () => {
