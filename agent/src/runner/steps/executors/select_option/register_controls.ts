@@ -268,7 +268,9 @@ const collectCustomSelect: ControlCollector = (ctx) => {
         // Primary path: role=combobox
         if (node.role === 'combobox') {
             const popupNodeId = resolvePopupNodeId(node, ctx, domIdMap);
-            const options = popupNodeId ? collectPopupOptions(ctx, popupNodeId) : [];
+            if (!popupNodeId) {return;}
+            const options = collectPopupOptions(ctx, popupNodeId);
+            if (options.length === 0) {return;}
             components.push(buildCustomSelectComponent(node, popupNodeId, options, ctx));
             return;
         }
@@ -279,7 +281,9 @@ const collectCustomSelect: ControlCollector = (ctx) => {
         if (!isAntSelect) {return;}
 
         const popupNodeId = findAntSelectPopup(node, domIdMap, ctx);
-        const options = popupNodeId ? collectAntSelectOptions(ctx, popupNodeId) : [];
+        if (!popupNodeId) {return;}
+        const options = collectAntSelectOptions(ctx, popupNodeId);
+        if (options.length === 0) {return;}
         components.push(buildCustomSelectComponent(node, popupNodeId, options, ctx));
     });
     return components;
@@ -287,7 +291,7 @@ const collectCustomSelect: ControlCollector = (ctx) => {
 
 const buildCustomSelectComponent = (
     node: UnifiedNode,
-    popupNodeId: string | undefined,
+    popupNodeId: string,
     options: OptionEntry[],
     ctx: ControlCollectContext,
 ): BaseControlComponent => ({

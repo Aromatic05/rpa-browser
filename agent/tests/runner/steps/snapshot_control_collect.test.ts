@@ -341,7 +341,7 @@ test('custom_select collector handles aria-owns via DOM id', () => {
     assert.strictEqual(entries[0].popupNodeId, 'lb_owns');
 });
 
-test('custom_select does not produce control when aria-controls DOM id not found', () => {
+test('custom_select not generated when aria-controls DOM id not found', () => {
     const combobox = makeNode('combo_nf', 'combobox');
     const root = makeNode('root', 'root', [combobox]);
 
@@ -349,13 +349,52 @@ test('custom_select does not produce control when aria-controls DOM id not found
     setAttr(ctx, 'combo_nf', 'aria-controls', 'nonexistent-id');
 
     const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 0);
+});
 
+test('custom_select not generated when combobox has no aria-controls or aria-owns', () => {
+    const combobox = makeNode('combo_na', 'combobox');
+    const root = makeNode('root', 'root', [combobox]);
+
+    const ctx = makeCtx(root);
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 0);
+});
+
+test('custom_select not generated when popup has no option children', () => {
+    const listbox = makeNode('empty_lb', 'listbox');
+    const combobox = makeNode('combo_empty', 'combobox');
+    const wrapper = makeNode('empty_wrap', 'generic', [combobox, listbox]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'empty_lb', 'id', 'empty-popup');
+    setAttr(ctx, 'combo_empty', 'aria-controls', 'empty-popup');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 0);
+});
+
+test('custom_select generated when combobox has popup with options', () => {
+    const opt = makeNode('ok_opt', 'option'); opt.name = 'Choice';
+    const listbox = makeNode('ok_lb', 'listbox', [opt]);
+    const combobox = makeNode('ok_combo', 'combobox');
+    const wrapper = makeNode('ok_wrap', 'generic', [combobox, listbox]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'ok_lb', 'id', 'ok-popup');
+    setAttr(ctx, 'ok_combo', 'aria-controls', 'ok-popup');
+
+    const { controlIndex } = collect(root, ctx);
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
     assert.strictEqual(entries.length, 1);
-    // It still produces an entry (the combobox exists), but popupNodeId should be undefined
-    assert.strictEqual(entries[0].popupNodeId, undefined);
+    assert.strictEqual(entries[0].popupNodeId, 'ok_lb');
     const options = entries[0].data.options as Array<Record<string, unknown>>;
-    assert.strictEqual(options.length, 0);
+    assert.strictEqual(options.length, 1);
 });
 
 // ── Ant Select class auxiliary ─────────────────────────────────
