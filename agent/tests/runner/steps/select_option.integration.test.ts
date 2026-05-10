@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import type { Step, StepResult } from '../../../src/runner/steps/types';
@@ -504,6 +505,35 @@ test('select_option: custom_select option not found returns ERR_NOT_FOUND', asyn
             id: 'cs-notfound',
             name: 'browser.select_option',
             args: { selector: '#combobox-trigger', values: ['nonexistent'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+// ── custom_select source guards ──
+
+test('select_option: custom_select does not use has-text fallback', () => {
+    const source = readFileSync(
+        path.resolve(process.cwd(), 'src/runner/steps/executors/select_option/custom_select.ts'),
+        'utf8',
+    );
+    assert.equal(source.includes('has-text'), false, 'custom_select must not contain has-text');
+    assert.equal(source.includes('getByText'), false, 'custom_select must not contain getByText');
+});
+
+test('select_option: custom_select popupNodeId missing returns ERR_NOT_FOUND', async () => {
+    const { browser, deps } = await setupBinding();
+    try {
+        const step: Step<'browser.select_option'> = {
+            id: 'cs-nopopup',
+            name: 'browser.select_option',
+            args: { selector: '#broken-trigger', values: ['anything'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);

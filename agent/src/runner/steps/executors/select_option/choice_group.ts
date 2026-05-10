@@ -24,7 +24,10 @@ const toSelectOptions = (component: SelectOptionControl['component']): SelectOpt
 };
 
 const resolveNodeSelector = (snapshot: SnapshotResult, nodeId: string): string | undefined => {
-    return snapshot.locatorIndex[nodeId]?.direct?.query;
+    const direct = snapshot.locatorIndex[nodeId]?.direct;
+    if (!direct) return undefined;
+    if (direct.kind === 'role') return direct.fallback;
+    return direct.query;
 };
 
 const clickNode = async (

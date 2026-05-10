@@ -382,5 +382,6 @@ const LOCATOR_TARGET_ROLES = new Set([
     'checkbox',
     'radio',
     'tab',
+    'option',
 ]);
 const LOCATOR_TARGET_TAGS = new Set(['button', 'a', 'input', 'textarea', 'select']);

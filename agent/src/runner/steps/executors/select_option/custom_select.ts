@@ -26,7 +26,10 @@ const resolveNodeSelector = (
     snapshot: import('../snapshot/core/types').SnapshotResult,
     nodeId: string,
 ): string | undefined => {
-    return snapshot.locatorIndex[nodeId]?.direct?.query;
+    const direct = snapshot.locatorIndex[nodeId]?.direct;
+    if (!direct) return undefined;
+    if (direct.kind === 'role') return direct.fallback;
+    return direct.query;
 };
 
 export const executeCustomSelect = async (
@@ -96,14 +99,7 @@ export const executeCustomSelect = async (
     const freshMatch = matchOption(step.id, freshOptions, targetValue);
     if (isStepResult(freshMatch)) {return freshMatch;}
 
-    let optionSelector = resolveNodeSelector(openSnapshot, freshMatch.option.nodeId);
-    if (!optionSelector) {
-        const popupAttrs = openSnapshot.attrIndex[control.component.popupNodeId];
-        const popupDomId = popupAttrs?.['id'];
-        if (popupDomId) {
-            optionSelector = `#${popupDomId} >> [role="option"]:has-text("${freshMatch.option.label || freshMatch.option.value}")`;
-        }
-    }
+    const optionSelector = resolveNodeSelector(openSnapshot, freshMatch.option.nodeId);
     if (!optionSelector) {
         return notFound(step.id, 'no selector for option node', { optionNodeId: freshMatch.option.nodeId });
     }
