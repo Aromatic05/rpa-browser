@@ -455,6 +455,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
         }
 
         if (action.type === 'record.event') {
+            const recordLog = getLogger('record');
             const activeTab = workspace.tabs.getActiveTab();
             const fallbackTabName = activeTab?.name || '';
             if (!fallbackTabName) {
@@ -469,8 +470,35 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 : '';
             const sourceTab = sourceTabName ? workspace.tabs.getTab(sourceTabName) : null;
             const targetTab = sourceTab || activeTab;
-            const page = targetTab?.page || null;
             const tabName = targetTab?.name || fallbackTabName;
+            let page = targetTab?.page || null;
+            if (!page) {
+                try {
+                    const binding = await services.runtime.ensureExecutableTab({
+                        workspace,
+                        pageRegistry: services.pageRegistry,
+                        tabName,
+                        urlHint: targetTab?.url,
+                    });
+                    page = binding.page;
+                } catch (error) {
+                    recordLog('record_event_ensure_page_failed', {
+                        workspaceName: workspace.name,
+                        tabName,
+                        sourceTabName,
+                        message: error instanceof Error ? error.message : String(error),
+                    });
+                }
+            }
+            recordLog('record_event_context', {
+                workspaceName: workspace.name,
+                fallbackTabName,
+                sourceTabName,
+                resolvedTabName: tabName,
+                hasPage: Boolean(page),
+                activeHasPage: Boolean(activeTab?.page),
+                sourceHasPage: Boolean(sourceTab?.page),
+            });
             const result = await ingestRecordPayload({
                 state: services.recordingState,
                 payload,
