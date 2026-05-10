@@ -1,139 +1,100 @@
 import type { StepUnion } from '../../runner/steps/types';
-import type { BaseControlComponent } from '../../runner/steps/executors/snapshot/control/types';
-import { resolveRecordSnapshotForEvent } from '../enhancement/build';
 import type { RecorderEvent } from '../capture/recorder';
+import {
+    readControlOptionByNodeId,
+    readOptionRecordedValue,
+    readSelectedValuesFromControl,
+    resolveRecordTargetBinding,
+} from '../pipeline/target_binding';
+import type {
+    PendingCheckboxGroupSession,
+    PendingChoiceSession,
+    PendingCustomSelectSession,
+    PendingSuppressedClick,
+    RecordingState,
+} from '../pipeline/state';
 import type {
     NormalizeContext,
     NormalizeHandledResult,
     RecordNormalizerResult,
 } from './types';
-import type {
-    PendingCheckboxGroupSession,
-    PendingChoiceSession,
-    PendingCustomSelectSession,
-    RecordingState,
-} from '../pipeline/state';
 
-type SelectOptionKind = 'native_select' | 'radio_group' | 'checkbox_group' | 'custom_select';
+const NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS = 1200;
 
-const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
-    'native_select',
-    'radio_group',
-    'checkbox_group',
-    'custom_select',
-]);
+const normalizeSelector = (selector: string | undefined): string => (selector || '').trim();
 
-const SELECT_OPTION_OWNER = 'browser.select_option';
-type SnapshotResolver = typeof resolveRecordSnapshotForEvent;
-let snapshotResolver: SnapshotResolver = resolveRecordSnapshotForEvent;
+const checkboxSessionKey = (
+    workspaceName: string,
+    tabName: string,
+    controlRootNodeId: string,
+): string => `${workspaceName}::${tabName}::checkbox_group::${controlRootNodeId}`;
 
-export const setSelectOptionSnapshotResolverForTest = (resolver: SnapshotResolver | null): void => {
-    snapshotResolver = resolver || resolveRecordSnapshotForEvent;
-};
+const customSessionKey = (
+    workspaceName: string,
+    tabName: string,
+    controlRootNodeId: string,
+): string => `${workspaceName}::${tabName}::custom_select::${controlRootNodeId}`;
 
-type ControlMatch = {
-    nodeId: string;
-    component: BaseControlComponent;
-    controlRef: string;
-};
-
-type OptionEntry = {
-    value?: string;
-    label?: string;
-    text?: string;
-    selected?: boolean;
-    nodeId?: string;
-};
-
-const normalize = (value: string | undefined): string => (value || '').trim();
-
-const toOptionEntries = (component: BaseControlComponent): OptionEntry[] => {
-    const rawOptions = component.data?.options;
-    if (!Array.isArray(rawOptions)) {return [];}
-    const options: OptionEntry[] = [];
-    for (const item of rawOptions) {
-        if (!item || typeof item !== 'object') {continue;}
-        const entry = item as Record<string, unknown>;
-        options.push({
-            value: typeof entry.value === 'string' ? entry.value : undefined,
-            label: typeof entry.label === 'string' ? entry.label : undefined,
-            text: typeof entry.text === 'string' ? entry.text : undefined,
-            selected: typeof entry.selected === 'boolean' ? entry.selected : undefined,
-            nodeId: typeof entry.nodeId === 'string' ? entry.nodeId : undefined,
-        });
+const readChoiceSessions = (state: RecordingState, recordingToken: string): Map<string, PendingChoiceSession> => {
+    let sessions = state.pendingChoiceEvents.get(recordingToken);
+    if (!sessions) {
+        sessions = new Map();
+        state.pendingChoiceEvents.set(recordingToken, sessions);
     }
-    return options;
+    return sessions;
 };
 
-const readOptionValue = (option: OptionEntry): string | undefined => {
-    const fromValue = normalize(option.value);
-    if (fromValue) {return fromValue;}
-    const fromLabel = normalize(option.label);
-    if (fromLabel) {return fromLabel;}
-    const fromText = normalize(option.text);
-    if (fromText) {return fromText;}
-    return undefined;
+const deleteChoiceSession = (state: RecordingState, recordingToken: string, sessionKey: string): void => {
+    const sessions = state.pendingChoiceEvents.get(recordingToken);
+    if (!sessions) {return;}
+    sessions.delete(sessionKey);
+    if (sessions.size === 0) {
+        state.pendingChoiceEvents.delete(recordingToken);
+    }
 };
 
-const readComponentKind = (component: BaseControlComponent): SelectOptionKind | undefined => {
-    if (!SUPPORTED_KINDS.has(component.kind)) {return undefined;}
-    return component.kind as SelectOptionKind;
+const readSuppressedClicks = (state: RecordingState, recordingToken: string): PendingSuppressedClick[] => {
+    return state.pendingSuppressedClicks.get(recordingToken) || [];
 };
 
-const hasSelectOptionCapability = (component: BaseControlComponent): boolean => {
-    return component.owner === SELECT_OPTION_OWNER
-        && Array.isArray(component.capabilities)
-        && component.capabilities.includes('select_option');
+const writeSuppressedClicks = (state: RecordingState, recordingToken: string, entries: PendingSuppressedClick[]): void => {
+    if (!entries.length) {
+        state.pendingSuppressedClicks.delete(recordingToken);
+        return;
+    }
+    state.pendingSuppressedClicks.set(recordingToken, entries);
 };
 
-const findControlMatchForEvent = async (
-    context: NormalizeContext,
-    event: RecorderEvent,
-): Promise<ControlMatch | undefined> => {
-    const selector = normalize(event.selector);
-    if (!selector) {return undefined;}
-    const snapshot = await snapshotResolver({
-        event,
-        page: context.page,
-        snapshotCache: context.snapshotCache,
-        cacheKey: context.cacheKey,
-    });
-    if (!snapshot) {return undefined;}
+const consumeSuppressedNativeSelectClick = (context: NormalizeContext, event: RecorderEvent): boolean => {
+    if (event.type !== 'click') {return false;}
+    const selector = normalizeSelector(event.selector);
+    if (!selector) {return false;}
 
-    const matchedNodeIds = new Set<string>();
-    for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
-        if (normalize(locator.direct?.query) === selector) {
-            matchedNodeIds.add(nodeId);
+    const nowTs = event.ts || Date.now();
+    const current = readSuppressedClicks(context.state, context.recordingToken);
+    const kept: PendingSuppressedClick[] = [];
+    let consumed = false;
+    for (const item of current) {
+        if (nowTs - item.ts > NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS) {
             continue;
         }
-        if (normalize(locator.direct?.fallback) === selector) {
-            matchedNodeIds.add(nodeId);
+        if (!consumed && item.tabName === context.tabName && item.selector === selector) {
+            consumed = true;
+            continue;
         }
+        kept.push(item);
     }
+    writeSuppressedClicks(context.state, context.recordingToken, kept);
+    return consumed;
+};
 
-    for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-        const idValue = normalize(attrs.id);
-        if (idValue && selector === `#${idValue}`) {
-            matchedNodeIds.add(nodeId);
-        }
-        const testId = normalize(attrs['data-testid']);
-        if (testId && selector === `[data-testid="${testId}"]`) {
-            matchedNodeIds.add(nodeId);
-        }
-    }
-
-    if (matchedNodeIds.size !== 1) {return undefined;}
-    const nodeId = Array.from(matchedNodeIds)[0];
-    const node = snapshot.nodeIndex[nodeId];
-    const controlRef = node?.control?.ref;
-    if (!controlRef) {return undefined;}
-    const component = snapshot.controlIndex?.[controlRef];
-    if (!component) {return undefined;}
-    if (!hasSelectOptionCapability(component)) {return undefined;}
-    const kind = readComponentKind(component);
-    if (!kind) {return undefined;}
-
-    return { nodeId, component, controlRef };
+const markSuppressedNativeSelectClick = (context: NormalizeContext, event: RecorderEvent): void => {
+    const selector = normalizeSelector(event.selector);
+    if (!selector) {return;}
+    const entries = readSuppressedClicks(context.state, context.recordingToken)
+        .filter((item) => event.ts - item.ts <= NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS);
+    entries.push({ tabName: context.tabName, selector, ts: event.ts });
+    writeSuppressedClicks(context.state, context.recordingToken, entries);
 };
 
 const buildSelectOptionStep = (
@@ -156,57 +117,6 @@ const buildSelectOptionStep = (
         step,
         enhancementEvent: event,
     };
-};
-
-const readChoiceSessions = (state: RecordingState, recordingToken: string): Map<string, PendingChoiceSession> => {
-    let sessions = state.pendingChoiceEvents.get(recordingToken);
-    if (!sessions) {
-        sessions = new Map();
-        state.pendingChoiceEvents.set(recordingToken, sessions);
-    }
-    return sessions;
-};
-
-const deleteChoiceSession = (state: RecordingState, recordingToken: string, sessionKey: string): void => {
-    const sessions = state.pendingChoiceEvents.get(recordingToken);
-    if (!sessions) {return;}
-    sessions.delete(sessionKey);
-    if (sessions.size === 0) {
-        state.pendingChoiceEvents.delete(recordingToken);
-    }
-};
-
-const checkboxSessionKey = (
-    workspaceName: string,
-    tabName: string,
-    controlRootNodeId: string,
-): string => `${workspaceName}::${tabName}::checkbox_group::${controlRootNodeId}`;
-
-const customSessionKey = (
-    workspaceName: string,
-    tabName: string,
-    controlRootNodeId: string,
-): string => `${workspaceName}::${tabName}::custom_select::${controlRootNodeId}`;
-
-const snapshotSelectedValues = (component: BaseControlComponent): string[] => {
-    const options = toOptionEntries(component);
-    const selected: string[] = [];
-    for (const option of options) {
-        if (option.selected !== true) {continue;}
-        const value = readOptionValue(option);
-        if (!value) {continue;}
-        selected.push(value);
-    }
-    return selected;
-};
-
-const matchOptionByNodeId = (component: BaseControlComponent, nodeId: string): OptionEntry | undefined => {
-    for (const option of toOptionEntries(component)) {
-        if (option.nodeId === nodeId) {
-            return option;
-        }
-    }
-    return undefined;
 };
 
 const buildReleasedTriggerClickStep = (context: NormalizeContext, triggerEvent: RecorderEvent): StepUnion => {
@@ -245,7 +155,20 @@ export const flushPendingChoiceEvents = (input: {
                 session.resolve,
             );
             emitted.push({ step, event: session.lastEvent });
-        } else if (session.kind === 'custom_select' && input.reason !== 'navigate' && input.reason !== 'click') {
+            deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
+            continue;
+        }
+
+        if (session.kind === 'custom_select' && input.reason === 'navigate') {
+            deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
+            continue;
+        }
+
+        if (session.kind === 'custom_select' && input.reason === 'click') {
+            continue;
+        }
+
+        if (session.kind === 'custom_select') {
             const step = input.context.createStep(
                 'browser.click',
                 { selector: session.selector },
@@ -254,75 +177,106 @@ export const flushPendingChoiceEvents = (input: {
                 session.resolve,
             );
             emitted.push({ step, event: session.triggerEvent });
-        } else if (session.kind === 'custom_select' && input.reason === 'click') {
-            continue;
+            deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
         }
-        deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
     }
     return emitted;
+};
+
+const releaseCustomSelectTriggerIfNeeded = async (
+    context: NormalizeContext,
+    event: RecorderEvent,
+): Promise<NormalizeHandledResult | undefined> => {
+    if (event.type !== 'click') {return undefined;}
+    const sessions = context.state.pendingChoiceEvents.get(context.recordingToken);
+    if (!sessions || sessions.size === 0) {return undefined;}
+
+    const pendingCustom = Array.from(sessions.values())
+        .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+    if (!pendingCustom) {return undefined;}
+
+    const currentBinding = await resolveRecordTargetBinding({
+        event,
+        page: context.page,
+        snapshotCache: context.snapshotCache,
+        cacheKey: context.cacheKey,
+    });
+
+    if (currentBinding && currentBinding.controlRootNodeId === pendingCustom.controlRootNodeId) {
+        return undefined;
+    }
+
+    const releasedStep = buildReleasedTriggerClickStep(context, pendingCustom.triggerEvent);
+    deleteChoiceSession(context.state, context.recordingToken, pendingCustom.sessionKey);
+    return {
+        status: 'handled',
+        step: releasedStep,
+        enhancementEvent: pendingCustom.triggerEvent,
+        continueCurrentEvent: true,
+    };
 };
 
 export const normalizeSelectOption = async (
     context: NormalizeContext,
     event: RecorderEvent,
 ): Promise<RecordNormalizerResult> => {
-    const sessions = context.state.pendingChoiceEvents.get(context.recordingToken);
-    const pendingCustom = sessions
-        ? Array.from(sessions.values()).find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined
-        : undefined;
-    const match = await findControlMatchForEvent(context, event);
-    if (event.type === 'click' && pendingCustom) {
-        const sameControl = Boolean(match && readComponentKind(match.component) === 'custom_select' && match.component.rootNodeId === pendingCustom.controlRootNodeId);
-        if (!sameControl) {
-            const step = buildReleasedTriggerClickStep(context, pendingCustom.triggerEvent);
-            deleteChoiceSession(context.state, context.recordingToken, pendingCustom.sessionKey);
-            return {
-                status: 'handled',
-                step,
-                enhancementEvent: pendingCustom.triggerEvent,
-            };
+    if (consumeSuppressedNativeSelectClick(context, event)) {
+        return { status: 'pending' };
+    }
+
+    const releasedTrigger = await releaseCustomSelectTriggerIfNeeded(context, event);
+    if (releasedTrigger) {
+        return releasedTrigger;
+    }
+
+    const binding = await resolveRecordTargetBinding({
+        event,
+        page: context.page,
+        snapshotCache: context.snapshotCache,
+        cacheKey: context.cacheKey,
+    });
+
+    if (!binding) {
+        return { status: 'pass' };
+    }
+
+    if (binding.componentKind === 'native_select') {
+        if (event.type === 'click') {
+            return { status: 'pending' };
         }
-    }
-
-    if (!match) {
-        return { status: 'pass' };
-    }
-    const kind = readComponentKind(match.component);
-    if (!kind) {
-        return { status: 'pass' };
-    }
-
-    if (kind === 'native_select') {
         if (event.type !== 'select' || typeof event.value !== 'string') {
             return { status: 'pass' };
         }
+        markSuppressedNativeSelectClick(context, event);
         return buildSelectOptionStep(context, event, [event.value]);
     }
 
-    if (kind === 'radio_group') {
+    if (binding.componentKind === 'radio_group') {
         if (event.type !== 'check' || event.inputType !== 'radio') {
             return { status: 'pass' };
         }
-        if (event.checked !== true) {return { status: 'pending' };}
-        const option = matchOptionByNodeId(match.component, match.nodeId);
+        if (event.checked !== true) {
+            return { status: 'pending' };
+        }
+        const option = readControlOptionByNodeId(binding.component, binding.targetNodeId);
         if (!option) {return { status: 'pass' };}
-        const value = readOptionValue(option);
+        const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
         return buildSelectOptionStep(context, event, [value]);
     }
 
-    if (kind === 'checkbox_group') {
+    if (binding.componentKind === 'checkbox_group') {
         if (event.type !== 'check' || event.inputType !== 'checkbox') {
             return { status: 'pass' };
         }
-        const values = snapshotSelectedValues(match.component);
+        const values = readSelectedValuesFromControl(binding.component);
         const sessions = readChoiceSessions(context.state, context.recordingToken);
-        const sessionKey = checkboxSessionKey(context.workspaceName, context.tabName, match.component.rootNodeId);
+        const sessionKey = checkboxSessionKey(context.workspaceName, context.tabName, binding.controlRootNodeId);
         const session: PendingCheckboxGroupSession = {
             kind: 'checkbox_group',
             sessionKey,
-            controlRootNodeId: match.component.rootNodeId,
-            controlRef: match.controlRef,
+            controlRootNodeId: binding.controlRootNodeId,
+            controlRef: binding.controlRef,
             workspaceName: context.workspaceName,
             tabName: context.tabName,
             selector: event.selector,
@@ -335,25 +289,21 @@ export const normalizeSelectOption = async (
         return { status: 'pending' };
     }
 
-    if (kind === 'custom_select') {
-        const customSessions = readChoiceSessions(context.state, context.recordingToken);
-        const sessionKey = customSessionKey(context.workspaceName, context.tabName, match.component.rootNodeId);
-
+    if (binding.componentKind === 'custom_select') {
         if (event.type !== 'click') {
             return { status: 'pass' };
         }
+        const sessions = readChoiceSessions(context.state, context.recordingToken);
+        const sessionKey = customSessionKey(context.workspaceName, context.tabName, binding.controlRootNodeId);
 
-        const triggerNodeIds = new Set<string>([
-            match.component.rootNodeId,
-            match.component.controlNodeId || '',
-            match.component.triggerNodeId || '',
-        ]);
-        if (triggerNodeIds.has(match.nodeId)) {
+        if (binding.targetNodeId === binding.component.rootNodeId
+            || binding.targetNodeId === binding.component.controlNodeId
+            || binding.targetNodeId === binding.component.triggerNodeId) {
             const pendingSession: PendingCustomSelectSession = {
                 kind: 'custom_select',
                 sessionKey,
-                controlRootNodeId: match.component.rootNodeId,
-                controlRef: match.controlRef,
+                controlRootNodeId: binding.controlRootNodeId,
+                controlRef: binding.controlRef,
                 workspaceName: context.workspaceName,
                 tabName: context.tabName,
                 selector: event.selector,
@@ -361,24 +311,22 @@ export const normalizeSelectOption = async (
                 triggerEvent: event,
                 ts: event.ts,
             };
-            customSessions.set(sessionKey, pendingSession);
+            sessions.set(sessionKey, pendingSession);
             return { status: 'pending' };
         }
 
-        const pendingSession = customSessions.get(sessionKey);
+        const pendingSession = sessions.get(sessionKey);
         if (!pendingSession || pendingSession.kind !== 'custom_select') {
             return { status: 'pass' };
         }
-
-        const optionNodeIds = new Set<string>(match.component.optionNodeIds || []);
-        if (!optionNodeIds.has(match.nodeId)) {
+        if (!binding.component.optionNodeIds.includes(binding.targetNodeId)) {
             return { status: 'pass' };
         }
 
-        const option = matchOptionByNodeId(match.component, match.nodeId);
+        const option = readControlOptionByNodeId(binding.component, binding.targetNodeId);
         deleteChoiceSession(context.state, context.recordingToken, sessionKey);
         if (!option) {return { status: 'pass' };}
-        const value = readOptionValue(option);
+        const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
         return buildSelectOptionStep(context, event, [value]);
     }

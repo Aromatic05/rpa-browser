@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { RecorderEvent } from '../capture/recorder';
-import type { RecordSnapshotCacheEntry } from '../enhancement/build';
+import type { RecordSnapshotCacheEntry } from '../pipeline/snapshot';
 import type { RecordingState } from '../pipeline/state';
 import type { SnapshotResult } from '../../runner/steps/executors/snapshot/core/types';
 import type {
@@ -38,6 +38,7 @@ export type NormalizeHandledResult = {
     status: 'handled';
     step: StepUnion;
     enhancementEvent: RecorderEvent;
+    continueCurrentEvent?: boolean;
 };
 
 export type NormalizePendingResult = {

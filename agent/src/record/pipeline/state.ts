@@ -1,5 +1,5 @@
 import type { RecorderEvent } from '../capture/recorder';
-import type { RecordSnapshotCacheEntry } from '../enhancement/build';
+import type { RecordSnapshotCacheEntry } from './snapshot';
 import type { RecordingEnhancementMap } from '../types';
 import type { RecordingManifest, WorkspaceSavedSnapshot } from './manifest';
 import { flushPendingFillEvents } from './pending';
