@@ -1,12 +1,12 @@
 import type { Page } from 'playwright';
-import type { RecorderEvent } from './recorder';
-import { generateSemanticSnapshot } from '../runner/steps/executors/snapshot/pipeline/snapshot';
-import { getNodeSemanticHints } from '../runner/steps/executors/snapshot/core/runtime_store';
-import type { SnapshotResult, UnifiedNode } from '../runner/steps/executors/snapshot/core/types';
-import type { ResolveHint } from '../runner/steps/types';
-import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from './types';
-import { buildResolveFromSnapshotCandidate } from '../runner/steps/resolve_builder';
-import { normalizeResolveHint } from '../runner/steps/resolve_utils';
+import type { RecorderEvent } from '../capture/recorder';
+import { generateSemanticSnapshot } from '../../runner/steps/executors/snapshot/pipeline/snapshot';
+import { getNodeSemanticHints } from '../../runner/steps/executors/snapshot/core/runtime_store';
+import type { SnapshotResult, UnifiedNode } from '../../runner/steps/executors/snapshot/core/types';
+import type { ResolveHint } from '../../runner/steps/types';
+import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from '../types';
+import { buildResolveFromSnapshotCandidate } from '../../runner/steps/resolve_builder';
+import { normalizeResolveHint } from '../../runner/steps/resolve_utils';
 
 export type RecordSnapshotCacheEntry = {
     snapshot: SnapshotResult;
@@ -54,7 +54,6 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     const matchedNodeId = findSnapshotNodeIdByRawSelector(snapshot, event.selector);
     if (!matchedNodeId) {
         return withRawContext(event, {
-            version: 1,
             eventType: event.type,
             snapshot: {
                 mode: snapshot.snapshotMeta?.mode,
@@ -301,66 +300,76 @@ const safePageUrl = (page: Page): string => {
 
 const buildLowConfidenceRawOnlyResolve = (
     event: RecorderEvent,
-    overrides?: { reason?: string[]; warnings?: string[]; confidence?: number },
-): Pick<RecordedStepEnhancement, 'resolveHint' | 'resolvePolicy'> => ({
-    resolveHint: {
-        target: {
-            tag: event.targetHint,
-            role: event.a11yHint?.role,
-            attrs: event.targetAttrs,
-            state: event.targetState,
+    override?: { reason?: string[]; warnings?: string[]; confidence?: number },
+): RecordedStepEnhancement => {
+    const confidence = override?.confidence ?? 0.35;
+    const reason = override?.reason ?? ['snapshot_unavailable'];
+    const warnings = override?.warnings ?? ['SNAPSHOT_UNAVAILABLE', 'LOW_CONFIDENCE_RAW_ONLY'];
+    return ({
+        version: 1,
+        eventType: event.type,
+        resolveHint: {
+            target: {
+                role: event.a11yHint?.role,
+                name: event.a11yHint?.name,
+                text: event.a11yHint?.text,
+                tag: event.targetHint,
+                attrs: event.targetAttrs,
+                state: event.targetState,
+            },
+            raw: {
+                selector: event.selector,
+                locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
+                scopeHint: event.scopeHint || undefined,
+                targetHint: event.targetHint,
+            },
         },
-        raw: {
-            selector: event.selector,
-            locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
-            scopeHint: event.scopeHint || undefined,
-            targetHint: event.targetHint,
-        },
-        capture: {
-            source: 'record_enrichment',
-            confidence: overrides?.confidence ?? 0.25,
-            reason: overrides?.reason || ['raw_selector_or_text_only_without_snapshot'],
-            warnings: overrides?.warnings || ['LOW_CONFIDENCE_RAW_ONLY'],
-        },
-    },
-    resolvePolicy: {
-        preferDirect: true,
-        requireVisible: true,
-        allowFuzzy: true,
-        allowIndexDrift: true,
-    },
-});
+        resolvePolicy: { requireVisible: true },
+        confidence,
+        confidenceReason: reason,
+        warnings,
+    } as unknown as RecordedStepEnhancement);
+};
 
 const computeRecordConfidence = (
     event: RecorderEvent,
     snapshot: SnapshotResult,
-    nodeId: string,
-): { confidence: number; reason: string[]; warnings: string[] } => {
-    const locator = snapshot.locatorIndex[nodeId];
-    const role = normalizeText(snapshot.nodeIndex[nodeId]?.role);
-    const name = normalizeText(snapshot.nodeIndex[nodeId]?.name);
+    matchedNodeId: string,
+): { confidence: number; reason: string[]; warnings?: string[] } => {
     const reasons: string[] = [];
     const warnings: string[] = [];
-    let confidence = 0.45;
-    if (event.selector && locator?.direct?.query && normalizeText(event.selector) === normalizeText(locator.direct.query)) {
-        confidence = 0.95;
-        reasons.push('direct_selector_exact_match');
-    } else if (event.a11yHint?.role && event.a11yHint?.name && normalizeText(event.a11yHint.role) === role && name.includes(normalizeText(event.a11yHint.name))) {
-        confidence = 0.8;
-        reasons.push('role_and_name_match');
-    } else if (event.selector) {
-        confidence = 0.5;
-        reasons.push('raw_selector_only');
-    } else {
-        confidence = 0.35;
-        reasons.push('text_or_a11y_only');
+    let confidence = 0.88;
+
+    const locator = snapshot.locatorIndex[matchedNodeId];
+    if (!locator?.direct?.query) {
+        confidence -= 0.2;
+        reasons.push('missing_direct_locator');
+        warnings.push('MISSING_DIRECT_LOCATOR');
     }
-    if ((event.locatorCandidates || []).length > 1) {
-        confidence = Math.max(0.2, confidence - 0.15);
-        warnings.push('AMBIGUOUS_TARGET');
+
+    if (!event.a11yHint?.role && !event.a11yHint?.name && !event.a11yHint?.text) {
+        confidence -= 0.1;
+        reasons.push('missing_a11y_hint');
     }
-    if (confidence < 0.55) {
-        warnings.push('LOW_CONFIDENCE_RAW_ONLY');
+
+    if (!event.locatorCandidates?.length) {
+        confidence -= 0.08;
+        reasons.push('missing_locator_candidates');
     }
-    return { confidence, reason: reasons, warnings };
+
+    if (!event.selector) {
+        confidence -= 0.2;
+        reasons.push('missing_raw_selector');
+        warnings.push('MISSING_RAW_SELECTOR');
+    }
+
+    if (confidence < 0.45) {
+        warnings.push('LOW_CONFIDENCE');
+    }
+
+    return {
+        confidence: Math.max(0.2, Math.min(0.98, Number(confidence.toFixed(2)))),
+        reason: reasons.length ? reasons : ['snapshot_match'],
+        warnings: warnings.length ? warnings : undefined,
+    };
 };
