@@ -60,7 +60,7 @@
         <div class="row">
             <div
                 id="combobox-trigger"
-                class="trigger"
+                class="trigger ant-select"
                 role="combobox"
                 tabindex="0"
                 aria-haspopup="listbox"
@@ -68,13 +68,13 @@
                 aria-expanded="false"
                 aria-label="报销状态"
             >
-                待审批
+                <div class="ant-select-selector">待审批</div>
             </div>
             <input id="combobox-model" type="hidden" value="pending" />
-            <ul id="combobox-popup" class="popup" role="listbox" hidden>
-                <li class="opt" role="option" data-value="pending">待审批</li>
-                <li class="opt" role="option" data-value="processing">审批中</li>
-                <li class="opt" role="option" data-value="done">已完成</li>
+            <ul id="combobox-popup" class="popup ant-select-dropdown" role="listbox" hidden>
+                <li class="opt ant-select-item-option" role="option" data-value="pending">待审批</li>
+                <li class="opt ant-select-item-option" role="option" data-value="processing">审批中</li>
+                <li class="opt ant-select-item-option" role="option" data-value="done">已完成</li>
             </ul>
         </div>
 
@@ -117,19 +117,38 @@
         <div class="row">
             <div
                 id="stale-trigger"
-                class="trigger"
+                class="trigger ant-select"
                 role="combobox"
                 tabindex="0"
                 aria-haspopup="listbox"
                 aria-controls="stale-popup"
                 aria-expanded="false"
             >
-                固定值
+                <div class="ant-select-selector">固定值</div>
             </div>
-            <ul id="stale-popup" class="popup" role="listbox" hidden>
-                <li class="opt" role="option" data-value="fixed">固定值</li>
-                <li class="opt" role="option" data-value="stable">稳定值</li>
+            <ul id="stale-popup" class="popup ant-select-dropdown" role="listbox" hidden>
+                <li class="opt ant-select-item-option" role="option" data-value="fixed">固定值</li>
+                <li class="opt ant-select-item-option" role="option" data-value="stable">稳定值</li>
             </ul>
+        </div>
+
+        <div class="row">
+            <fieldset id="status-radio-group" role="radiogroup" aria-label="审批状态">
+                <legend>审批状态</legend>
+                <label><input type="radio" name="status" value="pending" /> 待审批</label>
+                <label><input type="radio" name="status" value="processing" /> 审批中</label>
+                <label><input type="radio" name="status" value="done" /> 已完成</label>
+            </fieldset>
+        </div>
+
+        <div class="row">
+            <fieldset id="tag-checkbox-group" role="group" aria-label="标签选择">
+                <legend>标签选择</legend>
+                <label><input type="checkbox" name="tags" value="urgent" /> 紧急</label>
+                <label><input type="checkbox" name="tags" value="important" /> 重要</label>
+                <label><input type="checkbox" name="tags" value="normal" checked /> 普通</label>
+                <label><input type="checkbox" name="tags" value="low" /> 低优</label>
+            </fieldset>
         </div>
 
         <script>
