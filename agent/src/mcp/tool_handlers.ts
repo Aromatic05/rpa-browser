@@ -68,7 +68,7 @@ export type WorkspaceMcpToolDeps = {
     runStepsDeps?: RunStepsDeps;
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
-    getPage?: (tabName: string, startUrl?: string) => Promise<Page>;
+    awaitTabPage?: (tabName: string, timeoutMs: number) => Promise<Page>;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
@@ -108,28 +108,13 @@ const resolveOrCreateTabNameWs = (deps: WorkspaceMcpToolDeps, tabName?: string):
     return deps.workspace.tabs.getActiveTab()?.name || crypto.randomUUID();
 };
 
-const resolveOrBootstrapScopeWs = async (
+const resolveScopeWs = (
     deps: WorkspaceMcpToolDeps,
     tabName: string | undefined,
-    options?: { allowBootstrap?: boolean },
-): Promise<{ tabName: string }> => {
-    const allowBootstrap = options?.allowBootstrap !== false;
+): { tabName: string } => {
     const resolvedTabName = resolveTabNameOrActiveWs(deps, tabName);
-    if (deps.workspace.tabs.hasTab(resolvedTabName)) {
-        deps.workspace.tabs.setActiveTab(resolvedTabName);
-        return { tabName: resolvedTabName };
-    }
-    if (!allowBootstrap) {
-        throw new Error('tab not found');
-    }
-    if (!deps.getPage) {
-        throw new Error('cannot bootstrap tab: getPage not provided');
-    }
-    const page = await deps.getPage(resolvedTabName);
     if (!deps.workspace.tabs.hasTab(resolvedTabName)) {
-        deps.workspace.tabs.createTab({ tabName: resolvedTabName, page, url: page.url() });
-    } else {
-        deps.workspace.tabs.bindPage(resolvedTabName, page);
+        throw new Error('tab not found');
     }
     deps.workspace.tabs.setActiveTab(resolvedTabName);
     return { tabName: resolvedTabName };
@@ -139,10 +124,14 @@ const runSingleStepWs = async (
     deps: WorkspaceMcpToolDeps,
     tabName: string | undefined,
     step: StepUnion,
-    options?: { allowBootstrap?: boolean },
 ) => {
-    const scope = await resolveOrBootstrapScopeWs(deps, tabName, options);
+    const scope = resolveScopeWs(deps, tabName);
     deps.workspace.tabs.setActiveTab(scope.tabName);
+    const isCreateTabStep = step.name === 'browser.create_tab';
+    const isReadOnlyStep = step.name === 'browser.get_page_info' || step.name === 'browser.list_tabs';
+    if (!isCreateTabStep && !isReadOnlyStep && deps.awaitTabPage) {
+        await deps.awaitTabPage(scope.tabName, deps.config?.waitPolicy.pageReadyTimeoutMs || 1500);
+    }
     const { pipe, checkpoint } = await runStepList(deps.workspace.name, [step], deps.runStepsDeps, {
         stopOnError: true,
     });
@@ -250,7 +239,6 @@ const handleGetPageInfoWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => asyn
                 args: {},
                 meta: { source: 'mcp' },
             },
-            { allowBootstrap: false },
         );
     } catch {
         return {
@@ -287,7 +275,6 @@ const handleListTabsWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (
                 args: {},
                 meta: { source: 'mcp' },
             },
-            { allowBootstrap: false },
         );
     } catch {
         return {
@@ -727,7 +714,6 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
         args: {
             nodeId: action.nodeId,
             selector: action.selector,
-            coord: action.coord,
             options: action.options,
         },
         meta: { source: 'mcp' },

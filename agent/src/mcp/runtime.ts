@@ -37,7 +37,7 @@ export const createWorkspaceMcpRuntime = (deps: WorkspaceMcpRuntimeDeps): Worksp
             runStepsDeps: deps.runStepsDeps,
             config: deps.config,
             log: deps.log,
-            getPage: (tabName: string, startUrl?: string) => deps.workspace.tabs.ensurePage(tabName, startUrl),
+            awaitTabPage: (tabName: string, timeoutMs: number) => deps.workspace.tabs.awaitTabPage(tabName, timeoutMs),
         });
         const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
         if (!enabledTools) {return handlers;}
