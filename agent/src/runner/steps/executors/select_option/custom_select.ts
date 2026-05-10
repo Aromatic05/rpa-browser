@@ -119,12 +119,6 @@ export const executeCustomSelect = async (
         };
     }
 
-    const trimmed = targetValue.trim();
-    const ariaSelected = await binding.page.locator(optionSelector).getAttribute('aria-selected');
-    if (ariaSelected === 'true') {
-        return { stepId: step.id, ok: true };
-    }
-
     const afterSnapshot = await generateSemanticSnapshot(binding.page);
     const afterComponent = afterSnapshot.controlIndex[control.ref];
     if (!afterComponent) {
@@ -137,6 +131,7 @@ export const executeCustomSelect = async (
     const selectedValues = afterOptions.filter((o) => o.selected).map((o) => o.value);
     const selectedLabels = afterOptions.filter((o) => o.selected).map((o) => o.label);
 
+    const trimmed = targetValue.trim();
     const hitViaValues = selectedValues.some((v) => v.trim() === trimmed);
     const hitViaLabels = selectedLabels.some((l) => l.trim() === trimmed);
 

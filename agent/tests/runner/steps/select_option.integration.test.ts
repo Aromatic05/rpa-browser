@@ -522,6 +522,18 @@ test('select_option: custom_select does not use has-text fallback', () => {
     assert.equal(source.includes('getByText'), false, 'custom_select must not contain getByText');
 });
 
+test('select_option: custom_select does not use aria-selected early return', () => {
+    const source = readFileSync(
+        path.resolve(process.cwd(), 'src/runner/steps/executors/select_option/custom_select.ts'),
+        'utf8',
+    );
+    assert.equal(
+        source.includes("getAttribute('aria-selected')"),
+        false,
+        'custom_select must not read aria-selected as early success signal',
+    );
+});
+
 test('select_option: custom_select popupNodeId missing returns ERR_NOT_FOUND', async () => {
     const { browser, deps } = await setupBinding();
     try {
@@ -534,6 +546,74 @@ test('select_option: custom_select popupNodeId missing returns ERR_NOT_FOUND', a
         assert.equal(result.ok, false);
         if (!result.ok) {
             assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: custom_select aria-selected set but component state unchanged returns ERR_ASSERTION_FAILED', async () => {
+    const { browser, deps, page } = await setupBinding();
+    try {
+        // On option click, set aria-selected on a DIFFERENT option than the one
+        // being clicked. The stale handler still does not update the model. The
+        // post-action component will show the wrong option as selected, so the
+        // target value won't match selectedValues/selectedLabels.
+        await page.evaluate(() => {
+            const popup = document.getElementById('stale-popup');
+            if (popup) {
+                popup.addEventListener('click', (e) => {
+                    const clicked = (e.target as Element).closest('[role="option"]');
+                    if (!clicked) return;
+                    const allOpts = popup.querySelectorAll('[role="option"]');
+                    allOpts.forEach((opt) => {
+                        if (opt !== clicked) {
+                            opt.setAttribute('aria-selected', 'true');
+                        }
+                    });
+                });
+            }
+        });
+
+        const step: Step<'browser.select_option'> = {
+            id: 'cs-ariaselected-stale',
+            name: 'browser.select_option',
+            args: { selector: '#stale-trigger', values: ['稳定值'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_ASSERTION_FAILED');
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: custom_select post-action control missing returns ERR_ASSERTION_FAILED', async () => {
+    const { browser, deps, page } = await setupBinding();
+    try {
+        // Remove the trigger element after the popup option is clicked, so the
+        // post-action snapshot cannot register the control.
+        await page.evaluate(() => {
+            const popup = document.getElementById('combobox-popup');
+            if (popup) {
+                popup.addEventListener('click', () => {
+                    const trigger = document.getElementById('combobox-trigger');
+                    if (trigger) trigger.remove();
+                });
+            }
+        });
+
+        const step: Step<'browser.select_option'> = {
+            id: 'cs-postaction-missing',
+            name: 'browser.select_option',
+            args: { selector: '#combobox-trigger', values: ['审批中'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_ASSERTION_FAILED');
         }
     } finally {
         await browser.close();
