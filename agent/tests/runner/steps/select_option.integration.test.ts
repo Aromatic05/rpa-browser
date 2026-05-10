@@ -326,9 +326,8 @@ test('select_option: controlRef not found returns ERR_NOT_FOUND', async () => {
             id: 'cr-notfound',
             name: 'browser.select_option',
             args: {
-                selector: '#native-select',
-                controlRef: 'control:nonexistent:fake',
-                values: ['processing'],
+                selector: '#button-chip',
+                values: ['anything'],
             },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
@@ -341,23 +340,19 @@ test('select_option: controlRef not found returns ERR_NOT_FOUND', async () => {
     }
 });
 
-test('select_option: unsupported kind returns ERR_BAD_ARGS', async () => {
+test('select_option: select_option only accepts canonical args', async () => {
     const { browser, deps } = await setupBinding();
     try {
         const step: Step<'browser.select_option'> = {
-            id: 'bad-kind',
+            id: 'canonical',
             name: 'browser.select_option',
             args: {
                 selector: '#native-select',
-                kind: 'date_picker',
-                values: ['anything'],
+                values: ['processing'],
             },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
-        assert.equal(result.ok, false);
-        if (!result.ok) {
-            assert.equal(result.error?.code, 'ERR_BAD_ARGS');
-        }
+        assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
     } finally {
         await browser.close();
     }

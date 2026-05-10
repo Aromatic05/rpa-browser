@@ -237,10 +237,7 @@ export type StepArgsMap = {
         nodeId?: string;
         selector?: string;
         resolveId?: string;
-        kind?: string;
-        controlRef?: string;
         values: string[];
-        searchText?: string;
     };
     'browser.hover': {
         nodeId?: string;

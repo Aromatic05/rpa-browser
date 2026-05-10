@@ -5,7 +5,6 @@ import { mapTraceError } from '../../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../../helpers/delay';
 import { resolveTarget } from '../../helpers/resolve_target';
 import { generateSemanticSnapshot } from '../snapshot/pipeline/snapshot';
-import { SELECT_OPTION_KINDS } from './types';
 import type { SelectOptionControl } from './types';
 import { badArgs, isStepResult } from './assert';
 import { resolveControl } from './resolve_control';
@@ -68,13 +67,6 @@ export const executeBrowserSelectOption = async (
 ): Promise<StepResult> => {
     if (!Array.isArray(step.args.values) || step.args.values.length === 0) {
         return badArgs(step.id, 'values must be a non-empty array', { values: step.args.values });
-    }
-
-    if (step.args.kind && !SELECT_OPTION_KINDS.has(step.args.kind)) {
-        return badArgs(step.id, `unsupported kind: ${step.args.kind}`, {
-            kind: step.args.kind,
-            allowedKinds: [...SELECT_OPTION_KINDS],
-        });
     }
 
     const binding = await deps.runtime.resolveBinding(workspaceName);
