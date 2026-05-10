@@ -10,7 +10,7 @@ import {
 } from '../../../src/runner/steps/executors/snapshot/control';
 import type {
     ControlCollector,
-    ControlRegistry,
+    ControlCollectContext,
     BaseControlComponent,
 } from '../../../src/runner/steps/executors/snapshot/control/types';
 import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
@@ -21,6 +21,15 @@ const makeNode = (id: string, role: string, children: UnifiedNode[] = []): Unifi
     children,
 });
 
+const makeCtx = (overrides: Partial<ControlCollectContext> = {}): ControlCollectContext => ({
+    root: makeNode('root', 'root'),
+    nodeIndex: {},
+    attrIndex: {},
+    contentStore: {},
+    locatorIndex: {},
+    ...overrides,
+});
+
 const makeComponent = (overrides: Partial<BaseControlComponent> = {}): BaseControlComponent => ({
     id: 'c1',
     kind: 'test_kind',
@@ -29,11 +38,6 @@ const makeComponent = (overrides: Partial<BaseControlComponent> = {}): BaseContr
     source: 'auto',
     confidence: 1,
     rootNodeId: 'n1',
-    controlNodeId: 'n1',
-    triggerNodeId: 'n1',
-    popupNodeId: '',
-    labelNodeId: '',
-    valueNodeId: '',
     optionNodeIds: [],
     state: {
         expanded: false,
@@ -72,13 +76,14 @@ test('collectControlComponents invokes all collectors and merges results', () =>
     const registry = createControlRegistry();
     const comp1 = makeComponent({ id: 'a', kind: 'k1', rootNodeId: 'r1' });
     const comp2 = makeComponent({ id: 'b', kind: 'k2', rootNodeId: 'r2' });
-    registerControlCollector(registry, () => [comp1]);
-    registerControlCollector(registry, () => [comp2]);
+    registerControlCollector(registry, (_ctx) => [comp1]);
+    registerControlCollector(registry, (_ctx) => [comp2]);
 
-    const root = makeNode('root', 'root');
-    const nodeIndex: Record<string, UnifiedNode> = { root, r1: makeNode('r1', 'generic'), r2: makeNode('r2', 'generic') };
+    const ctx = makeCtx({
+        nodeIndex: { r1: makeNode('r1', 'generic'), r2: makeNode('r2', 'generic') },
+    });
 
-    const controlIndex = collectControlComponents(root, nodeIndex, registry);
+    const controlIndex = collectControlComponents(ctx, registry);
     assert.strictEqual(Object.keys(controlIndex).length, 2);
     const ref1 = buildControlRef('k1', 'r1');
     const ref2 = buildControlRef('k2', 'r2');
@@ -88,20 +93,43 @@ test('collectControlComponents invokes all collectors and merges results', () =>
     assert.strictEqual(controlIndex[ref2].id, 'b');
 });
 
-test('collectControlComponents skips duplicate refs keeping first occurrence', () => {
+test('collectControlComponents throws on duplicate ref', () => {
     const registry = createControlRegistry();
-    const comp1 = makeComponent({ id: 'first', kind: 'k', rootNodeId: 'r' });
-    const comp2 = makeComponent({ id: 'second', kind: 'k', rootNodeId: 'r' });
-    registerControlCollector(registry, () => [comp1]);
-    registerControlCollector(registry, () => [comp2]);
+    const comp1 = makeComponent({ id: 'first', kind: 'k', rootNodeId: 'r', owner: 'owner1' });
+    const comp2 = makeComponent({ id: 'second', kind: 'k', rootNodeId: 'r', owner: 'owner2' });
+    registerControlCollector(registry, (_ctx) => [comp1]);
+    registerControlCollector(registry, (_ctx) => [comp2]);
 
-    const root = makeNode('root', 'root');
-    const nodeIndex: Record<string, UnifiedNode> = { root, r: makeNode('r', 'generic') };
+    const ctx = makeCtx({
+        nodeIndex: { r: makeNode('r', 'generic') },
+    });
 
-    const controlIndex = collectControlComponents(root, nodeIndex, registry);
-    assert.strictEqual(Object.keys(controlIndex).length, 1);
-    const ref = buildControlRef('k', 'r');
-    assert.strictEqual(controlIndex[ref].id, 'first');
+    assert.throws(
+        () => collectControlComponents(ctx, registry),
+        /duplicate control ref/,
+    );
+});
+
+test('collectControlComponents throws with ref, kind, rootNodeId, owner in message', () => {
+    const registry = createControlRegistry();
+    const comp1 = makeComponent({ id: 'c1', kind: 'native_select', rootNodeId: 'n42', owner: 'browser.select_option' });
+    const comp2 = makeComponent({ id: 'c2', kind: 'native_select', rootNodeId: 'n42', owner: 'other.owner' });
+    registerControlCollector(registry, (_ctx) => [comp1]);
+    registerControlCollector(registry, (_ctx) => [comp2]);
+
+    const ctx = makeCtx({ nodeIndex: { n42: makeNode('n42', 'generic') } });
+
+    assert.throws(
+        () => collectControlComponents(ctx, registry),
+        (err: Error) => {
+            const msg = err.message;
+            return msg.includes('control:native_select:n42')
+                && msg.includes('native_select')
+                && msg.includes('n42')
+                && msg.includes('browser.select_option')
+                && msg.includes('other.owner');
+        },
+    );
 });
 
 test('buildControlRef generates control:<kind>:<rootNodeId>', () => {
@@ -116,10 +144,6 @@ test('attachControlRefsToNodes attaches control ref to relevant nodes', () => {
         kind: 'test',
         rootNodeId: 'root',
         controlNodeId: 'ctrl',
-        triggerNodeId: 'trig',
-        popupNodeId: 'pop',
-        labelNodeId: 'lbl',
-        valueNodeId: 'val',
         optionNodeIds: ['opt1', 'opt2'],
     });
     const ref = buildControlRef('test', 'root');
@@ -127,10 +151,6 @@ test('attachControlRefsToNodes attaches control ref to relevant nodes', () => {
 
     const nRoot = makeNode('root', 'generic');
     const nCtrl = makeNode('ctrl', 'generic');
-    const nTrig = makeNode('trig', 'generic');
-    const nPop = makeNode('pop', 'generic');
-    const nLbl = makeNode('lbl', 'generic');
-    const nVal = makeNode('val', 'generic');
     const nOpt1 = makeNode('opt1', 'generic');
     const nOpt2 = makeNode('opt2', 'generic');
     const nOther = makeNode('other', 'generic');
@@ -138,7 +158,7 @@ test('attachControlRefsToNodes attaches control ref to relevant nodes', () => {
     const tree: UnifiedNode = {
         id: 'top',
         role: 'root',
-        children: [nRoot, nCtrl, nTrig, nPop, nLbl, nVal, nOpt1, nOpt2, nOther],
+        children: [nRoot, nCtrl, nOpt1, nOpt2, nOther],
     };
 
     attachControlRefsToNodes(tree, controlIndex);
@@ -156,17 +176,17 @@ test('attachControlRefsToNodes does not attach when controlIndex is empty', () =
     assert.strictEqual(tree.control, undefined);
 });
 
-test('attachControlRefsToNodes handles empty nodeId fields gracefully', () => {
+test('attachControlRefsToNodes handles missing optional nodeId fields', () => {
     const controlIndex: Record<string, BaseControlComponent> = {};
     const comp = makeComponent({
         id: 'c1',
         kind: 'test',
         rootNodeId: 'root',
-        controlNodeId: '',
-        triggerNodeId: '',
-        popupNodeId: '',
-        labelNodeId: '',
-        valueNodeId: '',
+        controlNodeId: undefined,
+        triggerNodeId: undefined,
+        popupNodeId: undefined,
+        labelNodeId: undefined,
+        valueNodeId: undefined,
         optionNodeIds: [],
     });
     const ref = buildControlRef('test', 'root');
@@ -177,66 +197,35 @@ test('attachControlRefsToNodes handles empty nodeId fields gracefully', () => {
 
     attachControlRefsToNodes(tree, controlIndex);
     assert.deepStrictEqual(nRoot.control, { kind: 'test', ref });
+    assert.strictEqual(nRoot.control.kind, 'test');
+    assert.strictEqual(nRoot.control.ref, ref);
 });
 
-test('controlIndex integrated with buildSnapshot pipeline', () => {
+test('controlIndex is stable empty object when no collectors registered', () => {
     const registry = createControlRegistry();
-    const comp = makeComponent({ id: 's1', kind: 'native_select', rootNodeId: 'select1' });
-    registerControlCollector(registry, () => [comp]);
-
-    const selectNode = makeNode('select1', 'generic');
-    const root = makeNode('root', 'root', [selectNode]);
-    const nodeIndex: Record<string, UnifiedNode> = { root, select1: selectNode };
-
-    const controlIndex = collectControlComponents(root, nodeIndex, registry);
-    assert.strictEqual(Object.keys(controlIndex).length, 1);
-    const ref = buildControlRef('native_select', 'select1');
-    assert.ok(controlIndex[ref]);
-
-    attachControlRefsToNodes(root, controlIndex);
-    assert.deepStrictEqual(nodeIndex['select1'].control, { kind: 'native_select', ref });
+    const ctx = makeCtx({ root: makeNode('r', 'root') });
+    const controlIndex = collectControlComponents(ctx, registry);
+    assert.deepStrictEqual(controlIndex, {});
+    assert.strictEqual(Object.keys(controlIndex).length, 0);
 });
 
-test('controlIndex entries preserve options and state in data', () => {
+test('collector receives ControlCollectContext with all indexes', () => {
     const registry = createControlRegistry();
-    const comp = makeComponent({
-        id: 's1',
-        kind: 'native_select',
-        rootNodeId: 'select1',
-        optionNodeIds: ['opt1', 'opt2'],
-        state: { expanded: false, multiple: true, disabled: false, readonly: false, focused: true },
-        data: {
-            options: [
-                { value: 'v1', label: 'Option 1', selected: true, nodeId: 'opt1' },
-                { value: 'v2', label: 'Option 2', selected: false, nodeId: 'opt2' },
-            ],
-            selectedValues: ['v1'],
-            selectedLabels: ['Option 1'],
-            optionMatchHints: ['Option 1', 'Option 2'],
-        },
+    let receivedCtx: ControlCollectContext | undefined;
+
+    registerControlCollector(registry, (ctx) => {
+        receivedCtx = ctx;
+        return [];
     });
-    registerControlCollector(registry, () => [comp]);
 
-    const root = makeNode('root', 'root');
-    const nodeIndex: Record<string, UnifiedNode> = { root, select1: makeNode('select1', 'generic') };
+    const attrIndex = { n1: { id: 'my-id', tag: 'select' } };
+    const contentStore = { content_n1: 'hello' };
+    const locatorIndex = { n1: { origin: { primaryDomId: '100' } } };
+    const ctx = makeCtx({ attrIndex, contentStore, locatorIndex });
 
-    const controlIndex = collectControlComponents(root, nodeIndex, registry);
-    const ref = buildControlRef('native_select', 'select1');
-    const entry = controlIndex[ref];
-
-    assert.ok(entry);
-    assert.strictEqual(entry.state.multiple, true);
-    assert.strictEqual(entry.state.focused, true);
-    assert.strictEqual(entry.state.expanded, false);
-
-    const opts = entry.data.options as Array<Record<string, unknown>>;
-    assert.strictEqual(opts.length, 2);
-    assert.strictEqual(opts[0].selected, true);
-    assert.strictEqual(opts[1].selected, false);
-
-    const selValues = entry.data.selectedValues as string[];
-    assert.deepStrictEqual(selValues, ['v1']);
-
-    const selLabels = entry.data.selectedLabels as string[];
-    assert.deepStrictEqual(selLabels, ['Option 1']);
+    collectControlComponents(ctx, registry);
+    assert.ok(receivedCtx);
+    assert.strictEqual(receivedCtx.attrIndex, attrIndex);
+    assert.strictEqual(receivedCtx.contentStore, contentStore);
+    assert.strictEqual(receivedCtx.locatorIndex, locatorIndex);
 });

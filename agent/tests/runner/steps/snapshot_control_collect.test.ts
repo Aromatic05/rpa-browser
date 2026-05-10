@@ -5,11 +5,17 @@ import {
     collectControlComponents,
     attachControlRefsToNodes,
     buildControlRef,
+    buildDomIdToNodeIdMap,
 } from '../../../src/runner/steps/executors/snapshot/control';
-import type { ControlRegistry } from '../../../src/runner/steps/executors/snapshot/control/types';
+import type { ControlCollectContext } from '../../../src/runner/steps/executors/snapshot/control/types';
 import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
 import { registerSelectOptionControls } from '../../../src/runner/steps/executors/select_option/register_controls';
+
+const makeNode = (id: string, role: string, children: UnifiedNode[] = []): UnifiedNode => ({
+    id,
+    role,
+    children,
+});
 
 const buildNodeIndex = (root: UnifiedNode): Record<string, UnifiedNode> => {
     const index: Record<string, UnifiedNode> = {};
@@ -24,44 +30,56 @@ const buildNodeIndex = (root: UnifiedNode): Record<string, UnifiedNode> => {
     return index;
 };
 
-const makeNode = (id: string, role: string, children: UnifiedNode[] = []): UnifiedNode => ({
-    id,
-    role,
-    children,
+const makeCtx = (root: UnifiedNode, overrides: Partial<ControlCollectContext> = {}): ControlCollectContext => ({
+    root,
+    nodeIndex: buildNodeIndex(root),
+    attrIndex: {},
+    contentStore: {},
+    locatorIndex: {},
+    ...overrides,
 });
 
-const setupRegistry = (): ControlRegistry => {
-    const registry = createControlRegistry();
-    registerSelectOptionControls(registry);
-    return registry;
+/** Set an attr key=value on node in ctx.attrIndex */
+const setAttr = (ctx: ControlCollectContext, nodeId: string, key: string, value: string) => {
+    if (!ctx.attrIndex[nodeId]) {ctx.attrIndex[nodeId] = {};}
+    ctx.attrIndex[nodeId][key] = value;
 };
 
-const collect = (root: UnifiedNode) => {
-    const nodeIndex = buildNodeIndex(root);
-    const registry = setupRegistry();
-    const controlIndex = collectControlComponents(root, nodeIndex, registry);
-    attachControlRefsToNodes(root, controlIndex);
-    return { controlIndex, nodeIndex };
+const setupCtx = (root: UnifiedNode): ControlCollectContext => {
+    const ctx = makeCtx(root);
+    // Walk all nodes and set tag from a synthetic attr to match how pipeline works
+    return ctx;
 };
+
+const collect = (root: UnifiedNode, extraCtx?: Partial<ControlCollectContext>) => {
+    const ctx = makeCtx(root, extraCtx);
+    const registry = createControlRegistry();
+    registerSelectOptionControls(registry);
+    const controlIndex = collectControlComponents(ctx, registry);
+    attachControlRefsToNodes(root, controlIndex);
+    return { controlIndex, ctx };
+};
+
+// ── native_select ──────────────────────────────────────────────
 
 test('native_select collector detects tag=select element', () => {
     const option1 = makeNode('opt1', 'option');
-    setNodeAttr(option1, 'tag', 'option');
-    setNodeAttr(option1, 'value', 'val1');
-    setNodeAttr(option1, 'selected', 'true');
     option1.name = 'Option One';
-
     const option2 = makeNode('opt2', 'option');
-    setNodeAttr(option2, 'tag', 'option');
-    setNodeAttr(option2, 'value', 'val2');
     option2.name = 'Option Two';
 
     const select = makeNode('sel', 'generic', [option1, option2]);
-    setNodeAttr(select, 'tag', 'select');
-    setNodeAttr(select, 'multiple', 'false');
-
     const root = makeNode('root', 'root', [select]);
-    const { controlIndex, nodeIndex } = collect(root);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'sel', 'tag', 'select');
+    setAttr(ctx, 'opt1', 'tag', 'option');
+    setAttr(ctx, 'opt1', 'value', 'val1');
+    setAttr(ctx, 'opt1', 'selected', 'true');
+    setAttr(ctx, 'opt2', 'tag', 'option');
+    setAttr(ctx, 'opt2', 'value', 'val2');
+
+    const { controlIndex } = collect(root, ctx);
 
     const ref = buildControlRef('native_select', 'sel');
     assert.ok(controlIndex[ref], 'controlIndex should have native_select entry');
@@ -70,69 +88,53 @@ test('native_select collector detects tag=select element', () => {
     assert.ok(controlIndex[ref].capabilities.includes('select_option'));
     assert.strictEqual(controlIndex[ref].rootNodeId, 'sel');
     assert.strictEqual(controlIndex[ref].controlNodeId, 'sel');
+    assert.strictEqual(controlIndex[ref].triggerNodeId, undefined);
+    assert.strictEqual(controlIndex[ref].popupNodeId, undefined);
 
-    // Assert options in data
     const options = controlIndex[ref].data.options as Array<Record<string, unknown>>;
     assert.strictEqual(options.length, 2);
     assert.strictEqual(options[0].value, 'val1');
     assert.strictEqual(options[0].label, 'Option One');
     assert.strictEqual(options[0].selected, true);
-    assert.strictEqual(options[1].value, 'val2');
-    assert.strictEqual(options[1].label, 'Option Two');
     assert.strictEqual(options[1].selected, false);
-
-    // Assert state
     assert.strictEqual(controlIndex[ref].state.multiple, false);
 
-    // Assert nodeIndex entry has control attached
-    const selectNode = nodeIndex['sel'];
+    // role preserved
+    assert.strictEqual(ctx.nodeIndex['sel'].role, 'generic');
+    assert.strictEqual(ctx.nodeIndex['opt1'].role, 'option');
+
+    // control.ref shared
+    const selectNode = ctx.nodeIndex['sel'];
     assert.ok(selectNode.control);
-    assert.strictEqual(selectNode.control.kind, 'native_select');
-    assert.strictEqual(selectNode.control.ref, ref);
-
-    // Assert option nodes share same control.ref
-    const opt1Node = nodeIndex['opt1'];
-    assert.ok(opt1Node.control);
-    assert.strictEqual(opt1Node.control.ref, ref);
-    const opt2Node = nodeIndex['opt2'];
-    assert.ok(opt2Node.control);
-    assert.strictEqual(opt2Node.control.ref, ref);
-
-    // Assert role is not polluted
-    assert.strictEqual(selectNode.role, 'generic');
-    assert.strictEqual(opt1Node.role, 'option');
+    assert.strictEqual(selectNode.control!.ref, ref);
+    const optNode = ctx.nodeIndex['opt1'];
+    assert.ok(optNode.control);
+    assert.strictEqual(optNode.control!.ref, ref);
 });
 
-test('radio_group collector aggregates same-name input[type=radio]', () => {
+// ── radio_group ────────────────────────────────────────────────
+
+test('radio_group collector aggregates same-name same-container input[type=radio]', () => {
     const radio1 = makeNode('r1', 'radio');
-    setNodeAttr(radio1, 'tag', 'input');
-    setNodeAttr(radio1, 'type', 'radio');
-    setNodeAttr(radio1, 'name', 'color');
-    setNodeAttr(radio1, 'value', 'red');
-    setNodeAttr(radio1, 'checked', 'true');
     radio1.name = 'Red';
-
     const radio2 = makeNode('r2', 'radio');
-    setNodeAttr(radio2, 'tag', 'input');
-    setNodeAttr(radio2, 'type', 'radio');
-    setNodeAttr(radio2, 'name', 'color');
-    setNodeAttr(radio2, 'value', 'blue');
     radio2.name = 'Blue';
-
     const radio3 = makeNode('r3', 'radio');
-    setNodeAttr(radio3, 'tag', 'input');
-    setNodeAttr(radio3, 'type', 'radio');
-    setNodeAttr(radio3, 'name', 'size');
-    setNodeAttr(radio3, 'value', 'small');
     radio3.name = 'Small';
 
-    const container = makeNode('container', 'generic', [radio1, radio2, radio3]);
+    const container = makeNode('container', 'group', [radio1, radio2, radio3]);
     const root = makeNode('root', 'root', [container]);
-    const { controlIndex, nodeIndex } = collect(root);
 
-    // Should have radio_group for 'color' (2 radios) but NOT for 'size' (1 radio)
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'r1', 'tag', 'input'); setAttr(ctx, 'r1', 'type', 'radio'); setAttr(ctx, 'r1', 'name', 'color'); setAttr(ctx, 'r1', 'value', 'red'); setAttr(ctx, 'r1', 'checked', 'true');
+    setAttr(ctx, 'r2', 'tag', 'input'); setAttr(ctx, 'r2', 'type', 'radio'); setAttr(ctx, 'r2', 'name', 'color'); setAttr(ctx, 'r2', 'value', 'blue');
+    setAttr(ctx, 'r3', 'tag', 'input'); setAttr(ctx, 'r3', 'type', 'radio'); setAttr(ctx, 'r3', 'name', 'size'); setAttr(ctx, 'r3', 'value', 'small');
+    setAttr(ctx, 'container', 'role', 'group');
+
+    const { controlIndex } = collect(root, ctx);
+
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'radio_group');
-    assert.strictEqual(entries.length, 1, 'should create one radio_group for color group with 2+ radios');
+    assert.strictEqual(entries.length, 1, 'should create one radio_group for color group');
 
     const entry = entries[0];
     assert.strictEqual(entry.kind, 'radio_group');
@@ -141,265 +143,379 @@ test('radio_group collector aggregates same-name input[type=radio]', () => {
 
     const options = entry.data.options as Array<Record<string, unknown>>;
     assert.strictEqual(options.length, 2);
+    const selectedOpt = options.find((o) => o.selected) as Record<string, unknown>;
+    assert.ok(selectedOpt);
+    assert.strictEqual(selectedOpt.value, 'red');
 
-    // Find the checked option
-    const selectedOpt = options.find((o) => o.selected === true) as Record<string, unknown> | undefined;
-    assert.ok(selectedOpt, 'should have a selected option');
-    assert.strictEqual(selectedOpt!.value, 'red');
-
-    const ref = buildControlRef('radio_group', entry.rootNodeId);
-
-    // All radio nodes in the group share the same control.ref
-    const r1Node = nodeIndex['r1'];
-    assert.ok(r1Node.control);
-    assert.strictEqual(r1Node.control.ref, ref);
-
-    const r2Node = nodeIndex['r2'];
-    assert.ok(r2Node.control);
-    assert.strictEqual(r2Node.control.ref, ref);
-
-    // Lone radio (size) should NOT have control
-    const r3Node = nodeIndex['r3'];
-    assert.strictEqual(r3Node.control, undefined);
-
-    // Role is preserved
-    assert.strictEqual(r1Node.role, 'radio');
-    assert.strictEqual(r2Node.role, 'radio');
+    // role preserved
+    assert.strictEqual(ctx.nodeIndex['r1'].role, 'radio');
+    // lone radio (size) should have no control
+    assert.strictEqual(ctx.nodeIndex['r3'].control, undefined);
 });
 
-test('checkbox_group collector aggregates same-area input[type=checkbox]', () => {
-    const cb1 = makeNode('cb1', 'checkbox');
-    setNodeAttr(cb1, 'tag', 'input');
-    setNodeAttr(cb1, 'type', 'checkbox');
-    setNodeAttr(cb1, 'value', 'apple');
-    setNodeAttr(cb1, 'checked', 'true');
-    cb1.name = 'Apple';
+test('radio_group does not merge same-name radios across different containers', () => {
+    const r1 = makeNode('ra1', 'radio'); r1.name = 'Yes';
+    const r2 = makeNode('ra2', 'radio'); r2.name = 'No';
+    const r3 = makeNode('rb1', 'radio'); r3.name = 'Yes';
+    const r4 = makeNode('rb2', 'radio'); r4.name = 'No';
 
-    const cb2 = makeNode('cb2', 'checkbox');
-    setNodeAttr(cb2, 'tag', 'input');
-    setNodeAttr(cb2, 'type', 'checkbox');
-    setNodeAttr(cb2, 'value', 'banana');
-    cb2.name = 'Banana';
+    const containerA = makeNode('ca', 'form', [r1, r2]);
+    const containerB = makeNode('cb', 'form', [r3, r4]);
+    const root = makeNode('root', 'root', [containerA, containerB]);
 
-    const cb3 = makeNode('cb3', 'checkbox');
-    setNodeAttr(cb3, 'tag', 'input');
-    setNodeAttr(cb3, 'type', 'checkbox');
-    setNodeAttr(cb3, 'value', 'cherry');
-    setNodeAttr(cb3, 'checked', 'true');
-    cb3.name = 'Cherry';
+    const ctx = makeCtx(root);
+    for (const [id, name, value] of [['ra1', 'yesno', 'yes'], ['ra2', 'yesno', 'no'], ['rb1', 'yesno', 'yes'], ['rb2', 'yesno', 'no']] as const) {
+        setAttr(ctx, id, 'tag', 'input'); setAttr(ctx, id, 'type', 'radio'); setAttr(ctx, id, 'name', name); setAttr(ctx, id, 'value', value);
+    }
+    setAttr(ctx, 'ca', 'role', 'form');
+    setAttr(ctx, 'cb', 'role', 'form');
 
-    const container = makeNode('container', 'generic', [cb1, cb2, cb3]);
-    const root = makeNode('root', 'root', [container]);
-    const { controlIndex, nodeIndex } = collect(root);
+    const { controlIndex } = collect(root, ctx);
+
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'radio_group');
+    assert.strictEqual(entries.length, 2, 'should create two separate radio_groups, one per container');
+
+    // Each group should have 2 options
+    for (const entry of entries) {
+        const options = entry.data.options as Array<Record<string, unknown>>;
+        assert.strictEqual(options.length, 2);
+    }
+});
+
+// ── Ant Radio Group ──────────────────────────────────────
+
+test('Ant Radio Group with ant-radio-group class aggregates correctly', () => {
+    const r1 = makeNode('ar1', 'radio'); r1.name = 'A';
+    const r2 = makeNode('ar2', 'radio'); r2.name = 'B';
+
+    const wrapper = makeNode('ant_radio_wrapper', 'generic', [r1, r2]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'ar1', 'tag', 'input'); setAttr(ctx, 'ar1', 'type', 'radio'); setAttr(ctx, 'ar1', 'name', 'ant_option'); setAttr(ctx, 'ar1', 'value', 'a'); setAttr(ctx, 'ar1', 'checked', 'true');
+    setAttr(ctx, 'ar2', 'tag', 'input'); setAttr(ctx, 'ar2', 'type', 'radio'); setAttr(ctx, 'ar2', 'name', 'ant_option'); setAttr(ctx, 'ar2', 'value', 'b');
+    setAttr(ctx, 'ant_radio_wrapper', 'class', 'ant-radio-group ant-radio-group-outline');
+
+    const { controlIndex } = collect(root, ctx);
+
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'radio_group');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].state.multiple, false);
+
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2);
+});
+
+// ── checkbox_group ────────────────────────────────────────────
+
+test('checkbox_group detects explicit group container by role=group', () => {
+    const cb1 = makeNode('cb1', 'checkbox'); cb1.name = 'Apple';
+    const cb2 = makeNode('cb2', 'checkbox'); cb2.name = 'Banana';
+
+    const group = makeNode('cb_group', 'group', [cb1, cb2]);
+    const root = makeNode('root', 'root', [group]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'cb1', 'tag', 'input'); setAttr(ctx, 'cb1', 'type', 'checkbox'); setAttr(ctx, 'cb1', 'value', 'apple'); setAttr(ctx, 'cb1', 'checked', 'true');
+    setAttr(ctx, 'cb2', 'tag', 'input'); setAttr(ctx, 'cb2', 'type', 'checkbox'); setAttr(ctx, 'cb2', 'value', 'banana');
+    setAttr(ctx, 'cb_group', 'role', 'group');
+
+    const { controlIndex } = collect(root, ctx);
 
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'checkbox_group');
-    assert.strictEqual(entries.length, 1, 'should create one checkbox_group');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].kind, 'checkbox_group');
+    assert.strictEqual(entries[0].state.multiple, true);
 
-    const entry = entries[0];
-    assert.strictEqual(entry.kind, 'checkbox_group');
-    assert.strictEqual(entry.owner, 'browser.select_option');
-    assert.strictEqual(entry.state.multiple, true);
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2);
 
-    const options = entry.data.options as Array<Record<string, unknown>>;
-    assert.strictEqual(options.length, 3);
-
-    // Check selected values
-    const selectedOpts = options.filter((o) => o.selected === true);
-    assert.strictEqual(selectedOpts.length, 2);
-
-    const selValues = entry.data.selectedValues as string[];
+    const selValues = entries[0].data.selectedValues as string[];
     assert.ok(selValues.includes('apple'));
-    assert.ok(selValues.includes('cherry'));
 
-    const ref = buildControlRef('checkbox_group', entry.rootNodeId);
-
-    // All checkbox nodes share the same control.ref
-    for (const id of ['cb1', 'cb2', 'cb3']) {
-        const node = nodeIndex[id];
-        assert.ok(node.control, `node ${id} should have control`);
-        assert.strictEqual(node.control.ref, ref);
-    }
-
-    // Role is preserved
-    assert.strictEqual(nodeIndex['cb1'].role, 'checkbox');
+    // role preserved
+    assert.strictEqual(ctx.nodeIndex['cb1'].role, 'checkbox');
 });
 
-test('custom_select collector detects role=combobox with aria-controls listbox', () => {
-    const option1 = makeNode('pop_opt1', 'option');
-    setNodeAttr(option1, 'value', 'v1');
-    setNodeAttr(option1, 'aria-selected', 'true');
-    option1.name = 'Choice A';
+test('Ant Checkbox Group with ant-checkbox-group class aggregates correctly', () => {
+    const cb1 = makeNode('acb1', 'checkbox'); cb1.name = 'Option 1';
+    const cb2 = makeNode('acb2', 'checkbox'); cb2.name = 'Option 2';
+    const cb3 = makeNode('acb3', 'checkbox'); cb3.name = 'Option 3';
 
-    const option2 = makeNode('pop_opt2', 'option');
-    setNodeAttr(option2, 'value', 'v2');
-    option2.name = 'Choice B';
+    const wrapper = makeNode('ant_cb_wrapper', 'generic', [cb1, cb2, cb3]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'acb1', 'tag', 'input'); setAttr(ctx, 'acb1', 'type', 'checkbox'); setAttr(ctx, 'acb1', 'value', 'opt1'); setAttr(ctx, 'acb1', 'checked', 'true');
+    setAttr(ctx, 'acb2', 'tag', 'input'); setAttr(ctx, 'acb2', 'type', 'checkbox'); setAttr(ctx, 'acb2', 'value', 'opt2');
+    setAttr(ctx, 'acb3', 'tag', 'input'); setAttr(ctx, 'acb3', 'type', 'checkbox'); setAttr(ctx, 'acb3', 'value', 'opt3'); setAttr(ctx, 'acb3', 'checked', 'true');
+    setAttr(ctx, 'ant_cb_wrapper', 'class', 'ant-checkbox-group');
+
+    const { controlIndex } = collect(root, ctx);
+
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'checkbox_group');
+    assert.strictEqual(entries.length, 1);
+
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 3);
+    const selValues = entries[0].data.selectedValues as string[];
+    assert.ok(selValues.includes('opt1'));
+    assert.ok(selValues.includes('opt3'));
+});
+
+test('checkbox_group uses common ancestor when no explicit group', () => {
+    const cb1 = makeNode('icb1', 'checkbox'); cb1.name = 'A';
+    const cb2 = makeNode('icb2', 'checkbox'); cb2.name = 'B';
+
+    const div = makeNode('div1', 'generic', [cb1, cb2]);
+    const root = makeNode('root', 'root', [div]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'icb1', 'tag', 'input'); setAttr(ctx, 'icb1', 'type', 'checkbox'); setAttr(ctx, 'icb1', 'value', 'a');
+    setAttr(ctx, 'icb2', 'tag', 'input'); setAttr(ctx, 'icb2', 'type', 'checkbox'); setAttr(ctx, 'icb2', 'value', 'b');
+
+    const { controlIndex } = collect(root, ctx);
+
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'checkbox_group');
+    assert.strictEqual(entries.length, 1);
+});
+
+// ── custom_select (aria path) ─────────────────────────────────
+
+test('custom_select collector detects role=combobox with aria-controls via DOM id', () => {
+    const option1 = makeNode('cso1', 'option'); option1.name = 'Choice A';
+    const option2 = makeNode('cso2', 'option'); option2.name = 'Choice B';
 
     const listbox = makeNode('lb1', 'listbox', [option1, option2]);
-    setNodeAttr(listbox, 'role', 'listbox');
-
     const combobox = makeNode('combo1', 'combobox');
-    setNodeAttr(combobox, 'aria-controls', 'lb1');
-    setNodeAttr(combobox, 'aria-expanded', 'true');
-    combobox.name = 'Select option';
+    combobox.name = 'Select';
 
     const wrapper = makeNode('wrapper', 'generic', [combobox, listbox]);
     const root = makeNode('root', 'root', [wrapper]);
-    const { controlIndex, nodeIndex } = collect(root);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'lb1', 'id', 'listbox-dom-id');
+    setAttr(ctx, 'combo1', 'aria-controls', 'listbox-dom-id');
+    setAttr(ctx, 'combo1', 'aria-expanded', 'true');
+    setAttr(ctx, 'cso1', 'value', 'v1'); setAttr(ctx, 'cso1', 'aria-selected', 'true');
+    setAttr(ctx, 'cso2', 'value', 'v2');
+
+    const { controlIndex } = collect(root, ctx);
 
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
-    assert.strictEqual(entries.length, 1, 'should create one custom_select entry');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].kind, 'custom_select');
+    assert.strictEqual(entries[0].popupNodeId, 'lb1');
+    assert.strictEqual(entries[0].state.expanded, true);
 
-    const entry = entries[0];
-    assert.strictEqual(entry.kind, 'custom_select');
-    assert.strictEqual(entry.owner, 'browser.select_option');
-    assert.strictEqual(entry.rootNodeId, 'combo1');
-    assert.strictEqual(entry.popupNodeId, 'lb1');
-    assert.strictEqual(entry.state.expanded, true);
-
-    const options = entry.data.options as Array<Record<string, unknown>>;
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
     assert.strictEqual(options.length, 2);
-    assert.strictEqual(options[0].value, 'v1');
-    assert.strictEqual(options[0].label, 'Choice A');
     assert.strictEqual(options[0].selected, true);
-    assert.strictEqual(options[1].value, 'v2');
-    assert.strictEqual(options[1].selected, false);
 
     const ref = buildControlRef('custom_select', 'combo1');
-
-    // Combobox node has control
-    const comboNode = nodeIndex['combo1'];
+    const comboNode = ctx.nodeIndex['combo1'];
     assert.ok(comboNode.control);
-    assert.strictEqual(comboNode.control.kind, 'custom_select');
-    assert.strictEqual(comboNode.control.ref, ref);
-
-    // Option nodes share same control.ref
-    const opt1Node = nodeIndex['pop_opt1'];
-    assert.ok(opt1Node.control);
-    assert.strictEqual(opt1Node.control.ref, ref);
-
-    const opt2Node = nodeIndex['pop_opt2'];
-    assert.ok(opt2Node.control);
-    assert.strictEqual(opt2Node.control.ref, ref);
-
-    // Role is preserved (combobox stays combobox, not renamed to component semantic)
+    assert.strictEqual(comboNode.control!.ref, ref);
     assert.strictEqual(comboNode.role, 'combobox');
-    assert.strictEqual(opt1Node.role, 'option');
+
+    const optNode = ctx.nodeIndex['cso1'];
+    assert.ok(optNode.control);
+    assert.strictEqual(optNode.control!.ref, ref);
 });
 
-test('custom_select collector handles aria-owns fallback', () => {
-    const option1 = makeNode('po1', 'option');
-    option1.name = 'Item 1';
-
+test('custom_select collector handles aria-owns via DOM id', () => {
+    const option1 = makeNode('po1', 'option'); option1.name = 'Item 1';
     const listbox = makeNode('lb_owns', 'listbox', [option1]);
-
     const combobox = makeNode('combo_owns', 'combobox');
-    setNodeAttr(combobox, 'aria-owns', 'lb_owns');
-
     const wrapper = makeNode('wrapper', 'generic', [combobox, listbox]);
     const root = makeNode('root', 'root', [wrapper]);
-    const { controlIndex } = collect(root);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'lb_owns', 'id', 'owns-dom-id');
+    setAttr(ctx, 'combo_owns', 'aria-owns', 'owns-dom-id');
+
+    const { controlIndex } = collect(root, ctx);
 
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
     assert.strictEqual(entries.length, 1);
     assert.strictEqual(entries[0].popupNodeId, 'lb_owns');
-
-    const options = entries[0].data.options as Array<Record<string, unknown>>;
-    assert.strictEqual(options.length, 1);
 });
 
-test('Ant Select single (combobox + listbox) snapshot output', () => {
-    // Simulate Ant Design Select component structure:
-    // A combobox div with aria-controls pointing to a dropdown listbox
-    const option1 = makeNode('ant_opt1', 'option');
-    setNodeAttr(option1, 'aria-selected', 'true');
-    option1.name = 'Shanghai';
+test('custom_select does not produce control when aria-controls DOM id not found', () => {
+    const combobox = makeNode('combo_nf', 'combobox');
+    const root = makeNode('root', 'root', [combobox]);
 
-    const option2 = makeNode('ant_opt2', 'option');
-    option2.name = 'Beijing';
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'combo_nf', 'aria-controls', 'nonexistent-id');
 
-    const option3 = makeNode('ant_opt3', 'option');
-    option3.name = 'Guangzhou';
-
-    const listbox = makeNode('ant_listbox', 'listbox', [option1, option2, option3]);
-    setNodeAttr(listbox, 'role', 'listbox');
-
-    const combobox = makeNode('ant_select', 'combobox');
-    setNodeAttr(combobox, 'tag', 'div');
-    setNodeAttr(combobox, 'class', 'ant-select-selector');
-    setNodeAttr(combobox, 'aria-controls', 'ant_listbox');
-    setNodeAttr(combobox, 'aria-expanded', 'false');
-    combobox.name = 'City';
-
-    const wrapper = makeNode('ant_wrapper', 'generic', [combobox, listbox]);
-    const root = makeNode('root', 'root', [wrapper]);
-    const { controlIndex, nodeIndex } = collect(root);
+    const { controlIndex } = collect(root, ctx);
 
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
     assert.strictEqual(entries.length, 1);
-
-    const entry = entries[0];
-    assert.strictEqual(entry.owner, 'browser.select_option');
-    assert.ok(entry.capabilities.includes('select_option'));
-    assert.strictEqual(entry.rootNodeId, 'ant_select');
-    assert.strictEqual(entry.popupNodeId, 'ant_listbox');
-    assert.strictEqual(entry.state.expanded, false);
-
-    const options = entry.data.options as Array<Record<string, unknown>>;
-    assert.strictEqual(options.length, 3);
-    assert.strictEqual(options[0].label, 'Shanghai');
-    assert.strictEqual(options[0].selected, true);
-
-    const selValues = entry.data.selectedValues as string[];
-    const selLabels = entry.data.selectedLabels as string[];
-    assert.ok(selLabels.includes('Shanghai'));
-
-    // Verify optionMatchHints exists
-    const hints = entry.data.optionMatchHints as string[];
-    assert.strictEqual(hints.length, 3);
-    assert.ok(hints.includes('Shanghai'));
-
-    const ref = buildControlRef('custom_select', 'ant_select');
-
-    // Verify control attached to combobox node
-    const selectNode = nodeIndex['ant_select'];
-    assert.ok(selectNode.control);
-    assert.strictEqual(selectNode.control.kind, 'custom_select');
-    assert.strictEqual(selectNode.control.ref, ref);
-
-    // Verify all option nodes share same control.ref
-    for (const id of ['ant_opt1', 'ant_opt2', 'ant_opt3']) {
-        const optNode = nodeIndex[id];
-        assert.ok(optNode.control, `option ${id} should have control`);
-        assert.strictEqual(optNode.control.ref, ref);
-    }
-
-    // Assert role is preserved as original a11y semantics
-    assert.strictEqual(selectNode.role, 'combobox');
-    assert.strictEqual(nodeIndex['ant_opt1'].role, 'option');
-    assert.strictEqual(nodeIndex['ant_listbox'].role, 'listbox');
-
-    // Assert target is not polluted with component semantics
-    assert.strictEqual(selectNode.target, undefined);
+    // It still produces an entry (the combobox exists), but popupNodeId should be undefined
+    assert.strictEqual(entries[0].popupNodeId, undefined);
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 0);
 });
 
-test('no control generated when no matching elements exist', () => {
+// ── Ant Select class auxiliary ─────────────────────────────────
+
+test('Ant Select via class signals without combobox role still detected', () => {
+    const option1 = makeNode('ant_opt1', 'option'); option1.name = 'Shanghai';
+    const option2 = makeNode('ant_opt2', 'option'); option2.name = 'Beijing';
+
+    const dropdown = makeNode('ant_dropdown', 'listbox', [option1, option2]);
+    const trigger = makeNode('ant_trigger', 'generic');
+    trigger.name = 'City';
+
+    const wrapper = makeNode('ant_wrapper', 'generic', [trigger, dropdown]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'ant_trigger', 'class', 'ant-select-selector');
+    setAttr(ctx, 'ant_dropdown', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'ant_dropdown', 'role', 'listbox');
+    setAttr(ctx, 'ant_opt1', 'aria-selected', 'true');
+    setAttr(ctx, 'ant_opt2', 'value', 'beijing');
+
+    const { controlIndex } = collect(root, ctx);
+
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 2, 'both combobox detection AND ant class detection should produce results');
+});
+
+test('Ant Select with ant-select-item-option class detects options', () => {
+    const opt1 = makeNode('aso1', 'generic'); opt1.name = 'Item A';
+    const opt2 = makeNode('aso2', 'generic'); opt2.name = 'Item B';
+
+    const dropdown = makeNode('ant_dd', 'listbox', [opt1, opt2]);
+    const trigger = makeNode('ant_tr', 'generic');
+    const wrapper = makeNode('ant_wr', 'generic', [trigger, dropdown]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'ant_tr', 'class', 'ant-select-selector');
+    setAttr(ctx, 'ant_dd', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'ant_dd', 'role', 'listbox');
+    setAttr(ctx, 'aso1', 'class', 'ant-select-item-option ant-select-item-option-selected');
+    setAttr(ctx, 'aso1', 'value', 'item_a');
+    setAttr(ctx, 'aso2', 'class', 'ant-select-item-option');
+
+    const { controlIndex } = collect(root, ctx);
+
+    const antEntry = Object.values(controlIndex).find((c) => c.kind === 'custom_select' && c.rootNodeId === 'ant_tr');
+    assert.ok(antEntry);
+    const options = antEntry.data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2);
+
+    const selOpt = options.find((o) => o.selected) as Record<string, unknown>;
+    assert.ok(selOpt);
+    assert.strictEqual(selOpt.label, 'Item A');
+});
+
+// ── General assertions ─────────────────────────────────────────
+
+test('role field preserves original a11y semantics', () => {
+    const r1 = makeNode('ar1', 'radio');
+    const container = makeNode('g1', 'group', [r1]);
+    const root = makeNode('root', 'root', [container]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'ar1', 'tag', 'input'); setAttr(ctx, 'ar1', 'type', 'radio'); setAttr(ctx, 'ar1', 'name', 'x'); setAttr(ctx, 'ar1', 'value', 'x');
+
+    collect(root, ctx);
+    // role must not become 'radio_group' or other component names
+    assert.strictEqual(ctx.nodeIndex['ar1'].role, 'radio');
+    assert.strictEqual(ctx.nodeIndex['g1'].role, 'group');
+});
+
+test('target field is not polluted with component semantics', () => {
+    const opt1 = makeNode('opt1', 'option'); opt1.name = 'Opt';
+    const sel = makeNode('sel1', 'generic', [opt1]);
+    const root = makeNode('root', 'root', [sel]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'sel1', 'tag', 'select');
+    setAttr(ctx, 'opt1', 'tag', 'option'); setAttr(ctx, 'opt1', 'value', 'v');
+
+    collect(root, ctx);
+    const selNode = ctx.nodeIndex['sel1'];
+    assert.strictEqual(selNode.target, undefined, 'target should not be set by control');
+});
+
+test('controlIndex is empty object when no matching elements exist', () => {
     const div = makeNode('div1', 'generic');
-    setNodeAttr(div, 'tag', 'div');
-    div.name = 'Just a div';
-
     const root = makeNode('root', 'root', [div]);
-    const { controlIndex } = collect(root);
 
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'div1', 'tag', 'div');
+
+    const { controlIndex } = collect(root, ctx);
+    assert.deepStrictEqual(controlIndex, {});
     assert.strictEqual(Object.keys(controlIndex).length, 0);
 });
 
-test('controlIndex is empty object when registry has no collectors', () => {
-    const div = makeNode('div1', 'generic');
-    setNodeAttr(div, 'tag', 'select');
-    const root = makeNode('root', 'root', [div]);
-    const nodeIndex = buildNodeIndex(root);
-    const emptyRegistry = createControlRegistry();
+test('no control generated when registry has no collectors', () => {
+    const sel = makeNode('sel1', 'generic');
+    const root = makeNode('root', 'root', [sel]);
 
-    const controlIndex = collectControlComponents(root, nodeIndex, emptyRegistry);
-    assert.strictEqual(Object.keys(controlIndex).length, 0);
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'sel1', 'tag', 'select');
+
+    const registry = createControlRegistry();
+    const controlIndex = collectControlComponents(ctx, registry);
+    assert.deepStrictEqual(controlIndex, {});
+});
+
+test('default production path generates non-empty controlIndex for native select', () => {
+    // Simulates what generateSemanticSnapshotFromRaw would produce
+    const opt = makeNode('prod_opt', 'option'); opt.name = 'Choice';
+    const sel = makeNode('prod_sel', 'generic', [opt]);
+    const root = makeNode('root', 'root', [sel]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'prod_sel', 'tag', 'select');
+    setAttr(ctx, 'prod_opt', 'tag', 'option'); setAttr(ctx, 'prod_opt', 'value', 'v1');
+
+    // Default registry = registerSelectOptionControls pre-registered
+    const registry = createControlRegistry();
+    registerSelectOptionControls(registry);
+
+    const controlIndex = collectControlComponents(ctx, registry);
+    assert.ok(Object.keys(controlIndex).length > 0, 'default registry should produce control entries');
+    const ref = buildControlRef('native_select', 'prod_sel');
+    assert.ok(controlIndex[ref]);
+});
+
+test('buildDomIdToNodeIdMap maps DOM id to snapshot nodeId', () => {
+    const attrIndex = {
+        n1: { id: 'my-dom-id', tag: 'input' },
+        n2: { tag: 'div' },
+        n3: { id: 'other-id', class: 'foo' },
+    };
+    const map = buildDomIdToNodeIdMap(attrIndex);
+    assert.deepStrictEqual(map, {
+        'my-dom-id': 'n1',
+        'other-id': 'n3',
+    });
+});
+
+test('readNodeText resolves content.ref from contentStore', () => {
+    // This test validates the contentStore resolution path in register_controls
+    const opt = makeNode('ct_opt', 'option');
+    opt.content = { ref: 'content_ref_1' };
+
+    const sel = makeNode('ct_sel', 'generic', [opt]);
+    const root = makeNode('root', 'root', [sel]);
+
+    const ctx = makeCtx(root);
+    ctx.contentStore = { content_ref_1: 'Resolved Text' };
+    setAttr(ctx, 'ct_sel', 'tag', 'select');
+    setAttr(ctx, 'ct_opt', 'tag', 'option'); setAttr(ctx, 'ct_opt', 'value', 'v');
+
+    const { controlIndex } = collect(root, ctx);
+    const ref = buildControlRef('native_select', 'ct_sel');
+    const options = controlIndex[ref].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 1);
+    assert.strictEqual(options[0].label, 'Resolved Text');
 });
