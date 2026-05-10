@@ -75,8 +75,9 @@ export const executeNativeSelect = async (
 
     if (stateUnchanged) {
         const targetSet = new Set(step.args.values.map((v) => v.trim()));
-        const alreadyHit = isSuperset(afterValues, targetSet);
-        if (alreadyHit) {
+        const hitViaValues = isSuperset(afterValues, targetSet);
+        const hitViaLabels = isSuperset(afterLabels, targetSet);
+        if (hitViaValues || hitViaLabels) {
             return { stepId: step.id, ok: true };
         }
         return assertionFailed(step.id, 'state not changed after selection', {

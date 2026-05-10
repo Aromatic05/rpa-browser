@@ -220,6 +220,55 @@ test('select_option: native_select option not found returns error', async () => 
     }
 });
 
+test('select_option: native_select label already selected state unchanged returns ok', async () => {
+    const { browser, deps, snapshot } = await setupBinding();
+    try {
+        const selectNodeId = findNodeIdByTagAndAttr(snapshot, 'select', 'id', 'native-select');
+        assert.ok(selectNodeId);
+        // '待审批' is the default selected option label (value='pending')
+        const step: Step<'browser.select_option'> = {
+            id: 'ns-label-unchanged',
+            name: 'browser.select_option',
+            args: { nodeId: selectNodeId!, values: ['待审批'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: native_select state unchanged neither value nor label match returns ERR_ASSERTION_FAILED', async () => {
+    const { browser, deps, page, snapshot } = await setupBinding();
+    try {
+        const selectNodeId = findNodeIdByTagAndAttr(snapshot, 'select', 'id', 'native-select');
+        assert.ok(selectNodeId);
+
+        // Intercept change events to reset the selection back to the default,
+        // so the selection state appears unchanged but the target matches
+        // neither afterValues nor afterLabels.
+        await page.evaluate(() => {
+            const select = document.getElementById('native-select') as HTMLSelectElement;
+            select.addEventListener('change', () => {
+                select.value = 'pending';
+            });
+        });
+
+        const step: Step<'browser.select_option'> = {
+            id: 'ns-unchanged-nomatch',
+            name: 'browser.select_option',
+            args: { nodeId: selectNodeId!, values: ['processing'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_ASSERTION_FAILED');
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
 // ── radio_group ──
 
 test('select_option: radio_group single value select success', async () => {
