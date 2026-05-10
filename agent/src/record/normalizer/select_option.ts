@@ -19,10 +19,6 @@ import type {
     RecordNormalizerResult,
 } from './types';
 
-const NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS = 1200;
-
-const normalizeSelector = (selector: string | undefined): string => (selector || '').trim();
-
 const checkboxSessionKey = (
     workspaceName: string,
     tabName: string,
@@ -34,6 +30,10 @@ const customSessionKey = (
     tabName: string,
     controlRootNodeId: string,
 ): string => `${workspaceName}::${tabName}::custom_select::${controlRootNodeId}`;
+
+const NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS = 1200;
+
+const normalizeSelector = (selector: string | undefined): string => (selector || '').trim();
 
 const readChoiceSessions = (state: RecordingState, recordingToken: string): Map<string, PendingChoiceSession> => {
     let sessions = state.pendingChoiceEvents.get(recordingToken);
@@ -69,13 +69,11 @@ const consumeSuppressedNativeSelectClick = (context: NormalizeContext, event: Re
     if (event.type !== 'click') {return false;}
     const selector = normalizeSelector(event.selector);
     if (!selector) {return false;}
-
-    const nowTs = event.ts || Date.now();
     const current = readSuppressedClicks(context.state, context.recordingToken);
     const kept: PendingSuppressedClick[] = [];
     let consumed = false;
     for (const item of current) {
-        if (nowTs - item.ts > NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS) {
+        if (event.ts - item.ts > NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS) {
             continue;
         }
         if (!consumed && item.tabName === context.tabName && item.selector === selector) {
@@ -117,16 +115,6 @@ const buildSelectOptionStep = (
         step,
         enhancementEvent: event,
     };
-};
-
-const buildReleasedTriggerClickStep = (context: NormalizeContext, triggerEvent: RecorderEvent): StepUnion => {
-    return context.createStep(
-        'browser.click',
-        { selector: triggerEvent.selector },
-        triggerEvent.ts,
-        { tabName: triggerEvent.tabName },
-        context.buildResolveFromEvent(triggerEvent),
-    );
 };
 
 export const flushPendingChoiceEvents = (input: {
@@ -183,50 +171,12 @@ export const flushPendingChoiceEvents = (input: {
     return emitted;
 };
 
-const releaseCustomSelectTriggerIfNeeded = async (
-    context: NormalizeContext,
-    event: RecorderEvent,
-): Promise<NormalizeHandledResult | undefined> => {
-    if (event.type !== 'click') {return undefined;}
-    const sessions = context.state.pendingChoiceEvents.get(context.recordingToken);
-    if (!sessions || sessions.size === 0) {return undefined;}
-
-    const pendingCustom = Array.from(sessions.values())
-        .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
-    if (!pendingCustom) {return undefined;}
-
-    const currentBinding = await resolveRecordTargetBinding({
-        event,
-        page: context.page,
-        snapshotCache: context.snapshotCache,
-        cacheKey: context.cacheKey,
-    });
-
-    if (currentBinding && currentBinding.controlRootNodeId === pendingCustom.controlRootNodeId) {
-        return undefined;
-    }
-
-    const releasedStep = buildReleasedTriggerClickStep(context, pendingCustom.triggerEvent);
-    deleteChoiceSession(context.state, context.recordingToken, pendingCustom.sessionKey);
-    return {
-        status: 'handled',
-        step: releasedStep,
-        enhancementEvent: pendingCustom.triggerEvent,
-        continueCurrentEvent: true,
-    };
-};
-
 export const normalizeSelectOption = async (
     context: NormalizeContext,
     event: RecorderEvent,
 ): Promise<RecordNormalizerResult> => {
     if (consumeSuppressedNativeSelectClick(context, event)) {
         return { status: 'pending' };
-    }
-
-    const releasedTrigger = await releaseCustomSelectTriggerIfNeeded(context, event);
-    if (releasedTrigger) {
-        return releasedTrigger;
     }
 
     const binding = await resolveRecordTargetBinding({

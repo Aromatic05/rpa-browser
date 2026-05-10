@@ -33,6 +33,11 @@ export type PendingCustomSelectSession = {
 };
 
 export type PendingChoiceSession = PendingCheckboxGroupSession | PendingCustomSelectSession;
+export type PendingSuppressedClick = {
+    tabName: string;
+    selector: string;
+    ts: number;
+};
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
@@ -50,6 +55,7 @@ export type RecordingState = {
     replayCancel: Set<string>;
     pendingFillEvents: Map<string, Map<string, { event: RecorderEvent; tabName: string }>>;
     pendingChoiceEvents: Map<string, Map<string, PendingChoiceSession>>;
+    pendingSuppressedClicks: Map<string, PendingSuppressedClick[]>;
 };
 
 export const createRecordingState = (): RecordingState => ({
@@ -68,6 +74,7 @@ export const createRecordingState = (): RecordingState => ({
     replayCancel: new Set(),
     pendingFillEvents: new Map(),
     pendingChoiceEvents: new Map(),
+    pendingSuppressedClicks: new Map(),
 });
 
 const unsavedRecordingToken = (workspaceName: string): string => `unsaved:${workspaceName}`;
@@ -106,6 +113,7 @@ export const resetWorkspaceUnsavedRecording = (
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
     state.pendingChoiceEvents.delete(token);
+    state.pendingSuppressedClicks.delete(token);
     return token;
 };
 
@@ -125,6 +133,7 @@ export const disableWorkspaceRecording = (state: RecordingState, workspaceName: 
     const token = getWorkspaceUnsavedToken(state, workspaceName);
     flushPendingFillEvents(state, token);
     state.pendingChoiceEvents.delete(token);
+    state.pendingSuppressedClicks.delete(token);
     state.recordingEnabled.delete(token);
 };
 
@@ -141,6 +150,7 @@ export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceN
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
     state.pendingChoiceEvents.delete(token);
+    state.pendingSuppressedClicks.delete(token);
 };
 
 export const getWorkspaceUnsavedRecordingBundle = (
