@@ -4,8 +4,8 @@ import type { Action } from '../actions/action_protocol';
 import { ACTION_TYPES } from '../actions/action_types';
 import type { RecordingState } from './recording';
 import { setRecorderEventSink } from './recording';
-import { ingestRecorderEvent } from './ingest';
-import type { RecorderEvent } from './recorder';
+import { ingestRecorderEvent } from './pipeline/input';
+import type { RecorderEvent } from './capture/recorder';
 
 export type RecorderSinkDeps = {
     recordingState: RecordingState;

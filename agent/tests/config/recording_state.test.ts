@@ -13,7 +13,7 @@ import {
     resetWorkspaceUnsavedRecording,
     setRecordedStepEnricherForTest,
 } from '../../src/record/recording';
-import type { RecorderEvent } from '../../src/record/recorder';
+import type { RecorderEvent } from '../../src/record/capture/recorder';
 import type { StepUnion } from '../../src/runner/steps/types';
 
 test('workspace recording writes to unsaved slot with real tabName', async () => {

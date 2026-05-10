@@ -20,8 +20,8 @@ import {
     resetWorkspaceUnsavedRecording,
     type RecordingState,
 } from './recording';
-import { setRecorderRuntimeEnabled, type RecorderEvent } from './recorder';
-import { ingestRecordPayload } from './ingest';
+import { setRecorderRuntimeEnabled, type RecorderEvent } from './capture/recorder';
+import { ingestRecordPayload } from './pipeline/input';
 import { replayRecording, type ReplayEvent, type ReplayOptions } from './replay';
 import type { StepResolve, StepUnion } from '../runner/steps/types';
 import { isValidStepResolve } from '../runner/steps/resolve_utils';
@@ -193,7 +193,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         : undefined;
                     const candidate = fromEnrichment;
                     if (!isValidStepResolve(candidate)) {continue;}
-                    stepResolves[step.id] = candidate;
+                    stepResolves[step.id] = candidate as StepResolve;
                 }
             }
             if (!bundle.manifest?.activeTabRef) {
