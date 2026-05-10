@@ -391,6 +391,77 @@ test('select_option: checkbox_group option not found returns ERR_NOT_FOUND', asy
     }
 });
 
+test('select_option: checkbox_group label-based matching uses matched nodeIds', async () => {
+    const { browser, deps } = await setupBinding();
+    try {
+        const step: Step<'browser.select_option'> = {
+            id: 'cbg-label',
+            name: 'browser.select_option',
+            args: { selector: '#tag-checkbox-group', values: ['低优先级'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: checkbox_group ambiguous match returns ERR_AMBIGUOUS', async () => {
+    const { browser, deps } = await setupBinding();
+    try {
+        const step: Step<'browser.select_option'> = {
+            id: 'cbg-ambiguous',
+            name: 'browser.select_option',
+            args: { selector: '#tag-checkbox-group', values: ['紧急'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_AMBIGUOUS');
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: checkbox_group extra checked not cleaned returns ERR_ASSERTION_FAILED', async () => {
+    const { browser, deps, page } = await setupBinding();
+    try {
+        // Block unchecking by intercepting clicks on checked checkboxes
+        await page.evaluate(() => {
+            document.querySelectorAll('#tag-checkbox-group input[type="checkbox"]').forEach((cb) => {
+                cb.addEventListener('click', (e) => {
+                    if ((e.target as HTMLInputElement).checked) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                    }
+                });
+            });
+        });
+
+        // Check all checkboxes to create extra checked state
+        await page.evaluate(() => {
+            document.querySelectorAll('#tag-checkbox-group input[type="checkbox"]').forEach((cb) => {
+                (cb as HTMLInputElement).checked = true;
+            });
+        });
+
+        // Try to select only 'urgent' - unchecking others will be blocked
+        const step: Step<'browser.select_option'> = {
+            id: 'cbg-extra',
+            name: 'browser.select_option',
+            args: { selector: '#tag-checkbox-group', values: ['urgent'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_ASSERTION_FAILED');
+        }
+    } finally {
+        await browser.close();
+    }
+});
+
 // ── custom_select ──
 
 test('select_option: custom_select via trigger/popup/option from component', async () => {

@@ -175,29 +175,38 @@ export const executeCheckboxGroup = async (
         }
     }
 
+    const finalSnapshot = await generateSemanticSnapshot(binding.page);
     const page = binding.page;
-    const targetSet = new Set<string>(targetValues.map((v) => v.trim()));
 
+    const checkedNodeIds = new Set<string>();
     for (const opt of options) {
-        const sel = resolveNodeSelector(snapshot, opt.nodeId);
+        const sel = resolveNodeSelector(finalSnapshot, opt.nodeId);
         if (!sel) {continue;}
         const checked = await page.locator(sel).isChecked();
-        const wantsChecked = targetSet.has(opt.value.trim()) || targetSet.has(opt.label.trim());
-        if (checked !== wantsChecked) {
-            const checkedValues: string[] = [];
-            for (const o of options) {
-                const s = resolveNodeSelector(snapshot, o.nodeId);
-                if (s && await page.locator(s).isChecked()) {
-                    checkedValues.push(o.value);
-                }
-            }
-            return assertionFailed(step.id, 'checkbox group final set does not match target', {
-                expected: [...targetSet],
-                selectedValues: checkedValues,
-                selectedLabels: [],
-            });
+        if (checked) {
+            checkedNodeIds.add(opt.nodeId);
         }
     }
 
+    if (!nodeIdSetsEqual(checkedNodeIds, targetNodeIds)) {
+        const checkedValues = options
+            .filter((o) => checkedNodeIds.has(o.nodeId))
+            .map((o) => o.value);
+        const targetValuesMatched = matchResults.map((r) => r.option.value);
+        return assertionFailed(step.id, 'checkbox group final set does not match target', {
+            expected: targetValuesMatched,
+            selectedValues: checkedValues,
+            selectedLabels: [],
+        });
+    }
+
     return { stepId: step.id, ok: true };
+};
+
+const nodeIdSetsEqual = (a: Set<string>, b: Set<string>): boolean => {
+    if (a.size !== b.size) {return false;}
+    for (const item of a) {
+        if (!b.has(item)) {return false;}
+    }
+    return true;
 };
