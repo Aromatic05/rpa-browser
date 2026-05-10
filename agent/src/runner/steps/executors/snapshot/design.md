@@ -96,9 +96,75 @@ function processRegion(region: UnifiedNode): UnifiedNode | null {
 - `buildExternalIndexes(root) -> { nodeIndex, bboxIndex, attrIndex, contentStore }`
 - `buildSnapshot(...) -> SnapshotResult`
 
-## 7. 关键约束
+## 7. Control 组件基础设施
+
+### 7.1 模型
+
+```
+UnifiedNode.control = { kind: string; ref: string } | undefined
+SnapshotResult.controlIndex = Record<string, BaseControlComponent>
+```
+
+- `kind`: 注册方声明的稳定字符串，如 `native_select`、`radio_group`。
+- `ref`: 指向 `controlIndex` 的 key，格式 `control:<kind>:<rootNodeId>`。
+- 同一组件的 root、trigger、popup、option 节点共享同一个 `control.ref`。
+
+### 7.2 注册机制
+
+```ts
+// snapshot/control 提供基础设施，不包含具体组件识别逻辑
+const registry = createControlRegistry();
+registerControlCollector(registry, myCollector);
+
+// select_option 作为首批注册方
+registerSelectOptionControls(registry);
+```
+
+- `registerSelectOptionControls` 注册 native_select、radio_group、checkbox_group、custom_select 的 collector。
+- 所有 collector 的 owner 为 `browser.select_option`，capabilities 包含 `select_option`。
+- data 内保存 options、selectedValues、selectedLabels、optionMatchHints 等结构化事实。
+
+### 7.3 管线集成
+
+```
+stageBuildSnapshot 内部:
+  1. buildExternalIndexes → nodeIndex
+  2. collectControlComponents(root, nodeIndex, registry) → controlIndex
+  3. attachControlRefsToNodes(root, controlIndex)
+  4. buildSnapshot({ ..., controlIndex })
+```
+
+### 7.4 BaseControlComponent 结构
+
+| 字段 | 说明 |
+|------|------|
+| id | 组件标识 |
+| kind | 组件类型 |
+| owner | 注册方（如 browser.select_option） |
+| capabilities | 支持的操作 |
+| source | 来源（auto） |
+| confidence | 置信度 0-1 |
+| rootNodeId | 组件根节点 |
+| controlNodeId | 控制节点 |
+| triggerNodeId | 触发节点 |
+| popupNodeId | 弹出层节点 |
+| labelNodeId | 标签节点 |
+| valueNodeId | 值节点 |
+| optionNodeIds | 选项节点列表 |
+| state | 聚合状态（expanded/multiple/disabled/readonly/focused） |
+| data | 注册方自定义数据 |
+
+### 7.5 后续任务（不在本次提交）
+
+- **record 侧**：录制时消费 controlIndex，产出中粒度 component 步骤。
+- **select_option executor**：消费 controlIndex 而非重新 evaluate 选择状态。
+
+## 8. 关键约束
 
 - 不在 `UnifiedNode` 上塞入额外膨胀字段，重字段放在外置 index/store。
 - `processRegion` 只处理 region 内部结构，不做跨 layer 关系。
 - 候选资格最终决策只在 `candidates.ts` 统一完成，不在 detector 内做终裁。
 - bucket cache 复用的是 region 处理结果（`processRegion` 输出子树）。
+- `snapshot/control` 不 import `select_option`；注册方向为 select_option → control。
+- role 字段保持原始 a11y 语义，不被组件语义污染。
+- target 字段保持导航目标语义，不被组件语义污染。
