@@ -276,10 +276,13 @@ const findNearestExplicitCheckboxGroup = (
     return undefined;
 };
 
-const ANT_SELECT_SIGNALS = [
-    'ant-select',
-    'ant-select-selector',
-];
+const ANT_SELECT_ROOT_CLASS = 'ant-select';
+const ANT_SELECT_TRIGGER_CLASS = 'ant-select-selector';
+const ANT_SELECT_FORBIDDEN_ROOT_CLASSES = new Set([
+    'ant-select-dropdown',
+    'ant-select-item-option',
+    'ant-select-dropdown-menu-item',
+]);
 
 const ANT_SELECT_OPTION_CLASS_SIGNALS = [
     'ant-select-item-option',
@@ -292,28 +295,69 @@ const ANT_SELECT_POPUP_CLASS_SIGNALS = [
 
 const collectCustomSelect: ControlCollector = (ctx) => {
     const domIdMap = buildDomIdToNodeIdMap(ctx.attrIndex);
+    const parentIdMap = buildParentIdMap(ctx.root);
+    const comboboxRootIds = new Set<string>();
+    const consumedPopupIds = new Set<string>();
     const components: BaseControlComponent[] = [];
+
+    const pushComponent = (
+        rootNode: UnifiedNode,
+        popupNodeId: string,
+        options: OptionEntry[],
+        triggerNodeId?: string,
+    ) => {
+        consumedPopupIds.add(popupNodeId);
+        components.push(buildCustomSelectComponent(rootNode, popupNodeId, options, ctx, triggerNodeId));
+    };
+
     walk(ctx.root, (node) => {
         // Primary path: role=combobox
         if (node.role === 'combobox') {
             const popupNodeId = resolvePopupNodeId(node, ctx, domIdMap);
             if (!popupNodeId) {return;}
+            if (consumedPopupIds.has(popupNodeId)) {return;}
             const options = collectPopupOptions(ctx, popupNodeId);
             if (options.length === 0) {return;}
-            components.push(buildCustomSelectComponent(node, popupNodeId, options, ctx));
+            comboboxRootIds.add(node.id);
+            pushComponent(node, popupNodeId, options);
             return;
         }
 
-        // Auxiliary path: Ant Select class signals without explicit combobox role
+        // Auxiliary path: Ant Select class signals
         const cls = readAttrLower(ctx, node, 'class') || '';
-        const isAntSelect = ANT_SELECT_SIGNALS.some((signal) => hasClassToken(cls, signal));
-        if (!isAntSelect) {return;}
+
+        // Forbidden root classes must never produce custom_select
+        if (ANT_SELECT_FORBIDDEN_ROOT_CLASSES.has(cls.split(/\s+/).find((t) => ANT_SELECT_FORBIDDEN_ROOT_CLASSES.has(t)) || '')) {return;}
+
+        const hasAntSelectRoot = hasClassToken(cls, ANT_SELECT_ROOT_CLASS);
+        const hasAntSelectTrigger = hasClassToken(cls, ANT_SELECT_TRIGGER_CLASS);
+
+        if (!hasAntSelectRoot && !hasAntSelectTrigger) {return;}
+
+        // ant-select-selector: only act as root when no ant-select ancestor exists
+        if (hasAntSelectTrigger && !hasAntSelectRoot) {
+            if (findAncestorByClass(node.id, ANT_SELECT_ROOT_CLASS, parentIdMap, ctx)) {return;}
+        }
+
+        // Determine root node and trigger
+        let rootNode = node;
+        let triggerNodeId: string | undefined;
+
+        if (hasAntSelectRoot) {
+            rootNode = node;
+            triggerNodeId = hasAntSelectTrigger ? node.id
+                : findDescendantByClass(node, ANT_SELECT_TRIGGER_CLASS, ctx);
+        }
+
+        // Don't duplicate a combobox that was already handled
+        if (comboboxRootIds.has(rootNode.id)) {return;}
 
         const popupNodeId = findAntSelectPopup(node, domIdMap, ctx);
         if (!popupNodeId) {return;}
+        if (consumedPopupIds.has(popupNodeId)) {return;}
         const options = collectAntSelectOptions(ctx, popupNodeId);
         if (options.length === 0) {return;}
-        components.push(buildCustomSelectComponent(node, popupNodeId, options, ctx));
+        pushComponent(rootNode, popupNodeId, options, triggerNodeId);
     });
     return components;
 };
@@ -323,6 +367,7 @@ const buildCustomSelectComponent = (
     popupNodeId: string,
     options: OptionEntry[],
     ctx: ControlCollectContext,
+    triggerNodeId?: string,
 ): BaseControlComponent => ({
     id: node.id,
     kind: 'custom_select',
@@ -332,6 +377,7 @@ const buildCustomSelectComponent = (
     confidence: 1,
     rootNodeId: node.id,
     controlNodeId: node.id,
+    triggerNodeId,
     popupNodeId,
     optionNodeIds: options.map((opt) => opt.nodeId),
     state: {
@@ -389,6 +435,41 @@ const findAntSelectPopup = (
         }
     }
 
+    return undefined;
+};
+
+const findAncestorByClass = (
+    nodeId: string,
+    classToken: string,
+    parentIdMap: ParentIdMap,
+    ctx: ControlCollectContext,
+): string | undefined => {
+    let currentId: string | undefined = parentIdMap[nodeId];
+    while (currentId) {
+        const parent = ctx.nodeIndex[currentId];
+        if (parent) {
+            const cls = readAttrLower(ctx, parent, 'class') || '';
+            if (hasClassToken(cls, classToken)) {return currentId;}
+        }
+        currentId = parentIdMap[currentId];
+    }
+    return undefined;
+};
+
+const findDescendantByClass = (
+    root: UnifiedNode,
+    classToken: string,
+    ctx: ControlCollectContext,
+): string | undefined => {
+    const stack = [...root.children];
+    while (stack.length > 0) {
+        const child = stack.pop()!;
+        const cls = readAttrLower(ctx, child, 'class') || '';
+        if (hasClassToken(cls, classToken)) {return child.id;}
+        for (let i = child.children.length - 1; i >= 0; i -= 1) {
+            stack.push(child.children[i]);
+        }
+    }
     return undefined;
 };
 
