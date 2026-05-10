@@ -195,6 +195,7 @@ export const appendWorkspaceRecordingEvent = async (
     const recordLog = getLogger('record');
     if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
+    const tabScopedCacheKey = `${effectiveToken}::${tabName}`;
     if (state.replaying.has(tabName)) {return { accepted: false };}
     const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim()) : undefined;
     const buildNormalizeContext = () => ({
@@ -204,7 +205,7 @@ export const appendWorkspaceRecordingEvent = async (
         tabName,
         page,
         snapshotCache: state.recordSnapshotCache,
-        cacheKey: effectiveToken,
+        cacheKey: tabScopedCacheKey,
         createStep,
         buildResolveFromEvent,
     });
@@ -221,7 +222,7 @@ export const appendWorkspaceRecordingEvent = async (
             stepName: StepName;
             ts?: number;
             tabName?: string;
-        }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: effectiveToken }),
+        }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
     };
     if (event.type === 'navigate') {
         flushPendingChoiceEvents(state, effectiveToken, buildNormalizeContext(), hooks, { workspaceName, page, reason: 'navigate' });
@@ -241,7 +242,7 @@ export const appendWorkspaceRecordingEvent = async (
             return { accepted: false };
         }
         state.lastNavigateTs.set(effectiveToken, event.ts);
-        state.recordSnapshotCache.delete(effectiveToken);
+        state.recordSnapshotCache.delete(tabScopedCacheKey);
     }
 
     if (event.type === 'scroll' && typeof event.scrollY === 'number') {
@@ -334,7 +335,7 @@ export const appendWorkspaceRecordingEvent = async (
         event: currentEvent,
         page,
         snapshotCache: state.recordSnapshotCache,
-        cacheKey: effectiveToken,
+        cacheKey: tabScopedCacheKey,
         workspaceName,
         stepName: normalized.name,
         ts: normalized.meta?.ts,
@@ -354,6 +355,7 @@ export const appendWorkspaceRecordingStep = (
     const recordLog = getLogger('record');
     if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
+    const tabScopedCacheKey = `${effectiveToken}::${tabName}`;
     if (state.replaying.has(tabName) || state.replaying.has(effectiveToken)) {return { accepted: false };}
     if (options?.flushPendingFill !== false) {
         const hooks = {
@@ -369,7 +371,7 @@ export const appendWorkspaceRecordingStep = (
                 stepName: StepName;
                 ts?: number;
                 tabName?: string;
-            }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: effectiveToken }),
+            }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
         };
         flushPendingChoiceEvents(state, effectiveToken, {
             state,
@@ -377,7 +379,7 @@ export const appendWorkspaceRecordingStep = (
             workspaceName,
             tabName,
             snapshotCache: state.recordSnapshotCache,
-            cacheKey: effectiveToken,
+            cacheKey: tabScopedCacheKey,
             createStep,
             buildResolveFromEvent,
         }, hooks, { workspaceName, reason: 'append_step' });
