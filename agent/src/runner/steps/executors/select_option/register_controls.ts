@@ -1,8 +1,8 @@
-import type { ControlCollector, ControlRegistry } from '../snapshot/control/types';
+import type { ControlCollector, ControlCollectContext, ControlRegistry } from '../snapshot/control/types';
 import type { BaseControlComponent } from '../snapshot/control/types';
 import type { UnifiedNode } from '../snapshot/core/types';
-import { getNodeAttr } from '../snapshot/core/runtime_store';
 import { registerControlCollector } from '../snapshot/control/registry';
+import { buildDomIdToNodeIdMap } from '../snapshot/control/collect';
 
 export const registerSelectOptionControls = (registry: ControlRegistry): void => {
     registerControlCollector(registry, collectNativeSelect);
@@ -24,13 +24,13 @@ type OptionEntry = {
 
 type ParentIdMap = Record<string, string | undefined>;
 
-const collectNativeSelect: ControlCollector = (root, _nodeIndex) => {
+const collectNativeSelect: ControlCollector = (ctx) => {
     const components: BaseControlComponent[] = [];
-    walk(root, (node) => {
-        const tag = normalizeLower(getNodeAttr(node, 'tag'));
+    walk(ctx.root, (node) => {
+        const tag = readAttr(ctx, node, 'tag');
         if (tag !== 'select') {return;}
 
-        const options = collectSelectOptions(node);
+        const options = collectSelectOptions(ctx, node);
         components.push({
             id: node.id,
             kind: 'native_select',
@@ -40,17 +40,13 @@ const collectNativeSelect: ControlCollector = (root, _nodeIndex) => {
             confidence: 1,
             rootNodeId: node.id,
             controlNodeId: node.id,
-            triggerNodeId: node.id,
-            popupNodeId: '',
-            labelNodeId: '',
-            valueNodeId: '',
             optionNodeIds: options.map((opt) => opt.nodeId),
             state: {
                 expanded: false,
-                multiple: normalizeLower(getNodeAttr(node, 'multiple')) === 'true',
-                disabled: normalizeLower(getNodeAttr(node, 'disabled')) === 'true',
-                readonly: normalizeLower(getNodeAttr(node, 'readonly')) === 'true',
-                focused: normalizeLower(getNodeAttr(node, 'focused')) === 'true',
+                multiple: readAttr(ctx, node, 'multiple') === 'true',
+                disabled: readAttr(ctx, node, 'disabled') === 'true',
+                readonly: readAttr(ctx, node, 'readonly') === 'true',
+                focused: readAttr(ctx, node, 'focused') === 'true',
             },
             data: {
                 options,
@@ -63,78 +59,143 @@ const collectNativeSelect: ControlCollector = (root, _nodeIndex) => {
     return components;
 };
 
-const collectSelectOptions = (selectNode: UnifiedNode): OptionEntry[] => {
+const collectSelectOptions = (ctx: ControlCollectContext, selectNode: UnifiedNode): OptionEntry[] => {
     const options: OptionEntry[] = [];
     for (const child of selectNode.children) {
-        const tag = normalizeLower(getNodeAttr(child, 'tag'));
+        const tag = readAttr(ctx, child, 'tag');
         if (tag !== 'option') {continue;}
-        const label = readNodeText(child);
-        const value = normalizeLower(getNodeAttr(child, 'value')) || label;
-        const selected = normalizeLower(getNodeAttr(child, 'selected')) === 'true';
+        const label = readNodeText(ctx, child);
+        const value = readAttr(ctx, child, 'value') || label;
+        const selected = readAttr(ctx, child, 'selected') === 'true';
         options.push({ value, label, selected, nodeId: child.id });
     }
     return options;
 };
 
-const collectRadioGroup: ControlCollector = (root, _nodeIndex) => {
-    const parentIdMap = buildParentIdMap(root);
-    const radioNodes = collectInputsByType(root, 'radio');
-    const groups = groupBy(radioNodes, (node) => normalizeLower(getNodeAttr(node, 'name')) || node.id);
+const collectRadioGroup: ControlCollector = (ctx) => {
+    const parentIdMap = buildParentIdMap(ctx.root);
+    const radioNodes = collectInputsByType(ctx, 'radio');
+    const partitioned = partitionByContainer(radioNodes, parentIdMap, ctx);
 
     const components: BaseControlComponent[] = [];
-    for (const [, members] of groups) {
-        if (members.length < 2) {continue;}
-        const parentId = findCommonParentId(members, parentIdMap);
-        const options = members.map((node) => ({
-            value: normalizeLower(getNodeAttr(node, 'value')) || readNodeText(node),
-            label: readNodeText(node),
-            selected: normalizeLower(getNodeAttr(node, 'checked')) === 'true',
-            nodeId: node.id,
-        }));
-        components.push({
-            id: `radio_group_${members[0].id}`,
-            kind: 'radio_group',
-            owner: OWNER,
-            capabilities: CAPABILITIES,
-            source: SOURCE,
-            confidence: 1,
-            rootNodeId: parentId,
-            controlNodeId: parentId,
-            triggerNodeId: '',
-            popupNodeId: '',
-            labelNodeId: '',
-            valueNodeId: '',
-            optionNodeIds: options.map((opt) => opt.nodeId),
-            state: {
-                expanded: false,
-                multiple: false,
-                disabled: members.every((n) => normalizeLower(getNodeAttr(n, 'disabled')) === 'true'),
-                readonly: false,
-                focused: false,
-            },
-            data: {
-                options,
-                selectedValues: options.filter((opt) => opt.selected).map((opt) => opt.value),
-                selectedLabels: options.filter((opt) => opt.selected).map((opt) => opt.label),
-                optionMatchHints: options.map((opt) => opt.label),
-            },
-        });
+    for (const regionNodes of partitioned.values()) {
+        const groups = groupBy(regionNodes, (node) => readAttr(ctx, node, 'name') || node.id);
+        for (const [, members] of groups) {
+            if (members.length < 2) {continue;}
+            const parentId = findCommonParentId(members, parentIdMap);
+            const options = members.map((node) => ({
+                value: readAttr(ctx, node, 'value') || readNodeText(ctx, node),
+                label: readNodeText(ctx, node),
+                selected: readAttr(ctx, node, 'checked') === 'true',
+                nodeId: node.id,
+            }));
+            components.push({
+                id: `radio_group_${members[0].id}`,
+                kind: 'radio_group',
+                owner: OWNER,
+                capabilities: CAPABILITIES,
+                source: SOURCE,
+                confidence: 1,
+                rootNodeId: parentId,
+                optionNodeIds: options.map((opt) => opt.nodeId),
+                state: {
+                    expanded: false,
+                    multiple: false,
+                    disabled: members.every((n) => readAttr(ctx, n, 'disabled') === 'true'),
+                    readonly: false,
+                    focused: false,
+                },
+                data: {
+                    options,
+                    selectedValues: options.filter((opt) => opt.selected).map((opt) => opt.value),
+                    selectedLabels: options.filter((opt) => opt.selected).map((opt) => opt.label),
+                    optionMatchHints: options.map((opt) => opt.label),
+                },
+            });
+        }
     }
     return components;
 };
 
-const collectCheckboxGroup: ControlCollector = (root, _nodeIndex) => {
-    const parentIdMap = buildParentIdMap(root);
-    const checkboxNodes = collectInputsByType(root, 'checkbox');
-    const groups = groupBy(checkboxNodes, (node) => parentIdMap[node.id] || node.id);
+const partitionByContainer = (
+    nodes: UnifiedNode[],
+    parentIdMap: ParentIdMap,
+    ctx: ControlCollectContext,
+): Map<string, UnifiedNode[]> => {
+    const partitions = new Map<string, UnifiedNode[]>();
+    for (const node of nodes) {
+        const containerId = findNearestContainerId(node, parentIdMap, ctx);
+        const bucket = partitions.get(containerId) || [];
+        bucket.push(node);
+        partitions.set(containerId, bucket);
+    }
+    return partitions;
+};
+
+const CONTAINER_ROLES = new Set(['group', 'radiogroup', 'form']);
+const CONTAINER_CLASS_SIGNALS = ['ant-radio-group', 'ant-checkbox-group', 'checkbox-group', 'radio-group', 'form-item'];
+
+const findNearestContainerId = (
+    node: UnifiedNode,
+    parentIdMap: ParentIdMap,
+    ctx: ControlCollectContext,
+): string => {
+    let currentId: string | undefined = parentIdMap[node.id];
+    while (currentId) {
+        const parent = ctx.nodeIndex[currentId];
+        if (parent) {
+            if (CONTAINER_ROLES.has(parent.role)) {return currentId;}
+            const cls = readAttr(ctx, parent, 'class') || '';
+            for (const signal of CONTAINER_CLASS_SIGNALS) {
+                if (cls.includes(signal)) {return currentId;}
+            }
+        }
+        currentId = parentIdMap[currentId];
+    }
+    return parentIdMap[node.id] || node.id;
+};
+
+const collectCheckboxGroup: ControlCollector = (ctx) => {
+    const parentIdMap = buildParentIdMap(ctx.root);
+    const checkboxNodes = collectInputsByType(ctx, 'checkbox');
+
+    // First, try to find explicit group containers (role=group, ant-checkbox-group class, etc.)
+    const explicitGroups = new Map<string, UnifiedNode[]>();
+    const unmatched: UnifiedNode[] = [];
+
+    for (const node of checkboxNodes) {
+        const containerId = findNearestExplicitCheckboxGroup(node, parentIdMap, ctx);
+        if (containerId) {
+            const bucket = explicitGroups.get(containerId) || [];
+            bucket.push(node);
+            explicitGroups.set(containerId, bucket);
+        } else {
+            unmatched.push(node);
+        }
+    }
+
+    // Fallback: group unmatched by nearest common parent
+    const fallbackGroups = groupBy(unmatched, (node) => parentIdMap[node.id] || node.id);
 
     const components: BaseControlComponent[] = [];
-    for (const [parentId, members] of groups) {
+    const allGroups = new Map(explicitGroups);
+    for (const [key, members] of fallbackGroups) {
+        if (!allGroups.has(key)) {
+            allGroups.set(key, members);
+        } else {
+            const existing = allGroups.get(key)!;
+            for (const m of members) {
+                existing.push(m);
+            }
+        }
+    }
+
+    for (const [parentId, members] of allGroups) {
         if (members.length < 2) {continue;}
         const options = members.map((node) => ({
-            value: normalizeLower(getNodeAttr(node, 'value')) || readNodeText(node),
-            label: readNodeText(node),
-            selected: normalizeLower(getNodeAttr(node, 'checked')) === 'true',
+            value: readAttr(ctx, node, 'value') || readNodeText(ctx, node),
+            label: readNodeText(ctx, node),
+            selected: readAttr(ctx, node, 'checked') === 'true',
             nodeId: node.id,
         }));
         components.push({
@@ -145,16 +206,11 @@ const collectCheckboxGroup: ControlCollector = (root, _nodeIndex) => {
             source: SOURCE,
             confidence: 1,
             rootNodeId: parentId,
-            controlNodeId: parentId,
-            triggerNodeId: '',
-            popupNodeId: '',
-            labelNodeId: '',
-            valueNodeId: '',
             optionNodeIds: options.map((opt) => opt.nodeId),
             state: {
                 expanded: false,
                 multiple: true,
-                disabled: members.every((n) => normalizeLower(getNodeAttr(n, 'disabled')) === 'true'),
+                disabled: members.every((n) => readAttr(ctx, n, 'disabled') === 'true'),
                 readonly: false,
                 focused: false,
             },
@@ -169,57 +225,141 @@ const collectCheckboxGroup: ControlCollector = (root, _nodeIndex) => {
     return components;
 };
 
-const collectCustomSelect: ControlCollector = (root, nodeIndex) => {
+const CHECKBOX_GROUP_CLASS_SIGNALS = ['ant-checkbox-group', 'checkbox-group'];
+
+const findNearestExplicitCheckboxGroup = (
+    node: UnifiedNode,
+    parentIdMap: ParentIdMap,
+    ctx: ControlCollectContext,
+): string | undefined => {
+    let currentId: string | undefined = parentIdMap[node.id];
+    while (currentId) {
+        const parent = ctx.nodeIndex[currentId];
+        if (parent) {
+            if (parent.role === 'group') {return currentId;}
+            const cls = readAttr(ctx, parent, 'class') || '';
+            for (const signal of CHECKBOX_GROUP_CLASS_SIGNALS) {
+                if (cls.includes(signal)) {return currentId;}
+            }
+        }
+        currentId = parentIdMap[currentId];
+    }
+    return undefined;
+};
+
+const ANT_SELECT_SIGNALS = [
+    'ant-select',
+    'ant-select-selector',
+];
+
+const ANT_SELECT_OPTION_CLASS_SIGNALS = [
+    'ant-select-item-option',
+    'ant-select-dropdown-menu-item',
+];
+
+const ANT_SELECT_POPUP_CLASS_SIGNALS = [
+    'ant-select-dropdown',
+];
+
+const collectCustomSelect: ControlCollector = (ctx) => {
+    const domIdMap = buildDomIdToNodeIdMap(ctx.attrIndex);
     const components: BaseControlComponent[] = [];
-    walk(root, (node) => {
-        if (node.role !== 'combobox') {return;}
+    walk(ctx.root, (node) => {
+        // Primary path: role=combobox
+        if (node.role === 'combobox') {
+            const popupNodeId = resolvePopupNodeId(node, ctx, domIdMap);
+            const options = popupNodeId ? collectPopupOptions(ctx, popupNodeId) : [];
+            components.push(buildCustomSelectComponent(node, popupNodeId, options, ctx));
+            return;
+        }
 
-        const popupNodeId = resolvePopupNodeId(node, nodeIndex);
-        const options = popupNodeId ? collectPopupOptions(popupNodeId, nodeIndex) : [];
+        // Auxiliary path: Ant Select class signals without explicit combobox role
+        const cls = readAttr(ctx, node, 'class') || '';
+        const isAntSelect = ANT_SELECT_SIGNALS.some((signal) => cls.includes(signal));
+        if (!isAntSelect) {return;}
 
-        components.push({
-            id: node.id,
-            kind: 'custom_select',
-            owner: OWNER,
-            capabilities: CAPABILITIES,
-            source: SOURCE,
-            confidence: 1,
-            rootNodeId: node.id,
-            controlNodeId: node.id,
-            triggerNodeId: node.id,
-            popupNodeId,
-            labelNodeId: '',
-            valueNodeId: '',
-            optionNodeIds: options.map((opt) => opt.nodeId),
-            state: {
-                expanded: normalizeLower(getNodeAttr(node, 'aria-expanded')) === 'true',
-                multiple: normalizeLower(getNodeAttr(node, 'aria-multiselectable')) === 'true',
-                disabled: normalizeLower(getNodeAttr(node, 'disabled')) === 'true',
-                readonly: normalizeLower(getNodeAttr(node, 'readonly')) === 'true',
-                focused: normalizeLower(getNodeAttr(node, 'focused')) === 'true',
-            },
-            data: {
-                options,
-                selectedValues: options.filter((opt) => opt.selected).map((opt) => opt.value),
-                selectedLabels: options.filter((opt) => opt.selected).map((opt) => opt.label),
-                optionMatchHints: options.map((opt) => opt.label),
-            },
-        });
+        const popupNodeId = findAntSelectPopup(node, domIdMap, ctx);
+        const options = popupNodeId ? collectAntSelectOptions(ctx, popupNodeId) : [];
+        components.push(buildCustomSelectComponent(node, popupNodeId, options, ctx));
     });
     return components;
 };
 
-const resolvePopupNodeId = (comboboxNode: UnifiedNode, nodeIndex: Record<string, UnifiedNode>): string => {
-    const controlsId = normalizeText(getNodeAttr(comboboxNode, 'aria-controls'));
-    if (controlsId && nodeIndex[controlsId]) {return controlsId;}
+const buildCustomSelectComponent = (
+    node: UnifiedNode,
+    popupNodeId: string | undefined,
+    options: OptionEntry[],
+    ctx: ControlCollectContext,
+): BaseControlComponent => ({
+    id: node.id,
+    kind: 'custom_select',
+    owner: OWNER,
+    capabilities: CAPABILITIES,
+    source: SOURCE,
+    confidence: 1,
+    rootNodeId: node.id,
+    controlNodeId: node.id,
+    popupNodeId,
+    optionNodeIds: options.map((opt) => opt.nodeId),
+    state: {
+        expanded: readAttr(ctx, node, 'aria-expanded') === 'true',
+        multiple: readAttr(ctx, node, 'aria-multiselectable') === 'true',
+        disabled: readAttr(ctx, node, 'disabled') === 'true',
+        readonly: readAttr(ctx, node, 'readonly') === 'true',
+        focused: readAttr(ctx, node, 'focused') === 'true',
+    },
+    data: {
+        options,
+        selectedValues: options.filter((opt) => opt.selected).map((opt) => opt.value),
+        selectedLabels: options.filter((opt) => opt.selected).map((opt) => opt.label),
+        optionMatchHints: options.map((opt) => opt.label),
+    },
+});
 
-    const ownsId = normalizeText(getNodeAttr(comboboxNode, 'aria-owns'));
-    if (ownsId && nodeIndex[ownsId]) {return ownsId;}
+const resolvePopupNodeId = (
+    comboboxNode: UnifiedNode,
+    ctx: ControlCollectContext,
+    domIdMap: Record<string, string>,
+): string | undefined => {
+    const controlsDomId = normalizeText(readAttr(ctx, comboboxNode, 'aria-controls'));
+    if (controlsDomId) {
+        const nodeId = domIdMap[controlsDomId];
+        if (nodeId && ctx.nodeIndex[nodeId]) {return nodeId;}
+    }
 
-    return '';
+    const ownsDomId = normalizeText(readAttr(ctx, comboboxNode, 'aria-owns'));
+    if (ownsDomId) {
+        const nodeId = domIdMap[ownsDomId];
+        if (nodeId && ctx.nodeIndex[nodeId]) {return nodeId;}
+    }
+
+    return undefined;
 };
 
-const collectPopupOptions = (popupNodeId: string, nodeIndex: Record<string, UnifiedNode>): OptionEntry[] => {
+const findAntSelectPopup = (
+    triggerNode: UnifiedNode,
+    domIdMap: Record<string, string>,
+    ctx: ControlCollectContext,
+): string | undefined => {
+    const controlsDomId = normalizeText(readAttr(ctx, triggerNode, 'aria-controls'));
+    if (controlsDomId) {
+        const nodeId = domIdMap[controlsDomId];
+        if (nodeId && ctx.nodeIndex[nodeId]) {return nodeId;}
+    }
+
+    for (const [nodeId, node] of Object.entries(ctx.nodeIndex)) {
+        const cls = readAttr(ctx, node, 'class') || '';
+        if (ANT_SELECT_POPUP_CLASS_SIGNALS.some((signal) => cls.includes(signal))) {
+            if (node.role === 'listbox' || node.role === 'menu') {
+                return nodeId;
+            }
+        }
+    }
+
+    return undefined;
+};
+
+const collectPopupOptions = (ctx: ControlCollectContext, popupNodeId: string): OptionEntry[] => {
     const options: OptionEntry[] = [];
     const visited = new Set<string>();
     const queue = [popupNodeId];
@@ -229,14 +369,14 @@ const collectPopupOptions = (popupNodeId: string, nodeIndex: Record<string, Unif
         if (visited.has(currentId)) {continue;}
         visited.add(currentId);
 
-        const node = nodeIndex[currentId];
+        const node = ctx.nodeIndex[currentId];
         if (!node) {continue;}
 
         if (node.role === 'option') {
-            const label = readNodeText(node);
-            const value = normalizeLower(getNodeAttr(node, 'value')) || normalizeLower(getNodeAttr(node, 'data-value')) || label;
-            const selected = normalizeLower(getNodeAttr(node, 'aria-selected')) === 'true'
-                || normalizeLower(getNodeAttr(node, 'aria-checked')) === 'true';
+            const label = readNodeText(ctx, node);
+            const value = readAttr(ctx, node, 'value') || readAttr(ctx, node, 'data-value') || label;
+            const selected = readAttr(ctx, node, 'aria-selected') === 'true'
+                || readAttr(ctx, node, 'aria-checked') === 'true';
             options.push({ value, label, selected, nodeId: currentId });
         }
 
@@ -249,11 +389,46 @@ const collectPopupOptions = (popupNodeId: string, nodeIndex: Record<string, Unif
     return options;
 };
 
-const collectInputsByType = (root: UnifiedNode, inputType: string): UnifiedNode[] => {
+const collectAntSelectOptions = (ctx: ControlCollectContext, popupNodeId: string): OptionEntry[] => {
+    const options: OptionEntry[] = [];
+    const visited = new Set<string>();
+    const queue = [popupNodeId];
+
+    while (queue.length > 0) {
+        const currentId = queue.shift()!;
+        if (visited.has(currentId)) {continue;}
+        visited.add(currentId);
+
+        const node = ctx.nodeIndex[currentId];
+        if (!node) {continue;}
+
+        const cls = readAttr(ctx, node, 'class') || '';
+        const isOption = node.role === 'option'
+            || ANT_SELECT_OPTION_CLASS_SIGNALS.some((signal) => cls.includes(signal));
+
+        if (isOption) {
+            const label = readNodeText(ctx, node);
+            const value = readAttr(ctx, node, 'value') || readAttr(ctx, node, 'data-value') || label;
+            const selected = readAttr(ctx, node, 'aria-selected') === 'true'
+                || readAttr(ctx, node, 'aria-checked') === 'true'
+                || cls.includes('ant-select-item-option-selected');
+            options.push({ value, label, selected, nodeId: currentId });
+        }
+
+        for (const child of node.children) {
+            if (!visited.has(child.id)) {
+                queue.push(child.id);
+            }
+        }
+    }
+    return options;
+};
+
+const collectInputsByType = (ctx: ControlCollectContext, inputType: string): UnifiedNode[] => {
     const nodes: UnifiedNode[] = [];
-    walk(root, (node) => {
-        const tag = normalizeLower(getNodeAttr(node, 'tag'));
-        const type = normalizeLower(getNodeAttr(node, 'type'));
+    walk(ctx.root, (node) => {
+        const tag = readAttr(ctx, node, 'tag');
+        const type = readAttr(ctx, node, 'type');
         if (tag === 'input' && type === inputType) {
             nodes.push(node);
         }
@@ -301,6 +476,9 @@ const findCommonParentId = (nodes: UnifiedNode[], parentIdMap: ParentIdMap): str
     return commonId;
 };
 
+const readAttr = (ctx: ControlCollectContext, node: UnifiedNode, key: string): string =>
+    (ctx.attrIndex[node.id]?.[key] || '').trim().toLowerCase();
+
 const walk = (root: UnifiedNode, visitor: (node: UnifiedNode) => void): void => {
     const stack: UnifiedNode[] = [root];
     while (stack.length > 0) {
@@ -323,20 +501,24 @@ const groupBy = <T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> =>
     return map;
 };
 
-const readNodeText = (node: UnifiedNode): string => {
+const readNodeText = (ctx: ControlCollectContext, node: UnifiedNode): string => {
     if (node.name) {return node.name;}
     if (typeof node.content === 'string') {return node.content;}
-    if (node.content?.ref) {return '';}
+    if (node.content?.ref) {
+        const text = ctx.contentStore[node.content.ref];
+        if (text) {return text;}
+    }
     for (const child of node.children) {
         if (typeof child.content === 'string') {
             return child.content;
         }
+        if (child.content?.ref) {
+            const text = ctx.contentStore[child.content.ref];
+            if (text) {return text;}
+        }
     }
     return '';
 };
-
-const normalizeLower = (value: string | undefined): string =>
-    (value || '').trim().toLowerCase();
 
 const normalizeText = (value: string | undefined): string | undefined => {
     const normalized = (value || '').replace(/\s+/g, ' ').trim();
