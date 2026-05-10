@@ -102,14 +102,35 @@ function processRegion(region: UnifiedNode): UnifiedNode | null {
 
 ```
 UnifiedNode.control = { kind: string; ref: string } | undefined
-SnapshotResult.controlIndex = Record<string, BaseControlComponent>
+SnapshotResult.controlIndex = Record<string, BaseControlComponent>  // 始终存在，无结果时为 {}
 ```
 
 - `kind`: 注册方声明的稳定字符串，如 `native_select`、`radio_group`。
 - `ref`: 指向 `controlIndex` 的 key，格式 `control:<kind>:<rootNodeId>`。
 - 同一组件的 root、trigger、popup、option 节点共享同一个 `control.ref`。
+- `controlIndex` 始终为稳定输出（空对象），消费方无需判空。
 
-### 7.2 注册机制
+### 7.2 ControlCollectContext
+
+ControlCollector 通过 `ControlCollectContext` 获取所有索引：
+
+```ts
+type ControlCollectContext = {
+    root: UnifiedNode;
+    nodeIndex: Record<string, UnifiedNode>;
+    attrIndex: AttrIndex;
+    contentStore: ContentStore;
+    locatorIndex: LocatorIndex;
+};
+
+type ControlCollector = (ctx: ControlCollectContext) => BaseControlComponent[];
+```
+
+- collector 通过 `ctx.attrIndex[nodeId]` 读取属性，不再依赖 `getNodeAttr`。
+- `readNodeText` 可通过 `ctx.contentStore` 解析 `content.ref`。
+- `aria-controls`/`aria-owns` 通过 DOM id → nodeId 映射（基于 `attrIndex` 构建 `buildDomIdToNodeIdMap`）查找对应 snapshot 节点。
+
+### 7.3 注册机制
 
 ```ts
 // snapshot/control 提供基础设施，不包含具体组件识别逻辑
@@ -124,37 +145,79 @@ registerSelectOptionControls(registry);
 - 所有 collector 的 owner 为 `browser.select_option`，capabilities 包含 `select_option`。
 - data 内保存 options、selectedValues、selectedLabels、optionMatchHints 等结构化事实。
 
-### 7.3 管线集成
+### 7.4 默认装配
+
+管线层 `snapshot/pipeline/snapshot.ts` 提供 `getDefaultControlRegistry()`：
+
+```ts
+const getDefaultControlRegistry = (): ControlRegistry => {
+    if (!_defaultRegistry) {
+        _defaultRegistry = createControlRegistry();
+        registerSelectOptionControls(_defaultRegistry);
+    }
+    return _defaultRegistry;
+};
+```
+
+- `generateSemanticSnapshot` / `generateSemanticSnapshotFromRaw` 未显式传入 `controlRegistry` 时默认使用已注册 select_option collectors 的 registry。
+- `snapshot/control` 不 import `select_option`；装配位于管线组合层。
+
+### 7.5 管线集成
 
 ```
 stageBuildSnapshot 内部:
-  1. buildExternalIndexes → nodeIndex
-  2. collectControlComponents(root, nodeIndex, registry) → controlIndex
-  3. attachControlRefsToNodes(root, controlIndex)
-  4. buildSnapshot({ ..., controlIndex })
+  1. buildExternalIndexes → { nodeIndex, attrIndex, contentStore, ... }
+  2. buildLocatorIndex → locatorIndex
+  3. 构建 ControlCollectContext { root, nodeIndex, attrIndex, contentStore, locatorIndex }
+  4. registry = controlRegistry ?? getDefaultControlRegistry()
+  5. collectControlComponents(ctx, registry) → controlIndex
+  6. attachControlRefsToNodes(root, controlIndex)
+  7. buildSnapshot({ ..., controlIndex })
 ```
 
-### 7.4 BaseControlComponent 结构
+- controlIndex 始终输出 {} 而非 undefined。
+- duplicate ref 显式抛出异常（包含 ref、kind、rootNodeId、owner 信息）。
 
-| 字段 | 说明 |
-|------|------|
-| id | 组件标识 |
-| kind | 组件类型 |
-| owner | 注册方（如 browser.select_option） |
-| capabilities | 支持的操作 |
-| source | 来源（auto） |
-| confidence | 置信度 0-1 |
-| rootNodeId | 组件根节点 |
-| controlNodeId | 控制节点 |
-| triggerNodeId | 触发节点 |
-| popupNodeId | 弹出层节点 |
-| labelNodeId | 标签节点 |
-| valueNodeId | 值节点 |
-| optionNodeIds | 选项节点列表 |
-| state | 聚合状态（expanded/multiple/disabled/readonly/focused） |
-| data | 注册方自定义数据 |
+### 7.6 BaseControlComponent 结构
 
-### 7.5 后续任务（不在本次提交）
+| 字段 | 必须 | 说明 |
+|------|------|------|
+| id | ✓ | 组件标识 |
+| kind | ✓ | 组件类型 |
+| owner | ✓ | 注册方（如 browser.select_option） |
+| capabilities | ✓ | 支持的操作 |
+| source | ✓ | 来源（auto） |
+| confidence | ✓ | 置信度 0-1 |
+| rootNodeId | ✓ | 组件根节点 |
+| controlNodeId | | 控制节点（可选） |
+| triggerNodeId | | 触发节点（可选） |
+| popupNodeId | | 弹出层节点（可选） |
+| labelNodeId | | 标签节点（可选） |
+| valueNodeId | | 值节点（可选） |
+| optionNodeIds | ✓ | 选项节点列表（缺省 []） |
+| state | ✓ | 聚合状态（expanded/multiple/disabled/readonly/focused） |
+| data | ✓ | 注册方自定义数据 |
+
+### 7.7 识别规则
+
+**native_select**：tag=select。读取子 option 节点、selected 状态。
+
+**radio_group**：
+- 先按最近 group/form/form-item 容器分区。
+- 分区内按 name 属性聚合。
+- 同 name 但不同区域的 radio 不合并。
+
+**checkbox_group**：
+- 优先识别 role=group、ant-checkbox-group/checkbox-group class。
+- 找不到显式 group 时使用最近公共祖先。
+- 不同表单区域的 checkbox 不合并。
+
+**custom_select**：
+- 主路径：role=combobox + aria-controls/aria-owns（DOM id → nodeId）。
+- 辅助路径：ant-select/ant-select-selector class 信号 + ant-select-dropdown popup + ant-select-item-option 选项。
+- class 辅助不覆盖标准 role/aria 主路径。
+
+### 7.8 后续任务（不在本次提交）
 
 - **record 侧**：录制时消费 controlIndex，产出中粒度 component 步骤。
 - **select_option executor**：消费 controlIndex 而非重新 evaluate 选择状态。
