@@ -120,9 +120,10 @@ test('mouse click uses trace.mouse.action', async () => {
 
     const result = await executeBrowserMouse(step, deps, 'ws1');
     assert.equal(result.ok, true);
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0].args.action, 'down');
-    assert.equal(calls[1].args.action, 'up');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].args.action, 'click');
+    assert.equal(calls[0].args.x, 10);
+    assert.equal(calls[0].args.y, 20);
 });
 
 test('click(resolve hint) resolves then scrolls/waits/clicks', async () => {
