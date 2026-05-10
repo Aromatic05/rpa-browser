@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { getLogger } from '../../logging/logger';
 import { generateSemanticSnapshot } from '../../runner/steps/executors/snapshot/pipeline/snapshot';
 import type { SnapshotResult } from '../../runner/steps/executors/snapshot/core/types';
 import type { RecorderEvent } from '../capture/recorder';
@@ -32,8 +33,17 @@ export const resolveRecordSnapshotForEvent = async (input: {
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;
     cacheKey: string;
 }): Promise<SnapshotResult | undefined> => {
+    const recordLog = getLogger('record');
     const { event, page, snapshotCache, cacheKey } = input;
-    if (!shouldUseSnapshotForEvent(event)) {return undefined;}
+    if (!shouldUseSnapshotForEvent(event)) {
+        recordLog('record_snapshot_resolve', {
+            result: 'skipped',
+            eventType: event.type,
+            selector: event.selector,
+            cacheKey,
+        });
+        return undefined;
+    }
 
     const now = Date.now();
     const cached = snapshotCache.get(cacheKey);
@@ -41,11 +51,28 @@ export const resolveRecordSnapshotForEvent = async (input: {
         if (!page) {return cached.snapshot;}
         const pageUrl = safePageUrl(page);
         if (cached.pageUrl === pageUrl) {
+            recordLog('record_snapshot_resolve', {
+                result: 'hit_cache',
+                eventType: event.type,
+                selector: event.selector,
+                cacheKey,
+                snapshotId: cached.snapshot.snapshotMeta?.snapshotId,
+                pageUrl,
+            });
             return cached.snapshot;
         }
     }
 
-    if (!page) {return undefined;}
+    if (!page) {
+        recordLog('record_snapshot_resolve', {
+            result: 'failed',
+            eventType: event.type,
+            selector: event.selector,
+            cacheKey,
+            reason: 'missing_page',
+        });
+        return undefined;
+    }
     const pageUrl = safePageUrl(page);
 
     try {
@@ -58,8 +85,24 @@ export const resolveRecordSnapshotForEvent = async (input: {
             capturedAt: now,
             pageUrl,
         });
+        recordLog('record_snapshot_resolve', {
+            result: 'captured',
+            eventType: event.type,
+            selector: event.selector,
+            cacheKey,
+            snapshotId: snapshot.snapshotMeta?.snapshotId,
+            pageUrl,
+        });
         return snapshot;
     } catch {
+        recordLog('record_snapshot_resolve', {
+            result: 'failed',
+            eventType: event.type,
+            selector: event.selector,
+            cacheKey,
+            pageUrl,
+            reason: 'capture_failed',
+        });
         return undefined;
     }
 };

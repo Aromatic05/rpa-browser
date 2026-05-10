@@ -269,7 +269,23 @@ export const appendWorkspaceRecordingEvent = async (
 
     let currentEvent = event;
     for (let round = 0; round < 3; round += 1) {
+        recordLog('record_normalizer_enter', {
+            workspaceName,
+            tabName,
+            eventType: currentEvent.type,
+            selector: currentEvent.selector,
+            ts: currentEvent.ts,
+        });
         const normalizedEvent = await normalizeRecorderEvent(buildNormalizeContext(), currentEvent);
+        recordLog('record_normalizer_result', {
+            status: normalizedEvent.status,
+            reason: normalizedEvent.status === 'pass' ? 'pass' : undefined,
+            stepName: normalizedEvent.status === 'handled' ? normalizedEvent.step.name : undefined,
+            selector: currentEvent.selector,
+            valuesLength: normalizedEvent.status === 'handled' && Array.isArray((normalizedEvent.step.args as any).values)
+                ? (normalizedEvent.step.args as any).values.length
+                : undefined,
+        });
         if (normalizedEvent.status === 'pending') {
             return { accepted: true };
         }

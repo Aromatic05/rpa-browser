@@ -1,4 +1,5 @@
 import type { StepUnion } from '../../runner/steps/types';
+import { getLogger } from '../../logging/logger';
 import type { RecorderEvent } from '../capture/recorder';
 import {
     readControlOptionByNodeId,
@@ -185,8 +186,28 @@ export const normalizeSelectOption = async (
     context: NormalizeContext,
     event: RecorderEvent,
 ): Promise<RecordNormalizerResult> => {
+    const recordLog = getLogger('record');
     if (consumeSuppressedNativeSelectClick(context, event)) {
+        recordLog('record_select_suppress_hit', {
+            tabName: context.tabName,
+            selector: event.selector,
+            eventTs: event.ts,
+        });
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'pending',
+            reason: 'native_select_suppress_hit',
+            values: [],
+        });
         return { status: 'pending' };
+    }
+    if (event.type === 'click') {
+        recordLog('record_select_suppress_miss', {
+            tabName: context.tabName,
+            selector: event.selector,
+            reason: 'missing',
+        });
     }
 
     if (event.type === 'click') {
@@ -224,18 +245,61 @@ export const normalizeSelectOption = async (
     });
 
     if (!binding) {
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'pass',
+            reason: 'no_binding',
+            values: [],
+        });
         return { status: 'pass' };
     }
 
     if (binding.componentKind === 'native_select') {
         if (event.type === 'click') {
+            recordLog('record_select_option_normalizer', {
+                eventType: event.type,
+                selector: event.selector,
+                result: 'pending',
+                reason: 'native_select_click_absorb',
+                componentKind: binding.componentKind,
+                targetNodeId: binding.targetNodeId,
+                controlRootNodeId: binding.controlRootNodeId,
+                values: [],
+            });
             return { status: 'pending' };
         }
         if (event.type !== 'select' || typeof event.value !== 'string') {
+            recordLog('record_select_option_normalizer', {
+                eventType: event.type,
+                selector: event.selector,
+                result: 'pass',
+                reason: 'native_select_non_select_event',
+                componentKind: binding.componentKind,
+                targetNodeId: binding.targetNodeId,
+                controlRootNodeId: binding.controlRootNodeId,
+                values: [],
+            });
             return { status: 'pass' };
         }
         markSuppressedNativeSelectClick(context, event);
-        return buildSelectOptionStep(context, event, [event.value]);
+        recordLog('record_select_suppress_write', {
+            tabName: context.tabName,
+            selector: event.selector,
+            ts: event.ts,
+        });
+        const result = buildSelectOptionStep(context, event, [event.value]);
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'handled',
+            reason: 'native_select',
+            componentKind: binding.componentKind,
+            targetNodeId: binding.targetNodeId,
+            controlRootNodeId: binding.controlRootNodeId,
+            values: [event.value.slice(0, 32)],
+        });
+        return result;
     }
 
     if (binding.componentKind === 'radio_group') {
@@ -243,13 +307,34 @@ export const normalizeSelectOption = async (
             return { status: 'pass' };
         }
         if (event.checked !== true) {
+            recordLog('record_select_option_normalizer', {
+                eventType: event.type,
+                selector: event.selector,
+                result: 'pending',
+                reason: 'radio_unchecked',
+                componentKind: binding.componentKind,
+                targetNodeId: binding.targetNodeId,
+                controlRootNodeId: binding.controlRootNodeId,
+                values: [],
+            });
             return { status: 'pending' };
         }
         const option = readControlOptionByNodeId(binding.component, binding.targetNodeId);
         if (!option) {return { status: 'pass' };}
         const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
-        return buildSelectOptionStep(context, event, [value]);
+        const result = buildSelectOptionStep(context, event, [value]);
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'handled',
+            reason: 'radio_group',
+            componentKind: binding.componentKind,
+            targetNodeId: binding.targetNodeId,
+            controlRootNodeId: binding.controlRootNodeId,
+            values: [value.slice(0, 32)],
+        });
+        return result;
     }
 
     if (binding.componentKind === 'checkbox_group') {
@@ -273,6 +358,16 @@ export const normalizeSelectOption = async (
             ts: event.ts,
         };
         sessions.set(sessionKey, session);
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'pending',
+            reason: 'checkbox_group_session',
+            componentKind: binding.componentKind,
+            targetNodeId: binding.targetNodeId,
+            controlRootNodeId: binding.controlRootNodeId,
+            values: values.map((item) => item.slice(0, 32)),
+        });
         return { status: 'pending' };
     }
 
@@ -299,6 +394,16 @@ export const normalizeSelectOption = async (
                 ts: event.ts,
             };
             sessions.set(sessionKey, pendingSession);
+            recordLog('record_select_option_normalizer', {
+                eventType: event.type,
+                selector: event.selector,
+                result: 'pending',
+                reason: 'custom_trigger_session',
+                componentKind: binding.componentKind,
+                targetNodeId: binding.targetNodeId,
+                controlRootNodeId: binding.controlRootNodeId,
+                values: [],
+            });
             return { status: 'pending' };
         }
 
@@ -315,8 +420,29 @@ export const normalizeSelectOption = async (
         if (!option) {return { status: 'pass' };}
         const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
-        return buildSelectOptionStep(context, event, [value]);
+        const result = buildSelectOptionStep(context, event, [value]);
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'handled',
+            reason: 'custom_option',
+            componentKind: binding.componentKind,
+            targetNodeId: binding.targetNodeId,
+            controlRootNodeId: binding.controlRootNodeId,
+            values: [value.slice(0, 32)],
+        });
+        return result;
     }
 
+    recordLog('record_select_option_normalizer', {
+        eventType: event.type,
+        selector: event.selector,
+        result: 'pass',
+        reason: 'kind_not_matched',
+        componentKind: binding.componentKind,
+        targetNodeId: binding.targetNodeId,
+        controlRootNodeId: binding.controlRootNodeId,
+        values: [],
+    });
     return { status: 'pass' };
 };

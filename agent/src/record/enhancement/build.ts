@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { getLogger } from '../../logging/logger';
 import type { RecorderEvent } from '../capture/recorder';
 import { getNodeSemanticHints } from '../../runner/steps/executors/snapshot/core/runtime_store';
 import type { SnapshotResult, UnifiedNode } from '../../runner/steps/executors/snapshot/core/types';
@@ -17,6 +18,7 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;
     cacheKey: string;
 }): Promise<RecordedStepEnhancement> => {
+    const recordLog = getLogger('record');
     const { event, page, snapshotCache, cacheKey } = input;
     if (isPageLevelEvent(event)) {
         const snapshot = await resolveRecordSnapshotForEvent({ event, page, snapshotCache, cacheKey });
@@ -48,8 +50,21 @@ export const enrichRecordedStepWithSnapshot = async (input: {
         cacheKey,
     });
     if (!binding) {
+        recordLog('record_enhancement_binding', {
+            result: 'raw_only',
+            eventType: event.type,
+            selector: event.selector,
+            reason: 'binding_missing',
+        });
         return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
     }
+    recordLog('record_enhancement_binding', {
+        result: 'bound',
+        eventType: event.type,
+        selector: event.selector,
+        targetNodeId: binding.targetNodeId,
+        componentKind: binding.componentKind,
+    });
     const snapshot = binding.snapshot;
     const targetNodeId = binding.targetNodeId;
     const node = snapshot.nodeIndex[targetNodeId];

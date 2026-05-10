@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { getLogger } from '../../logging/logger';
 import type { BaseControlComponent } from '../../runner/steps/executors/snapshot/control/types';
 import type { SnapshotResult } from '../../runner/steps/executors/snapshot/core/types';
 import type { RecorderEvent } from '../capture/recorder';
@@ -178,13 +179,43 @@ export const resolveRecordTargetBinding = async (input: {
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;
     cacheKey: string;
 }): Promise<RecordTargetBinding | undefined> => {
+    const recordLog = getLogger('record');
+    recordLog('record_target_binding_start', {
+        eventType: input.event.type,
+        selector: input.event.selector,
+    });
     const selector = normalize(input.event.selector);
-    if (!selector) {return undefined;}
+    if (!selector) {
+        recordLog('record_target_binding_result', { result: 'no_selector' });
+        return undefined;
+    }
     const snapshot = await snapshotResolver(input);
-    if (!snapshot) {return undefined;}
+    if (!snapshot) {
+        recordLog('record_target_binding_result', {
+            result: 'no_snapshot',
+            selector,
+        });
+        return undefined;
+    }
 
     const matched = collectMatchedNodeIds(snapshot, selector);
-    if (matched.length !== 1) {return undefined;}
+    if (matched.length === 0) {
+        recordLog('record_target_binding_result', {
+            result: 'no_node',
+            selector,
+            matchedNodeCount: 0,
+        });
+        return undefined;
+    }
+    if (matched.length !== 1) {
+        recordLog('record_target_binding_result', {
+            result: 'ambiguous_node',
+            selector,
+            matchedBy: matched[0]?.matchedBy,
+            matchedNodeCount: matched.length,
+        });
+        return undefined;
+    }
 
     const targetNodeId = matched[0].nodeId;
     const nodeControlRef = snapshot.nodeIndex[targetNodeId]?.control?.ref;
@@ -192,7 +223,61 @@ export const resolveRecordTargetBinding = async (input: {
     if (nodeControlRef) {
         const component = snapshot.controlIndex[nodeControlRef];
         const kind = component ? readComponentKind(component) : undefined;
-        if (component && kind && isSelectOptionComponent(component)) {
+        if (!component) {
+            recordLog('record_target_binding_result', {
+                result: 'no_control',
+                selector,
+                matchedBy: matched[0].matchedBy,
+                matchedNodeCount: matched.length,
+                targetNodeId,
+                controlRef: nodeControlRef,
+            });
+            return undefined;
+        }
+        if (component.owner !== 'browser.select_option') {
+            recordLog('record_target_binding_result', {
+                result: 'invalid_owner',
+                selector,
+                matchedBy: matched[0].matchedBy,
+                matchedNodeCount: matched.length,
+                targetNodeId,
+                controlRef: nodeControlRef,
+            });
+            return undefined;
+        }
+        if (!component.capabilities.includes('select_option')) {
+            recordLog('record_target_binding_result', {
+                result: 'invalid_capability',
+                selector,
+                matchedBy: matched[0].matchedBy,
+                matchedNodeCount: matched.length,
+                targetNodeId,
+                controlRef: nodeControlRef,
+            });
+            return undefined;
+        }
+        if (!kind) {
+            recordLog('record_target_binding_result', {
+                result: 'unsupported_kind',
+                selector,
+                matchedBy: matched[0].matchedBy,
+                matchedNodeCount: matched.length,
+                targetNodeId,
+                controlRef: nodeControlRef,
+            });
+            return undefined;
+        }
+        if (isSelectOptionComponent(component)) {
+            recordLog('record_target_binding_result', {
+                result: 'bound',
+                selector,
+                matchedBy: matched[0].matchedBy,
+                matchedNodeCount: matched.length,
+                targetNodeId,
+                controlRef: nodeControlRef,
+                componentKind: kind,
+                controlRootNodeId: component.rootNodeId,
+            });
             return {
                 snapshot,
                 snapshotId: snapshot.snapshotMeta?.snapshotId,
@@ -207,7 +292,27 @@ export const resolveRecordTargetBinding = async (input: {
     }
 
     const byNode = findControlByNodeId(snapshot, targetNodeId);
-    if (!byNode) {return undefined;}
+    if (!byNode) {
+        recordLog('record_target_binding_result', {
+            result: 'no_control',
+            selector,
+            matchedBy: matched[0].matchedBy,
+            matchedNodeCount: matched.length,
+            targetNodeId,
+        });
+        return undefined;
+    }
+
+    recordLog('record_target_binding_result', {
+        result: 'bound',
+        selector,
+        matchedBy: matched[0].matchedBy,
+        matchedNodeCount: matched.length,
+        targetNodeId,
+        controlRef: byNode.controlRef,
+        componentKind: byNode.componentKind,
+        controlRootNodeId: byNode.controlRootNodeId,
+    });
 
     return {
         snapshot,
