@@ -130,6 +130,15 @@ type ControlCollector = (ctx: ControlCollectContext) => BaseControlComponent[];
 - `readNodeText` 可通过 `ctx.contentStore` 解析 `content.ref`。
 - `aria-controls`/`aria-owns` 通过 DOM id → nodeId 映射（基于 `attrIndex` 构建 `buildDomIdToNodeIdMap`）查找对应 snapshot 节点。
 
+#### 7.2.1 属性读取边界
+
+attrIndex 存储原始 DOM 属性值（未经 lowerCase）。collector 内使用两个独立读取函数：
+
+- `readAttrRaw`：仅 trim，保留原始大小写。用于 id、aria-controls、aria-owns、value、data-value、name。
+- `readAttrLower`：trim + lowerCase。仅用于分类/布尔属性：tag、type、role、class、checked、selected、disabled、readonly、focused、aria-expanded、aria-selected、aria-checked。
+
+DOM id 查询（`buildDomIdToNodeIdMap` → `domIdMap[ariaControlsValue]`）依赖精确大小写匹配，因此 aria-controls/aria-owns 必须使用 `readAttrRaw`。option value、selectedValues、optionMatchHints 同样不得被 lowerCase 破坏。
+
 ### 7.3 注册机制
 
 ```ts
@@ -161,6 +170,8 @@ const getDefaultControlRegistry = (): ControlRegistry => {
 
 - `generateSemanticSnapshot` / `generateSemanticSnapshotFromRaw` 未显式传入 `controlRegistry` 时默认使用已注册 select_option collectors 的 registry。
 - `snapshot/control` 不 import `select_option`；装配位于管线组合层。
+- 默认 registry 采用 lazy 初始化（`let _defaultRegistry`），避免模块加载副作用。
+- `generateSemanticSnapshotFromRaw` 作为测试入口点：直接传入 `RawData` 即可验证默认 registry 生效，无需手动 `createControlRegistry` 或 `registerSelectOptionControls`。
 
 ### 7.5 管线集成
 
@@ -203,19 +214,37 @@ stageBuildSnapshot 内部:
 **native_select**：tag=select。读取子 option 节点、selected 状态。
 
 **radio_group**：
-- 先按最近 group/form/form-item 容器分区。
+- 先按最近安全容器分区（role=radiogroup/group/form、class token ant-radio-group/radio-group/form-item/ant-form-item）。
 - 分区内按 name 属性聚合。
-- 同 name 但不同区域的 radio 不合并。
+- 同 name 但不同安全容器的 radio 不合并。
+- 同一安全容器内同名 radio 数量 < 2 时不生成 radio_group。
 
 **checkbox_group**：
-- 优先识别 role=group、ant-checkbox-group/checkbox-group class。
-- 找不到显式 group 时使用最近公共祖先。
-- 不同表单区域的 checkbox 不合并。
+- 显式 group 优先：role=group、class token ant-checkbox-group、class token checkbox-group。
+- 找不到显式 group 时使用最近安全容器（role=form/group、class token form-item/ant-form-item）。
+- 找不到安全容器时使用最近公共祖先。
+- 不同安全容器的 checkbox 不合并。
+- 最近公共祖先不得跨 virtual-root。
 
 **custom_select**：
-- 主路径：role=combobox + aria-controls/aria-owns（DOM id → nodeId）。
+- 主路径：role=combobox + aria-controls/aria-owns（DOM id → nodeId，精确大小写匹配）。
 - 辅助路径：ant-select/ant-select-selector class 信号 + ant-select-dropdown popup + ant-select-item-option 选项。
-- class 辅助不覆盖标准 role/aria 主路径。
+- class 判断使用 token 精确匹配（`hasClassToken`），不得使用 `includes` 子串匹配。
+- ant-select-dropdown 不得被识别为 custom_select root。
+- ant-select-item-option / ant-select-dropdown-menu-item 不得被识别为 custom_select root。
+- class 辅助路径不得覆盖 role=combobox + aria-controls 主路径。
+- custom_select 必须同时满足 popupNodeId 存在且 options 非空才生成，不允许半成品 control。
+- 一个 Ant Select 组件只生成一个 custom_select。
+
+### 7.9 Control Collector 不变量
+
+- custom_select 不允许 popupNodeId 缺失（`undefined`）。
+- custom_select 不允许 options 为空数组。
+- controlIndex 在无匹配时稳定输出 `{}`。
+- role 字段保持原始 a11y 语义，不被组件语义污染（不出现 `native_select`、`radio_group` 等组件 kind 作为 role）。
+- target 字段保持导航目标语义，不被组件语义污染。
+- snapshot/control 不引入具体组件文件（select_option 等）。
+- 不得保留任何兼容/fallback 设计实现。
 
 ### 7.8 后续任务（不在本次提交）
 
