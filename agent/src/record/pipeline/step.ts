@@ -273,6 +273,7 @@ export const appendWorkspaceRecordingEvent = async (
         recordLog('record_normalizer_enter', {
             workspaceName,
             tabName,
+            hasPage: Boolean(page),
             eventType: currentEvent.type,
             selector: currentEvent.selector,
             ts: currentEvent.ts,
