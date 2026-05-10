@@ -267,31 +267,38 @@ export const appendWorkspaceRecordingEvent = async (
         return { accepted: true };
     }
 
-    const normalizedEvent = await normalizeRecorderEvent(buildNormalizeContext(), event);
-    if (normalizedEvent.status === 'pending') {
-        return { accepted: true };
-    }
-    if (normalizedEvent.status === 'handled') {
-        queueRecordingStep(
-            state,
-            effectiveToken,
-            tabName,
-            normalizedEvent.step,
-            normalizedEvent.enhancementEvent,
-            hooks,
-            { workspaceName, page },
-        );
-        recordLog('step_queued', {
-            stepId: normalizedEvent.step.id,
-            stepName: normalizedEvent.step.name,
-            ts: normalizedEvent.step.meta?.ts,
-            tabName: normalizedEvent.step.meta?.tabName || tabName,
-            workspaceName,
-        });
-        return { accepted: true };
+    let currentEvent = event;
+    for (let round = 0; round < 3; round += 1) {
+        const normalizedEvent = await normalizeRecorderEvent(buildNormalizeContext(), currentEvent);
+        if (normalizedEvent.status === 'pending') {
+            return { accepted: true };
+        }
+        if (normalizedEvent.status === 'handled') {
+            queueRecordingStep(
+                state,
+                effectiveToken,
+                tabName,
+                normalizedEvent.step,
+                normalizedEvent.enhancementEvent,
+                hooks,
+                { workspaceName, page },
+            );
+            recordLog('step_queued', {
+                stepId: normalizedEvent.step.id,
+                stepName: normalizedEvent.step.name,
+                ts: normalizedEvent.step.meta?.ts,
+                tabName: normalizedEvent.step.meta?.tabName || tabName,
+                workspaceName,
+            });
+            if (normalizedEvent.continueCurrentEvent) {
+                continue;
+            }
+            return { accepted: true };
+        }
+        break;
     }
 
-    const step = toStep(event);
+    const step = toStep(currentEvent);
     if (!step) {return { accepted: false };}
     const normalized = enrichRecordedStep(state, effectiveToken, tabName, step);
     const list = state.recordings.get(effectiveToken) || [];
@@ -308,7 +315,7 @@ export const appendWorkspaceRecordingEvent = async (
         state,
         recordingToken: effectiveToken,
         stepId: normalized.id,
-        event,
+        event: currentEvent,
         page,
         snapshotCache: state.recordSnapshotCache,
         cacheKey: effectiveToken,

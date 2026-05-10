@@ -117,6 +117,16 @@ const buildSelectOptionStep = (
     };
 };
 
+const buildReleasedTriggerClickStep = (context: NormalizeContext, triggerEvent: RecorderEvent): StepUnion => {
+    return context.createStep(
+        'browser.click',
+        { selector: triggerEvent.selector },
+        triggerEvent.ts,
+        { tabName: triggerEvent.tabName },
+        context.buildResolveFromEvent(triggerEvent),
+    );
+};
+
 export const flushPendingChoiceEvents = (input: {
     state: RecordingState;
     recordingToken: string;
@@ -177,6 +187,33 @@ export const normalizeSelectOption = async (
 ): Promise<RecordNormalizerResult> => {
     if (consumeSuppressedNativeSelectClick(context, event)) {
         return { status: 'pending' };
+    }
+
+    if (event.type === 'click') {
+        const sessions = context.state.pendingChoiceEvents.get(context.recordingToken);
+        if (sessions && sessions.size > 0) {
+            const pendingCustom = Array.from(sessions.values())
+                .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+            if (pendingCustom) {
+                const clickBinding = await resolveRecordTargetBinding({
+                    event,
+                    page: context.page,
+                    snapshotCache: context.snapshotCache,
+                    cacheKey: context.cacheKey,
+                });
+                const sameControl = Boolean(clickBinding && clickBinding.controlRootNodeId === pendingCustom.controlRootNodeId);
+                if (!sameControl) {
+                    const releasedStep = buildReleasedTriggerClickStep(context, pendingCustom.triggerEvent);
+                    deleteChoiceSession(context.state, context.recordingToken, pendingCustom.sessionKey);
+                    return {
+                        status: 'handled',
+                        step: releasedStep,
+                        enhancementEvent: pendingCustom.triggerEvent,
+                        continueCurrentEvent: true,
+                    };
+                }
+            }
+        }
     }
 
     const binding = await resolveRecordTargetBinding({
