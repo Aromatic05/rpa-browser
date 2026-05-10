@@ -103,10 +103,11 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             if (!activeTab) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
             }
-            const binding = await services.runtime.ensureExecutableTab({
+            const binding = await services.runtime.awaitExecutableTab({
                 workspace,
                 pageRegistry: services.pageRegistry,
                 tabName: activeTab.name,
+                timeoutMs: 1500,
             });
             const executableTabs = workspace.tabs.listTabs().filter((tab) => Boolean(tab.page) && !tab.page?.isClosed());
             if (!executableTabs.length) {
@@ -313,11 +314,11 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
             const replayWorkspaceName = currentWorkspaceName;
             const initialTabName = currentTab.name;
-            const initialBinding = await services.runtime.ensureExecutableTab({
+            const initialBinding = await services.runtime.awaitExecutableTab({
                 workspace,
                 pageRegistry: services.pageRegistry,
                 tabName: initialTabName,
-                urlHint: bundle.manifest?.entryUrl,
+                timeoutMs: 1500,
             });
 
             if (bundle.manifest?.entryUrl && initialBinding.page.url() !== bundle.manifest.entryUrl) {
@@ -474,11 +475,11 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             let page = targetTab?.page || null;
             if (!page) {
                 try {
-                    const binding = await services.runtime.ensureExecutableTab({
+                    const binding = await services.runtime.awaitExecutableTab({
                         workspace,
                         pageRegistry: services.pageRegistry,
                         tabName,
-                        urlHint: targetTab?.url,
+                        timeoutMs: 1500,
                     });
                     page = binding.page;
                 } catch (error) {
@@ -487,6 +488,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         tabName,
                         sourceTabName,
                         message: error instanceof Error ? error.message : String(error),
+                        details: error && typeof error === 'object' && 'details' in error ? (error as { details?: unknown }).details : undefined,
                     });
                 }
             }
