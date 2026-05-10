@@ -103,7 +103,7 @@ const createSemanticSnapshotPage = (initialUrl = 'https://example.test') => {
     };
 };
 
-test('click(coord) uses trace.mouse.action', async () => {
+test('mouse click uses trace.mouse.action', async () => {
     const calls: Array<{ name: string; args: any }> = [];
     const traceTools = {
         'trace.mouse.action': async (args: any) => {
@@ -112,13 +112,13 @@ test('click(coord) uses trace.mouse.action', async () => {
         },
     };
     const deps = createDeps(traceTools);
-    const step: Step<'browser.click'> = {
+    const step: Step<'browser.mouse'> = {
         id: 's1',
-        name: 'browser.click',
-        args: { coord: { x: 10, y: 20 } },
+        name: 'browser.mouse',
+        args: { action: 'click', x: 10, y: 20 },
     };
 
-    const result = await executeBrowserClick(step, deps, 'ws1');
+    const result = await executeBrowserMouse(step, deps, 'ws1');
     assert.equal(result.ok, true);
     assert.equal(calls.length, 2);
     assert.equal(calls[0].args.action, 'down');
@@ -842,20 +842,18 @@ test('not found returns error code and message', async () => {
     assert.ok(result.error?.message);
 });
 
-test('click rejects coord with target', async () => {
-    const traceTools = {
-        'trace.mouse.action': async () => ({ ok: true }),
-    };
+test('click without target returns ERR_BAD_ARGS', async () => {
+    const traceTools = {};
     const deps = createDeps(traceTools);
     const step: Step<'browser.click'> = {
         id: 's7',
         name: 'browser.click',
-        args: { coord: { x: 1, y: 2 }, selector: '#x' },
+        args: {},
     };
 
     const result = await executeBrowserClick(step, deps, 'ws1');
     assert.equal(result.ok, false);
-    assert.equal(result.error?.code, 'ERR_INTERNAL');
+    assert.equal(result.error?.code, 'ERR_BAD_ARGS');
 });
 
 test('mouse wheel requires deltaY', async () => {
