@@ -519,3 +519,58 @@ test('readNodeText resolves content.ref from contentStore', () => {
     assert.strictEqual(options.length, 1);
     assert.strictEqual(options[0].label, 'Resolved Text');
 });
+
+// ── attr case preservation ─────────────────────────────────────
+
+test('option value preserves original case via readAttrRaw', () => {
+    const opt = makeNode('case_opt', 'option'); opt.name = 'Admin';
+    const sel = makeNode('case_sel', 'generic', [opt]);
+    const root = makeNode('root', 'root', [sel]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'case_sel', 'tag', 'select');
+    setAttr(ctx, 'case_opt', 'tag', 'option'); setAttr(ctx, 'case_opt', 'value', 'UserAdmin');
+
+    const { controlIndex } = collect(root, ctx);
+    const ref = buildControlRef('native_select', 'case_sel');
+    const options = controlIndex[ref].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 1);
+    assert.strictEqual(options[0].value, 'UserAdmin');
+});
+
+test('aria-controls resolves popup with exact-case DOM id', () => {
+    const option1 = makeNode('cid_opt1', 'option'); option1.name = 'Item';
+    const listbox = makeNode('cid_lb', 'listbox', [option1]);
+    const combobox = makeNode('cid_combo', 'combobox');
+    const wrapper = makeNode('cid_wrap', 'generic', [combobox, listbox]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'cid_lb', 'id', 'Popup_DOM_ID');
+    setAttr(ctx, 'cid_combo', 'aria-controls', 'Popup_DOM_ID');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].popupNodeId, 'cid_lb');
+});
+
+test('data-value preserves original case via readAttrRaw', () => {
+    const opt1 = makeNode('dv_opt1', 'option'); opt1.name = 'Admin';
+    const listbox = makeNode('dv_lb', 'listbox', [opt1]);
+    const combobox = makeNode('dv_combo', 'combobox');
+    const wrapper = makeNode('dv_wrap', 'generic', [combobox, listbox]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'dv_lb', 'id', 'popup-dv');
+    setAttr(ctx, 'dv_combo', 'aria-controls', 'popup-dv');
+    setAttr(ctx, 'dv_opt1', 'data-value', 'RoleA');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1);
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 1);
+    assert.strictEqual(options[0].value, 'RoleA');
+});
