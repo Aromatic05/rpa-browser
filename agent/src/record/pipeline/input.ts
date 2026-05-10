@@ -1,8 +1,9 @@
 import type { Page } from 'playwright';
-import { appendWorkspaceRecordingEvent, appendWorkspaceRecordingStep, type RecordingState } from './recording';
-import type { RecorderEvent } from './recorder';
-import type { StepUnion } from '../runner/steps/types';
-import { recordFirstTabPageUrl } from './tab_lifecycle_recorder';
+import { appendWorkspaceRecordingEvent, appendWorkspaceRecordingStep } from './step';
+import type { RecordingState } from './state';
+import type { RecorderEvent } from '../capture/recorder';
+import type { StepUnion } from '../../runner/steps/types';
+import { recordFirstTabPageUrl } from '../tab_lifecycle_recorder';
 
 export type RecorderIngestResult = {
     accepted: boolean;
@@ -121,15 +122,14 @@ export const ingestRecordPayload = async (input: {
 
     const currentUrl = input.currentUrl || readPageUrl(input.page);
     if (input.payload.name !== 'browser.goto') {
-        const stepMeta = input.payload.meta || {};
-        const stepTabName = stepMeta.tabName || input.tabName;
+        const stepTabName = input.payload.meta?.tabName || input.tabName;
         flushFirstTabGotoAtIngestBoundary({
             state: input.state,
             workspaceName: input.workspaceName,
             tabName: stepTabName,
             url: currentUrl,
             page: input.page,
-            at: stepMeta.ts,
+            at: input.payload.meta?.ts,
             navDedupeWindowMs: input.navDedupeWindowMs,
         });
     }
