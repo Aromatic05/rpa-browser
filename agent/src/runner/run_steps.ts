@@ -230,7 +230,15 @@ const writeRunnerStepResultCache = async (
     result: ExecStepResult,
 ) => {
     try {
-        const binding = await deps.runtime.resolveBinding(workspaceName);
+        const workspace = deps.resolveWorkspace(workspaceName);
+        const tabName = workspace.tabs.getActiveTab()?.name;
+        if (!tabName) {return;}
+        const binding = await deps.runtime.awaitExecutableTab({
+            workspace,
+            pageRegistry: deps.pageRegistry,
+            tabName,
+            timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
+        });
         const cache = binding.traceCtx.cache as {
             runnerStepResults?: Record<string, unknown>;
             runnerStepResultsRunId?: string;
@@ -394,7 +402,17 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
             if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
                 try {
-                    const binding = await resolvedDeps.runtime.resolveBinding(req.workspaceName);
+                    const workspace = resolvedDeps.resolveWorkspace(req.workspaceName);
+                    const tabName = workspace.tabs.getActiveTab()?.name;
+                    if (!tabName) {
+                        throw new Error(`active tab not found: ${req.workspaceName}`);
+                    }
+                    const binding = await resolvedDeps.runtime.awaitExecutableTab({
+                        workspace,
+                        pageRegistry: resolvedDeps.pageRegistry,
+                        tabName,
+                        timeoutMs: resolvedDeps.config.waitPolicy.pageReadyTimeoutMs,
+                    });
                     markSnapshotSessionDirty(binding, `step:${step.name}`);
                 } catch (error) {
                     stepLogger('[runner] snapshot dirty mark failed', {

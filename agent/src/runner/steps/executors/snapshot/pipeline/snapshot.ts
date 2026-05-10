@@ -1,3 +1,4 @@
+import { awaitPageBoundBinding } from '../../../helpers/runtime_binding';
 import type { Page } from 'playwright';
 import crypto from 'node:crypto';
 import type { Step, StepResult } from '../../../types';
@@ -66,7 +67,7 @@ export const executeBrowserSnapshot = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const previousIdentity = clonePageIdentity(getSnapshotSessionEntry(binding)?.pageIdentity);
     const ensured = await ensureFreshSnapshot(binding, {
         forceRefresh: step.args.refresh === true,

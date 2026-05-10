@@ -347,8 +347,8 @@ const ensureFreshResolveSnapshot = async (
         ok: true,
         snapshotRequired,
         snapshotRefreshed: false,
-        snapshotId: latest.snapshotMeta?.snapshotId,
-        snapshotUrl: latest.snapshotMeta?.pageIdentity?.url,
+        snapshotId: latest?.snapshotMeta?.snapshotId,
+        snapshotUrl: latest?.snapshotMeta?.pageIdentity?.url,
     };
 };
 

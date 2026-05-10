@@ -2,15 +2,9 @@ import crypto from 'crypto';
 import type { ToolsBuildContext } from './context';
 
 export const createTabsTools = (base: ToolsBuildContext) => ({
-    'trace.tabs.create': async (args: { workspaceName: string; url?: string; timeout?: number }) =>
-        await base.run('trace.tabs.create', args, async () => {
-            if (!base.opts.pageRegistry) {
-                throw new Error('missing page registry');
-            }
+    'trace.tabs.create': async (_args: { workspaceName: string; url?: string; timeout?: number }) =>
+        await base.run('trace.tabs.create', _args, async () => {
             const tabName = crypto.randomUUID();
-            const page = await base.opts.pageRegistry.getPage(tabName, args.url);
-            base.setCurrentPage(page);
-            await page.bringToFront().catch(() => undefined);
             return { tabName };
         }),
 
@@ -19,7 +13,7 @@ export const createTabsTools = (base: ToolsBuildContext) => ({
             if (!base.opts.pageRegistry) {
                 throw new Error('missing page registry');
             }
-            const page = await base.opts.pageRegistry.getPage(args.tabName);
+            const page = await base.opts.pageRegistry.awaitPageBinding(args.tabName, { timeoutMs: 1500 });
             base.setCurrentPage(page);
             await page.bringToFront().catch(() => undefined);
         }),

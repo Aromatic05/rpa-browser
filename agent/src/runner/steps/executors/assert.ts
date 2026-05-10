@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { ensureFreshSnapshot } from './snapshot/core/session_store';
 import { generateSemanticSnapshot } from './snapshot/pipeline/snapshot';
 import { filterFinalEntities } from './snapshot/core/entity_query';
@@ -31,7 +32,7 @@ export const executeBrowserAssert = async (
         };
     }
 
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
 
     if (urlIncludes) {
         const info = await binding.traceTools['trace.page.getInfo']();

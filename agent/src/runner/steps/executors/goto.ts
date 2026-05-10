@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 
 export const executeBrowserGoto = async (
@@ -7,7 +8,7 @@ export const executeBrowserGoto = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const timeout = deps.config.waitPolicy.navigationTimeoutMs;
     const currentUrl = binding.page.url();
     if (currentUrl === step.args.url) {

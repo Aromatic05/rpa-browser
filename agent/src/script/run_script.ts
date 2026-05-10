@@ -78,7 +78,7 @@ const parseScript = (script: string): StepUnion[] => {
         steps.push({
             id: crypto.randomUUID(),
             name: 'browser.snapshot',
-            args: { includeA11y: true },
+            args: {},
             meta: { source: 'script', ts: Date.now() },
         });
     }

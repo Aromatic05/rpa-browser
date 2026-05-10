@@ -1,4 +1,5 @@
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { generateSemanticSnapshot } from './snapshot/pipeline/snapshot';
 import { ensureFreshSnapshot } from './snapshot/core/session_store';
 import { buildFinalEntityViewFromSnapshot } from './snapshot/core/overlay';
@@ -16,7 +17,7 @@ export const ensureFreshEntityContext = async (
     workspaceName: string,
     refreshReason: string,
 ): Promise<FreshEntityContext> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason,
         collectBaseSnapshot: async (context) =>

@@ -16,10 +16,12 @@ export const executeBrowserSwitchTab = async (
         };
     }
     const workspace = deps.resolveWorkspace(workspaceName);
-    const binding = await deps.runtime.ensureExecutableTab({
+    workspace.tabs.setActiveTab(tabName);
+    const binding = await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: deps.pageRegistry,
         tabName,
+        timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
     });
     const result = await binding.traceTools['trace.tabs.switch']({
         workspaceName,
@@ -28,6 +30,5 @@ export const executeBrowserSwitchTab = async (
     if (!result.ok) {
         return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
     }
-    await deps.runtime.resolveBinding(workspaceName, tabName);
     return { stepId: step.id, ok: true };
 };

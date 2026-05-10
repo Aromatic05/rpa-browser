@@ -36,7 +36,17 @@ export const getFailedCtx = async (input: {
 }): Promise<FailedCtx> => {
     let currentUrl: string | undefined;
     try {
-        const binding = await input.deps.runtime.resolveBinding(input.workspaceName);
+        const workspace = input.deps.resolveWorkspace(input.workspaceName);
+        const tabName = workspace.tabs.getActiveTab()?.name;
+        if (!tabName) {
+            throw new Error(`active tab not found: ${input.workspaceName}`);
+        }
+        const binding = await input.deps.runtime.awaitExecutableTab({
+            workspace,
+            pageRegistry: input.deps.pageRegistry,
+            tabName,
+            timeoutMs: input.deps.config.waitPolicy.pageReadyTimeoutMs,
+        });
         const info = await binding.traceTools['trace.page.getInfo']();
         if (info.ok) {
             currentUrl = info.data?.url;

@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { resolveTarget, type ResolveAuditAttempt, type TargetCandidate } from '../helpers/resolve_target';
@@ -29,7 +30,7 @@ export const executeBrowserScroll = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || isValidStepResolve(step.resolve));
     if (hasTarget) {
         const resolved = await resolveTarget(binding, {
@@ -58,7 +59,7 @@ export const executeBrowserScroll = async (
                 stepName: step.name,
             });
             if (!highlight.ok) {
-                const error = mapTraceError(highlight.error);
+                const error = mapTraceError(highlight.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
                 lastError = error;
                 pushAttempt(attempts, candidate, 'highlight', false, { code: error.code, message: error.message });
                 continue;
@@ -66,7 +67,7 @@ export const executeBrowserScroll = async (
             pushAttempt(attempts, candidate, 'highlight', true);
             const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
             if (!scroll.ok) {
-                const error = mapTraceError(scroll.error);
+                const error = mapTraceError(scroll.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
                 lastError = error;
                 pushAttempt(attempts, candidate, 'scrollIntoView', false, { code: error.code, message: error.message });
                 continue;

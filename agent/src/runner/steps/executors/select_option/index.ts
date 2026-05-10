@@ -1,3 +1,4 @@
+import { awaitPageBoundBinding } from '../../helpers/runtime_binding';
 import type { Step, StepResult } from '../../types';
 import type { RunStepsDeps } from '../../../run_steps';
 import type { SnapshotResult, UnifiedNode } from '../snapshot/core/types';
@@ -77,7 +78,7 @@ export const executeBrowserSelectOption = async (
         return badArgs(step.id, 'values must be a non-empty array', { values: step.args.values });
     }
 
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     const resolved = await resolveTarget(binding, {

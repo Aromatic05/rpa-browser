@@ -1,3 +1,4 @@
+import { awaitPageBoundBinding } from '../../helpers/runtime_binding';
 import type { Step, StepResult } from '../../types';
 import type { RunStepsDeps } from '../../../run_steps';
 import type { SelectOptionControl } from './types';
@@ -22,7 +23,7 @@ export const executeNativeSelect = async (
         return notFound(step.id, 'no selector for native select control node', { controlNodeId });
     }
 
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     const availableOptions = await binding.page.locator(nativeSelector).evaluate((node) => {

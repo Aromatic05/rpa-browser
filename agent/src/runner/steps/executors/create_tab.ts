@@ -1,25 +1,19 @@
+import crypto from 'node:crypto';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { mapTraceError } from '../helpers/target';
 
 export const executeBrowserCreateTab = async (
     step: Step<'browser.create_tab'>,
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
-    const result = await binding.traceTools['trace.tabs.create']({
-        workspaceName,
-    });
-    if (!result.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
-    }
-    const tabName = result.data?.tabName;
-    if (!tabName) {
-        return { stepId: step.id, ok: false, error: { code: 'ERR_ASSERTION_FAILED', message: 'create_tab missing tabName' } };
-    }
     const workspace = deps.resolveWorkspace(workspaceName);
-    await deps.runtime.ensureExecutableTab({
+    const tabName = step.args.tabName || crypto.randomUUID();
+    if (!workspace.tabs.hasTab(tabName)) {
+        workspace.tabs.createMetadataTab({ tabName });
+    }
+    workspace.tabs.setActiveTab(tabName);
+    await deps.runtime.createExecutableTab({
         workspace,
         pageRegistry: deps.pageRegistry,
         tabName,

@@ -1,3 +1,4 @@
+import { awaitPageBoundBinding } from '../../helpers/runtime_binding';
 import type { Step, StepResult } from '../../types';
 import type { RunStepsDeps } from '../../../run_steps';
 import type { SelectOptionControl, SelectOptionOption } from './types';
@@ -52,7 +53,7 @@ export const executeRadioGroup = async (
     workspaceName: string,
     control: SelectOptionControl,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     if (step.args.values.length !== 1) {
@@ -122,7 +123,7 @@ export const executeCheckboxGroup = async (
     workspaceName: string,
     control: SelectOptionControl,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
     const options = toSelectOptions(control.component);
