@@ -137,7 +137,7 @@ export const executeBrowserSelectOption = async (
         switch (control.kind) {
             case 'native_select':
                 execResult = await executeNativeSelect(
-                    step, deps, workspaceName, control, candidate.selector,
+                    step, deps, workspaceName, control, snapshot,
                 );
                 break;
             case 'radio_group':

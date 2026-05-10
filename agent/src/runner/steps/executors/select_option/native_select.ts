@@ -1,23 +1,60 @@
 import type { Step, StepResult } from '../../types';
 import type { RunStepsDeps } from '../../../run_steps';
 import type { SelectOptionControl } from './types';
+import type { SnapshotResult } from '../snapshot/core/types';
 import { mapTraceError } from '../../helpers/target';
-import { assertionFailed } from './assert';
+import { assertionFailed, notFound } from './assert';
 
 export const executeNativeSelect = async (
     step: Step<'browser.select_option'>,
     deps: RunStepsDeps,
     workspaceName: string,
     control: SelectOptionControl,
-    selector: string,
+    snapshot: SnapshotResult,
 ): Promise<StepResult> => {
+    const controlNodeId = control.component.controlNodeId;
+    if (!controlNodeId) {
+        return notFound(step.id, 'native_select missing controlNodeId');
+    }
+
+    const nativeSelector = snapshot.locatorIndex[controlNodeId]?.direct?.query;
+    if (!nativeSelector) {
+        return notFound(step.id, 'no selector for native select control node', { controlNodeId });
+    }
+
     const binding = await deps.runtime.resolveBinding(workspaceName);
     const timeout = deps.config.waitPolicy.visibleTimeoutMs;
 
-    const before = await binding.traceTools['trace.locator.readSelectState']({ selector });
+    const availableOptions = await binding.page.locator(nativeSelector).evaluate((node) => {
+        const select = node as HTMLSelectElement;
+        if (!select || !('options' in select)) {
+            return { values: [] as string[], labels: [] as string[] };
+        }
+        const opts = Array.from(select.options);
+        return {
+            values: opts.map((o) => (o.value || '').trim()).filter(Boolean),
+            labels: opts.map((o) => (o.textContent || '').trim()).filter(Boolean),
+        };
+    });
+    const availValues = new Set(availableOptions.values);
+    const availLabels = new Set(availableOptions.labels);
+    const targetList = step.args.values.map((v) => v.trim());
+    const anyMissing = targetList.some((v) => !availValues.has(v) && !availLabels.has(v));
+    if (anyMissing) {
+        return notFound(step.id, 'option not found in native select', {
+            targetValues: targetList,
+            availableValues: availableOptions.values,
+            availableLabels: availableOptions.labels,
+        });
+    }
+
+    const before = await binding.traceTools['trace.locator.readSelectState']({ selector: nativeSelector });
+    if (!before.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(before.error) };
+    }
 
     const select = await binding.traceTools['trace.locator.selectOption']({
-        selector,
+        selector: nativeSelector,
         values: step.args.values,
         timeout,
     });
@@ -25,7 +62,10 @@ export const executeNativeSelect = async (
         return { stepId: step.id, ok: false, error: mapTraceError(select.error) };
     }
 
-    const after = await binding.traceTools['trace.locator.readSelectState']({ selector });
+    const after = await binding.traceTools['trace.locator.readSelectState']({ selector: nativeSelector });
+    if (!after.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(after.error) };
+    }
 
     const beforeValues = readValues(before);
     const afterValues = readValues(after);
