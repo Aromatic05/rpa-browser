@@ -372,6 +372,33 @@ Record 模块后续修改必须遵守：
 
 任何组件语义识别都应该优先复用 snapshot/controlIndex，不应该在 payload 中重新写一套 DOM 组件识别逻辑。
 
+## 13. RecordTargetBinding 绑定原语
+
+record 内部新增 `RecordTargetBinding`，作为 RecorderEvent 命中 snapshot/control 的统一定位原语：
+
+- 绑定核心：`snapshotId + targetNodeId`
+- 内部字段：`controlRef/component/componentKind/controlRootNodeId`
+- `nodeId/controlRef/component` 仅在 record 内部流转，不进入最终 Step args
+
+normalizer 与 enhancement 共享同一绑定过程：
+
+1. 先获取 record snapshot（复用 recordSnapshotCache，TTL 1500ms）。
+2. 用事件 selector 在 locator/attr 上定位唯一 targetNodeId。
+3. 优先读 node.control.ref，缺失则通过 controlIndex 反查所属 control。
+4. 仅接受 `owner=browser.select_option` 且 `capabilities` 含 `select_option` 的组件。
+5. kind 只允许 `native_select/radio_group/checkbox_group/custom_select`。
+
+反查规则要点：
+
+- checkbox/radio/custom option 场景通过 `optionNodeIds` 找回所属 control。
+- 也允许通过 `rootNodeId/controlNodeId/triggerNodeId` 命中 control。
+
+边界约束：
+
+- payload 不参与 nodeId 绑定。
+- native select 的 click suppress 仅用于事件序列去重，不参与组件识别。
+- Step args 保持协议边界：`browser.select_option` 仅使用 `nodeId/selector/resolveId/values`（当前录制仅写 selector+values）。
+
 ## 12. 任务三落地结果（normalizer/select_option）
 
 本轮已在 `pipeline/step.ts` 接入 `normalizeRecorderEvent`，接入顺序保持为：
