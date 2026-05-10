@@ -188,8 +188,6 @@ export type StepArgsMap = {
     'browser.get_page_info': Record<string, never>;
     'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
-        includeA11y?: boolean;
-        focus_only?: boolean;
         refresh?: boolean;
         contain?: string;
         depth?: number;

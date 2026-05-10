@@ -479,8 +479,6 @@ const handleSnapshotWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (
         id: crypto.randomUUID(),
         name: 'browser.snapshot',
         args: {
-            includeA11y: input.includeA11y,
-            focus_only: input.focus_only,
             refresh: input.refresh,
             contain: input.contain,
             depth: input.depth,

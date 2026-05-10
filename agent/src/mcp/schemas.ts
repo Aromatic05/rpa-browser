@@ -95,8 +95,6 @@ export const browserListTabsInputSchema = z.object({
 
 export const browserSnapshotInputSchema = z.object({
     tabName: z.string().optional(),
-    includeA11y: z.boolean().optional(),
-    focus_only: z.boolean().optional(),
     refresh: z.boolean().optional(),
     contain: z.string().optional(),
     depth: z.number().int().min(-1).optional(),
@@ -509,8 +507,6 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabName: { type: 'string' },
-            includeA11y: { type: 'boolean' },
-            focus_only: { type: 'boolean' },
             refresh: { type: 'boolean' },
             contain: { type: 'string' },
             depth: { type: 'integer', minimum: -1 },

@@ -114,7 +114,7 @@ const run = async () => {
             {
                 id: 'demo-snap',
                 name: 'browser.snapshot',
-                args: { includeA11y: true },
+                args: {},
                 meta: { source: 'script' },
             },
         ],
