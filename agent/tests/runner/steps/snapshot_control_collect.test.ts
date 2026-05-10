@@ -206,6 +206,63 @@ test('Ant Radio Group with ant-radio-group class aggregates correctly', () => {
     assert.strictEqual(options.length, 2);
 });
 
+test('radio_group does not merge same-name across different form-item containers', () => {
+    const r1 = makeNode('rf1a', 'radio'); r1.name = 'A';
+    const r2 = makeNode('rf1b', 'radio'); r2.name = 'B';
+    const r3 = makeNode('rf2a', 'radio'); r3.name = 'A';
+    const r4 = makeNode('rf2b', 'radio'); r4.name = 'B';
+
+    const formItem1 = makeNode('rfi1', 'generic', [r1, r2]);
+    const formItem2 = makeNode('rfi2', 'generic', [r3, r4]);
+    const root = makeNode('root', 'root', [formItem1, formItem2]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'rf1a', 'tag', 'input'); setAttr(ctx, 'rf1a', 'type', 'radio'); setAttr(ctx, 'rf1a', 'name', 'group_x'); setAttr(ctx, 'rf1a', 'value', 'a');
+    setAttr(ctx, 'rf1b', 'tag', 'input'); setAttr(ctx, 'rf1b', 'type', 'radio'); setAttr(ctx, 'rf1b', 'name', 'group_x'); setAttr(ctx, 'rf1b', 'value', 'b');
+    setAttr(ctx, 'rf2a', 'tag', 'input'); setAttr(ctx, 'rf2a', 'type', 'radio'); setAttr(ctx, 'rf2a', 'name', 'group_x'); setAttr(ctx, 'rf2a', 'value', 'a');
+    setAttr(ctx, 'rf2b', 'tag', 'input'); setAttr(ctx, 'rf2b', 'type', 'radio'); setAttr(ctx, 'rf2b', 'name', 'group_x'); setAttr(ctx, 'rf2b', 'value', 'b');
+    setAttr(ctx, 'rfi1', 'class', 'form-item');
+    setAttr(ctx, 'rfi2', 'class', 'form-item');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'radio_group');
+    assert.strictEqual(entries.length, 2, 'each form-item should produce its own radio_group');
+});
+
+test('single radio does not generate radio_group', () => {
+    const r1 = makeNode('sr1', 'radio'); r1.name = 'Only';
+    const container = makeNode('src', 'group', [r1]);
+    const root = makeNode('root', 'root', [container]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'sr1', 'tag', 'input'); setAttr(ctx, 'sr1', 'type', 'radio'); setAttr(ctx, 'sr1', 'name', 'single'); setAttr(ctx, 'sr1', 'value', 'only');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'radio_group');
+    assert.strictEqual(entries.length, 0);
+});
+
+test('Ant Radio nested structure within ant-radio-group aggregates correctly', () => {
+    const r1 = makeNode('anr1', 'radio'); r1.name = 'Yes';
+    const r2 = makeNode('anr2', 'radio'); r2.name = 'No';
+
+    const label1 = makeNode('anl1', 'generic', [r1]);
+    const label2 = makeNode('anl2', 'generic', [r2]);
+    const radioGroup = makeNode('anrg', 'generic', [label1, label2]);
+    const root = makeNode('root', 'root', [radioGroup]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'anr1', 'tag', 'input'); setAttr(ctx, 'anr1', 'type', 'radio'); setAttr(ctx, 'anr1', 'name', 'ant_yn'); setAttr(ctx, 'anr1', 'value', 'yes'); setAttr(ctx, 'anr1', 'checked', 'true');
+    setAttr(ctx, 'anr2', 'tag', 'input'); setAttr(ctx, 'anr2', 'type', 'radio'); setAttr(ctx, 'anr2', 'name', 'ant_yn'); setAttr(ctx, 'anr2', 'value', 'no');
+    setAttr(ctx, 'anrg', 'class', 'ant-radio-group ant-radio-group-outline');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'radio_group');
+    assert.strictEqual(entries.length, 1);
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2);
+});
+
 // ── checkbox_group ────────────────────────────────────────────
 
 test('checkbox_group detects explicit group container by role=group', () => {
@@ -276,6 +333,66 @@ test('checkbox_group uses common ancestor when no explicit group', () => {
 
     const { controlIndex } = collect(root, ctx);
 
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'checkbox_group');
+    assert.strictEqual(entries.length, 1);
+});
+
+test('checkbox_group does not merge across different form-item containers', () => {
+    const cb1 = makeNode('ficb1', 'checkbox'); cb1.name = 'A';
+    const cb2 = makeNode('ficb2', 'checkbox'); cb2.name = 'B';
+    const cb3 = makeNode('ficb3', 'checkbox'); cb3.name = 'C';
+
+    const formItem1 = makeNode('fi1', 'generic', [cb1, cb2]);
+    const formItem2 = makeNode('fi2', 'generic', [cb3]);
+    const root = makeNode('root', 'root', [formItem1, formItem2]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'ficb1', 'tag', 'input'); setAttr(ctx, 'ficb1', 'type', 'checkbox'); setAttr(ctx, 'ficb1', 'value', 'a');
+    setAttr(ctx, 'ficb2', 'tag', 'input'); setAttr(ctx, 'ficb2', 'type', 'checkbox'); setAttr(ctx, 'ficb2', 'value', 'b');
+    setAttr(ctx, 'ficb3', 'tag', 'input'); setAttr(ctx, 'ficb3', 'type', 'checkbox'); setAttr(ctx, 'ficb3', 'value', 'c');
+    setAttr(ctx, 'fi1', 'class', 'form-item');
+    setAttr(ctx, 'fi2', 'class', 'form-item');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'checkbox_group');
+    assert.strictEqual(entries.length, 1, 'only fi1 checkboxes should form a group');
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2, 'fi1 has 2 checkboxes grouped');
+});
+
+test('Ant Checkbox real nested structure aggregates within ant-form-item', () => {
+    const cb1 = makeNode('arcb1', 'checkbox'); cb1.name = 'Opt 1';
+    const cb2 = makeNode('arcb2', 'checkbox'); cb2.name = 'Opt 2';
+
+    const label1 = makeNode('arl1', 'generic', [cb1]);
+    const label2 = makeNode('arl2', 'generic', [cb2]);
+    const formItem = makeNode('arfi', 'generic', [label1, label2]);
+    const root = makeNode('root', 'root', [formItem]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'arcb1', 'tag', 'input'); setAttr(ctx, 'arcb1', 'type', 'checkbox'); setAttr(ctx, 'arcb1', 'value', 'opt1');
+    setAttr(ctx, 'arcb2', 'tag', 'input'); setAttr(ctx, 'arcb2', 'type', 'checkbox'); setAttr(ctx, 'arcb2', 'value', 'opt2');
+    setAttr(ctx, 'arfi', 'class', 'ant-form-item');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'checkbox_group');
+    assert.strictEqual(entries.length, 1);
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2);
+});
+
+test('simple container without explicit group still aggregates via safe container fallback', () => {
+    const cb1 = makeNode('svcb1', 'checkbox'); cb1.name = 'X';
+    const cb2 = makeNode('svcb2', 'checkbox'); cb2.name = 'Y';
+
+    const plainDiv = makeNode('svdiv', 'generic', [cb1, cb2]);
+    const root = makeNode('root', 'root', [plainDiv]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'svcb1', 'tag', 'input'); setAttr(ctx, 'svcb1', 'type', 'checkbox'); setAttr(ctx, 'svcb1', 'value', 'x');
+    setAttr(ctx, 'svcb2', 'tag', 'input'); setAttr(ctx, 'svcb2', 'type', 'checkbox'); setAttr(ctx, 'svcb2', 'value', 'y');
+
+    const { controlIndex } = collect(root, ctx);
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'checkbox_group');
     assert.strictEqual(entries.length, 1);
 });

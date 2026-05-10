@@ -132,8 +132,8 @@ const partitionByContainer = (
     return partitions;
 };
 
-const CONTAINER_ROLES = new Set(['group', 'radiogroup', 'form']);
-const CONTAINER_CLASS_SIGNALS = ['ant-radio-group', 'ant-checkbox-group', 'checkbox-group', 'radio-group', 'form-item'];
+const RADIO_CONTAINER_ROLES = new Set(['radiogroup', 'group', 'form']);
+const RADIO_CONTAINER_CLASS_SIGNALS = ['ant-radio-group', 'radio-group', 'form-item', 'ant-form-item'];
 
 const findNearestContainerId = (
     node: UnifiedNode,
@@ -144,9 +144,9 @@ const findNearestContainerId = (
     while (currentId) {
         const parent = ctx.nodeIndex[currentId];
         if (parent) {
-            if (CONTAINER_ROLES.has(parent.role)) {return currentId;}
+            if (RADIO_CONTAINER_ROLES.has(parent.role)) {return currentId;}
             const cls = readAttrLower(ctx, parent, 'class') || '';
-            for (const signal of CONTAINER_CLASS_SIGNALS) {
+            for (const signal of RADIO_CONTAINER_CLASS_SIGNALS) {
                 if (hasClassToken(cls, signal)) {return currentId;}
             }
         }
@@ -174,8 +174,14 @@ const collectCheckboxGroup: ControlCollector = (ctx) => {
         }
     }
 
-    // Fallback: group unmatched by nearest common parent
-    const fallbackGroups = groupBy(unmatched, (node) => parentIdMap[node.id] || node.id);
+    // Fallback: group unmatched by nearest safe container
+    const fallbackGroups = new Map<string, UnifiedNode[]>();
+    for (const node of unmatched) {
+        const containerId = findNearestSafeContainer(node, parentIdMap, ctx);
+        const bucket = fallbackGroups.get(containerId) || [];
+        bucket.push(node);
+        fallbackGroups.set(containerId, bucket);
+    }
 
     const components: BaseControlComponent[] = [];
     const allGroups = new Map(explicitGroups);
@@ -223,6 +229,29 @@ const collectCheckboxGroup: ControlCollector = (ctx) => {
         });
     }
     return components;
+};
+
+const CHECKBOX_SAFE_CONTAINER_ROLES = new Set(['form', 'group']);
+const CHECKBOX_SAFE_CONTAINER_CLASS_SIGNALS = ['form-item', 'ant-form-item'];
+
+const findNearestSafeContainer = (
+    node: UnifiedNode,
+    parentIdMap: ParentIdMap,
+    ctx: ControlCollectContext,
+): string => {
+    let currentId: string | undefined = parentIdMap[node.id];
+    while (currentId) {
+        const parent = ctx.nodeIndex[currentId];
+        if (parent) {
+            if (CHECKBOX_SAFE_CONTAINER_ROLES.has(parent.role)) {return currentId;}
+            const cls = readAttrLower(ctx, parent, 'class') || '';
+            for (const signal of CHECKBOX_SAFE_CONTAINER_CLASS_SIGNALS) {
+                if (hasClassToken(cls, signal)) {return currentId;}
+            }
+        }
+        currentId = parentIdMap[currentId];
+    }
+    return parentIdMap[node.id] || node.id;
 };
 
 const CHECKBOX_GROUP_CLASS_SIGNALS = ['ant-checkbox-group', 'checkbox-group'];
