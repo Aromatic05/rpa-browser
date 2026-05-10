@@ -213,12 +213,7 @@ test('select_option: native_select option not found returns error', async () => 
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
         if (!result.ok) {
-            assert.ok(
-                result.error?.code === 'ERR_NOT_FOUND'
-                    || result.error?.code === 'ERR_ASSERTION_FAILED'
-                    || result.error?.code === 'ERR_TIMEOUT',
-                `unexpected error code: ${result.error?.code}`,
-            );
+            assert.equal(result.error?.code, 'ERR_NOT_FOUND');
         }
     } finally {
         await browser.close();
@@ -594,16 +589,12 @@ test('select_option: stale state unchanged returns error', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'stale',
             name: 'browser.select_option',
-            args: { selector: '#stale-trigger', values: ['stable'] },
+            args: { selector: '#stale-trigger', values: ['稳定值'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
         if (!result.ok) {
-            assert.ok(
-                result.error?.code === 'ERR_ASSERTION_FAILED'
-                    || result.error?.code === 'ERR_NOT_FOUND',
-                `unexpected error code: ${result.error?.code}`,
-            );
+            assert.equal(result.error?.code, 'ERR_ASSERTION_FAILED');
         }
     } finally {
         await browser.close();
