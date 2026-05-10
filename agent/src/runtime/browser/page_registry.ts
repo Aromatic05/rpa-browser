@@ -7,6 +7,17 @@ type PendingBindingClaim = {
     createdAt: number;
 };
 
+export type AwaitPageBindingOptions = {
+    timeoutMs: number;
+};
+
+export type PageBindingDebugState = {
+    bindingName: string;
+    knownBindings: string[];
+    knownPagesSummary: string[];
+    pendingClaims: Array<{ bindingName: string; source?: string; url?: string; createdAt: number }>;
+};
+
 export type PageRegistryOptions = {
     tabNameKey: string;
     getContext: () => Promise<BrowserContext>;
@@ -16,10 +27,12 @@ export type PageRegistryOptions = {
 
 export type PageRegistry = {
     bindPage: (page: Page, hintedBindingName?: string) => Promise<string | null>;
-    getPage: (bindingName: string, urlHint?: string) => Promise<Page>;
+    awaitPageBinding: (bindingName: string, options: AwaitPageBindingOptions) => Promise<Page>;
+    createPageBinding: (bindingName: string, input?: { startUrl?: string }) => Promise<Page>;
     touchBinding: (bindingName: string, at?: number) => boolean;
     listStaleBindings: (timeoutMs: number, now?: number) => Array<{ bindingName: string; lastSeenAt: number }>;
     closePage: (bindingName: string) => Promise<void>;
+    debugPageBindings: (bindingName: string) => Promise<PageBindingDebugState>;
     createPendingBindingClaim: (claim: { bindingName: string; source?: string; url?: string; createdAt?: number }) => void;
     claimPendingBinding: (bindingName: string) => Promise<boolean>;
 };
@@ -28,6 +41,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const bindingToPage = new Map<string, Page>();
     const bindingUpdatedAt = new Map<string, number>();
     const pendingClaims = new Map<string, PendingBindingClaim>();
+    const bindingWaiters = new Map<string, Set<(page: Page | null) => void>>();
 
     const waitForBindingName = async (page: Page, attempts = 20, delayMs = 200) => {
         for (let i = 0; i < attempts; i += 1) {
@@ -64,22 +78,38 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         } catch {}
     };
 
+    const resolveKnownPage = (bindingName: string): Page | null => {
+        const page = bindingToPage.get(bindingName);
+        if (!page || page.isClosed()) {
+            if (page?.isClosed()) {
+                bindingToPage.delete(bindingName);
+                bindingUpdatedAt.delete(bindingName);
+            }
+            return null;
+        }
+        return page;
+    };
+
+    const notifyBindingWaiters = (bindingName: string, page: Page | null) => {
+        const waiters = bindingWaiters.get(bindingName);
+        if (!waiters || waiters.size === 0) {return;}
+        bindingWaiters.delete(bindingName);
+        for (const waiter of waiters) {
+            waiter(page);
+        }
+    };
+
     const bindRuntime = (bindingName: string, page: Page) => {
         bindingToPage.set(bindingName, page);
         bindingUpdatedAt.set(bindingName, Date.now());
+        notifyBindingWaiters(bindingName, page);
         page.on('close', () => {
             if (bindingToPage.get(bindingName) !== page) {return;}
             bindingToPage.delete(bindingName);
             bindingUpdatedAt.delete(bindingName);
+            notifyBindingWaiters(bindingName, null);
             options.onBindingClosed?.(bindingName);
         });
-    };
-
-    const openPageWithBindingName = async (bindingName: string) => {
-        const context = await options.getContext();
-        const page = await context.newPage();
-        await installBindingNameToPage(page, bindingName);
-        return page;
     };
 
     const bindPage = async (page: Page, hintedBindingName?: string) => {
@@ -92,33 +122,92 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return bindingName;
     };
 
-    const rebuildBindingMap = async () => {
+    const scanContextPages = async () => {
         const context = await options.getContext();
         for (const page of context.pages()) {
+            if (page.isClosed()) {continue;}
             const bindingName = await waitForBindingName(page, 3, 100);
             if (!bindingName) {continue;}
+            if (resolveKnownPage(bindingName) === page) {continue;}
             bindRuntime(bindingName, page);
         }
     };
 
-    const getPage = async (bindingName: string, urlHint?: string) => {
+    const awaitPageBinding = async (bindingName: string, awaitOptions: AwaitPageBindingOptions) => {
         if (!bindingName) {throw new Error('missing bindingName');}
-        let page = bindingToPage.get(bindingName);
-        if (page && !page.isClosed()) {return page;}
-        await rebuildBindingMap();
-        page = bindingToPage.get(bindingName);
-        if (page && !page.isClosed()) {return page;}
-        page = await openPageWithBindingName(bindingName);
-        if (urlHint) {
-            await page.goto(urlHint, { waitUntil: 'domcontentloaded' });
+        const existing = resolveKnownPage(bindingName);
+        if (existing) {return existing;}
+
+        await scanContextPages();
+        const scanned = resolveKnownPage(bindingName);
+        if (scanned) {return scanned;}
+
+        return await new Promise<Page>((resolve, reject) => {
+            let done = false;
+            const timeoutMs = awaitOptions.timeoutMs;
+            const timer = setTimeout(() => {
+                if (done) {return;}
+                done = true;
+                const waiters = bindingWaiters.get(bindingName);
+                waiters?.delete(onBound);
+                reject(new Error(`page binding timeout: ${bindingName}`));
+            }, timeoutMs);
+
+            const onBound = (page: Page | null) => {
+                if (done) {return;}
+                if (!page || page.isClosed()) {return;}
+                done = true;
+                clearTimeout(timer);
+                resolve(page);
+            };
+
+            const waiters = bindingWaiters.get(bindingName) || new Set<(page: Page | null) => void>();
+            waiters.add(onBound);
+            bindingWaiters.set(bindingName, waiters);
+
+            const rebound = resolveKnownPage(bindingName);
+            if (rebound) {
+                done = true;
+                clearTimeout(timer);
+                waiters.delete(onBound);
+                resolve(rebound);
+            }
+        });
+    };
+
+    const createPageBinding = async (bindingName: string, input?: { startUrl?: string }) => {
+        if (!bindingName) {throw new Error('missing bindingName');}
+        const existing = resolveKnownPage(bindingName);
+        if (existing) {return existing;}
+        const context = await options.getContext();
+        const page = await context.newPage();
+        await installBindingNameToPage(page, bindingName);
+        if (input?.startUrl) {
+            await page.goto(input.startUrl, { waitUntil: 'domcontentloaded' });
         }
         await bindPage(page, bindingName);
         return page;
     };
 
+    const debugPageBindings = async (bindingName: string): Promise<PageBindingDebugState> => {
+        const context = await options.getContext();
+        const knownPagesSummary = context.pages().map((page, index) => {
+            const closed = page.isClosed();
+            const url = closed ? '(closed)' : page.url();
+            return `${index}:${closed ? 'closed' : 'open'}:${url}`;
+        });
+        return {
+            bindingName,
+            knownBindings: Array.from(bindingToPage.keys()),
+            knownPagesSummary,
+            pendingClaims: Array.from(pendingClaims.values()).map((claim) => ({ ...claim })),
+        };
+    };
+
     return {
         bindPage,
-        getPage,
+        awaitPageBinding,
+        createPageBinding,
         touchBinding: (bindingName: string, at?: number) => {
             if (!bindingUpdatedAt.has(bindingName)) {return false;}
             bindingUpdatedAt.set(bindingName, typeof at === 'number' ? at : Date.now());
@@ -142,6 +231,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             }
             await page.close({ runBeforeUnload: true });
         },
+        debugPageBindings,
         createPendingBindingClaim: (claim) => {
             if (!claim.bindingName) {return;}
             pendingClaims.set(claim.bindingName, {
@@ -154,7 +244,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         claimPendingBinding: async (bindingName: string) => {
             if (!pendingClaims.has(bindingName)) {return false;}
             if (!bindingToPage.get(bindingName)) {
-                await rebuildBindingMap();
+                await scanContextPages();
             }
             const page = bindingToPage.get(bindingName);
             if (!page || page.isClosed()) {return false;}
