@@ -1,3 +1,5 @@
+import type { ControlIndex } from '../control/types';
+
 export type RawData = {
     domTree: unknown;
     a11yTree: unknown;
@@ -47,6 +49,10 @@ export type UnifiedNode = {
         kind?: 'url' | 'hash' | 'mailto' | 'tel' | 'javascript' | 'download' | 'unknown';
     };
     tier?: NodeTier;
+    control?: {
+        kind: string;
+        ref: string;
+    };
 };
 
 export type NodeGraph = {
@@ -309,6 +315,7 @@ export type SnapshotResult = {
     bboxIndex: BBoxIndex;
     attrIndex: AttrIndex;
     contentStore: ContentStore;
+    controlIndex?: ControlIndex;
     cacheStats?: SnapshotCacheStats;
     snapshotMeta?: SnapshotMeta;
     ruleEntityOverlay?: {

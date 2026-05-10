@@ -47,6 +47,8 @@ import type {
     SnapshotResult,
     UnifiedNode,
 } from '../core/types';
+import type { ControlRegistry } from '../control/types';
+import { createControlRegistry, collectControlComponents, attachControlRefsToNodes } from '../control';
 
 export const executeBrowserSnapshot = async (
     step: Step<'browser.snapshot'>,
@@ -153,6 +155,7 @@ type GenerateSemanticSnapshotOptions = {
     captureRuntimeState?: boolean;
     waitMode?: SnapshotWaitMode;
     entityRulesProvider?: WorkspaceEntityRulesProvider;
+    controlRegistry?: ControlRegistry;
 };
 
 export const generateSemanticSnapshot = async (
@@ -179,6 +182,7 @@ export const generateSemanticSnapshot = async (
         return generateSemanticSnapshotFromRaw(raw, {
             pageUrl: currentUrl,
             entityRulesProvider: options.entityRulesProvider,
+            controlRegistry: options.controlRegistry,
         });
     } finally {
         // 3) 无论成功失败都清理页面临时 state-id，清理失败不阻塞主流程。
@@ -188,7 +192,11 @@ export const generateSemanticSnapshot = async (
 
 export const generateSemanticSnapshotFromRaw = (
     raw: RawData,
-    options: { pageUrl?: string; entityRulesProvider?: WorkspaceEntityRulesProvider } = {},
+    options: {
+        pageUrl?: string;
+        entityRulesProvider?: WorkspaceEntityRulesProvider;
+        controlRegistry?: ControlRegistry;
+    } = {},
 ): SnapshotResult => {
     const cacheStats = createCacheStats();
     const backendSelectorByDomId = buildBackendDomSelectorMap(raw.domTree);
@@ -200,7 +208,14 @@ export const generateSemanticSnapshotFromRaw = (
     stageLinkGlobalRelations(root);
     stageAssignStableIds(root);
 
-    return stageBuildSnapshot(root, cacheStats, backendSelectorByDomId, options.pageUrl, options.entityRulesProvider);
+    return stageBuildSnapshot(
+        root,
+        cacheStats,
+        backendSelectorByDomId,
+        options.pageUrl,
+        options.entityRulesProvider,
+        options.controlRegistry,
+    );
 };
 
 type CacheStats = ReturnType<typeof createCacheStats>;
@@ -313,6 +328,7 @@ const stageBuildSnapshot = (
     backendSelectorByDomId?: Record<string, string>,
     pageUrl?: string,
     entityRulesProvider?: WorkspaceEntityRulesProvider,
+    controlRegistry?: ControlRegistry,
 ): SnapshotResult => {
     const entityIndex = buildEntityIndex(root);
     const loadedBundle = entityRulesProvider?.resolveBundle({
@@ -330,6 +346,16 @@ const stageBuildSnapshot = (
         backendSelectorByDomId,
     });
     const { nodeIndex, bboxIndex, attrIndex, contentStore } = buildExternalIndexes(root);
+
+    const effectiveRegistry = controlRegistry ?? createControlRegistry();
+    const controlIndex = effectiveRegistry.collectors.length > 0
+        ? collectControlComponents(root, nodeIndex, effectiveRegistry)
+        : undefined;
+
+    if (controlIndex && Object.keys(controlIndex).length > 0) {
+        attachControlRefsToNodes(root, controlIndex);
+    }
+
     const snapshot = buildSnapshot({
         root,
         nodeIndex,
@@ -338,6 +364,7 @@ const stageBuildSnapshot = (
         bboxIndex,
         attrIndex,
         contentStore,
+        controlIndex,
         cacheStats,
         ruleEntityOverlay,
     });

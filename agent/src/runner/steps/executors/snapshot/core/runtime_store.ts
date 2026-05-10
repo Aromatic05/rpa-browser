@@ -91,6 +91,7 @@ export const cloneTreeWithRuntime = (node: UnifiedNode): UnifiedNode => {
                   : undefined,
         target: node.target ? { ...node.target } : undefined,
         tier: node.tier,
+        control: node.control ? { ...node.control } : undefined,
         children: node.children.map((child) => cloneTreeWithRuntime(child)),
     };
 
