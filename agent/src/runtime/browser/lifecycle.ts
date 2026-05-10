@@ -51,15 +51,6 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
         return null;
     };
 
-    const resolveWorkspaceForBinding = (bindingName: string) => {
-        const workspaceName = findWorkspaceNameByTabName(bindingName)
-            || deps.workspaceRegistry.getActiveWorkspace()?.name
-            || 'default';
-        return {
-            workspaceName,
-            workspace: deps.workspaceRegistry.createWorkspace(workspaceName, deps.ensureWorkflow(workspaceName)),
-        };
-    };
 
     const emitWorkspaceSync = (reason: string, payload: Record<string, unknown>) => {
         deps.emit({
@@ -72,7 +63,20 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
     };
 
     const onPageBound = (page: Page, bindingName: string) => {
-        const { workspaceName, workspace } = resolveWorkspaceForBinding(bindingName);
+        const workspaceName = findWorkspaceNameByTabName(bindingName);
+        if (!workspaceName) {
+            emitWorkspaceSync('unmatched-page-binding', {
+                bindingName,
+                pageUrl: page.url(),
+                knownWorkspaces: deps.workspaceRegistry.listWorkspaces().map((workspace) => workspace.name),
+                knownTabs: deps.workspaceRegistry.listWorkspaces().flatMap((workspace) =>
+                    workspace.tabs.listTabs().map((tab) => `${workspace.name}/${tab.name}`),
+                ),
+            });
+            return;
+        }
+        const workspace = deps.workspaceRegistry.getWorkspace(workspaceName)
+            || deps.workspaceRegistry.createWorkspace(workspaceName, deps.ensureWorkflow(workspaceName));
         const wasTabPresent = workspace.tabs.hasTab(bindingName);
         const prevActiveTabName = workspace.tabs.getActiveTab()?.name || null;
         if (!wasTabPresent) {
