@@ -66,7 +66,7 @@ const collectSelectOptions = (ctx: ControlCollectContext, selectNode: UnifiedNod
         if (tag !== 'option') {continue;}
         const label = readNodeText(ctx, child);
         const value = readAttrRaw(ctx, child, 'value') || label;
-        const selected = readAttrLower(ctx, child, 'selected') === 'true';
+        const selected = hasAttr(ctx, child, 'selected');
         options.push({ value, label, selected, nodeId: child.id });
     }
     return options;
@@ -86,7 +86,7 @@ const collectRadioGroup: ControlCollector = (ctx) => {
             const options = members.map((node) => ({
                 value: readAttrRaw(ctx, node, 'value') || readNodeText(ctx, node),
                 label: readNodeText(ctx, node),
-                selected: readAttrLower(ctx, node, 'checked') === 'true',
+                selected: hasAttr(ctx, node, 'checked'),
                 nodeId: node.id,
             }));
             components.push({
@@ -201,7 +201,7 @@ const collectCheckboxGroup: ControlCollector = (ctx) => {
         const options = members.map((node) => ({
             value: readAttrRaw(ctx, node, 'value') || readNodeText(ctx, node),
             label: readNodeText(ctx, node),
-            selected: readAttrLower(ctx, node, 'checked') === 'true',
+            selected: hasAttr(ctx, node, 'checked'),
             nodeId: node.id,
         }));
         components.push({
@@ -313,7 +313,22 @@ const collectCustomSelect: ControlCollector = (ctx) => {
     walk(ctx.root, (node) => {
         // Primary path: role=combobox
         if (node.role === 'combobox') {
-            const popupNodeId = resolvePopupNodeId(node, ctx, domIdMap);
+            let popupNodeId = resolvePopupNodeId(node, ctx, domIdMap);
+            if (!popupNodeId) {
+                const cls = readAttrLower(ctx, node, 'class') || '';
+                if (hasClassToken(cls, ANT_SELECT_ROOT_CLASS) || hasClassToken(cls, ANT_SELECT_TRIGGER_CLASS)) {
+                    for (const [nid, n] of Object.entries(ctx.nodeIndex)) {
+                        if (consumedPopupIds.has(nid)) {continue;}
+                        const ncls = readAttrLower(ctx, n, 'class') || '';
+                        if (ANT_SELECT_POPUP_CLASS_SIGNALS.some((signal) => hasClassToken(ncls, signal))) {
+                            if (n.role === 'listbox' || n.role === 'menu') {
+                                popupNodeId = nid;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             if (!popupNodeId) {return;}
             if (consumedPopupIds.has(popupNodeId)) {return;}
             const options = collectPopupOptions(ctx, popupNodeId);
@@ -595,6 +610,9 @@ const readAttrRaw = (ctx: ControlCollectContext, node: UnifiedNode, key: string)
 
 const readAttrLower = (ctx: ControlCollectContext, node: UnifiedNode, key: string): string =>
     readAttrRaw(ctx, node, key).toLowerCase();
+
+const hasAttr = (ctx: ControlCollectContext, node: UnifiedNode, key: string): boolean =>
+    key in (ctx.attrIndex[node.id] ?? {});
 
 const walk = (root: UnifiedNode, visitor: (node: UnifiedNode) => void): void => {
     const stack: UnifiedNode[] = [root];
