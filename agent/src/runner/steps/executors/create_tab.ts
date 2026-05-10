@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 
@@ -8,7 +7,14 @@ export const executeBrowserCreateTab = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const workspace = deps.resolveWorkspace(workspaceName);
-    const tabName = step.args.tabName || crypto.randomUUID();
+    const tabName = step.args.tabName;
+    if (!tabName) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: { code: 'ERR_BAD_ARGS', message: 'browser.create_tab requires tabName' },
+        };
+    }
     if (!workspace.tabs.hasTab(tabName)) {
         workspace.tabs.createMetadataTab({ tabName });
     }

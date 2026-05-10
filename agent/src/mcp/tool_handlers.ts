@@ -101,13 +101,6 @@ const resolveTabNameOrActiveWs = (deps: WorkspaceMcpToolDeps, tabName?: string):
     throw new Error('active tab not found');
 };
 
-const resolveOrCreateTabNameWs = (deps: WorkspaceMcpToolDeps, tabName?: string): string => {
-    if (typeof tabName === 'string' && tabName.trim().length > 0) {
-        return tabName;
-    }
-    return deps.workspace.tabs.getActiveTab()?.name || crypto.randomUUID();
-};
-
 const resolveScopeWs = (
     deps: WorkspaceMcpToolDeps,
     tabName: string | undefined,
@@ -187,11 +180,14 @@ const handleCreateTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async 
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const sourceTabName = resolveOrCreateTabNameWs(deps, input.tabName);
-    const result = await runSingleStepWs(deps, sourceTabName, {
+    const scopeTabName = resolveTabNameOrActiveWs(deps);
+    const requestedTabName = typeof input.tabName === 'string' && input.tabName.trim().length > 0
+        ? input.tabName.trim()
+        : crypto.randomUUID();
+    const result = await runSingleStepWs(deps, scopeTabName, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
-        args: { tabName: sourceTabName },
+        args: { tabName: requestedTabName },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
