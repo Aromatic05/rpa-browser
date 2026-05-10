@@ -456,15 +456,21 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
 
         if (action.type === 'record.event') {
             const activeTab = workspace.tabs.getActiveTab();
-            const page = activeTab?.page || null;
-            const tabName = activeTab?.name || '';
-            if (!tabName) {
+            const fallbackTabName = activeTab?.name || '';
+            if (!fallbackTabName) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
             }
             const payload = action.payload as StepUnion | RecorderEvent | undefined;
             if (!payload) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'missing record.event payload');
             }
+            const sourceTabName = typeof (payload as RecorderEvent).tabName === 'string'
+                ? ((payload as RecorderEvent).tabName || '').trim()
+                : '';
+            const sourceTab = sourceTabName ? workspace.tabs.getTab(sourceTabName) : null;
+            const targetTab = sourceTab || activeTab;
+            const page = targetTab?.page || null;
+            const tabName = targetTab?.name || fallbackTabName;
             const result = await ingestRecordPayload({
                 state: services.recordingState,
                 payload,
