@@ -39,6 +39,7 @@ import { normalizeRecordingStepOrder } from './pipeline/order';
 import { beginReplay, cancelReplay, endReplay } from './pipeline/replay_state';
 import { awaitRecordingEnhancements as awaitEnhancementsInternal, getRecordingEnhancements, setRecordedStepEnricherForTest, startRecordedStepEnrichment } from './enhancement/queue';
 import { flushPendingFillEvents } from './pipeline/pending';
+import { flushPendingChoiceEvents } from './pipeline/pending';
 
 export type {
     RecordingManifest,
@@ -65,22 +66,49 @@ export const awaitRecordingEnhancements = async (
     await awaitEnhancementsInternal(state, workspaceName, getWorkspaceUnsavedToken);
 };
 
+const flushWorkspacePendingRecordEvents = (
+    state: RecordingState,
+    workspaceName: string,
+    tabName: string,
+    page?: Page,
+): void => {
+    const token = getWorkspaceUnsavedToken(state, workspaceName);
+    const hooks = {
+        toStep,
+        enrichRecordedStep,
+        startRecordedStepEnrichment: (input: {
+            state: RecordingState;
+            recordingToken: string;
+            stepId: string;
+            event: RecorderEvent;
+            page?: Page;
+            workspaceName: string;
+            stepName: import('../runner/steps/types').StepName;
+            ts?: number;
+            tabName?: string;
+        }) => startRecordedStepEnrichment({
+            ...input,
+            snapshotCache: state.recordSnapshotCache,
+            cacheKey: token,
+        }),
+    };
+    flushPendingChoiceEvents(state, token, {
+        state,
+        recordingToken: token,
+        workspaceName,
+        tabName,
+        page,
+        snapshotCache: state.recordSnapshotCache,
+        cacheKey: token,
+        createStep,
+        buildResolveFromEvent,
+    }, hooks, { workspaceName, page, reason: 'save' });
+    flushPendingFillEvents(state, token, undefined, hooks);
+};
+
 export const disableWorkspaceRecording = (state: RecordingState, workspaceName: string): void => {
     const token = getWorkspaceUnsavedToken(state, workspaceName);
-    flushPendingFillEvents(
-        state,
-        token,
-        undefined,
-        {
-            toStep,
-            enrichRecordedStep,
-            startRecordedStepEnrichment: (input) => startRecordedStepEnrichment({
-                ...input,
-                snapshotCache: state.recordSnapshotCache,
-                cacheKey: token,
-            }),
-        },
-    );
+    flushWorkspacePendingRecordEvents(state, workspaceName, '', undefined);
     disableWorkspaceRecordingState(state, workspaceName);
 };
 
@@ -146,6 +174,7 @@ export {
     enableWorkspaceRecording,
     endReplay,
     enrichRecordedStep,
+    flushWorkspacePendingRecordEvents,
     getRecordingEnhancements,
     getWorkspaceSnapshot,
     getWorkspaceUnsavedRecordingBundle,

@@ -24,7 +24,7 @@ export const enrichRecordedStepWithSnapshot = async (input: {
 }): Promise<RecordedStepEnhancement> => {
     const { event, page, snapshotCache, cacheKey } = input;
     if (isPageLevelEvent(event)) {
-        const snapshot = await resolveSnapshotForEvent({ event, page, snapshotCache, cacheKey });
+        const snapshot = await resolveRecordSnapshotForEvent({ event, page, snapshotCache, cacheKey });
         if (!snapshot) {
             return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
         }
@@ -46,7 +46,7 @@ export const enrichRecordedStepWithSnapshot = async (input: {
             confidence: 0.2,
         }));
     }
-    const snapshot = await resolveSnapshotForEvent({ event, page, snapshotCache, cacheKey });
+    const snapshot = await resolveRecordSnapshotForEvent({ event, page, snapshotCache, cacheKey });
     if (!snapshot) {
         return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
     }
@@ -104,7 +104,7 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     return withRawContext(event, enhancement);
 };
 
-const resolveSnapshotForEvent = async (input: {
+export const resolveRecordSnapshotForEvent = async (input: {
     event: RecorderEvent;
     page?: Page;
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;

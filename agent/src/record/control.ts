@@ -13,6 +13,7 @@ import {
     clearWorkspaceUnsavedRecording,
     disableWorkspaceRecording,
     enableWorkspaceRecording,
+    flushWorkspacePendingRecordEvents,
     endReplay,
     ensureRecorder,
     getWorkspaceUnsavedRecordingBundle,
@@ -172,6 +173,8 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const workflow = workspace.workflow;
             const recordLog = getLogger('record');
             const token = services.recordingState.workspaceUnsavedRecording.get(workspaceName) || `unsaved:${workspaceName}`;
+            const activeTabName = workspace.tabs.getActiveTab()?.name || '';
+            flushWorkspacePendingRecordEvents(services.recordingState, workspaceName, activeTabName);
             const pendingCount = services.recordingState.pendingEnhancements.get(token)?.size || 0;
             recordLog('save_wait_enrichment', { workspaceName, pendingCount });
             await awaitRecordingEnhancements(services.recordingState, workspaceName);

@@ -2,6 +2,8 @@ import type { Page } from 'playwright';
 import type { RecorderEvent } from '../capture/recorder';
 import type { RecordingState } from './state';
 import type { StepUnion } from '../../runner/steps/types';
+import type { NormalizeContext } from '../normalizer';
+import { flushPendingChoiceEvents as flushChoiceEventsFromNormalizer } from '../normalizer/select_option';
 
 type PendingFlushOptions = { exceptKey?: string; workspaceName?: string; page?: Page };
 
@@ -87,5 +89,51 @@ export const flushPendingFillEvents = (
     }
     if (pending.size === 0) {
         state.pendingFillEvents.delete(recordingToken);
+    }
+};
+
+export const queueRecordingStep = (
+    state: RecordingState,
+    recordingToken: string,
+    tabName: string,
+    step: StepUnion,
+    event: RecorderEvent,
+    hooks: PendingFlushHooks,
+    options?: PendingFlushOptions,
+): void => {
+    const list = state.recordings.get(recordingToken) || [];
+    const normalized = hooks.enrichRecordedStep(state, recordingToken, tabName, step);
+    list.push(normalized);
+    state.recordings.set(recordingToken, list);
+    hooks.startRecordedStepEnrichment({
+        state,
+        recordingToken,
+        stepId: normalized.id,
+        event,
+        page: options?.page,
+        workspaceName: options?.workspaceName || (normalized.meta?.workspaceName || ''),
+        stepName: normalized.name,
+        ts: normalized.meta?.ts,
+        tabName: normalized.meta?.tabName || tabName,
+    });
+};
+
+export const flushPendingChoiceEvents = (
+    state: RecordingState,
+    recordingToken: string,
+    context: NormalizeContext,
+    hooks: PendingFlushHooks,
+    options?: PendingFlushOptions & { reason?: 'navigate' | 'click' | 'stop' | 'save' | 'append_step' },
+): void => {
+    const emitted = flushChoiceEventsFromNormalizer({
+        state,
+        recordingToken,
+        workspaceName: context.workspaceName,
+        tabName: context.tabName,
+        reason: options?.reason || 'navigate',
+        context,
+    });
+    for (const item of emitted) {
+        queueRecordingStep(state, recordingToken, context.tabName, item.step, item.event, hooks, options);
     }
 };

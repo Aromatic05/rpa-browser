@@ -3,6 +3,36 @@ import type { RecordSnapshotCacheEntry } from '../enhancement/build';
 import type { RecordingEnhancementMap } from '../types';
 import type { RecordingManifest, WorkspaceSavedSnapshot } from './manifest';
 import { flushPendingFillEvents } from './pending';
+import type { StepResolve } from '../../runner/steps/types';
+
+export type PendingCheckboxGroupSession = {
+    kind: 'checkbox_group';
+    sessionKey: string;
+    controlRootNodeId: string;
+    controlRef: string;
+    workspaceName: string;
+    tabName: string;
+    selector?: string;
+    resolve?: StepResolve;
+    values: string[];
+    lastEvent: RecorderEvent;
+    ts: number;
+};
+
+export type PendingCustomSelectSession = {
+    kind: 'custom_select';
+    sessionKey: string;
+    controlRootNodeId: string;
+    controlRef: string;
+    workspaceName: string;
+    tabName: string;
+    selector?: string;
+    resolve?: StepResolve;
+    triggerEvent: RecorderEvent;
+    ts: number;
+};
+
+export type PendingChoiceSession = PendingCheckboxGroupSession | PendingCustomSelectSession;
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
@@ -19,6 +49,7 @@ export type RecordingState = {
     replaying: Set<string>;
     replayCancel: Set<string>;
     pendingFillEvents: Map<string, Map<string, { event: RecorderEvent; tabName: string }>>;
+    pendingChoiceEvents: Map<string, Map<string, PendingChoiceSession>>;
 };
 
 export const createRecordingState = (): RecordingState => ({
@@ -36,6 +67,7 @@ export const createRecordingState = (): RecordingState => ({
     replaying: new Set(),
     replayCancel: new Set(),
     pendingFillEvents: new Map(),
+    pendingChoiceEvents: new Map(),
 });
 
 const unsavedRecordingToken = (workspaceName: string): string => `unsaved:${workspaceName}`;
@@ -73,6 +105,7 @@ export const resetWorkspaceUnsavedRecording = (
     state.recordSnapshotCache.delete(token);
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
+    state.pendingChoiceEvents.delete(token);
     return token;
 };
 
@@ -91,6 +124,7 @@ export const enableWorkspaceRecording = (state: RecordingState, workspaceName: s
 export const disableWorkspaceRecording = (state: RecordingState, workspaceName: string): void => {
     const token = getWorkspaceUnsavedToken(state, workspaceName);
     flushPendingFillEvents(state, token);
+    state.pendingChoiceEvents.delete(token);
     state.recordingEnabled.delete(token);
 };
 
@@ -106,6 +140,7 @@ export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceN
     state.recordSnapshotCache.delete(token);
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
+    state.pendingChoiceEvents.delete(token);
 };
 
 export const getWorkspaceUnsavedRecordingBundle = (

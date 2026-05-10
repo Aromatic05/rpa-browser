@@ -5,8 +5,9 @@ import type { ResolveHint, ResolvePolicy, Step, StepArgsMap, StepMeta, StepName,
 import type { RecorderEvent } from '../capture/recorder';
 import { startRecordedStepEnrichment } from '../enhancement/queue';
 import { ensureManifest, ensureTabInManifest } from './manifest';
-import { fillEventKey, flushPendingFillEvents, isFillLikeEvent, queuePendingFillEvent } from './pending';
+import { fillEventKey, flushPendingChoiceEvents, flushPendingFillEvents, isFillLikeEvent, queuePendingFillEvent, queueRecordingStep } from './pending';
 import { getWorkspaceUnsavedToken, isWorkspaceRecordingEnabled, type RecordingState } from './state';
+import { normalizeRecorderEvent } from '../normalizer';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
@@ -196,10 +197,38 @@ export const appendWorkspaceRecordingEvent = async (
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
     if (state.replaying.has(tabName)) {return { accepted: false };}
     const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim()) : undefined;
+    const buildNormalizeContext = () => ({
+        state,
+        recordingToken: effectiveToken,
+        workspaceName,
+        tabName,
+        page,
+        snapshotCache: state.recordSnapshotCache,
+        cacheKey: effectiveToken,
+        createStep,
+        buildResolveFromEvent,
+    });
+    const hooks = {
+        toStep,
+        enrichRecordedStep,
+        startRecordedStepEnrichment: (input: {
+            state: RecordingState;
+            recordingToken: string;
+            stepId: string;
+            event: RecorderEvent;
+            page?: Page;
+            workspaceName: string;
+            stepName: StepName;
+            ts?: number;
+            tabName?: string;
+        }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: effectiveToken }),
+    };
     if (event.type === 'navigate') {
-        flushPendingFillEvents(state, effectiveToken, { workspaceName, page }, { toStep, enrichRecordedStep, startRecordedStepEnrichment: (input) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: effectiveToken }) });
+        flushPendingChoiceEvents(state, effectiveToken, buildNormalizeContext(), hooks, { workspaceName, page, reason: 'navigate' });
+        flushPendingFillEvents(state, effectiveToken, { workspaceName, page }, hooks);
     } else if (event.type === 'click' && event.selector) {
-        flushPendingFillEvents(state, effectiveToken, { exceptKey: pendingFillKey, workspaceName, page }, { toStep, enrichRecordedStep, startRecordedStepEnrichment: (input) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: effectiveToken }) });
+        flushPendingChoiceEvents(state, effectiveToken, buildNormalizeContext(), hooks, { workspaceName, page, reason: 'click' });
+        flushPendingFillEvents(state, effectiveToken, { exceptKey: pendingFillKey, workspaceName, page }, hooks);
     }
 
     if (event.type === 'click') {
@@ -235,6 +264,30 @@ export const appendWorkspaceRecordingEvent = async (
 
     if (isFillLikeEvent(event)) {
         queuePendingFillEvent(state, effectiveToken, tabName, event);
+        return { accepted: true };
+    }
+
+    const normalizedEvent = await normalizeRecorderEvent(buildNormalizeContext(), event);
+    if (normalizedEvent.status === 'pending') {
+        return { accepted: true };
+    }
+    if (normalizedEvent.status === 'handled') {
+        queueRecordingStep(
+            state,
+            effectiveToken,
+            tabName,
+            normalizedEvent.step,
+            normalizedEvent.enhancementEvent,
+            hooks,
+            { workspaceName, page },
+        );
+        recordLog('step_queued', {
+            stepId: normalizedEvent.step.id,
+            stepName: normalizedEvent.step.name,
+            ts: normalizedEvent.step.meta?.ts,
+            tabName: normalizedEvent.step.meta?.tabName || tabName,
+            workspaceName,
+        });
         return { accepted: true };
     }
 
@@ -280,7 +333,32 @@ export const appendWorkspaceRecordingStep = (
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
     if (state.replaying.has(tabName) || state.replaying.has(effectiveToken)) {return { accepted: false };}
     if (options?.flushPendingFill !== false) {
-        flushPendingFillEvents(state, effectiveToken, { workspaceName }, { toStep, enrichRecordedStep, startRecordedStepEnrichment: (input) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: effectiveToken }) });
+        const hooks = {
+            toStep,
+            enrichRecordedStep,
+            startRecordedStepEnrichment: (input: {
+                state: RecordingState;
+                recordingToken: string;
+                stepId: string;
+                event: RecorderEvent;
+                page?: Page;
+                workspaceName: string;
+                stepName: StepName;
+                ts?: number;
+                tabName?: string;
+            }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: effectiveToken }),
+        };
+        flushPendingChoiceEvents(state, effectiveToken, {
+            state,
+            recordingToken: effectiveToken,
+            workspaceName,
+            tabName,
+            snapshotCache: state.recordSnapshotCache,
+            cacheKey: effectiveToken,
+            createStep,
+            buildResolveFromEvent,
+        }, hooks, { workspaceName, reason: 'append_step' });
+        flushPendingFillEvents(state, effectiveToken, { workspaceName }, hooks);
     }
 
     const ts = step.meta?.ts ?? Date.now();

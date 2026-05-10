@@ -371,3 +371,38 @@ Record 模块后续修改必须遵守：
 - recording.ts 只作为稳定门面
 
 任何组件语义识别都应该优先复用 snapshot/controlIndex，不应该在 payload 中重新写一套 DOM 组件识别逻辑。
+
+## 12. 任务三落地结果（normalizer/select_option）
+
+本轮已在 `pipeline/step.ts` 接入 `normalizeRecorderEvent`，接入顺序保持为：
+
+1. recording enabled 检查
+2. replaying 检查
+3. navigate/click 前 flush pending fill
+4. lastClickTs / lastNavigateTs / scroll delta / value sanitize
+5. fill-like 先进入 pendingFillEvents
+6. 调用 normalizer
+7. `pass` -> 继续 `toStep(event)`
+8. `handled` -> 直接入队并启动 enhancement
+9. `pending` -> 仅吸收事件，暂不入队
+
+select_option normalizer 的边界如下：
+
+- 只依赖 snapshot `locatorIndex/attrIndex/node.control.ref/controlIndex`
+- 仅当 `owner=browser.select_option` 且 `capabilities` 包含 `select_option` 才命中
+- 仅处理 `native_select`、`radio_group`、`checkbox_group`、`custom_select`
+- normalizer 产出的 `browser.select_option` args 仅含 `selector/values`（协议仍只允许 `nodeId/selector/resolveId/values`）
+- 不向 payload 注入组件语义，不修改 `RecorderEvent`，不修改 `StepArgsMap`
+
+四类行为归一规则：
+
+- `native_select`：`select` 事件直接录 `browser.select_option`
+- `radio_group`：`check + inputType=radio + checked=true` 录 `browser.select_option`；unchecked 事件被吸收不产出 step
+- `checkbox_group`：`check + inputType=checkbox` 进入 pending session；flush 时按 snapshot 最终 selected 集合产出单条 `browser.select_option`
+- `custom_select`：trigger click 进入 pending；同 control 的 option click 合并为 `browser.select_option`；未完成 trigger 在 stop/save/append 或跨 control click 时按普通 click 释放
+
+本轮不做内容保持不变：
+
+- 不做插件系统/registry 泛化
+- 不做 datepicker/upload/tabs/pagination
+- 不修改 replay 语义和 record.save 产物结构
