@@ -91,3 +91,27 @@ test('resolveRecordTargetBinding ambiguous selector returns undefined', async ()
     assert.equal(binding, undefined);
     setRecordTargetSnapshotResolverForTest(null);
 });
+
+test('resolveRecordTargetBinding can match by locatorCandidates role name', async () => {
+    const snapshot = makeSnapshot();
+    snapshot.nodeIndex.opt1 = {
+        ...snapshot.nodeIndex.opt1,
+        role: 'checkbox',
+        name: 'blue',
+    };
+    setRecordTargetSnapshotResolverForTest(async () => snapshot);
+    const binding = await resolveRecordTargetBinding({
+        event: {
+            tabName: 'tab-a',
+            ts: 1,
+            type: 'check',
+            selector: 'div.long.css > input',
+            locatorCandidates: [{ kind: 'role', role: 'checkbox', name: 'blue', exact: true }],
+        },
+        snapshotCache: new Map(),
+        cacheKey: 'k',
+    });
+    assert.equal(binding?.targetNodeId, 'opt1');
+    assert.equal(binding?.componentKind, 'checkbox_group');
+    setRecordTargetSnapshotResolverForTest(null);
+});

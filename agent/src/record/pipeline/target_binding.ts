@@ -46,7 +46,18 @@ export type RecordTargetBinding = {
     snapshot: SnapshotResult;
     snapshotId?: string;
     targetNodeId: string;
-    matchedBy: 'locator.direct.query' | 'locator.direct.fallback' | 'attr.id' | 'attr.data-testid';
+    matchedBy:
+        | 'locator.direct.query'
+        | 'locator.direct.fallback'
+        | 'attr.id'
+        | 'attr.data-testid'
+        | 'hint.role_name'
+        | 'candidate.role'
+        | 'candidate.label'
+        | 'candidate.text'
+        | 'candidate.testid'
+        | 'candidate.attr'
+        | 'candidate.css';
     controlRef: string;
     component: BaseControlComponent;
     componentKind: SelectOptionKind;
@@ -55,40 +66,146 @@ export type RecordTargetBinding = {
 
 const collectMatchedNodeIds = (
     snapshot: SnapshotResult,
-    selector: string,
+    event: RecorderEvent,
 ): Array<{ nodeId: string; matchedBy: RecordTargetBinding['matchedBy'] }> => {
+    const selector = normalize(event.selector);
     const matched: Array<{ nodeId: string; matchedBy: RecordTargetBinding['matchedBy'] }> = [];
-    for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
-        if (selectorEquals(locator.direct?.query, selector)) {
-            matched.push({ nodeId, matchedBy: 'locator.direct.query' });
+    if (selector) {
+        for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
+            if (selectorEquals(locator.direct?.query, selector)) {
+                matched.push({ nodeId, matchedBy: 'locator.direct.query' });
+            }
         }
-    }
-    if (matched.length > 0) {return matched;}
+        if (matched.length > 0) {return matched;}
 
-    for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
-        if (selectorEquals(locator.direct?.fallback, selector)) {
-            matched.push({ nodeId, matchedBy: 'locator.direct.fallback' });
+        for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
+            if (selectorEquals(locator.direct?.fallback, selector)) {
+                matched.push({ nodeId, matchedBy: 'locator.direct.fallback' });
+            }
         }
-    }
-    if (matched.length > 0) {return matched;}
+        if (matched.length > 0) {return matched;}
 
-    for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-        const idValue = normalize(attrs.id);
-        if (!idValue) {continue;}
-        if (selectorEquals(`#${idValue}`, selector)) {
-            matched.push({ nodeId, matchedBy: 'attr.id' });
+        for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
+            const idValue = normalize(attrs.id);
+            if (!idValue) {continue;}
+            if (selectorEquals(`#${idValue}`, selector)) {
+                matched.push({ nodeId, matchedBy: 'attr.id' });
+            }
         }
-    }
-    if (matched.length > 0) {return matched;}
+        if (matched.length > 0) {return matched;}
 
-    for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-        const testId = normalize(attrs['data-testid']);
-        if (!testId) {continue;}
-        if (selectorEquals(`[data-testid="${testId}"]`, selector)) {
-            matched.push({ nodeId, matchedBy: 'attr.data-testid' });
+        for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
+            const testId = normalize(attrs['data-testid']);
+            if (!testId) {continue;}
+            if (selectorEquals(`[data-testid="${testId}"]`, selector)) {
+                matched.push({ nodeId, matchedBy: 'attr.data-testid' });
+            }
+        }
+        if (matched.length > 0) {return matched;}
+    }
+
+    const roleHint = normalize(event.a11yHint?.role);
+    const nameHint = normalize(event.a11yHint?.name || event.a11yHint?.text);
+    if (roleHint && nameHint) {
+        const roleMatched: string[] = [];
+        for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
+            const nodeRole = normalize(node.role);
+            const nodeName = normalize(node.name);
+            if (!nodeRole || !nodeName) {continue;}
+            if (nodeRole === roleHint && nodeName.includes(nameHint)) {
+                roleMatched.push(nodeId);
+            }
+        }
+        if (roleMatched.length === 1) {
+            return [{ nodeId: roleMatched[0], matchedBy: 'hint.role_name' }];
         }
     }
-    return matched;
+
+    const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
+    for (const candidate of candidates) {
+        if (!candidate || typeof candidate.kind !== 'string') {continue;}
+        if (candidate.kind === 'role') {
+            const roleNeedle = normalize(candidate.role);
+            const nameNeedle = normalize(candidate.name || candidate.text);
+            if (!roleNeedle || !nameNeedle) {continue;}
+            const roleMatched: string[] = [];
+            for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
+                const nodeRole = normalize(node.role);
+                const nodeName = normalize(node.name);
+                if (!nodeRole || !nodeName) {continue;}
+                const nameOk = candidate.exact === true ? nodeName === nameNeedle : nodeName.includes(nameNeedle);
+                if (nodeRole === roleNeedle && nameOk) {
+                    roleMatched.push(nodeId);
+                }
+            }
+            if (roleMatched.length === 1) {
+                return [{ nodeId: roleMatched[0], matchedBy: 'candidate.role' }];
+            }
+            continue;
+        }
+        if (candidate.kind === 'label' || candidate.kind === 'text') {
+            const textNeedle = normalize(candidate.text || candidate.name);
+            if (!textNeedle) {continue;}
+            const textMatched: string[] = [];
+            for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
+                const nodeName = normalize(node.name);
+                if (!nodeName) {continue;}
+                const nameOk = candidate.exact === true ? nodeName === textNeedle : nodeName.includes(textNeedle);
+                if (nameOk) {
+                    textMatched.push(nodeId);
+                }
+            }
+            if (textMatched.length === 1) {
+                return [{ nodeId: textMatched[0], matchedBy: candidate.kind === 'label' ? 'candidate.label' : 'candidate.text' }];
+            }
+            continue;
+        }
+        if (candidate.kind === 'testid') {
+            const testIdNeedle = normalize(candidate.testId);
+            if (!testIdNeedle) {continue;}
+            const testIdMatched: string[] = [];
+            for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
+                if (normalize(attrs['data-testid']) === testIdNeedle) {
+                    testIdMatched.push(nodeId);
+                }
+            }
+            if (testIdMatched.length === 1) {
+                return [{ nodeId: testIdMatched[0], matchedBy: 'candidate.testid' }];
+            }
+            continue;
+        }
+        if (candidate.kind === 'css' && candidate.selector) {
+            const css = normalize(candidate.selector);
+            if (!css) {continue;}
+            const attrMatch = css.match(/^\[([^=\]]+)=\"([^\"]+)\"\]$/);
+            if (attrMatch) {
+                const attrName = normalize(attrMatch[1]);
+                const attrValue = normalize(attrMatch[2]);
+                if (!attrName || !attrValue) {continue;}
+                const attrMatched: string[] = [];
+                for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
+                    if (normalize(attrs[attrName]) === attrValue) {
+                        attrMatched.push(nodeId);
+                    }
+                }
+                if (attrMatched.length === 1) {
+                    return [{ nodeId: attrMatched[0], matchedBy: 'candidate.attr' }];
+                }
+                continue;
+            }
+            const cssMatched: string[] = [];
+            for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
+                if (selectorEquals(locator.direct?.query, css) || selectorEquals(locator.direct?.fallback, css)) {
+                    cssMatched.push(nodeId);
+                }
+            }
+            if (cssMatched.length === 1) {
+                return [{ nodeId: cssMatched[0], matchedBy: 'candidate.css' }];
+            }
+        }
+    }
+
+    return [];
 };
 
 export const findControlByNodeId = (
@@ -185,7 +302,7 @@ export const resolveRecordTargetBinding = async (input: {
         selector: input.event.selector,
     });
     const selector = normalize(input.event.selector);
-    if (!selector) {
+    if (!selector && !normalize(input.event.a11yHint?.role)) {
         recordLog('record_target_binding_result', { result: 'no_selector' });
         return undefined;
     }
@@ -198,7 +315,7 @@ export const resolveRecordTargetBinding = async (input: {
         return undefined;
     }
 
-    const matched = collectMatchedNodeIds(snapshot, selector);
+    const matched = collectMatchedNodeIds(snapshot, input.event);
     if (matched.length === 0) {
         recordLog('record_target_binding_result', {
             result: 'no_node',
