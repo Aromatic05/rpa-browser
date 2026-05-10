@@ -198,3 +198,150 @@ test('step resolve sidecar validation accepts basic resolve file shape', () => {
         }),
     );
 });
+
+// ── protocol lock: removed fields ──
+
+test('protocol lock: timeout fields are removed from StepArgsMap', () => {
+    // @ts-expect-error timeout is removed from browser.click
+    const clickWithTimeout: Step<'browser.click'> = { id: 't1', name: 'browser.click', args: { selector: '#x', timeout: 1000 } };
+    // @ts-expect-error timeout is removed from browser.fill
+    const fillWithTimeout: Step<'browser.fill'> = { id: 't2', name: 'browser.fill', args: { value: 'x', timeout: 1000 } };
+    // @ts-expect-error timeout is removed from browser.type
+    const typeWithTimeout: Step<'browser.type'> = { id: 't3', name: 'browser.type', args: { text: 'x', timeout: 1000 } };
+    // @ts-expect-error timeout is removed from browser.hover
+    const hoverWithTimeout: Step<'browser.hover'> = { id: 't4', name: 'browser.hover', args: { selector: '#x', timeout: 1000 } };
+    // @ts-expect-error timeout is removed from browser.scroll
+    const scrollWithTimeout: Step<'browser.scroll'> = { id: 't5', name: 'browser.scroll', args: { timeout: 1000 } };
+    // @ts-expect-error timeout is removed from browser.press_key
+    const pkWithTimeout: Step<'browser.press_key'> = { id: 't6', name: 'browser.press_key', args: { key: 'Enter', timeout: 1000 } };
+    // @ts-expect-error timeout is removed from browser.goto
+    const gotoWithTimeout: Step<'browser.goto'> = { id: 't7', name: 'browser.goto', args: { url: 'https://x.com', timeout: 5000 } };
+    // @ts-expect-error timeout is removed from browser.go_back
+    const gbWithTimeout: Step<'browser.go_back'> = { id: 't8', name: 'browser.go_back', args: { timeout: 5000 } };
+    // @ts-expect-error timeout is removed from browser.reload
+    const reloadWithTimeout: Step<'browser.reload'> = { id: 't9', name: 'browser.reload', args: { timeout: 5000 } };
+    // @ts-expect-error timeout is removed from browser.select_option
+    const soWithTimeout: Step<'browser.select_option'> = { id: 't10', name: 'browser.select_option', args: { values: ['x'], timeout: 1000 } };
+    // @ts-expect-error timeout is removed from browser.drag_and_drop
+    const ddWithTimeout: Step<'browser.drag_and_drop'> = { id: 't11', name: 'browser.drag_and_drop', args: { sourceSelector: '#a', destCoord: { x: 0, y: 0 }, timeout: 1000 } };
+    assert.equal(Boolean(clickWithTimeout || fillWithTimeout || typeWithTimeout || hoverWithTimeout || scrollWithTimeout || pkWithTimeout || gotoWithTimeout || gbWithTimeout || reloadWithTimeout || soWithTimeout || ddWithTimeout), true);
+});
+
+test('protocol lock: delay_ms is removed from browser.type', () => {
+    // @ts-expect-error delay_ms is removed from browser.type
+    const step: Step<'browser.type'> = { id: 'd1', name: 'browser.type', args: { text: 'x', delay_ms: 50 } };
+    assert.equal(Boolean(step), true);
+});
+
+test('protocol lock: coord is removed from browser.click', () => {
+    // @ts-expect-error coord is removed from browser.click
+    const step: Step<'browser.click'> = { id: 'c1', name: 'browser.click', args: { coord: { x: 0, y: 0 } } };
+    assert.equal(Boolean(step), true);
+});
+
+test('protocol lock: kind, controlRef, searchText removed from browser.select_option', () => {
+    // @ts-expect-error kind is removed from browser.select_option
+    const withKind: Step<'browser.select_option'> = { id: 'k1', name: 'browser.select_option', args: { values: ['x'], kind: 'native_select' } };
+    // @ts-expect-error controlRef is removed from browser.select_option
+    const withCR: Step<'browser.select_option'> = { id: 'k2', name: 'browser.select_option', args: { values: ['x'], controlRef: 'c:1' } };
+    // @ts-expect-error searchText is removed from browser.select_option
+    const withST: Step<'browser.select_option'> = { id: 'k3', name: 'browser.select_option', args: { values: ['x'], searchText: 'x' } };
+    assert.equal(Boolean(withKind || withCR || withST), true);
+});
+
+test('protocol lock: includeA11y and focus_only removed from browser.snapshot', () => {
+    // @ts-expect-error includeA11y is removed from browser.snapshot
+    const withA11y: Step<'browser.snapshot'> = { id: 's1', name: 'browser.snapshot', args: { includeA11y: true } };
+    // @ts-expect-error focus_only is removed from browser.snapshot
+    const withFO: Step<'browser.snapshot'> = { id: 's2', name: 'browser.snapshot', args: { focus_only: true } };
+    assert.equal(Boolean(withA11y || withFO), true);
+});
+
+test('protocol lock: sourceResolveId and destResolveId removed from browser.drag_and_drop', () => {
+    // @ts-expect-error sourceResolveId is removed from browser.drag_and_drop
+    const withSrc: Step<'browser.drag_and_drop'> = { id: 'd1', name: 'browser.drag_and_drop', args: { sourceResolveId: 'r1', destCoord: { x: 0, y: 0 } } };
+    // @ts-expect-error destResolveId is removed from browser.drag_and_drop
+    const withDst: Step<'browser.drag_and_drop'> = { id: 'd2', name: 'browser.drag_and_drop', args: { sourceSelector: '#a', destResolveId: 'r2' } };
+    assert.equal(Boolean(withSrc || withDst), true);
+});
+
+// ── protocol lock: retained fields ──
+
+test('protocol lock: resolveId is retained in action step args', () => {
+    const step: Step<'browser.click'> = { id: 'r1', name: 'browser.click', args: { resolveId: 'res1' } };
+    assert.equal(step.args.resolveId, 'res1');
+});
+
+test('protocol lock: evaluate.mutatesPage is retained', () => {
+    const step: Step<'browser.evaluate'> = { id: 'e1', name: 'browser.evaluate', args: { expression: '1', mutatesPage: true } };
+    assert.equal(step.args.mutatesPage, true);
+});
+
+test('protocol lock: capture_resolve.limit is retained', () => {
+    const step: Step<'browser.capture_resolve'> = { id: 'cr1', name: 'browser.capture_resolve', args: { text: 'x', limit: 3 } };
+    assert.equal(step.args.limit, 3);
+});
+
+test('protocol lock: read_console.limit is retained', () => {
+    const step: Step<'browser.read_console'> = { id: 'rc1', name: 'browser.read_console', args: { limit: 10 } };
+    assert.equal(step.args.limit, 10);
+});
+
+test('protocol lock: read_network.limit is retained', () => {
+    const step: Step<'browser.read_network'> = { id: 'rn1', name: 'browser.read_network', args: { limit: 10 } };
+    assert.equal(step.args.limit, 10);
+});
+
+test('protocol lock: browser.query.limit is retained', () => {
+    const block = readStepArgsBlock('browser.query');
+    assert.equal(block.includes('limit?: number;'), true, 'browser.query should expose limit');
+});
+
+test('protocol lock: take_screenshot.full_page and inline are retained', () => {
+    const step: Step<'browser.take_screenshot'> = {
+        id: 'ts1', name: 'browser.take_screenshot',
+        args: { full_page: true, inline: true },
+    };
+    assert.equal(step.args.full_page, true);
+    assert.equal(step.args.inline, true);
+});
+
+test('protocol lock: browser.click.options is retained', () => {
+    const step: Step<'browser.click'> = {
+        id: 'co1', name: 'browser.click',
+        args: { selector: '#x', options: { button: 'right', double: true } },
+    };
+    assert.equal(step.args.options?.button, 'right');
+    assert.equal(step.args.options?.double, true);
+});
+
+test('protocol lock: drag_and_drop.destCoord is retained', () => {
+    const step: Step<'browser.drag_and_drop'> = {
+        id: 'dd1', name: 'browser.drag_and_drop',
+        args: { sourceSelector: '#a', destCoord: { x: 100, y: 200 } },
+    };
+    assert.equal(step.args.destCoord?.x, 100);
+    assert.equal(step.args.destCoord?.y, 200);
+});
+
+test('protocol lock: browser.select_option args only accepts canonical fields', () => {
+    const block = readStepArgsBlock('browser.select_option');
+    assert.equal(block.includes('nodeId?: string;'), true, 'select_option should expose nodeId');
+    assert.equal(block.includes('selector?: string;'), true, 'select_option should expose selector');
+    assert.equal(block.includes('resolveId?: string;'), true, 'select_option should expose resolveId');
+    assert.equal(block.includes('values: string[]'), true, 'select_option should expose values');
+    assert.equal(block.includes('kind?'), false, 'select_option must not expose kind');
+    assert.equal(block.includes('controlRef?'), false, 'select_option must not expose controlRef');
+    assert.equal(block.includes('searchText?'), false, 'select_option must not expose searchText');
+    assert.equal(block.includes('timeout?'), false, 'select_option must not expose timeout');
+});
+
+test('protocol lock: browser.mouse exists for coordinate-level mouse operations', () => {
+    const step: Step<'browser.mouse'> = {
+        id: 'm1', name: 'browser.mouse',
+        args: { action: 'click', x: 100, y: 200 },
+    };
+    assert.equal(step.args.action, 'click');
+    assert.equal(step.args.x, 100);
+    assert.equal(step.args.y, 200);
+});
