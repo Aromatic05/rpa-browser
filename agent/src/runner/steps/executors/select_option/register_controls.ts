@@ -147,7 +147,7 @@ const findNearestContainerId = (
             if (CONTAINER_ROLES.has(parent.role)) {return currentId;}
             const cls = readAttrLower(ctx, parent, 'class') || '';
             for (const signal of CONTAINER_CLASS_SIGNALS) {
-                if (cls.includes(signal)) {return currentId;}
+                if (hasClassToken(cls, signal)) {return currentId;}
             }
         }
         currentId = parentIdMap[currentId];
@@ -239,7 +239,7 @@ const findNearestExplicitCheckboxGroup = (
             if (parent.role === 'group') {return currentId;}
             const cls = readAttrLower(ctx, parent, 'class') || '';
             for (const signal of CHECKBOX_GROUP_CLASS_SIGNALS) {
-                if (cls.includes(signal)) {return currentId;}
+                if (hasClassToken(cls, signal)) {return currentId;}
             }
         }
         currentId = parentIdMap[currentId];
@@ -277,7 +277,7 @@ const collectCustomSelect: ControlCollector = (ctx) => {
 
         // Auxiliary path: Ant Select class signals without explicit combobox role
         const cls = readAttrLower(ctx, node, 'class') || '';
-        const isAntSelect = ANT_SELECT_SIGNALS.some((signal) => cls.includes(signal));
+        const isAntSelect = ANT_SELECT_SIGNALS.some((signal) => hasClassToken(cls, signal));
         if (!isAntSelect) {return;}
 
         const popupNodeId = findAntSelectPopup(node, domIdMap, ctx);
@@ -353,7 +353,7 @@ const findAntSelectPopup = (
 
     for (const [nodeId, node] of Object.entries(ctx.nodeIndex)) {
         const cls = readAttrLower(ctx, node, 'class') || '';
-        if (ANT_SELECT_POPUP_CLASS_SIGNALS.some((signal) => cls.includes(signal))) {
+        if (ANT_SELECT_POPUP_CLASS_SIGNALS.some((signal) => hasClassToken(cls, signal))) {
             if (node.role === 'listbox' || node.role === 'menu') {
                 return nodeId;
             }
@@ -408,14 +408,14 @@ const collectAntSelectOptions = (ctx: ControlCollectContext, popupNodeId: string
 
         const cls = readAttrLower(ctx, node, 'class') || '';
         const isOption = node.role === 'option'
-            || ANT_SELECT_OPTION_CLASS_SIGNALS.some((signal) => cls.includes(signal));
+            || ANT_SELECT_OPTION_CLASS_SIGNALS.some((signal) => hasClassToken(cls, signal));
 
         if (isOption) {
             const label = readNodeText(ctx, node);
             const value = readAttrRaw(ctx, node, 'value') || readAttrRaw(ctx, node, 'data-value') || label;
             const selected = readAttrLower(ctx, node, 'aria-selected') === 'true'
                 || readAttrLower(ctx, node, 'aria-checked') === 'true'
-                || cls.includes('ant-select-item-option-selected');
+                || hasClassToken(cls, 'ant-select-item-option-selected');
             options.push({ value, label, selected, nodeId: currentId });
         }
 
@@ -525,6 +525,11 @@ const readNodeText = (ctx: ControlCollectContext, node: UnifiedNode): string => 
         }
     }
     return '';
+};
+
+const hasClassToken = (classValue: string, token: string): boolean => {
+    if (!classValue) {return false;}
+    return classValue.split(/\s+/).includes(token);
 };
 
 const normalizeText = (value: string | undefined): string | undefined => {

@@ -399,7 +399,7 @@ test('custom_select generated when combobox has popup with options', () => {
 
 // ── Ant Select class auxiliary ─────────────────────────────────
 
-test('Ant Select via class signals without combobox role still detected', () => {
+test('Ant Select class trigger produces exactly one custom_select', () => {
     const option1 = makeNode('ant_opt1', 'option'); option1.name = 'Shanghai';
     const option2 = makeNode('ant_opt2', 'option'); option2.name = 'Beijing';
 
@@ -420,7 +420,9 @@ test('Ant Select via class signals without combobox role still detected', () => 
     const { controlIndex } = collect(root, ctx);
 
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
-    assert.strictEqual(entries.length, 2, 'both combobox detection AND ant class detection should produce results');
+    assert.strictEqual(entries.length, 1, 'only trigger should produce custom_select, not dropdown');
+    assert.strictEqual(entries[0].rootNodeId, 'ant_trigger');
+    assert.strictEqual(entries[0].popupNodeId, 'ant_dropdown');
 });
 
 test('Ant Select with ant-select-item-option class detects options', () => {
@@ -450,6 +452,79 @@ test('Ant Select with ant-select-item-option class detects options', () => {
     const selOpt = options.find((o) => o.selected) as Record<string, unknown>;
     assert.ok(selOpt);
     assert.strictEqual(selOpt.label, 'Item A');
+});
+
+test('ant-select-dropdown alone does not produce custom_select', () => {
+    const dropdown = makeNode('dd_alone', 'listbox');
+    const root = makeNode('root', 'root', [dropdown]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'dd_alone', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'dd_alone', 'role', 'listbox');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 0, 'dropdown class alone should not be recognized as root');
+});
+
+test('ant-select-item-option alone does not produce custom_select', () => {
+    const opt = makeNode('opt_alone', 'generic'); opt.name = 'Item';
+    const root = makeNode('root', 'root', [opt]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'opt_alone', 'class', 'ant-select-item-option');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 0, 'option class alone should not be recognized as root');
+});
+
+test('Ant Select root with dropdown options using ant-select-item-option class', () => {
+    const opt1 = makeNode('aso3_1', 'generic'); opt1.name = 'Item A';
+    const opt2 = makeNode('aso3_2', 'generic'); opt2.name = 'Item B';
+
+    const dropdown = makeNode('aso3_dd', 'listbox', [opt1, opt2]);
+    const trigger = makeNode('aso3_tr', 'generic');
+    const wrapper = makeNode('aso3_wr', 'generic', [trigger, dropdown]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'aso3_tr', 'class', 'ant-select ant-select-selector');
+    setAttr(ctx, 'aso3_dd', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'aso3_dd', 'role', 'listbox');
+    setAttr(ctx, 'aso3_1', 'class', 'ant-select-item-option ant-select-item-option-selected');
+    setAttr(ctx, 'aso3_1', 'value', 'item_a');
+    setAttr(ctx, 'aso3_2', 'class', 'ant-select-item-option');
+    setAttr(ctx, 'aso3_2', 'value', 'item_b');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1, 'only one custom_select for Ant Select component');
+    assert.strictEqual(entries[0].rootNodeId, 'aso3_tr');
+    assert.strictEqual(entries[0].popupNodeId, 'aso3_dd');
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2);
+    const selOpt = options.find((o) => o.selected) as Record<string, unknown>;
+    assert.ok(selOpt);
+    assert.strictEqual(selOpt.label, 'Item A');
+});
+
+test('role=combobox with ant-select class produces exactly one custom_select', () => {
+    const opt = makeNode('dup_opt', 'option'); opt.name = 'Choice';
+    const listbox = makeNode('dup_lb', 'listbox', [opt]);
+    const combobox = makeNode('dup_combo', 'combobox');
+    const wrapper = makeNode('dup_wrap', 'generic', [combobox, listbox]);
+    const root = makeNode('root', 'root', [wrapper]);
+
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'dup_lb', 'id', 'dup-popup');
+    setAttr(ctx, 'dup_combo', 'aria-controls', 'dup-popup');
+    setAttr(ctx, 'dup_combo', 'class', 'ant-select');
+
+    const { controlIndex } = collect(root, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1, 'combobox with ant-select class should produce exactly one custom_select');
+    assert.strictEqual(entries[0].rootNodeId, 'dup_combo');
 });
 
 // ── General assertions ─────────────────────────────────────────
