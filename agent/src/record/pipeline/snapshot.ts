@@ -94,7 +94,9 @@ export const resolveRecordSnapshotForEvent = async (input: {
             pageUrl,
         });
         return snapshot;
-    } catch {
+    } catch (error) {
+        const errorName = error instanceof Error ? error.name : typeof error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
         recordLog('record_snapshot_resolve', {
             result: 'failed',
             eventType: event.type,
@@ -102,6 +104,8 @@ export const resolveRecordSnapshotForEvent = async (input: {
             cacheKey,
             pageUrl,
             reason: 'capture_failed',
+            errorName,
+            errorMessage,
         });
         return undefined;
     }
