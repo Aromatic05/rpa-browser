@@ -47,8 +47,19 @@ import type {
     SnapshotResult,
     UnifiedNode,
 } from '../core/types';
-import type { ControlRegistry } from '../control/types';
+import type { ControlRegistry, ControlCollectContext } from '../control/types';
 import { createControlRegistry, collectControlComponents, attachControlRefsToNodes } from '../control';
+import { registerSelectOptionControls } from '../../select_option/register_controls';
+
+let _defaultRegistry: ControlRegistry | undefined;
+
+const getDefaultControlRegistry = (): ControlRegistry => {
+    if (!_defaultRegistry) {
+        _defaultRegistry = createControlRegistry();
+        registerSelectOptionControls(_defaultRegistry);
+    }
+    return _defaultRegistry;
+};
 
 export const executeBrowserSnapshot = async (
     step: Step<'browser.snapshot'>,
@@ -347,12 +358,11 @@ const stageBuildSnapshot = (
     });
     const { nodeIndex, bboxIndex, attrIndex, contentStore } = buildExternalIndexes(root);
 
-    const effectiveRegistry = controlRegistry ?? createControlRegistry();
-    const controlIndex = effectiveRegistry.collectors.length > 0
-        ? collectControlComponents(root, nodeIndex, effectiveRegistry)
-        : undefined;
+    const registry = controlRegistry ?? getDefaultControlRegistry();
+    const ctx: ControlCollectContext = { root, nodeIndex, attrIndex, contentStore, locatorIndex };
+    const controlIndex = collectControlComponents(ctx, registry);
 
-    if (controlIndex && Object.keys(controlIndex).length > 0) {
+    if (Object.keys(controlIndex).length > 0) {
         attachControlRefsToNodes(root, controlIndex);
     }
 

@@ -1,6 +1,5 @@
 import type { UnifiedNode } from '../core/types';
 import type { BaseControlComponent, ControlIndex, ControlRef } from './types';
-import { buildControlRef } from './collect';
 
 export const attachControlRefsToNodes = (
     root: UnifiedNode,
@@ -28,23 +27,14 @@ export const attachControlRefsToNodes = (
 
 const collectComponentNodeIds = (component: BaseControlComponent): string[] => {
     const ids: string[] = [];
-    const fields: (string | string[])[] = [
-        component.rootNodeId,
-        component.controlNodeId,
-        component.triggerNodeId,
-        component.popupNodeId,
-        component.labelNodeId,
-        component.valueNodeId,
-        component.optionNodeIds,
-    ];
-    for (const field of fields) {
-        if (Array.isArray(field)) {
-            for (const id of field) {
-                if (id) {ids.push(id);}
-            }
-        } else if (field) {
-            ids.push(field);
-        }
+    ids.push(component.rootNodeId);
+    if (component.controlNodeId) {ids.push(component.controlNodeId);}
+    if (component.triggerNodeId) {ids.push(component.triggerNodeId);}
+    if (component.popupNodeId) {ids.push(component.popupNodeId);}
+    if (component.labelNodeId) {ids.push(component.labelNodeId);}
+    if (component.valueNodeId) {ids.push(component.valueNodeId);}
+    for (const id of component.optionNodeIds) {
+        ids.push(id);
     }
     return ids;
 };

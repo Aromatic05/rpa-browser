@@ -1,24 +1,24 @@
-import type { UnifiedNode } from '../core/types';
-import type { BaseControlComponent, ControlIndex, ControlRegistry, ControlRef } from './types';
+import type { BaseControlComponent, ControlCollectContext, ControlIndex, ControlRegistry, ControlRef } from './types';
 import { listControlCollectors } from './registry';
 
 export const collectControlComponents = (
-    root: UnifiedNode,
-    nodeIndex: Record<string, UnifiedNode>,
+    ctx: ControlCollectContext,
     registry: ControlRegistry,
 ): ControlIndex => {
     const collectors = listControlCollectors(registry);
     const result: Record<string, BaseControlComponent> = {};
-    const seenRefs = new Set<ControlRef>();
 
     for (const collector of collectors) {
-        const components = collector(root, nodeIndex);
+        const components = collector(ctx);
         for (const component of components) {
             const ref = buildControlRef(component.kind, component.rootNodeId);
-            if (seenRefs.has(ref)) {
-                continue;
+            if (ref in result) {
+                const existing = result[ref];
+                throw new Error(
+                    `duplicate control ref: ${ref} (kind=${component.kind}, rootNodeId=${component.rootNodeId}, ` +
+                    `owner=${component.owner}, existingOwner=${existing.owner})`,
+                );
             }
-            seenRefs.add(ref);
             result[ref] = component;
         }
     }
@@ -28,3 +28,14 @@ export const collectControlComponents = (
 
 export const buildControlRef = (kind: string, rootNodeId: string): ControlRef =>
     `control:${kind}:${rootNodeId}`;
+
+export const buildDomIdToNodeIdMap = (attrIndex: ControlCollectContext['attrIndex']): Record<string, string> => {
+    const map: Record<string, string> = {};
+    for (const [nodeId, attrs] of Object.entries(attrIndex)) {
+        const id = attrs['id'];
+        if (id) {
+            map[id] = nodeId;
+        }
+    }
+    return map;
+};

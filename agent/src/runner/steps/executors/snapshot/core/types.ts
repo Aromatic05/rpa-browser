@@ -315,7 +315,7 @@ export type SnapshotResult = {
     bboxIndex: BBoxIndex;
     attrIndex: AttrIndex;
     contentStore: ContentStore;
-    controlIndex?: ControlIndex;
+    controlIndex: ControlIndex;
     cacheStats?: SnapshotCacheStats;
     snapshotMeta?: SnapshotMeta;
     ruleEntityOverlay?: {

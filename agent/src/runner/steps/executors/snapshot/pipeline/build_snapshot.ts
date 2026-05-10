@@ -25,7 +25,7 @@ export const buildSnapshot = (input: UnifiedNode | BuildSnapshotInput): Snapshot
         bboxIndex: payload.bboxIndex || {},
         attrIndex: payload.attrIndex || {},
         contentStore: payload.contentStore || {},
-        controlIndex: payload.controlIndex,
+        controlIndex: payload.controlIndex || {},
         cacheStats: payload.cacheStats,
         snapshotMeta: payload.snapshotMeta,
         ruleEntityOverlay: payload.ruleEntityOverlay,

@@ -4,6 +4,7 @@ export type {
     BaseControlComponent,
     ControlIndex,
     ControlCollector,
+    ControlCollectContext,
     ControlRegistry,
     ControlState,
 } from './types';
@@ -14,6 +15,6 @@ export {
     listControlCollectors,
 } from './registry';
 
-export { collectControlComponents, buildControlRef } from './collect';
+export { collectControlComponents, buildControlRef, buildDomIdToNodeIdMap } from './collect';
 
 export { attachControlRefsToNodes } from './attach';
