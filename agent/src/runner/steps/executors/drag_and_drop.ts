@@ -23,7 +23,7 @@ export const executeBrowserDragAndDrop = async (
     });
     if (!source.ok) {return { stepId: step.id, ok: false, error: source.error };}
 
-    if (step.args.destNodeId || step.args.destSelector || step.args.destResolveId) {
+    if (step.args.destNodeId || step.args.destSelector) {
         const dest = await resolveTarget(binding, {
             nodeId: step.args.destNodeId,
             selector: step.args.destSelector,

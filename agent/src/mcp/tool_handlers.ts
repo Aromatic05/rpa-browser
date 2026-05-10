@@ -443,10 +443,8 @@ const handleDragAndDropWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => asyn
         args: {
             sourceNodeId: input.sourceNodeId,
             sourceSelector: input.sourceSelector,
-            sourceResolveId: input.sourceResolveId,
             destNodeId: input.destNodeId,
             destSelector: input.destSelector,
-            destResolveId: input.destResolveId,
             destCoord: input.destCoord,
         },
         meta: { source: 'mcp' },

@@ -258,10 +258,8 @@ export type StepArgsMap = {
     'browser.drag_and_drop': {
         sourceNodeId?: string;
         sourceSelector?: string;
-        sourceResolveId?: string;
         destNodeId?: string;
         destSelector?: string;
-        destResolveId?: string;
         destCoord?: { x: number; y: number };
     };
     'browser.mouse': {

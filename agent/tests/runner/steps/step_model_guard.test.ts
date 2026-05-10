@@ -53,10 +53,8 @@ test('step model source keeps normalized action target shape', () => {
     for (const field of [
         'sourceNodeId?: string;',
         'sourceSelector?: string;',
-        'sourceResolveId?: string;',
         'destNodeId?: string;',
         'destSelector?: string;',
-        'destResolveId?: string;',
         'destCoord?: { x: number; y: number };',
     ]) {
         assert.equal(dragAndDropBlock.includes(field), true, `drag_and_drop should expose ${field}`);

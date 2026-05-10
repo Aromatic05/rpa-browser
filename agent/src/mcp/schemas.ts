@@ -363,16 +363,14 @@ export const browserDragAndDropInputSchema = z
         tabName: z.string().optional(),
         sourceNodeId: z.string().optional(),
         sourceSelector: z.string().optional(),
-        sourceResolveId: z.string().optional(),
         destNodeId: z.string().optional(),
         destSelector: z.string().optional(),
-        destResolveId: z.string().optional(),
         destCoord: coordSchema.optional(),
     })
-    .refine((value) => Boolean(value.sourceNodeId || value.sourceSelector || value.sourceResolveId), {
-        message: 'drag_and_drop requires sourceNodeId, sourceSelector, or sourceResolveId',
+    .refine((value) => Boolean(value.sourceNodeId || value.sourceSelector), {
+        message: 'drag_and_drop requires sourceNodeId or sourceSelector',
     })
-    .refine((value) => Boolean(value.destNodeId || value.destSelector || value.destResolveId || value.destCoord), {
+    .refine((value) => Boolean(value.destNodeId || value.destSelector || value.destCoord), {
         message: 'drag_and_drop requires destination target or destCoord',
     });
 
@@ -947,10 +945,8 @@ export const toolInputJsonSchemas = {
             tabName: { type: 'string' },
             sourceNodeId: { type: 'string' },
             sourceSelector: { type: 'string' },
-            sourceResolveId: { type: 'string' },
             destNodeId: { type: 'string' },
             destSelector: { type: 'string' },
-            destResolveId: { type: 'string' },
             destCoord: {
                 type: 'object',
                 properties: {

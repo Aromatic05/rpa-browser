@@ -121,7 +121,7 @@ test('serialization guard', async () => {
     assert.equal(stepTypesSource.includes(`'browser.press_key': {\n        key: string;\n        nodeId?: string;\n        selector?: string;\n        resolveId?: string;`), true);
 
     const dragBlock = /'browser\.drag_and_drop': \{[\s\S]*?\n    \}/m.exec(stepTypesSource)?.[0] || '';
-    for (const required of ['sourceNodeId?: string;', 'sourceSelector?: string;', 'sourceResolveId?: string;', 'destNodeId?: string;', 'destSelector?: string;', 'destResolveId?: string;']) {
+    for (const required of ['sourceNodeId?: string;', 'sourceSelector?: string;', 'destNodeId?: string;', 'destSelector?: string;']) {
         assert.equal(dragBlock.includes(required), true, `drag_and_drop missing ${required}`);
     }
 
