@@ -644,6 +644,81 @@ test('role=combobox with ant-select class produces exactly one custom_select', (
     assert.strictEqual(entries[0].rootNodeId, 'dup_combo');
 });
 
+test('real Ant Select nested structure: root owns trigger, popup, and options', () => {
+    const opt1 = makeNode('rso1', 'generic'); opt1.name = 'Shanghai';
+    const opt2 = makeNode('rso2', 'generic'); opt2.name = 'Beijing';
+
+    const dropdown = makeNode('rs_dd', 'listbox', [opt1, opt2]);
+    const trigger = makeNode('rs_trigger', 'generic');
+    const root = makeNode('rs_root', 'generic', [trigger, dropdown]);
+    const page = makeNode('root', 'root', [root]);
+
+    const ctx = makeCtx(page);
+    setAttr(ctx, 'rs_root', 'class', 'ant-select');
+    setAttr(ctx, 'rs_trigger', 'class', 'ant-select-selector');
+    setAttr(ctx, 'rs_dd', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'rs_dd', 'role', 'listbox');
+    setAttr(ctx, 'rso1', 'class', 'ant-select-item-option ant-select-item-option-selected');
+    setAttr(ctx, 'rso1', 'value', 'sh');
+    setAttr(ctx, 'rso2', 'class', 'ant-select-item-option');
+    setAttr(ctx, 'rso2', 'value', 'bj');
+
+    const { controlIndex } = collect(page, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1, 'only one custom_select for the entire Ant Select component');
+    assert.strictEqual(entries[0].rootNodeId, 'rs_root');
+    assert.strictEqual(entries[0].triggerNodeId, 'rs_trigger');
+    assert.strictEqual(entries[0].popupNodeId, 'rs_dd');
+
+    const options = entries[0].data.options as Array<Record<string, unknown>>;
+    assert.strictEqual(options.length, 2);
+    const selOpt = options.find((o) => o.selected) as Record<string, unknown>;
+    assert.ok(selOpt);
+    assert.strictEqual(selOpt.value, 'sh');
+});
+
+test('ant-select-selector under ant-select root does not produce a second control', () => {
+    const opt = makeNode('nd_opt', 'generic'); opt.name = 'Item';
+    const dropdown = makeNode('nd_dd', 'listbox', [opt]);
+    const trigger = makeNode('nd_trigger', 'generic');
+    const selectRoot = makeNode('nd_root', 'generic', [trigger, dropdown]);
+    const page = makeNode('root', 'root', [selectRoot]);
+
+    const ctx = makeCtx(page);
+    setAttr(ctx, 'nd_root', 'class', 'ant-select');
+    setAttr(ctx, 'nd_trigger', 'class', 'ant-select-selector');
+    setAttr(ctx, 'nd_dd', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'nd_dd', 'role', 'listbox');
+    setAttr(ctx, 'nd_opt', 'class', 'ant-select-item-option');
+    setAttr(ctx, 'nd_opt', 'value', 'it');
+
+    const { controlIndex } = collect(page, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1, 'selector should not create a duplicate control');
+    assert.strictEqual(entries[0].rootNodeId, 'nd_root');
+    assert.strictEqual(entries[0].triggerNodeId, 'nd_trigger');
+});
+
+test('ant-select-selector without ant-select ancestor still acts as root', () => {
+    const opt = makeNode('sa_opt', 'generic'); opt.name = 'Item';
+    const dropdown = makeNode('sa_dd', 'listbox', [opt]);
+    const trigger = makeNode('sa_trigger', 'generic');
+    const page = makeNode('root', 'root', [trigger, dropdown]);
+
+    const ctx = makeCtx(page);
+    setAttr(ctx, 'sa_trigger', 'class', 'ant-select-selector');
+    setAttr(ctx, 'sa_dd', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'sa_dd', 'role', 'listbox');
+    setAttr(ctx, 'sa_opt', 'class', 'ant-select-item-option');
+    setAttr(ctx, 'sa_opt', 'value', 'it');
+
+    const { controlIndex } = collect(page, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].rootNodeId, 'sa_trigger');
+    assert.strictEqual(entries[0].popupNodeId, 'sa_dd');
+});
+
 // ── General assertions ─────────────────────────────────────────
 
 test('role field preserves original a11y semantics', () => {
