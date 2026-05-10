@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import type { Step, StepResult } from '../../../src/runner/steps/types';
-import { executeBrowserSelectOption } from '../../../src/runner/steps/executors/select_option/index';
+import { executeBrowserSelectOption, findTargetNode } from '../../../src/runner/steps/executors/select_option/index';
 import { createTraceTools } from '../../../src/runner/trace/tools';
 import { getRunnerConfig } from '../../../src/config';
 import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
@@ -63,6 +63,85 @@ const findNodeIdByTagAndAttr = (snapshot: any, tag: string, key: string, value: 
     }
     return undefined;
 };
+
+// ── target node resolution ──
+
+test('select_option: resolve target node by #id selector', async () => {
+    const { browser, deps } = await setupBinding();
+    try {
+        const step: Step<'browser.select_option'> = {
+            id: 'tn-id',
+            name: 'browser.select_option',
+            args: { selector: '#native-select', values: ['processing'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: resolve target node by data-testid selector via attrIndex', () => {
+    const mockNode = { id: 'n1', role: 'combobox', children: [] };
+    const snapshot = {
+        root: mockNode,
+        nodeIndex: { n1: mockNode },
+        attrIndex: {
+            n1: { id: 'combo1', 'data-testid': 'combo-test', tag: 'div' },
+        },
+        locatorIndex: {},
+        bboxIndex: {},
+        contentStore: {},
+        controlIndex: {},
+        entityIndex: { entities: {}, byNodeId: {} },
+    } as any;
+
+    const step: Step<'browser.select_option'> = {
+        id: 'tn-testid',
+        name: 'browser.select_option',
+        args: { selector: '[data-testid="combo-test"]', values: ['x'] },
+    };
+    const node = findTargetNode(snapshot, step, step.args.selector!);
+    assert.ok(node, 'target node should be found via data-testid');
+    assert.equal(node!.id, 'n1');
+});
+
+test('select_option: resolve target node via locatorIndex direct.query', async () => {
+    const { browser, deps, snapshot } = await setupBinding();
+    try {
+        const selectNodeId = findNodeIdByTagAndAttr(snapshot, 'select', 'id', 'native-select');
+        assert.ok(selectNodeId);
+        const locatorQuery = snapshot.locatorIndex[selectNodeId]?.direct?.query;
+        assert.ok(locatorQuery, 'native-select must have locatorIndex direct.query');
+        const step: Step<'browser.select_option'> = {
+            id: 'tn-locator-query',
+            name: 'browser.select_option',
+            args: { selector: locatorQuery!, values: ['processing'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option: unmappable selector returns ERR_NOT_FOUND', async () => {
+    const { browser, deps } = await setupBinding();
+    try {
+        const step: Step<'browser.select_option'> = {
+            id: 'tn-unmappable',
+            name: 'browser.select_option',
+            args: { selector: '#nonexistent-element', values: ['anything'] },
+        };
+        const result = await executeBrowserSelectOption(step, deps, 'ws1');
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+            assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+        }
+    } finally {
+        await browser.close();
+    }
+});
 
 // ── native_select ──
 

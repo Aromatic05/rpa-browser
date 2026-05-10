@@ -24,35 +24,43 @@ const ensureVisible = async (
     return await binding.traceTools['trace.locator.waitForVisible']({ selector, timeout });
 };
 
-const findTargetNode = (
+export const findTargetNode = (
     snapshot: SnapshotResult,
     step: Step<'browser.select_option'>,
+    candidateSelector: string,
 ): UnifiedNode | undefined => {
-    // Prefer explicit nodeId from args or resolve hint
     const nodeId = step.args.nodeId || step.resolve?.hint?.target?.nodeId;
     if (nodeId) {
         return snapshot.nodeIndex[nodeId];
     }
 
-    // Try to match selector attributes against snapshot
-    const selector = step.args.selector;
-    if (selector) {
-        const idMatch = selector.match(/^#([A-Za-z][A-Za-z0-9_-]*)$/);
-        if (idMatch) {
-            const targetId = idMatch[1];
-            for (const [nid, attrs] of Object.entries(snapshot.attrIndex)) {
-                if (attrs['id'] === targetId) {
-                    return snapshot.nodeIndex[nid];
-                }
+    const sel = candidateSelector || step.args.selector;
+    if (!sel) return undefined;
+
+    const cleanSel = sel.replace(/:visible$/, '');
+
+    for (const [nid, locator] of Object.entries(snapshot.locatorIndex)) {
+        if (locator.direct?.query === cleanSel || locator.direct?.fallback === cleanSel) {
+            return snapshot.nodeIndex[nid];
+        }
+    }
+
+    const idMatch = cleanSel.match(/^#([A-Za-z][A-Za-z0-9_-]*)$/);
+    if (idMatch) {
+        const targetId = idMatch[1];
+        for (const [nid, attrs] of Object.entries(snapshot.attrIndex)) {
+            if (attrs['id'] === targetId) {
+                return snapshot.nodeIndex[nid];
             }
         }
-        const testIdMatch = selector.match(/^\[data-testid="([^"]+)"\]$/);
-        if (testIdMatch) {
-            const targetTestId = testIdMatch[1];
-            for (const [nid, attrs] of Object.entries(snapshot.attrIndex)) {
-                if (attrs['data-testid'] === targetTestId) {
-                    return snapshot.nodeIndex[nid];
-                }
+    }
+
+    const testIdMatch = cleanSel.match(/^\[data-testid="([^"]+)"\]$/);
+    if (testIdMatch) {
+        const targetTestId = testIdMatch[1];
+        for (const [nid, attrs] of Object.entries(snapshot.attrIndex)) {
+            if (attrs['data-testid'] === targetTestId) {
+                return snapshot.nodeIndex[nid];
             }
         }
     }
@@ -112,7 +120,7 @@ export const executeBrowserSelectOption = async (
         }
 
         const snapshot = await generateSemanticSnapshot(binding.page);
-        const targetNode = findTargetNode(snapshot, step);
+        const targetNode = findTargetNode(snapshot, step, candidate.selector);
 
         const controlResult = resolveControl({
             stepArgs: step.args,
