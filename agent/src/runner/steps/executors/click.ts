@@ -61,7 +61,6 @@ export const executeBrowserClick = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const binding = await deps.runtime.resolveBinding(workspaceName);
-    const coord = step.args.coord;
     const visibleTimeoutMs = deps.config.waitPolicy.visibleTimeoutMs;
     const pageReadyTimeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs;
     const candidateClickTimeoutMs = deps.config.waitPolicy.candidateClickTimeoutMs;
@@ -69,37 +68,6 @@ export const executeBrowserClick = async (
     const hardTimeoutMs = deps.config.waitPolicy.interactionTimeoutMs;
 
     return await runWithHardTimeout(step.id, hardTimeoutMs, async () => {
-        if (coord) {
-            if (step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve) {
-                return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'coord and target are mutually exclusive' } };
-            }
-            const count = step.args.options?.double ? 2 : 1;
-            for (let i = 0; i < count; i += 1) {
-                const down = await binding.traceTools['trace.mouse.action']({
-                    action: 'down',
-                    x: coord.x,
-                    y: coord.y,
-                    button: step.args.options?.button,
-                });
-                if (!down.ok) {return { stepId: step.id, ok: false, error: mapTraceError(down.error) };}
-                const up = await binding.traceTools['trace.mouse.action']({
-                    action: 'up',
-                    x: coord.x,
-                    y: coord.y,
-                    button: step.args.options?.button,
-                });
-                if (!up.ok) {return { stepId: step.id, ok: false, error: mapTraceError(up.error) };}
-                if (deps.config.humanPolicy.enabled) {
-                    const delayMs = pickDelayMs(
-                        deps.config.humanPolicy.clickDelayMsRange.min,
-                        deps.config.humanPolicy.clickDelayMsRange.max,
-                    );
-                    if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
-                }
-            }
-            return { stepId: step.id, ok: true };
-        }
-
         const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || isValidStepResolve(step.resolve));
         if (!hasTarget) {
             return {
@@ -107,7 +75,7 @@ export const executeBrowserClick = async (
                 ok: false,
                 error: {
                     code: 'ERR_BAD_ARGS',
-                    message: 'browser.click requires coord or target selector/nodeId/resolve',
+                    message: 'browser.click requires target selector/nodeId/resolve',
                 },
             };
         }

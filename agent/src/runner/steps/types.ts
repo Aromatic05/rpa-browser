@@ -219,7 +219,6 @@ export type StepArgsMap = {
         nodeId?: string;
         selector?: string;
         resolveId?: string;
-        coord?: { x: number; y: number };
         options?: { button?: 'left' | 'right' | 'middle'; double?: boolean };
     };
     'browser.fill': {
@@ -233,7 +232,6 @@ export type StepArgsMap = {
         selector?: string;
         resolveId?: string;
         text: string;
-        delay_ms?: number;
     };
     'browser.select_option': {
         nodeId?: string;

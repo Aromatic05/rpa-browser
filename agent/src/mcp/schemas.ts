@@ -285,7 +285,6 @@ export const browserClickInputSchema = z
         nodeId: z.string().optional(),
         selector: z.string().optional(),
         resolveId: z.string().optional(),
-        coord: coordSchema.optional(),
         options: z
             .object({
                 button: z.enum(['left', 'right', 'middle']).optional(),
@@ -293,8 +292,8 @@ export const browserClickInputSchema = z
             })
             .optional(),
     })
-    .refine((value) => Boolean(value.coord) || ensureNodeIdOrSelector(value), {
-        message: 'click requires coord or nodeId/selector',
+    .refine(ensureNodeIdOrSelector, {
+        message: 'click requires nodeId or selector',
     });
 
 export const browserFillInputSchema = z
@@ -316,7 +315,6 @@ export const browserTypeInputSchema = z
         selector: z.string().optional(),
         resolveId: z.string().optional(),
         text: z.string(),
-        delay_ms: z.number().int().min(0).optional(),
     })
     .refine(ensureNodeIdOrSelector, {
         message: 'type requires nodeId or selector',
@@ -863,15 +861,6 @@ export const toolInputJsonSchemas = {
             nodeId: { type: 'string' },
             selector: { type: 'string' },
             resolveId: { type: 'string' },
-            coord: {
-                type: 'object',
-                properties: {
-                    x: { type: 'number' },
-                    y: { type: 'number' },
-                },
-                required: ['x', 'y'],
-                additionalProperties: false,
-            },
             options: {
                 type: 'object',
                 properties: {
@@ -904,7 +893,6 @@ export const toolInputJsonSchemas = {
             selector: { type: 'string' },
             resolveId: { type: 'string' },
             text: { type: 'string' },
-            delay_ms: { type: 'integer', minimum: 0 },
         },
         additionalProperties: false,
     },

@@ -31,15 +31,12 @@ export const executeBrowserType = async (
     const timeout = deps.config.waitPolicy.visibleTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     let lastError: StepResult['error'] | undefined;
-    const delayMs =
-        typeof step.args.delay_ms === 'number'
-            ? step.args.delay_ms
-            : deps.config.humanPolicy.enabled
-              ? pickDelayMs(
-                    deps.config.humanPolicy.typeDelayMsRange.min,
-                    deps.config.humanPolicy.typeDelayMsRange.max,
-                )
-              : undefined;
+    const delayMs = deps.config.humanPolicy.enabled
+        ? pickDelayMs(
+              deps.config.humanPolicy.typeDelayMsRange.min,
+              deps.config.humanPolicy.typeDelayMsRange.max,
+          )
+        : undefined;
     for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
         const candidate = resolved.target.candidates[candidateIndex];
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });

@@ -324,7 +324,6 @@ const handleClickWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (arg
         args: {
             nodeId: input.nodeId,
             selector: input.selector,
-            coord: input.coord,
             resolveId: input.resolveId,
             options,
         },
@@ -361,7 +360,6 @@ const handleTypeWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args
             selector: input.selector,
             resolveId: input.resolveId,
             text: input.text,
-            delay_ms: input.delay_ms ?? 0,
         },
         meta: { source: 'mcp' },
     });
