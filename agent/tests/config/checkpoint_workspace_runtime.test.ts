@@ -5,7 +5,7 @@ import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
 import { createWorkspaceCheckpointRuntime } from '../../src/checkpoint/runtime';
 import { createWorkspaceCheckpointProvider } from '../../src/checkpoint/provider';
 import { createDslControl } from '../../src/dsl/control';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';
 
 const unique = (prefix: string) => `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -55,7 +55,7 @@ test('workspace checkpoint provider exposes getCheckpoint and getCheckpointResol
 });
 
 test('dsl.test and dsl.run use workspace checkpoint provider', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const workspaceName = unique('dsl-checkpoint-provider');
     cleanup(workspaceName);
     const workflow = createWorkflowOnFs(workspaceName);

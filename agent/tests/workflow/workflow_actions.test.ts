@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { handleRuntimeControlAction } from '../../src/runtime/control_plane';
 import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../src/workflow';
 import { isRequestActionType } from '../../src/actions/action_types';
@@ -10,7 +10,7 @@ const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
 
 test('workflow lifecycle actions are handled by runtime control', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const workflowName = uniqueName('wf-main4');
     const renamed = uniqueName('wf-main4-renamed');
     cleanup(workflowName);
@@ -44,7 +44,7 @@ test('workflow lifecycle actions are handled by runtime control', async () => {
 });
 
 test('dsl actions are handled by dsl control', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const name = uniqueName('wf-dsl');
     cleanup(name);
     const workflow = createWorkflowOnFs(name);

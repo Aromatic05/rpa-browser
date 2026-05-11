@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRecordingState, getWorkspaceUnsavedToken } from '../../src/record/recording';
 import { replayRecording } from '../../src/record/replay';
 import { createWorkflowOnFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { loadRunnerConfig } from '../../src/config/loader';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 import type { StepUnion } from '../../src/runner/steps/types';
@@ -36,7 +36,7 @@ const createReplayWorkspace = (tabs: Array<{ name: string; url: string }>) => ({
 
 test('new tab first navigation records and replays as explicit goto before click', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-new-tab-first-navigation-${Date.now()}`;
     const ws = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     ws.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });

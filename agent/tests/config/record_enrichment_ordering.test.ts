@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createRecordingState, enableWorkspaceRecording, resetWorkspaceUnsavedRecording, setRecordedStepEnricherForTest } from '../../src/record/recording';
 import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
 import { workflowRootDir } from '../../src/workflow/fs';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { appendWorkspaceRecordingEvent } from '../../src/record/recording';
 
 const createMockPage = (url: string) => ({
@@ -26,7 +26,7 @@ const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().
 test('record.save waits pending enrichment and saves resolved enhancement', async () => {
     const wsName = uniqueName('record-save-wait');
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', page: createMockPage('https://example.com'), url: 'https://example.com' });
     ws.tabs.setActiveTab('tab-1');
@@ -82,7 +82,7 @@ test('record.save waits pending enrichment and saves resolved enhancement', asyn
 test('record.get returns immediately without waiting pending enrichment', async () => {
     const wsName = uniqueName('record-get-nowait');
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     resetWorkspaceUnsavedRecording(recordingState, wsName, { activeTabRef: 'tab-1', entryTabRef: 'tab-1', initialTabs: [] });
     enableWorkspaceRecording(recordingState, wsName);
@@ -116,7 +116,7 @@ test('record.get returns immediately without waiting pending enrichment', async 
 test('record.stop does not wait pending enrichment', async () => {
     const wsName = uniqueName('record-stop-nowait');
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', page: createMockPage('https://example.com'), url: 'https://example.com' });
     ws.tabs.setActiveTab('tab-1');
@@ -146,7 +146,7 @@ test('record.stop does not wait pending enrichment', async () => {
 test('play.start for unsaved does not wait pending enrichment', async () => {
     const wsName = uniqueName('play-unsaved-nowait');
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', page: createMockPage('https://example.com'), url: 'https://example.com' });
     ws.tabs.setActiveTab('tab-1');
@@ -183,7 +183,7 @@ test('play.start for unsaved does not wait pending enrichment', async () => {
 test('record.save includeStepResolve does not fallback to step.resolve when enrichment is missing', async () => {
     const wsName = uniqueName('record-save-no-fallback');
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', page: createMockPage('https://example.com'), url: 'https://example.com' });
     ws.tabs.setActiveTab('tab-1');

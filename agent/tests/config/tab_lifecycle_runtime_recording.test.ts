@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createRecordingState, getWorkspaceUnsavedToken } from '../../src/record/recording';
 import { createWorkflowOnFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 
 const createMockPage = (url: string) =>
     ({
@@ -26,7 +26,7 @@ const action = (type: string, workspaceName: string, payload: Record<string, unk
 
 const setup = async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-tab-life-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     ws.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import { startActionWsClient } from '../../src/actions/ws_client';
 import type { Action } from '../../src/actions/action_protocol';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { createWorkflowOnFs } from '../../src/workflow';
 
 const waitOpen = async (ws: WebSocket) => {
@@ -55,7 +55,7 @@ const randomPort = () => 20000 + Math.floor(Math.random() * 20000);
 
 test('invalid json returns action.dispatch.failed', async () => {
     const port = randomPort();
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const server = startActionWsClient({
         port,
         workspaceRegistry: registry,
@@ -75,7 +75,7 @@ test('invalid json returns action.dispatch.failed', async () => {
 
 test('invalid action envelope returns failed action', async () => {
     const port = randomPort();
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const server = startActionWsClient({
         port,
         workspaceRegistry: registry,
@@ -94,7 +94,7 @@ test('invalid action envelope returns failed action', async () => {
 test('dispatchAction reply and projection broadcast', async () => {
     const port = randomPort();
     const calls: Action[] = [];
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${Date.now()}`;
     registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     const wsServer = startActionWsClient({

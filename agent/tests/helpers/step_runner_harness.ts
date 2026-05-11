@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import type { Page } from '@playwright/test';
 import path from 'node:path';
 import { createPageRegistry } from '../../src/runtime/browser/page_registry';
-import { createTestWorkspaceRegistry } from './workspace_registry';
+import { createWorkspaceHarness } from './workspace_harness';
 import { createWorkflowOnFs } from '../../src/workflow';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
@@ -24,7 +24,7 @@ export const createTestPluginHost = async () => {
     return host;
 };
 
-export const setupStepRunner = async (page: Page, tabName = `test-${crypto.randomUUID()}`) => {
+export const createStepExecutionHarness = async (page: Page, tabName = `test-${crypto.randomUUID()}`) => {
     const pageRegistry = createPageRegistry({
         tabNameKey: '__rpa_tab_name',
         getContext: async () => page.context(),
@@ -33,10 +33,10 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
     const workspaceName = `ws-${crypto.randomUUID()}`;
 
     const pluginHost = await createTestPluginHost();
-    const { registry: workspaceRegistry } = createTestWorkspaceRegistry();
+    const { registry: workspaceRegistry } = createWorkspaceHarness();
     const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     runtimeWorkspace.tabs.createTab({
-        tabName: tabName,
+        tabName,
         page,
         url: page.url(),
     });
@@ -46,7 +46,7 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
         traceHooks: createNoopHooks(),
         pluginHost,
     });
-    runtime.bindPage({ workspaceName, tabName: tabName, page });
+    runtime.bindPage({ workspaceName, tabName, page });
 
     const deps = { runtime, config: getRunnerConfig(), pluginHost };
 
@@ -58,14 +58,4 @@ export const setupStepRunner = async (page: Page, tabName = `test-${crypto.rando
     };
 
     return { run, workspaceName, tabName, pageRegistry, deps };
-};
-
-export const findA11yNodeId = (tree: any, role: string, name: string): string | null => {
-    if (!tree) {return null;}
-    if (tree.role === role && tree.name === name) {return tree.id;}
-    for (const child of tree.children || []) {
-        const found = findA11yNodeId(child, role, name);
-        if (found) {return found;}
-    }
-    return null;
 };

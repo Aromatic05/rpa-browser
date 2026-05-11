@@ -15,7 +15,7 @@ import { runStepList, MemoryStepSink } from '../../src/runner/run_steps';
 import { MemorySink } from '../../src/runner/trace/sink';
 import { createNoopHooks } from '../../src/runner/trace/hooks';
 import { getRunnerConfig } from '../../src/config';
-import { createTestPluginHost } from '../helpers/steps';
+import { createTestPluginHost } from '../helpers/step_runner_harness';
 
 const fixtureUrl = (name: string) =>
     pathToFileURL(path.resolve(process.cwd(), 'tests/fixtures', name)).toString();

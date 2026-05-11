@@ -5,7 +5,7 @@ import { createWorkflowOnFs, deleteWorkflowFromFs, toEntityRuleBundle } from '..
 import { createWorkspaceCheckpointRuntime } from '../../src/checkpoint/runtime';
 import type { WorkflowCheckpoint } from '../../src/workflow';
 import type { RunStepsDeps } from '../../src/runner/run_steps_types';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 
 const unique = (prefix: string) => `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
@@ -52,7 +52,7 @@ test('toEntityRuleBundle is exported from workflow index', () => {
 });
 
 test('RunStepsDeps can carry resolveEntityRulesProvider and return null for missing workspace', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const deps: RunStepsDeps = {
         runtime: {} as any,
         config: {} as any,

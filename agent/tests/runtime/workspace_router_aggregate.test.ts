@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { createWorkflowOnFs } from '../../src/workflow';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: crypto.randomUUID(), type, ...extra });
@@ -11,7 +11,7 @@ const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as
 // ── Router: tab.* handlers via full workspace ──
 
 test('router tab.list returns tabs array', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'a', url: 'https://a.io', title: 'A' });
@@ -27,7 +27,7 @@ test('router tab.list returns tabs array', async () => {
 });
 
 test('router tab.create generates tabName, calls ensurePage, and sets active', async () => {
-    const { registry } = createTestWorkspaceRegistry({
+    const { registry } = createWorkspaceHarness({
         getPage: async () => ({ url: () => 'about:blank', isClosed: () => false, close: async () => undefined } as any),
     });
     const wsName = `ws-${crypto.randomUUID()}`;
@@ -45,7 +45,7 @@ test('router tab.create generates tabName, calls ensurePage, and sets active', a
 });
 
 test('router tab.close removes the tab', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'to-close' });
@@ -60,7 +60,7 @@ test('router tab.close removes the tab', async () => {
 });
 
 test('router tab.setActive changes the active tab', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'first' });
@@ -76,7 +76,7 @@ test('router tab.setActive changes the active tab', async () => {
 });
 
 test('router tab.opened creates metadata tab and sets active', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -100,7 +100,7 @@ test('router tab.opened creates metadata tab and sets active', async () => {
 });
 
 test('router tab.report returns stale when tab unknown', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -114,7 +114,7 @@ test('router tab.report returns stale when tab unknown', async () => {
 });
 
 test('router tab.ping updates known tab', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'alive' });
@@ -130,7 +130,7 @@ test('router tab.ping updates known tab', async () => {
 });
 
 test('router tab.closed removes the tab', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'kill-me' });
@@ -145,7 +145,7 @@ test('router tab.closed removes the tab', async () => {
 });
 
 test('router tab.reassign assigns tab to workspace', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -159,7 +159,7 @@ test('router tab.reassign assigns tab to workspace', async () => {
 });
 
 test('router tab actions reject empty tabName where required', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -175,7 +175,7 @@ test('router tab actions reject empty tabName where required', async () => {
 // ── Router: deleted actions are rejected ──
 
 test('router does not handle workspace.save', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -186,7 +186,7 @@ test('router does not handle workspace.save', async () => {
 });
 
 test('router does not handle workspace.restore', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -197,7 +197,7 @@ test('router does not handle workspace.restore', async () => {
 });
 
 test('router does not handle workflow.status', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -208,7 +208,7 @@ test('router does not handle workflow.status', async () => {
 });
 
 test('router does not handle tab.init', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -221,7 +221,7 @@ test('router does not handle tab.init', async () => {
 // ── RuntimeWorkspace aggregate structure ──
 
 test('RuntimeWorkspace directly holds tabs', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.tabs);
@@ -229,42 +229,42 @@ test('RuntimeWorkspace directly holds tabs', () => {
 });
 
 test('RuntimeWorkspace directly holds record', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.record);
 });
 
 test('RuntimeWorkspace directly holds dsl', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.dsl);
 });
 
 test('RuntimeWorkspace directly holds checkpoint', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.checkpoint);
 });
 
 test('RuntimeWorkspace directly holds entityRules', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.entityRules);
 });
 
 test('RuntimeWorkspace directly holds runner', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.runner);
 });
 
 test('RuntimeWorkspace directly holds mcp', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.mcp);
@@ -274,7 +274,7 @@ test('RuntimeWorkspace directly holds mcp', () => {
 });
 
 test('RuntimeWorkspace directly holds router', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.ok(ws.router);
@@ -282,28 +282,28 @@ test('RuntimeWorkspace directly holds router', () => {
 });
 
 test('RuntimeWorkspace does not have tabRegistry', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.equal('tabRegistry' in ws, false);
 });
 
 test('RuntimeWorkspace does not have getPage', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.equal('getPage' in ws, false);
 });
 
 test('RuntimeWorkspace does not have controls', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.equal('controls' in ws, false);
 });
 
 test('RuntimeWorkspace does not have serviceLifecycle', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     assert.equal('serviceLifecycle' in ws, false);
@@ -332,7 +332,7 @@ test('workspace.ts has no mcp router backfill', () => {
 
 test('WorkspaceTabs.ensurePage creates page and binds tab', async () => {
     let pageCreated = false;
-    const { registry } = createTestWorkspaceRegistry({
+    const { registry } = createWorkspaceHarness({
         getPage: async () => {
             pageCreated = true;
             return { url: () => 'about:blank', isClosed: () => false } as any;
@@ -347,7 +347,7 @@ test('WorkspaceTabs.ensurePage creates page and binds tab', async () => {
 });
 
 test('WorkspaceTabs.closeTab removes tab', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
     ws.tabs.createTab({ tabName: 'close-me', url: 'https://x.com' });
@@ -358,7 +358,7 @@ test('WorkspaceTabs.closeTab removes tab', async () => {
 });
 
 test('tab.create goes through TabsControl via router', async () => {
-    const { registry } = createTestWorkspaceRegistry({
+    const { registry } = createWorkspaceHarness({
         getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
     });
     const wsName = `ws-${crypto.randomUUID()}`;
@@ -374,7 +374,7 @@ test('tab.create goes through TabsControl via router', async () => {
 });
 
 test('tab.opened goes through TabsControl via router', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -388,7 +388,7 @@ test('tab.opened goes through TabsControl via router', async () => {
 });
 
 test('tab.reassign goes through TabsControl via router', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 

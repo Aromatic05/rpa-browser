@@ -7,7 +7,7 @@ import type { RunStepsDeps } from '../../src/runner/run_steps';
 import type { StepUnion } from '../../src/runner/steps/types';
 import { createEntityRuleFixtureRoot } from '../entity_rules/profile_fixture';
 import { startMockApp } from '../entity_rules/verify/helper';
-import { setupStepRunner } from '../helpers/steps';
+import { createStepExecutionHarness } from '../helpers/step_runner_harness';
 
 type ExecutorSpy = {
     fillNodeIds: string[];
@@ -63,7 +63,7 @@ const withAntEntityRuleRunner = async <T>(
     try {
         const context = await browser.newContext();
         const page = await context.newPage();
-        const runner = await setupStepRunner(page);
+        const runner = await createStepExecutionHarness(page);
 
         runner.deps.config.entityRules = {
             ...runner.deps.config.entityRules,

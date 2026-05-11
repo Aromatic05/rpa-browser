@@ -8,14 +8,14 @@ import { createPortAllocator } from '../../src/runtime/service/ports';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import type { PageRegistry } from '../../src/runtime/browser/page_registry';
 
-export type TestWorkspaceRegistryOptions = {
+export type WorkspaceHarnessOptions = {
     recordingState?: RecordingState;
     getPage?: (tabName: string, startUrl?: string) => Promise<Page>;
     emit?: (action: Action) => void;
     runStepsDeps?: RunStepsDeps;
 };
 
-export const createTestWorkspaceRegistry = (options: TestWorkspaceRegistryOptions = {}) => {
+export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) => {
     const recordingState = options.recordingState || createRecordingState();
     const testPageRegistry: PageRegistry = {
         bindPage: async () => null,
@@ -42,7 +42,9 @@ export const createTestWorkspaceRegistry = (options: TestWorkspaceRegistryOption
     const runStepsDeps = options.runStepsDeps || ({
         runtime,
         pageRegistry: testPageRegistry,
-        resolveWorkspace: () => { throw new Error('resolveWorkspace is not configured in test helper'); },
+        resolveWorkspace: () => {
+            throw new Error('resolveWorkspace is not configured in test helper');
+        },
         stepSinks: [],
         config: getRunnerConfig(),
         pluginHost: {

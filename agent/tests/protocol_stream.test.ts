@@ -5,7 +5,7 @@ import { replayRecording } from '../src/record/replay';
 import type { StepUnion } from '../src/runner/steps/types';
 import { createRecordingState } from '../src/record/recording';
 import { ACTION_TYPES } from '../src/actions/action_types';
-import { createTestWorkspaceRegistry } from './helpers/workspace_registry';
+import { createWorkspaceHarness } from './helpers/workspace_harness';
 import { createWorkflowOnFs } from '../src/workflow';
 import { createRecordControl } from '../src/record/control';
 
@@ -41,7 +41,7 @@ test('replayRecording emits step and progress events as stream', async () => {
 });
 
 test('play.start returns play.started immediately and emits completion event from record control', async () => {
-    const { registry: workspaceRegistry } = createTestWorkspaceRegistry();
+    const { registry: workspaceRegistry } = createWorkspaceHarness();
     const wsName = `ws-${Date.now()}`;
     const ws = workspaceRegistry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     const page = { url: () => 'https://example.com', goto: async () => undefined, isClosed: () => false } as any;

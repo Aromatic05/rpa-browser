@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRecordingState } from '../../src/record/recording';
 import { createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { routeControlAction } from '../../src/actions/control_gateway';
 import { routeWorkspaceAction } from '../../src/actions/workspace_gateway';
 
@@ -23,7 +23,7 @@ const mkDeps = (registry: any) => ({ workspaceRegistry: registry, log: () => {},
 
 test('record/play state machine enforces workspace order and unsaved slot overwrite', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-state`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', page: createMockPage('https://example.com'), url: 'https://example.com' });
@@ -52,7 +52,7 @@ test('record/play state machine enforces workspace order and unsaved slot overwr
 
 test('workflow.saveAs routes in control and keeps source, resetDefault routes in control', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const sourceName = `ws-${Date.now()}-source`;
     const targetName = `${sourceName}-copy`;
     const otherName = `${sourceName}-other`;
@@ -92,7 +92,7 @@ test('workflow.saveAs routes in control and keeps source, resetDefault routes in
 
 test('RuntimeWorkspace uses state field only for runtime status', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-shape`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     assert.equal('state' in ws, true);
@@ -103,7 +103,7 @@ test('RuntimeWorkspace uses state field only for runtime status', async () => {
 
 test('play.start with missing saved recording returns ERR_RECORDING_NOT_FOUND', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-play`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', page: createMockPage('https://example.com/play'), url: 'https://example.com/play' });

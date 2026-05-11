@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-import { createStep, setupStepRunner } from '../helpers/steps';
+import { createStep, createStepExecutionHarness } from '../helpers/step_runner_harness';
 
 test('runSteps executes browser.capture_resolve without mutating page state', async () => {
     const browser = await chromium.launch({
@@ -20,7 +20,7 @@ test('runSteps executes browser.capture_resolve without mutating page state', as
         `);
 
         const beforeHtml = await page.locator('body').innerHTML();
-        const runner = await setupStepRunner(page, 'capture-resolve-token');
+        const runner = await createStepExecutionHarness(page, 'capture-resolve-token');
         const result = await runner.run([
             createStep('browser.capture_resolve', {
                 selector: '#save-btn',

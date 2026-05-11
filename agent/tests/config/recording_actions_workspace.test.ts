@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRecordingState } from '../../src/record/recording';
 import { createWorkflowOnFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 
 const createMockPage = (url: string) => ({
     url: () => url,
@@ -22,7 +22,7 @@ const createMockPage = (url: string) => ({
 
 test('record.start fails clearly when workspace has no bound page', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-a`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -39,7 +39,7 @@ test('record.start fails clearly when workspace has no bound page', async () => 
 
 test('record/play state discipline and unsaved slot behavior', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-b`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-b', page: createMockPage('https://example.com/b'), url: 'https://example.com/b' });
@@ -80,7 +80,7 @@ test('record/play state discipline and unsaved slot behavior', async () => {
 
 test('record.event is ingested in record domain and not routed through actions execute', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-c`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-c', page: createMockPage('https://example.com/c'), url: 'https://example.com/c' });
@@ -107,7 +107,7 @@ test('record.event is ingested in record domain and not routed through actions e
 
 test('record.event flushes first tab goto before dom step and save preserves order', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-first-goto`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });
@@ -146,7 +146,7 @@ test('record.event flushes first tab goto before dom step and save preserves ord
 
 test('record.event pending fill flush stays after first tab goto', async () => {
     const recordingState = createRecordingState();
-    const { registry } = createTestWorkspaceRegistry({ recordingState });
+    const { registry } = createWorkspaceHarness({ recordingState });
     const wsName = `ws-${Date.now()}-fill-first-goto`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });

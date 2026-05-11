@@ -4,13 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createWorkflowOnFs, deleteWorkflowFromFs } from '../../src/workflow';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 
 const unique = (prefix: string) => `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
 
 test('createWorkspace binds controls on RuntimeWorkspace', () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = unique('ws-bind');
     cleanup(wsName);
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
@@ -23,7 +23,7 @@ test('createWorkspace binds controls on RuntimeWorkspace', () => {
 });
 
 test('workspace controls route tab.list via bound workspace control', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = unique('ws-tab-list');
     cleanup(wsName);
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
@@ -34,7 +34,7 @@ test('workspace controls route tab.list via bound workspace control', async () =
 });
 
 test('domain controls are bound and invokable', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = unique('ws-domain');
     cleanup(wsName);
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));

@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { createWorkflowOnFs } from '../../src/workflow';
 import { createActionDispatcher } from '../../src/actions/dispatcher';
 
 test('workspace gateway routes tab.list with workspaceName into workspace control', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
     ws.tabs.createTab({ tabName: 'tab-1', url: 'about:blank', title: '' });

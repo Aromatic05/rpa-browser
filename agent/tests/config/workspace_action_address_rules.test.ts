@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { handleRuntimeControlAction } from '../../src/runtime/control_plane';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { createWorkflowOnFs } from '../../src/workflow';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: 'a1', type, ...extra });
 
 test('workspace.create and workspace.list go through runtime control', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
 
     const createReply = await handleRuntimeControlAction({
@@ -26,7 +26,7 @@ test('workspace.create and workspace.list go through runtime control', async () 
 });
 
 test('workspace.setActive uses payload.workspaceName through control plane', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
@@ -40,7 +40,7 @@ test('workspace.setActive uses payload.workspaceName through control plane', asy
 
 test('tab actions go through workspace router', async () => {
     let createdWithStartUrl: string | undefined;
-    const { registry } = createTestWorkspaceRegistry({
+    const { registry } = createWorkspaceHarness({
         getPage: async (_tabName: string, startUrl?: string) => {
             createdWithStartUrl = startUrl;
             return {
@@ -82,7 +82,7 @@ test('tab actions go through workspace router', async () => {
 });
 
 test('tab.reassign uses action.workspaceName and ignores payload.workspaceName', async () => {
-    const { registry } = createTestWorkspaceRegistry();
+    const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 

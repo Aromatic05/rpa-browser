@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createRuntimeLifecycle } from '../../src/runtime/browser/lifecycle';
-import { createTestWorkspaceRegistry } from '../helpers/workspace_registry';
+import { createWorkspaceHarness } from '../helpers/workspace_harness';
 import { createRecordingState, enableWorkspaceRecording, getWorkspaceUnsavedToken, resetWorkspaceUnsavedRecording } from '../../src/record/recording';
 import { createWorkflowOnFs } from '../../src/workflow';
 
@@ -24,7 +24,7 @@ const createMockPage = (url: string) =>
 
 test('onPageBound records create_tab for newly bound tab when recording enabled', () => {
     const recordingState = createRecordingState();
-    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const { registry, runStepsDeps } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-lifecycle-create-${crypto.randomUUID()}`;
     const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     workspace.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });
@@ -56,7 +56,7 @@ test('onPageBound records create_tab for newly bound tab when recording enabled'
 
 test('onPageBound records switch_tab after create_tab when active changes', () => {
     const recordingState = createRecordingState();
-    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const { registry, runStepsDeps } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-lifecycle-switch-${crypto.randomUUID()}`;
     const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     workspace.tabs.createTab({ tabName: 'tab-old', page: createMockPage('https://old'), url: 'https://old' });
@@ -92,7 +92,7 @@ test('onPageBound records switch_tab after create_tab when active changes', () =
 
 test('onPageBound does not use create_tab to imply active switch conditions', () => {
     const recordingState = createRecordingState();
-    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const { registry, runStepsDeps } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-lifecycle-existing-${crypto.randomUUID()}`;
     const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     workspace.tabs.createTab({ tabName: 'tab-existing', page: createMockPage('https://existing'), url: 'https://existing' });
@@ -125,7 +125,7 @@ test('onPageBound does not use create_tab to imply active switch conditions', ()
 
 test('onBindingClosed records close_tab for manually closed tab', () => {
     const recordingState = createRecordingState();
-    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const { registry, runStepsDeps } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-lifecycle-close-${crypto.randomUUID()}`;
     const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     workspace.tabs.createTab({ tabName: 'tab-close', page: createMockPage('https://close'), url: 'https://close' });
@@ -155,7 +155,7 @@ test('onBindingClosed records close_tab for manually closed tab', () => {
 
 test('onBindingClosed records close_tab before cleanupRecording', () => {
     const recordingState = createRecordingState();
-    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const { registry, runStepsDeps } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-lifecycle-cleanup-${crypto.randomUUID()}`;
     const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     workspace.tabs.createTab({ tabName: 'tab-close', page: createMockPage('https://close'), url: 'https://close' });
@@ -187,7 +187,7 @@ test('onBindingClosed records close_tab before cleanupRecording', () => {
 
 test('onBindingClosed for non-active tab records close_tab only', () => {
     const recordingState = createRecordingState();
-    const { registry, runStepsDeps } = createTestWorkspaceRegistry({ recordingState });
+    const { registry, runStepsDeps } = createWorkspaceHarness({ recordingState });
     const workspaceName = `ws-lifecycle-close-non-active-${crypto.randomUUID()}`;
     const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     workspace.tabs.createTab({ tabName: 'tab-active', page: createMockPage('https://active'), url: 'https://active' });
