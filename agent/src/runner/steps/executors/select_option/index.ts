@@ -135,7 +135,7 @@ export const executeBrowserSelectOption = async (
         const control = controlResult;
 
         let execResult: StepResult;
-        switch (control.kind) {
+        switch (step.args.kind) {
             case 'native_select':
                 execResult = await executeNativeSelect(
                     step, deps, workspaceName, control, snapshot,

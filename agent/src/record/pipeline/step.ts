@@ -98,7 +98,7 @@ export const toStep = (event: RecorderEvent): StepUnion | null => {
     if (event.type === 'select' && (event.selector || event.a11yHint) && typeof event.value === 'string') {
         return createStep(
             'browser.select_option',
-            { selector: event.selector, values: [event.value] },
+            { selector: event.selector, kind: 'native_select', values: [event.value] },
             event.ts,
             { tabName: event.tabName },
             buildResolveFromEvent(event),

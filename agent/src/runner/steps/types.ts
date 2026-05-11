@@ -8,6 +8,7 @@
  */
 
 import type { BBox, EntityKind, SnapshotFilter } from './executors/snapshot/core/types';
+import type { SelectOptionKind } from './executors/select_option/types';
 
 export type StepName =
     | 'browser.goto'
@@ -235,6 +236,7 @@ export type StepArgsMap = {
         nodeId?: string;
         selector?: string;
         resolveId?: string;
+        kind: SelectOptionKind;
         values: string[];
     };
     'browser.hover': {

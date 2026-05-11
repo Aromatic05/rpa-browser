@@ -66,7 +66,7 @@ const collectSelectOptions = (ctx: ControlCollectContext, selectNode: UnifiedNod
         if (tag !== 'option') {continue;}
         const label = readNodeText(ctx, child);
         const value = readAttrRaw(ctx, child, 'value') || label;
-        const selected = hasAttr(ctx, child, 'selected');
+        const selected = isExplicitTrueAttr(ctx, child, 'selected');
         options.push({ value, label, selected, nodeId: child.id });
     }
     return options;
@@ -86,7 +86,7 @@ const collectRadioGroup: ControlCollector = (ctx) => {
             const options = members.map((node) => ({
                 value: readAttrRaw(ctx, node, 'value') || readNodeText(ctx, node),
                 label: readNodeText(ctx, node),
-                selected: hasAttr(ctx, node, 'checked'),
+                selected: isExplicitTrueAttr(ctx, node, 'checked'),
                 nodeId: node.id,
             }));
             components.push({
@@ -201,7 +201,7 @@ const collectCheckboxGroup: ControlCollector = (ctx) => {
         const options = members.map((node) => ({
             value: readAttrRaw(ctx, node, 'value') || readNodeText(ctx, node),
             label: readNodeText(ctx, node),
-            selected: hasAttr(ctx, node, 'checked'),
+            selected: isExplicitTrueAttr(ctx, node, 'checked'),
             nodeId: node.id,
         }));
         components.push({
@@ -277,7 +277,9 @@ const findNearestExplicitCheckboxGroup = (
 };
 
 const ANT_SELECT_ROOT_CLASS = 'ant-select';
-const ANT_SELECT_TRIGGER_CLASS = 'ant-select-selector';
+const ANT_SELECT_ROOT_CLASS_SIGNALS = ['ant-select', 'ant-select-enabled'];
+const ANT_SELECT_TRIGGER_CLASSES = ['ant-select-selection', 'ant-select-selector'];
+const ANT_SELECT_TRIGGER_SUBTREE_SIGNALS = ['ant-select-selection__rendered'];
 const ANT_SELECT_FORBIDDEN_ROOT_CLASSES = new Set([
     'ant-select-dropdown',
     'ant-select-item-option',
@@ -291,6 +293,7 @@ const ANT_SELECT_OPTION_CLASS_SIGNALS = [
 
 const ANT_SELECT_POPUP_CLASS_SIGNALS = [
     'ant-select-dropdown',
+    'ant-select-dropdown-menu',
 ];
 
 const collectCustomSelect: ControlCollector = (ctx) => {
@@ -316,7 +319,9 @@ const collectCustomSelect: ControlCollector = (ctx) => {
             let popupNodeId = resolvePopupNodeId(node, ctx, domIdMap);
             if (!popupNodeId) {
                 const cls = readAttrLower(ctx, node, 'class') || '';
-                if (hasClassToken(cls, ANT_SELECT_ROOT_CLASS) || hasClassToken(cls, ANT_SELECT_TRIGGER_CLASS)) {
+                if (ANT_SELECT_ROOT_CLASS_SIGNALS.some((token) => hasClassToken(cls, token))
+                    || ANT_SELECT_TRIGGER_CLASSES.some((token) => hasClassToken(cls, token))
+                    || ANT_SELECT_TRIGGER_SUBTREE_SIGNALS.some((token) => hasClassToken(cls, token))) {
                     for (const [nid, n] of Object.entries(ctx.nodeIndex)) {
                         if (consumedPopupIds.has(nid)) {continue;}
                         const ncls = readAttrLower(ctx, n, 'class') || '';
@@ -344,14 +349,15 @@ const collectCustomSelect: ControlCollector = (ctx) => {
         // Forbidden root classes must never produce custom_select
         if (ANT_SELECT_FORBIDDEN_ROOT_CLASSES.has(cls.split(/\s+/).find((t) => ANT_SELECT_FORBIDDEN_ROOT_CLASSES.has(t)) || '')) {return;}
 
-        const hasAntSelectRoot = hasClassToken(cls, ANT_SELECT_ROOT_CLASS);
-        const hasAntSelectTrigger = hasClassToken(cls, ANT_SELECT_TRIGGER_CLASS);
+        const hasAntSelectRoot = ANT_SELECT_ROOT_CLASS_SIGNALS.some((token) => hasClassToken(cls, token));
+        const hasAntSelectTrigger = ANT_SELECT_TRIGGER_CLASSES.some((token) => hasClassToken(cls, token));
+        const hasAntSelectTriggerSubtree = ANT_SELECT_TRIGGER_SUBTREE_SIGNALS.some((token) => hasClassToken(cls, token));
 
-        if (!hasAntSelectRoot && !hasAntSelectTrigger) {return;}
+        if (!hasAntSelectRoot && !hasAntSelectTrigger && !hasAntSelectTriggerSubtree) {return;}
 
         // ant-select-selector: only act as root when no ant-select ancestor exists
-        if (hasAntSelectTrigger && !hasAntSelectRoot) {
-            if (findAncestorByClass(node.id, ANT_SELECT_ROOT_CLASS, parentIdMap, ctx)) {return;}
+        if ((hasAntSelectTrigger || hasAntSelectTriggerSubtree) && !hasAntSelectRoot) {
+            if (findAncestorByClass(node.id, ANT_SELECT_ROOT_CLASS_SIGNALS, parentIdMap, ctx)) {return;}
         }
 
         // Determine root node and trigger
@@ -361,7 +367,7 @@ const collectCustomSelect: ControlCollector = (ctx) => {
         if (hasAntSelectRoot) {
             rootNode = node;
             triggerNodeId = hasAntSelectTrigger ? node.id
-                : findDescendantByClass(node, ANT_SELECT_TRIGGER_CLASS, ctx);
+                : findDescendantByClass(node, [...ANT_SELECT_TRIGGER_CLASSES, ...ANT_SELECT_TRIGGER_SUBTREE_SIGNALS], ctx);
         }
 
         // Don't duplicate a combobox that was already handled
@@ -455,7 +461,7 @@ const findAntSelectPopup = (
 
 const findAncestorByClass = (
     nodeId: string,
-    classToken: string,
+    classTokens: string[],
     parentIdMap: ParentIdMap,
     ctx: ControlCollectContext,
 ): string | undefined => {
@@ -464,7 +470,7 @@ const findAncestorByClass = (
         const parent = ctx.nodeIndex[currentId];
         if (parent) {
             const cls = readAttrLower(ctx, parent, 'class') || '';
-            if (hasClassToken(cls, classToken)) {return currentId;}
+            if (classTokens.some((token) => hasClassToken(cls, token))) {return currentId;}
         }
         currentId = parentIdMap[currentId];
     }
@@ -473,14 +479,14 @@ const findAncestorByClass = (
 
 const findDescendantByClass = (
     root: UnifiedNode,
-    classToken: string,
+    classTokens: string[],
     ctx: ControlCollectContext,
 ): string | undefined => {
     const stack = [...root.children];
     while (stack.length > 0) {
         const child = stack.pop()!;
         const cls = readAttrLower(ctx, child, 'class') || '';
-        if (hasClassToken(cls, classToken)) {return child.id;}
+        if (classTokens.some((token) => hasClassToken(cls, token))) {return child.id;}
         for (let i = child.children.length - 1; i >= 0; i -= 1) {
             stack.push(child.children[i]);
         }
@@ -504,8 +510,8 @@ const collectPopupOptions = (ctx: ControlCollectContext, popupNodeId: string): O
         if (node.role === 'option') {
             const label = readNodeText(ctx, node);
             const value = readAttrRaw(ctx, node, 'value') || readAttrRaw(ctx, node, 'data-value') || label;
-            const selected = readAttrLower(ctx, node, 'aria-selected') === 'true'
-                || readAttrLower(ctx, node, 'aria-checked') === 'true';
+            const selected = isExplicitTrueAttr(ctx, node, 'aria-selected')
+                || isExplicitTrueAttr(ctx, node, 'aria-checked');
             options.push({ value, label, selected, nodeId: currentId });
         }
 
@@ -538,9 +544,11 @@ const collectAntSelectOptions = (ctx: ControlCollectContext, popupNodeId: string
         if (isOption) {
             const label = readNodeText(ctx, node);
             const value = readAttrRaw(ctx, node, 'value') || readAttrRaw(ctx, node, 'data-value') || label;
-            const selected = readAttrLower(ctx, node, 'aria-selected') === 'true'
-                || readAttrLower(ctx, node, 'aria-checked') === 'true'
-                || hasClassToken(cls, 'ant-select-item-option-selected');
+            const selected = isExplicitTrueAttr(ctx, node, 'aria-selected')
+                || isExplicitTrueAttr(ctx, node, 'aria-checked')
+                || hasClassToken(cls, 'ant-select-item-option-selected')
+                || hasClassToken(cls, 'ant-select-dropdown-menu-item-selected')
+                || hasClassToken(cls, 'ant-select-dropdown-menu-item-active');
             options.push({ value, label, selected, nodeId: currentId });
         }
 
@@ -611,8 +619,8 @@ const readAttrRaw = (ctx: ControlCollectContext, node: UnifiedNode, key: string)
 const readAttrLower = (ctx: ControlCollectContext, node: UnifiedNode, key: string): string =>
     readAttrRaw(ctx, node, key).toLowerCase();
 
-const hasAttr = (ctx: ControlCollectContext, node: UnifiedNode, key: string): boolean =>
-    key in (ctx.attrIndex[node.id] ?? {});
+const isExplicitTrueAttr = (ctx: ControlCollectContext, node: UnifiedNode, key: string): boolean =>
+    readAttrLower(ctx, node, key) === 'true';
 
 const walk = (root: UnifiedNode, visitor: (node: UnifiedNode) => void): void => {
     const stack: UnifiedNode[] = [root];

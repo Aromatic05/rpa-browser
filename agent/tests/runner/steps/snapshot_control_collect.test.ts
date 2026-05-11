@@ -294,6 +294,48 @@ test('checkbox_group detects explicit group container by role=group', () => {
     assert.strictEqual(ctx.nodeIndex['cb1'].role, 'checkbox');
 });
 
+test('checkbox checked=\"false\" is not selected while checked=\"true\" is selected', () => {
+    const cb1 = makeNode('cbf1', 'checkbox'); cb1.name = 'A';
+    const cb2 = makeNode('cbf2', 'checkbox'); cb2.name = 'B';
+    const group = makeNode('cbf_group', 'group', [cb1, cb2]);
+    const root = makeNode('root', 'root', [group]);
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'cbf1', 'tag', 'input'); setAttr(ctx, 'cbf1', 'type', 'checkbox'); setAttr(ctx, 'cbf1', 'value', 'a'); setAttr(ctx, 'cbf1', 'checked', 'false');
+    setAttr(ctx, 'cbf2', 'tag', 'input'); setAttr(ctx, 'cbf2', 'type', 'checkbox'); setAttr(ctx, 'cbf2', 'value', 'b'); setAttr(ctx, 'cbf2', 'checked', 'true');
+    const { controlIndex } = collect(root, ctx);
+    const entry = Object.values(controlIndex).find((c) => c.kind === 'checkbox_group');
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.data.selectedValues, ['b']);
+});
+
+test('radio checked=\"false\" is not selected', () => {
+    const r1 = makeNode('rf1', 'radio'); r1.name = 'A';
+    const r2 = makeNode('rf2', 'radio'); r2.name = 'B';
+    const group = makeNode('rfg', 'group', [r1, r2]);
+    const root = makeNode('root', 'root', [group]);
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'rf1', 'tag', 'input'); setAttr(ctx, 'rf1', 'type', 'radio'); setAttr(ctx, 'rf1', 'name', 'g1'); setAttr(ctx, 'rf1', 'value', 'a'); setAttr(ctx, 'rf1', 'checked', 'false');
+    setAttr(ctx, 'rf2', 'tag', 'input'); setAttr(ctx, 'rf2', 'type', 'radio'); setAttr(ctx, 'rf2', 'name', 'g1'); setAttr(ctx, 'rf2', 'value', 'b');
+    const { controlIndex } = collect(root, ctx);
+    const entry = Object.values(controlIndex).find((c) => c.kind === 'radio_group');
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.data.selectedValues, []);
+});
+
+test('native option selected=\"false\" is not selected', () => {
+    const o1 = makeNode('no1', 'option'); o1.name = 'A';
+    const o2 = makeNode('no2', 'option'); o2.name = 'B';
+    const sel = makeNode('nos', 'generic', [o1, o2]);
+    const root = makeNode('root', 'root', [sel]);
+    const ctx = makeCtx(root);
+    setAttr(ctx, 'nos', 'tag', 'select');
+    setAttr(ctx, 'no1', 'tag', 'option'); setAttr(ctx, 'no1', 'value', 'a'); setAttr(ctx, 'no1', 'selected', 'false');
+    setAttr(ctx, 'no2', 'tag', 'option'); setAttr(ctx, 'no2', 'value', 'b'); setAttr(ctx, 'no2', 'selected', 'true');
+    const { controlIndex } = collect(root, ctx);
+    const ref = buildControlRef('native_select', 'nos');
+    assert.deepStrictEqual(controlIndex[ref].data.selectedValues, ['b']);
+});
+
 test('Ant Checkbox Group with ant-checkbox-group class aggregates correctly', () => {
     const cb1 = makeNode('acb1', 'checkbox'); cb1.name = 'Option 1';
     const cb2 = makeNode('acb2', 'checkbox'); cb2.name = 'Option 2';
@@ -675,6 +717,38 @@ test('real Ant Select nested structure: root owns trigger, popup, and options', 
     const selOpt = options.find((o) => o.selected) as Record<string, unknown>;
     assert.ok(selOpt);
     assert.strictEqual(selOpt.value, 'sh');
+});
+
+test('legacy Ant Select class chain is recognized as one custom_select control', () => {
+    const item1 = makeNode('legacy_item_1', 'generic'); item1.name = 'Alpha';
+    const item2 = makeNode('legacy_item_2', 'generic'); item2.name = 'Beta';
+    const menu = makeNode('legacy_menu', 'menu', [item1, item2]);
+    const dropdown = makeNode('legacy_dropdown', 'generic', [menu]);
+    const rendered = makeNode('legacy_rendered', 'generic');
+    const trigger = makeNode('legacy_trigger', 'generic', [rendered]);
+    const rootSelect = makeNode('legacy_root', 'generic', [trigger]);
+    const page = makeNode('root', 'root', [rootSelect, dropdown]);
+
+    const ctx = makeCtx(page);
+    setAttr(ctx, 'legacy_root', 'class', 'ant-select ant-select-enabled');
+    setAttr(ctx, 'legacy_trigger', 'class', 'ant-select-selection ant-select-selection--single');
+    setAttr(ctx, 'legacy_rendered', 'class', 'ant-select-selection__rendered');
+    setAttr(ctx, 'legacy_dropdown', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'legacy_menu', 'class', 'ant-select-dropdown-menu');
+    setAttr(ctx, 'legacy_item_1', 'class', 'ant-select-dropdown-menu-item ant-select-dropdown-menu-item-selected');
+    setAttr(ctx, 'legacy_item_1', 'aria-selected', 'true');
+    setAttr(ctx, 'legacy_item_1', 'value', 'alpha');
+    setAttr(ctx, 'legacy_item_2', 'class', 'ant-select-dropdown-menu-item ant-select-dropdown-menu-item-active');
+    setAttr(ctx, 'legacy_item_2', 'aria-selected', 'false');
+    setAttr(ctx, 'legacy_item_2', 'value', 'beta');
+
+    const { controlIndex } = collect(page, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].rootNodeId, 'legacy_root');
+    assert.strictEqual(entries[0].triggerNodeId, 'legacy_trigger');
+    assert.strictEqual(entries[0].popupNodeId, 'legacy_dropdown');
+    assert.deepStrictEqual(entries[0].optionNodeIds.sort(), ['legacy_item_1', 'legacy_item_2']);
 });
 
 test('ant-select-selector under ant-select root does not produce a second control', () => {

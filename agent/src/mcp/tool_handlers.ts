@@ -359,6 +359,7 @@ const handleSelectOptionWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => asy
             nodeId: input.nodeId,
             selector: input.selector,
             resolveId: input.resolveId,
+            kind: 'native_select',
             values: input.values,
         },
         meta: { source: 'mcp' },
@@ -699,6 +700,7 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
             args: {
                 nodeId: action.nodeId,
                 selector: action.selector,
+                kind: 'native_select',
                 values: action.values,
             },
             meta: { source: 'mcp' },

@@ -239,14 +239,17 @@ test('protocol lock: coord is removed from browser.click', () => {
     assert.equal(Boolean(step), true);
 });
 
-test('protocol lock: kind, controlRef, searchText removed from browser.select_option', () => {
-    // @ts-expect-error kind is removed from browser.select_option
+test('protocol lock: kind is required, kind must be valid, controlRef/searchText removed from browser.select_option', () => {
     const withKind: Step<'browser.select_option'> = { id: 'k1', name: 'browser.select_option', args: { values: ['x'], kind: 'native_select' } };
+    // @ts-expect-error kind is required on browser.select_option
+    const withoutKind: Step<'browser.select_option'> = { id: 'k0', name: 'browser.select_option', args: { values: ['x'] } };
+    // @ts-expect-error kind must be one of SelectOptionKind
+    const withInvalidKind: Step<'browser.select_option'> = { id: 'k4', name: 'browser.select_option', args: { values: ['x'], kind: 'invalid_kind' } };
     // @ts-expect-error controlRef is removed from browser.select_option
     const withCR: Step<'browser.select_option'> = { id: 'k2', name: 'browser.select_option', args: { values: ['x'], controlRef: 'c:1' } };
     // @ts-expect-error searchText is removed from browser.select_option
     const withST: Step<'browser.select_option'> = { id: 'k3', name: 'browser.select_option', args: { values: ['x'], searchText: 'x' } };
-    assert.equal(Boolean(withKind || withCR || withST), true);
+    assert.equal(Boolean(withKind || withoutKind || withInvalidKind || withCR || withST), true);
 });
 
 test('protocol lock: includeA11y and focus_only removed from browser.snapshot', () => {
@@ -329,8 +332,9 @@ test('protocol lock: browser.select_option args only accepts canonical fields', 
     assert.equal(block.includes('nodeId?: string;'), true, 'select_option should expose nodeId');
     assert.equal(block.includes('selector?: string;'), true, 'select_option should expose selector');
     assert.equal(block.includes('resolveId?: string;'), true, 'select_option should expose resolveId');
+    assert.equal(block.includes('kind: SelectOptionKind;'), true, 'select_option should require kind');
     assert.equal(block.includes('values: string[]'), true, 'select_option should expose values');
-    assert.equal(block.includes('kind?'), false, 'select_option must not expose kind');
+    assert.equal(block.includes('kind?'), false, 'select_option kind must not be optional');
     assert.equal(block.includes('controlRef?'), false, 'select_option must not expose controlRef');
     assert.equal(block.includes('searchText?'), false, 'select_option must not expose searchText');
     assert.equal(block.includes('timeout?'), false, 'select_option must not expose timeout');

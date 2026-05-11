@@ -117,6 +117,7 @@ test('checkbox option node without node.control.ref can bind by optionNodeIds an
 
     const steps = getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps;
     assert.equal(steps[0].name, 'browser.select_option');
+    assert.equal((steps[0].args as any).kind, 'checkbox_group');
     assert.deepEqual((steps[0].args as any).values, ['yellow', 'green']);
     assert.equal(steps[1].id, 'external');
     setRecordTargetSnapshotResolverForTest(null);
@@ -142,6 +143,7 @@ test('radio checked true normalizes select_option by option node binding and no 
     const steps = getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps;
     assert.equal(steps.length, 1);
     assert.equal(steps[0].name, 'browser.select_option');
+    assert.equal((steps[0].args as any).kind, 'radio_group');
     assert.deepEqual((steps[0].args as any).values, ['C']);
     setRecordTargetSnapshotResolverForTest(null);
 });
@@ -166,6 +168,7 @@ test('native select select suppresses near click echo', async () => {
     const steps = getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps;
     assert.equal(steps.length, 1);
     assert.equal(steps[0].name, 'browser.select_option');
+    assert.equal((steps[0].args as any).kind, 'native_select');
     setRecordTargetSnapshotResolverForTest(null);
 });
 
@@ -204,6 +207,7 @@ test('custom select trigger pending + option click merges, unfinished trigger re
     const merged = getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps;
     assert.equal(merged.length, 1);
     assert.equal(merged[0].name, 'browser.select_option');
+    assert.equal((merged[0].args as any).kind, 'custom_select');
 
     await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', { tabName: 'tab-a', ts: 40, type: 'click', selector: '#trigger' }, 1200);
     setRecordTargetSnapshotResolverForTest(async () => undefined);
@@ -249,7 +253,31 @@ test('source guards', () => {
     assert.equal(payloadSrc.includes('controlRef'), false);
 
     const stepTypesSrc = fs.readFileSync('src/runner/steps/types.ts', 'utf8');
-    assert.equal(stepTypesSrc.includes("'browser.select_option': {\n        nodeId?: string;\n        selector?: string;\n        resolveId?: string;\n        values: string[];\n    };"), true);
+    assert.equal(stepTypesSrc.includes("'browser.select_option': {\n        nodeId?: string;\n        selector?: string;\n        resolveId?: string;\n        kind: SelectOptionKind;\n        values: string[];\n    };"), true);
+});
+
+test('native select suppress normalizes selector whitespace', async () => {
+    const state = baseState();
+    setRecordTargetSnapshotResolverForTest(async ({ event }) => snapshotFor({
+        selector: event.selector || '',
+        targetNodeId: 'select-2',
+        controlRef: 'ref-select-2',
+        componentKind: 'native_select',
+        rootNodeId: 'select-2',
+    }));
+
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a', ts: 90, type: 'select', selector: '#native-select', value: '2',
+    }, 1200);
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a', ts: 91, type: 'click', selector: '  #native-select \n',
+    }, 1200);
+
+    const steps = getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps;
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].name, 'browser.select_option');
+    assert.equal((steps[0].args as any).kind, 'native_select');
+    setRecordTargetSnapshotResolverForTest(null);
 });
 
 test('stop flush releases unfinished custom trigger click', async () => {

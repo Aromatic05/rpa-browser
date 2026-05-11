@@ -11,7 +11,7 @@ export type ResolveControlInput = {
 };
 
 export const resolveControl = (input: ResolveControlInput): SelectOptionControl | StepResult => {
-    const { targetNode, snapshot } = input;
+    const { targetNode, snapshot, stepArgs } = input;
 
     if (!targetNode) {
         return notFound('step', 'target node not found in snapshot');
@@ -59,6 +59,14 @@ export const resolveControl = (input: ResolveControlInput): SelectOptionControl 
     }
 
     const kind = componentKind as SelectOptionKind;
+    if (stepArgs.kind !== kind) {
+        return badArgs('step', 'select_option kind mismatch between step args and runtime control', {
+            expectedKind: stepArgs.kind,
+            actualKind: kind,
+            controlRef,
+            targetNodeId: targetNode.id,
+        });
+    }
 
     return { kind, ref: controlRef, component };
 };

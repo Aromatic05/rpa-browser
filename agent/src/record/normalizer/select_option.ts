@@ -14,6 +14,7 @@ import type {
     PendingSuppressedClick,
     RecordingState,
 } from '../pipeline/state';
+import type { SelectOptionKind } from '../../runner/steps/executors/select_option/types';
 import type {
     NormalizeContext,
     NormalizeHandledResult,
@@ -34,7 +35,8 @@ const customSessionKey = (
 
 const NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS = 1200;
 
-const normalizeSelector = (selector: string | undefined): string => (selector || '').trim();
+const normalizeSelector = (selector: string | undefined): string =>
+    (selector || '').replace(/\s+/g, ' ').trim();
 
 const readChoiceSessions = (state: RecordingState, recordingToken: string): Map<string, PendingChoiceSession> => {
     let sessions = state.pendingChoiceEvents.get(recordingToken);
@@ -99,12 +101,14 @@ const markSuppressedNativeSelectClick = (context: NormalizeContext, event: Recor
 const buildSelectOptionStep = (
     context: NormalizeContext,
     event: RecorderEvent,
+    kind: SelectOptionKind,
     values: string[],
 ): NormalizeHandledResult => {
     const step = context.createStep(
         'browser.select_option',
         {
             selector: event.selector,
+            kind,
             values,
         },
         event.ts,
@@ -147,6 +151,7 @@ export const flushPendingChoiceEvents = (input: {
                 'browser.select_option',
                 {
                     selector: session.selector,
+                    kind: 'checkbox_group',
                     values: [...session.values],
                 },
                 session.lastEvent.ts,
@@ -288,7 +293,7 @@ export const normalizeSelectOption = async (
             selector: event.selector,
             ts: event.ts,
         });
-        const result = buildSelectOptionStep(context, event, [event.value]);
+        const result = buildSelectOptionStep(context, event, 'native_select', [event.value]);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
             selector: event.selector,
@@ -323,7 +328,7 @@ export const normalizeSelectOption = async (
         if (!option) {return { status: 'pass' };}
         const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
-        const result = buildSelectOptionStep(context, event, [value]);
+        const result = buildSelectOptionStep(context, event, 'radio_group', [value]);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
             selector: event.selector,
@@ -420,7 +425,7 @@ export const normalizeSelectOption = async (
         if (!option) {return { status: 'pass' };}
         const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
-        const result = buildSelectOptionStep(context, event, [value]);
+        const result = buildSelectOptionStep(context, event, 'custom_select', [value]);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
             selector: event.selector,
