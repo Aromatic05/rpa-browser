@@ -32,6 +32,7 @@ export const resolveRecordSnapshotForEvent = async (input: {
     page?: Page;
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;
     cacheKey: string;
+    forceFresh?: boolean;
 }): Promise<SnapshotResult | undefined> => {
     const recordLog = getLogger('record');
     const { event, page, snapshotCache, cacheKey } = input;
@@ -47,7 +48,7 @@ export const resolveRecordSnapshotForEvent = async (input: {
 
     const now = Date.now();
     const cached = snapshotCache.get(cacheKey);
-    if (cached && now - cached.capturedAt <= SNAPSHOT_CACHE_TTL_MS) {
+    if (!input.forceFresh && cached && now - cached.capturedAt <= SNAPSHOT_CACHE_TTL_MS) {
         if (!page) {return cached.snapshot;}
         const pageUrl = safePageUrl(page);
         if (cached.pageUrl === pageUrl) {

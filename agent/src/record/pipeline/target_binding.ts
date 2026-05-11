@@ -295,6 +295,7 @@ export const resolveRecordTargetBinding = async (input: {
     page?: Page;
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;
     cacheKey: string;
+    forceFreshSnapshot?: boolean;
 }): Promise<RecordTargetBinding | undefined> => {
     const recordLog = getLogger('record');
     recordLog('record_target_binding_start', {
@@ -306,7 +307,10 @@ export const resolveRecordTargetBinding = async (input: {
         recordLog('record_target_binding_result', { result: 'no_selector' });
         return undefined;
     }
-    const snapshot = await snapshotResolver(input);
+    const snapshot = await snapshotResolver({
+        ...input,
+        forceFresh: input.forceFreshSnapshot,
+    });
     if (!snapshot) {
         recordLog('record_target_binding_result', {
             result: 'no_snapshot',

@@ -302,3 +302,48 @@ test('stop flush releases unfinished custom trigger click', async () => {
     assert.equal((steps[0].args as any).selector, '#trigger');
     setRecordTargetSnapshotResolverForTest(null);
 });
+
+test('checkbox_group check events force fresh snapshot to avoid stale cached selected values', async () => {
+    const state = baseState();
+    let selected = ['red'];
+    let staleSnapshot: SnapshotResult | undefined;
+
+    setRecordTargetSnapshotResolverForTest(async ({ event, forceFresh }) => {
+        const fresh = snapshotFor({
+            selector: event.selector || '',
+            targetNodeId: event.selector === '#pink' ? 'opt-pink' : 'opt-red',
+            controlRef: 'ref-checkbox-fresh',
+            componentKind: 'checkbox_group',
+            rootNodeId: 'group-fresh',
+            optionNodeIds: ['opt-red', 'opt-pink'],
+            options: [
+                { nodeId: 'opt-red', value: 'red', selected: selected.includes('red') },
+                { nodeId: 'opt-pink', value: 'pink', selected: selected.includes('pink') },
+            ],
+            attachTargetControlRef: false,
+        });
+        if (!staleSnapshot) {
+            staleSnapshot = fresh;
+        }
+        return forceFresh ? fresh : staleSnapshot;
+    });
+
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a', ts: 100, type: 'check', inputType: 'checkbox', checked: true, selector: '#red',
+    }, 1200);
+
+    selected = ['red', 'pink'];
+    await appendWorkspaceRecordingEvent(state, 'ws-1', 'tab-a', {
+        tabName: 'tab-a', ts: 101, type: 'check', inputType: 'checkbox', checked: true, selector: '#pink',
+    }, 1200);
+
+    appendWorkspaceRecordingStep(state, 'ws-1', 'tab-a', {
+        id: 'flush', name: 'browser.click', args: { selector: '#flush' }, meta: { source: 'record', ts: 102, tabName: 'tab-a' },
+    } as any, 1200);
+
+    const steps = getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps;
+    assert.equal(steps[0].name, 'browser.select_option');
+    assert.equal((steps[0].args as any).kind, 'checkbox_group');
+    assert.deepEqual((steps[0].args as any).values, ['red', 'pink']);
+    setRecordTargetSnapshotResolverForTest(null);
+});

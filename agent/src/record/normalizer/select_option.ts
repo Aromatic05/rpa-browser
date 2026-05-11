@@ -192,6 +192,7 @@ export const normalizeSelectOption = async (
     event: RecorderEvent,
 ): Promise<RecordNormalizerResult> => {
     const recordLog = getLogger('record');
+    const forceFreshSnapshot = event.type === 'check' || event.type === 'select' || event.type === 'click';
     if (consumeSuppressedNativeSelectClick(context, event)) {
         recordLog('record_select_suppress_hit', {
             tabName: context.tabName,
@@ -226,6 +227,7 @@ export const normalizeSelectOption = async (
                     page: context.page,
                     snapshotCache: context.snapshotCache,
                     cacheKey: context.cacheKey,
+                    forceFreshSnapshot,
                 });
                 const sameControl = Boolean(clickBinding && clickBinding.controlRootNodeId === pendingCustom.controlRootNodeId);
                 if (!sameControl) {
@@ -247,6 +249,7 @@ export const normalizeSelectOption = async (
         page: context.page,
         snapshotCache: context.snapshotCache,
         cacheKey: context.cacheKey,
+        forceFreshSnapshot,
     });
 
     if (!binding) {
