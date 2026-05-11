@@ -1,7 +1,7 @@
 {
     "name": "rpa-extension-monorepo",
     "private": true,
-    "packageManager": "pnpm@10.28.0",
+    "packageManager": "pnpm@11.0.9",
     "scripts": {
         "dev:agent": "pnpm --filter ./agent dev:hot",
         "dev:cdp": "pnpm build:extension && pnpm --filter ./agent dev:cdp",
