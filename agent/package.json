@@ -16,16 +16,13 @@
         "mcp:dev": "tsx watch src/mcp_main.ts",
         "mcp:hot": "concurrently -k \"pnpm test:runner:bundle:watch\" \"pnpm mcp:dev\"",
         "control": "tsx src/control_cli.ts",
-        "test:trace:demo": "tsx scripts/trace_demo.ts",
-        "test:trace:headed-demo": "node --import tsx src/runner/trace/demo/headed_demo.ts",
-        "test:demo:headed-runner": "node --import tsx src/runner/demo/headed_run_steps_demo.ts",
         "test:runner:bundle": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --packages=external --outfile=.runner-dist/plugin.mjs --sourcemap",
         "test:runner:bundle:watch": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --packages=external --outfile=.runner-dist/plugin.mjs --sourcemap --watch",
         "test:unit": "node --import tsx --test \"tests/config/**/*.test.ts\" \"tests/control/**/*.test.ts\" \"tests/dsl/**/*.test.ts\" \"tests/mcp/**/*.test.ts\" \"tests/runner/checkpoint/**/*.test.ts\" \"tests/runner/hotreload/**/*.test.ts\" \"tests/runner/steps/**/*.test.ts\" \"tests/runner/trace/runtime/**/*.test.ts\" tests/protocol_stream.test.ts",
         "test:integration:run": "pnpm test:runner:bundle && pnpm -C .. build:extension && node --import tsx --test --test-concurrency=1 tests/integration/*.test.ts",
         "test:integration": "RPA_INTEGRATION_HEADED=false pnpm test:integration:run",
         "test:integration:headed": "RPA_INTEGRATION_HEADED=true pnpm test:integration:run",
-        "test:e2e": "playwright test tests/specs",
+        "test:e2e": "playwright test tests/e2e --pass-with-no-tests",
         "test:runner": "node --import tsx --test \"tests/runner/**/*.test.ts\"",
         "test:trace": "node --import tsx --test \"tests/trace/**/*.test.ts\"",
         "test:entity-rules": "node --import tsx --test \"tests/entity_rules/**/*.test.ts\"",
@@ -40,7 +37,7 @@
         "typecheck": "tsc --noEmit",
         "pw:install": "pnpm exec playwright install chromium",
         "test": "pnpm test:all",
-        "test:headed": "playwright test tests/specs --headed"
+        "test:headed": "playwright test tests/e2e --pass-with-no-tests --headed"
     },
     "dependencies": {
         "@axe-core/playwright": "^4.10.2",
