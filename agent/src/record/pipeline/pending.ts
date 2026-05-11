@@ -4,6 +4,7 @@ import type { RecordingState } from './state';
 import type { StepUnion } from '../../runner/steps/types';
 import type { NormalizeContext } from '../normalizer';
 import { flushPendingChoiceEvents as flushChoiceEventsFromNormalizer } from '../normalizer/select_option';
+import { insertRecordingStepByRecordedTs } from './order';
 
 type PendingFlushOptions = { exceptKey?: string; workspaceName?: string; page?: Page };
 
@@ -72,7 +73,7 @@ export const flushPendingFillEvents = (
             continue;
         }
         const normalized = hooks.enrichRecordedStep(state, recordingToken, entry.item.tabName, step);
-        list.push(normalized);
+        insertRecordingStepByRecordedTs(list, normalized);
         state.recordings.set(recordingToken, list);
         pending.delete(entry.key);
         hooks.startRecordedStepEnrichment({
@@ -103,7 +104,7 @@ export const queueRecordingStep = (
 ): void => {
     const list = state.recordings.get(recordingToken) || [];
     const normalized = hooks.enrichRecordedStep(state, recordingToken, tabName, step);
-    list.push(normalized);
+    insertRecordingStepByRecordedTs(list, normalized);
     state.recordings.set(recordingToken, list);
     hooks.startRecordedStepEnrichment({
         state,

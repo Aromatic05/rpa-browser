@@ -185,6 +185,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             }
             const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
             const orderedSteps = normalizeRecordingStepOrder(bundle.steps, services.navDedupeWindowMs);
+            services.recordingState.recordings.set(token, orderedSteps);
             const persistedSteps = orderedSteps.map(stripStepForPersistence);
             const stepResolves: Record<string, StepResolve> = {};
             if (payload.includeStepResolve === true) {

@@ -1,4 +1,5 @@
 import type { StepName, StepUnion } from '../../runner/steps/types';
+import { getLogger } from '../../logging/logger';
 
 const isUserActionBeforeGoto = (stepName: StepName): boolean =>
     stepName === 'browser.click' || stepName === 'browser.fill' || stepName === 'browser.press_key';
@@ -42,4 +43,31 @@ export const normalizeRecordingStepOrder = (steps: StepUnion[], navDedupeWindowM
         return a.index - b.index;
     };
     return indexed.sort(compare).map((item) => item.step);
+};
+
+export const insertRecordingStepByRecordedTs = (steps: StepUnion[], step: StepUnion): number => {
+    const recordedTs = step.meta?.ts;
+    if (typeof recordedTs !== 'number') {
+        steps.push(step);
+        return steps.length - 1;
+    }
+
+    let insertIndex = steps.length;
+    for (let index = 0; index < steps.length; index += 1) {
+        const currentTs = steps[index].meta?.ts;
+        if (typeof currentTs !== 'number') {continue;}
+        if (currentTs > recordedTs) {
+            insertIndex = index;
+            break;
+        }
+    }
+
+    steps.splice(insertIndex, 0, step);
+    getLogger('record').debug('record_step_insert_order', {
+        stepId: step.id,
+        stepName: step.name,
+        recordedTs,
+        insertIndex,
+    });
+    return insertIndex;
 };
