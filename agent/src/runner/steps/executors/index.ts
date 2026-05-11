@@ -18,7 +18,7 @@ import { executeBrowserReadNetwork } from './read_network';
 import { executeBrowserEvaluate } from './evaluate';
 import { executeBrowserTakeScreenshot } from './take_screenshot';
 import { executeBrowserType } from './type';
-import { executeBrowserSelectOption } from './select_option';
+import { executeBrowserSelectOption } from './select_option/index';
 import { executeBrowserHover } from './hover';
 import { executeBrowserScroll } from './scroll';
 import { executeBrowserPressKey } from './press_key';

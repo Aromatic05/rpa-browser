@@ -68,7 +68,7 @@ export type WorkspaceMcpToolDeps = {
     runStepsDeps?: RunStepsDeps;
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
-    getPage?: (tabName: string, startUrl?: string) => Promise<Page>;
+    awaitTabPage?: (tabName: string, timeoutMs: number) => Promise<Page>;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
@@ -101,35 +101,13 @@ const resolveTabNameOrActiveWs = (deps: WorkspaceMcpToolDeps, tabName?: string):
     throw new Error('active tab not found');
 };
 
-const resolveOrCreateTabNameWs = (deps: WorkspaceMcpToolDeps, tabName?: string): string => {
-    if (typeof tabName === 'string' && tabName.trim().length > 0) {
-        return tabName;
-    }
-    return deps.workspace.tabs.getActiveTab()?.name || crypto.randomUUID();
-};
-
-const resolveOrBootstrapScopeWs = async (
+const resolveScopeWs = (
     deps: WorkspaceMcpToolDeps,
     tabName: string | undefined,
-    options?: { allowBootstrap?: boolean },
-): Promise<{ tabName: string }> => {
-    const allowBootstrap = options?.allowBootstrap !== false;
+): { tabName: string } => {
     const resolvedTabName = resolveTabNameOrActiveWs(deps, tabName);
-    if (deps.workspace.tabs.hasTab(resolvedTabName)) {
-        deps.workspace.tabs.setActiveTab(resolvedTabName);
-        return { tabName: resolvedTabName };
-    }
-    if (!allowBootstrap) {
-        throw new Error('tab not found');
-    }
-    if (!deps.getPage) {
-        throw new Error('cannot bootstrap tab: getPage not provided');
-    }
-    const page = await deps.getPage(resolvedTabName);
     if (!deps.workspace.tabs.hasTab(resolvedTabName)) {
-        deps.workspace.tabs.createTab({ tabName: resolvedTabName, page, url: page.url() });
-    } else {
-        deps.workspace.tabs.bindPage(resolvedTabName, page);
+        throw new Error('tab not found');
     }
     deps.workspace.tabs.setActiveTab(resolvedTabName);
     return { tabName: resolvedTabName };
@@ -139,10 +117,14 @@ const runSingleStepWs = async (
     deps: WorkspaceMcpToolDeps,
     tabName: string | undefined,
     step: StepUnion,
-    options?: { allowBootstrap?: boolean },
 ) => {
-    const scope = await resolveOrBootstrapScopeWs(deps, tabName, options);
+    const scope = resolveScopeWs(deps, tabName);
     deps.workspace.tabs.setActiveTab(scope.tabName);
+    const isCreateTabStep = step.name === 'browser.create_tab';
+    const isReadOnlyStep = step.name === 'browser.get_page_info' || step.name === 'browser.list_tabs';
+    if (!isCreateTabStep && !isReadOnlyStep && deps.awaitTabPage) {
+        await deps.awaitTabPage(scope.tabName, deps.config?.waitPolicy.pageReadyTimeoutMs || 1500);
+    }
     const { pipe, checkpoint } = await runStepList(deps.workspace.name, [step], deps.runStepsDeps, {
         stopOnError: true,
     });
@@ -198,11 +180,14 @@ const handleCreateTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async 
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
     const input = parsed.data;
-    const sourceTabName = resolveOrCreateTabNameWs(deps, input.tabName);
-    const result = await runSingleStepWs(deps, sourceTabName, {
+    const scopeTabName = resolveTabNameOrActiveWs(deps);
+    const requestedTabName = typeof input.tabName === 'string' && input.tabName.trim().length > 0
+        ? input.tabName.trim()
+        : crypto.randomUUID();
+    const result = await runSingleStepWs(deps, scopeTabName, {
         id: crypto.randomUUID(),
         name: 'browser.create_tab',
-        args: { tabName: sourceTabName },
+        args: { tabName: requestedTabName },
         meta: { source: 'mcp' },
     });
     if (!result.ok) {return result;}
@@ -250,7 +235,6 @@ const handleGetPageInfoWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => asyn
                 args: {},
                 meta: { source: 'mcp' },
             },
-            { allowBootstrap: false },
         );
     } catch {
         return {
@@ -287,7 +271,6 @@ const handleListTabsWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (
                 args: {},
                 meta: { source: 'mcp' },
             },
-            { allowBootstrap: false },
         );
     } catch {
         return {
@@ -324,7 +307,6 @@ const handleClickWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (arg
         args: {
             nodeId: input.nodeId,
             selector: input.selector,
-            coord: input.coord,
             resolveId: input.resolveId,
             options,
         },
@@ -361,7 +343,6 @@ const handleTypeWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args
             selector: input.selector,
             resolveId: input.resolveId,
             text: input.text,
-            delay_ms: input.delay_ms ?? 0,
         },
         meta: { source: 'mcp' },
     });
@@ -378,6 +359,7 @@ const handleSelectOptionWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => asy
             nodeId: input.nodeId,
             selector: input.selector,
             resolveId: input.resolveId,
+            kind: 'native_select',
             values: input.values,
         },
         meta: { source: 'mcp' },
@@ -445,10 +427,8 @@ const handleDragAndDropWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => asyn
         args: {
             sourceNodeId: input.sourceNodeId,
             sourceSelector: input.sourceSelector,
-            sourceResolveId: input.sourceResolveId,
             destNodeId: input.destNodeId,
             destSelector: input.destSelector,
-            destResolveId: input.destResolveId,
             destCoord: input.destCoord,
         },
         meta: { source: 'mcp' },
@@ -481,8 +461,6 @@ const handleSnapshotWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (
         id: crypto.randomUUID(),
         name: 'browser.snapshot',
         args: {
-            includeA11y: input.includeA11y,
-            focus_only: input.focus_only,
             refresh: input.refresh,
             contain: input.contain,
             depth: input.depth,
@@ -722,6 +700,7 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
             args: {
                 nodeId: action.nodeId,
                 selector: action.selector,
+                kind: 'native_select',
                 values: action.values,
             },
             meta: { source: 'mcp' },
@@ -733,7 +712,6 @@ const toBatchStep = (action: BrowserBatchInput['actions'][number]): StepUnion =>
         args: {
             nodeId: action.nodeId,
             selector: action.selector,
-            coord: action.coord,
             options: action.options,
         },
         meta: { source: 'mcp' },

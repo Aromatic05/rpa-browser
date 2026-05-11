@@ -95,8 +95,6 @@ export const browserListTabsInputSchema = z.object({
 
 export const browserSnapshotInputSchema = z.object({
     tabName: z.string().optional(),
-    includeA11y: z.boolean().optional(),
-    focus_only: z.boolean().optional(),
     refresh: z.boolean().optional(),
     contain: z.string().optional(),
     depth: z.number().int().min(-1).optional(),
@@ -285,7 +283,6 @@ export const browserClickInputSchema = z
         nodeId: z.string().optional(),
         selector: z.string().optional(),
         resolveId: z.string().optional(),
-        coord: coordSchema.optional(),
         options: z
             .object({
                 button: z.enum(['left', 'right', 'middle']).optional(),
@@ -293,8 +290,8 @@ export const browserClickInputSchema = z
             })
             .optional(),
     })
-    .refine((value) => Boolean(value.coord) || ensureNodeIdOrSelector(value), {
-        message: 'click requires coord or nodeId/selector',
+    .refine(ensureNodeIdOrSelector, {
+        message: 'click requires nodeId or selector',
     });
 
 export const browserFillInputSchema = z
@@ -316,7 +313,6 @@ export const browserTypeInputSchema = z
         selector: z.string().optional(),
         resolveId: z.string().optional(),
         text: z.string(),
-        delay_ms: z.number().int().min(0).optional(),
     })
     .refine(ensureNodeIdOrSelector, {
         message: 'type requires nodeId or selector',
@@ -367,16 +363,14 @@ export const browserDragAndDropInputSchema = z
         tabName: z.string().optional(),
         sourceNodeId: z.string().optional(),
         sourceSelector: z.string().optional(),
-        sourceResolveId: z.string().optional(),
         destNodeId: z.string().optional(),
         destSelector: z.string().optional(),
-        destResolveId: z.string().optional(),
         destCoord: coordSchema.optional(),
     })
-    .refine((value) => Boolean(value.sourceNodeId || value.sourceSelector || value.sourceResolveId), {
-        message: 'drag_and_drop requires sourceNodeId, sourceSelector, or sourceResolveId',
+    .refine((value) => Boolean(value.sourceNodeId || value.sourceSelector), {
+        message: 'drag_and_drop requires sourceNodeId or sourceSelector',
     })
-    .refine((value) => Boolean(value.destNodeId || value.destSelector || value.destResolveId || value.destCoord), {
+    .refine((value) => Boolean(value.destNodeId || value.destSelector || value.destCoord), {
         message: 'drag_and_drop requires destination target or destCoord',
     });
 
@@ -511,8 +505,6 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabName: { type: 'string' },
-            includeA11y: { type: 'boolean' },
-            focus_only: { type: 'boolean' },
             refresh: { type: 'boolean' },
             contain: { type: 'string' },
             depth: { type: 'integer', minimum: -1 },
@@ -863,15 +855,6 @@ export const toolInputJsonSchemas = {
             nodeId: { type: 'string' },
             selector: { type: 'string' },
             resolveId: { type: 'string' },
-            coord: {
-                type: 'object',
-                properties: {
-                    x: { type: 'number' },
-                    y: { type: 'number' },
-                },
-                required: ['x', 'y'],
-                additionalProperties: false,
-            },
             options: {
                 type: 'object',
                 properties: {
@@ -904,7 +887,6 @@ export const toolInputJsonSchemas = {
             selector: { type: 'string' },
             resolveId: { type: 'string' },
             text: { type: 'string' },
-            delay_ms: { type: 'integer', minimum: 0 },
         },
         additionalProperties: false,
     },
@@ -963,10 +945,8 @@ export const toolInputJsonSchemas = {
             tabName: { type: 'string' },
             sourceNodeId: { type: 'string' },
             sourceSelector: { type: 'string' },
-            sourceResolveId: { type: 'string' },
             destNodeId: { type: 'string' },
             destSelector: { type: 'string' },
-            destResolveId: { type: 'string' },
             destCoord: {
                 type: 'object',
                 properties: {

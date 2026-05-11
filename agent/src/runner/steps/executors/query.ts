@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import type { SnapshotResult, UnifiedNode } from './snapshot/core/types';
 import { normalizeText } from './snapshot/core/runtime_store';
 import { ensureFreshEntityContext } from './entity_context';
@@ -69,7 +70,7 @@ export const executeBrowserQuery = async (
     }
 
     const args = step.args as Extract<Step<'browser.query'>['args'], { from: unknown }>;
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const snapshot = readLatestSnapshot(binding.traceCtx.cache);
     if (!snapshot) {
         return {

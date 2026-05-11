@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { resolveTarget } from '../helpers/resolve_target';
@@ -9,7 +10,7 @@ export const executeBrowserPressKey = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
     if (hasTarget) {
         const resolved = await resolveTarget(binding, {
@@ -25,7 +26,7 @@ export const executeBrowserPressKey = async (
         });
         if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-        const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+        const timeout = deps.config.waitPolicy.visibleTimeoutMs;
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
         if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
         const visible = await binding.traceTools['trace.locator.waitForVisible']({

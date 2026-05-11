@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import { ActionError, ERROR_CODES } from '../../actions/results';
 import { createTraceTools, type BrowserAutomationTools } from '../../runner/trace';
 import type { RunnerPluginHost } from '../../runner/hotreload/plugin_host';
 import type { CreateTraceToolsFn } from '../../runner/plugin_entry';
@@ -16,11 +17,17 @@ export type ExecutionBinding = {
 
 export type ExecutionBindings = {
     bindPage: (input: { workspaceName: string; tabName: string; page: Page }) => ExecutionBinding;
-    ensureExecutableTab: (input: {
+    awaitExecutableTab: (input: {
         workspace: RuntimeWorkspace;
         pageRegistry: PageRegistry;
         tabName: string;
-        urlHint?: string;
+        timeoutMs: number;
+    }) => Promise<ExecutionBinding>;
+    createExecutableTab: (input: {
+        workspace: RuntimeWorkspace;
+        pageRegistry: PageRegistry;
+        tabName: string;
+        startUrl?: string;
     }) => Promise<ExecutionBinding>;
     resolveBinding: (workspaceName: string, tabName?: string) => Promise<ExecutionBinding>;
     getBinding: (workspaceName: string, tabName: string) => ExecutionBinding | null;
@@ -31,6 +38,11 @@ type ExecutionBindingsOptions = {
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
+};
+
+const isBindableUrl = (url: string): boolean => {
+    if (!url) {return false;}
+    return /^(https?:|file:|about:blank)/.test(url);
 };
 
 export const createExecutionBindings = (options: ExecutionBindingsOptions): ExecutionBindings => {
@@ -98,16 +110,60 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         return createBinding(input.workspaceName, input.tabName, input.page);
     };
 
-    const ensureExecutableTab: ExecutionBindings['ensureExecutableTab'] = async (input) => {
-        const { workspace, pageRegistry, tabName, urlHint } = input;
-        const page = await pageRegistry.getPage(tabName, urlHint);
-        if (!workspace.tabs.hasTab(tabName)) {
-            workspace.tabs.createMetadataTab({ tabName });
+    const buildTimeoutError = async (input: {
+        workspace: RuntimeWorkspace;
+        pageRegistry: PageRegistry;
+        tabName: string;
+        timeoutMs: number;
+    }) => {
+        const runtimeTab = input.workspace.tabs.getTab(input.tabName);
+        const debug = await input.pageRegistry.debugPageBindings(input.tabName);
+        return new ActionError(
+            ERROR_CODES.ERR_PAGE_BINDING_TIMEOUT,
+            `page binding timeout: ${input.workspace.name}/${input.tabName}`,
+            {
+                workspaceName: input.workspace.name,
+                tabName: input.tabName,
+                tabExists: Boolean(runtimeTab),
+                tabUrl: runtimeTab?.url || '',
+                tabTitle: runtimeTab?.title || '',
+                hasRuntimeTabPage: Boolean(runtimeTab?.page && !runtimeTab.page.isClosed()),
+                hasExecutionBinding: Boolean(bindings.get(keyOf(input.workspace.name, input.tabName))),
+                isBindableUrl: isBindableUrl(runtimeTab?.url || ''),
+                knownTabs: input.workspace.tabs.listTabs().map((tab) => ({
+                    tabName: tab.name,
+                    url: tab.url,
+                    title: tab.title,
+                    hasPage: Boolean(tab.page && !tab.page.isClosed()),
+                })),
+                knownBindings: debug.knownBindings,
+                knownPagesSummary: debug.knownPagesSummary,
+                timeoutMs: input.timeoutMs,
+            },
+        );
+    };
+
+    const awaitExecutableTab: ExecutionBindings['awaitExecutableTab'] = async (input) => {
+        try {
+            const page = await input.pageRegistry.awaitPageBinding(input.tabName, { timeoutMs: input.timeoutMs });
+            if (input.workspace.tabs.hasTab(input.tabName)) {
+                input.workspace.tabs.bindPage(input.tabName, page);
+                input.workspace.tabs.updateTab(input.tabName, { url: page.url() });
+            }
+            return bindPage({ workspaceName: input.workspace.name, tabName: input.tabName, page });
+        } catch {
+            throw await buildTimeoutError(input);
         }
-        workspace.tabs.bindPage(tabName, page);
-        workspace.tabs.updateTab(tabName, { url: page.url() });
-        workspace.tabs.setActiveTab(tabName);
-        return bindPage({ workspaceName: workspace.name, tabName, page });
+    };
+
+    const createExecutableTab: ExecutionBindings['createExecutableTab'] = async (input) => {
+        const page = await input.pageRegistry.createPageBinding(input.tabName, { startUrl: input.startUrl });
+        if (!input.workspace.tabs.hasTab(input.tabName)) {
+            input.workspace.tabs.createMetadataTab({ tabName: input.tabName, url: page.url() });
+        }
+        input.workspace.tabs.bindPage(input.tabName, page);
+        input.workspace.tabs.updateTab(input.tabName, { url: page.url() });
+        return bindPage({ workspaceName: input.workspace.name, tabName: input.tabName, page });
     };
 
     const resolveBinding = async (workspaceName: string, tabName?: string): Promise<ExecutionBinding> => {
@@ -127,7 +183,8 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
 
     return {
         bindPage,
-        ensureExecutableTab,
+        awaitExecutableTab,
+        createExecutableTab,
         resolveBinding,
         getBinding: (workspaceName, tabName) => bindings.get(keyOf(workspaceName, tabName)) || null,
     };

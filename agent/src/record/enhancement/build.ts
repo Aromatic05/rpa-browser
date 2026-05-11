@@ -1,20 +1,16 @@
 import type { Page } from 'playwright';
-import type { RecorderEvent } from './recorder';
-import { generateSemanticSnapshot } from '../runner/steps/executors/snapshot/pipeline/snapshot';
-import { getNodeSemanticHints } from '../runner/steps/executors/snapshot/core/runtime_store';
-import type { SnapshotResult, UnifiedNode } from '../runner/steps/executors/snapshot/core/types';
-import type { ResolveHint } from '../runner/steps/types';
-import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from './types';
-import { buildResolveFromSnapshotCandidate } from '../runner/steps/resolve_builder';
-import { normalizeResolveHint } from '../runner/steps/resolve_utils';
+import { getLogger } from '../../logging/logger';
+import type { RecorderEvent } from '../capture/recorder';
+import { getNodeSemanticHints } from '../../runner/steps/executors/snapshot/core/runtime_store';
+import type { SnapshotResult, UnifiedNode } from '../../runner/steps/executors/snapshot/core/types';
+import type { ResolveHint } from '../../runner/steps/types';
+import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from '../types';
+import { buildResolveFromSnapshotCandidate } from '../../runner/steps/resolve_builder';
+import { normalizeResolveHint } from '../../runner/steps/resolve_utils';
+import { resolveRecordTargetBinding } from '../pipeline/target_binding';
+import { resolveRecordSnapshotForEvent, type RecordSnapshotCacheEntry } from '../pipeline/snapshot';
 
-export type RecordSnapshotCacheEntry = {
-    snapshot: SnapshotResult;
-    capturedAt: number;
-    pageUrl: string;
-};
-
-const SNAPSHOT_CACHE_TTL_MS = 1500;
+export type { RecordSnapshotCacheEntry } from '../pipeline/snapshot';
 
 export const enrichRecordedStepWithSnapshot = async (input: {
     event: RecorderEvent;
@@ -22,9 +18,10 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;
     cacheKey: string;
 }): Promise<RecordedStepEnhancement> => {
+    const recordLog = getLogger('record');
     const { event, page, snapshotCache, cacheKey } = input;
     if (isPageLevelEvent(event)) {
-        const snapshot = await resolveSnapshotForEvent({ event, page, snapshotCache, cacheKey });
+        const snapshot = await resolveRecordSnapshotForEvent({ event, page, snapshotCache, cacheKey });
         if (!snapshot) {
             return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
         }
@@ -46,31 +43,35 @@ export const enrichRecordedStepWithSnapshot = async (input: {
             confidence: 0.2,
         }));
     }
-    const snapshot = await resolveSnapshotForEvent({ event, page, snapshotCache, cacheKey });
-    if (!snapshot) {
+    const binding = await resolveRecordTargetBinding({
+        event,
+        page,
+        snapshotCache,
+        cacheKey,
+    });
+    if (!binding) {
+        recordLog('record_enhancement_binding', {
+            result: 'raw_only',
+            eventType: event.type,
+            selector: event.selector,
+            reason: 'binding_missing',
+        });
         return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
     }
-
-    const matchedNodeId = findSnapshotNodeIdByRawSelector(snapshot, event.selector);
-    if (!matchedNodeId) {
-        return withRawContext(event, {
-            version: 1,
-            eventType: event.type,
-            snapshot: {
-                mode: snapshot.snapshotMeta?.mode,
-                snapshotId: snapshot.snapshotMeta?.snapshotId,
-                pageIdentity: snapshot.snapshotMeta?.pageIdentity,
-                capturedAt: Date.now(),
-            },
-            ...buildLowConfidenceRawOnlyResolve(event),
-        });
-    }
-
-    const node = snapshot.nodeIndex[matchedNodeId];
-    const locator = snapshot.locatorIndex[matchedNodeId];
-    const target = buildTargetFingerprint(snapshot, node, matchedNodeId, locator.origin);
-    const entityBindings = buildEntityBindings(snapshot, matchedNodeId);
-    const confidenceInfo = computeRecordConfidence(event, snapshot, matchedNodeId);
+    recordLog('record_enhancement_binding', {
+        result: 'bound',
+        eventType: event.type,
+        selector: event.selector,
+        targetNodeId: binding.targetNodeId,
+        componentKind: binding.componentKind,
+    });
+    const snapshot = binding.snapshot;
+    const targetNodeId = binding.targetNodeId;
+    const node = snapshot.nodeIndex[targetNodeId];
+    const locator = snapshot.locatorIndex[targetNodeId];
+    const target = buildTargetFingerprint(snapshot, node, targetNodeId, locator?.origin);
+    const entityBindings = buildEntityBindings(snapshot, targetNodeId);
+    const confidenceInfo = computeRecordConfidence(event, snapshot, targetNodeId);
     const resolveDraft = buildResolveFromSnapshotCandidate({
         snapshot,
         candidate: {
@@ -103,50 +104,6 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     };
 
     return withRawContext(event, enhancement);
-};
-
-const resolveSnapshotForEvent = async (input: {
-    event: RecorderEvent;
-    page?: Page;
-    snapshotCache: Map<string, RecordSnapshotCacheEntry>;
-    cacheKey: string;
-}): Promise<SnapshotResult | undefined> => {
-    const { event, page, snapshotCache, cacheKey } = input;
-    if (!shouldUseSnapshotForEvent(event)) {return undefined;}
-
-    const now = Date.now();
-    const cached = snapshotCache.get(cacheKey);
-    if (cached && now - cached.capturedAt <= SNAPSHOT_CACHE_TTL_MS) {
-        if (!page) {return cached.snapshot;}
-        const pageUrl = safePageUrl(page);
-        if (cached.pageUrl === pageUrl) {
-            return cached.snapshot;
-        }
-    }
-
-    if (!page) {return undefined;}
-
-    const pageUrl = safePageUrl(page);
-
-    try {
-        const snapshot = await generateSemanticSnapshot(page, {
-            captureRuntimeState: true,
-            waitMode: 'interaction',
-        });
-        snapshotCache.set(cacheKey, {
-            snapshot,
-            capturedAt: now,
-            pageUrl,
-        });
-        return snapshot;
-    } catch {
-        return undefined;
-    }
-};
-
-const shouldUseSnapshotForEvent = (event: RecorderEvent): boolean => {
-    if (isPageLevelEvent(event) || event.type === 'copy') {return false;}
-    return true;
 };
 
 const isPageLevelEvent = (event: RecorderEvent): boolean => event.type === 'navigate' || event.type === 'scroll';
@@ -246,19 +203,6 @@ const resolveNodeContent = (snapshot: SnapshotResult, node: UnifiedNode): string
     return undefined;
 };
 
-const findSnapshotNodeIdByRawSelector = (snapshot: SnapshotResult, selector?: string): string | undefined => {
-    const normalizedSelector = normalizeText(selector);
-    if (!normalizedSelector) {return undefined;}
-    const matched: string[] = [];
-    for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
-        const directQuery = normalizeText(locator.direct?.query);
-        if (directQuery && directQuery === normalizedSelector) {
-            matched.push(nodeId);
-        }
-    }
-    if (matched.length !== 1) {return undefined;}
-    return matched[0];
-};
 
 const pickRuntimeState = (attrs: Record<string, string> | undefined): Record<string, string> | undefined => {
     if (!attrs) {return undefined;}
@@ -291,18 +235,11 @@ const pickRuntimeState = (attrs: Record<string, string> | undefined): Record<str
 
 const normalizeText = (value: string | undefined): string => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-const safePageUrl = (page: Page): string => {
-    try {
-        return page.url();
-    } catch {
-        return '';
-    }
-};
-
 const buildLowConfidenceRawOnlyResolve = (
     event: RecorderEvent,
     overrides?: { reason?: string[]; warnings?: string[]; confidence?: number },
-): Pick<RecordedStepEnhancement, 'resolveHint' | 'resolvePolicy'> => ({
+): RecordedStepEnhancement => ({
+    version: 1,
     resolveHint: {
         target: {
             tag: event.targetHint,

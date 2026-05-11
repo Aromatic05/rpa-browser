@@ -79,6 +79,7 @@ export const buildSelectStep = (target: unknown, value: unknown): Step<'browser.
     const targetArgs = toTargetArgs(target);
     return createStep('browser.select_option', {
         ...targetArgs,
+        kind: 'native_select',
         values: [String(value ?? '')],
     });
 };

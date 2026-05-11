@@ -13,7 +13,7 @@ import {
     attachTabToRecordingManifest,
     cleanupRecording,
 } from './record/recording';
-import { setRecorderRuntimeEnabled } from './record/recorder';
+import { setRecorderRuntimeEnabled } from './record/capture/recorder';
 import { failedAction, type Action } from './actions/action_protocol';
 import { ERROR_CODES } from './actions/results';
 import { createRunnerScopeRegistry } from './runner/runner_scope';

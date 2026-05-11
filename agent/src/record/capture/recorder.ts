@@ -10,7 +10,7 @@
  * - 事件会尽量携带 selector/语义提示，locatorCandidates 仅作辅助信息
  */
 import type { Page } from 'playwright';
-import type { LocatorCandidate, ScopeHint } from '../runner/locator_candidates';
+import type { LocatorCandidate, ScopeHint } from '../../runner/locator_candidates';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

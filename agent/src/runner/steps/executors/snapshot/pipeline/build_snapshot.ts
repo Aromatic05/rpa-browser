@@ -1,3 +1,4 @@
+import type { ControlIndex } from '../control/types';
 import type { SnapshotResult, UnifiedNode } from '../core/types';
 
 type BuildSnapshotInput = {
@@ -8,6 +9,7 @@ type BuildSnapshotInput = {
     bboxIndex?: SnapshotResult['bboxIndex'];
     attrIndex?: SnapshotResult['attrIndex'];
     contentStore?: SnapshotResult['contentStore'];
+    controlIndex?: ControlIndex;
     cacheStats?: SnapshotResult['cacheStats'];
     snapshotMeta?: SnapshotResult['snapshotMeta'];
     ruleEntityOverlay?: SnapshotResult['ruleEntityOverlay'];
@@ -23,6 +25,7 @@ export const buildSnapshot = (input: UnifiedNode | BuildSnapshotInput): Snapshot
         bboxIndex: payload.bboxIndex || {},
         attrIndex: payload.attrIndex || {},
         contentStore: payload.contentStore || {},
+        controlIndex: payload.controlIndex || {},
         cacheStats: payload.cacheStats,
         snapshotMeta: payload.snapshotMeta,
         ruleEntityOverlay: payload.ruleEntityOverlay,

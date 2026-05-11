@@ -106,11 +106,20 @@ runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
 };
 
 onPageBoundHook = (page, tabName) => {
-    const workspaceName = workspaceRegistry.getActiveWorkspace()?.name || 'default';
+    const workspace = workspaceRegistry.listWorkspaces().find((item) => item.tabs.hasTab(tabName)) || null;
+    if (!workspace) {
+        logNotice('unmatched-page-binding', {
+            bindingName: tabName,
+            pageUrl: page.url(),
+            knownWorkspaces: workspaceRegistry.listWorkspaces().map((item) => item.name),
+            knownTabs: workspaceRegistry.listWorkspaces().flatMap((item) => item.tabs.listTabs().map((tab) => `${item.name}/${tab.name}`)),
+        });
+        return;
+    }
+    const workspaceName = workspace.name;
     if (isWorkspaceRecordingEnabled(recordingState, workspaceName)) {
         void ensureRecorder(recordingState, workspaceName, page, tabName, NAV_DEDUPE_WINDOW_MS);
     }
-    const workspace = workspaceRegistry.createWorkspace(workspaceName, ensureWorkflowOnFs(workspaceName));
     if (!workspace.tabs.hasTab(tabName)) {
         workspace.tabs.createTab({ tabName, page, url: page.url() });
     } else {

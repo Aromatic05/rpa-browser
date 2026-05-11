@@ -229,6 +229,7 @@ const cloneSnapshot = (baseSnapshot: SnapshotResult): SnapshotResult => {
         bboxIndex: external.bboxIndex,
         attrIndex: external.attrIndex,
         contentStore: external.contentStore,
+        controlIndex: baseSnapshot.controlIndex,
         cacheStats: baseSnapshot.cacheStats,
         ruleEntityOverlay: baseSnapshot.ruleEntityOverlay || baseSnapshot.businessEntityOverlay,
         businessEntityOverlay: baseSnapshot.businessEntityOverlay || baseSnapshot.ruleEntityOverlay,

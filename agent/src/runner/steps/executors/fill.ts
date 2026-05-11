@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { resolveTarget, type ResolveAuditAttempt, type TargetCandidate } from '../helpers/resolve_target';
@@ -29,7 +30,7 @@ export const executeBrowserFill = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || isValidStepResolve(step.resolve));
     if (!hasTarget) {
         return {
@@ -52,7 +53,7 @@ export const executeBrowserFill = async (
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     const attempts: ResolveAuditAttempt[] = [];
     let lastError: StepResult['error'] | undefined;
@@ -61,7 +62,7 @@ export const executeBrowserFill = async (
         const candidate = resolved.target.candidates[candidateIndex];
         const visible = await binding.traceTools['trace.locator.waitForVisible']({ selector: candidate.selector, timeout });
         if (!visible.ok) {
-            const error = mapTraceError(visible.error);
+            const error = mapTraceError(visible.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
             lastError = error;
             pushAttempt(attempts, candidate, 'waitForVisible', false, { code: error.code, message: error.message });
             continue;
@@ -70,7 +71,7 @@ export const executeBrowserFill = async (
 
         const scrolled = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
         if (!scrolled.ok) {
-            const error = mapTraceError(scrolled.error);
+            const error = mapTraceError(scrolled.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
             lastError = error;
             pushAttempt(attempts, candidate, 'scrollIntoView', false, { code: error.code, message: error.message });
             continue;
@@ -85,7 +86,7 @@ export const executeBrowserFill = async (
             stepName: step.name,
         });
         if (!highlight.ok) {
-            const error = mapTraceError(highlight.error);
+            const error = mapTraceError(highlight.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
             lastError = error;
             pushAttempt(attempts, candidate, 'highlight', false, { code: error.code, message: error.message });
             continue;
@@ -94,7 +95,7 @@ export const executeBrowserFill = async (
 
         const focus = await binding.traceTools['trace.locator.focus']({ selector: candidate.selector });
         if (!focus.ok) {
-            const error = mapTraceError(focus.error);
+            const error = mapTraceError(focus.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
             lastError = error;
             pushAttempt(attempts, candidate, 'action', false, { code: error.code, message: error.message });
             continue;
@@ -105,7 +106,7 @@ export const executeBrowserFill = async (
             value: step.args.value,
         });
         if (!fill.ok) {
-            const error = mapTraceError(fill.error);
+            const error = mapTraceError(fill.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
             lastError = error;
             pushAttempt(attempts, candidate, 'action', false, { code: error.code, message: error.message });
             continue;

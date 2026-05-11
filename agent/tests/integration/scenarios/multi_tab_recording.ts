@@ -116,7 +116,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 payload: {
                     id: 'rec-click-a',
                     name: 'browser.click',
-                    args: { selector: '#btn-a', timeout: 7000 },
+                    args: { selector: '#btn-a' },
                     meta: { source: 'record', ts: Date.now() },
                 },
             }),
@@ -248,7 +248,7 @@ export const multiTabRecordingScenario: IntegrationScenario = {
                 payload: {
                     id: 'rec-fill-b-final',
                     name: 'browser.fill',
-                    args: { selector: '#input-b', value: 'bravo-b-final', timeout: 7000 },
+                    args: { selector: '#input-b', value: 'bravo-b-final' },
                     meta: { source: 'record', ts: Date.now() + 8 },
                 },
             }),

@@ -74,7 +74,7 @@ export const buildResolveFromSnapshotCandidate = (input: {
             },
             raw: {
                 selector: rawSelector || directSelector,
-                locatorCandidates: mergedCandidates.length > 0 ? mergedCandidates : undefined,
+                locatorCandidates: (mergedCandidates && mergedCandidates.length > 0) ? mergedCandidates : undefined,
                 targetHint: normalizeText([candidate.role, candidate.name, candidate.text].filter(Boolean).join(' > ')),
             },
             capture: {

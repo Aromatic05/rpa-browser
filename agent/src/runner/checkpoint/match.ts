@@ -6,6 +6,20 @@ import type { EntityKind } from '../steps/executors/snapshot/core/types';
 import { getCheckpointMatchRules, type Checkpoint, type CheckpointCtx, type MatchRule } from './types';
 
 const log = getLogger('step');
+const getCheckpointBinding = async (ctx: CheckpointCtx) => {
+    const workspace = ctx.failedCtx.deps.resolveWorkspace(ctx.failedCtx.workspaceName);
+    const tabName = workspace.tabs.getActiveTab()?.name;
+    if (!tabName) {
+        throw new Error(`active tab not found: ${ctx.failedCtx.workspaceName}`);
+    }
+    return await ctx.failedCtx.deps.runtime.awaitExecutableTab({
+        workspace,
+        pageRegistry: ctx.failedCtx.deps.pageRegistry,
+        tabName,
+        timeoutMs: ctx.failedCtx.deps.config.waitPolicy.pageReadyTimeoutMs,
+    });
+};
+
 
 const TRANSIENT_ERROR_CODES = new Set(['ERR_TIMEOUT']);
 const FATAL_ERROR_CODES = new Set(['ERR_BAD_ARGS', 'ERR_INTERNAL']);
@@ -82,14 +96,14 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
 };
 
 const evalUrlIncludesRule = async (needle: string, ctx: CheckpointCtx): Promise<boolean> => {
-    const binding = await ctx.failedCtx.deps.runtime.resolveBinding(ctx.failedCtx.workspaceName);
+    const binding = await getCheckpointBinding(ctx);
     const info = await binding.traceTools['trace.page.getInfo']();
     if (!info.ok) {return false;}
     return (info.data?.url || '').includes(needle);
 };
 
 const evalTextVisibleRule = async (needle: string, ctx: CheckpointCtx): Promise<boolean> => {
-    const binding = await ctx.failedCtx.deps.runtime.resolveBinding(ctx.failedCtx.workspaceName);
+    const binding = await getCheckpointBinding(ctx);
     const evaluated = await binding.traceTools['trace.page.evaluate']({
         expression: `({ needle }) => {
             const text = String(needle || '').trim();
@@ -114,7 +128,7 @@ const evalEntityExistsRule = async (
     args: { query: string; kind?: EntityKind | EntityKind[]; businessTag?: string | string[] },
     ctx: CheckpointCtx,
 ): Promise<boolean> => {
-    const binding = await ctx.failedCtx.deps.runtime.resolveBinding(ctx.failedCtx.workspaceName);
+    const binding = await getCheckpointBinding(ctx);
     const ensured = await ensureFreshSnapshot(binding, {
         refreshReason: 'checkpoint.match.entityExists',
         collectBaseSnapshot: async (context) =>

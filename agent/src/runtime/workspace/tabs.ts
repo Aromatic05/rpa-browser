@@ -20,7 +20,8 @@ export type RuntimeTab = {
 export type WorkspaceTabs = {
     createTab: (input: { tabName: string; page?: Page | null; url?: string; title?: string; at?: number }) => RuntimeTab;
     createMetadataTab: (input: { tabName: string; url?: string; title?: string; at?: number }) => RuntimeTab;
-    ensurePage: (tabName: string, startUrl?: string) => Promise<Page>;
+    awaitTabPage: (tabName: string, timeoutMs: number) => Promise<Page>;
+    createTabPage: (tabName: string, input?: { startUrl?: string }) => Promise<Page>;
     bindPage: (tabName: string, page: Page) => RuntimeTab | null;
     closeTab: (tabName: string) => Promise<RuntimeTab | null>;
     listTabs: () => RuntimeTab[];
@@ -36,7 +37,8 @@ export type WorkspaceTabs = {
 };
 
 export type WorkspaceTabsDeps = {
-    getPage: (tabName: string, startUrl?: string) => Promise<Page>;
+    awaitPageBinding: (tabName: string, timeoutMs: number) => Promise<Page>;
+    createPageBinding: (tabName: string, input?: { startUrl?: string }) => Promise<Page>;
     touchBinding?: (bindingName: string) => void;
 };
 
@@ -68,18 +70,30 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
 
     const createMetadataTab: WorkspaceTabs['createMetadataTab'] = (input) => createTab(input);
 
-    const ensurePage: WorkspaceTabs['ensurePage'] = async (tabName, startUrl) => {
+    const awaitTabPage: WorkspaceTabs['awaitTabPage'] = async (tabName, timeoutMs) => {
         const existing = tabs.get(tabName);
         if (existing?.page && !existing.page.isClosed()) {
             return existing.page;
         }
-        const page = await deps.getPage(tabName, startUrl);
+        const page = await deps.awaitPageBinding(tabName, timeoutMs);
         if (existing) {
             existing.page = page;
             existing.url = page.url();
             existing.updatedAt = now();
-        } else {
-            createTab({ tabName, page, url: page.url() });
+        }
+        return page;
+    };
+
+    const createTabPage: WorkspaceTabs['createTabPage'] = async (tabName, input) => {
+        const existing = tabs.get(tabName);
+        if (existing?.page && !existing.page.isClosed()) {
+            return existing.page;
+        }
+        const page = await deps.createPageBinding(tabName, input);
+        if (existing) {
+            existing.page = page;
+            existing.url = page.url();
+            existing.updatedAt = now();
         }
         return page;
     };
@@ -141,7 +155,8 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
     return {
         createTab,
         createMetadataTab,
-        ensurePage,
+        awaitTabPage,
+        createTabPage,
         bindPage,
         closeTab,
         listTabs: () => Array.from(tabs.values()),
@@ -218,7 +233,8 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
             case 'tab.create': {
                 const tabName = crypto.randomUUID();
                 const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
-                await workspace.tabs.ensurePage(tabName, startUrl);
+                workspace.tabs.createMetadataTab({ tabName, url: startUrl || '' });
+                await workspace.tabs.createTabPage(tabName, { startUrl });
                 workspace.tabs.setActiveTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
             }

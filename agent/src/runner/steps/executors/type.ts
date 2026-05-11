@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 import { resolveTarget } from '../helpers/resolve_target';
 
@@ -14,7 +15,7 @@ export const executeBrowserType = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const resolved = await resolveTarget(binding, {
         nodeId: step.args.nodeId,
         selector: step.args.selector,
@@ -28,18 +29,15 @@ export const executeBrowserType = async (
     });
     if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
 
-    const timeout = step.args.timeout ?? deps.config.waitPolicy.visibleTimeoutMs;
+    const timeout = deps.config.waitPolicy.visibleTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     let lastError: StepResult['error'] | undefined;
-    const delayMs =
-        typeof step.args.delay_ms === 'number'
-            ? step.args.delay_ms
-            : deps.config.humanPolicy.enabled
-              ? pickDelayMs(
-                    deps.config.humanPolicy.typeDelayMsRange.min,
-                    deps.config.humanPolicy.typeDelayMsRange.max,
-                )
-              : undefined;
+    const delayMs = deps.config.humanPolicy.enabled
+        ? pickDelayMs(
+              deps.config.humanPolicy.typeDelayMsRange.min,
+              deps.config.humanPolicy.typeDelayMsRange.max,
+          )
+        : undefined;
     for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
         const candidate = resolved.target.candidates[candidateIndex];
         const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });

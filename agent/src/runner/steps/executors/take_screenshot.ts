@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 import { resolveTarget } from '../helpers/resolve_target';
 
@@ -11,7 +12,7 @@ export const executeBrowserTakeScreenshot = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     let resolvedSelector: string | undefined;
     const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
 

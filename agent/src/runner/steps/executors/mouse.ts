@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 
@@ -8,7 +9,7 @@ export const executeBrowserMouse = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     if (step.args.action === 'wheel' && typeof step.args.deltaY !== 'number') {
         return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'mouse wheel requires deltaY' } };
     }

@@ -1,4 +1,5 @@
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { ensureFreshEntityContext } from './entity_context';
 import type { SnapshotResult, UnifiedNode } from './snapshot/core/types';
 import { normalizeText } from './snapshot/core/runtime_store';
@@ -74,7 +75,7 @@ export const executeBrowserCaptureResolve = async (
         return { stepId: step.id, ok: false, error: normalizedLimit.error };
     }
 
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const cachedSnapshot = readLatestSnapshot(binding.traceCtx.cache);
     const snapshot =
         cachedSnapshot ||

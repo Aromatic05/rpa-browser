@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { resolveTarget } from '../helpers/resolve_target';
@@ -9,7 +10,7 @@ export const executeBrowserDragAndDrop = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const source = await resolveTarget(binding, {
         nodeId: step.args.sourceNodeId,
         selector: step.args.sourceSelector,
@@ -23,7 +24,7 @@ export const executeBrowserDragAndDrop = async (
     });
     if (!source.ok) {return { stepId: step.id, ok: false, error: source.error };}
 
-    if (step.args.destNodeId || step.args.destSelector || step.args.destResolveId) {
+    if (step.args.destNodeId || step.args.destSelector) {
         const dest = await resolveTarget(binding, {
             nodeId: step.args.destNodeId,
             selector: step.args.destSelector,

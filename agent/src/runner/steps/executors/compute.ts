@@ -1,3 +1,4 @@
+import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { isDeepStrictEqual } from 'node:util';
 import type { ComputeExpr, ComputeValue, Step, StepResult } from '../types';
 import type { RunLocalStepResults, RunStepsDeps } from '../../run_steps';
@@ -14,7 +15,7 @@ export const executeBrowserCompute = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await deps.runtime.resolveBinding(workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName);
     const cache = binding.traceCtx.cache as { computeScope?: unknown; runnerStepResults?: unknown };
     const scope: EvalScope = {
         steps: asRecord<RunLocalStepResults>(cache.runnerStepResults),
