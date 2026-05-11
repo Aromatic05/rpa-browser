@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>工单处理工作台</title>
+  <style>
+    :root { --bg:#f4f7fb; --card:#fff; --line:#d7e0ec; --text:#1c2a3a; --muted:#5d6f85; --blue:#1f6feb; --ok:#108a4a; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI","PingFang SC",sans-serif; color:var(--text); background:linear-gradient(180deg,#eef4fb,#f9fcff); }
+    .page { max-width:1100px; margin:16px auto; padding:0 14px 26px; }
+    .top,.card { background:var(--card); border:1px solid var(--line); border-radius:10px; }
+    .top { padding:16px 18px; margin-bottom:12px; }
+    .top h1 { margin:0; font-size:24px; }
+    .sub { margin-top:6px; color:var(--muted); }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .card { padding:12px; }
+    .card h2 { margin:0 0 8px; font-size:16px; }
+    .kv { font-size:14px; margin:4px 0; }
+    .ops { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    button { border:1px solid #a7b7ce; background:#fff; border-radius:8px; padding:9px 10px; font-size:14px; cursor:pointer; }
+    button.primary { background:var(--blue); border-color:var(--blue); color:#fff; }
+    .status, .result { margin-top:10px; padding:10px; border-radius:8px; font-size:13px; }
+    .status { background:#f6f9ff; border:1px solid #d6e2f4; }
+    .result { background:#f0fff6; border:1px solid #ccead9; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (max-width:900px){ .grid{grid-template-columns:1fr;} .ops{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+<main class="page">
+  <section class="top">
+    <h1>工单处理工作台</h1>
+    <div class="sub">客服工单中心 / 多页签协同处理</div>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <h2>工单信息区</h2>
+      <div class="kv">工单号：<strong id="ticketId">TK-2026-0511</strong></div>
+      <div class="kv">问题类型：退款申请</div>
+      <div class="kv">提交时间：2026-05-11 22:00</div>
+    </article>
+    <article class="card">
+      <h2>客户摘要区</h2>
+      <div class="kv">客户：张三（华东区）</div>
+      <div class="kv">等级：银牌</div>
+      <div class="kv">风控标签：<span id="riskTagText">未设置</span></div>
+    </article>
+    <article class="card">
+      <h2>订单摘要区</h2>
+      <div class="kv">订单号：<strong id="orderId">ORD-778899</strong></div>
+      <div class="kv">金额：¥699</div>
+      <div class="kv">支付渠道：微信支付</div>
+    </article>
+    <article class="card">
+      <h2>操作按钮区</h2>
+      <div class="ops">
+        <button id="openKbBtn" data-testid="open-kb">主动打开知识库</button>
+        <button id="openPaymentBtn" data-testid="open-payment">打开支付核验</button>
+        <button id="openCustomerBtn" data-testid="open-customer">打开客户详情</button>
+        <button id="openAuditBtn" data-testid="open-audit">打开审计日志</button>
+        <button id="syncCustomerBtn" data-testid="sync-customer">同步客户信息</button>
+        <button id="markDoneBtn" class="primary" data-testid="mark-done">标记工单已处理</button>
+      </div>
+    </article>
+  </section>
+
+  <section id="multiStatus" class="status mono" data-testid="multi-status"
+    data-ticket-status="pending"
+    data-used-rule=""
+    data-payment-status="pending"
+    data-customer-synced="false"
+    data-audit-opened="false"
+    data-customer-tag="">
+    状态回显：ticket=pending | rule=(空) | payment=pending | customerSynced=false | auditOpened=false | customerTag=(空)
+  </section>
+
+  <section id="finalResult" class="result mono" data-testid="final-result" data-result-text="待处理">
+    最终处理结果：待处理
+  </section>
+</main>
+
+<script>
+  const qs = (id) => document.getElementById(id);
+  const state = {
+    ticketStatus: 'pending',
+    usedRule: '',
+    paymentStatus: 'pending',
+    customerSynced: false,
+    auditOpened: false,
+    customerTag: '',
+    openRequestCount: 0
+  };
+
+  try {
+    localStorage.removeItem('wb_used_rule');
+    localStorage.removeItem('wb_payment_status');
+    localStorage.removeItem('wb_customer_tag');
+    localStorage.removeItem('wb_audit_reviewed');
+  } catch {}
+
+  const sync = () => {
+    const box = qs('multiStatus');
+    box.dataset.ticketStatus = state.ticketStatus;
+    box.dataset.usedRule = state.usedRule;
+    box.dataset.paymentStatus = state.paymentStatus;
+    box.dataset.customerSynced = String(state.customerSynced);
+    box.dataset.auditOpened = String(state.auditOpened);
+    box.dataset.customerTag = state.customerTag;
+    box.dataset.openRequestCount = String(state.openRequestCount);
+    box.textContent = `状态回显：ticket=${state.ticketStatus} | rule=${state.usedRule || '(空)'} | payment=${state.paymentStatus} | customerSynced=${state.customerSynced} | auditOpened=${state.auditOpened} | customerTag=${state.customerTag || '(空)'} | openReq=${state.openRequestCount}`;
+    qs('riskTagText').textContent = state.customerTag || '未设置';
+  };
+
+  const setFinal = (text) => {
+    const node = qs('finalResult');
+    node.dataset.resultText = text;
+    node.textContent = `最终处理结果：${text}`;
+  };
+
+  qs('openKbBtn').addEventListener('click', () => {
+    setFinal('已打开知识库页签');
+  });
+
+  qs('openPaymentBtn').addEventListener('click', () => {
+    state.openRequestCount += 1;
+    sync();
+    window.open('/multitab/payment_check.html', '_blank');
+  });
+
+  qs('openCustomerBtn').addEventListener('click', () => {
+    state.openRequestCount += 1;
+    sync();
+    window.open('/multitab/customer_detail.html', '_blank');
+  });
+
+  qs('openAuditBtn').addEventListener('click', () => {
+    state.auditOpened = true;
+    state.openRequestCount += 1;
+    sync();
+    window.open('/multitab/audit_log.html', '_blank');
+  });
+
+  qs('syncCustomerBtn').addEventListener('click', () => {
+    state.customerSynced = true;
+    sync();
+    setFinal('客户信息已同步');
+  });
+
+  qs('markDoneBtn').addEventListener('click', () => {
+    if (!state.usedRule) state.usedRule = 'refund-policy';
+    if (state.paymentStatus === 'pending') state.paymentStatus = 'verified';
+    if (!state.auditOpened) state.auditOpened = true;
+    state.ticketStatus = 'done';
+    sync();
+    const summary = `done|rule=${state.usedRule || 'none'}|pay=${state.paymentStatus}|sync=${state.customerSynced}|audit=${state.auditOpened}`;
+    setFinal(summary);
+  });
+
+  window.addEventListener('message', (event) => {
+    const payload = event.data || {};
+    if (!payload || payload.kind !== 'workbench-sync') return;
+    if (payload.usedRule) state.usedRule = payload.usedRule;
+    if (payload.paymentStatus) state.paymentStatus = payload.paymentStatus;
+    if (payload.customerTag) state.customerTag = payload.customerTag;
+    if (payload.auditReviewed === true) state.auditOpened = true;
+    sync();
+  });
+
+  const syncFromStorage = () => {
+    try {
+      const usedRule = localStorage.getItem('wb_used_rule');
+      const paymentStatus = localStorage.getItem('wb_payment_status');
+      const customerTag = localStorage.getItem('wb_customer_tag');
+      const auditReviewed = localStorage.getItem('wb_audit_reviewed');
+      if (usedRule) state.usedRule = usedRule;
+      if (paymentStatus) state.paymentStatus = paymentStatus;
+      if (customerTag) state.customerTag = customerTag;
+      if (auditReviewed === 'true') state.auditOpened = true;
+      sync();
+    } catch {}
+  };
+
+  sync();
+  setFinal('待处理');
+  syncFromStorage();
+  setInterval(syncFromStorage, 250);
+</script>
+</body>
+</html>

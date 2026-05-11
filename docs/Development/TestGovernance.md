@@ -35,6 +35,15 @@
 4. 必须说明该用例为何不能下沉为 integration 或 unit。
 5. 禁止通过适配层/fallback 迁就旧样例。
 
+## E2E-2 多 Tab 录制与回放准入标准
+
+1. 必须覆盖主动创建 tab。
+2. 必须覆盖页面触发的被动创建 tab。
+3. 必须覆盖 tab 切换与 tab 关闭。
+4. 必须覆盖录制与回放两个阶段。
+5. 必须验证 tabName 映射、active tab 与关闭 tab 状态。
+6. 禁止把 tab e2e 写成单纯 create/switch/close 冒烟测试。
+
 ## integration / unit / e2e 边界
 
 1. unit：单模块纯逻辑，快速、稳定、无跨模块编排依赖。

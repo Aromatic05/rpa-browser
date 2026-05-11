@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8" /><title>客户详情</title>
+<style>body{font-family:"Segoe UI","PingFang SC",sans-serif;margin:18px;background:#f9fcff;color:#1f2d3d}.card{background:#fff;border:1px solid #d6e3f0;border-radius:10px;padding:14px;max-width:700px}input{width:100%;padding:8px;border:1px solid #b8cae0;border-radius:8px}button{margin-top:8px;padding:8px 12px;border:1px solid #9eb4cd;border-radius:8px;background:#fff;cursor:pointer}</style></head>
+<body>
+<section class="card" data-testid="customer-root" data-customer-tag="">
+  <h1 style="margin:0 0 8px">客户详情页</h1>
+  <p>客户名称：张三</p>
+  <label>客户标签<input id="customerTagInput" data-testid="customer-tag-input" type="text" placeholder="请输入标签" /></label>
+  <button id="markVipRisk" data-testid="mark-vip-risk" type="button">设为高价值风险客户</button>
+  <p id="customerTagText">客户标签：未设置</p>
+</section>
+<script>
+  const root = document.querySelector('[data-testid="customer-root"]');
+  const text = document.getElementById('customerTagText');
+  document.getElementById('markVipRisk').addEventListener('click', () => {
+    root.dataset.customerTag = 'vip-risk';
+    document.getElementById('customerTagInput').value = 'vip-risk';
+    text.textContent = '客户标签：vip-risk';
+    try { localStorage.setItem('wb_customer_tag', 'vip-risk'); } catch {}
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ kind: 'workbench-sync', customerTag: 'vip-risk' }, '*');
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8" /><title>支付核验</title>
+<style>body{font-family:"Segoe UI","PingFang SC",sans-serif;margin:18px;background:#fafcff;color:#1f2d3d}.card{background:#fff;border:1px solid #d6e3f1;border-radius:10px;padding:14px;max-width:680px}button{padding:8px 12px;border:1px solid #9eb5cf;border-radius:8px;background:#fff;cursor:pointer}</style></head>
+<body>
+<section class="card" data-testid="payment-root" data-payment-verified="false">
+  <h1 style="margin:0 0 8px">支付核验页</h1>
+  <p>订单号展示：<strong id="paymentOrderId">ORD-778899</strong></p>
+  <p id="paymentStatusText">支付状态：待核验</p>
+  <button id="approvePayment" data-testid="approve-payment" type="button">核验通过</button>
+</section>
+<script>
+  const root = document.querySelector('[data-testid="payment-root"]');
+  const status = document.getElementById('paymentStatusText');
+  document.getElementById('approvePayment').addEventListener('click', () => {
+    root.dataset.paymentVerified = 'true';
+    status.textContent = '支付核验通过';
+    try { localStorage.setItem('wb_payment_status', 'verified'); } catch {}
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ kind: 'workbench-sync', paymentStatus: 'verified' }, '*');
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8" /><title>知识库 - 退款规则</title>
+<style>body{font-family:"Segoe UI","PingFang SC",sans-serif;margin:18px;background:#f7fbff;color:#1f2d3d} .card{background:#fff;border:1px solid #d5e2f0;border-radius:10px;padding:14px;max-width:760px} input{width:100%;padding:8px;border:1px solid #b9cbe0;border-radius:8px} ul{padding-left:18px} button{padding:8px 12px;border:1px solid #9db5d0;border-radius:8px;background:#fff;cursor:pointer} .ok{margin-top:8px;color:#0f8f52}</style></head>
+<body>
+<div class="card" data-testid="kb-root" data-selected-rule="">
+  <h1 style="margin:0 0 10px">知识库规则检索</h1>
+  <label>搜索框<input id="kbSearch" data-testid="kb-search" type="text" placeholder="输入规则关键字" /></label>
+  <h2 style="font-size:16px">规则列表</h2>
+  <ul>
+    <li>退款规则（refund-policy）</li>
+    <li>异常订单升级规则</li>
+    <li>高风险客户响应策略</li>
+  </ul>
+  <button id="quoteRefundRule" data-testid="quote-refund-rule" type="button">引用退款规则</button>
+  <div id="kbStatus" class="ok">状态：未引用</div>
+</div>
+<script>
+  const root = document.querySelector('[data-testid="kb-root"]');
+  const status = document.getElementById('kbStatus');
+  document.getElementById('quoteRefundRule').addEventListener('click', () => {
+    root.dataset.selectedRule = 'refund-policy';
+    status.textContent = '已引用退款规则';
+    try { localStorage.setItem('wb_used_rule', 'refund-policy'); } catch {}
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ kind: 'workbench-sync', usedRule: 'refund-policy' }, '*');
+    }
+  });
+</script>
+</body>
+</html>

@@ -31,7 +31,11 @@ export const startFixtureServer = async () => {
         baseURL,
         close: () =>
             new Promise<void>((resolve) => {
-                server.close(() => resolve());
+                const timer = setTimeout(() => resolve(), 2000);
+                server.close(() => {
+                    clearTimeout(timer);
+                    resolve();
+                });
             }),
     };
 };

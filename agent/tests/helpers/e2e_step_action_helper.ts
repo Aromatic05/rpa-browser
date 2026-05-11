@@ -167,11 +167,21 @@ return await ctx.dispatch(action);
         dispatchAction,
         close: async () => {
             try {
-                await fixture.close();
-            } finally {
                 if (agentProcess && !agentProcess.killed) {
                     agentProcess.kill('SIGTERM');
+                    await new Promise<void>((resolve) => {
+                        const timer = setTimeout(() => resolve(), 2000);
+                        agentProcess?.once('exit', () => {
+                            clearTimeout(timer);
+                            resolve();
+                        });
+                    });
                 }
+                if (agentProcess && agentProcess.exitCode === null) {
+                    agentProcess.kill('SIGKILL');
+                }
+                await fixture.close();
+            } finally {
                 await fs.rm(tempRoot, { recursive: true, force: true });
             }
         },
