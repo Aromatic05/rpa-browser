@@ -25,7 +25,7 @@ import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { ACTION_TYPES } from './actions/action_types';
 import { createActionDispatcher } from './actions/dispatcher';
 import { startActionWsClient } from './actions/ws_client';
-import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
+import { createControlServer, registerControlShutdown } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 import { createRuntimeLifecycle } from './runtime/browser/lifecycle';
 import { installRecorderEventSink } from './record/sink';
@@ -176,7 +176,6 @@ const actionDispatcher = createActionDispatcher({
     log: actionLogger,
     emit: (action) => broadcast(action),
 });
-setControlActionDispatcher(actionDispatcher);
 
 const handleAction = async (action: Action) => {
     log('action.inbound', {
@@ -218,7 +217,22 @@ const actionWsClient = startActionWsClient({
 });
 broadcast = actionWsClient.broadcastAction;
 
-const controlServer = createControlServer({ deps: runStepsDeps });
+const controlServer = createControlServer({
+    evalContext: {
+        deps: runStepsDeps,
+        workspaceRegistry,
+        config,
+        dispatch: async (action) => await actionDispatcher.dispatch(action),
+        resolveWorkspace: (workspaceName: string) => workspaceRegistry.getWorkspace(workspaceName),
+        checkpointProvider: (workspaceName: string) => {
+            const workspace = workspaceRegistry.getWorkspace(workspaceName);
+            if (!workspace) {
+                return undefined;
+            }
+            return workspace.checkpoint.getProvider(workspace.workflow);
+        },
+    },
+});
 registerControlShutdown(controlServer, log);
 
 (async () => {

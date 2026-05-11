@@ -2,42 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { createControlServer, sendControlRequest } from '../../src/control';
-import type { RunStepsDeps } from '../../src/runner/run_steps';
-
-const createDeps = (): RunStepsDeps =>
-    ({
-        runtime: {
-            ensureActivePage: async () => ({
-                workspaceName: 'ws-client',
-                tabName: 'tab-client',
-                tabName: 'tk-client',
-                traceCtx: { cache: {} },
-            }),
-        },
-        config: {} as any,
-        pluginHost: {
-            getExecutors: () => ({}),
-        } as any,
-    }) as RunStepsDeps;
+import { createControlServer, sendControlEval } from '../../src/control';
 
 const createTestEndpoint = (): string =>
     process.platform === 'win32'
         ? `\\\\.\\pipe\\rpa-browser-agent-test-${process.pid}-${Date.now()}`
         : path.join(os.tmpdir(), `rpa-browser-agent-test-${process.pid}-${Date.now()}.sock`);
 
-test('sendControlRequest can call agent.ping over the control server', async () => {
+test('sendControlEval can call eval over control server', async () => {
+    const prev = process.env.RPA_CONTROL_EVAL;
+    process.env.RPA_CONTROL_EVAL = '1';
     const server = createControlServer({
         endpoint: createTestEndpoint(),
-        deps: createDeps(),
+        evalContext: {
+            deps: {} as any,
+            workspaceRegistry: { getWorkspace: () => null } as any,
+            config: {} as any,
+            dispatch: async (action) => action,
+            resolveWorkspace: () => null,
+        },
     });
 
     await server.start();
     try {
-        const response = await sendControlRequest(
+        const response = await sendControlEval(
             {
-                method: 'agent.ping',
-                params: {},
+                source: 'return 40 + 2',
             },
             { endpoint: server.endpoint },
         );
@@ -46,9 +36,13 @@ test('sendControlRequest can call agent.ping over the control server', async () 
         if (!response.ok) {
             assert.fail('expected ok response');
         }
-        assert.equal(typeof response.result?.ts, 'number');
+        assert.equal(response.result, 42);
     } finally {
         await server.close();
-        await server.close();
+        if (typeof prev === 'string') {
+            process.env.RPA_CONTROL_EVAL = prev;
+        } else {
+            delete process.env.RPA_CONTROL_EVAL;
+        }
     }
 });
