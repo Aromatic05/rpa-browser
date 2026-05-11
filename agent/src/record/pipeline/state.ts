@@ -21,6 +21,7 @@ export type PendingCheckboxGroupSession = {
 
 export type PendingCustomSelectSession = {
     kind: 'custom_select';
+    source?: 'bound_trigger' | 'semantic_trigger';
     sessionKey: string;
     controlRootNodeId: string;
     controlRef: string;

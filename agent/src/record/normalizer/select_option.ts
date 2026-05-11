@@ -39,40 +39,59 @@ const CUSTOM_SELECT_PENDING_WINDOW_MS = 1200;
 const normalizeSelector = (selector: string | undefined): string =>
     (selector || '').replace(/\s+/g, ' ').trim();
 
-const hasRoleOptionCandidate = (event: RecorderEvent): boolean => {
+const hasRoleCandidate = (event: RecorderEvent, role: string): boolean => {
+    const expectedRole = role.trim();
+    if (!expectedRole) {return false;}
+
     const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
-    return candidates.some((candidate) => candidate?.kind === 'role' && String(candidate.role || '').trim() === 'option');
+    return candidates.some((candidate) =>
+        candidate?.kind === 'role' && String(candidate.role || '').trim() === expectedRole);
 };
+
+const hasRoleOptionCandidate = (event: RecorderEvent): boolean =>
+    hasRoleCandidate(event, 'option');
 
 const readOptionTextFromEvent = (event: RecorderEvent): string | undefined => {
     const fromHintName = normalizeSelector(event.a11yHint?.name);
     if (fromHintName) {return fromHintName;}
+
     const fromHintText = normalizeSelector(event.a11yHint?.text);
     if (fromHintText) {return fromHintText;}
+
     const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
     for (const candidate of candidates) {
         if (!candidate || candidate.kind !== 'role') {continue;}
+        if (String(candidate.role || '').trim() !== 'option') {continue;}
         const name = normalizeSelector(candidate.name);
         if (name) {return name;}
     }
+
     for (const candidate of candidates) {
         if (!candidate || candidate.kind !== 'text') {continue;}
         const text = normalizeSelector(candidate.text);
         if (text) {return text;}
     }
-    return undefined;
-};
 
-const isAntDropdownSelector = (selector: string | undefined): boolean => {
-    const s = normalizeSelector(selector);
-    if (!s) {return false;}
-    return s.includes('ant-select-dropdown-menu-item')
-        || s.includes('ant-select-dropdown-menu')
-        || s.includes('ant-select-dropdown');
+    return undefined;
 };
 
 const isOptionSemanticEvent = (event: RecorderEvent): boolean => {
     return (event.a11yHint?.role || '').trim() === 'option' || hasRoleOptionCandidate(event);
+};
+
+const isComboboxSemanticTriggerEvent = (event: RecorderEvent): boolean => {
+    if (event.type !== 'click') {return false;}
+    if (!normalizeSelector(event.selector)) {return false;}
+
+    const hintRole = String(event.a11yHint?.role || '').trim();
+    return hintRole === 'combobox' || hasRoleCandidate(event, 'combobox');
+};
+
+const isCustomSelectSemanticOptionEvent = (event: RecorderEvent): boolean => {
+    if (event.type !== 'click') {return false;}
+    if (!normalizeSelector(event.selector)) {return false;}
+    if (!isOptionSemanticEvent(event)) {return false;}
+    return Boolean(readOptionTextFromEvent(event));
 };
 
 const readChoiceSessions = (state: RecordingState, recordingToken: string): Map<string, PendingChoiceSession> => {
@@ -107,21 +126,27 @@ const writeSuppressedClicks = (state: RecordingState, recordingToken: string, en
 
 const consumeSuppressedNativeSelectClick = (context: NormalizeContext, event: RecorderEvent): boolean => {
     if (event.type !== 'click') {return false;}
+
     const selector = normalizeSelector(event.selector);
     if (!selector) {return false;}
+
     const current = readSuppressedClicks(context.state, context.recordingToken);
     const kept: PendingSuppressedClick[] = [];
     let consumed = false;
+
     for (const item of current) {
         if (event.ts - item.ts > NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS) {
             continue;
         }
+
         if (!consumed && item.tabName === context.tabName && item.selector === selector) {
             consumed = true;
             continue;
         }
+
         kept.push(item);
     }
+
     writeSuppressedClicks(context.state, context.recordingToken, kept);
     return consumed;
 };
@@ -129,8 +154,10 @@ const consumeSuppressedNativeSelectClick = (context: NormalizeContext, event: Re
 const markSuppressedNativeSelectClick = (context: NormalizeContext, event: RecorderEvent): void => {
     const selector = normalizeSelector(event.selector);
     if (!selector) {return;}
+
     const entries = readSuppressedClicks(context.state, context.recordingToken)
         .filter((item) => event.ts - item.ts <= NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS);
+
     entries.push({ tabName: context.tabName, selector, ts: event.ts });
     writeSuppressedClicks(context.state, context.recordingToken, entries);
 };
@@ -152,6 +179,7 @@ const buildSelectOptionStep = (
         { tabName: event.tabName },
         context.buildResolveFromEvent(event),
     );
+
     return {
         status: 'handled',
         step,
@@ -182,6 +210,7 @@ export const flushPendingChoiceEvents = (input: {
 
     const emitted: Array<{ step: StepUnion; event: RecorderEvent }> = [];
     const ordered = Array.from(sessions.values()).sort((a, b) => a.ts - b.ts);
+
     for (const session of ordered) {
         if (session.kind === 'checkbox_group') {
             const step = input.context.createStep(
@@ -195,6 +224,7 @@ export const flushPendingChoiceEvents = (input: {
                 { tabName: session.tabName },
                 session.resolve,
             );
+
             emitted.push({ step, event: session.lastEvent });
             deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
             continue;
@@ -217,10 +247,12 @@ export const flushPendingChoiceEvents = (input: {
                 { tabName: session.tabName },
                 session.resolve,
             );
+
             emitted.push({ step, event: session.triggerEvent });
             deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
         }
     }
+
     return emitted;
 };
 
@@ -230,6 +262,7 @@ export const normalizeSelectOption = async (
 ): Promise<RecordNormalizerResult> => {
     const recordLog = getLogger('record');
     const forceFreshSnapshot = event.type === 'check' || event.type === 'select' || event.type === 'click';
+
     if (consumeSuppressedNativeSelectClick(context, event)) {
         recordLog('record_select_suppress_hit', {
             tabName: context.tabName,
@@ -245,6 +278,7 @@ export const normalizeSelectOption = async (
         });
         return { status: 'pending' };
     }
+
     if (event.type === 'click') {
         recordLog('record_select_suppress_miss', {
             tabName: context.tabName,
@@ -253,11 +287,37 @@ export const normalizeSelectOption = async (
         });
     }
 
+    if (event.type === 'select' && typeof event.selector === 'string' && event.selector.trim() && typeof event.value === 'string') {
+        markSuppressedNativeSelectClick(context, event);
+        recordLog('record_select_suppress_write', {
+            tabName: context.tabName,
+            selector: event.selector,
+            ts: event.ts,
+        });
+        recordLog('record_select_native_direct', {
+            selector: event.selector,
+            value: event.value,
+            suppressWritten: true,
+        });
+
+        const result = buildSelectOptionStep(context, event, 'native_select', [event.value]);
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'handled',
+            reason: 'native_select_direct',
+            componentKind: 'native_select',
+            values: [event.value.slice(0, 32)],
+        });
+        return result;
+    }
+
     if (event.type === 'click') {
         const sessions = context.state.pendingChoiceEvents.get(context.recordingToken);
         if (sessions && sessions.size > 0) {
             const pendingCustom = Array.from(sessions.values())
                 .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+
             if (pendingCustom) {
                 const clickBinding = await resolveRecordTargetBinding({
                     event,
@@ -266,14 +326,37 @@ export const normalizeSelectOption = async (
                     cacheKey: context.cacheKey,
                     forceFreshSnapshot,
                 });
-                const sameControl = Boolean(clickBinding && clickBinding.controlRootNodeId === pendingCustom.controlRootNodeId);
-                const keepPendingForAntOptionSemantic = !sameControl
-                    && isOptionSemanticEvent(event)
-                    && isAntDropdownSelector(event.selector)
-                    && Boolean(readOptionTextFromEvent(event));
-                if (!sameControl && !keepPendingForAntOptionSemantic) {
+
+                const sameControl = Boolean(
+                    clickBinding
+                    && pendingCustom.controlRootNodeId
+                    && clickBinding.controlRootNodeId === pendingCustom.controlRootNodeId,
+                );
+                const keepPendingForOptionSemantic = !sameControl
+                    && pendingCustom.tabName === context.tabName
+                    && event.ts - pendingCustom.ts <= CUSTOM_SELECT_PENDING_WINDOW_MS
+                    && isCustomSelectSemanticOptionEvent(event);
+
+                recordLog('record_select_custom_pending_compare', {
+                    tabName: context.tabName,
+                    pendingSource: pendingCustom.source || 'bound_trigger',
+                    pendingControlRootNodeId: pendingCustom.controlRootNodeId,
+                    eventSelector: event.selector,
+                    sameControl,
+                    keepPendingForOptionSemantic,
+                    optionSemantic: isOptionSemanticEvent(event),
+                });
+
+                if (!sameControl && !keepPendingForOptionSemantic) {
                     const releasedStep = buildReleasedTriggerClickStep(context, pendingCustom.triggerEvent);
                     deleteChoiceSession(context.state, context.recordingToken, pendingCustom.sessionKey);
+                    recordLog('record_select_custom_pending_release', {
+                        tabName: context.tabName,
+                        reason: 'click_outside_pending',
+                        pendingSource: pendingCustom.source || 'bound_trigger',
+                        triggerSelector: pendingCustom.triggerEvent.selector,
+                        eventSelector: event.selector,
+                    });
                     return {
                         status: 'handled',
                         step: releasedStep,
@@ -295,18 +378,68 @@ export const normalizeSelectOption = async (
 
     if (!binding) {
         if (event.type === 'click') {
-            const sessions = context.state.pendingChoiceEvents.get(context.recordingToken);
-            const pendingCustom = sessions
-                ? Array.from(sessions.values()).find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined
-                : undefined;
-            const roleOption = (event.a11yHint?.role || '').trim() === 'option' || hasRoleOptionCandidate(event);
+            const sessions = readChoiceSessions(context.state, context.recordingToken);
+            let pendingCustom = Array.from(sessions.values())
+                .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+
+            if (!pendingCustom) {
+                const selector = normalizeSelector(event.selector);
+                const validSemanticTrigger = event.type === 'click'
+                    && Boolean(selector)
+                    && isComboboxSemanticTriggerEvent(event)
+                    && Boolean(context.tabName);
+
+                if (validSemanticTrigger) {
+                    const sessionKey = `${context.workspaceName}::${context.tabName}::custom_select::semantic::${selector}`;
+                    const semanticSession: PendingCustomSelectSession = {
+                        kind: 'custom_select',
+                        source: 'semantic_trigger',
+                        sessionKey,
+                        controlRootNodeId: `semantic:${selector}`,
+                        controlRef: `semantic:${selector}`,
+                        workspaceName: context.workspaceName,
+                        tabName: context.tabName,
+                        selector: event.selector,
+                        resolve: context.buildResolveFromEvent(event),
+                        triggerEvent: event,
+                        ts: event.ts,
+                    };
+
+                    sessions.set(sessionKey, semanticSession);
+                    recordLog('record_select_custom_semantic_pending_start', {
+                        selector: event.selector,
+                        tabName: context.tabName,
+                        reason: 'binding_missing_combobox_trigger',
+                    });
+                    recordLog('record_select_option_normalizer', {
+                        eventType: event.type,
+                        selector: event.selector,
+                        result: 'pending',
+                        reason: 'custom_trigger_semantic_pending',
+                        componentKind: 'custom_select',
+                        values: [],
+                    });
+                    return { status: 'pending' };
+                }
+            }
+
+            pendingCustom = Array.from(sessions.values())
+                .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+
             const optionText = readOptionTextFromEvent(event);
             const withinWindow = Boolean(pendingCustom && event.ts - pendingCustom.ts <= CUSTOM_SELECT_PENDING_WINDOW_MS);
             const sameTab = Boolean(pendingCustom && pendingCustom.tabName === context.tabName);
-            const antDropdownSelector = isAntDropdownSelector(event.selector);
-            if (pendingCustom && roleOption && optionText && antDropdownSelector && withinWindow && sameTab) {
+            const semanticOption = isCustomSelectSemanticOptionEvent(event);
+
+            if (pendingCustom && semanticOption && optionText && withinWindow && sameTab) {
                 const result = buildSelectOptionStep(context, pendingCustom.triggerEvent, 'custom_select', [optionText]);
                 deleteChoiceSession(context.state, context.recordingToken, pendingCustom.sessionKey);
+                recordLog('record_select_custom_semantic_pending_consume', {
+                    triggerSelector: pendingCustom.triggerEvent.selector,
+                    optionSelector: event.selector,
+                    optionValue: optionText,
+                    tabName: context.tabName,
+                });
                 recordLog('record_select_option_normalizer', {
                     eventType: event.type,
                     selector: event.selector,
@@ -319,6 +452,7 @@ export const normalizeSelectOption = async (
                 return result;
             }
         }
+
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
             selector: event.selector,
@@ -343,6 +477,7 @@ export const normalizeSelectOption = async (
             });
             return { status: 'pending' };
         }
+
         if (event.type !== 'select' || typeof event.value !== 'string') {
             recordLog('record_select_option_normalizer', {
                 eventType: event.type,
@@ -356,12 +491,14 @@ export const normalizeSelectOption = async (
             });
             return { status: 'pass' };
         }
+
         markSuppressedNativeSelectClick(context, event);
         recordLog('record_select_suppress_write', {
             tabName: context.tabName,
             selector: event.selector,
             ts: event.ts,
         });
+
         const result = buildSelectOptionStep(context, event, 'native_select', [event.value]);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
@@ -380,6 +517,7 @@ export const normalizeSelectOption = async (
         if (event.type !== 'check' || event.inputType !== 'radio') {
             return { status: 'pass' };
         }
+
         if (event.checked !== true) {
             recordLog('record_select_option_normalizer', {
                 eventType: event.type,
@@ -393,10 +531,13 @@ export const normalizeSelectOption = async (
             });
             return { status: 'pending' };
         }
+
         const option = readControlOptionByNodeId(binding.component, binding.targetNodeId);
         if (!option) {return { status: 'pass' };}
+
         const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
+
         const result = buildSelectOptionStep(context, event, 'radio_group', [value]);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
@@ -415,6 +556,7 @@ export const normalizeSelectOption = async (
         if (event.type !== 'check' || event.inputType !== 'checkbox') {
             return { status: 'pass' };
         }
+
         const values = readSelectedValuesFromControl(binding.component);
         const sessions = readChoiceSessions(context.state, context.recordingToken);
         const sessionKey = checkboxSessionKey(context.workspaceName, context.tabName, binding.controlRootNodeId);
@@ -431,6 +573,7 @@ export const normalizeSelectOption = async (
             lastEvent: event,
             ts: event.ts,
         };
+
         sessions.set(sessionKey, session);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
@@ -449,9 +592,7 @@ export const normalizeSelectOption = async (
         if (event.type !== 'click') {
             return { status: 'pass' };
         }
-        if (isOptionSemanticEvent(event) && !isAntDropdownSelector(event.selector)) {
-            return { status: 'pass' };
-        }
+
         const sessions = readChoiceSessions(context.state, context.recordingToken);
         const sessionKey = customSessionKey(context.workspaceName, context.tabName, binding.controlRootNodeId);
 
@@ -460,6 +601,7 @@ export const normalizeSelectOption = async (
             || binding.targetNodeId === binding.component.triggerNodeId) {
             const pendingSession: PendingCustomSelectSession = {
                 kind: 'custom_select',
+                source: 'bound_trigger',
                 sessionKey,
                 controlRootNodeId: binding.controlRootNodeId,
                 controlRef: binding.controlRef,
@@ -470,6 +612,7 @@ export const normalizeSelectOption = async (
                 triggerEvent: event,
                 ts: event.ts,
             };
+
             sessions.set(sessionKey, pendingSession);
             recordLog('record_select_option_normalizer', {
                 eventType: event.type,
@@ -498,6 +641,7 @@ export const normalizeSelectOption = async (
             });
             return { status: 'pass' };
         }
+
         if (!binding.component.optionNodeIds.includes(binding.targetNodeId)) {
             recordLog('record_select_option_normalizer', {
                 eventType: event.type,
@@ -514,9 +658,12 @@ export const normalizeSelectOption = async (
 
         const option = readControlOptionByNodeId(binding.component, binding.targetNodeId);
         deleteChoiceSession(context.state, context.recordingToken, sessionKey);
+
         if (!option) {return { status: 'pass' };}
+
         const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
+
         const result = buildSelectOptionStep(context, event, 'custom_select', [value]);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
