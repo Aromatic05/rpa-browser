@@ -2,37 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     ControlProtocolError,
-    encodeControlResponse,
-    parseControlRequest,
+    encodeControlEvalResponse,
+    parseControlEvalRequest,
 } from '../../src/control/protocol';
 
-test('parseControlRequest parses a valid request', () => {
-    const req = parseControlRequest('{"id":"1","method":"agent.ping","params":{}}');
+test('parseControlEvalRequest parses a valid request', () => {
+    const req = parseControlEvalRequest('{"id":"1","source":"return 1 + 1","workspaceName":"ws","timeoutMs":1200,"input":{"a":1}}');
 
     assert.deepEqual(req, {
         id: '1',
-        method: 'agent.ping',
-        params: {},
+        source: 'return 1 + 1',
+        workspaceName: 'ws',
+        timeoutMs: 1200,
+        input: { a: 1 },
     });
 });
 
-test('parseControlRequest rejects bad json', () => {
+test('parseControlEvalRequest rejects bad json', () => {
     assert.throws(
-        () => parseControlRequest('{'),
+        () => parseControlEvalRequest('{'),
         (error: unknown) =>
             error instanceof ControlProtocolError && error.code === 'ERR_CONTROL_BAD_JSON',
     );
 });
 
-test('parseControlRequest rejects missing id or method', () => {
+test('parseControlEvalRequest rejects missing id or source', () => {
     assert.throws(
-        () => parseControlRequest('{"method":"agent.ping"}'),
+        () => parseControlEvalRequest('{"source":"return 1"}'),
         (error: unknown) =>
             error instanceof ControlProtocolError && error.code === 'ERR_CONTROL_BAD_REQUEST',
     );
 
     assert.throws(
-        () => parseControlRequest('{"id":"1"}'),
+        () => parseControlEvalRequest('{"id":"1"}'),
         (error: unknown) =>
             error instanceof ControlProtocolError &&
             error.code === 'ERR_CONTROL_BAD_REQUEST' &&
@@ -40,11 +42,12 @@ test('parseControlRequest rejects missing id or method', () => {
     );
 });
 
-test('encodeControlResponse returns a json string without newline', () => {
-    const encoded = encodeControlResponse({
+test('encodeControlEvalResponse returns a json string without newline', () => {
+    const encoded = encodeControlEvalResponse({
         id: '1',
         ok: true,
         result: { pong: true },
+        logs: [],
     });
 
     assert.equal(encoded.includes('\n'), false);
@@ -52,5 +55,6 @@ test('encodeControlResponse returns a json string without newline', () => {
         id: '1',
         ok: true,
         result: { pong: true },
+        logs: [],
     });
 });

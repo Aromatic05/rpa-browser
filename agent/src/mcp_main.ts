@@ -11,7 +11,7 @@ import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { getLogger, initLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
 import { createActionDispatcher } from './actions/dispatcher';
-import { createControlServer, registerControlShutdown, setControlActionDispatcher } from './control';
+import { createControlServer, registerControlShutdown } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 import { createPortAllocator } from './runtime/service/ports';
 import type { RunStepsDeps } from './runner/run_steps_types';
@@ -121,13 +121,26 @@ onPageBoundHook = (page, tabName) => {
 };
 onBindingClosedHook = (tabName) => { cleanupRecording(recordingState, tabName); };
 
-setControlActionDispatcher(
-    createActionDispatcher({
+const controlActionDispatcher = createActionDispatcher({
+    workspaceRegistry,
+    log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
+});
+const controlServer = createControlServer({
+    evalContext: {
+        deps: runStepsDeps,
         workspaceRegistry,
-        log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
-    }),
-);
-const controlServer = createControlServer({ deps: runStepsDeps });
+        config,
+        dispatch: async (action) => await controlActionDispatcher.dispatch(action),
+        resolveWorkspace: (workspaceName: string) => workspaceRegistry.getWorkspace(workspaceName),
+        checkpointProvider: (workspaceName: string) => {
+            const workspace = workspaceRegistry.getWorkspace(workspaceName);
+            if (!workspace) {
+                return undefined;
+            }
+            return workspace.checkpoint.getProvider(workspace.workflow);
+        },
+    },
+});
 registerControlShutdown(controlServer, logNotice);
 
 void (async () => {

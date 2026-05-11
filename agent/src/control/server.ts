@@ -1,14 +1,15 @@
-import { createControlRouter } from './router';
-import { ControlProtocolError, encodeControlResponse, parseControlRequest, type ControlResponse } from './protocol';
+import { runControlEval, type ControlEvalContextDeps } from './eval';
+import {
+    ControlProtocolError,
+    encodeControlEvalResponse,
+    parseControlEvalRequest,
+    type ControlEvalResponse,
+} from './protocol';
 import { createControlTransport } from './transport';
-import type { RunStepsDeps } from '../runner/run_steps';
-import type { DslCheckpointProvider } from '../dsl/emit';
 
 export type ControlServerOptions = {
     endpoint?: string;
-    deps: RunStepsDeps;
-    workspaceName?: string;
-    checkpointProvider?: DslCheckpointProvider;
+    evalContext: ControlEvalContextDeps;
 };
 
 export type ControlServer = {
@@ -17,13 +18,36 @@ export type ControlServer = {
     close(): Promise<void>;
 };
 
+const protocolErrorToResponse = (error: ControlProtocolError): ControlEvalResponse => ({
+    id: error.requestId || 'unknown',
+    ok: false,
+    logs: [],
+    error: {
+        code: error.code,
+        name: error.name || 'ControlProtocolError',
+        message: error.message,
+        stack: error.stack || `${error.name || 'ControlProtocolError'}: ${error.message}`,
+    },
+});
+
+const unknownErrorToResponse = (error: unknown): ControlEvalResponse => {
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error && error.stack ? error.stack : `Error: ${message}`;
+    return {
+        id: 'unknown',
+        ok: false,
+        logs: [],
+        error: {
+            code: 'ERR_CONTROL_BAD_REQUEST',
+            name: error instanceof Error ? error.name : 'Error',
+            message,
+            stack,
+        },
+    };
+};
+
 export const createControlServer = (options: ControlServerOptions): ControlServer => {
     const transport = createControlTransport(options.endpoint);
-    const router = createControlRouter({
-        deps: options.deps,
-        workspaceName: options.workspaceName,
-        checkpointProvider: options.checkpointProvider,
-    });
     let started = false;
     let closed = false;
     let closePromise: Promise<void> | null = null;
@@ -40,31 +64,17 @@ export const createControlServer = (options: ControlServerOptions): ControlServe
             await transport.listen((conn) => {
                 conn.onLine((line) => {
                     void (async () => {
-                        let response: ControlResponse;
+                        let response: ControlEvalResponse;
                         try {
-                            const request = parseControlRequest(line);
-                            response = await router.handle(request);
+                            const request = parseControlEvalRequest(line);
+                            response = await runControlEval(request, options.evalContext);
                         } catch (error) {
-                            const protocolError =
+                            response =
                                 error instanceof ControlProtocolError
-                                    ? error
-                                    : new ControlProtocolError(
-                                          'ERR_CONTROL_BAD_REQUEST',
-                                          error instanceof Error ? error.message : String(error),
-                                      );
-                            response = {
-                                id: protocolError.requestId || 'unknown',
-                                ok: false,
-                                error: {
-                                    code: protocolError.code,
-                                    message: protocolError.message,
-                                    ...(typeof protocolError.details === 'undefined'
-                                        ? {}
-                                        : { details: protocolError.details }),
-                                },
-                            };
+                                    ? protocolErrorToResponse(error)
+                                    : unknownErrorToResponse(error);
                         }
-                        conn.writeLine(`${encodeControlResponse(response)}\n`);
+                        conn.writeLine(`${encodeControlEvalResponse(response)}\n`);
                     })();
                 });
             });
