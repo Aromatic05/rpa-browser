@@ -39,6 +39,30 @@ const CUSTOM_SELECT_PENDING_WINDOW_MS = 1200;
 const normalizeSelector = (selector: string | undefined): string =>
     (selector || '').replace(/\s+/g, ' ').trim();
 
+const readExecutableLocatorSelector = (
+    binding: { snapshot: { locatorIndex?: Record<string, { direct?: { kind?: string; query?: string; fallback?: string } }> } },
+    nodeId: string | undefined,
+): string | undefined => {
+    if (!nodeId) {return undefined;}
+    const direct = binding.snapshot.locatorIndex?.[nodeId]?.direct;
+    if (!direct) {return undefined;}
+    const selector = direct.kind === 'role' ? direct.fallback : direct.query;
+    return normalizeSelector(selector) || undefined;
+};
+
+const readControlAnchorSelector = (
+    binding: {
+        snapshot: { locatorIndex?: Record<string, { direct?: { kind?: string; query?: string; fallback?: string } }> };
+        component: { rootNodeId?: string; controlNodeId?: string };
+    },
+    event: RecorderEvent,
+): string | undefined => {
+    return readExecutableLocatorSelector(binding, binding.component.rootNodeId)
+        || readExecutableLocatorSelector(binding, binding.component.controlNodeId)
+        || normalizeSelector(event.selector)
+        || event.selector;
+};
+
 const hasRoleCandidate = (event: RecorderEvent, role: string): boolean => {
     const expectedRole = role.trim();
     if (!expectedRole) {return false;}
@@ -167,11 +191,12 @@ const buildSelectOptionStep = (
     event: RecorderEvent,
     kind: SelectOptionKind,
     values: string[],
+    selector?: string,
 ): NormalizeHandledResult => {
     const step = context.createStep(
         'browser.select_option',
         {
-            selector: event.selector,
+            selector: selector ?? event.selector,
             kind,
             values,
         },
@@ -538,10 +563,12 @@ export const normalizeSelectOption = async (
         const value = readOptionRecordedValue(option);
         if (!value) {return { status: 'pass' };}
 
-        const result = buildSelectOptionStep(context, event, 'radio_group', [value]);
+        const selector = readControlAnchorSelector(binding, event);
+        const result = buildSelectOptionStep(context, event, 'radio_group', [value], selector);
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
             selector: event.selector,
+            controlAnchorSelector: selector,
             result: 'handled',
             reason: 'radio_group',
             componentKind: binding.componentKind,
@@ -567,7 +594,7 @@ export const normalizeSelectOption = async (
             controlRef: binding.controlRef,
             workspaceName: context.workspaceName,
             tabName: context.tabName,
-            selector: event.selector,
+            selector: readControlAnchorSelector(binding, event),
             resolve: context.buildResolveFromEvent(event),
             values,
             lastEvent: event,
@@ -578,6 +605,7 @@ export const normalizeSelectOption = async (
         recordLog('record_select_option_normalizer', {
             eventType: event.type,
             selector: event.selector,
+            controlAnchorSelector: session.selector,
             result: 'pending',
             reason: 'checkbox_group_session',
             componentKind: binding.componentKind,
