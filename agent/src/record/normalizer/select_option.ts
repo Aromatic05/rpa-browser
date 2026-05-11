@@ -39,6 +39,9 @@ const CUSTOM_SELECT_PENDING_WINDOW_MS = 1200;
 const normalizeSelector = (selector: string | undefined): string =>
     (selector || '').replace(/\s+/g, ' ').trim();
 
+const isNativeSelectClickEvent = (event: RecorderEvent): boolean =>
+    event.type === 'click' && String(event.targetHint || '').trim().toLowerCase() === 'select';
+
 const readExecutableLocatorSelector = (
     binding: { snapshot: { locatorIndex?: Record<string, { direct?: { kind?: string; query?: string; fallback?: string } }> } },
     nodeId: string | undefined,
@@ -146,6 +149,27 @@ const writeSuppressedClicks = (state: RecordingState, recordingToken: string, en
         return;
     }
     state.pendingSuppressedClicks.set(recordingToken, entries);
+};
+
+const deletePendingCustomSelectBySelector = (
+    state: RecordingState,
+    recordingToken: string,
+    tabName: string,
+    selector: string,
+): void => {
+    const normalizedSelector = normalizeSelector(selector);
+    if (!normalizedSelector) {return;}
+    const sessions = state.pendingChoiceEvents.get(recordingToken);
+    if (!sessions) {return;}
+    for (const session of Array.from(sessions.values())) {
+        if (session.kind !== 'custom_select') {continue;}
+        if (session.tabName !== tabName) {continue;}
+        if (normalizeSelector(session.selector) !== normalizedSelector) {continue;}
+        sessions.delete(session.sessionKey);
+    }
+    if (sessions.size === 0) {
+        state.pendingChoiceEvents.delete(recordingToken);
+    }
 };
 
 const consumeSuppressedNativeSelectClick = (context: NormalizeContext, event: RecorderEvent): boolean => {
@@ -312,8 +336,20 @@ export const normalizeSelectOption = async (
         });
     }
 
+    if (isNativeSelectClickEvent(event)) {
+        recordLog('record_select_option_normalizer', {
+            eventType: event.type,
+            selector: event.selector,
+            result: 'pending',
+            reason: 'native_select_click_absorb',
+            values: [],
+        });
+        return { status: 'pending' };
+    }
+
     if (event.type === 'select' && typeof event.selector === 'string' && event.selector.trim() && typeof event.value === 'string') {
         markSuppressedNativeSelectClick(context, event);
+        deletePendingCustomSelectBySelector(context.state, context.recordingToken, context.tabName, event.selector || '');
         recordLog('record_select_suppress_write', {
             tabName: context.tabName,
             selector: event.selector,
@@ -518,6 +554,7 @@ export const normalizeSelectOption = async (
         }
 
         markSuppressedNativeSelectClick(context, event);
+        deletePendingCustomSelectBySelector(context.state, context.recordingToken, context.tabName, event.selector || '');
         recordLog('record_select_suppress_write', {
             tabName: context.tabName,
             selector: event.selector,

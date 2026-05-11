@@ -1,9 +1,10 @@
 import { awaitPageBoundBinding } from '../../helpers/runtime_binding';
 import type { Step, StepResult } from '../../types';
 import type { RunStepsDeps } from '../../../run_steps';
+import { getLogger } from '../../../../logging/logger';
 import type { SelectOptionControl, SelectOptionOption } from './types';
 import { matchOption, matchOptions } from './option_match';
-import { badArgs, assertionFailed, isStepResult } from './assert';
+import { ambiguous, badArgs, assertionFailed, isStepResult, notFound } from './assert';
 import type { SnapshotResult } from '../snapshot/core/types';
 import { generateSemanticSnapshot } from '../snapshot/pipeline/snapshot';
 
@@ -42,6 +43,51 @@ const clickNode = async (
             code: click.error?.code ?? 'ERR_INTERNAL',
             message: click.error?.message ?? 'click failed',
         };
+    }
+    return undefined;
+};
+
+const readCheckedNodeIds = async (
+    binding: Binding,
+    stepId: string,
+    snapshot: SnapshotResult,
+    options: SelectOptionOption[],
+): Promise<Set<string> | StepResult> => {
+    const checkedNodeIds = new Set<string>();
+    for (const option of options) {
+        const selector = resolveNodeSelector(snapshot, option.nodeId);
+        if (!selector) {
+            return notFound(stepId, 'no selector for checkbox option', {
+                nodeId: option.nodeId,
+            });
+        }
+        const checked = await binding.page.locator(selector).isChecked();
+        if (checked) {
+            checkedNodeIds.add(option.nodeId);
+        }
+    }
+    return checkedNodeIds;
+};
+
+const readValuesByNodeIds = (
+    options: SelectOptionOption[],
+    nodeIds: Set<string>,
+): { values: string[]; labels: string[] } => {
+    const values: string[] = [];
+    const labels: string[] = [];
+    for (const option of options) {
+        if (!nodeIds.has(option.nodeId)) {continue;}
+        values.push(option.value);
+        labels.push(option.label);
+    }
+    return { values, labels };
+};
+
+const findDuplicateNodeId = (nodeIds: string[]): string | undefined => {
+    const seen = new Set<string>();
+    for (const nodeId of nodeIds) {
+        if (seen.has(nodeId)) {return nodeId;}
+        seen.add(nodeId);
     }
     return undefined;
 };
@@ -125,6 +171,7 @@ export const executeCheckboxGroup = async (
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
     const timeout = deps.config.waitPolicy.visibleTimeoutMs;
+    const stepLog = getLogger('step');
 
     const options = toSelectOptions(control.component);
     const targetValues = step.args.values;
@@ -132,12 +179,26 @@ export const executeCheckboxGroup = async (
     const matchResults = matchOptions(step.id, options, targetValues);
     if (isStepResult(matchResults)) {return matchResults;}
 
-    const targetNodeIds = new Set<string>(
-        matchResults.map((r) => r.option.nodeId),
-    );
-    const currentSelectedNodeIds = new Set<string>(
-        options.filter((o) => o.selected).map((o) => o.nodeId),
-    );
+    const matchedTargetNodeIds = matchResults.map((result) => result.option.nodeId);
+    const duplicateNodeId = findDuplicateNodeId(matchedTargetNodeIds);
+    if (duplicateNodeId) {
+        return ambiguous(step.id, 'multiple target values matched the same checkbox option', {
+            values: targetValues,
+            nodeId: duplicateNodeId,
+        });
+    }
+
+    const targetNodeIds = new Set<string>(matchedTargetNodeIds);
+    const currentSnapshot = await generateSemanticSnapshot(binding.page);
+    const currentSelectedNodeIds = await readCheckedNodeIds(binding, step.id, currentSnapshot, options);
+    if (isStepResult(currentSelectedNodeIds)) {return currentSelectedNodeIds;}
+
+    stepLog.debug('select_option_checkbox_current_state', {
+        stepId: step.id,
+        controlRef: control.ref,
+        selectedNodeIds: [...currentSelectedNodeIds],
+        targetOptionNodeIds: [...targetNodeIds],
+    });
 
     const toCheck: string[] = [];
     const toUncheck: string[] = [];
@@ -153,13 +214,17 @@ export const executeCheckboxGroup = async (
         }
     }
 
-    const snapshot = await generateSemanticSnapshot(binding.page);
+    stepLog.debug('select_option_checkbox_diff', {
+        stepId: step.id,
+        controlRef: control.ref,
+        toCheckNodeIds: toCheck,
+        toUncheckNodeIds: toUncheck,
+    });
 
-    // Check missing items
     for (const nodeId of toCheck) {
-        const sel = resolveNodeSelector(snapshot, nodeId);
+        const sel = resolveNodeSelector(currentSnapshot, nodeId);
         if (!sel) {
-            return assertionFailed(step.id, 'no selector for checkbox option', { nodeId });
+            return notFound(step.id, 'no selector for checkbox option', { nodeId });
         }
         const err = await clickNode(binding, sel, timeout);
         if (err) {
@@ -167,11 +232,10 @@ export const executeCheckboxGroup = async (
         }
     }
 
-    // Uncheck extra items
     for (const nodeId of toUncheck) {
-        const sel = resolveNodeSelector(snapshot, nodeId);
+        const sel = resolveNodeSelector(currentSnapshot, nodeId);
         if (!sel) {
-            return assertionFailed(step.id, 'no selector for checkbox option', { nodeId });
+            return notFound(step.id, 'no selector for checkbox option', { nodeId });
         }
         const err = await clickNode(binding, sel, timeout);
         if (err) {
@@ -180,27 +244,26 @@ export const executeCheckboxGroup = async (
     }
 
     const finalSnapshot = await generateSemanticSnapshot(binding.page);
-    const page = binding.page;
+    const finalSelectedNodeIds = await readCheckedNodeIds(binding, step.id, finalSnapshot, options);
+    if (isStepResult(finalSelectedNodeIds)) {return finalSelectedNodeIds;}
 
-    const checkedNodeIds = new Set<string>();
-    for (const opt of options) {
-        const sel = resolveNodeSelector(finalSnapshot, opt.nodeId);
-        if (!sel) {continue;}
-        const checked = await page.locator(sel).isChecked();
-        if (checked) {
-            checkedNodeIds.add(opt.nodeId);
-        }
-    }
+    const finalSelected = readValuesByNodeIds(options, finalSelectedNodeIds);
+    stepLog.debug('select_option_checkbox_final_state', {
+        stepId: step.id,
+        controlRef: control.ref,
+        finalSelectedOptionNodeIds: [...finalSelectedNodeIds],
+    });
 
-    if (!nodeIdSetsEqual(checkedNodeIds, targetNodeIds)) {
-        const checkedValues = options
-            .filter((o) => checkedNodeIds.has(o.nodeId))
-            .map((o) => o.value);
+    if (!nodeIdSetsEqual(finalSelectedNodeIds, targetNodeIds)) {
         const targetValuesMatched = matchResults.map((r) => r.option.value);
         return assertionFailed(step.id, 'checkbox group final set does not match target', {
             expected: targetValuesMatched,
-            selectedValues: checkedValues,
-            selectedLabels: [],
+            selectedValues: finalSelected.values,
+            selectedLabels: finalSelected.labels,
+            targetOptionNodeIds: [...targetNodeIds],
+            finalSelectedOptionNodeIds: [...finalSelectedNodeIds],
+            toCheckNodeIds: toCheck,
+            toUncheckNodeIds: toUncheck,
         });
     }
 
