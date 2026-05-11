@@ -145,3 +145,60 @@ export const resolveChoiceGroupControl = (input: ResolveControlInput): SelectOpt
 
     return matchedControls[0];
 };
+
+export const resolveCustomSelectControl = (input: ResolveControlInput): SelectOptionControl | StepResult => {
+    const { snapshot, stepArgs } = input;
+    if (stepArgs.kind !== 'custom_select') {
+        return badArgs(input.stepId, 'custom_select control resolution only supports custom_select', {
+            kind: stepArgs.kind,
+        });
+    }
+
+    if (!snapshot.controlIndex) {
+        return notFound(input.stepId, 'snapshot missing controlIndex', {
+            kind: stepArgs.kind,
+            values: stepArgs.values,
+            matchedControlCount: 0,
+            matchedControlRefs: [],
+            candidateCount: input.candidateCount ?? 0,
+        });
+    }
+
+    const candidateControls: SelectOptionControl[] = [];
+    const valueMatchedControls: SelectOptionControl[] = [];
+
+    for (const [controlRef, component] of Object.entries(snapshot.controlIndex)) {
+        if (component.owner !== 'browser.select_option') {continue;}
+        if (!component.capabilities.includes('select_option')) {continue;}
+        if (component.kind !== 'custom_select') {continue;}
+
+        const control: SelectOptionControl = { kind: 'custom_select', ref: controlRef, component };
+        candidateControls.push(control);
+
+        const options = toSelectOptions(component)
+            .filter((option) => component.optionNodeIds.includes(option.nodeId));
+        if (!options.length) {continue;}
+        const matchResult = matchOptions(input.stepId, options, stepArgs.values);
+        if (isStepResult(matchResult)) {continue;}
+        valueMatchedControls.push(control);
+    }
+
+    const matchedControls = valueMatchedControls.length > 0 ? valueMatchedControls : candidateControls;
+    const details = {
+        kind: stepArgs.kind,
+        values: stepArgs.values,
+        matchedControlCount: matchedControls.length,
+        matchedControlRefs: matchedControls.map((control) => control.ref),
+        candidateCount: candidateControls.length,
+    };
+
+    if (matchedControls.length === 0) {
+        return notFound(input.stepId, 'custom_select control not found', details);
+    }
+
+    if (matchedControls.length > 1) {
+        return ambiguous(input.stepId, 'multiple custom_select controls matched', details);
+    }
+
+    return matchedControls[0];
+};

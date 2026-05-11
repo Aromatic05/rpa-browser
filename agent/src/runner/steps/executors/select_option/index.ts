@@ -9,7 +9,7 @@ import { resolveTarget } from '../../helpers/resolve_target';
 import { generateSemanticSnapshot } from '../snapshot/pipeline/snapshot';
 import type { SelectOptionControl } from './types';
 import { badArgs, isStepResult } from './assert';
-import { resolveChoiceGroupControl, resolveSelectOptionControl } from './resolve_control';
+import { resolveChoiceGroupControl, resolveCustomSelectControl, resolveSelectOptionControl } from './resolve_control';
 import { executeNativeSelect } from './native_select';
 import { executeRadioGroup, executeCheckboxGroup } from './choice_group';
 import { executeCustomSelect } from './custom_select';
@@ -81,6 +81,7 @@ const executeResolvedControl = async (
     workspaceName: string,
     control: SelectOptionControl,
     snapshot: SnapshotResult,
+    anchorSelector?: string,
 ): Promise<StepResult> => {
     switch (step.args.kind) {
         case 'native_select':
@@ -90,7 +91,7 @@ const executeResolvedControl = async (
         case 'checkbox_group':
             return await executeCheckboxGroup(step, deps, workspaceName, control);
         case 'custom_select':
-            return await executeCustomSelect(step, deps, workspaceName, control);
+            return await executeCustomSelect(step, deps, workspaceName, control, anchorSelector);
         default:
             return {
                 stepId: step.id,
@@ -225,13 +226,34 @@ export const executeBrowserSelectOption = async (
             snapshot,
             candidateCount: resolved.target.candidates.length,
         });
-        if (isStepResult(controlResult)) {
-            lastError = controlResult.error;
+        let control: SelectOptionControl | StepResult = controlResult;
+        if (isStepResult(controlResult) && step.args.kind === 'custom_select') {
+            stepLog.debug('select_option_custom_control_anchor_miss', {
+                stepId: step.id,
+                values: step.args.values,
+                errorCode: controlResult.error?.code,
+            });
+            control = resolveCustomSelectControl({
+                stepId: step.id,
+                stepArgs: step.args,
+                targetNode,
+                snapshot,
+                candidateCount: resolved.target.candidates.length,
+            });
+        }
+        if (isStepResult(control)) {
+            lastError = control.error;
             continue;
         }
-        const control = controlResult;
 
-        const execResult = await executeResolvedControl(step, deps, workspaceName, control, snapshot);
+        const execResult = await executeResolvedControl(
+            step,
+            deps,
+            workspaceName,
+            control,
+            snapshot,
+            step.args.kind === 'custom_select' ? step.args.selector : candidate.selector,
+        );
 
         if (!execResult.ok) {
             lastError = execResult.error;
