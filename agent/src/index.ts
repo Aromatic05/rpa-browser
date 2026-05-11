@@ -217,7 +217,22 @@ const actionWsClient = startActionWsClient({
 });
 broadcast = actionWsClient.broadcastAction;
 
-const controlServer = createControlServer({ deps: runStepsDeps });
+const controlServer = createControlServer({
+    evalContext: {
+        deps: runStepsDeps,
+        workspaceRegistry,
+        config,
+        dispatch: async (action) => await actionDispatcher.dispatch(action),
+        resolveWorkspace: (workspaceName: string) => workspaceRegistry.getWorkspace(workspaceName),
+        checkpointProvider: (workspaceName: string) => {
+            const workspace = workspaceRegistry.getWorkspace(workspaceName);
+            if (!workspace) {
+                return undefined;
+            }
+            return workspace.checkpoint.getProvider(workspace.workflow);
+        },
+    },
+});
 registerControlShutdown(controlServer, log);
 
 (async () => {

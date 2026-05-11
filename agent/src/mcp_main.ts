@@ -121,7 +121,26 @@ onPageBoundHook = (page, tabName) => {
 };
 onBindingClosedHook = (tabName) => { cleanupRecording(recordingState, tabName); };
 
-const controlServer = createControlServer({ deps: runStepsDeps });
+const controlActionDispatcher = createActionDispatcher({
+    workspaceRegistry,
+    log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
+});
+const controlServer = createControlServer({
+    evalContext: {
+        deps: runStepsDeps,
+        workspaceRegistry,
+        config,
+        dispatch: async (action) => await controlActionDispatcher.dispatch(action),
+        resolveWorkspace: (workspaceName: string) => workspaceRegistry.getWorkspace(workspaceName),
+        checkpointProvider: (workspaceName: string) => {
+            const workspace = workspaceRegistry.getWorkspace(workspaceName);
+            if (!workspace) {
+                return undefined;
+            }
+            return workspace.checkpoint.getProvider(workspace.workflow);
+        },
+    },
+});
 registerControlShutdown(controlServer, logNotice);
 
 void (async () => {
