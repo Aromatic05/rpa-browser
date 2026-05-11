@@ -22,7 +22,7 @@
         "test:integration:run": "pnpm test:runner:bundle && pnpm -C .. build:extension && node --import tsx --test --test-concurrency=1 \"tests/integration/**/*.test.ts\"",
         "test:integration": "RPA_INTEGRATION_HEADED=false pnpm test:integration:run",
         "test:integration:headed": "RPA_INTEGRATION_HEADED=true pnpm test:integration:run",
-        "test:e2e": "playwright test tests/e2e --pass-with-no-tests",
+        "test:e2e": "RPA_E2E_HEADED=0 pnpm test:e2e:run",
         "test:runner": "node --import tsx --test \"tests/integration/runner/**/*.test.ts\"",
         "test:trace": "node --import tsx --test \"tests/integration/trace/**/*.test.ts\"",
         "test:entity-rules": "node --import tsx --test \"tests/integration/entity_rules/**/*.test.ts\"",
@@ -37,7 +37,9 @@
         "typecheck": "tsc --noEmit",
         "pw:install": "pnpm exec playwright install chromium",
         "test": "pnpm test:all",
-        "test:headed": "playwright test tests/e2e --pass-with-no-tests --headed"
+        "test:headed": "playwright test tests/e2e --pass-with-no-tests --headed",
+        "test:e2e:run": "pnpm test:runner:bundle && pnpm -C .. build:extension && playwright test tests/e2e",
+        "test:e2e:headed": "RPA_E2E_HEADED=1 pnpm test:e2e:run --headed"
     },
     "dependencies": {
         "@axe-core/playwright": "^4.10.2",
