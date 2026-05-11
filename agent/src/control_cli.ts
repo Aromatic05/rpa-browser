@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { sendControlEval } from './control/client';
+import { sendControlEval, type ControlClientOptions } from './control/client';
+import type { ControlEvalRequest } from './control/protocol';
 
 const usage = `Usage:
   pnpm -C agent control --source <js> [--workspace <id>] [--input <json>] [--endpoint <endpoint>] [--timeout-ms <ms>]
@@ -28,9 +31,17 @@ const parseTimeout = (raw?: string): number | undefined => {
     return timeoutMs;
 };
 
-const main = async () => {
+export type ParsedControlEvalCli =
+    | { help: true }
+    | {
+          help: false;
+          request: Omit<ControlEvalRequest, 'id'>;
+          options: ControlClientOptions;
+      };
+
+export const parseControlEvalCli = async (argv: string[]): Promise<ParsedControlEvalCli> => {
     const parsed = parseArgs({
-        args: process.argv.slice(2),
+        args: argv,
         allowPositionals: false,
         options: {
             source: { type: 'string' },
@@ -44,8 +55,7 @@ const main = async () => {
     });
 
     if (parsed.values.help) {
-        console.log(usage);
-        return;
+        return { help: true };
     }
 
     const inlineSource = parsed.values.source;
@@ -54,22 +64,31 @@ const main = async () => {
         throw new Error('control eval requires exactly one of --source or --file');
     }
 
+    const timeoutMs = parseTimeout(parsed.values['timeout-ms']);
     const source = typeof inlineSource === 'string' ? inlineSource : await fs.readFile(String(file), 'utf8');
-    const response = await sendControlEval(
-        {
+    return {
+        help: false,
+        request: {
             source,
             ...(typeof parsed.values.workspace === 'string' ? { workspaceName: parsed.values.workspace } : {}),
             ...(typeof parsed.values.input === 'string' ? { input: parseJson('input', parsed.values.input) } : {}),
-            ...(typeof parsed.values['timeout-ms'] === 'string'
-                ? { timeoutMs: parseTimeout(parsed.values['timeout-ms']) }
-                : {}),
+            ...(typeof timeoutMs === 'number' ? { timeoutMs } : {}),
         },
-        {
+        options: {
             endpoint: typeof parsed.values.endpoint === 'string' ? parsed.values.endpoint : undefined,
-            timeoutMs: parseTimeout(parsed.values['timeout-ms']),
+            timeoutMs,
         },
-    );
+    };
+};
 
+const main = async () => {
+    const parsed = await parseControlEvalCli(process.argv.slice(2));
+    if (parsed.help) {
+        console.log(usage);
+        return;
+    }
+
+    const response = await sendControlEval(parsed.request, parsed.options);
     const output = JSON.stringify(response, null, 2);
     if (response.ok) {
         console.log(output);
@@ -79,8 +98,20 @@ const main = async () => {
     process.exitCode = 1;
 };
 
-void main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    console.error(usage);
-    process.exitCode = 1;
-});
+const maybeMain = () => {
+    const entry = process.argv[1];
+    if (!entry) {
+        return;
+    }
+    const currentFile = fileURLToPath(import.meta.url);
+    if (path.resolve(entry) !== path.resolve(currentFile)) {
+        return;
+    }
+    void main().catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        console.error(usage);
+        process.exitCode = 1;
+    });
+};
+
+maybeMain();

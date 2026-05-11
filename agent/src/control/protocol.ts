@@ -78,7 +78,7 @@ export const parseControlEvalRequest = (line: string): ControlEvalRequest => {
         source: parsed.source,
         ...(Object.prototype.hasOwnProperty.call(parsed, 'timeoutMs') ? { timeoutMs: Number(parsed.timeoutMs) } : {}),
         ...(Object.prototype.hasOwnProperty.call(parsed, 'workspaceName')
-            ? { workspaceName: parsed.workspaceName }
+            ? { workspaceName: parsed.workspaceName as string }
             : {}),
         ...(Object.prototype.hasOwnProperty.call(parsed, 'input') ? { input: parsed.input } : {}),
     };
