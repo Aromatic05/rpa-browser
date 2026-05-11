@@ -105,14 +105,24 @@ const collectMatchedNodeIds = (
     }
 
     const roleHint = normalize(event.a11yHint?.role);
+    const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
+    const roleCandidateHint = (() => {
+        for (const candidate of candidates) {
+            if (!candidate || candidate.kind !== 'role') {continue;}
+            const role = normalize(candidate.role);
+            if (role) {return role;}
+        }
+        return '';
+    })();
+    const preferredRole = roleHint || roleCandidateHint;
     const nameHint = normalize(event.a11yHint?.name || event.a11yHint?.text);
-    if (roleHint && nameHint) {
+    if (preferredRole && nameHint) {
         const roleMatched: string[] = [];
         for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
             const nodeRole = normalize(node.role);
             const nodeName = normalize(node.name);
             if (!nodeRole || !nodeName) {continue;}
-            if (nodeRole === roleHint && nodeName.includes(nameHint)) {
+            if (nodeRole === preferredRole && nodeName.includes(nameHint)) {
                 roleMatched.push(nodeId);
             }
         }
@@ -120,8 +130,6 @@ const collectMatchedNodeIds = (
             return [{ nodeId: roleMatched[0], matchedBy: 'hint.role_name' }];
         }
     }
-
-    const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
     for (const candidate of candidates) {
         if (!candidate || typeof candidate.kind !== 'string') {continue;}
         if (candidate.kind === 'role') {
@@ -148,6 +156,10 @@ const collectMatchedNodeIds = (
             if (!textNeedle) {continue;}
             const textMatched: string[] = [];
             for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
+                if (preferredRole) {
+                    const nodeRole = normalize(node.role);
+                    if (!nodeRole || nodeRole !== preferredRole) {continue;}
+                }
                 const nodeName = normalize(node.name);
                 if (!nodeName) {continue;}
                 const nameOk = candidate.exact === true ? nodeName === textNeedle : nodeName.includes(textNeedle);
@@ -385,6 +397,7 @@ export const resolveRecordTargetBinding = async (input: {
                 matchedNodeCount: matched.length,
                 targetNodeId,
                 controlRef: nodeControlRef,
+                componentKind: component.kind,
             });
             return undefined;
         }

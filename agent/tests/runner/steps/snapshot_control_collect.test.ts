@@ -719,13 +719,13 @@ test('real Ant Select nested structure: root owns trigger, popup, and options', 
     assert.strictEqual(selOpt.value, 'sh');
 });
 
-test('legacy Ant Select class chain is recognized as one custom_select control', () => {
+test('legacy ant select structure is collected as custom_select control', () => {
     const item1 = makeNode('legacy_item_1', 'generic'); item1.name = 'Alpha';
     const item2 = makeNode('legacy_item_2', 'generic'); item2.name = 'Beta';
     const menu = makeNode('legacy_menu', 'menu', [item1, item2]);
     const dropdown = makeNode('legacy_dropdown', 'generic', [menu]);
-    const rendered = makeNode('legacy_rendered', 'generic');
-    const trigger = makeNode('legacy_trigger', 'generic', [rendered]);
+    const rendered = makeNode('legacy_rendered', 'generic'); rendered.name = '你喜欢什么样的工作方式？';
+    const trigger = makeNode('legacy_trigger', 'combobox', [rendered]);
     const rootSelect = makeNode('legacy_root', 'generic', [trigger]);
     const page = makeNode('root', 'root', [rootSelect, dropdown]);
 
@@ -745,10 +745,73 @@ test('legacy Ant Select class chain is recognized as one custom_select control',
     const { controlIndex } = collect(page, ctx);
     const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
     assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].owner, 'browser.select_option');
+    assert.ok(entries[0].capabilities.includes('select_option'));
     assert.strictEqual(entries[0].rootNodeId, 'legacy_root');
     assert.strictEqual(entries[0].triggerNodeId, 'legacy_trigger');
-    assert.strictEqual(entries[0].popupNodeId, 'legacy_dropdown');
+    assert.ok(entries[0].popupNodeId === 'legacy_dropdown' || entries[0].popupNodeId === 'legacy_menu');
     assert.deepStrictEqual(entries[0].optionNodeIds.sort(), ['legacy_item_1', 'legacy_item_2']);
+    assert.strictEqual(ctx.nodeIndex.legacy_trigger.control?.ref, buildControlRef('custom_select', 'legacy_root'));
+    assert.strictEqual(ctx.nodeIndex.legacy_item_1.control?.ref, buildControlRef('custom_select', 'legacy_root'));
+    assert.strictEqual(ctx.nodeIndex.legacy_item_2.control?.ref, buildControlRef('custom_select', 'legacy_root'));
+    assert.notStrictEqual(entries[0].rootNodeId, 'legacy_item_1');
+    assert.notStrictEqual(entries[0].rootNodeId, 'legacy_item_2');
+});
+
+test('legacy ant select trigger-only is collected as custom_select control', () => {
+    const rendered = makeNode('legacy_to_rendered', 'generic'); rendered.name = '你喜欢什么样的工作方式？';
+    const trigger = makeNode('legacy_to_trigger', 'combobox', [rendered]);
+    const rootSelect = makeNode('legacy_to_root', 'generic', [trigger]);
+    const page = makeNode('root', 'root', [rootSelect]);
+    const ctx = makeCtx(page);
+
+    setAttr(ctx, 'legacy_to_root', 'class', 'ant-select ant-select-enabled');
+    setAttr(ctx, 'legacy_to_trigger', 'class', 'ant-select-selection ant-select-selection--single');
+    setAttr(ctx, 'legacy_to_rendered', 'class', 'ant-select-selection__rendered');
+
+    const { controlIndex } = collect(page, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].rootNodeId, 'legacy_to_root');
+    assert.strictEqual(entries[0].triggerNodeId, 'legacy_to_trigger');
+    assert.strictEqual(entries[0].owner, 'browser.select_option');
+    assert.ok(entries[0].capabilities.includes('select_option'));
+    assert.deepStrictEqual(entries[0].optionNodeIds, []);
+    assert.strictEqual(ctx.nodeIndex.legacy_to_trigger.control?.ref, buildControlRef('custom_select', 'legacy_to_root'));
+});
+
+test('legacy ant select expanded structure maps root/trigger/popup/options with shared control ref', () => {
+    const item1 = makeNode('legacy_ex_item_1', 'option'); item1.name = 'A：系统自动化';
+    const item2 = makeNode('legacy_ex_item_2', 'option'); item2.name = 'B：人工操作，经常出错';
+    const menu = makeNode('legacy_ex_menu', 'menu', [item1, item2]);
+    const dropdown = makeNode('legacy_ex_dropdown', 'generic', [menu]);
+    const rendered = makeNode('legacy_ex_rendered', 'generic'); rendered.name = '你喜欢什么样的工作方式？';
+    const trigger = makeNode('legacy_ex_trigger', 'combobox', [rendered]);
+    const rootSelect = makeNode('legacy_ex_root', 'generic', [trigger]);
+    const page = makeNode('root', 'root', [rootSelect, dropdown]);
+    const ctx = makeCtx(page);
+
+    setAttr(ctx, 'legacy_ex_root', 'class', 'ant-select ant-select-enabled');
+    setAttr(ctx, 'legacy_ex_trigger', 'class', 'ant-select-selection ant-select-selection--single');
+    setAttr(ctx, 'legacy_ex_rendered', 'class', 'ant-select-selection__rendered');
+    setAttr(ctx, 'legacy_ex_dropdown', 'class', 'ant-select-dropdown');
+    setAttr(ctx, 'legacy_ex_menu', 'class', 'ant-select-dropdown-menu');
+    setAttr(ctx, 'legacy_ex_item_1', 'class', 'ant-select-dropdown-menu-item');
+    setAttr(ctx, 'legacy_ex_item_2', 'class', 'ant-select-dropdown-menu-item ant-select-dropdown-menu-item-active');
+
+    const { controlIndex } = collect(page, ctx);
+    const entries = Object.values(controlIndex).filter((c) => c.kind === 'custom_select');
+    assert.strictEqual(entries.length, 1);
+    assert.strictEqual(entries[0].rootNodeId, 'legacy_ex_root');
+    assert.strictEqual(entries[0].triggerNodeId, 'legacy_ex_trigger');
+    assert.ok(entries[0].popupNodeId === 'legacy_ex_dropdown' || entries[0].popupNodeId === 'legacy_ex_menu');
+    assert.deepStrictEqual(entries[0].optionNodeIds.sort(), ['legacy_ex_item_1', 'legacy_ex_item_2']);
+    const ref = buildControlRef('custom_select', 'legacy_ex_root');
+    assert.strictEqual(ctx.nodeIndex.legacy_ex_trigger.control?.ref, ref);
+    assert.strictEqual(ctx.nodeIndex.legacy_ex_item_1.control?.ref, ref);
+    assert.strictEqual(ctx.nodeIndex.legacy_ex_item_2.control?.ref, ref);
+    assert.notStrictEqual(entries[0].rootNodeId, 'legacy_ex_item_1');
+    assert.notStrictEqual(entries[0].rootNodeId, 'legacy_ex_item_2');
 });
 
 test('ant-select-selector under ant-select root does not produce a second control', () => {

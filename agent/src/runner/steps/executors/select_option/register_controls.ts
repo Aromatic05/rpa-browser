@@ -305,11 +305,13 @@ const collectCustomSelect: ControlCollector = (ctx) => {
 
     const pushComponent = (
         rootNode: UnifiedNode,
-        popupNodeId: string,
+        popupNodeId: string | undefined,
         options: OptionEntry[],
         triggerNodeId?: string,
     ) => {
-        consumedPopupIds.add(popupNodeId);
+        if (popupNodeId) {
+            consumedPopupIds.add(popupNodeId);
+        }
         components.push(buildCustomSelectComponent(rootNode, popupNodeId, options, ctx, triggerNodeId));
     };
 
@@ -334,13 +336,17 @@ const collectCustomSelect: ControlCollector = (ctx) => {
                     }
                 }
             }
-            if (!popupNodeId) {return;}
-            if (consumedPopupIds.has(popupNodeId)) {return;}
-            const options = collectPopupOptions(ctx, popupNodeId);
-            if (options.length === 0) {return;}
-            comboboxRootIds.add(node.id);
-            pushComponent(node, popupNodeId, options);
-            return;
+            if (popupNodeId) {
+                if (consumedPopupIds.has(popupNodeId)) {return;}
+                const options = collectPopupOptions(ctx, popupNodeId);
+                if (options.length > 0) {
+                    comboboxRootIds.add(node.id);
+                    pushComponent(node, popupNodeId, options);
+                    return;
+                }
+            }
+            // No popup/options under fresh snapshot: fall through to Ant auxiliary path
+            // so legacy trigger-only structure can still produce a custom_select control.
         }
 
         // Auxiliary path: Ant Select class signals
@@ -367,17 +373,21 @@ const collectCustomSelect: ControlCollector = (ctx) => {
         if (hasAntSelectRoot) {
             rootNode = node;
             triggerNodeId = hasAntSelectTrigger ? node.id
-                : findDescendantByClass(node, [...ANT_SELECT_TRIGGER_CLASSES, ...ANT_SELECT_TRIGGER_SUBTREE_SIGNALS], ctx);
+                : findAntSelectTriggerDescendant(node, ctx);
+        } else if (hasAntSelectTrigger) {
+            // Legacy snapshots may only retain ant-select-selection without ant-select root.
+            // Treat this node as both root and trigger for trigger-only custom_select component.
+            triggerNodeId = node.id;
         }
 
         // Don't duplicate a combobox that was already handled
         if (comboboxRootIds.has(rootNode.id)) {return;}
 
         const popupNodeId = findAntSelectPopup(node, domIdMap, ctx);
-        if (!popupNodeId) {return;}
-        if (consumedPopupIds.has(popupNodeId)) {return;}
-        const options = collectAntSelectOptions(ctx, popupNodeId);
-        if (options.length === 0) {return;}
+        if (popupNodeId && consumedPopupIds.has(popupNodeId)) {return;}
+        const options = popupNodeId ? collectAntSelectOptions(ctx, popupNodeId) : [];
+        // Trigger-only control support for legacy Ant Select.
+        if (!triggerNodeId && options.length === 0) {return;}
         pushComponent(rootNode, popupNodeId, options, triggerNodeId);
     });
     return components;
@@ -385,7 +395,7 @@ const collectCustomSelect: ControlCollector = (ctx) => {
 
 const buildCustomSelectComponent = (
     node: UnifiedNode,
-    popupNodeId: string,
+    popupNodeId: string | undefined,
     options: OptionEntry[],
     ctx: ControlCollectContext,
     triggerNodeId?: string,
@@ -399,7 +409,7 @@ const buildCustomSelectComponent = (
     rootNodeId: node.id,
     controlNodeId: node.id,
     triggerNodeId,
-    popupNodeId,
+    popupNodeId: popupNodeId || undefined,
     optionNodeIds: options.map((opt) => opt.nodeId),
     state: {
         expanded: readAttrLower(ctx, node, 'aria-expanded') === 'true',
@@ -447,12 +457,18 @@ const findAntSelectPopup = (
         if (nodeId && ctx.nodeIndex[nodeId]) {return nodeId;}
     }
 
+    // Prefer legacy menu container when present.
+    for (const [nodeId, node] of Object.entries(ctx.nodeIndex)) {
+        const cls = readAttrLower(ctx, node, 'class') || '';
+        if (hasClassToken(cls, 'ant-select-dropdown-menu')) {
+            return nodeId;
+        }
+    }
+
     for (const [nodeId, node] of Object.entries(ctx.nodeIndex)) {
         const cls = readAttrLower(ctx, node, 'class') || '';
         if (ANT_SELECT_POPUP_CLASS_SIGNALS.some((signal) => hasClassToken(cls, signal))) {
-            if (node.role === 'listbox' || node.role === 'menu') {
-                return nodeId;
-            }
+            return nodeId;
         }
     }
 
@@ -492,6 +508,15 @@ const findDescendantByClass = (
         }
     }
     return undefined;
+};
+
+const findAntSelectTriggerDescendant = (
+    root: UnifiedNode,
+    ctx: ControlCollectContext,
+): string | undefined => {
+    const triggerNodeId = findDescendantByClass(root, ANT_SELECT_TRIGGER_CLASSES, ctx);
+    if (triggerNodeId) {return triggerNodeId;}
+    return findDescendantByClass(root, ANT_SELECT_TRIGGER_SUBTREE_SIGNALS, ctx);
 };
 
 const collectPopupOptions = (ctx: ControlCollectContext, popupNodeId: string): OptionEntry[] => {
