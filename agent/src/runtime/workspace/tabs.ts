@@ -210,6 +210,21 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
         const { action, workspace } = input;
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const shouldRecordLifecycle = () => workspace.state === 'recording' && isWorkspaceRecordingEnabled(deps.recordingState, workspace.name);
+        const closeViaLifecycle = async (tabName: string, source: string, at?: number) => {
+            const closingTab = workspace.tabs.getTab(tabName);
+            await workspace.tabs.closeTab(tabName);
+            if (shouldRecordLifecycle()) {
+                recordTabClosed(deps.recordingState, {
+                    workspaceName: workspace.name,
+                    tabName,
+                    tabRef: tabName,
+                    urlAtRecord: closingTab?.url || '',
+                    at,
+                    navDedupeWindowMs: deps.navDedupeWindowMs,
+                });
+            }
+            return replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at });
+        };
 
         switch (action.type) {
             case 'tab.list': {
@@ -241,8 +256,9 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
 
             case 'tab.close': {
                 const tabName = requireTabName(payload);
-                await workspace.tabs.closeTab(tabName);
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                return { reply: await closeViaLifecycle(tabName, source, at), events: [] };
             }
 
             case 'tab.setActive': {
@@ -330,19 +346,7 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 if (!tabName) {
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
-                const closingTab = workspace.tabs.getTab(tabName);
-                await workspace.tabs.closeTab(tabName);
-                if (shouldRecordLifecycle()) {
-                    recordTabClosed(deps.recordingState, {
-                        workspaceName: workspace.name,
-                        tabName,
-                        tabRef: tabName,
-                        urlAtRecord: closingTab?.url || '',
-                        at,
-                        navDedupeWindowMs: deps.navDedupeWindowMs,
-                    });
-                }
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
+                return { reply: await closeViaLifecycle(tabName, source, at), events: [] };
             }
 
             case 'tab.ping': {
