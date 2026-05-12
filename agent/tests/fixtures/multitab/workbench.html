@@ -93,13 +93,6 @@
     openRequestCount: 0
   };
 
-  try {
-    localStorage.removeItem('wb_used_rule');
-    localStorage.removeItem('wb_payment_status');
-    localStorage.removeItem('wb_customer_tag');
-    localStorage.removeItem('wb_audit_reviewed');
-  } catch {}
-
   const sync = () => {
     const box = qs('multiStatus');
     box.dataset.ticketStatus = state.ticketStatus;
@@ -149,9 +142,6 @@
   });
 
   qs('markDoneBtn').addEventListener('click', () => {
-    if (!state.usedRule) state.usedRule = 'refund-policy';
-    if (state.paymentStatus === 'pending') state.paymentStatus = 'verified';
-    if (!state.auditOpened) state.auditOpened = true;
     state.ticketStatus = 'done';
     sync();
     const summary = `done|rule=${state.usedRule || 'none'}|pay=${state.paymentStatus}|sync=${state.customerSynced}|audit=${state.auditOpened}`;

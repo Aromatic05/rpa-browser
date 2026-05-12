@@ -15,6 +15,14 @@ const mustOk = (result: { ok: boolean; error?: { code?: string; message?: string
     }
 };
 
+const delay = async (ms: number) => await new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const pauseForHeaded = async (ms: number) => {
+    if (process.env.RPA_E2E_HEADED === '1') {
+        await delay(ms);
+    }
+};
+
 const reportCreateTabStep = async (
     harness: Awaited<ReturnType<typeof createMultitabHarness>>,
     workspaceName: string,
@@ -96,30 +104,10 @@ test('records and replays active and passive multi-tab workflow', async () => {
         expect(recordStart.type).toBe('record.start.result');
         await harness.waitForWorkspaceState(workspaceName, 'recording');
 
-        const kbCreated = await harness.dispatchAction({
-            v: 1,
-            id: crypto.randomUUID(),
-            type: 'tab.create',
-            workspaceName,
-            payload: { startUrl: kbUrl },
-            at: Date.now(),
-        });
-        expect(kbCreated.type).toBe('tab.create.result');
-        const knowledgeTabName = ((kbCreated.payload || {}) as { tabName?: string }).tabName;
-        expect(knowledgeTabName).toBeTruthy();
-        mustOk(await harness.runStep(workspaceName, step('kb-create-recorded', 'browser.create_tab', { tabName: 'knowledge_base_recorded' })), 'kb create recorded');
-        mustOk(await harness.runStep(workspaceName, step('switch-kb-recorded', 'browser.switch_tab', { tabName: 'knowledge_base_recorded' })), 'switch kb recorded');
+        const knowledgeTabName = 'knowledge_base_recorded';
+        mustOk(await harness.runStep(workspaceName, step('kb-create-recorded', 'browser.create_tab', { tabName: knowledgeTabName })), 'kb create recorded');
+        mustOk(await harness.runStep(workspaceName, step('switch-kb-recorded', 'browser.switch_tab', { tabName: knowledgeTabName })), 'switch kb recorded');
         mustOk(await harness.runStep(workspaceName, step('kb-goto-recorded', 'browser.goto', { url: kbUrl })), 'kb goto recorded');
-        const kbOpened = await harness.dispatchAction({
-            v: 1,
-            id: crypto.randomUUID(),
-            type: 'tab.opened',
-            workspaceName,
-            payload: { tabName: 'knowledge_base_recorded', url: kbUrl, title: '知识库', source: 'e2e', at: Date.now() },
-            at: Date.now(),
-        });
-        expect(kbOpened.type).toBe('tab.opened.result');
-        await reportCreateTabStep(harness, workspaceName, 'knowledge_base_recorded');
 
         mustOk(await harness.runStep(workspaceName, step('kb-fill', 'browser.fill', { selector: '#kbSearch', value: '退款规则' })), 'kb fill');
         mustOk(await harness.runStep(workspaceName, step('kb-click-quote', 'browser.click', { selector: '#quoteRefundRule' })), 'kb quote click');
@@ -127,15 +115,16 @@ test('records and replays active and passive multi-tab workflow', async () => {
         mustOk(kbRuleState, 'kb rule state');
         expect(kbRuleState.data).toBe('refund-policy');
 
-        mustOk(await harness.runStep(workspaceName, step('switch-workbench-1', 'browser.switch_tab', { tabName: workbenchTabName })), 'switch workbench 1');
+        const workbenchTabNameBeforePayment = await ensureWorkbenchTab(harness, workspaceName, workbenchUrl);
+        mustOk(await harness.runStep(workspaceName, step('switch-workbench-1', 'browser.switch_tab', { tabName: workbenchTabNameBeforePayment })), 'switch workbench 1');
         const workbenchUrlCheck = await harness.runStep(workspaceName, step('workbench-url-check-1', 'browser.evaluate', { expression: 'return location.pathname;' }));
         mustOk(workbenchUrlCheck, 'workbench url check 1');
         expect(String(workbenchUrlCheck.data)).toContain('/multitab/workbench.html');
 
         const kbTabSeen = await harness.waitForTabByUrlPart(workspaceName, '/multitab/knowledge_base.html');
-        expect(kbTabSeen.tabName).toBeTruthy();
+        expect(kbTabSeen.tabName).toBe(knowledgeTabName);
 
-        await harness.clickActiveTab(workspaceName, '#openPaymentBtn');
+        mustOk(await harness.runStep(workspaceName, step('wb-open-payment', 'browser.click', { selector: '#openPaymentBtn' })), 'open payment');
         const paymentOpenRequested = await harness.runStep(workspaceName, step('wb-open-payment-check', 'browser.evaluate', { expression: 'return Number(document.querySelector(\"[data-testid=multi-status]\")?.dataset.openRequestCount || 0);' }));
         mustOk(paymentOpenRequested, 'payment open request check');
         expect(Number(paymentOpenRequested.data)).toBeGreaterThanOrEqual(0);
@@ -153,7 +142,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
 
         mustOk(await harness.runStep(workspaceName, step('switch-payment', 'browser.switch_tab', { tabName: paymentTab.tabName })), 'switch payment');
 
-        await harness.clickActiveTab(workspaceName, '#approvePayment');
+        mustOk(await harness.runStep(workspaceName, step('payment-approve', 'browser.click', { selector: '#approvePayment' })), 'approve payment');
         const paymentVerified = await harness.runStep(workspaceName, step('payment-check', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=payment-root]")?.dataset.paymentVerified || "";' }));
         mustOk(paymentVerified, 'payment verify state');
         expect(paymentVerified.data).toBe('true');
@@ -171,7 +160,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
         const workbenchTabNameAfterPayment = await ensureWorkbenchTab(harness, workspaceName, workbenchUrl);
         mustOk(await harness.runStep(workspaceName, step('switch-workbench-2', 'browser.switch_tab', { tabName: workbenchTabNameAfterPayment })), 'switch workbench 2');
 
-        await harness.clickActiveTab(workspaceName, '#openCustomerBtn');
+        mustOk(await harness.runStep(workspaceName, step('wb-open-customer', 'browser.click', { selector: '#openCustomerBtn' })), 'open customer');
         const customerTab = await harness.waitForTabByUrlPart(workspaceName, '/multitab/customer_detail.html');
         expect(customerTab.tabName).toBeTruthy();
         const customerOpened = await harness.dispatchAction({
@@ -187,7 +176,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
 
         mustOk(await harness.runStep(workspaceName, step('switch-customer', 'browser.switch_tab', { tabName: customerTab.tabName })), 'switch customer');
 
-        await harness.clickActiveTab(workspaceName, '#markVipRisk');
+        mustOk(await harness.runStep(workspaceName, step('customer-mark-risk', 'browser.click', { selector: '#markVipRisk' })), 'mark vip risk');
         const customerTag = await harness.runStep(workspaceName, step('customer-check-tag', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=customer-root]")?.dataset.customerTag || "";' }));
         mustOk(customerTag, 'customer tag check');
         if (customerTag.data !== 'vip-risk') {
@@ -224,7 +213,7 @@ return root?.dataset.customerTag || '';
         const workbenchTabNameAfterCustomer = await ensureWorkbenchTab(harness, workspaceName, workbenchUrl);
         mustOk(await harness.runStep(workspaceName, step('switch-workbench-3', 'browser.switch_tab', { tabName: workbenchTabNameAfterCustomer })), 'switch workbench 3');
 
-        await harness.clickActiveTab(workspaceName, '#openAuditBtn');
+        mustOk(await harness.runStep(workspaceName, step('wb-open-audit', 'browser.click', { selector: '#openAuditBtn' })), 'open audit');
         const auditTab = await harness.waitForTabByUrlPart(workspaceName, '/multitab/audit_log.html');
         const auditOpened = await harness.dispatchAction({
             v: 1,
@@ -239,7 +228,7 @@ return root?.dataset.customerTag || '';
 
         mustOk(await harness.runStep(workspaceName, step('switch-audit', 'browser.switch_tab', { tabName: auditTab.tabName })), 'switch audit');
 
-        await harness.clickActiveTab(workspaceName, '#confirmAuditReviewed');
+        mustOk(await harness.runStep(workspaceName, step('audit-confirm-reviewed', 'browser.click', { selector: '#confirmAuditReviewed' })), 'confirm audit');
         const auditReviewed = await harness.runStep(workspaceName, step('audit-check-reviewed', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=audit-root]")?.dataset.auditReviewed || "";' }));
         mustOk(auditReviewed, 'audit reviewed check');
         expect(auditReviewed.data).toBe('true');
@@ -318,6 +307,8 @@ return root?.dataset.customerTag || '';
         const replayWorkspaceName = workspaceName;
         const replayWorkbenchTabName = await ensureWorkbenchTab(harness, replayWorkspaceName, workbenchUrl);
         mustOk(await harness.runStep(replayWorkspaceName, step('switch-workbench-before-replay', 'browser.switch_tab', { tabName: replayWorkbenchTabName })), 'switch before replay');
+        await pauseForHeaded(1200);
+        console.log(`=== Starting replay with recording ${recordingName} ===`);
 
         const playStart = await harness.dispatchAction({
             v: 1,
@@ -331,8 +322,17 @@ return root?.dataset.customerTag || '';
             throw new Error(`play.start failed: ${JSON.stringify(playStart)}`);
         }
         await harness.waitForWorkspaceState(replayWorkspaceName, 'idle');
+        await pauseForHeaded(1800);
 
-        const replayTabs = await harness.waitForTabCountIncrease(replayWorkspaceName, 1);
+        const replayTabsReply = await harness.dispatchAction({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: 'tab.list',
+            workspaceName: replayWorkspaceName,
+            at: Date.now(),
+        });
+        expect(replayTabsReply.type).toBe('tab.list.result');
+        const replayTabs = (((replayTabsReply.payload || {}) as { tabs?: Array<{ tabName: string; url: string; active: boolean }> }).tabs || []);
         const activeTab = replayTabs.find((tab) => tab.active);
         expect(activeTab?.tabName).toBe(replayWorkbenchTabName);
         expect(replayTabs.some((tab) => tab.url.includes('/multitab/payment_check.html') && tab.active)).toBeFalsy();

@@ -55,6 +55,7 @@ export const createMultitabHarness = async (): Promise<MultitabHarness> => {
     const fixture = await startFixtureServer();
     const controlEndpoint = getDefaultControlEndpoint();
     const headed = process.env.RPA_E2E_HEADED === '1';
+    const keepTemp = process.env.RPA_E2E_KEEP_TEMP === '1';
     const headedStepDelayMs = headed ? 350 : 0;
     const tsxBin = path.resolve(rootDir, 'node_modules/.bin/tsx');
     const agentEntry = path.resolve(rootDir, 'src/index.ts');
@@ -276,7 +277,12 @@ return {
                 }
                 await fixture.close();
             } finally {
-                await fs.rm(tempRoot, { recursive: true, force: true });
+                if (keepTemp) {
+                    // Debug mode: keep temp artifacts for replay diagnosis.
+                    console.log(`[e2e_multitab_helper] temp kept at ${tempRoot}`);
+                } else {
+                    await fs.rm(tempRoot, { recursive: true, force: true });
+                }
             }
         },
     };
