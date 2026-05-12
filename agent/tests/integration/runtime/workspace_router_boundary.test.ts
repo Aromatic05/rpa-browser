@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createWorkspaceRouter } from '../../src/runtime/workspace/router';
-import type { WorkspaceRouterInput, WorkspaceRouterDeps } from '../../src/runtime/workspace/router';
-import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
-import type { WorkspaceRegistry } from '../../src/runtime/workspace/registry';
-import type { ControlPlaneResult } from '../../src/runtime/control_plane';
-import type { Action } from '../../src/actions/action_protocol';
-import { replyAction } from '../../src/actions/action_protocol';
+import { createWorkspaceRouter } from '../../../src/runtime/workspace/router';
+import type { WorkspaceRouterInput, WorkspaceRouterDeps } from '../../../src/runtime/workspace/router';
+import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
+import type { WorkspaceRegistry } from '../../../src/runtime/workspace/registry';
+import type { ControlPlaneResult } from '../../../src/runtime/control_plane';
+import type { Action } from '../../../src/actions/action_protocol';
+import { replyAction } from '../../../src/actions/action_protocol';
 
 const stubAction = (
     type: string,
@@ -357,8 +357,8 @@ test('unknown action returns unsupported action', async () => {
 });
 
 // ---- TabsControl boundary tests ----
-import { createTabsControl } from '../../src/runtime/workspace/tabs';
-import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
+import { createTabsControl } from '../../../src/runtime/workspace/tabs';
+import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
 
 test('TabsControl handles tab.list', async () => {
     const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
@@ -411,7 +411,7 @@ test('TabsControl handles tab.close', async () => {
             throw new Error('not implemented');
         },
     });
-    tabs.createTab({ tabName: 'tab-1', url: 'https://example.com' });
+    tabs.createTab({ tabName: 'tab-1' });
     // Override closeTab to track it
     const originalClose = tabs.closeTab;
     tabs.closeTab = async (tabName: string) => {
@@ -460,8 +460,8 @@ test('TabsControl unknown tab action returns unsupported', async () => {
 });
 
 // ---- McpControl boundary tests ----
-import { createMcpControl } from '../../src/mcp/control';
-import type { WorkspaceService } from '../../src/runtime/service/types';
+import { createMcpControl } from '../../../src/mcp/control';
+import type { WorkspaceService } from '../../../src/runtime/service/types';
 
 test('McpControl handles mcp.start', async () => {
     let started = false;

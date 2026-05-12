@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Page, BrowserContext } from 'playwright';
-import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
-import { createExecutionBindings } from '../../src/runtime/execution/bindings';
+import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
+import { createExecutionBindings } from '../../../src/runtime/execution/bindings';
 
 const createStubPage = (overrides?: Partial<Page>): Page => {
     const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -49,14 +49,6 @@ test('createTab throws on duplicate name', () => {
     assert.throws(() => tabs.createTab({ tabName: 'tab-1' }), /tab already exists/);
 });
 
-test('createMetadataTab creates a tab via createTab', () => {
-    const tabs = createWorkspaceTabs({ getPage: async () => createStubPage() });
-    const tab = tabs.createMetadataTab({ tabName: 'meta-tab', url: 'https://x.com', title: 'X' });
-    assert.equal(tab.name, 'meta-tab');
-    assert.equal(tab.url, 'https://x.com');
-    assert.equal(tab.title, 'X');
-});
-
 test('ensurePage creates page when tab does not exist', async () => {
     const stubPage = createStubPage({ url: () => 'https://stub.io' });
     const tabs = createWorkspaceTabs({ getPage: async () => stubPage });
@@ -69,7 +61,8 @@ test('ensurePage creates page when tab does not exist', async () => {
 test('ensurePage reuses existing page when not closed', async () => {
     const stubPage = createStubPage({ url: () => 'https://alive.io', isClosed: () => false });
     const tabs = createWorkspaceTabs({ getPage: async () => createStubPage() });
-    tabs.createTab({ tabName: 'alive-tab', page: stubPage });
+    tabs.createTab({ tabName: 'alive-tab' });
+    tabs.bindPage('alive-tab', stubPage);
     const page = await tabs.ensurePage('alive-tab');
     assert.equal(page, stubPage);
 });
@@ -83,7 +76,8 @@ test('ensurePage replaces closed page with a new one', async () => {
             return newPage;
         },
     });
-    tabs.createTab({ tabName: 'dead-tab', page: createStubPage({ isClosed: () => true }) });
+    tabs.createTab({ tabName: 'dead-tab' });
+    tabs.bindPage('dead-tab', createStubPage({ isClosed: () => true }));
     const page = await tabs.ensurePage('dead-tab');
     assert.equal(called, true);
     assert.equal(page, newPage);
@@ -121,7 +115,8 @@ test('closeTab closes the real page when present', async () => {
         close: async () => { closed = true; },
     });
     const tabs = createWorkspaceTabs({ getPage: async () => page });
-    tabs.createTab({ tabName: 'page-tab', page });
+    tabs.createTab({ tabName: 'page-tab' });
+    tabs.bindPage('page-tab', page);
     await tabs.closeTab('page-tab');
     assert.equal(closed, true);
 });
@@ -146,7 +141,8 @@ test('closeTab wraps page close errors', async () => {
         close: async () => { throw new Error('boom'); },
     });
     const tabs = createWorkspaceTabs({ getPage: async () => page });
-    tabs.createTab({ tabName: 'bad', page });
+    tabs.createTab({ tabName: 'bad' });
+    tabs.bindPage('bad', page);
     await assert.rejects(() => tabs.closeTab('bad'), /failed to close tab page: bad: boom/);
 });
 
@@ -246,17 +242,10 @@ test('pingTab returns null for unknown tab', () => {
     assert.equal(tabs.pingTab('ghost', {}), null);
 });
 
-test('reassignTab creates tab if missing and sets it active', () => {
-    const tabs = createWorkspaceTabs({ getPage: async () => createStubPage() });
-    const tab = tabs.reassignTab('fresh', { at: 999 });
-    assert.equal(tab.name, 'fresh');
-    assert.equal(tab.createdAt, 999);
-    assert.equal(tabs.getActiveTab()?.name, 'fresh');
-});
-
 test('reassignTab sets active without changing existing tab data', () => {
     const tabs = createWorkspaceTabs({ getPage: async () => createStubPage() });
-    tabs.createTab({ tabName: 'existing', url: 'https://keep.me' });
+    tabs.createTab({ tabName: 'existing' });
+    tabs.updateTab('existing', { url: 'https://keep.me' });
     tabs.createTab({ tabName: 'other' });
     const tab = tabs.reassignTab('existing', {});
     assert.equal(tab.url, 'https://keep.me');
@@ -388,7 +377,7 @@ test('bindPage with different page for same key replaces binding', () => {
 
 test('ensureExecutableTab materializes metadata tab and syncs active binding', async () => {
     const tabs = createWorkspaceTabs({ getPage: async () => createStubPage({ url: () => 'https://materialized.test' }) });
-    tabs.createMetadataTab({ tabName: 'meta-a', url: 'https://seed.test' });
+    tabs.createTab({ tabName: 'meta-a' });
     tabs.setActiveTab('meta-a');
     const workspace = {
         name: 'ws-materialize',
@@ -452,4 +441,15 @@ test('plugin reload rebuilds trace tools with pageRegistry injected', async () =
     });
     const created = await binding.traceTools['trace.tabs.create']({ workspaceName: 'ws-1', url: 'https://example.com' });
     assert.equal(created.ok, true);
+});
+
+test('createTab ignores page url title params', () => {
+    const tabs = createWorkspaceTabs({ getPage: async () => createStubPage() });
+    const tab = tabs.createTab({ tabName: 't' } as any);
+    assert.equal(tab.name, 't');
+});
+
+test('reassignTab errors on unknown tab', () => {
+    const tabs = createWorkspaceTabs({ getPage: async () => createStubPage() });
+    assert.throws(() => tabs.reassignTab('ghost', {}), /tab not found/);
 });

@@ -5,10 +5,10 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import type { Page } from 'playwright';
-import { createWorkspaceToolHandlers } from '../../src/mcp/tool_handlers';
-import { createWorkspaceTabs } from '../../src/runtime/workspace/tabs';
-import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
-import type { RunStepsDeps } from '../../src/runner/run_steps_types';
+import { createWorkspaceToolHandlers } from '../../../src/mcp/tool_handlers';
+import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
+import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
+import type { RunStepsDeps } from '../../../src/runner/run_steps_types';
 
 const projectRoot = path.resolve(process.cwd());
 
@@ -102,7 +102,7 @@ test('existing tab is not re-created', async () => {
     };
     const ws = createMockWorkspace('test-ws');
     const preExistingPage = createStubPage('existing') as Page;
-    ws.tabs.createTab({ tabName: 'existing', page: preExistingPage, url: preExistingPage.url() });
+    ws.tabs.createTab({ tabName: 'existing' });
 
     const handlers = createWorkspaceToolHandlers({
         workspace: ws,

@@ -124,7 +124,7 @@ onPageBoundHook = (page, tabName) => {
         void ensureRecorder(recordingState, workspaceName, page, tabName, NAV_DEDUPE_WINDOW_MS);
     }
     if (!workspace.tabs.hasTab(tabName)) {
-        workspace.tabs.createTab({ tabName, page, url: page.url() });
+        workspace.tabs.createTab({ tabName });
     } else {
         workspace.tabs.bindPage(tabName, page);
     }

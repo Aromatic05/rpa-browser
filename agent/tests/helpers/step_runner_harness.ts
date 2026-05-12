@@ -37,8 +37,6 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
     const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     runtimeWorkspace.tabs.createTab({
         tabName,
-        page,
-        url: page.url(),
     });
     runtimeWorkspace.tabs.setActiveTab(tabName);
     const runtime = createExecutionBindings({

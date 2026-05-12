@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createWorkspaceHarness } from '../helpers/workspace_harness';
-import { createWorkflowOnFs } from '../../src/workflow';
+import { createWorkspaceHarness } from '../../helpers/workspace_harness';
+import { createWorkflowOnFs } from '../../../src/workflow';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: crypto.randomUUID(), type, ...extra });
 
@@ -14,8 +14,8 @@ test('router tab.list returns tabs array', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabs.createTab({ tabName: 'a', url: 'https://a.io', title: 'A' });
-    ws.tabs.createTab({ tabName: 'b', url: 'https://b.io', title: 'B' });
+    ws.tabs.createTab({ tabName: 'a' });
+    ws.tabs.createTab({ tabName: 'b' });
 
     const result = await ws.router.handle(action('tab.list', { workspaceName: wsName }), ws, registry);
     assert.equal(result.reply.type, 'tab.list.result');
@@ -75,7 +75,7 @@ test('router tab.setActive changes the active tab', async () => {
     assert.equal(ws.tabs.getActiveTab()?.name, 'second');
 });
 
-test('router tab.opened creates metadata tab and sets active', async () => {
+test('router tab.opened creates tab and sets active', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
@@ -87,7 +87,6 @@ test('router tab.opened creates metadata tab and sets active', async () => {
     );
     assert.equal(result.reply.type, 'tab.opened.result');
     assert.equal(ws.tabs.hasTab('ext-tab'), true);
-    assert.equal(ws.tabs.getTab('ext-tab')?.url, 'https://ext.io');
     assert.equal(ws.tabs.getActiveTab()?.name, 'ext-tab');
 
     const result2 = await ws.router.handle(
@@ -350,7 +349,7 @@ test('WorkspaceTabs.closeTab removes tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
-    ws.tabs.createTab({ tabName: 'close-me', url: 'https://x.com' });
+    ws.tabs.createTab({ tabName: 'close-me' });
     assert.equal(ws.tabs.hasTab('close-me'), true);
 
     await ws.tabs.closeTab('close-me');

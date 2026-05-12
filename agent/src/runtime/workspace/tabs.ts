@@ -18,8 +18,7 @@ export type RuntimeTab = {
 };
 
 export type WorkspaceTabs = {
-    createTab: (input: { tabName: string; page?: Page | null; url?: string; title?: string; at?: number }) => RuntimeTab;
-    createMetadataTab: (input: { tabName: string; url?: string; title?: string; at?: number }) => RuntimeTab;
+    createTab: (input: { tabName: string; at?: number }) => RuntimeTab;
     awaitTabPage: (tabName: string, timeoutMs: number) => Promise<Page>;
     createTabPage: (tabName: string, input?: { startUrl?: string }) => Promise<Page>;
     bindPage: (tabName: string, page: Page) => RuntimeTab | null;
@@ -55,9 +54,9 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         const at = input.at ?? now();
         const tab: RuntimeTab = {
             name: input.tabName,
-            page: input.page ?? null,
-            url: input.url ?? '',
-            title: input.title ?? '',
+            page: null,
+            url: '',
+            title: '',
             createdAt: at,
             updatedAt: at,
         };
@@ -67,8 +66,6 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         }
         return tab;
     };
-
-    const createMetadataTab: WorkspaceTabs['createMetadataTab'] = (input) => createTab(input);
 
     const awaitTabPage: WorkspaceTabs['awaitTabPage'] = async (tabName, timeoutMs) => {
         const existing = tabs.get(tabName);
@@ -146,7 +143,7 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
 
     const reassignTab: WorkspaceTabs['reassignTab'] = (tabName, input) => {
         if (!tabs.has(tabName)) {
-            createTab({ tabName, at: input.at });
+            throw new Error(`tab not found: ${tabName}`);
         }
         activeTabName = tabName;
         return tabs.get(tabName)!;
@@ -154,7 +151,6 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
 
     return {
         createTab,
-        createMetadataTab,
         awaitTabPage,
         createTabPage,
         bindPage,
@@ -248,7 +244,7 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
             case 'tab.create': {
                 const tabName = crypto.randomUUID();
                 const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
-                workspace.tabs.createMetadataTab({ tabName, url: startUrl || '' });
+                workspace.tabs.createTab({ tabName });
                 await workspace.tabs.createTabPage(tabName, { startUrl });
                 workspace.tabs.setActiveTab(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
@@ -276,7 +272,7 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
                 const wasTabPresent = workspace.tabs.hasTab(tabName);
                 if (!workspace.tabs.hasTab(tabName)) {
-                    workspace.tabs.createMetadataTab({ tabName, url, title, at });
+                    workspace.tabs.createTab({ tabName, at });
                 } else {
                     workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
                 }

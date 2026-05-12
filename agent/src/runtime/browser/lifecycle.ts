@@ -80,7 +80,7 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
         const wasTabPresent = workspace.tabs.hasTab(bindingName);
         const prevActiveTabName = workspace.tabs.getActiveTab()?.name || null;
         if (!wasTabPresent) {
-            workspace.tabs.createTab({ tabName: bindingName, page, url: page.url() });
+            workspace.tabs.createTab({ tabName: bindingName });
         } else {
             workspace.tabs.bindPage(bindingName, page);
         }
