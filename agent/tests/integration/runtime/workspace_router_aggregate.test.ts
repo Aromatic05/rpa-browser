@@ -81,21 +81,30 @@ test('router tab.opened creates tab and sets active', async () => {
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
     const result = await ws.router.handle(
-        action('tab.opened', { workspaceName: wsName, payload: { tabName: 'ext-tab', url: 'https://ext.io', title: 'Ext', source: 'cdp', at: 1000 } }),
+        action('tab.opened', { workspaceName: wsName, payload: { chromeTabNo: 42, windowId: 7, urlHint: 'https://ext.io', titleHint: 'Ext', source: 'extension.sw', openedAt: 1000 } }),
         ws,
         registry,
     );
     assert.equal(result.reply.type, 'tab.opened.result');
-    assert.equal(ws.tabs.hasTab('ext-tab'), true);
-    assert.equal(ws.tabs.getActiveTab()?.name, 'ext-tab');
+    const tabName = (result.reply.payload as any).tabName as string;
+    // Agent generates tabName (UUID), not from payload
+    assert.ok(typeof tabName === 'string' && tabName.length > 0);
+    assert.notEqual(tabName, 'ext-tab');
+    assert.equal(ws.tabs.hasTab(tabName), true);
+    assert.equal(ws.tabs.getActiveTab()?.name, tabName);
 
+    // Second tab.opened creates a new tab (different UUID each time)
     const result2 = await ws.router.handle(
-        action('tab.opened', { workspaceName: wsName, payload: { tabName: 'ext-tab', url: 'https://ext2.io', title: 'Ext2', source: 'cdp', at: 2000 } }),
+        action('tab.opened', { workspaceName: wsName, payload: { chromeTabNo: 43, windowId: 7, urlHint: 'https://ext2.io', titleHint: 'Ext2', source: 'extension.sw', openedAt: 2000 } }),
         ws,
         registry,
     );
     assert.equal(result2.reply.type, 'tab.opened.result');
-    assert.equal(ws.tabs.getTab('ext-tab')?.url, 'https://ext2.io');
+    const tabName2 = (result2.reply.payload as any).tabName as string;
+    assert.notEqual(tabName2, tabName);
+    assert.equal(ws.tabs.hasTab(tabName2), true);
+    // URL is NOT stored on the tab identity
+    assert.equal(ws.tabs.getTab(tabName)?.url, '');
 });
 
 test('router tab.report returns stale when tab unknown', async () => {
@@ -143,17 +152,18 @@ test('router tab.closed removes the tab', async () => {
     assert.equal(ws.tabs.hasTab('kill-me'), false);
 });
 
-test('router tab.reassign assigns tab to workspace', async () => {
+test('router tab.reassigned assigns tab to workspace via existing tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabs.createTab({ tabName: 're-tab' });
 
     const result = await ws.router.handle(
-        action('tab.reassign', { workspaceName: wsName, payload: { tabName: 're-tab', source: 'test' } }),
+        action('tab.reassigned', { workspaceName: wsName, payload: { tabName: 're-tab', source: 'test' } }),
         ws,
         registry,
     );
-    assert.equal(result.reply.type, 'tab.reassign.result');
+    assert.equal(result.reply.type, 'tab.reassigned.result');
     assert.equal(ws.tabs.hasTab('re-tab'), true);
 });
 
@@ -162,13 +172,45 @@ test('router tab actions reject empty tabName where required', async () => {
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
-    const actions = ['tab.close', 'tab.setActive', 'tab.reassign'];
+    const actions = ['tab.close', 'tab.setActive', 'tab.reassigned'];
     for (const type of actions) {
         await assert.rejects(
             () => ws.router.handle(action(type, { workspaceName: wsName, payload: { tabName: '' } }), ws, registry),
             /tabName is required/,
         );
     }
+});
+
+test('tab.open creates tab and sets active', async () => {
+    const { registry } = createWorkspaceHarness();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+
+    const result = await ws.router.handle(
+        action('tab.open', { workspaceName: wsName, payload: {} }),
+        ws,
+        registry,
+    );
+    assert.equal(result.reply.type, 'tab.open.result');
+    const tabName = (result.reply.payload as any).tabName as string;
+    assert.ok(typeof tabName === 'string' && tabName.length > 0);
+    assert.equal(ws.tabs.hasTab(tabName), true);
+    assert.equal(ws.tabs.getActiveTab()?.name, tabName);
+});
+
+test('tab.reassigned errors on unknown tab', async () => {
+    const { registry } = createWorkspaceHarness();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+
+    await assert.rejects(
+        () => ws.router.handle(
+            action('tab.reassigned', { workspaceName: wsName, payload: { tabName: 'ghost', source: 'test' } }),
+            ws,
+            registry,
+        ),
+        /tab not found/,
+    );
 });
 
 // ── Router: deleted actions are rejected ──
@@ -378,25 +420,29 @@ test('tab.opened goes through TabsControl via router', async () => {
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
     const result = await ws.router.handle(
-        action('tab.opened', { workspaceName: wsName, payload: { tabName: 'cdp-tab', url: 'https://cdp.io', source: 'cdp', at: Date.now() } }),
+        action('tab.opened', { workspaceName: wsName, payload: { chromeTabNo: 99, windowId: 7, urlHint: 'https://cdp.io', source: 'cdp', openedAt: Date.now() } }),
         ws,
         registry,
     );
     assert.equal(result.reply.type, 'tab.opened.result');
-    assert.equal(ws.tabs.hasTab('cdp-tab'), true);
+    // Agent generates tabName — the tab exists but not under a payload-supplied name
+    const tabName = (result.reply.payload as any).tabName as string;
+    assert.ok(typeof tabName === 'string' && tabName.length > 0);
+    assert.equal(ws.tabs.hasTab(tabName), true);
 });
 
-test('tab.reassign goes through TabsControl via router', async () => {
+test('tab.reassigned goes through TabsControl via router', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabs.createTab({ tabName: 'reassign-me' });
 
     const result = await ws.router.handle(
-        action('tab.reassign', { workspaceName: wsName, payload: { tabName: 'reassign-me', source: 'test' } }),
+        action('tab.reassigned', { workspaceName: wsName, payload: { tabName: 'reassign-me', source: 'test' } }),
         ws,
         registry,
     );
-    assert.equal(result.reply.type, 'tab.reassign.result');
+    assert.equal(result.reply.type, 'tab.reassigned.result');
     assert.equal((result.reply.payload as any).workspaceName, wsName);
     assert.equal(ws.tabs.hasTab('reassign-me'), true);
 });

@@ -17,13 +17,14 @@ export const REQUEST_ACTION_TYPES = {
     TAB_LIST: 'tab.list',
     TAB_CREATE: 'tab.create',
     TAB_CLOSE: 'tab.close',
+    TAB_OPEN: 'tab.open',
+    TAB_BIND: 'tab.bind',
     TAB_SET_ACTIVE: 'tab.setActive',
     TAB_OPENED: 'tab.opened',
     TAB_REPORTED: 'tab.report',
     TAB_ACTIVATED: 'tab.activated',
     TAB_CLOSED: 'tab.closed',
     TAB_PING: 'tab.ping',
-    TAB_REASSIGN: 'tab.reassign',
 
     RECORD_START: 'record.start',
     RECORD_STOP: 'record.stop',
@@ -64,6 +65,7 @@ const FIXED_EVENT_ACTION_TYPES = {
     WORKSPACE_CHANGED: 'workspace.changed',
     WORKSPACE_SYNC: 'workspace.sync',
     TAB_BOUND: 'tab.bound',
+    TAB_REASSIGNED: 'tab.reassigned',
 
     PLAY_STARTED: 'play.started',
     PLAY_STEP_STARTED: 'play.step.started',

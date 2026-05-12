@@ -359,6 +359,7 @@ test('unknown action returns unsupported action', async () => {
 // ---- TabsControl boundary tests ----
 import { createTabsControl } from '../../../src/runtime/workspace/tabs';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
+import { createRecordingState } from '../../../src/record/recording';
 
 test('TabsControl handles tab.list', async () => {
     const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
@@ -435,15 +436,58 @@ test('TabsControl handles tab.close', async () => {
     assert.equal(payload.tabName, 'tab-1');
 });
 
-test('TabsControl tab.activated returns unsupported', async () => {
+test('TabsControl tab.activated sets tab active', async () => {
     const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
-    const workspace = createMinimalWorkspace('ws-1');
+    const tabs = createWorkspaceTabs({
+        getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+    });
+    tabs.createTab({ tabName: 'a' });
+    const workspace = {
+        name: 'ws-1',
+        tabs,
+    } as RuntimeWorkspace;
     const registry = createMinimalRegistry();
-    const action = stubAction('tab.activated', { workspaceName: 'ws-1' });
+    const action = stubAction('tab.activated', { workspaceName: 'ws-1', payload: { tabName: 'a' } });
+
+    const result = await tabsControl.handle({ action, workspace, workspaceRegistry: registry });
+    assert.equal(result.reply.type, 'tab.activated.result');
+    assert.equal(workspace.tabs.getActiveTab()?.name, 'a');
+});
+
+test('TabsControl tab.open succeeds', async () => {
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabs = createWorkspaceTabs({
+        getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+    });
+    const workspace = {
+        name: 'ws-1',
+        tabs,
+    } as RuntimeWorkspace;
+    const registry = createMinimalRegistry();
+    const action = stubAction('tab.open', { workspaceName: 'ws-1' });
+
+    const result = await tabsControl.handle({ action, workspace, workspaceRegistry: registry });
+    assert.equal(result.reply.type, 'tab.open.result');
+    const payload = result.reply.payload as Record<string, unknown>;
+    assert.equal(payload.workspaceName, 'ws-1');
+    assert.ok(typeof payload.tabName === 'string');
+});
+
+test('TabsControl tab.reassigned errors on unknown tab', async () => {
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabs = createWorkspaceTabs({
+        getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+    });
+    const workspace = {
+        name: 'ws-1',
+        tabs,
+    } as RuntimeWorkspace;
+    const registry = createMinimalRegistry();
+    const action = stubAction('tab.reassigned', { workspaceName: 'ws-1', payload: { tabName: 'ghost', source: 'test' } });
 
     await assert.rejects(
         () => tabsControl.handle({ action, workspace, workspaceRegistry: registry }),
-        /unsupported action/,
+        /tab not found/,
     );
 });
 
