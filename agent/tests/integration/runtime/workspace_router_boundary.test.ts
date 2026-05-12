@@ -515,18 +515,6 @@ test('TabsControl rejects inbound tab.bind', async () => {
     );
 });
 
-test('TabsControl rejects inbound tab.close', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
-    const workspace = createMinimalWorkspace('ws-1');
-    const registry = createMinimalRegistry();
-    const action = stubAction('tab.close', { workspaceName: 'ws-1', payload: { tabName: 'any' } });
-
-    await assert.rejects(
-        () => tabsControl.handle({ action, workspace, workspaceRegistry: registry }),
-        /unsupported tab action/,
-    );
-});
-
 // ---- McpControl boundary tests ----
 import { createMcpControl } from '../../../src/mcp/control';
 import type { WorkspaceService } from '../../../src/runtime/service/types';

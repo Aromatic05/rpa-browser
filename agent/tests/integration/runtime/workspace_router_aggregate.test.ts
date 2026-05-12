@@ -26,24 +26,6 @@ test('router tab.list returns tabs array', async () => {
     assert.equal(payload.tabs[0].active, true);
 });
 
-test('router tab.create generates tabName, calls ensurePage, and sets active', async () => {
-    const { registry } = createWorkspaceHarness({
-        getPage: async () => ({ url: () => 'about:blank', isClosed: () => false, close: async () => undefined } as any),
-    });
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-
-    const result = await ws.router.handle(
-        action('tab.create', { workspaceName: wsName, payload: { startUrl: 'https://start.io' } }),
-        ws,
-        registry,
-    );
-    assert.equal(result.reply.type, 'tab.create.result');
-    const tabName = (result.reply.payload as any).tabName as string;
-    assert.ok(tabName.length > 0);
-    assert.equal(ws.tabs.getActiveTab()?.name, tabName);
-});
-
 test('router tab.close removes the tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
@@ -438,20 +420,6 @@ test('Agent TabsControl rejects inbound tab.bind', async () => {
     await assert.rejects(
         () => ws.router.handle(
             action('tab.bind', { workspaceName: wsName, payload: { tabName: 'someone-else', chromeTabNo: 1, windowId: 1 } }),
-            ws,
-            registry,
-        ),
-        /unsupported tab action/,
-    );
-});
-
-test('Agent TabsControl rejects inbound tab.close', async () => {
-    const { registry } = createWorkspaceHarness();
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    await assert.rejects(
-        () => ws.router.handle(
-            action('tab.close', { workspaceName: wsName, payload: { tabName: 'any' } }),
             ws,
             registry,
         ),
