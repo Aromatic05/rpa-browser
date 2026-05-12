@@ -52,6 +52,7 @@ export type LifecycleRuntime = {
     onWindowRemoved: (windowId: number) => void;
     onStartup: () => void;
     onInstalled: () => void;
+    handleBindCommand: (action: Action) => Promise<void>;
 };
 
 const readChromeTabNoFromActiveInfo = (info: chrome.tabs.TabActiveInfo): number =>
@@ -330,6 +331,34 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         options.onRefresh();
     };
 
+    const handleBindCommand = async (action: Action) => {
+        const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+        const chromeTabNo = typeof payload.chromeTabNo === 'number' ? payload.chromeTabNo : null;
+        const windowId = typeof payload.windowId === 'number' ? payload.windowId : null;
+        if (!tabName || chromeTabNo === null || windowId === null) { return; }
+
+        const ok = await pushBindingNameToTab(chromeTabNo, tabName);
+        if (ok) {
+            options.state.upsertBindingWorkspaceTab(tabName, action.workspaceName ?? '', tabName);
+            options.state.upsertTab(chromeTabNo, tabName, '', windowId);
+            options.state.setWindowWorkspace(windowId, action.workspaceName ?? '');
+
+            await options.sendAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: ACTION_TYPES.TAB_BOUND,
+                workspaceName: action.workspaceName,
+                payload: {
+                    tabName,
+                    chromeTabNo,
+                    windowId,
+                    boundAt: Date.now(),
+                },
+            });
+        }
+    };
+
     return {
         ensureTabName,
         ensureBoundTabRef,
@@ -343,5 +372,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         onWindowRemoved,
         onStartup: () => { options.state.resetStartupState(); },
         onInstalled: () => { options.state.resetInstalledState(); },
+        handleBindCommand,
     };
 };

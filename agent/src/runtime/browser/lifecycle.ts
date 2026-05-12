@@ -77,7 +77,7 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
         }
         const workspace = deps.workspaceRegistry.getWorkspace(workspaceName)
             || deps.workspaceRegistry.createWorkspace(workspaceName, deps.ensureWorkflow(workspaceName));
-        // Tab identity is created by TabsControl tab.opened handler.
+        // Tab identity is committed by TabsControl tab.bound handler.
         // onPageBound only binds the Playwright page to an existing tab.
         if (workspace.tabs.hasTab(bindingName)) {
             workspace.tabs.bindPage(bindingName, page);

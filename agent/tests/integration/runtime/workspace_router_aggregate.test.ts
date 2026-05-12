@@ -75,7 +75,7 @@ test('router tab.setActive changes the active tab', async () => {
     assert.equal(ws.tabs.getActiveTab()?.name, 'second');
 });
 
-test('router tab.opened creates tab and sets active', async () => {
+test('router tab.opened allocates UUID without committing workspace tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
@@ -85,26 +85,25 @@ test('router tab.opened creates tab and sets active', async () => {
         ws,
         registry,
     );
-    assert.equal(result.reply.type, 'tab.opened.result');
+    assert.equal(result.reply.type, 'tab.bind');
     const tabName = (result.reply.payload as any).tabName as string;
     // Agent generates tabName (UUID), not from payload
     assert.ok(typeof tabName === 'string' && tabName.length > 0);
     assert.notEqual(tabName, 'ext-tab');
-    assert.equal(ws.tabs.hasTab(tabName), true);
-    assert.equal(ws.tabs.getActiveTab()?.name, tabName);
+    // tab.opened does NOT create workspace tab — tab.bound is where commitment happens
+    assert.equal(ws.tabs.hasTab(tabName), false);
+    assert.equal(ws.tabs.getActiveTab(), null);
 
-    // Second tab.opened creates a new tab (different UUID each time)
+    // Second tab.opened allocates a different UUID each time
     const result2 = await ws.router.handle(
         action('tab.opened', { workspaceName: wsName, payload: { chromeTabNo: 43, windowId: 7, urlHint: 'https://ext2.io', titleHint: 'Ext2', source: 'extension.sw', openedAt: 2000 } }),
         ws,
         registry,
     );
-    assert.equal(result2.reply.type, 'tab.opened.result');
+    assert.equal(result2.reply.type, 'tab.bind');
     const tabName2 = (result2.reply.payload as any).tabName as string;
     assert.notEqual(tabName2, tabName);
-    assert.equal(ws.tabs.hasTab(tabName2), true);
-    // URL is NOT stored on the tab identity
-    assert.equal(ws.tabs.getTab(tabName)?.url, '');
+    assert.equal(ws.tabs.hasTab(tabName2), false);
 });
 
 test('router tab.report returns stale when tab unknown', async () => {
@@ -181,7 +180,7 @@ test('router tab actions reject empty tabName where required', async () => {
     }
 });
 
-test('tab.open creates tab and sets active', async () => {
+test('tab.open allocates UUID without committing workspace tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
@@ -192,10 +191,11 @@ test('tab.open creates tab and sets active', async () => {
         registry,
     );
     assert.equal(result.reply.type, 'tab.open.result');
-    const tabName = (result.reply.payload as any).tabName as string;
-    assert.ok(typeof tabName === 'string' && tabName.length > 0);
-    assert.equal(ws.tabs.hasTab(tabName), true);
-    assert.equal(ws.tabs.getActiveTab()?.name, tabName);
+    const createId = (result.reply.payload as any).createId as string;
+    assert.ok(typeof createId === 'string' && createId.length > 0);
+    // tab.open does NOT create workspace tab — tab.bound is where commitment happens
+    assert.equal(ws.tabs.hasTab(createId), false);
+    assert.equal(ws.tabs.getActiveTab(), null);
 });
 
 test('tab.reassigned errors on unknown tab', async () => {
@@ -424,11 +424,39 @@ test('tab.opened goes through TabsControl via router', async () => {
         ws,
         registry,
     );
-    assert.equal(result.reply.type, 'tab.opened.result');
-    // Agent generates tabName — the tab exists but not under a payload-supplied name
+    assert.equal(result.reply.type, 'tab.bind');
+    // Agent generates tabName — UUID allocation only, no workspace tab creation
     const tabName = (result.reply.payload as any).tabName as string;
     assert.ok(typeof tabName === 'string' && tabName.length > 0);
-    assert.equal(ws.tabs.hasTab(tabName), true);
+    assert.equal(ws.tabs.hasTab(tabName), false);
+});
+
+test('Agent TabsControl rejects inbound tab.bind', async () => {
+    const { registry } = createWorkspaceHarness();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    await assert.rejects(
+        () => ws.router.handle(
+            action('tab.bind', { workspaceName: wsName, payload: { tabName: 'someone-else', chromeTabNo: 1, windowId: 1 } }),
+            ws,
+            registry,
+        ),
+        /unsupported tab action/,
+    );
+});
+
+test('Agent TabsControl rejects inbound tab.close', async () => {
+    const { registry } = createWorkspaceHarness();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    await assert.rejects(
+        () => ws.router.handle(
+            action('tab.close', { workspaceName: wsName, payload: { tabName: 'any' } }),
+            ws,
+            registry,
+        ),
+        /unsupported tab action/,
+    );
 });
 
 test('tab.reassigned goes through TabsControl via router', async () => {
@@ -445,4 +473,53 @@ test('tab.reassigned goes through TabsControl via router', async () => {
     assert.equal(result.reply.type, 'tab.reassigned.result');
     assert.equal((result.reply.payload as any).workspaceName, wsName);
     assert.equal(ws.tabs.hasTab('reassign-me'), true);
+});
+
+test('tab.bound creates workspace tab and sets active', async () => {
+    const { registry } = createWorkspaceHarness();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+
+    const result = await ws.router.handle(
+        action('tab.bound', { workspaceName: wsName, payload: { tabName: 'bound-tab', chromeTabNo: 7, windowId: 1, url: 'https://bound.io', boundAt: Date.now() } }),
+        ws,
+        registry,
+    );
+    assert.equal(result.reply.type, 'tab.bound.result');
+    assert.equal((result.reply.payload as any).workspaceName, wsName);
+    assert.equal((result.reply.payload as any).tabName, 'bound-tab');
+    // tab.bound commits the workspace tab
+    assert.equal(ws.tabs.hasTab('bound-tab'), true);
+    assert.equal(ws.tabs.getActiveTab()?.name, 'bound-tab');
+});
+
+test('tab.bound updates existing tab without recreating', async () => {
+    const { registry } = createWorkspaceHarness();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+    ws.tabs.createTab({ tabName: 'existing', at: 1000 });
+
+    const result = await ws.router.handle(
+        action('tab.bound', { workspaceName: wsName, payload: { tabName: 'existing', chromeTabNo: 8, windowId: 1, url: 'https://existing.io', boundAt: 2000 } }),
+        ws,
+        registry,
+    );
+    assert.equal(result.reply.type, 'tab.bound.result');
+    assert.equal(ws.tabs.hasTab('existing'), true);
+    assert.equal(ws.tabs.getActiveTab()?.name, 'existing');
+});
+
+test('tab.bound rejects empty tabName', async () => {
+    const { registry } = createWorkspaceHarness();
+    const wsName = `ws-${crypto.randomUUID()}`;
+    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
+
+    await assert.rejects(
+        () => ws.router.handle(
+            action('tab.bound', { workspaceName: wsName, payload: { tabName: '' } }),
+            ws,
+            registry,
+        ),
+        /tabName is required/,
+    );
 });

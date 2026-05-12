@@ -54,6 +54,9 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleInboundAction = (action: Action) => {
         projectInboundAction(action, state, options.onRefresh);
+        if (action.type === ACTION_TYPES.TAB_BIND) {
+            void life.handleBindCommand(action);
+        }
     };
 
     const bootstrapState = async () => {

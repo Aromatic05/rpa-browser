@@ -470,7 +470,7 @@ test('TabsControl tab.open succeeds', async () => {
     assert.equal(result.reply.type, 'tab.open.result');
     const payload = result.reply.payload as Record<string, unknown>;
     assert.equal(payload.workspaceName, 'ws-1');
-    assert.ok(typeof payload.tabName === 'string');
+    assert.ok(typeof payload.createId === 'string');
 });
 
 test('TabsControl tab.reassigned errors on unknown tab', async () => {
@@ -496,6 +496,30 @@ test('TabsControl unknown tab action returns unsupported', async () => {
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.unknown', { workspaceName: 'ws-1' });
+
+    await assert.rejects(
+        () => tabsControl.handle({ action, workspace, workspaceRegistry: registry }),
+        /unsupported tab action/,
+    );
+});
+
+test('TabsControl rejects inbound tab.bind', async () => {
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('tab.bind', { workspaceName: 'ws-1', payload: { tabName: 't1', chromeTabNo: 1, windowId: 1 } });
+
+    await assert.rejects(
+        () => tabsControl.handle({ action, workspace, workspaceRegistry: registry }),
+        /unsupported tab action/,
+    );
+});
+
+test('TabsControl rejects inbound tab.close', async () => {
+    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('tab.close', { workspaceName: 'ws-1', payload: { tabName: 'any' } });
 
     await assert.rejects(
         () => tabsControl.handle({ action, workspace, workspaceRegistry: registry }),
