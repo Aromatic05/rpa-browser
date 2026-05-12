@@ -6,6 +6,7 @@ import type { RunnerConfig } from '../config';
 import type { WorkspaceEntityRulesProvider } from '../entity_rules/provider';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { PageRegistry } from '../runtime/browser/page_registry';
+import type { Action } from '../actions/action_protocol';
 
 export type StepEvent =
     | {
@@ -71,6 +72,7 @@ export type Checkpoint = {
 export type RunStepsDeps = {
     runtime: ExecutionBindings;
     resolveWorkspace: (workspaceName: string) => RuntimeWorkspace;
+    dispatchAction: (action: Action) => Promise<Action>;
     pageRegistry: PageRegistry;
     stepSinks?: StepSink[];
     config: RunnerConfig;

@@ -117,6 +117,9 @@ const runStepsDeps: RunStepsDeps = {
         }
         return workspace;
     },
+    dispatchAction: async () => {
+        throw new Error('dispatchAction not initialized');
+    },
     pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
@@ -176,6 +179,7 @@ const actionDispatcher = createActionDispatcher({
     log: actionLogger,
     emit: (action) => broadcast(action),
 });
+runStepsDeps.dispatchAction = async (action) => await actionDispatcher.dispatch(action);
 
 const handleAction = async (action: Action) => {
     log('action.inbound', {

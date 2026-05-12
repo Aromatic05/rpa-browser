@@ -78,6 +78,9 @@ const runStepsDeps: RunStepsDeps = {
         }
         return workspace;
     },
+    dispatchAction: async () => {
+        throw new Error('dispatchAction not initialized');
+    },
     pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
@@ -134,6 +137,7 @@ const controlActionDispatcher = createActionDispatcher({
     workspaceRegistry,
     log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
 });
+runStepsDeps.dispatchAction = async (action) => await controlActionDispatcher.dispatch(action);
 const controlServer = createControlServer({
     evalContext: {
         deps: runStepsDeps,
