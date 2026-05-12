@@ -38,12 +38,17 @@ const writeTokenToWindowName = (tabName: string) => {
 };
 
 export const ensureTabName = (): string => {
-    const tabName = sessionStorage.getItem(TAB_NAME_KEY) ?? readTokenFromWindowName() ?? '';
-    if (!tabName) {return '';}
-    sessionStorage.setItem(TAB_NAME_KEY, tabName);
-    writeTokenToWindowName(tabName);
-    window.__rpa_tab_name = tabName;
-    return tabName;
+    const fromWindow = readTokenFromWindowName();
+    if (fromWindow) {
+        sessionStorage.setItem(TAB_NAME_KEY, fromWindow);
+        window.__rpa_tab_name = fromWindow;
+        return fromWindow;
+    }
+    const fromSession = sessionStorage.getItem(TAB_NAME_KEY);
+    if (fromSession) {
+        sessionStorage.removeItem(TAB_NAME_KEY);
+    }
+    return '';
 };
 
 export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspaceName: string }> => {

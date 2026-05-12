@@ -60,6 +60,10 @@ const readChromeTabNoFromActiveInfo = (info: chrome.tabs.TabActiveInfo): number 
 export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRuntime => {
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
     const inflightByChromeTab = new Map<number, Promise<BoundTabRef | null>>();
+    const isBindingNameOwnedByAnotherTab = (chromeTabNo: number, bindingName: string) => {
+        const owner = options.state.findChromeTabNoByBindingName(bindingName);
+        return typeof owner === 'number' && owner !== chromeTabNo;
+    };
 
     const emitLifecycleAction = async (type: 'tab.activated' | 'tab.closed', payload: Record<string, unknown>, workspaceName?: string) => {
         await options.sendAction({ v: 1, id: crypto.randomUUID(), type, workspaceName, payload });
@@ -148,11 +152,17 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         let bindingName = existing?.bindingName ?? '';
         let urlHint = existing?.lastUrl ?? '';
 
-        if (!bindingName && preferredBindingName) {bindingName = preferredBindingName;}
+        if (!bindingName && preferredBindingName) {
+            const ownedByOther = isBindingNameOwnedByAnotherTab(chromeTabNo, preferredBindingName);
+            const hasExistingMapping = Boolean(options.state.getBindingWorkspaceTab(preferredBindingName));
+            if (!ownedByOther && !hasExistingMapping) {
+                bindingName = preferredBindingName;
+            }
+        }
         if (!bindingName) {
             const fromPage = await requestBindingNameFromTab(chromeTabNo);
             if (fromPage.ok && fromPage.tabName) {
-                bindingName = fromPage.tabName;
+                bindingName = isBindingNameOwnedByAnotherTab(chromeTabNo, fromPage.tabName) ? '' : fromPage.tabName;
                 urlHint = fromPage.url ?? '';
             }
         }
@@ -173,7 +183,18 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (!mapped) {
             const workspaceName = await resolveWorkspaceName(bindingName, windowId);
             options.state.setWindowWorkspace(windowId, workspaceName);
-            return null;
+            if (!tab) {tab = await chrome.tabs.get(chromeTabNo);}
+            const rebound = await bindOpenedStrict({
+                chromeTabNo,
+                windowId,
+                bindingName,
+                workspaceName,
+                urlHint,
+                title: tab?.title,
+            });
+            options.state.upsertBindingWorkspaceTab(bindingName, rebound.workspaceName, rebound.tabName);
+            options.state.setWindowWorkspace(windowId, rebound.workspaceName);
+            mapped = { workspaceName: rebound.workspaceName, tabName: rebound.tabName };
         }
 
         return { chromeTabNo, windowId, bindingName, workspaceName: mapped.workspaceName, tabName: mapped.tabName, urlHint };
@@ -273,15 +294,8 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (chromeTabNo === null || windowId === null || !isBindableTabUrl(urlHint)) {return;}
 
         void (async () => {
-            let bindingName = '';
-            const fromPage = await requestBindingNameFromTab(chromeTabNo);
-            if (fromPage.ok && fromPage.tabName) {
-                bindingName = fromPage.tabName;
-            }
-            if (!bindingName) {
-                bindingName = crypto.randomUUID();
-                await pushBindingNameToTab(chromeTabNo, bindingName).catch(() => false);
-            }
+            const bindingName = crypto.randomUUID();
+            await pushBindingNameToTab(chromeTabNo, bindingName).catch(() => false);
 
             options.state.upsertTab(chromeTabNo, bindingName, urlHint, windowId);
             if (options.state.getBindingWorkspaceTab(bindingName)) {return;}
