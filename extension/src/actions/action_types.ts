@@ -23,6 +23,7 @@ export const REQUEST_ACTION_TYPES = {
     TAB_REPORTED: 'tab.report',
     TAB_ACTIVATED: 'tab.activated',
     TAB_CLOSED: 'tab.closed',
+    TAB_BOUND: 'tab.bound',
     TAB_PING: 'tab.ping',
 
     RECORD_START: 'record.start',
@@ -63,7 +64,6 @@ export const REQUEST_ACTION_TYPES = {
 const FIXED_EVENT_ACTION_TYPES = {
     WORKSPACE_CHANGED: 'workspace.changed',
     WORKSPACE_SYNC: 'workspace.sync',
-    TAB_BOUND: 'tab.bound',
     TAB_REASSIGNED: 'tab.reassigned',
 
     PLAY_STARTED: 'play.started',
