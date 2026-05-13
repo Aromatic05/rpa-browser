@@ -112,23 +112,43 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (typedMessage.type === MSG.ENSURE_BOUND_TOKEN) {
             (async () => {
                 const chromeTabNo = sender.tab?.id;
-                const windowId = sender.tab?.windowId;
-                if (typeof chromeTabNo !== 'number' || typeof windowId !== 'number') {
+                if (typeof chromeTabNo !== 'number') {
                     sendResponse({ ok: false, error: 'sender tab unavailable' });
                     return;
                 }
-                const bound = await life.ensureOpenedAndBound(chromeTabNo, windowId);
-                if (!bound) {
-                    sendResponse({ ok: false, error: 'binding unavailable' });
-                    return;
+
+                const tabState = state.getTabState(chromeTabNo);
+                const bindingName = tabState?.bindingName;
+                if (bindingName) {
+                    const mapped = state.getBindingWorkspaceTab(bindingName);
+                    if (mapped) {
+                        sendResponse({
+                            ok: true,
+                            bindingName,
+                            workspaceName: mapped.workspaceName,
+                            tabName: mapped.tabName,
+                            windowId: tabState.windowId,
+                        });
+                        return;
+                    }
                 }
-                sendResponse({
-                    ok: true,
-                    bindingName: bound.bindingName,
-                    workspaceName: bound.workspaceName,
-                    tabName: bound.tabName,
-                    windowId: bound.windowId,
-                });
+
+                const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
+                if (inflight) {
+                    const bound = await inflight;
+                    if (bound) {
+                        sendResponse({
+                            ok: true,
+                            bindingName: bound.bindingName,
+                            workspaceName: bound.workspaceName,
+                            tabName: bound.tabName,
+                            windowId: bound.windowId,
+                        });
+                        return;
+                    }
+                }
+
+                sendResponse({ ok: false, error: 'not bound' });
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
             });

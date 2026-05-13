@@ -49,6 +49,7 @@ export type LifecycleRuntime = {
     onInstalled: () => void;
     handleBindCommand: (action: Action) => Promise<void>;
     ensureOpenedAndBound: (chromeTabNo: number, windowId: number) => Promise<BoundTabRef | null>;
+    getOpenedAndBoundInflight: (chromeTabNo: number) => Promise<BoundTabRef | null> | null;
 };
 
 const readChromeTabNoFromActiveInfo = (info: chrome.tabs.TabActiveInfo): number =>
@@ -394,5 +395,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         onInstalled: () => { options.state.resetInstalledState(); },
         handleBindCommand,
         ensureOpenedAndBound,
+        getOpenedAndBoundInflight: (chromeTabNo: number) => inflightOpenedAndBound.get(chromeTabNo) ?? null,
     };
 };
