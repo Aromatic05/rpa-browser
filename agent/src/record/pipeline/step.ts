@@ -224,6 +224,23 @@ export const appendWorkspaceRecordingEvent = async (
             tabName?: string;
         }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
     };
+    const removeRecordedStep = (stepId: string) => {
+        const list = state.recordings.get(effectiveToken) || [];
+        const next = list.filter((item) => item.id !== stepId);
+        state.recordings.set(effectiveToken, next);
+        const enhancements = state.recordingEnhancements.get(effectiveToken);
+        if (enhancements && Object.prototype.hasOwnProperty.call(enhancements, stepId)) {
+            delete enhancements[stepId];
+        }
+    };
+    const replaceRecordedStep = (stepId: string, nextStep: StepUnion) => {
+        const list = state.recordings.get(effectiveToken) || [];
+        const index = list.findIndex((item) => item.id === stepId);
+        if (index === -1) {return false;}
+        list[index] = nextStep;
+        state.recordings.set(effectiveToken, list);
+        return true;
+    };
     if (event.type === 'navigate') {
         flushPendingChoiceEvents(state, effectiveToken, buildNormalizeContext(), hooks, { workspaceName, page, reason: 'navigate' });
         flushPendingFillEvents(state, effectiveToken, { workspaceName, page }, hooks);
@@ -268,6 +285,39 @@ export const appendWorkspaceRecordingEvent = async (
         return { accepted: true };
     }
 
+    let provisionalClickStep: StepUnion | undefined;
+    if (event.type === 'click') {
+        const provisional = toStep(event);
+        if (provisional && provisional.name === 'browser.click') {
+            const normalized = enrichRecordedStep(state, effectiveToken, tabName, provisional);
+            const list = state.recordings.get(effectiveToken) || [];
+            list.push(normalized);
+            state.recordings.set(effectiveToken, list);
+            provisionalClickStep = normalized;
+            recordLog('step_queued', {
+                stepId: normalized.id,
+                stepName: normalized.name,
+                ts: normalized.meta?.ts,
+                tabName: normalized.meta?.tabName || tabName,
+                workspaceName,
+                provisional: true,
+            });
+            startRecordedStepEnrichment({
+                state,
+                recordingToken: effectiveToken,
+                stepId: normalized.id,
+                event,
+                page,
+                snapshotCache: state.recordSnapshotCache,
+                cacheKey: tabScopedCacheKey,
+                workspaceName,
+                stepName: normalized.name,
+                ts: normalized.meta?.ts,
+                tabName: normalized.meta?.tabName || tabName,
+            });
+        }
+    }
+
     let currentEvent = event;
     for (let round = 0; round < 3; round += 1) {
         recordLog('record_normalizer_enter', {
@@ -289,9 +339,40 @@ export const appendWorkspaceRecordingEvent = async (
                 : undefined,
         });
         if (normalizedEvent.status === 'pending') {
+            if (provisionalClickStep) {
+                removeRecordedStep(provisionalClickStep.id);
+            }
             return { accepted: true };
         }
         if (normalizedEvent.status === 'handled') {
+            if (provisionalClickStep && normalizedEvent.step.name === 'browser.click') {
+                const merged = enrichRecordedStep(
+                    state,
+                    effectiveToken,
+                    tabName,
+                    {
+                        ...normalizedEvent.step,
+                        id: provisionalClickStep.id,
+                    } as StepUnion,
+                );
+                replaceRecordedStep(provisionalClickStep.id, merged);
+                recordLog('step_updated', {
+                    stepId: merged.id,
+                    stepName: merged.name,
+                    ts: merged.meta?.ts,
+                    tabName: merged.meta?.tabName || tabName,
+                    workspaceName,
+                });
+                if (normalizedEvent.continueCurrentEvent) {
+                    provisionalClickStep = undefined;
+                    continue;
+                }
+                return { accepted: true };
+            }
+            if (provisionalClickStep) {
+                removeRecordedStep(provisionalClickStep.id);
+                provisionalClickStep = undefined;
+            }
             queueRecordingStep(
                 state,
                 effectiveToken,
@@ -314,6 +395,10 @@ export const appendWorkspaceRecordingEvent = async (
             return { accepted: true };
         }
         break;
+    }
+
+    if (provisionalClickStep) {
+        return { accepted: true };
     }
 
     const step = toStep(currentEvent);
