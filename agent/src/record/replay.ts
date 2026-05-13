@@ -480,7 +480,6 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (!recordedTabName || !targetTabName) {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_NOT_BOUND, message: 'replay target tab not bound' } };
             }
-            await req.runtime.awaitExecutableTab({ workspace: req.workspace, pageRegistry: req.pageRegistry, tabName: targetTabName, timeoutMs: 1500 });
         }
 
         const response = syntheticResponse || await runOne(remappedStep);
