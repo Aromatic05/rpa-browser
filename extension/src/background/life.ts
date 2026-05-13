@@ -354,9 +354,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             const tabName = typeof replyPayload.tabName === 'string' ? replyPayload.tabName.trim() : '';
             if (!tabName) { return null; }
 
-            const ok = await pushBindingNameToTab(chromeTabNo, tabName);
-            if (!ok) { return null; }
-
             options.state.upsertBindingWorkspaceTab(tabName, workspaceName, tabName);
             options.state.upsertTab(chromeTabNo, tabName, typeof tab.url === 'string' ? tab.url : '', actualWindowId);
             options.state.setWindowWorkspace(actualWindowId, workspaceName);
@@ -368,6 +365,8 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 workspaceName,
                 payload: { tabName, chromeTabNo, windowId: actualWindowId, boundAt: Date.now() },
             });
+
+            void pushBindingNameToTab(chromeTabNo, tabName);
 
             return { chromeTabNo, windowId: actualWindowId, bindingName: tabName, workspaceName, tabName, urlHint: typeof tab.url === 'string' ? tab.url : '' };
         })();
@@ -386,25 +385,24 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         // Skip if already bound (ensureOpenedAndBound won the race)
         if (options.state.getTabState(chromeTabNo)?.bindingName) { return; }
 
-        const ok = await pushBindingNameToTab(chromeTabNo, tabName);
-        if (ok) {
-            options.state.upsertBindingWorkspaceTab(tabName, action.workspaceName ?? '', tabName);
-            options.state.upsertTab(chromeTabNo, tabName, '', windowId);
-            options.state.setWindowWorkspace(windowId, action.workspaceName ?? '');
+        options.state.upsertBindingWorkspaceTab(tabName, action.workspaceName ?? '', tabName);
+        options.state.upsertTab(chromeTabNo, tabName, '', windowId);
+        options.state.setWindowWorkspace(windowId, action.workspaceName ?? '');
 
-            await options.sendAction({
-                v: 1,
-                id: crypto.randomUUID(),
-                type: ACTION_TYPES.TAB_BOUND,
-                workspaceName: action.workspaceName,
-                payload: {
-                    tabName,
-                    chromeTabNo,
-                    windowId,
-                    boundAt: Date.now(),
-                },
-            });
-        }
+        await options.sendAction({
+            v: 1,
+            id: crypto.randomUUID(),
+            type: ACTION_TYPES.TAB_BOUND,
+            workspaceName: action.workspaceName,
+            payload: {
+                tabName,
+                chromeTabNo,
+                windowId,
+                boundAt: Date.now(),
+            },
+        });
+
+        void pushBindingNameToTab(chromeTabNo, tabName);
     };
 
     return {
