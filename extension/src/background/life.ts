@@ -50,6 +50,7 @@ export type LifecycleRuntime = {
     handleBindCommand: (action: Action) => Promise<void>;
     ensureOpenedAndBound: (chromeTabNo: number, windowId: number) => Promise<BoundTabRef | null>;
     getOpenedAndBoundInflight: (chromeTabNo: number) => Promise<BoundTabRef | null> | null;
+    bindExistingTabs: () => Promise<void>;
 };
 
 const readChromeTabNoFromActiveInfo = (info: chrome.tabs.TabActiveInfo): number =>
@@ -380,6 +381,15 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         void pushBindingNameToTab(chromeTabNo, tabName);
     };
 
+    const bindExistingTabs = async () => {
+        const tabs = await chrome.tabs.query({});
+        for (const tab of tabs) {
+            if (typeof tab.id === 'number' && typeof tab.windowId === 'number') {
+                void ensureOpenedAndBound(tab.id, tab.windowId);
+            }
+        }
+    };
+
     return {
         ensureTabName,
         ensureBoundTabRef,
@@ -396,5 +406,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         handleBindCommand,
         ensureOpenedAndBound,
         getOpenedAndBoundInflight: (chromeTabNo: number) => inflightOpenedAndBound.get(chromeTabNo) ?? null,
+        bindExistingTabs,
     };
 };

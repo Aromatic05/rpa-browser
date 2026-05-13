@@ -85,6 +85,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const data = payloadOf(reply);
         const activeWorkspaceName = typeof data.activeWorkspaceName === 'string' ? data.activeWorkspaceName : null;
         if (activeWorkspaceName) {state.setActiveWorkspaceName(activeWorkspaceName);}
+        await life.bindExistingTabs();
     };
 
     const handleMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (payload?: unknown) => void) => {
