@@ -221,7 +221,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     createdAt: Date.now(),
                     stepCount: orderedSteps.length,
                 },
-                steps: persistedSteps,
+                steps: orderedSteps,
                 stepResolves,
             };
             workflow.save(artifact);

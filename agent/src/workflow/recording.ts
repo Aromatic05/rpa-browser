@@ -69,6 +69,12 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
         validateStepResolveFileForSerialization(stepResolveFile);
         writeYamlFile(path.join(dir, 'recording.yaml'), value.recording);
         writeYamlFile(path.join(dir, 'steps.yaml'), stepsFile);
+        if (process.env.RPA_RECORD_DEBUG_STEPS === '1') {
+            writeYamlFile(path.join(dir, 'steps.debug.yaml'), {
+                version: 1,
+                steps: value.steps,
+            });
+        }
         writeYamlFile(path.join(dir, 'step_resolve.yaml'), stepResolveFile);
         return value;
     },
