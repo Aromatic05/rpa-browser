@@ -54,6 +54,9 @@ const wsTap = (stage: string, data: Record<string, unknown>) => {
 };
 let broadcast: (action: Action) => void = () => undefined;
 let workspaceRegistry: ReturnType<typeof createWorkspaceRegistry>;
+let dispatchActionForTrace: (action: Action) => Promise<Action> = async () => {
+    throw new Error('dispatchAction not initialized');
+};
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -106,6 +109,7 @@ const runtimeRegistry = createExecutionBindings({
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,
+    dispatchAction: async (action) => await dispatchActionForTrace(action),
 });
 
 const runStepsDeps: RunStepsDeps = {
@@ -179,6 +183,7 @@ const actionDispatcher = createActionDispatcher({
     log: actionLogger,
     emit: (action) => broadcast(action),
 });
+dispatchActionForTrace = async (action) => await actionDispatcher.dispatch(action);
 runStepsDeps.dispatchAction = async (action) => await actionDispatcher.dispatch(action);
 
 const handleAction = async (action: Action) => {

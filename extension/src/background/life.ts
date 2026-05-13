@@ -48,7 +48,11 @@ export type LifecycleRuntime = {
     onStartup: () => void;
     onInstalled: () => void;
     handleBindCommand: (action: Action) => Promise<void>;
-    ensureOpenedAndBound: (chromeTabNo: number, windowId: number) => Promise<BoundTabRef | null>;
+    ensureOpenedAndBound: (
+        chromeTabNo: number,
+        windowId: number,
+        options?: { createId?: string },
+    ) => Promise<BoundTabRef | null>;
     getOpenedAndBoundInflight: (chromeTabNo: number) => Promise<BoundTabRef | null> | null;
     bindExistingTabs: () => Promise<void>;
 };
@@ -324,7 +328,11 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
 
     const inflightOpenedAndBound = new Map<number, Promise<BoundTabRef | null>>();
 
-    const ensureOpenedAndBound = async (chromeTabNo: number, windowId: number): Promise<BoundTabRef | null> => {
+    const ensureOpenedAndBound = async (
+        chromeTabNo: number,
+        windowId: number,
+        openedOptions?: { createId?: string },
+    ): Promise<BoundTabRef | null> => {
         const existing = options.state.getTabState(chromeTabNo);
         if (existing?.bindingName) {
             const mapped = options.state.getBindingWorkspaceTab(existing.bindingName);
@@ -350,6 +358,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 workspaceName,
                 payload: {
                     source: 'extension.sw',
+                    createId: openedOptions?.createId || '',
                     chromeTabNo,
                     windowId: actualWindowId,
                     urlHint: typeof tab.url === 'string' ? tab.url : '',

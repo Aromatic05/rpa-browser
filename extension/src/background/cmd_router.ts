@@ -54,11 +54,23 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleInboundAction = (action: Action) => {
         projectInboundAction(action, state, options.onRefresh);
+        if (action.type === ACTION_TYPES.TAB_OPEN) {
+            void handleTabOpen(action);
+        }
         if (action.type === ACTION_TYPES.TAB_BIND) {
             void life.handleBindCommand(action);
         }
         if (action.type === ACTION_TYPES.TAB_CLOSE) {
             void handleTabClose(action);
+        }
+    };
+
+    const handleTabOpen = async (action: Action) => {
+        const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const createId = typeof payload.createId === 'string' ? payload.createId.trim() : '';
+        const created = await chrome.tabs.create({ url: 'chrome://newtab', active: true });
+        if (typeof created.id === 'number' && typeof created.windowId === 'number') {
+            await life.ensureOpenedAndBound(created.id, created.windowId, { createId });
         }
     };
 
