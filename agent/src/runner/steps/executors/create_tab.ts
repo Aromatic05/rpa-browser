@@ -1,11 +1,8 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { ACTION_TYPES } from '../../../actions/action_types';
-import crypto from 'node:crypto';
 import { mapTraceError } from '../helpers/target';
 
 const findNewWorkspaceTab = async (
-    deps: RunStepsDeps,
     workspace: ReturnType<RunStepsDeps['resolveWorkspace']>,
     knownTabNames: Set<string>,
     timeoutMs: number,
@@ -31,32 +28,32 @@ export const executeBrowserCreateTab = async (
 ): Promise<StepResult> => {
     const workspace = deps.resolveWorkspace(workspaceName);
     const knownTabNames = new Set(workspace.tabs.listTabs().map((tab) => tab.name));
-
-    const opened = await deps.dispatchAction({
-        v: 1,
-        id: crypto.randomUUID(),
-        type: ACTION_TYPES.TAB_OPEN,
-        workspaceName,
-        payload: {
-            source: 'agent.step',
-            at: Date.now(),
-        },
-        at: Date.now(),
-    });
-    if (opened.type.endsWith('.failed')) {
+    const activeTabName = workspace.tabs.getActiveTab()?.name;
+    if (!activeTabName) {
         return {
             stepId: step.id,
             ok: false,
             error: {
-                code: String((opened.payload as { code?: unknown })?.code || 'ERR_TAB_OPEN'),
-                message: String((opened.payload as { message?: unknown })?.message || 'tab.open failed'),
+                code: 'ERR_TAB_NOT_FOUND',
+                message: 'browser.create_tab requires an active tab to drive trace tab creation',
             },
         };
     }
 
     const boundTimeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
-    const bindingName = await findNewWorkspaceTab(deps, workspace, knownTabNames, boundTimeoutMs);
-    if (!bindingName) {
+    const activeBinding = await deps.runtime.awaitExecutableTab({
+        workspace,
+        pageRegistry: deps.pageRegistry,
+        tabName: activeTabName,
+        timeoutMs: boundTimeoutMs,
+    });
+    const traceCreate = await activeBinding.traceTools['trace.tabs.create']({ workspaceName, timeout: boundTimeoutMs });
+    if (!traceCreate.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(traceCreate.error) };
+    }
+
+    const createdTabName = await findNewWorkspaceTab(workspace, knownTabNames, boundTimeoutMs);
+    if (!createdTabName) {
         return {
             stepId: step.id,
             ok: false,
@@ -67,16 +64,12 @@ export const executeBrowserCreateTab = async (
         };
     }
 
-    const binding = await deps.runtime.awaitExecutableTab({
+    await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: deps.pageRegistry,
-        tabName: bindingName,
+        tabName: createdTabName,
         timeoutMs: boundTimeoutMs,
     });
-    const traceCreate = await binding.traceTools['trace.tabs.create']({ workspaceName });
-    if (!traceCreate.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(traceCreate.error) };
-    }
 
-    return { stepId: step.id, ok: true, data: { tab_id: bindingName } };
+    return { stepId: step.id, ok: true, data: { tab_id: createdTabName } };
 };
