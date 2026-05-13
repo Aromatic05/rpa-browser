@@ -157,6 +157,25 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (typedMessage.type === MSG.ACTION) {
             (async () => {
+                const chromeTabNo = sender.tab?.id;
+                if (typeof chromeTabNo === 'number') {
+                    const tabState = state.getTabState(chromeTabNo);
+                    const bindingName = tabState?.bindingName;
+                    if (bindingName) {
+                        const mapped = state.getBindingWorkspaceTab(bindingName);
+                        if (mapped) {
+                            const action = typedMessage.action as Record<string, unknown> | null | undefined;
+                            if (isRecord(action)) {
+                                if (!action.workspaceName || typeof action.workspaceName !== 'string') {
+                                    action.workspaceName = mapped.workspaceName;
+                                }
+                                if (isRecord(action.payload)) {
+                                    action.payload.tabName = bindingName;
+                                }
+                            }
+                        }
+                    }
+                }
                 const reply = await dispatchActionRequest(typedMessage.action, options.wsClient);
                 sendResponse(reply);
             })().catch((error: unknown) => {
