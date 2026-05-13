@@ -15,14 +15,9 @@ const payloadOf = (action: Action | null | undefined): Record<string, unknown> =
 };
 
 const LIFECYCLE_THROTTLE_MS = 180;
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 const toStringOrUndefined = (value: unknown): string | undefined =>
     typeof value === 'string' ? value : typeof value === 'number' ? String(value) : undefined;
-const isBindableTabUrl = (url: string): boolean => {
-    if (!url) {return false;}
-    const lowered = url.toLowerCase();
-    return !(lowered.startsWith('chrome://') || lowered.startsWith('edge://') || lowered.startsWith('about:') || lowered.startsWith('devtools://') || lowered.startsWith('chrome-extension://'));
-};
 
 export type LifecycleOptions = {
     state: RouterState;
@@ -71,19 +66,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         await options.sendAction({ v: 1, id: crypto.randomUUID(), type, workspaceName, payload });
     };
 
-    const requestBindingNameFromTab = async (chromeTabNo: number) => {
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-            const result = await send.toTabTransport<{ ok: boolean; tabName?: string; url?: string }>(chromeTabNo, MSG.GET_TOKEN, undefined, { timeoutMs: 1500 });
-            if (result.ok) {
-                const data = result.data;
-                if (data.ok && data.tabName) {return data;}
-            } else if (result.error.code === 'NO_RECEIVER') {
-                return { ok: false, error: result.error.message } as const;
-            }
-            if (attempt < 2) {await wait(150);}
-        }
-        return { ok: false, error: 'binding request timeout' } as const;
-    };
 
     const pushBindingNameToTab = async (chromeTabNo: number, bindingName: string) => {
         const result = await send.toTabTransport<{ ok: boolean }>(chromeTabNo, MSG.SET_TOKEN, { tabName: bindingName }, { timeoutMs: 1200 });
@@ -131,18 +113,10 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 bindingName = preferredBindingName;
             }
         }
-        if (!bindingName) {
-            const fromPage = await requestBindingNameFromTab(chromeTabNo);
-            if (fromPage.ok && fromPage.tabName) {
-                bindingName = isBindingNameOwnedByAnotherTab(chromeTabNo, fromPage.tabName) ? '' : fromPage.tabName;
-                urlHint = fromPage.url ?? '';
-            }
-        }
         if (!urlHint) {
             if (!tab) {tab = await chrome.tabs.get(chromeTabNo);}
             urlHint = tab?.url ?? '';
         }
-        if (!isBindableTabUrl(urlHint)) {return null;}
 
         if (bindingName) {
             const mapped = options.state.getBindingWorkspaceTab(bindingName);
