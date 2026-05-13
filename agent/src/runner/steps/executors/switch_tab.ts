@@ -1,6 +1,5 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { mapTraceError } from '../helpers/target';
 
 export const executeBrowserSwitchTab = async (
     step: Step<'browser.switch_tab'>,
@@ -17,18 +16,5 @@ export const executeBrowserSwitchTab = async (
     }
     const workspace = deps.resolveWorkspace(workspaceName);
     workspace.tabs.setActiveTab(tabName);
-    const binding = await deps.runtime.awaitExecutableTab({
-        workspace,
-        pageRegistry: deps.pageRegistry,
-        tabName,
-        timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
-    });
-    const result = await binding.traceTools['trace.tabs.switch']({
-        workspaceName,
-        tabName,
-    });
-    if (!result.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
-    }
     return { stepId: step.id, ok: true };
 };
