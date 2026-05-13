@@ -26,7 +26,7 @@ test('router tab.list returns tabs array', async () => {
     assert.equal(payload.tabs[0].active, true);
 });
 
-test('router tab.close removes the tab', async () => {
+test('router tab.close acknowledges but does not remove tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
@@ -38,7 +38,11 @@ test('router tab.close removes the tab', async () => {
         registry,
     );
     assert.equal(result.reply.type, 'tab.close.result');
-    assert.equal(ws.tabs.hasTab('to-close'), false);
+    // tab.close does NOT delete tab identity — tab.closed is the sole commit point
+    assert.equal(ws.tabs.hasTab('to-close'), true);
+    // tab.close forwards the action as an event for the extension to execute
+    assert.ok(result.events.length > 0);
+    assert.equal(result.events[0].type, 'tab.close');
 });
 
 test('router tab.setActive changes the active tab', async () => {

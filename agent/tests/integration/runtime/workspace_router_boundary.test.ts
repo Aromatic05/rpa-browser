@@ -406,19 +406,12 @@ test('TabsControl handles tab.create', async () => {
 
 test('TabsControl handles tab.close', async () => {
     const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
-    let pageClosed = false;
     const tabs = createWorkspaceTabs({
         getPage: async () => {
             throw new Error('not implemented');
         },
     });
     tabs.createTab({ tabName: 'tab-1' });
-    // Override closeTab to track it
-    const originalClose = tabs.closeTab;
-    tabs.closeTab = async (tabName: string) => {
-        pageClosed = true;
-        return await originalClose(tabName);
-    };
 
     const workspace = {
         name: 'ws-1',
@@ -431,9 +424,10 @@ test('TabsControl handles tab.close', async () => {
     });
 
     const result = await tabsControl.handle({ action, workspace, workspaceRegistry: registry });
-    assert.equal(pageClosed, true);
     const payload = result.reply.payload as Record<string, unknown>;
     assert.equal(payload.tabName, 'tab-1');
+    // tab.close does NOT delete tab identity — tab.closed is the sole commit point
+    assert.equal(workspace.tabs.hasTab('tab-1'), true);
 });
 
 test('TabsControl tab.activated sets tab active', async () => {

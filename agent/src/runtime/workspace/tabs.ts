@@ -259,7 +259,18 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 const tabName = requireTabName(payload);
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
-                return { reply: await closeViaLifecycle(tabName, source, at), events: [] };
+                if (shouldRecordLifecycle()) {
+                    const closingTab = workspace.tabs.getTab(tabName);
+                    recordTabClosed(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: closingTab?.url || '',
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [action] };
             }
 
             case 'tab.setActive': {

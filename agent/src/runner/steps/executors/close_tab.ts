@@ -19,7 +19,7 @@ export const executeBrowserCloseTab = async (
     const closed = await deps.dispatchAction({
         v: 1,
         id: crypto.randomUUID(),
-        type: ACTION_TYPES.TAB_CLOSED,
+        type: ACTION_TYPES.TAB_CLOSE,
         workspaceName,
         payload: {
             source: 'agent.step',
@@ -33,8 +33,8 @@ export const executeBrowserCloseTab = async (
             stepId: step.id,
             ok: false,
             error: {
-                code: String((closed.payload as { code?: unknown })?.code || 'ERR_TAB_CLOSED'),
-                message: String((closed.payload as { message?: unknown })?.message || 'tab.closed failed'),
+                code: String((closed.payload as { code?: unknown })?.code || 'ERR_TAB_CLOSE'),
+                message: String((closed.payload as { message?: unknown })?.message || 'tab.close failed'),
             },
         };
     }
