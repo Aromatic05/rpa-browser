@@ -136,6 +136,42 @@ export const recordFirstTabPageUrl = (state: RecordingState, input: FirstPageUrl
     );
 };
 
+export const recordTabNavigation = (state: RecordingState, input: FirstPageUrlInput): { accepted: boolean } => {
+    if (!isOrdinaryPageUrl(input.url)) {return { accepted: false };}
+    const steps = getRecordedSteps(state, input.workspaceName);
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+        const step = steps[i];
+        if (!isSameTab(step, input.tabRef)) {continue;}
+        if (step.name === 'browser.close_tab') {return { accepted: false };}
+        if (step.name === 'browser.goto') {
+            const args = (step.args || {}) as Record<string, unknown>;
+            if (typeof args.url === 'string' && args.url === input.url) {return { accepted: false };}
+            break;
+        }
+        break;
+    }
+    const ts = input.at ?? Date.now();
+    return appendWorkspaceRecordingStep(
+        state,
+        input.workspaceName,
+        input.tabName,
+        {
+            id: crypto.randomUUID(),
+            name: 'browser.goto',
+            args: { url: input.url },
+            meta: {
+                source: 'record',
+                ts,
+                workspaceName: input.workspaceName,
+                tabName: input.tabName,
+                urlAtRecord: input.url,
+            },
+        },
+        input.navDedupeWindowMs,
+        { flushPendingFill: false, updateNavigateDedupe: false },
+    );
+};
+
 export const recordTabActivated = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
     const steps = getRecordedSteps(state, input.workspaceName);
     if (shouldSkipActivated(steps, input.tabRef)) {return { accepted: false };}
