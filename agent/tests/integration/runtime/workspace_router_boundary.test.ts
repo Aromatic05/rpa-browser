@@ -117,16 +117,6 @@ test('tab.list is forwarded to tabsControl', async () => {
     assert.equal(tabsControl.calls[0].action.type, 'tab.list');
 });
 
-test('tab.create is forwarded to tabsControl', async () => {
-    const { router, tabsControl } = createRouterWithStubs();
-    const workspace = createMinimalWorkspace('ws-1');
-    const registry = createMinimalRegistry();
-    const action = stubAction('tab.create', { workspaceName: 'ws-1' });
-
-    await router.handle(action, workspace, registry);
-    assert.equal(tabsControl.calls.length, 1);
-});
-
 test('tab.close is forwarded to tabsControl', async () => {
     const { router, tabsControl } = createRouterWithStubs();
     const workspace = createMinimalWorkspace('ws-1');
@@ -379,29 +369,6 @@ test('TabsControl handles tab.list', async () => {
     const payload = result.reply.payload as Record<string, unknown>;
     assert.equal(payload.workspaceName, 'ws-1');
     assert.ok(Array.isArray(payload.tabs));
-});
-
-test('TabsControl handles tab.create', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
-    let pageCreated = false;
-    const tabs = createWorkspaceTabs({
-        getPage: async () => {
-            pageCreated = true;
-            return { url: () => 'about:blank', isClosed: () => false } as any;
-        },
-    });
-    const workspace = {
-        name: 'ws-1',
-        tabs,
-    } as RuntimeWorkspace;
-    const registry = createMinimalRegistry();
-    const action = stubAction('tab.create', { workspaceName: 'ws-1' });
-
-    const result = await tabsControl.handle({ action, workspace, workspaceRegistry: registry });
-    assert.equal(pageCreated, true);
-    const payload = result.reply.payload as Record<string, unknown>;
-    assert.equal(payload.workspaceName, 'ws-1');
-    assert.ok(typeof payload.tabName === 'string');
 });
 
 test('TabsControl handles tab.close', async () => {

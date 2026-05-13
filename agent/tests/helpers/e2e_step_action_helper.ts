@@ -153,7 +153,7 @@ return await ctx.dispatch(action);
     workspaceName = createdWorkspaceName;
 
     const tabReply = await dispatchAction(makeAction({
-        type: 'tab.create',
+        type: 'tab.open',
         workspaceName,
         payload: { startUrl: `${fixture.baseURL}/step_actions/customer_profile.html` },
     }));

@@ -77,7 +77,7 @@ const ensureWorkbenchTab = async (
         const reply = await harness.dispatchAction({
             v: 1,
             id: crypto.randomUUID(),
-            type: 'tab.create',
+            type: 'tab.open',
             workspaceName,
             payload: { startUrl: workbenchUrl },
             at: Date.now(),

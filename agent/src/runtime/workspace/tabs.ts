@@ -246,15 +246,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 return { reply: replyAction(action, { workspaceName: workspace.name, createId, source: 'tab.open' }), events: [] };
             }
 
-            case 'tab.create': {
-                const tabName = crypto.randomUUID();
-                const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
-                workspace.tabs.createTab({ tabName });
-                await workspace.tabs.createTabPage(tabName, { startUrl });
-                workspace.tabs.setActiveTab(tabName);
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
-            }
-
             case 'tab.close': {
                 const tabName = requireTabName(payload);
                 const at = typeof payload.at === 'number' ? payload.at : undefined;

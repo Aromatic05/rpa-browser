@@ -215,11 +215,11 @@ export const createMultitabHarness = async (): Promise<MultitabHarness> => {
         if (!workspaceName) {
             throw new Error(`workspace.create missing workspaceName: ${JSON.stringify(wsReply)}`);
         }
-        const tabReply = await dispatchAction(makeAction({ type: 'tab.create', workspaceName, payload: { startUrl: url } }));
-        mustReplyOk(tabReply, 'tab.create failed');
+        const tabReply = await dispatchAction(makeAction({ type: 'tab.open', workspaceName, payload: { startUrl: url } }));
+        mustReplyOk(tabReply, 'tab.open failed');
         const tabName = ((tabReply.payload || {}) as { tabName?: string }).tabName;
         if (!tabName) {
-            throw new Error(`tab.create missing tabName: ${JSON.stringify(tabReply)}`);
+            throw new Error(`tab.open missing tabName: ${JSON.stringify(tabReply)}`);
         }
         return { workspaceName, tabName };
     };

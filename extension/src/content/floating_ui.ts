@@ -360,7 +360,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         row1.className = 'row';
         row1.append(
             createButton('tab.list', refreshTabs),
-            createButton('tab.create', () => sendPanelAction('tab.create', {})),
+            createButton('tab.create', () => { chrome.tabs.create({}); }),
         );
         const row2 = document.createElement('div');
         row2.className = 'row';

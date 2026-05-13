@@ -219,7 +219,7 @@ test('agent and extension classify workspace routing is consistent', async () =>
     const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
 
     const workspaceCases = [
-        'tab.list', 'tab.create', 'tab.close', 'tab.open',
+        'tab.list', 'tab.close', 'tab.open',
         'tab.bind', 'tab.setActive', 'tab.opened', 'tab.report', 'tab.activated',
         'tab.closed', 'tab.ping', 'tab.reassigned',
         'record.start', 'record.stop', 'record.get', 'record.save',

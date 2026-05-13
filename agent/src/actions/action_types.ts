@@ -15,7 +15,6 @@ export const REQUEST_ACTION_TYPES = {
     WORKSPACE_SET_ACTIVE: 'workspace.setActive',
 
     TAB_LIST: 'tab.list',
-    TAB_CREATE: 'tab.create',
     TAB_CLOSE: 'tab.close',
     TAB_OPEN: 'tab.open',
     TAB_BIND: 'tab.bind',

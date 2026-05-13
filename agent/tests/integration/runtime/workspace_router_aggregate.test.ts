@@ -384,22 +384,6 @@ test('WorkspaceTabs.closeTab removes tab', async () => {
     assert.equal(ws.tabs.hasTab('close-me'), false);
 });
 
-test('tab.create goes through TabsControl via router', async () => {
-    const { registry } = createWorkspaceHarness({
-        getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
-    });
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-
-    const result = await ws.router.handle(
-        action('tab.create', { workspaceName: wsName, payload: { startUrl: 'https://new.io' } }),
-        ws,
-        registry,
-    );
-    assert.equal(result.reply.type, 'tab.create.result');
-    assert.ok(typeof (result.reply.payload as any).tabName === 'string');
-});
-
 test('tab.opened goes through TabsControl via router', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
