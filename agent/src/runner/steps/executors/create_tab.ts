@@ -1,22 +1,27 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import { ACTION_TYPES } from '../../../actions/action_types';
+import crypto from 'node:crypto';
+import { mapTraceError } from '../helpers/target';
 
-const waitForWorkspaceTab = async (
+const findNewWorkspaceTab = async (
     deps: RunStepsDeps,
-    workspaceName: string,
-    tabName: string,
+    workspace: ReturnType<RunStepsDeps['resolveWorkspace']>,
+    knownTabNames: Set<string>,
     timeoutMs: number,
-): Promise<boolean> => {
+): Promise<string | null> => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        const workspace = deps.resolveWorkspace(workspaceName);
-        if (workspace.tabs.hasTab(tabName)) {
-            return true;
+        const tabs = workspace.tabs.listTabs();
+        const created = tabs.find((tab) => !knownTabNames.has(tab.name));
+        if (created?.name) {
+            return created.name;
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    const workspace = deps.resolveWorkspace(workspaceName);
-    return workspace.tabs.hasTab(tabName);
+    const tabs = workspace.tabs.listTabs();
+    const created = tabs.find((tab) => !knownTabNames.has(tab.name));
+    return created?.name || null;
 };
 
 export const executeBrowserCreateTab = async (
@@ -25,8 +30,32 @@ export const executeBrowserCreateTab = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const workspace = deps.resolveWorkspace(workspaceName);
-    const page = await deps.pageRegistry.createPage();
-    const bindingName = await deps.pageRegistry.bindPage(page);
+    const knownTabNames = new Set(workspace.tabs.listTabs().map((tab) => tab.name));
+
+    const opened = await deps.dispatchAction({
+        v: 1,
+        id: crypto.randomUUID(),
+        type: ACTION_TYPES.TAB_OPEN,
+        workspaceName,
+        payload: {
+            source: 'agent.step',
+            at: Date.now(),
+        },
+        at: Date.now(),
+    });
+    if (opened.type.endsWith('.failed')) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: String((opened.payload as { code?: unknown })?.code || 'ERR_TAB_OPEN'),
+                message: String((opened.payload as { message?: unknown })?.message || 'tab.open failed'),
+            },
+        };
+    }
+
+    const boundTimeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
+    const bindingName = await findNewWorkspaceTab(deps, workspace, knownTabNames, boundTimeoutMs);
     if (!bindingName) {
         return {
             stepId: step.id,
@@ -38,20 +67,16 @@ export const executeBrowserCreateTab = async (
         };
     }
 
-    const boundTimeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
-    const existsAfterBound = workspace.tabs.hasTab(bindingName)
-        || await waitForWorkspaceTab(deps, workspaceName, bindingName, boundTimeoutMs);
-    if (!existsAfterBound) {
-        workspace.tabs.createTab({ tabName: bindingName });
-    }
-
-    workspace.tabs.setActiveTab(bindingName);
-    await deps.runtime.awaitExecutableTab({
+    const binding = await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: deps.pageRegistry,
         tabName: bindingName,
         timeoutMs: boundTimeoutMs,
     });
+    const traceCreate = await binding.traceTools['trace.tabs.create']({ workspaceName });
+    if (!traceCreate.ok) {
+        return { stepId: step.id, ok: false, error: mapTraceError(traceCreate.error) };
+    }
 
     return { stepId: step.id, ok: true, data: { tab_id: bindingName } };
 };
