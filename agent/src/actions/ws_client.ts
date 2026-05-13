@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { failedAction, isFailedAction, type Action } from './action_protocol';
 import { ERROR_CODES } from './results';
-import { isRequestActionType, ACTION_TYPES } from './action_types';
+import { isRequestActionType, isDerivedEventActionType, ACTION_TYPES } from './action_types';
 import type { WorkspaceRegistry } from '../runtime/workspace/registry';
 
 export type ActionWsTap = (stage: string, data: Record<string, unknown>) => void;
@@ -52,7 +52,7 @@ const parseInboundAction = (raw: unknown): Action => {
     if ('scope' in rec || 'tabName' in rec) {
         throw new Error('invalid action: legacy address fields are not allowed');
     }
-    if (!isRequestActionType(rec.type)) {
+    if (!isRequestActionType(rec.type) && !isDerivedEventActionType(rec.type)) {
         throw new Error(`invalid action: unsupported type '${rec.type}'`);
     }
     return rec as Action;
