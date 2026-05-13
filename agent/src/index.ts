@@ -42,12 +42,12 @@ const REPLAY_OPTIONS = {
     scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
 };
 const NAV_DEDUPE_WINDOW_MS = 1200;
-const WS_TAP_ENABLED = process.env.RPA_WS_TAP === '1';
-
 const actionLog = getLogger('action');
 const log = (...args: unknown[]) => { actionLog.info('[RPA:agent]', ...args); };
 const logWarning = (...args: unknown[]) => { actionLog.warning('[RPA:agent]', ...args); };
 const logError = (...args: unknown[]) => { actionLog.error('[RPA:agent]', ...args); };
+const WS_TAP_ENABLED = process.env.RPA_WS_TAP === '1';
+
 const wsTap = (stage: string, data: Record<string, unknown>) => {
     if (!WS_TAP_ENABLED) {return;}
     actionLog.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });

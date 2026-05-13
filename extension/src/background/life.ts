@@ -53,6 +53,7 @@ export type LifecycleRuntime = {
     onStartup: () => void;
     onInstalled: () => void;
     handleBindCommand: (action: Action) => Promise<void>;
+    ensureOpenedAndBound: (chromeTabNo: number, windowId: number) => Promise<BoundTabRef | null>;
 };
 
 const readChromeTabNoFromActiveInfo = (info: chrome.tabs.TabActiveInfo): number =>
@@ -331,12 +332,77 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         options.onRefresh();
     };
 
+    const inflightOpenedAndBound = new Map<number, Promise<BoundTabRef | null>>();
+
+    const ensureOpenedAndBound = async (chromeTabNo: number, windowId: number): Promise<BoundTabRef | null> => {
+        const existing = options.state.getTabState(chromeTabNo);
+        if (existing?.bindingName) {
+            const mapped = options.state.getBindingWorkspaceTab(existing.bindingName);
+            if (mapped) {
+                return { chromeTabNo, windowId, bindingName: existing.bindingName, workspaceName: mapped.workspaceName, tabName: mapped.tabName, urlHint: existing.lastUrl ?? '' };
+            }
+        }
+        const inflight = inflightOpenedAndBound.get(chromeTabNo);
+        if (inflight) { return await inflight; }
+
+        const promise = (async (): Promise<BoundTabRef | null> => {
+            let tab: chrome.tabs.Tab;
+            try { tab = await chrome.tabs.get(chromeTabNo); } catch { return null; }
+            if (typeof tab.windowId !== 'number') { return null; }
+            const actualWindowId = tab.windowId;
+
+            const workspaceName = await resolveWorkspaceName(String(chromeTabNo), actualWindowId);
+
+            const reply = await options.sendAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: ACTION_TYPES.TAB_OPENED,
+                workspaceName,
+                payload: {
+                    source: 'extension.sw',
+                    chromeTabNo,
+                    windowId: actualWindowId,
+                    urlHint: typeof tab.url === 'string' ? tab.url : '',
+                    titleHint: typeof tab.title === 'string' ? tab.title : '',
+                    openedAt: Date.now(),
+                },
+            });
+
+            const replyPayload = (reply.payload ?? {}) as Record<string, unknown>;
+            const tabName = typeof replyPayload.tabName === 'string' ? replyPayload.tabName.trim() : '';
+            if (!tabName) { return null; }
+
+            const ok = await pushBindingNameToTab(chromeTabNo, tabName);
+            if (!ok) { return null; }
+
+            options.state.upsertBindingWorkspaceTab(tabName, workspaceName, tabName);
+            options.state.upsertTab(chromeTabNo, tabName, typeof tab.url === 'string' ? tab.url : '', actualWindowId);
+            options.state.setWindowWorkspace(actualWindowId, workspaceName);
+
+            await options.sendAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: ACTION_TYPES.TAB_BOUND,
+                workspaceName,
+                payload: { tabName, chromeTabNo, windowId: actualWindowId, boundAt: Date.now() },
+            });
+
+            return { chromeTabNo, windowId: actualWindowId, bindingName: tabName, workspaceName, tabName, urlHint: typeof tab.url === 'string' ? tab.url : '' };
+        })();
+
+        inflightOpenedAndBound.set(chromeTabNo, promise);
+        promise.finally(() => { inflightOpenedAndBound.delete(chromeTabNo); });
+        return await promise;
+    };
+
     const handleBindCommand = async (action: Action) => {
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
         const chromeTabNo = typeof payload.chromeTabNo === 'number' ? payload.chromeTabNo : null;
         const windowId = typeof payload.windowId === 'number' ? payload.windowId : null;
         if (!tabName || chromeTabNo === null || windowId === null) { return; }
+        // Skip if already bound (ensureOpenedAndBound won the race)
+        if (options.state.getTabState(chromeTabNo)?.bindingName) { return; }
 
         const ok = await pushBindingNameToTab(chromeTabNo, tabName);
         if (ok) {
@@ -373,5 +439,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         onStartup: () => { options.state.resetStartupState(); },
         onInstalled: () => { options.state.resetInstalledState(); },
         handleBindCommand,
+        ensureOpenedAndBound,
     };
 };

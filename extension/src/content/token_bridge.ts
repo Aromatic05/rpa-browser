@@ -53,42 +53,33 @@ export const ensureTabName = (): string => {
 
 export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspaceName: string }> => {
     let tabName = ensureTabName();
-    let workspaceName = '';
-    for (let i = 0; i < 3; i += 1) {
-        const runtimeReply = await new Promise<{ ok: boolean; tabName?: string; workspaceName?: string }>((resolve) => {
-            chrome.runtime.sendMessage(
-                {
-                    type: MSG.ENSURE_BOUND_TOKEN,
-                    source: 'extension.content',
-                    tabName,
-                    url: location.href,
-                    title: document.title,
-                    at: Date.now(),
-                },
-                (response: unknown) => {
-                    if (chrome.runtime.lastError) {
-                        resolve({ ok: false });
-                        return;
-                    }
-                    resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string; workspaceName?: string });
-                },
-            );
-        });
-        if (runtimeReply.ok && runtimeReply.tabName) {
-            tabName = runtimeReply.tabName;
-            workspaceName = runtimeReply.workspaceName ?? '';
-            sessionStorage.setItem(TAB_NAME_KEY, tabName);
-            writeTokenToWindowName(tabName);
-            window.__rpa_tab_name = tabName;
-            break;
-        }
-        if (i < 2) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 120));
-        }
-    }
-    if (!tabName) {
+    const runtimeReply = await new Promise<{ ok: boolean; tabName?: string; workspaceName?: string }>((resolve) => {
+        chrome.runtime.sendMessage(
+            {
+                type: MSG.ENSURE_BOUND_TOKEN,
+                source: 'extension.content',
+                tabName,
+                url: location.href,
+                title: document.title,
+                at: Date.now(),
+            },
+            (response: unknown) => {
+                if (chrome.runtime.lastError) {
+                    resolve({ ok: false });
+                    return;
+                }
+                resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string; workspaceName?: string });
+            },
+        );
+    });
+    if (!runtimeReply.ok || !runtimeReply.tabName) {
         throw new Error('bound tab token unavailable');
     }
+    tabName = runtimeReply.tabName;
+    const workspaceName = runtimeReply.workspaceName ?? '';
+    sessionStorage.setItem(TAB_NAME_KEY, tabName);
+    writeTokenToWindowName(tabName);
+    window.__rpa_tab_name = tabName;
     return { tabName, workspaceName };
 };
 

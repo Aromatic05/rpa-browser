@@ -105,8 +105,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     sendResponse({ ok: false, error: 'sender tab unavailable' });
                     return;
                 }
-                const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName : undefined;
-                const bound = await life.ensureBoundTabRef(chromeTabNo, windowId, preferredBindingName);
+                const bound = await life.ensureOpenedAndBound(chromeTabNo, windowId);
                 if (!bound) {
                     sendResponse({ ok: false, error: 'binding unavailable' });
                     return;
