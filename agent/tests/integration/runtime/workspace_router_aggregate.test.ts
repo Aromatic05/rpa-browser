@@ -25,26 +25,6 @@ test('router tab.list returns tabs array', async () => {
     assert.equal(payload.tabs[1].tabName, 'b');
     assert.equal(payload.tabs[0].active, true);
 });
-
-test('router tab.close acknowledges but does not remove tab', async () => {
-    const { registry } = createWorkspaceHarness();
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-    ws.tabs.createTab({ tabName: 'to-close' });
-
-    const result = await ws.router.handle(
-        action('tab.close', { workspaceName: wsName, payload: { tabName: 'to-close' } }),
-        ws,
-        registry,
-    );
-    assert.equal(result.reply.type, 'tab.close.result');
-    // tab.close does NOT delete tab identity — tab.closed is the sole commit point
-    assert.equal(ws.tabs.hasTab('to-close'), true);
-    // tab.close forwards the action as an event for the extension to execute
-    assert.ok(result.events.length > 0);
-    assert.equal(result.events[0].type, 'tab.close');
-});
-
 test('router tab.setActive changes the active tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;
@@ -157,7 +137,7 @@ test('router tab actions reject empty tabName where required', async () => {
     const wsName = `ws-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
 
-    const actions = ['tab.close', 'tab.setActive', 'tab.reassigned'];
+    const actions = ['tab.setActive', 'tab.reassigned'];
     for (const type of actions) {
         await assert.rejects(
             () => ws.router.handle(action(type, { workspaceName: wsName, payload: { tabName: '' } }), ws, registry),
@@ -165,25 +145,6 @@ test('router tab actions reject empty tabName where required', async () => {
         );
     }
 });
-
-test('tab.open allocates UUID without committing workspace tab', async () => {
-    const { registry } = createWorkspaceHarness();
-    const wsName = `ws-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wsName, createWorkflowOnFs(wsName));
-
-    const result = await ws.router.handle(
-        action('tab.open', { workspaceName: wsName, payload: {} }),
-        ws,
-        registry,
-    );
-    assert.equal(result.reply.type, 'tab.open.result');
-    const createId = (result.reply.payload as any).createId as string;
-    assert.ok(typeof createId === 'string' && createId.length > 0);
-    // tab.open does NOT create workspace tab — tab.bound is where commitment happens
-    assert.equal(ws.tabs.hasTab(createId), false);
-    assert.equal(ws.tabs.getActiveTab(), null);
-});
-
 test('tab.reassigned errors on unknown tab', async () => {
     const { registry } = createWorkspaceHarness();
     const wsName = `ws-${crypto.randomUUID()}`;

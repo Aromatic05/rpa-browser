@@ -241,29 +241,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 };
             }
 
-            case 'tab.open': {
-                const createId = crypto.randomUUID();
-                return { reply: replyAction(action, { workspaceName: workspace.name, createId, source: 'tab.open' }), events: [] };
-            }
-
-            case 'tab.close': {
-                const tabName = requireTabName(payload);
-                const at = typeof payload.at === 'number' ? payload.at : undefined;
-                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
-                if (shouldRecordLifecycle()) {
-                    const closingTab = workspace.tabs.getTab(tabName);
-                    recordTabClosed(deps.recordingState, {
-                        workspaceName: workspace.name,
-                        tabName,
-                        tabRef: tabName,
-                        urlAtRecord: closingTab?.url || '',
-                        at,
-                        navDedupeWindowMs: deps.navDedupeWindowMs,
-                    });
-                }
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [action] };
-            }
-
             case 'tab.setActive': {
                 const tabName = requireTabName(payload);
                 workspace.tabs.setActiveTab(tabName);
@@ -330,16 +307,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                     }
                 } else {
                     workspace.tabs.updateTab(tabName, { updatedAt: boundAt });
-                    if (shouldRecordLifecycle()) {
-                        recordTabCreated(deps.recordingState, {
-                            workspaceName: workspace.name,
-                            tabName,
-                            tabRef: tabName,
-                            urlAtRecord: url,
-                            at: boundAt ?? now(),
-                            navDedupeWindowMs: deps.navDedupeWindowMs,
-                        });
-                    }
                 }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, chromeTabNo, windowId, reportedAt: boundAt }), events: [] };
             }

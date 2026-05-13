@@ -248,25 +248,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (chromeTabNo === null || windowId === null) {return;}
 
         void (async () => {
-            // Resolve workspace name for this window
-            const workspaceName = await resolveWorkspaceName(String(chromeTabNo), windowId);
-
-            // Send tab.opened as CONTAINER FACT only — no tabName, no token
-            await options.sendAction({
-                v: 1,
-                id: crypto.randomUUID(),
-                type: ACTION_TYPES.TAB_OPENED,
-                workspaceName,
-                payload: {
-                    source: 'extension.sw',
-                    chromeTabNo,
-                    windowId,
-                    urlHint: typeof tab.url === 'string' ? tab.url : '',
-                    titleHint: typeof tab.title === 'string' ? tab.title : '',
-                    openerChromeTabNo: typeof tab.openerTabId === 'number' ? tab.openerTabId : undefined,
-                    openedAt: Date.now(),
-                },
-            });
+            await ensureOpenedAndBound(chromeTabNo, windowId);
             options.onRefresh();
         })();
     };
