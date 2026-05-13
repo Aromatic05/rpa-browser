@@ -26,6 +26,7 @@ export type PageRegistryOptions = {
 };
 
 export type PageRegistry = {
+    createPage: () => Promise<Page>;
     bindPage: (page: Page, hintedBindingName?: string) => Promise<string | null>;
     awaitPageBinding: (bindingName: string, options: AwaitPageBindingOptions) => Promise<Page>;
     createPageBinding: (bindingName: string, input?: { startUrl?: string }) => Promise<Page>;
@@ -205,6 +206,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     };
 
     return {
+        createPage,
         bindPage,
         awaitPageBinding,
         createPageBinding,
@@ -253,3 +255,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         },
     };
 };
+    const createPage = async (): Promise<Page> => {
+        const context = await options.getContext();
+        return await context.newPage();
+    };
