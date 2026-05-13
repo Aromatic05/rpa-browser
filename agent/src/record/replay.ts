@@ -90,6 +90,11 @@ const readStepStringArg = (step: StepUnion, key: string): string | undefined => 
     return typeof args[key] === 'string' ? args[key] : undefined;
 };
 
+const readStepMetaStringArg = (step: StepUnion, key: keyof NonNullable<StepUnion['meta']>): string | undefined => {
+    const value = step.meta?.[key];
+    return typeof value === 'string' ? value : undefined;
+};
+
 type ReplayTabBinding = {
     recordedTabName: string;
     runtimeTabName?: string;
@@ -181,14 +186,33 @@ const waitForNewTabEffect = async (
     return snapshotRuntimeTabNames(workspace);
 };
 
+const inferRecordedCreatedTabName = (steps: StepUnion[], createTabIndex: number): string | undefined => {
+    const createStep = steps[createTabIndex];
+    if (!createStep || createStep.name !== 'browser.create_tab') {return undefined;}
+    const fallback = readStepMetaStringArg(createStep, 'tabName');
+    for (let index = createTabIndex + 1; index < steps.length; index += 1) {
+        const step = steps[index];
+        if (step.name === 'browser.switch_tab') {
+            return readStepStringArg(step, 'tabName') || fallback;
+        }
+        if (step.name === 'browser.close_tab' || step.name === 'browser.create_tab') {
+            return fallback;
+        }
+    }
+    return fallback;
+};
+
 const inferExpectedCreatedTabUrl = (steps: StepUnion[], createTabIndex: number): string | undefined => {
     const createStep = steps[createTabIndex];
     if (!createStep || createStep.name !== 'browser.create_tab') {return undefined;}
-    const createdTabName = readStepStringArg(createStep, 'tabName');
+    const createdTabName = readStepMetaStringArg(createStep, 'tabName');
     if (!createdTabName) {return undefined;}
     for (let index = createTabIndex + 1; index < steps.length; index += 1) {
         const step = steps[index];
-        if ((step.name === 'browser.close_tab' || step.name === 'browser.create_tab') && readStepStringArg(step, 'tabName') === createdTabName) {
+        if (step.name === 'browser.close_tab' && readStepStringArg(step, 'tabName') === createdTabName) {
+            return undefined;
+        }
+        if (step.name === 'browser.create_tab' && readStepMetaStringArg(step, 'tabName') === createdTabName) {
             return undefined;
         }
         if (step.name !== 'browser.goto') {continue;}
@@ -353,9 +377,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         });
 
         const isLifecycleStep = isTabLifecycleStep(originalStep.name);
-        const tabStepRecordedTabName = isLifecycleStep
-            ? readStepStringArg(originalStep, 'tabName')
-            : undefined;
+        const tabStepRecordedTabName = !isLifecycleStep
+            ? undefined
+            : originalStep.name === 'browser.create_tab'
+                ? inferRecordedCreatedTabName(req.steps, index)
+                : readStepStringArg(originalStep, 'tabName');
         const recordedTabName = isLifecycleStep ? tabStepRecordedTabName : recordedActiveTabName;
         let targetTabName: string | undefined = recordedTabName ? tabBindings.get(recordedTabName)?.runtimeTabName : undefined;
         let remappedStep = originalStep;
@@ -447,7 +473,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             if (!syntheticResponse) {
                 remappedStep = {
                     ...originalStep,
-                    args: { tabName: recordedTabName },
+                    args: {},
                 };
             }
         } else {
