@@ -64,12 +64,5 @@ export const executeBrowserCreateTab = async (
         };
     }
 
-    await deps.runtime.awaitExecutableTab({
-        workspace,
-        pageRegistry: deps.pageRegistry,
-        tabName: createdTabName,
-        timeoutMs: boundTimeoutMs,
-    });
-
     return { stepId: step.id, ok: true, data: { tab_id: createdTabName } };
 };
