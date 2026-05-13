@@ -243,8 +243,21 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
 
             case 'tab.setActive': {
                 const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
                 workspace.tabs.setActiveTab(tabName);
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
+                if (shouldRecordLifecycle()) {
+                    const runtimeTab = workspace.tabs.getTab(tabName);
+                    recordTabActivated(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: runtimeTab?.url || '',
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }
 
             case 'tab.opened': {
@@ -294,7 +307,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 if (!workspace.tabs.hasTab(tabName)) {
                     const at = boundAt ?? now();
                     workspace.tabs.createTab({ tabName, at });
-                    workspace.tabs.setActiveTab(tabName);
                     if (shouldRecordLifecycle()) {
                         recordTabCreated(deps.recordingState, {
                             workspaceName: workspace.name,

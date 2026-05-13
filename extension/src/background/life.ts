@@ -68,6 +68,38 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         await options.sendAction({ v: 1, id: crypto.randomUUID(), type, workspaceName, payload });
     };
 
+    const emitActivatedIfActive = async (input: {
+        chromeTabNo: number;
+        windowId: number;
+        tabName: string;
+        workspaceName: string;
+        urlHint: string;
+    }) => {
+        let activeTab: chrome.tabs.Tab | undefined;
+        try {
+            const activeTabs = await chrome.tabs.query({ active: true, windowId: input.windowId });
+            activeTab = activeTabs[0];
+        } catch {
+            return;
+        }
+        if (typeof activeTab?.id !== 'number' || activeTab.id !== input.chromeTabNo) {return;}
+        const now = Date.now();
+        const key = `${String(input.windowId)}:${String(input.chromeTabNo)}:${input.tabName}`;
+        if (options.state.shouldThrottleTabActivated(key, now, LIFECYCLE_THROTTLE_MS)) {return;}
+        await emitLifecycleAction(
+            ACTION_TYPES.TAB_ACTIVATED,
+            {
+                source: 'extension.sw',
+                tabName: input.tabName,
+                tabRef: input.tabName,
+                url: input.urlHint || '',
+                at: now,
+                windowId: input.windowId,
+            },
+            input.workspaceName,
+        );
+    };
+
 
     const pushBindingNameToTab = async (chromeTabNo: number, bindingName: string) => {
         const result = await send.toTabTransport<{ ok: boolean }>(chromeTabNo, MSG.SET_TOKEN, { tabName: bindingName }, { timeoutMs: 1200 });
@@ -340,6 +372,13 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 type: ACTION_TYPES.TAB_BOUND,
                 workspaceName,
                 payload: { tabName, chromeTabNo, windowId: actualWindowId, boundAt: Date.now() },
+            });
+            await emitActivatedIfActive({
+                chromeTabNo,
+                windowId: actualWindowId,
+                tabName,
+                workspaceName,
+                urlHint: typeof tab.url === 'string' ? tab.url : '',
             });
 
             void pushBindingNameToTab(chromeTabNo, tabName);
