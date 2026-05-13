@@ -190,6 +190,11 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         return page;
     };
 
+    const createPage = async (): Promise<Page> => {
+        const context = await options.getContext();
+        return await context.newPage();
+    };
+
     const debugPageBindings = async (bindingName: string): Promise<PageBindingDebugState> => {
         const context = await options.getContext();
         const knownPagesSummary = context.pages().map((page, index) => {
@@ -255,7 +260,3 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         },
     };
 };
-    const createPage = async (): Promise<Page> => {
-        const context = await options.getContext();
-        return await context.newPage();
-    };

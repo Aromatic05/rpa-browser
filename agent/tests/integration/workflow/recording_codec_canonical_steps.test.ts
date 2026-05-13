@@ -25,7 +25,7 @@ test('recording codec persists canonical tab steps without runtime meta', () => 
                 tabs: [{ tabName: 'tab-1', url: 'https://a.test' }],
             },
             steps: [
-                { id: 'c', name: 'browser.create_tab', args: { tabName: 'tab-2' }, meta: { source: 'record', tabName: 'tab-2' } },
+                { id: 'c', name: 'browser.create_tab', args: {}, meta: { source: 'record', tabName: 'tab-2' } },
                 { id: 's', name: 'browser.switch_tab', args: { tabName: 'tab-2' }, meta: { source: 'record', tabName: 'tab-2' } },
                 { id: 'g', name: 'browser.goto', args: { url: 'https://b.test' }, meta: { source: 'record', tabName: 'tab-2', urlAtRecord: 'https://b.test' } },
             ] as any,
@@ -38,7 +38,7 @@ test('recording codec persists canonical tab steps without runtime meta', () => 
         assert.equal(stepsYaml.includes('urlAtRecord:'), false);
         const parsed = YAML.parse(stepsYaml) as { steps: Array<{ name: string; args: Record<string, unknown> }> };
         assert.deepEqual(parsed.steps.map((step) => step.args), [
-            { tabName: 'tab-2' },
+            {},
             { tabName: 'tab-2' },
             { url: 'https://b.test' },
         ]);

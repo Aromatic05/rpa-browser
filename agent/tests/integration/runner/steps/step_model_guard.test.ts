@@ -137,7 +137,7 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
     assert.equal(runStepsTypesSource.includes('stepResolves?: Record<string, StepResolve>;'), true);
 
     const createTabBlock = readStepArgsBlock('browser.create_tab');
-    assert.equal(createTabBlock.includes('tabName: string'), true);
+    assert.equal(createTabBlock.includes('Record<string, never>'), true);
     assert.equal(createTabBlock.includes('url?'), false);
 
     const switchTabBlock = readStepArgsBlock('browser.switch_tab');
@@ -163,15 +163,15 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
 });
 
 test('canonical tab step args reject missing tabName and legacy fields at type level', () => {
-    const createOk: Step<'browser.create_tab'> = { id: 'c-ok', name: 'browser.create_tab', args: { tabName: 'tab-a' } };
+    const createOk: Step<'browser.create_tab'> = { id: 'c-ok', name: 'browser.create_tab', args: {} };
     const switchOk: Step<'browser.switch_tab'> = { id: 's-ok', name: 'browser.switch_tab', args: { tabName: 'tab-a' } };
     const closeOk: Step<'browser.close_tab'> = { id: 'x-ok', name: 'browser.close_tab', args: { tabName: 'tab-a' } };
-    assert.equal(createOk.args.tabName, 'tab-a');
+    assert.deepEqual(createOk.args, {});
     assert.equal(switchOk.args.tabName, 'tab-a');
     assert.equal(closeOk.args.tabName, 'tab-a');
 
-    // @ts-expect-error browser.create_tab requires tabName.
-    const createMissing: Step<'browser.create_tab'> = { id: 'c-missing', name: 'browser.create_tab', args: {} };
+    // @ts-expect-error browser.create_tab does not accept tabName.
+    const createWithName: Step<'browser.create_tab'> = { id: 'c-with-name', name: 'browser.create_tab', args: { tabName: 'tab-a' } };
     // @ts-expect-error browser.switch_tab requires tabName.
     const switchMissing: Step<'browser.switch_tab'> = { id: 's-missing', name: 'browser.switch_tab', args: {} };
     // @ts-expect-error browser.close_tab requires tabName.
@@ -181,8 +181,8 @@ test('canonical tab step args reject missing tabName and legacy fields at type l
     // @ts-expect-error tabRef is not part of canonical close_tab args.
     const closeTabRef: Step<'browser.close_tab'> = { id: 'x-ref', name: 'browser.close_tab', args: { tabName: 'tab-a', tabRef: 'tab-a' } };
     // @ts-expect-error create_tab.url is not part of canonical create_tab args.
-    const createUrl: Step<'browser.create_tab'> = { id: 'c-url', name: 'browser.create_tab', args: { tabName: 'tab-a', url: 'https://example.com' } };
-    assert.equal(Boolean(createMissing || switchMissing || closeMissing || switchTabRef || closeTabRef || createUrl), true);
+    const createUrl: Step<'browser.create_tab'> = { id: 'c-url', name: 'browser.create_tab', args: { url: 'https://example.com' } };
+    assert.equal(Boolean(createWithName || switchMissing || closeMissing || switchTabRef || closeTabRef || createUrl), true);
 });
 
 test('step resolve sidecar validation accepts basic resolve file shape', () => {

@@ -9,8 +9,6 @@ import { startFixtureServer } from './server';
 import type { Action } from '../../src/actions/action_protocol';
 import type { StepUnion } from '../../src/runner/steps/types';
 
-type TabSummary = { tabName: string; url: string; title: string; active: boolean };
-
 type ActionReplyPayload = Record<string, unknown>;
 
 const delay = async (ms: number) => await new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -35,12 +33,9 @@ export type MultitabHarness = {
     createWorkspaceAndOpen: (url: string) => Promise<{ workspaceName: string; tabName: string }>;
     dispatchAction: (action: Action) => Promise<Action>;
     runStep: (workspaceName: string, step: StepUnion) => Promise<{ ok: boolean; data?: unknown; error?: { code?: string; message?: string } }>;
-    clickActiveTab: (workspaceName: string, selector: string) => Promise<void>;
-    waitForTabCount: (workspaceName: string, expectedCount: number) => Promise<TabSummary[]>;
-    waitForTabCountIncrease: (workspaceName: string, previousCount: number) => Promise<TabSummary[]>;
-    waitForTabByUrlPart: (workspaceName: string, urlPart: string) => Promise<TabSummary>;
     waitForWorkspaceState: (workspaceName: string, expected: 'idle' | 'recording' | 'playing') => Promise<void>;
     readWorkbenchState: (workspaceName: string) => Promise<Record<string, string>>;
+    readReplayStepEntries: () => Promise<Array<{ ok: boolean; stepName: string }>>;
     close: () => Promise<void>;
 };
 
@@ -56,7 +51,6 @@ export const createMultitabHarness = async (): Promise<MultitabHarness> => {
     const controlEndpoint = getDefaultControlEndpoint();
     const headed = process.env.RPA_E2E_HEADED === '1';
     const keepTemp = process.env.RPA_E2E_KEEP_TEMP === '1';
-    const headedStepDelayMs = headed ? 350 : 0;
     const tsxBin = path.resolve(rootDir, 'node_modules/.bin/tsx');
     const agentEntry = path.resolve(rootDir, 'src/index.ts');
 
@@ -107,9 +101,6 @@ export const createMultitabHarness = async (): Promise<MultitabHarness> => {
         if (!res.ok) {
             throw new Error(`dispatch action failed: ${res.error?.message || 'unknown'}`);
         }
-        if (headedStepDelayMs > 0) {
-            await delay(headedStepDelayMs);
-        }
         return res.result as Action;
     };
 
@@ -125,69 +116,8 @@ export const createMultitabHarness = async (): Promise<MultitabHarness> => {
         if (!res.ok) {
             throw new Error(`runStep failed: ${res.error?.message || 'unknown'}`);
         }
-        if (headedStepDelayMs > 0) {
-            await delay(headedStepDelayMs);
-        }
         const result = res.result as { ok: boolean; data?: unknown; error?: { code?: string; message?: string } };
         return result;
-    };
-
-    const clickActiveTab = async (workspaceName: string, selector: string): Promise<void> => {
-        const res = await sendControlEval(
-            {
-                source: `\nconst ws = ctx.workspaceRegistry.getWorkspace(input.workspaceName);\nif (!ws) throw new Error('workspace not found');\nconst active = ws.tabs.getActiveTab();\nif (!active || !active.page) throw new Error('active tab page not found');\nawait active.page.click(input.selector);\nreturn { clicked: true };\n`,
-                input: { workspaceName, selector },
-                timeoutMs: 20000,
-            },
-            { endpoint: controlEndpoint, timeoutMs: 20000 },
-        );
-        if (!res.ok) {
-            throw new Error(`clickActiveTab failed: ${res.error?.message || 'unknown'}`);
-        }
-        if (headedStepDelayMs > 0) {
-            await delay(headedStepDelayMs);
-        }
-    };
-
-    const listTabs = async (workspaceName: string): Promise<TabSummary[]> => {
-        const reply = await dispatchAction(makeAction({ type: 'tab.list', workspaceName }));
-        mustReplyOk(reply, 'tab.list failed');
-        const payload = (reply.payload || {}) as { tabs?: TabSummary[] };
-        return Array.isArray(payload.tabs) ? payload.tabs : [];
-    };
-
-    const waitForTabCount = async (workspaceName: string, expectedCount: number): Promise<TabSummary[]> => {
-        for (let i = 0; i < 100; i += 1) {
-            const tabs = await listTabs(workspaceName);
-            if (tabs.length === expectedCount) {
-                return tabs;
-            }
-            await delay(100);
-        }
-        throw new Error(`tab count not reached: expected=${expectedCount}`);
-    };
-
-    const waitForTabCountIncrease = async (workspaceName: string, previousCount: number): Promise<TabSummary[]> => {
-        let lastTabs: TabSummary[] = [];
-        for (let i = 0; i < 120; i += 1) {
-            const tabs = await listTabs(workspaceName);
-            lastTabs = tabs;
-            if (tabs.length > previousCount) {
-                return tabs;
-            }
-            await delay(100);
-        }
-        throw new Error(`tab count did not increase: previous=${previousCount}, lastTabs=${JSON.stringify(lastTabs)}`);
-    };
-
-    const waitForTabByUrlPart = async (workspaceName: string, urlPart: string): Promise<TabSummary> => {
-        for (let i = 0; i < 100; i += 1) {
-            const tabs = await listTabs(workspaceName);
-            const found = tabs.find((tab) => typeof tab.url === 'string' && tab.url.includes(urlPart));
-            if (found) {return found;}
-            await delay(100);
-        }
-        throw new Error(`tab url not found: ${urlPart}`);
     };
 
     const waitForWorkspaceState = async (workspaceName: string, expected: 'idle' | 'recording' | 'playing'): Promise<void> => {
@@ -215,11 +145,27 @@ export const createMultitabHarness = async (): Promise<MultitabHarness> => {
         if (!workspaceName) {
             throw new Error(`workspace.create missing workspaceName: ${JSON.stringify(wsReply)}`);
         }
-        const tabReply = await dispatchAction(makeAction({ type: 'tab.open', workspaceName, payload: { startUrl: url } }));
-        mustReplyOk(tabReply, 'tab.open failed');
-        const tabName = ((tabReply.payload || {}) as { tabName?: string }).tabName;
+        const createResult = await runStep(workspaceName, {
+            id: `create-tab-${crypto.randomUUID()}`,
+            name: 'browser.create_tab',
+            args: {},
+        } as StepUnion);
+        if (!createResult.ok) {
+            throw new Error(`createWorkspaceAndOpen create_tab failed: ${createResult.error?.message || 'unknown'}`);
+        }
+        const tabName = (createResult.data && typeof (createResult.data as any).tab_id === 'string')
+            ? (createResult.data as any).tab_id
+            : '';
         if (!tabName) {
-            throw new Error(`tab.open missing tabName: ${JSON.stringify(tabReply)}`);
+            throw new Error('createWorkspaceAndOpen missing tab_id');
+        }
+        const gotoResult = await runStep(workspaceName, {
+            id: `goto-tab-${crypto.randomUUID()}`,
+            name: 'browser.goto',
+            args: { url },
+        } as StepUnion);
+        if (!gotoResult.ok) {
+            throw new Error(`createWorkspaceAndOpen goto failed: ${gotoResult.error?.message || 'unknown'}`);
         }
         return { workspaceName, tabName };
     };
@@ -247,6 +193,20 @@ return {
         return (res.data || {}) as Record<string, string>;
     };
 
+    const readReplayStepEntries = async (): Promise<Array<{ ok: boolean; stepName: string }>> => {
+        const res = await sendControlEval(
+            {
+                source: 'return ctx.state?.replayStepEntries ?? [];',
+                timeoutMs: 3000,
+            },
+            { endpoint: controlEndpoint, timeoutMs: 3000 },
+        );
+        if (!res.ok) {
+            throw new Error(`readReplayStepEntries failed: ${res.error?.message || 'unknown'}`);
+        }
+        return (res.result as Array<{ ok: boolean; stepName: string }>) || [];
+    };
+
     await waitControlReady();
 
     return {
@@ -254,12 +214,9 @@ return {
         createWorkspaceAndOpen,
         dispatchAction,
         runStep,
-        clickActiveTab,
-        waitForTabCount,
-        waitForTabCountIncrease,
-        waitForTabByUrlPart,
         waitForWorkspaceState,
         readWorkbenchState,
+        readReplayStepEntries,
         close: async () => {
             try {
                 if (!agentProcess.killed) {
@@ -278,7 +235,6 @@ return {
                 await fixture.close();
             } finally {
                 if (keepTemp) {
-                    // Debug mode: keep temp artifacts for replay diagnosis.
                     console.log(`[e2e_multitab_helper] temp kept at ${tempRoot}`);
                 } else {
                     await fs.rm(tempRoot, { recursive: true, force: true });
