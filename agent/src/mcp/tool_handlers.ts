@@ -179,19 +179,27 @@ const handleReloadWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (ar
 const handleCreateTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
     const parsed = parseInput<BrowserCreateTabInput>(browserCreateTabInputSchema, args);
     if (!parsed.ok) {return buildParseErrorResult(parsed.error);}
-    const input = parsed.data;
-    const scopeTabName = resolveTabNameOrActiveWs(deps);
-    const requestedTabName = typeof input.tabName === 'string' && input.tabName.trim().length > 0
-        ? input.tabName.trim()
-        : crypto.randomUUID();
-    const result = await runSingleStepWs(deps, scopeTabName, {
-        id: crypto.randomUUID(),
-        name: 'browser.create_tab',
-        args: { tabName: requestedTabName },
-        meta: { source: 'mcp' },
-    });
-    if (!result.ok) {return result;}
-    return result;
+    const { pipe, checkpoint } = await runStepList(
+        deps.workspace.name,
+        [{
+            id: crypto.randomUUID(),
+            name: 'browser.create_tab',
+            args: {},
+            meta: { source: 'mcp' },
+        }],
+        deps.runStepsDeps,
+        { stopOnError: true },
+    );
+    const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown; error?: unknown }>;
+    const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
+    if (checkpoint.status === 'failed') {
+        return {
+            ok: false,
+            results,
+            error: results.find((item) => !item.ok)?.error,
+        };
+    }
+    return { ok: results.every((item) => item.ok), results };
 };
 
 const handleSwitchTabWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (args: unknown) => {
