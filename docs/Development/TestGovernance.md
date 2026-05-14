@@ -72,3 +72,13 @@
 3. 多 tab e2e 中，tab 关闭必须走 `browser.close_tab` Step。
 4. `tab.list` 只能用于只读验证（数量、tabName、url、active），禁止用于管理 tab 生命周期。
 5. 禁止使用 `tab.open`、`tab.close` Action 管理 tab 生命周期。
+
+## E2E-4 workflow saveAs/load 准入标准
+
+1. 必须在单条 e2e 样例中同时覆盖至少两个 workspace。
+2. 必须在两个 workspace 中分别保存不同 workflow，并使用同名 `recordingName`（如 `main`）验证隔离。
+3. 必须覆盖 `record.start`、`record.stop`、`record.get`、`record.save`、`workflow.open`、`play.start`。
+4. 必须显式携带 `workspaceName`、`workflowName`、`recordingName`，禁止省略关键命名字段。
+5. 必须验证 workflow artifact 边界：两个 workflow 的 `steps.yaml` 均存在、内容互不污染、且不包含 runtime-only 字段。
+6. 必须验证 load 后 replay 可恢复对应业务状态，并验证另一 workspace 页面状态不被串改。
+7. 禁止依赖 `activeWorkspace` fallback 驱动 `workflow.open` 与 `play.start` 验收。

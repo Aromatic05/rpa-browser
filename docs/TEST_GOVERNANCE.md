@@ -23,3 +23,5 @@
 3. E2E-2 已移除 `pauseForHeaded`、`delay`、`process.env` 语义分支。
 4. E2E-2 已增强录制产物断言：`create/switch/close` 数量与字段契约、顶层禁用字段、被动开页 create_tab、目标 close_tab。
 5. E2E-1 `agent/tests/e2e/step_actions/basic_actions.spec.ts` 已改为统一生命周期清理，无 `if`、无 `try/catch/finally`。
+6. E2E-4 `agent/tests/e2e/workflow/save_load.spec.ts` 已新增并覆盖多 workspace、多 workflow、同名 recording 隔离、artifact 边界、load 后 replay。
+7. E2E-4 明确要求 `workflow.open`/`play.start` 验收不得依赖 `activeWorkspace` fallback。
