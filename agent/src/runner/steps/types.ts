@@ -384,6 +384,7 @@ export type StepMeta = {
     requestId?: string;
     source: 'mcp' | 'play' | 'script' | 'record' | 'control-rpc' | 'dsl';
     ts?: number;
+    recordSeq?: number;
     workspaceName?: string;
     tabName?: string;
     urlAtRecord?: string;

@@ -33,7 +33,13 @@ export const isFillLikeEvent = (event: RecorderEvent): boolean => {
 
 export const fillEventKey = (tabName: string, selector: string): string => `${tabName}::${selector}`;
 
-export const queuePendingFillEvent = (state: RecordingState, recordingToken: string, tabName: string, event: RecorderEvent): void => {
+export const queuePendingFillEvent = (
+    state: RecordingState,
+    recordingToken: string,
+    tabName: string,
+    event: RecorderEvent,
+    recordSeq?: number,
+): void => {
     const selector = (event.selector || '').trim();
     if (!selector) {return;}
     let pending = state.pendingFillEvents.get(recordingToken);
@@ -41,7 +47,7 @@ export const queuePendingFillEvent = (state: RecordingState, recordingToken: str
         pending = new Map();
         state.pendingFillEvents.set(recordingToken, pending);
     }
-    pending.set(fillEventKey(tabName, selector), { event: { ...event, selector }, tabName });
+    pending.set(fillEventKey(tabName, selector), { event: { ...event, selector }, tabName, recordSeq });
 };
 
 export const flushPendingFillEvents = (
@@ -71,6 +77,9 @@ export const flushPendingFillEvents = (
         if (!step) {
             pending.delete(entry.key);
             continue;
+        }
+        if (typeof entry.item.recordSeq === 'number') {
+            step.meta = { ...(step.meta || { source: 'record' }), recordSeq: entry.item.recordSeq };
         }
         const normalized = hooks.enrichRecordedStep(state, recordingToken, entry.item.tabName, step);
         insertRecordingStepByRecordedTs(list, normalized);

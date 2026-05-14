@@ -6,7 +6,7 @@ import type { RecorderEvent } from '../capture/recorder';
 import { startRecordedStepEnrichment } from '../enhancement/queue';
 import { ensureManifest, ensureTabInManifest } from './manifest';
 import { fillEventKey, flushPendingChoiceEvents, flushPendingFillEvents, isFillLikeEvent, queuePendingFillEvent, queueRecordingStep } from './pending';
-import { getWorkspaceUnsavedToken, isWorkspaceRecordingEnabled, type RecordingState } from './state';
+import { getWorkspaceUnsavedToken, isWorkspaceRecordingEnabled, nextRecordingSeq, type RecordingState } from './state';
 import { normalizeRecorderEvent } from '../normalizer';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -196,6 +196,7 @@ export const appendWorkspaceRecordingEvent = async (
     const recordLog = getLogger('record');
     if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
+    const eventRecordSeq = nextRecordingSeq(state, effectiveToken);
     const tabScopedCacheKey = `${effectiveToken}::${tabName}`;
     if (state.replaying.has(tabName)) {return { accepted: false };}
     const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim()) : undefined;
@@ -278,7 +279,7 @@ export const appendWorkspaceRecordingEvent = async (
     }
 
     if (isFillLikeEvent(event)) {
-        queuePendingFillEvent(state, effectiveToken, tabName, event);
+        queuePendingFillEvent(state, effectiveToken, tabName, event, eventRecordSeq);
         return { accepted: true };
     }
 
@@ -287,6 +288,7 @@ export const appendWorkspaceRecordingEvent = async (
         const provisional = toStep(event);
         if (provisional && provisional.name === 'browser.click') {
             const normalized = enrichRecordedStep(state, effectiveToken, tabName, provisional);
+            normalized.meta = { ...(normalized.meta || { source: 'record' }), recordSeq: eventRecordSeq };
             const list = state.recordings.get(effectiveToken) || [];
             list.push(normalized);
             state.recordings.set(effectiveToken, list);
@@ -352,6 +354,7 @@ export const appendWorkspaceRecordingEvent = async (
                         id: provisionalClickStep.id,
                     } as StepUnion,
                 );
+                merged.meta = { ...(merged.meta || { source: 'record' }), recordSeq: eventRecordSeq };
                 replaceRecordedStep(provisionalClickStep.id, merged);
                 recordLog('step_updated', {
                     stepId: merged.id,
@@ -374,7 +377,10 @@ export const appendWorkspaceRecordingEvent = async (
                 state,
                 effectiveToken,
                 tabName,
-                normalizedEvent.step,
+                {
+                    ...normalizedEvent.step,
+                    meta: { ...(normalizedEvent.step.meta || { source: 'record' }), recordSeq: eventRecordSeq },
+                } as StepUnion,
                 normalizedEvent.enhancementEvent,
                 hooks,
                 { workspaceName, page },
@@ -400,6 +406,7 @@ export const appendWorkspaceRecordingEvent = async (
 
     const step = toStep(currentEvent);
     if (!step) {return { accepted: false };}
+    step.meta = { ...(step.meta || { source: 'record' }), recordSeq: eventRecordSeq };
     const normalized = enrichRecordedStep(state, effectiveToken, tabName, step);
     const list = state.recordings.get(effectiveToken) || [];
     list.push(normalized);
@@ -470,12 +477,14 @@ export const appendWorkspaceRecordingStep = (
     }
 
     const ts = step.meta?.ts ?? Date.now();
+    const recordSeq = typeof step.meta?.recordSeq === 'number' ? step.meta.recordSeq : nextRecordingSeq(state, effectiveToken);
     const normalized = enrichRecordedStep(state, effectiveToken, tabName, {
         ...step,
         meta: {
             ...step.meta,
             source: step.meta?.source ?? 'record',
             ts,
+            recordSeq,
             tabName: step.meta?.tabName || tabName,
         },
     });
