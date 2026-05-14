@@ -188,7 +188,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
   expect(switchSteps.length).toBeGreaterThanOrEqual(4);
   expect(closeSteps.length).toBe(3);
 
-  for (const s of createSteps) { expect(typeof s.meta?.tabName).toBe('string'); expect(String(s.meta?.tabName)).toBeTruthy(); }
+  for (const s of createSteps) { expect(typeof s.args?.tabName).toBe('string'); expect(String(s.args?.tabName)).toBeTruthy(); }
   for (const s of switchSteps) { expect(typeof s.args?.tabName).toBe('string'); expect(String(s.args?.tabName)).toBeTruthy(); }
   for (const s of closeSteps) { expect(typeof s.args?.tabName).toBe('string'); expect(String(s.args?.tabName)).toBeTruthy(); }
 
@@ -200,9 +200,9 @@ test('records and replays active and passive multi-tab workflow', async () => {
     expect(Object.prototype.hasOwnProperty.call(s as object, 'scope')).toBeFalsy();
   });
 
-  expect(createSteps.some((s) => String(s.meta?.tabName || '') === payTab.tabName)).toBeTruthy();
-  expect(createSteps.some((s) => String(s.meta?.tabName || '') === custTab.tabName)).toBeTruthy();
-  expect(createSteps.some((s) => String(s.meta?.tabName || '') === auditTab.tabName)).toBeTruthy();
+  expect(createSteps.some((s) => String(s.args?.tabName || '') === payTab.tabName)).toBeTruthy();
+  expect(createSteps.some((s) => String(s.args?.tabName || '') === custTab.tabName)).toBeTruthy();
+  expect(createSteps.some((s) => String(s.args?.tabName || '') === auditTab.tabName)).toBeTruthy();
   expect(closeSteps.some((s) => String(s.args?.tabName || '') === payTab.tabName)).toBeTruthy();
   expect(closeSteps.some((s) => String(s.args?.tabName || '') === custTab.tabName)).toBeTruthy();
   expect(closeSteps.some((s) => String(s.args?.tabName || '') === auditTab.tabName)).toBeTruthy();

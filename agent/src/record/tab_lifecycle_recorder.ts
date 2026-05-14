@@ -64,7 +64,7 @@ export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput
         {
             id: crypto.randomUUID(),
             name: 'browser.create_tab',
-            args: {},
+            args: { tabName: input.tabName },
             meta: {
                 source: 'record',
                 ts,

@@ -86,15 +86,10 @@ const toSavedRecordingList = (workspace: WorkspaceRouterInput['workspace']) =>
         });
 
 const stripStepForPersistence = (step: StepUnion): StepUnion => {
-    if (!step.meta) {
-        return { id: step.id, name: step.name, args: step.args } as StepUnion;
-    }
-    const { workspaceName: _workspaceName, ...meta } = step.meta;
     return {
         id: step.id,
         name: step.name,
         args: step.args,
-        meta,
     } as StepUnion;
 };
 

@@ -92,11 +92,6 @@ const readStepStringArg = (step: StepUnion, key: string): string | undefined => 
     return typeof args[key] === 'string' ? args[key] : undefined;
 };
 
-const readStepMetaStringArg = (step: StepUnion, key: keyof NonNullable<StepUnion['meta']>): string | undefined => {
-    const value = step.meta?.[key];
-    return typeof value === 'string' ? value : undefined;
-};
-
 type ReplayTabBinding = {
     recordedTabName: string;
     runtimeTabName?: string;
@@ -384,7 +379,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
 
         const isLifecycleStep = isTabLifecycleStep(originalStep.name);
         const recordedTabName = originalStep.name === 'browser.create_tab'
-            ? readStepMetaStringArg(originalStep, 'tabName')
+            ? readStepStringArg(originalStep, 'tabName')
             : originalStep.name === 'browser.switch_tab' || originalStep.name === 'browser.close_tab'
                 ? readStepStringArg(originalStep, 'tabName')
                 : resolveRecordedTabNameForStep(originalStep, recordedActiveTabName);
