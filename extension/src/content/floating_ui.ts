@@ -21,6 +21,14 @@ type WorkspaceItem = { workspaceName: string; activeTabName?: string; tabCount: 
 type TabItem = { tabName: string; url: string; title: string; active: boolean };
 
 type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'Log';
+const UUIDorUnsafe = (): string => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    const now = Date.now().toString(16).padStart(12, '0');
+    return `${rand()}-${rand().slice(0, 4)}-4${rand().slice(0, 3)}-a${rand().slice(0, 3)}-${now}${rand().slice(0, 4)}`.slice(0, 36);
+};
 
 export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const ROOT_ID = 'rpa-floating-panel';
@@ -131,7 +139,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         }
         const request: Action = {
             v: 1,
-            id: crypto.randomUUID(),
+            id: UUIDorUnsafe(),
             type: prepared.type,
             ...(prepared.address?.workspaceName ? { workspaceName: prepared.address.workspaceName } : {}),
             ...(prepared.payload ? { payload: prepared.payload } : {}),

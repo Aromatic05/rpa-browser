@@ -10,6 +10,7 @@
 
 interface Window {
     __rpaTokenInjected?: boolean;
+    __rpaInitialNavigateSent?: boolean;
 }
 
 type ActionScopeInput = {
@@ -52,6 +53,16 @@ type SendExports = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
+const isOrdinaryPageUrl = (url: string): boolean =>
+    url.startsWith('http://') || url.startsWith('https://');
+const UUIDorUnsafe = (): string => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    const now = Date.now().toString(16).padStart(12, '0');
+    return `${rand()}-${rand().slice(0, 4)}-4${rand().slice(0, 3)}-a${rand().slice(0, 3)}-${now}${rand().slice(0, 4)}`.slice(0, 36);
+};
 
 // 协议与发送模块（动态 import，避免内容脚本模块化限制）
 const loadProtocol = (() => {
@@ -112,7 +123,7 @@ const loadFloatingUI = (() => {
         const { send } = await loadSend();
         await send.action({
             v: 1,
-            id: crypto.randomUUID(),
+            id: UUIDorUnsafe(),
             type: 'tab.report',
             payload: {
                 tabName: resolved.tabName,
@@ -129,10 +140,34 @@ const loadFloatingUI = (() => {
                 const result = await mod.ensureTabNameAsync();
                 mod.bindHello(result.tabName, () => {
                     void sendReport(result.tabName, result.workspaceName);
+                    void sendInitialNavigateEvent(result.tabName, result.workspaceName);
                 });
                 return result;
             })();
         return tokenReady!;
+    };
+
+    const sendInitialNavigateEvent = async (tabName?: string, workspaceName?: string) => {
+        if (window.__rpaInitialNavigateSent) {return;}
+        if (!isOrdinaryPageUrl(location.href)) {return;}
+        const resolved = tabName ? { tabName, workspaceName: workspaceName ?? '' } : await ensureToken();
+        const { send } = await loadSend();
+        const reply = await send.action({
+            v: 1,
+            id: UUIDorUnsafe(),
+            type: 'record.event',
+            workspaceName: resolved.workspaceName,
+            payload: {
+                tabName: resolved.tabName,
+                ts: Date.now(),
+                type: 'navigate',
+                url: location.href,
+                source: 'direct',
+            },
+        });
+        if (!String((reply as { type?: unknown })?.type || '').endsWith('.failed')) {
+            window.__rpaInitialNavigateSent = true;
+        }
     };
 
     chrome.runtime.onMessage.addListener(
@@ -177,7 +212,7 @@ const loadFloatingUI = (() => {
         const { send } = await loadSend();
         await send.action({
             v: 1,
-            id: crypto.randomUUID(),
+            id: UUIDorUnsafe(),
             type: 'tab.ping',
             workspaceName,
             payload: {
@@ -205,6 +240,7 @@ const loadFloatingUI = (() => {
         const { MSG } = await loadProtocol();
         const { tabName, workspaceName } = await ensureToken();
         void sendReport(tabName);
+        void sendInitialNavigateEvent(tabName, workspaceName);
         startHeartbeat();
         uiHandle = mountFloatingUI({
             tabName,
@@ -227,7 +263,7 @@ const loadFloatingUI = (() => {
                         : (payload ?? {});
                 const action = {
                     v: 1 as const,
-                    id: crypto.randomUUID(),
+                    id: UUIDorUnsafe(),
                     type,
                     workspaceName: typedScope.workspaceName,
                     payload: normalizedPayload,
