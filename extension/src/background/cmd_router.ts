@@ -42,6 +42,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const life = createLifecycleRuntime({ state, sendAction, onRefresh: options.onRefresh });
     const commandCreatedTabs = new Set<number>();
+    let pendingCommandOpenCount = 0;
 
     const resolveActionTargetTabName = (action: Action) => {
         if (!action.workspaceName) {
@@ -69,14 +70,19 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const handleTabOpen = async (action: Action) => {
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const createId = typeof payload.createId === 'string' ? payload.createId.trim() : '';
-        const created = await chrome.tabs.create({ url: 'https://example.com', active: false });
-        if (typeof created.id === 'number' && typeof created.windowId === 'number') {
-            commandCreatedTabs.add(created.id);
-            try {
-                await life.ensureOpenedAndBound(created.id, created.windowId, { createId, workspaceName: action.workspaceName });
-            } finally {
-                commandCreatedTabs.delete(created.id);
+        pendingCommandOpenCount += 1;
+        try {
+            const created = await chrome.tabs.create({ url: 'https://example.com', active: true });
+            if (typeof created.id === 'number' && typeof created.windowId === 'number') {
+                commandCreatedTabs.add(created.id);
+                try {
+                    await life.ensureOpenedAndBound(created.id, created.windowId, { createId, workspaceName: action.workspaceName });
+                } finally {
+                    commandCreatedTabs.delete(created.id);
+                }
             }
+        } finally {
+            pendingCommandOpenCount = Math.max(0, pendingCommandOpenCount - 1);
         }
     };
 
@@ -259,10 +265,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         handleTabClose,
         resolveActionTargetTabName,
         handleMessage,
-        onActivated: life.onActivated,
+        onActivated: (info: chrome.tabs.TabActiveInfo) => {
+            if (pendingCommandOpenCount > 0) {return;}
+            life.onActivated(info);
+        },
         onRemoved: life.onRemoved,
         onUpdated: life.onUpdated,
         onCreated: (tab: chrome.tabs.Tab) => {
+            if (pendingCommandOpenCount > 0) {return;}
             if (typeof tab.id === 'number' && commandCreatedTabs.has(tab.id)) {return;}
             life.onCreated(tab);
         },

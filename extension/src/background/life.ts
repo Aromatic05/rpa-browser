@@ -261,7 +261,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         const chromeTabNo = typeof tab.id === 'number' ? tab.id : null;
         const windowId = typeof tab.windowId === 'number' ? tab.windowId : null;
         if (chromeTabNo === null || windowId === null) {return;}
-        if (tab.url === 'https://example.com') {return;}
 
         void (async () => {
             await ensureOpenedAndBound(chromeTabNo, windowId);
