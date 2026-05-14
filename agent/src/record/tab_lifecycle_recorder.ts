@@ -64,6 +64,9 @@ export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput
         {
             id: crypto.randomUUID(),
             name: 'browser.create_tab',
+            // CRITICAL CONTRACT:
+            // In recordings, browser.create_tab.args.tabName is treated as the recorded create-result identity,
+            // not a user input argument. Replay must bind this recorded identity to a runtime tab or fail-fast.
             args: { tabName: input.tabName },
             meta: {
                 source: 'record',

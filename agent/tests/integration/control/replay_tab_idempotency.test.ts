@@ -66,7 +66,7 @@ const createHarness = () => {
                     const runtimeTabName = `rt-${++seq}`;
                     tabs.createTab({ tabName: runtimeTabName });
                     createdByExecutor.push(runtimeTabName);
-                    return { stepId: s.id, ok: true, data: { tab_id: runtimeTabName } };
+                    return { stepId: s.id, ok: true, data: { tabName: runtimeTabName } };
                 },
                 'browser.switch_tab': async (s: Extract<StepUnion, { name: 'browser.switch_tab' }>) => {
                     switchedTabs.push(s.args.tabName);
@@ -136,9 +136,9 @@ test('create_tab consumes pendingCreated effect before active create and overrid
 
     const steps: StepUnion[] = [
         step('c1', 'browser.click', { selector: '#popup' }),
-        step('c2', 'browser.create_tab', {}, { source: 'record', tabName: 'popup-recorded' }),
+        step('c2', 'browser.create_tab', { tabName: 'popup-recorded' }),
         step('c3', 'browser.switch_tab', { tabName: 'popup-recorded' }),
-        step('c4', 'browser.create_tab', {}, { source: 'record', tabName: 'popup-recorded' }),
+        step('c4', 'browser.create_tab', { tabName: 'popup-recorded' }),
         step('c5', 'browser.switch_tab', { tabName: 'popup-recorded' }),
     ];
 

@@ -64,5 +64,8 @@ export const executeBrowserCreateTab = async (
         };
     }
 
-    return { stepId: step.id, ok: true, data: { tab_id: createdTabName } };
+    // CRITICAL CONTRACT:
+    // browser.create_tab returns data.tabName as the runtime-created tab identity.
+    // Replay/recording must treat this field as create-result output (binding target), not input args.
+    return { stepId: step.id, ok: true, data: { tabName: createdTabName } };
 };

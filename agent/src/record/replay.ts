@@ -443,7 +443,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
                 upsertTabBinding(recordedTabName, { runtimeTabName: runtimeTab, runtimeUrl: req.workspace.tabs.getTab(runtimeTab)?.url, closed: false, status: 'created' });
                 clearPendingCreatedTabEffect(tabEffectRegister);
                 logEffectStateChange(originalStep.id, 'consume_pending_created_effect', effectBeforeStep);
-                syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tab_id: runtimeTab } }] };
+                syntheticResponse = { ok: true, results: [{ stepId: originalStep.id, ok: true, data: { tabName: runtimeTab } }] };
             }
             if (!syntheticResponse && tabEffectRegister.pendingCreatedTab.state === 'conflict') {
                 return { ok: false, results: stepResults, error: { code: REPLAY_ERROR_CODES.TAB_EFFECT_CONFLICT, message: tabEffectRegister.pendingCreatedTab.reason } };
@@ -464,14 +464,16 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (recordedTabName && remappedStep.name === 'browser.create_tab' && response.ok) {
             const createResult = response.results[response.results.length - 1];
             const data = asRecord(createResult?.data);
-            const createdTabName = typeof data.tab_id === 'string' ? data.tab_id : undefined;
+            const createdTabName =
+                (typeof data.tabName === 'string' ? data.tabName : undefined)
+                || (typeof data.tab_id === 'string' ? data.tab_id : undefined);
             if (!createdTabName) {
                 return {
                     ok: false,
                     results: stepResults,
                     error: {
                         code: REPLAY_ERROR_CODES.TAB_CREATE_RESULT_INVALID,
-                        message: 'browser.create_tab missing data.tab_id',
+                        message: 'browser.create_tab missing data.tabName',
                         details: { stepId: remappedStep.id },
                     },
                 };

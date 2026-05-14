@@ -122,7 +122,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
 
   const kbCreate = await rs(ws, 'kb create', st('kb-create', 'browser.create_tab', {}));
   mustOk(kbCreate, 'kb create');
-  const kbTab = String(((kbCreate.data as { tab_id?: string }) || {}).tab_id || '');
+  const kbTab = String((((kbCreate.data as { tabName?: string; tab_id?: string }) || {}).tabName) || ((kbCreate.data as { tab_id?: string }) || {}).tab_id || '');
   expect(kbTab).toBeTruthy();
   expect((await listTabs(ep, ws)).map((t) => t.tabName)).toEqual(expect.arrayContaining([wbTab, kbTab]));
 
