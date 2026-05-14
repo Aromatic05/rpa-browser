@@ -25,22 +25,22 @@ export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHand
 
   let stderr = '';
   proc.stderr.on('data', (c) => { stderr += c.toString(); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-  {
+  const waitAgentReady = async () => {
     const dl = Date.now() + 30_000;
     while (Date.now() < dl) {
       if (proc.exitCode !== null) throw new Error(`agent exited: ${proc.exitCode} ${stderr}`);
-      try { const r = await sendControlEval({ source: 'return { ready: true }', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 }); if (r.ok) break; } catch {}
+      try {
+        const r = await sendControlEval({ source: 'return { ready: !!ctx?.deps?.pageRegistry };', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 });
+        if (r.ok && (r.result as { ready?: boolean })?.ready) return;
+      } catch {}
+      await sleep(100);
     }
-  }
+    throw new Error(`agent startup timeout after 30000ms: control endpoint not ready ${stderr}`);
+  };
 
-  {
-    const dl = Date.now() + 30_000;
-    while (Date.now() < dl) {
-      if (proc.exitCode !== null) throw new Error(`agent exited: ${proc.exitCode}`);
-      try { const r = await sendControlEval({ source: 'const d=await ctx.deps.pageRegistry.debugPageBindings("__p__");return Array.isArray(d?.knownBindings)&&d.knownBindings.length>0;', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 }); if (r.ok && r.result === true) break; } catch {}
-    }
-  }
+  await waitAgentReady();
 
   return {
     endpoint,
@@ -57,12 +57,21 @@ export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHand
 };
 
 export const runStep = async (ep: string, ws: string, step: StepUnion) => {
-  const r = await sendControlEval(
-    { source: 'return await ctx.runStep(input.s,input.w);', input: { s: step, w: ws }, timeoutMs: 25_000 },
-    { endpoint: ep, timeoutMs: 25_000 },
-  );
-  if (!r.ok) throw new Error(`runStep failed: ${r.error?.message}`);
-  return r.result as { ok: boolean; data?: unknown; error?: { code?: string; message?: string } };
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  const dl = Date.now() + 10_000;
+  let lastErr = '';
+  while (true) {
+    const r = await sendControlEval(
+      { source: 'return await ctx.runStep(input.s,input.w);', input: { s: step, w: ws }, timeoutMs: 25_000 },
+      { endpoint: ep, timeoutMs: 25_000 },
+    );
+    if (r.ok) return r.result as { ok: boolean; data?: unknown; error?: { code?: string; message?: string } };
+    lastErr = String(r.error?.message || '');
+    if (!lastErr.includes('page binding timeout') || Date.now() >= dl) {
+      throw new Error(`runStep failed: ${lastErr}`);
+    }
+    await sleep(200);
+  }
 };
 
 export const dispatch = async (ep: string, action: Action) => {
