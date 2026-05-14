@@ -254,10 +254,6 @@ export const appendWorkspaceRecordingEvent = async (
     }
 
     if (event.type === 'navigate') {
-        const last = state.lastNavigateTs.get(effectiveToken) || 0;
-        if (event.ts - last < navDedupeWindowMs) {
-            return { accepted: false };
-        }
         state.lastNavigateTs.set(effectiveToken, event.ts);
         state.recordSnapshotCache.delete(tabScopedCacheKey);
     }

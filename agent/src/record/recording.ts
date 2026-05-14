@@ -123,25 +123,14 @@ export const installNavigationRecorder = (
 ): void => {
     if (navListenerPages.has(page)) {return;}
     navListenerPages.add(page);
-    page.on('framenavigated', (frame) => {
-        if (frame !== page.mainFrame()) {return;}
-        if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return;}
-        const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
-        const lastClick = state.lastClickTs.get(effectiveToken) || 0;
-        const source = Date.now() - lastClick < navDedupeWindowMs ? 'click' : 'direct';
-        const navigateEvent: RecorderEvent = {
-            tabName,
-            ts: Date.now(),
-            type: 'navigate',
-            url: frame.url(),
-            source,
-        };
-        if (recorderEventSink) {
-            void recorderEventSink(navigateEvent, page, tabName);
-            return;
-        }
-        void appendWorkspaceRecordingEvent(state, workspaceName, tabName, navigateEvent, navDedupeWindowMs, page);
-    });
+    // Navigation ownership is delegated to content-script `tab.report`.
+    // Keep this listener registration as an intentional no-op to avoid
+    // introducing a second writer for browser.goto recording.
+    void state;
+    void workspaceName;
+    void page;
+    void tabName;
+    void navDedupeWindowMs;
 };
 
 export const ensureRecorder = async (

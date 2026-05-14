@@ -20,6 +20,7 @@ export type PageBindingDebugState = {
 
 export type PageRegistryOptions = {
     tabNameKey: string;
+    tabNameConfirmedKey?: string;
     getContext: () => Promise<BrowserContext>;
     onPageBound?: (page: Page, bindingName: string) => void;
     onBindingClosed?: (bindingName: string) => void;
@@ -39,6 +40,8 @@ export type PageRegistry = {
 };
 
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
+    const confirmedKey = options.tabNameConfirmedKey ?? '__rpa_tab_name_confirmed';
+    const tabNameWinNamePrefix = '__RPA_TAB_NAME__:';
     const bindingToPage = new Map<string, Page>();
     const bindingUpdatedAt = new Map<string, number>();
     const pendingClaims = new Map<string, PendingBindingClaim>();
@@ -48,7 +51,22 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         for (let i = 0; i < attempts; i += 1) {
             if (page.isClosed()) {return null;}
             try {
-                const value = await page.evaluate((key) => sessionStorage.getItem(key), options.tabNameKey);
+                const value = await page.evaluate(
+                    (keys) => {
+                        const rawWinName = typeof window.name === 'string' ? window.name : '';
+                        if (rawWinName.startsWith(keys.winNamePrefix)) {
+                            const nameToken = rawWinName.slice(keys.winNamePrefix.length).trim();
+                            if (nameToken) {return nameToken;}
+                        }
+                        // window.open-ed page can inherit opener sessionStorage;
+                        // never trust sessionStorage token while opener is present.
+                        if (window.opener && !window.opener.closed) {return null;}
+                        const confirmed = sessionStorage.getItem(keys.confirmedKey);
+                        if (!confirmed) {return null;}
+                        return sessionStorage.getItem(keys.tabNameKey);
+                    },
+                    { tabNameKey: options.tabNameKey, confirmedKey, winNamePrefix: tabNameWinNamePrefix },
+                );
                 if (value) {return value;}
             } catch {}
             try {
@@ -63,6 +81,8 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
     const installBindingNameToPage = async (page: Page, bindingName: string) => {
         const script = `
             try { sessionStorage.setItem(${JSON.stringify(options.tabNameKey)}, ${JSON.stringify(bindingName)}); } catch {}
+            try { sessionStorage.setItem(${JSON.stringify(confirmedKey)}, '1'); } catch {}
+            try { window.name = ${JSON.stringify(tabNameWinNamePrefix)} + ${JSON.stringify(bindingName)}; } catch {}
             try { window.__rpa_tab_name = ${JSON.stringify(bindingName)}; } catch {}
         `;
         await page.addInitScript({ content: script });
@@ -70,11 +90,13 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             await page.evaluate(
                 (args: { name: string; key: string }) => {
                     sessionStorage.setItem(args.key, args.name);
+                    sessionStorage.setItem(args.confirmedKey, '1');
+                    try { window.name = `${args.winNamePrefix}${args.name}`; } catch {}
                     try {
                         (window as any).__rpa_tab_name = args.name;
                     } catch {}
                 },
-                { name: bindingName, key: options.tabNameKey },
+                { name: bindingName, key: options.tabNameKey, confirmedKey, winNamePrefix: tabNameWinNamePrefix },
             );
         } catch {}
     };

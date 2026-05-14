@@ -16,6 +16,7 @@ declare global {
 }
 
 const TAB_NAME_KEY = '__rpa_tab_name';
+const TAB_NAME_CONFIRMED_KEY = '__rpa_tab_name_confirmed';
 const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
 
 const readTokenFromWindowName = (): string | null => {
@@ -41,9 +42,6 @@ const writeTokenToWindowName = (tabName: string) => {
 };
 
 export const ensureTabName = (): string => {
-    if (window.opener && !window.opener.closed) {
-        return '';
-    }
     const fromWindow = readTokenFromWindowName();
     if (fromWindow) {
         sessionStorage.setItem(TAB_NAME_KEY, fromWindow);
@@ -86,14 +84,15 @@ export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspace
     tabName = runtimeReply.tabName;
     const workspaceName = runtimeReply.workspaceName ?? '';
     sessionStorage.setItem(TAB_NAME_KEY, tabName);
+    sessionStorage.setItem(TAB_NAME_CONFIRMED_KEY, '1');
     writeTokenToWindowName(tabName);
     window.__rpa_tab_name = tabName;
     return { tabName, workspaceName };
 };
 
-export const bindHello = (tabName: string, onHello?: () => void): () => void => {
+export const bindHello = (_tabName: string, onHello?: () => void): () => void => {
     const sendHello = () => {
-        void send.hello({ tabName, url: location.href });
+        void send.hello({ url: location.href });
         onHello?.();
     };
 

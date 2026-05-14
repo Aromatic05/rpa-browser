@@ -106,35 +106,37 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (typedMessage.type === MSG.HELLO) {
             const chromeTabNo = sender.tab?.id;
-            if (typeof chromeTabNo !== 'number') {return;}
-            const incomingBinding = typeof typedMessage.tabName === 'string' ? typedMessage.tabName : '';
+            if (typeof chromeTabNo !== 'number') {
+                sendResponse({ ok: false, error: 'sender tab unavailable' });
+                return;
+            }
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
             const url = typeof typedMessage.url === 'string' ? typedMessage.url : sender.tab?.url ?? '';
-            const existing = state.getTabState(chromeTabNo);
-            const stableBinding = typeof existing?.bindingName === 'string' ? existing.bindingName.trim() : '';
-            const bindingName = stableBinding || incomingBinding;
-            state.upsertTab(chromeTabNo, bindingName, url, windowId);
-            if (stableBinding && incomingBinding && incomingBinding !== stableBinding) {
-                log.warning('[RPA:sw]', 'hello token mismatch; preserving existing binding', {
-                    chromeTabNo,
-                    incomingBinding,
-                    stableBinding,
-                    url,
-                });
-                // Best-effort: push canonical token back to content script.
-                chrome.tabs.sendMessage(chromeTabNo, { type: MSG.SET_TOKEN, tabName: stableBinding }, () => {
-                    void chrome.runtime.lastError;
-                });
-            }
-            const mapped = state.getBindingWorkspaceTab(bindingName);
-            if (mapped && typeof windowId === 'number') {
-                state.setWindowWorkspace(windowId, mapped.workspaceName);
-                if (state.getActiveChromeTabNo() === chromeTabNo) {
-                    state.setActiveWorkspaceName(mapped.workspaceName);
+            (async () => {
+                let bindingName = state.getTabState(chromeTabNo)?.bindingName?.trim() ?? '';
+                if (!bindingName) {
+                    const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
+                    const ensured = inflight ? await inflight : await life.ensureBoundTabRef(chromeTabNo, windowId);
+                    bindingName = ensured?.bindingName?.trim() ?? '';
                 }
-            }
-            sendResponse({ ok: true });
-            return;
+                if (bindingName) {
+                    state.upsertTab(chromeTabNo, bindingName, url, windowId);
+                    const mapped = state.getBindingWorkspaceTab(bindingName);
+                    if (mapped && typeof windowId === 'number') {
+                        state.setWindowWorkspace(windowId, mapped.workspaceName);
+                        if (state.getActiveChromeTabNo() === chromeTabNo) {
+                            state.setActiveWorkspaceName(mapped.workspaceName);
+                        }
+                    }
+                    chrome.tabs.sendMessage(chromeTabNo, { type: MSG.SET_TOKEN, tabName: bindingName }, () => {
+                        void chrome.runtime.lastError;
+                    });
+                }
+                sendResponse({ ok: true, tabName: bindingName });
+            })().catch((error: unknown) => {
+                sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+            });
+            return true;
         }
 
         if (typedMessage.type === MSG.ENSURE_BOUND_TOKEN) {
@@ -198,13 +200,28 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (typedMessage.type === MSG.ACTION) {
             (async () => {
                 const chromeTabNo = sender.tab?.id;
+                const action = typedMessage.action as Record<string, unknown> | null | undefined;
+                if (
+                    isRecord(action) &&
+                    typeof action.type === 'string' &&
+                    action.type === ACTION_TYPES.TAB_BOUND
+                ) {
+                    sendResponse({
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: `${ACTION_TYPES.TAB_BOUND}.failed`,
+                        replyTo: typeof action.id === 'string' ? action.id : '',
+                        payload: { code: 'BAD_REQUEST', message: 'tab.bound from content script is not allowed' },
+                        at: Date.now(),
+                    } satisfies Action);
+                    return;
+                }
                 if (typeof chromeTabNo === 'number') {
                     const tabState = state.getTabState(chromeTabNo);
                     const bindingName = tabState?.bindingName;
                     if (bindingName) {
                         const mapped = state.getBindingWorkspaceTab(bindingName);
                         if (mapped) {
-                            const action = typedMessage.action as Record<string, unknown> | null | undefined;
                             if (isRecord(action)) {
                                 if (!action.workspaceName || typeof action.workspaceName !== 'string') {
                                     action.workspaceName = mapped.workspaceName;

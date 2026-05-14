@@ -10,7 +10,6 @@
 
 interface Window {
     __rpaTokenInjected?: boolean;
-    __rpaInitialNavigateSent?: boolean;
 }
 
 type ActionScopeInput = {
@@ -118,15 +117,16 @@ const loadFloatingUI = (() => {
 
     // tabName + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<{ tabName: string; workspaceName: string }> | null = null;
-    const sendReport = async (tabName?: string, workspaceName?: string) => {
-        const resolved = tabName ? { tabName, workspaceName: workspaceName ?? '' } : await ensureToken();
+    let lastReportedUrl = '';
+    const sendReport = async (workspaceName?: string) => {
+        const resolved = workspaceName ? { workspaceName } : await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
             id: UUIDorUnsafe(),
             type: 'tab.report',
+            workspaceName: resolved.workspaceName,
             payload: {
-                tabName: resolved.tabName,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -134,40 +134,44 @@ const loadFloatingUI = (() => {
             },
         });
     };
+    const sendReportIfUrlChanged = async (workspaceName?: string, force = false) => {
+        const url = location.href;
+        if (!force && url === lastReportedUrl) {return;}
+        await sendReport(workspaceName);
+        lastReportedUrl = url;
+    };
     const ensureToken = () => {
         tokenReady ??= (async () => {
                 const mod = await loadTokenBridge();
                 const result = await mod.ensureTabNameAsync();
                 mod.bindHello(result.tabName, () => {
-                    void sendReport(result.tabName, result.workspaceName);
-                    void sendInitialNavigateEvent(result.tabName, result.workspaceName);
+                    // hello is only for binding refresh; URL ownership is handled
+                    // by report-on-change hooks below.
                 });
                 return result;
             })();
         return tokenReady!;
     };
-
-    const sendInitialNavigateEvent = async (tabName?: string, workspaceName?: string) => {
-        if (window.__rpaInitialNavigateSent) {return;}
-        if (!isOrdinaryPageUrl(location.href)) {return;}
-        const resolved = tabName ? { tabName, workspaceName: workspaceName ?? '' } : await ensureToken();
-        const { send } = await loadSend();
-        const reply = await send.action({
-            v: 1,
-            id: UUIDorUnsafe(),
-            type: 'record.event',
-            workspaceName: resolved.workspaceName,
-            payload: {
-                tabName: resolved.tabName,
-                ts: Date.now(),
-                type: 'navigate',
-                url: location.href,
-                source: 'direct',
-            },
-        });
-        if (!String((reply as { type?: unknown })?.type || '').endsWith('.failed')) {
-            window.__rpaInitialNavigateSent = true;
-        }
+    const bindReportOnUrlChange = () => {
+        const emit = () => {
+            if (!isOrdinaryPageUrl(location.href)) {return;}
+            void sendReportIfUrlChanged();
+        };
+        const originalPush = history.pushState.bind(history);
+        const originalReplace = history.replaceState.bind(history);
+        history.pushState = ((...args: Parameters<typeof history.pushState>) => {
+            originalPush(...args);
+            emit();
+            return undefined;
+        }) as History['pushState'];
+        history.replaceState = ((...args: Parameters<typeof history.replaceState>) => {
+            originalReplace(...args);
+            emit();
+            return undefined;
+        }) as History['replaceState'];
+        window.addEventListener('popstate', emit);
+        window.addEventListener('hashchange', emit);
+        window.addEventListener('pageshow', emit);
     };
 
     chrome.runtime.onMessage.addListener(
@@ -193,6 +197,7 @@ const loadFloatingUI = (() => {
                         return;
                     }
                     sessionStorage.setItem('__rpa_tab_name', tabName);
+                    sessionStorage.setItem('__rpa_tab_name_confirmed', '1');
                     window.name = `__RPA_TAB_NAME__:${tabName}`;
                     (window as any).__rpa_tab_name = tabName;
                     sendResponse({ ok: true, tabName, url: location.href });
@@ -239,8 +244,8 @@ const loadFloatingUI = (() => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
         const { tabName, workspaceName } = await ensureToken();
-        void sendReport(tabName);
-        void sendInitialNavigateEvent(tabName, workspaceName);
+        bindReportOnUrlChange();
+        void sendReportIfUrlChanged(workspaceName, true);
         startHeartbeat();
         uiHandle = mountFloatingUI({
             tabName,
@@ -249,7 +254,6 @@ const loadFloatingUI = (() => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
                 const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
-                const scopedTabName = typedScope.tabName ?? tabName;
                 const normalizedPayload =
                     type === 'record.event'
                         ? {
@@ -268,9 +272,6 @@ const loadFloatingUI = (() => {
                     workspaceName: typedScope.workspaceName,
                     payload: normalizedPayload,
                 };
-                if (!hasExplicitScope && action.payload && typeof action.payload === 'object') {
-                    (action.payload as Record<string, unknown>).tabName = scopedTabName;
-                }
                 return await send.action(action);
             },
             onEvent: (handler) => {
