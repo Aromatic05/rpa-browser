@@ -43,7 +43,7 @@ export type CreateRuntimeWorkspaceDeps = {
     workflow: Workflow;
     pageRegistry: {
         awaitPageBinding: (bindingName: string, options: { timeoutMs: number }) => Promise<Page>;
-        createPageBinding: (bindingName: string, input?: { startUrl?: string }) => Promise<Page>;
+        createPageBinding: (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
         touchBinding?: (bindingName: string) => void;
         closePage?: (bindingName: string) => Promise<void>;
         debugPageBindings?: (bindingName: string) => Promise<unknown>;

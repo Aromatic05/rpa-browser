@@ -17,24 +17,33 @@ export type WorkspaceHarnessOptions = {
 
 export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) => {
     const recordingState = options.recordingState || createRecordingState();
+    const getPage = options.getPage || (async (_tabName, startUrl) => ({
+        url: () => startUrl || 'about:blank',
+        isClosed: () => false,
+        close: async () => undefined,
+        on: () => undefined,
+        addInitScript: async () => undefined,
+        exposeBinding: async () => undefined,
+        evaluate: async () => undefined,
+        waitForTimeout: async () => undefined,
+        mainFrame: () => ({ url: () => startUrl || 'about:blank' }),
+        frames: () => [],
+        context: () => ({}) as any,
+    } as unknown as Page));
     const testPageRegistry: PageRegistry = {
+        createPage: async () => await getPage('', 'about:blank'),
         bindPage: async () => null,
-        getPage: options.getPage || (async (_tabName, startUrl) => ({
-            url: () => startUrl || 'about:blank',
-            isClosed: () => false,
-            close: async () => undefined,
-            on: () => undefined,
-            addInitScript: async () => undefined,
-            exposeBinding: async () => undefined,
-            evaluate: async () => undefined,
-            waitForTimeout: async () => undefined,
-            mainFrame: () => ({ url: () => startUrl || 'about:blank' }),
-            frames: () => [],
-            context: () => ({}) as any,
-        } as unknown as Page)),
+        awaitPageBinding: async (bindingName) => await getPage(bindingName, 'about:blank'),
+        createPageBinding: async (bindingName, input) => await getPage(bindingName, input?.startUrl),
         touchBinding: () => true,
         listStaleBindings: () => [],
         closePage: async () => undefined,
+        debugPageBindings: async (bindingName) => ({
+            bindingName,
+            knownBindings: [],
+            knownPagesSummary: [],
+            pendingClaims: [],
+        }),
         createPendingBindingClaim: () => undefined,
         claimPendingBinding: async () => false,
     };

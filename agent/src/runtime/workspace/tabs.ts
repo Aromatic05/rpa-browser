@@ -20,7 +20,7 @@ export type RuntimeTab = {
 export type WorkspaceTabs = {
     createTab: (input: { tabName: string; at?: number }) => RuntimeTab;
     awaitTabPage: (tabName: string, timeoutMs: number) => Promise<Page>;
-    createTabPage: (tabName: string, input?: { startUrl?: string }) => Promise<Page>;
+    createTabPage: (tabName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
     bindPage: (tabName: string, page: Page) => RuntimeTab | null;
     closeTab: (tabName: string) => Promise<RuntimeTab | null>;
     listTabs: () => RuntimeTab[];
@@ -37,7 +37,7 @@ export type WorkspaceTabs = {
 
 export type WorkspaceTabsDeps = {
     awaitPageBinding: (tabName: string, timeoutMs: number) => Promise<Page>;
-    createPageBinding: (tabName: string, input?: { startUrl?: string }) => Promise<Page>;
+    createPageBinding: (tabName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
     touchBinding?: (bindingName: string) => void;
 };
 

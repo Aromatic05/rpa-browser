@@ -30,7 +30,7 @@ export type PageRegistry = {
     createPage: () => Promise<Page>;
     bindPage: (page: Page, hintedBindingName?: string) => Promise<string | null>;
     awaitPageBinding: (bindingName: string, options: AwaitPageBindingOptions) => Promise<Page>;
-    createPageBinding: (bindingName: string, input?: { startUrl?: string }) => Promise<Page>;
+    createPageBinding: (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
     touchBinding: (bindingName: string, at?: number) => boolean;
     listStaleBindings: (timeoutMs: number, now?: number) => Array<{ bindingName: string; lastSeenAt: number }>;
     closePage: (bindingName: string) => Promise<void>;
@@ -88,7 +88,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         await page.addInitScript({ content: script });
         try {
             await page.evaluate(
-                (args: { name: string; key: string }) => {
+                (args: { name: string; key: string; confirmedKey: string; winNamePrefix: string }) => {
                     sessionStorage.setItem(args.key, args.name);
                     sessionStorage.setItem(args.confirmedKey, '1');
                     try { window.name = `${args.winNamePrefix}${args.name}`; } catch {}
@@ -198,12 +198,20 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         });
     };
 
-    const createPageBinding = async (bindingName: string, input?: { startUrl?: string }) => {
+    const createPageInNewWindow = async (context: BrowserContext): Promise<Page> => {
+        const seedPage = context.pages().find((page) => !page.isClosed()) || await context.newPage();
+        const pagePromise = context.waitForEvent('page', { timeout: 5000 });
+        const cdp = await context.newCDPSession(seedPage);
+        await cdp.send('Target.createTarget', { url: 'about:blank', newWindow: true });
+        return await pagePromise;
+    };
+
+    const createPageBinding = async (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => {
         if (!bindingName) {throw new Error('missing bindingName');}
         const existing = resolveKnownPage(bindingName);
         if (existing) {return existing;}
         const context = await options.getContext();
-        const page = await context.newPage();
+        const page = input?.newWindow === true ? await createPageInNewWindow(context) : await context.newPage();
         await installBindingNameToPage(page, bindingName);
         if (input?.startUrl) {
             await page.goto(input.startUrl, { waitUntil: 'domcontentloaded' });

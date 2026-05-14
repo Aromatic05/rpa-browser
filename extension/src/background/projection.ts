@@ -21,6 +21,7 @@ export const projectInboundAction = (action: Action, state: RouterState, onRefre
         const workspaceName = toStringValue(data.workspaceName);
         const tabName = toStringValue(data.tabName);
         if (workspaceName && tabName) {
+            state.upsertBindingWorkspaceTab(tabName, workspaceName, tabName);
             const activeChromeTabNo = state.getActiveChromeTabNo();
             if (typeof activeChromeTabNo === 'number') {
                 const activeTab = state.getTabState(activeChromeTabNo);

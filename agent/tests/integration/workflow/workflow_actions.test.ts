@@ -33,6 +33,7 @@ test('workflow lifecycle actions are handled by runtime control', async () => {
         workspaceRegistry: registry,
     } as any);
     assert.equal(opened.reply.type, 'workflow.open.result');
+    assert.equal(registry.getWorkspace(workflowName)?.tabs.listTabs().length, 1);
 
     const renamedReply = await handleRuntimeControlAction({
         action: { v: 1, id: '4', type: 'workflow.rename', payload: { fromName: workflowName, toName: renamed } },
@@ -41,6 +42,35 @@ test('workflow lifecycle actions are handled by runtime control', async () => {
     assert.equal(renamedReply.reply.type, 'workflow.rename.result');
     cleanup(workflowName);
     cleanup(renamed);
+});
+
+test('workflow.open opens a tab only for tabless workspace', async () => {
+    const { registry } = createWorkspaceHarness();
+    const workflowName = uniqueName('wf-open-tab');
+    cleanup(workflowName);
+    createWorkflowOnFs(workflowName);
+
+    const opened = await handleRuntimeControlAction({
+        action: { v: 1, id: 'open-tab-1', type: 'workflow.open', payload: { workflowName } },
+        workspaceRegistry: registry,
+    } as any);
+    assert.equal(opened.reply.type, 'workflow.open.result');
+    assert.equal(opened.reply.payload.workspaceName, workflowName);
+    assert.equal(registry.getActiveWorkspace()?.name, workflowName);
+    assert.deepEqual(opened.events.map((event) => event.type), ['workspace.changed']);
+
+    const workspace = registry.getWorkspace(workflowName);
+    assert.ok(workspace);
+    assert.equal(workspace.tabs.listTabs().length, 1);
+    workspace.tabs.createTab({ tabName: 'tab-existing' });
+
+    const reopened = await handleRuntimeControlAction({
+        action: { v: 1, id: 'open-tab-2', type: 'workflow.open', payload: { workflowName } },
+        workspaceRegistry: registry,
+    } as any);
+    assert.deepEqual(reopened.events.map((event) => event.type), ['workspace.changed']);
+    assert.equal(workspace.tabs.listTabs().length, 2);
+    cleanup(workflowName);
 });
 
 test('dsl actions are handled by dsl control', async () => {

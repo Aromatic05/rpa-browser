@@ -405,6 +405,73 @@ await log('workflow.open projection uses workspaceName/tabName without payload t
     assert.equal(refreshed, 1);
 });
 
+await log('agent-created window binds from preferred content tabName', async () => {
+    globalThis.chrome = createChromeMock();
+    chrome.tabs.get = async (tabName) => ({ id: tabName, windowId: 44, url: 'https://example.com/agent' });
+    const sent = [];
+    const router = createCmdRouter({
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            return { ok: true, data: {} };
+        }),
+        onRefresh: () => undefined,
+    });
+
+    router.handleInboundAction({
+        v: 1,
+        id: 'evt-agent-tab-bound',
+        type: ACTION_TYPES.TAB_BOUND,
+        workspaceName: 'ws-agent',
+        payload: {
+            workspaceName: 'ws-agent',
+            tabName: 'tab-agent',
+            url: 'https://example.com/agent',
+        },
+    });
+
+    let tokenReply = null;
+    router.handleMessage(
+        {
+            type: MSG.ENSURE_BOUND_TOKEN,
+            tabName: 'tab-agent',
+            url: 'https://example.com/agent',
+        },
+        { tab: { id: 33, windowId: 44, url: 'https://example.com/agent' } },
+        (payload) => {
+            tokenReply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(tokenReply?.ok, true);
+    assert.equal(tokenReply?.tabName, 'tab-agent');
+    assert.equal(tokenReply?.workspaceName, 'ws-agent');
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
+
+    let actionReply = null;
+    router.handleMessage(
+        {
+            type: MSG.ACTION,
+            action: {
+                v: 1,
+                id: 'agent-record-event',
+                type: ACTION_TYPES.RECORD_EVENT,
+                payload: { id: 's-agent', name: 'browser.click', args: { selector: '#submit' } },
+            },
+        },
+        { tab: { id: 33, windowId: 44, url: 'https://example.com/agent' } },
+        (payload) => {
+            actionReply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const recordAction = sent.find((action) => action.type === ACTION_TYPES.RECORD_EVENT);
+    assert.equal(actionReply?.type, `${ACTION_TYPES.RECORD_EVENT}.result`, JSON.stringify(actionReply));
+    assert.equal(recordAction?.workspaceName, 'ws-agent');
+    assert.equal(recordAction?.payload?.tabName, 'tab-agent');
+});
+
 await log('workspace.list works without tab token', async () => {
     globalThis.chrome = createChromeMock();
     chrome.tabs.sendMessage = (tabName, message, cb) => {

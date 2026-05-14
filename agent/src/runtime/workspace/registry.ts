@@ -24,7 +24,7 @@ export type WorkspaceRegistry = {
 export type WorkspaceRuntimeDeps = {
     pageRegistry: {
         awaitPageBinding: (bindingName: string, options: { timeoutMs: number }) => Promise<import('playwright').Page>;
-        createPageBinding: (bindingName: string, input?: { startUrl?: string }) => Promise<import('playwright').Page>;
+        createPageBinding: (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<import('playwright').Page>;
         touchBinding?: (bindingName: string) => void;
         closePage?: (bindingName: string) => Promise<void>;
         debugPageBindings?: (bindingName: string) => Promise<unknown>;

@@ -58,13 +58,14 @@ export const ensureTabName = (): string => {
 
 export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspaceName: string }> => {
     let tabName = ensureTabName();
+    const preferredTabName = readTokenFromWindowName() || '';
     const runtimeReply = await new Promise<{ ok: boolean; tabName?: string; workspaceName?: string }>((resolve) => {
         chrome.runtime.sendMessage(
             {
                 type: MSG.ENSURE_BOUND_TOKEN,
                 source: 'extension.content',
-                // Do not bias SW resolution with potentially inherited token.
-                tabName: '',
+                // Only trust agent-injected window.name; opener/sessionStorage can leak across window.open.
+                tabName: preferredTabName,
                 url: location.href,
                 title: document.title,
                 at: Date.now(),
@@ -92,7 +93,7 @@ export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspace
 
 export const bindHello = (_tabName: string, onHello?: () => void): () => void => {
     const sendHello = () => {
-        void send.hello({ url: location.href });
+        void send.hello({ url: location.href, tabName: readTokenFromWindowName() || '' });
         onHello?.();
     };
 

@@ -149,8 +149,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
 
         if (!bindingName && preferredBindingName) {
             const ownedByOther = isBindingNameOwnedByAnotherTab(chromeTabNo, preferredBindingName);
-            const hasExistingMapping = Boolean(options.state.getBindingWorkspaceTab(preferredBindingName));
-            if (!ownedByOther && !hasExistingMapping) {
+            if (!ownedByOther) {
                 bindingName = preferredBindingName;
             }
         }

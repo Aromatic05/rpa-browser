@@ -95,7 +95,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         pendingCommandOpenCount += 1;
         try {
             const created = await chrome.tabs.create({ url: 'https://example.com', active: true });
-            if (typeof created.id === 'number' && typeof created.windowId === 'number') {
+            if (created && typeof created.id === 'number' && typeof created.windowId === 'number') {
                 commandCreatedTabs.add(created.id);
                 try {
                     await life.ensureOpenedAndBound(created.id, created.windowId, { createId, workspaceName: action.workspaceName });
@@ -149,8 +149,9 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             (async () => {
                 let bindingName = state.getTabState(chromeTabNo)?.bindingName?.trim() ?? '';
                 if (!bindingName) {
+                    const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName.trim() : '';
                     const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
-                    const ensured = inflight ? await inflight : await life.ensureBoundTabRef(chromeTabNo, windowId);
+                    const ensured = inflight ? await inflight : await life.ensureBoundTabRef(chromeTabNo, windowId, preferredBindingName);
                     bindingName = ensured?.bindingName?.trim() ?? '';
                 }
                 if (bindingName) {
@@ -212,8 +213,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     }
                 }
 
-                const ensured = await life.ensureBoundTabRef(chromeTabNo, sender.tab?.windowId);
+                const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName.trim() : '';
+                const ensured = await life.ensureBoundTabRef(chromeTabNo, sender.tab?.windowId, preferredBindingName);
                 if (ensured) {
+                    state.upsertBindingWorkspaceTab(ensured.bindingName, ensured.workspaceName, ensured.tabName);
+                    state.upsertTab(chromeTabNo, ensured.bindingName, typedMessage.url ?? ensured.urlHint, ensured.windowId);
+                    state.setWindowWorkspace(ensured.windowId, ensured.workspaceName);
                     sendResponse({
                         ok: true,
                         bindingName: ensured.bindingName,
