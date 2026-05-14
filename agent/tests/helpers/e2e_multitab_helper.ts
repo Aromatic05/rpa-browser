@@ -8,9 +8,20 @@ import type { StepUnion } from '../../src/runner/steps/types';
 import type { Action } from '../../src/actions/action_protocol';
 
 export type AgentHandle = { endpoint: string; close: () => Promise<void> };
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const envHeaded = () => process.env.RPA_E2E_HEADED === '1';
+
+const resolveStepDelayMs = () => {
+  const raw = process.env.RPA_E2E_STEP_DELAY_MS;
+  if (raw && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+    return Math.floor(Number(raw));
+  }
+  return process.env.RPA_E2E_HEADED === '1' ? 600 : 0;
+};
 
 export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHandle> => {
-  const headed = opts?.headed ?? false;
+  const headed = opts?.headed ?? envHeaded();
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-e2e-'));
   const userDataDir = path.join(tempRoot, 'user-data');
   await fs.mkdir(userDataDir, { recursive: true });
@@ -25,8 +36,6 @@ export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHand
 
   let stderr = '';
   proc.stderr.on('data', (c) => { stderr += c.toString(); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
-  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
   const waitAgentReady = async () => {
     const dl = Date.now() + 30_000;
     while (Date.now() < dl) {
@@ -57,7 +66,7 @@ export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHand
 };
 
 export const runStep = async (ep: string, ws: string, step: StepUnion) => {
-  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  const stepDelayMs = resolveStepDelayMs();
   const dl = Date.now() + 10_000;
   let lastErr = '';
   while (true) {
@@ -65,7 +74,10 @@ export const runStep = async (ep: string, ws: string, step: StepUnion) => {
       { source: 'return await ctx.runStep(input.s,input.w);', input: { s: step, w: ws }, timeoutMs: 25_000 },
       { endpoint: ep, timeoutMs: 25_000 },
     );
-    if (r.ok) return r.result as { ok: boolean; data?: unknown; error?: { code?: string; message?: string } };
+    if (r.ok) {
+      if (stepDelayMs > 0) await sleep(stepDelayMs);
+      return r.result as { ok: boolean; data?: unknown; error?: { code?: string; message?: string } };
+    }
     lastErr = String(r.error?.message || '');
     if (!lastErr.includes('page binding timeout') || Date.now() >= dl) {
       throw new Error(`runStep failed: ${lastErr}`);
