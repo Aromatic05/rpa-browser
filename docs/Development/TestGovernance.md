@@ -55,3 +55,20 @@
 1. 禁止生成无验收意义的样例测试。
 2. 真实业务样例必须先由人类定义验收路径，再实现测试。
 3. 本次任务不补新测试，仅建立治理规则与目录规范。
+
+## e2e Spec 正文语法约束
+
+1. `agent/tests/e2e/**/*.spec.ts` 正文禁止 `if`。
+2. `agent/tests/e2e/**/*.spec.ts` 正文禁止 `try/catch/finally`。
+3. `agent/tests/e2e/**/*.spec.ts` 正文禁止条件表达式（`a ? b : c`）。
+4. `agent/tests/e2e/**/*.spec.ts` 正文禁止固定 sleep（含自定义 `delay`/`setTimeout` 等等待分支）。
+5. `agent/tests/e2e/**/*.spec.ts` 正文禁止 headed/headless 分支。
+6. `agent/tests/e2e/**/*.spec.ts` 正文禁止读取 `process.env` 改变测试语义。
+
+## 多 Tab E2E 生命周期治理
+
+1. 多 tab e2e 中，tab 创建必须走 `browser.create_tab` Step。
+2. 多 tab e2e 中，tab 切换必须走 `browser.switch_tab` Step。
+3. 多 tab e2e 中，tab 关闭必须走 `browser.close_tab` Step。
+4. `tab.list` 只能用于只读验证（数量、tabName、url、active），禁止用于管理 tab 生命周期。
+5. 禁止使用 `tab.open`、`tab.close` Action 管理 tab 生命周期。

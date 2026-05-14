@@ -15,3 +15,11 @@
    - step result 断言。
    - 失败路径断言（包含 `error.code`）。
 7. `test:e2e` 默认无头验收，`test:e2e:headed` 仅用于本地观察；两者必须运行同一套 spec。
+
+## 2026-05-14 本轮治理结论
+
+1. E2E-2 `agent/tests/e2e/multitab/record_replay.spec.ts` 已升级为纯 Step 驱动 tab 生命周期管理。
+2. `tab.list` 在 E2E-2 中仅保留为只读验证用途。
+3. E2E-2 已移除 `pauseForHeaded`、`delay`、`process.env` 语义分支。
+4. E2E-2 已增强录制产物断言：`create/switch/close` 数量与字段契约、顶层禁用字段、被动开页 create_tab、目标 close_tab。
+5. E2E-1 `agent/tests/e2e/step_actions/basic_actions.spec.ts` 已改为统一生命周期清理，无 `if`、无 `try/catch/finally`。
