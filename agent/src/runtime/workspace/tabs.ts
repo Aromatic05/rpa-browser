@@ -6,7 +6,7 @@ import { ERROR_CODES } from '../../actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
 import { isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';
-import { recordTabActivated, recordTabClosed, recordTabCreated, recordTabNavigation } from '../../record/tab_lifecycle_recorder';
+import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeTab = {
     name: string;
@@ -281,17 +281,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                     return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
                 }
                 workspace.tabs.reportTab(tabName, { url, title, at });
-                if (shouldRecordLifecycle() && url) {
-                    recordTabNavigation(deps.recordingState, {
-                        workspaceName: workspace.name,
-                        tabName,
-                        tabRef: tabName,
-                        url,
-                        urlAtRecord: url,
-                        at,
-                        navDedupeWindowMs: deps.navDedupeWindowMs,
-                    });
-                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 

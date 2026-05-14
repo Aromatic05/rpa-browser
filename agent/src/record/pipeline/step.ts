@@ -14,6 +14,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isTabLifecycleStep = (stepName: StepName): boolean =>
     stepName === 'browser.create_tab' || stepName === 'browser.switch_tab' || stepName === 'browser.close_tab';
+const navigateDedupeKey = (recordingToken: string, tabName: string): string => `${recordingToken}::${tabName}`;
 
 export const createStep = <TName extends StepName>(
     name: TName,
@@ -254,7 +255,7 @@ export const appendWorkspaceRecordingEvent = async (
     }
 
     if (event.type === 'navigate') {
-        state.lastNavigateTs.set(effectiveToken, event.ts);
+        state.lastNavigateTs.set(navigateDedupeKey(effectiveToken, tabName), event.ts);
         state.recordSnapshotCache.delete(tabScopedCacheKey);
     }
 
@@ -483,10 +484,12 @@ export const appendWorkspaceRecordingStep = (
         state.lastClickTs.set(effectiveToken, ts);
     }
     if (normalized.name === 'browser.goto') {
-        const last = state.lastNavigateTs.get(effectiveToken) || 0;
+        const stepTabName = normalized.meta?.tabName || tabName;
+        const dedupeKey = navigateDedupeKey(effectiveToken, stepTabName);
+        const last = state.lastNavigateTs.get(dedupeKey) || 0;
         if (options?.updateNavigateDedupe !== false) {
             if (ts - last < navDedupeWindowMs) {return { accepted: false };}
-            state.lastNavigateTs.set(effectiveToken, ts);
+            state.lastNavigateTs.set(dedupeKey, ts);
         }
     }
 

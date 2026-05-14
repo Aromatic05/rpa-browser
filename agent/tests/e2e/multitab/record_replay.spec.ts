@@ -220,6 +220,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
   const resetTabs = await listTabs(ep, ws);
   expect(resetTabs.some((t) => t.tabName === wbTab)).toBeTruthy();
   expect(resetTabs.find((t) => t.tabName === wbTab)?.active).toBeTruthy();
+  const resetTabCount = resetTabs.length;
 
   const resetState = await readWb(ws);
   expect(resetState.ticketStatus).toBe('pending');
@@ -241,7 +242,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
   }, { timeout: 120_000 }).toBe('idle');
 
   const replayTabs = await listTabs(ep, ws);
-  expect(replayTabs.length).toBe(2);
+  expect(replayTabs.length).toBe(resetTabCount + 1);
   expect(replayTabs.filter((t) => t.active).length).toBe(1);
   expect(replayTabs.find((t) => t.active)?.tabName).toBe(wbTab);
   expect(replayTabs.some((t) => t.tabName === wbTab)).toBeTruthy();

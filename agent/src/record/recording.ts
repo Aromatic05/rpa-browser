@@ -113,6 +113,7 @@ export const disableWorkspaceRecording = (state: RecordingState, workspaceName: 
 };
 
 const navListenerPages = new WeakSet<Page>();
+const isOrdinaryPageUrl = (url: string): boolean => url.startsWith('http://') || url.startsWith('https://');
 
 export const installNavigationRecorder = (
     state: RecordingState,
@@ -123,14 +124,22 @@ export const installNavigationRecorder = (
 ): void => {
     if (navListenerPages.has(page)) {return;}
     navListenerPages.add(page);
-    // Navigation ownership is delegated to content-script `tab.report`.
-    // Keep this listener registration as an intentional no-op to avoid
-    // introducing a second writer for browser.goto recording.
-    void state;
-    void workspaceName;
-    void page;
-    void tabName;
-    void navDedupeWindowMs;
+    page.on('framenavigated', (frame) => {
+        if (frame !== page.mainFrame()) {return;}
+        const url = frame.url();
+        if (!isOrdinaryPageUrl(url)) {return;}
+        if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return;}
+        const event: RecorderEvent = {
+            recorderVersion: 'payload-v2',
+            tabName,
+            ts: Date.now(),
+            url,
+            pageTitle: '',
+            viewport: undefined,
+            type: 'navigate',
+        };
+        void appendWorkspaceRecordingEvent(state, workspaceName, tabName, event, navDedupeWindowMs, page);
+    });
 };
 
 export const ensureRecorder = async (

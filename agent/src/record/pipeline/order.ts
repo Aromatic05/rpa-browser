@@ -31,8 +31,8 @@ export const normalizeRecordingStepOrder = (steps: StepUnion[], navDedupeWindowM
         if (aTab && bTab && aTab === bTab && typeof aTs === 'number' && typeof bTs === 'number') {
             const delta = Math.abs(aTs - bTs);
             if (delta <= navDedupeWindowMs) {
-                if (isUserActionBeforeGoto(a.step.name) && b.step.name === 'browser.goto') {return -1;}
-                if (a.step.name === 'browser.goto' && isUserActionBeforeGoto(b.step.name)) {return 1;}
+                if (isUserActionBeforeGoto(a.step.name) && b.step.name === 'browser.goto') {return 1;}
+                if (a.step.name === 'browser.goto' && isUserActionBeforeGoto(b.step.name)) {return -1;}
             }
         }
         if (typeof aTs === 'number' && typeof bTs === 'number' && aTs !== bTs) {
