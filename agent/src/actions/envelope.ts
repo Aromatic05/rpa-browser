@@ -22,8 +22,8 @@ export const parseActionEnvelope = (action: Action): Action => {
     if ('scope' in action.payload) {
         throw new Error('legacy payload address fields are not allowed: scope');
     }
-    if ('workspaceName' in action.payload) {
-        throw new Error('payload.workspaceName is not allowed');
+    if ('workspaceName' in action.payload && typeof action.workspaceName === 'string' && action.workspaceName.trim()) {
+        throw new Error('workspaceName conflict: top-level and payload.workspaceName cannot both be set');
     }
     if ('tabToken' in action.payload) {
         throw new Error('legacy payload address fields are not allowed: tabToken');
