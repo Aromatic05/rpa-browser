@@ -108,18 +108,22 @@ export const recordFirstTabPageUrl = (state: RecordingState, input: FirstPageUrl
 export const recordTabNavigation = (state: RecordingState, input: FirstPageUrlInput): { accepted: boolean } => {
     if (!isOrdinaryPageUrl(input.url)) {return { accepted: false };}
     const steps = getRecordedSteps(state, input.workspaceName);
+    const nowTs = input.at ?? Date.now();
     for (let i = steps.length - 1; i >= 0; i -= 1) {
         const step = steps[i];
         if (!isSameTab(step, input.tabRef)) {continue;}
         if (step.name === 'browser.close_tab') {return { accepted: false };}
+        if (step.name === 'browser.create_tab') {break;}
+        if (step.name === 'browser.switch_tab') {continue;}
         if (step.name === 'browser.goto') {
             const args = (step.args || {}) as Record<string, unknown>;
             if (typeof args.url === 'string' && args.url === input.url) {return { accepted: false };}
+            const previousTs = typeof step.meta?.ts === 'number' ? step.meta.ts : 0;
+            if (typeof args.url === 'string' && nowTs - previousTs < input.navDedupeWindowMs) {return { accepted: false };}
             break;
         }
-        break;
     }
-    const ts = input.at ?? Date.now();
+    const ts = nowTs;
     return appendWorkspaceRecordingStep(
         state,
         input.workspaceName,

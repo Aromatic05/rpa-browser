@@ -7,7 +7,6 @@ import type { WorkspaceRegistry } from '../workspace/registry';
 import type { PageRegistry } from './page_registry';
 import type { RecordingState } from '../../record/recording';
 import type { Workflow } from '../../workflow';
-import { recordTabClosed } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeLifecycleDeps = {
     workspaceRegistry: WorkspaceRegistry;
@@ -106,20 +105,6 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
 
     const onBindingClosed = (bindingName: string) => {
         staleNotifiedTabs.delete(bindingName);
-        const workspaceName = findWorkspaceNameByTabName(bindingName);
-        if (workspaceName && deps.isWorkspaceRecordingEnabled(deps.recordingState, workspaceName)) {
-            const workspace = deps.workspaceRegistry.getWorkspace(workspaceName);
-            const tab = workspace?.tabs.getTab(bindingName);
-            if (workspace && tab) {
-                recordTabClosed(deps.recordingState, {
-                    workspaceName,
-                    tabName: bindingName,
-                    tabRef: bindingName,
-                    urlAtRecord: tab.url,
-                    navDedupeWindowMs: deps.navDedupeWindowMs,
-                });
-            }
-        }
         deps.cleanupRecording(deps.recordingState, bindingName);
     };
 
