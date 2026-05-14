@@ -41,6 +41,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const sendAction = async (action: Action): Promise<Action> => await options.wsClient.sendAction(action);
 
     const life = createLifecycleRuntime({ state, sendAction, onRefresh: options.onRefresh });
+    const commandCreatedTabs = new Set<number>();
 
     const resolveActionTargetTabName = (action: Action) => {
         if (!action.workspaceName) {
@@ -68,9 +69,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const handleTabOpen = async (action: Action) => {
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const createId = typeof payload.createId === 'string' ? payload.createId.trim() : '';
-        const created = await chrome.tabs.create({ url: 'https://example.com', active: true });
+        const created = await chrome.tabs.create({ url: 'https://example.com', active: false });
         if (typeof created.id === 'number' && typeof created.windowId === 'number') {
-            await life.ensureOpenedAndBound(created.id, created.windowId, { createId });
+            commandCreatedTabs.add(created.id);
+            try {
+                await life.ensureOpenedAndBound(created.id, created.windowId, { createId, workspaceName: action.workspaceName });
+            } finally {
+                commandCreatedTabs.delete(created.id);
+            }
         }
     };
 
@@ -256,7 +262,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         onActivated: life.onActivated,
         onRemoved: life.onRemoved,
         onUpdated: life.onUpdated,
-        onCreated: life.onCreated,
+        onCreated: (tab: chrome.tabs.Tab) => {
+            if (typeof tab.id === 'number' && commandCreatedTabs.has(tab.id)) {return;}
+            life.onCreated(tab);
+        },
         onAttached: life.onAttached,
         onFocusChanged: life.onFocusChanged,
         onWindowRemoved: life.onWindowRemoved,

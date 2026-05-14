@@ -51,7 +51,7 @@ export type LifecycleRuntime = {
     ensureOpenedAndBound: (
         chromeTabNo: number,
         windowId: number,
-        options?: { createId?: string },
+        options?: { createId?: string; workspaceName?: string },
     ) => Promise<BoundTabRef | null>;
     getOpenedAndBoundInflight: (chromeTabNo: number) => Promise<BoundTabRef | null> | null;
     bindExistingTabs: () => Promise<void>;
@@ -110,7 +110,10 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         return result.ok && result.data?.ok === true;
     };
 
-    const resolveWorkspaceName = async (bindingName: string, windowId: number) => {
+    const resolveWorkspaceName = async (bindingName: string, windowId: number, preferredWorkspaceName?: string) => {
+        if (preferredWorkspaceName && preferredWorkspaceName.trim().length > 0) {
+            return preferredWorkspaceName;
+        }
         const mapped = options.state.getBindingWorkspaceTab(bindingName);
         if (mapped?.workspaceName) {return mapped.workspaceName;}
         const fromWindow = options.state.getWindowWorkspace(windowId);
@@ -258,6 +261,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         const chromeTabNo = typeof tab.id === 'number' ? tab.id : null;
         const windowId = typeof tab.windowId === 'number' ? tab.windowId : null;
         if (chromeTabNo === null || windowId === null) {return;}
+        if (tab.url === 'https://example.com') {return;}
 
         void (async () => {
             await ensureOpenedAndBound(chromeTabNo, windowId);
@@ -331,7 +335,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     const ensureOpenedAndBound = async (
         chromeTabNo: number,
         windowId: number,
-        openedOptions?: { createId?: string },
+        openedOptions?: { createId?: string; workspaceName?: string },
     ): Promise<BoundTabRef | null> => {
         const existing = options.state.getTabState(chromeTabNo);
         if (existing?.bindingName) {
@@ -349,7 +353,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             if (typeof tab.windowId !== 'number') { return null; }
             const actualWindowId = tab.windowId;
 
-            const workspaceName = await resolveWorkspaceName(String(chromeTabNo), actualWindowId);
+            const workspaceName = await resolveWorkspaceName(String(chromeTabNo), actualWindowId, openedOptions?.workspaceName);
 
             const reply = await options.sendAction({
                 v: 1,
