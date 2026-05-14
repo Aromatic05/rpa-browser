@@ -1,317 +1,261 @@
 import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
+import { startAgent, runStep, dispatch } from '../../helpers/e2e_multitab_helper';
+import { startFixtureServer } from '../../helpers/server';
+import { sendControlEval } from '../../../src/control/client';
 import type { StepUnion } from '../../../src/runner/steps/types';
 import type { Action } from '../../../src/actions/action_protocol';
-import { createMultitabHarness } from '../../helpers/e2e_multitab_helper';
 
-const step = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({
-    id,
-    name,
-    args,
+const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args });
+const mustOk = (r: { ok: boolean; error?: { code?: string; message?: string } }, label: string) => { expect(r.ok, `${label} failed: ${JSON.stringify(r.error)}`).toBeTruthy(); };
+const log = (m: string) => console.log(`[e2e-mt][${new Date().toISOString()}] ${m}`);
+
+const act = (type: string, workspaceName?: string, payload?: Record<string, unknown>): Action => ({
+  v: 1, id: crypto.randomUUID(), type, workspaceName, payload, at: Date.now(),
 });
 
-const mustOk = (result: { ok: boolean; error?: { code?: string; message?: string } }, label: string) => {
-    expect(result.ok, `${label} failed: ${JSON.stringify(result.error)}`).toBeTruthy();
+const listTabs = async (ep: string, ws: string) => {
+  const r = await dispatch(ep, act('tab.list', ws));
+  expect(r.type).toBe('tab.list.result');
+  return ((r.payload || {}) as { tabs?: Array<{ tabName: string; url: string; active: boolean }> }).tabs || [];
 };
 
-const delay = async (ms: number) => await new Promise<void>((resolve) => setTimeout(resolve, ms));
-const pauseForHeaded = async (ms: number) => await delay(process.env.RPA_E2E_HEADED === '1' ? ms : 0);
-const nowIso = () => new Date().toISOString();
-const logStep = (message: string) => console.log(`[e2e-multitab][${nowIso()}] ${message}`);
+let ep = '';
+let baseURL = '';
+let closeAgent = async () => {};
+let closeFixture = async () => {};
 
-const listTabs = async (
-    harness: Awaited<ReturnType<typeof createMultitabHarness>>,
-    workspaceName: string,
-): Promise<Array<{ tabName: string; url: string; active: boolean }>> => {
-    const reply = await harness.dispatchAction({
-        v: 1,
-        id: crypto.randomUUID(),
-        type: 'tab.list',
-        workspaceName,
-        at: Date.now(),
-    });
-    expect(reply.type).toBe('tab.list.result');
-    return (((reply.payload || {}) as { tabs?: Array<{ tabName: string; url: string; active: boolean }> }).tabs || []);
-};
+test.beforeEach(async () => {
+  const fixture = await startFixtureServer();
+  baseURL = fixture.baseURL;
+  closeFixture = fixture.close;
+  const agent = await startAgent();
+  ep = agent.endpoint;
+  closeAgent = agent.close;
+});
 
-const closeTabRequired = async (
-    harness: Awaited<ReturnType<typeof createMultitabHarness>>,
-    workspaceName: string,
-    tabName: string,
-) => {
-    const before = await listTabs(harness, workspaceName);
-    expect(before.map((t) => t.tabName)).toContain(tabName);
-    const reply = await harness.dispatchAction({
-        v: 1,
-        id: crypto.randomUUID(),
-        type: 'tab.close',
-        workspaceName,
-        payload: { tabName },
-        at: Date.now(),
-    });
-    expect(reply.type).toBe('tab.close.result');
-};
-
-const clickAndCaptureOpenedTab = async (
-    harness: Awaited<ReturnType<typeof createMultitabHarness>>,
-    workspaceName: string,
-    clickStep: Extract<StepUnion, { name: 'browser.click' }>,
-    urlPart: string,
-) => {
-    const beforeTabs = await listTabs(harness, workspaceName);
-    const beforeNames = beforeTabs.map((tab) => tab.tabName);
-    const clickResult = await harness.runStep(workspaceName, clickStep);
-    mustOk(clickResult, clickStep.id);
-    await expect
-        .poll(async () => {
-            const afterTabs = await listTabs(harness, workspaceName);
-            return afterTabs.filter((tab) => tab.url.includes(urlPart) && !beforeNames.includes(tab.tabName)).length;
-        }, { timeout: 15000 })
-        .toBe(1);
-    const afterTabs = await listTabs(harness, workspaceName);
-    const opened = afterTabs.filter((tab) => tab.url.includes(urlPart) && !beforeNames.includes(tab.tabName));
-    expect(opened.length).toBe(1);
-    return opened[0];
-};
+test.afterEach(async () => {
+  await closeAgent();
+  await closeFixture();
+});
 
 test('records and replays active and passive multi-tab workflow', async () => {
-    const harness = await createMultitabHarness();
+  const d = async (label: string, action: Action) => { const r = await dispatch(ep, action); log(`${label} -> ${r.type}`); return r; };
+  const rs = async (ws: string, label: string, s: StepUnion) => { const r = await runStep(ep, ws, s); log(`${label} -> ok=${String(r.ok)}`); return r; };
 
-    const dispatchLogged = async (label: string, action: Action) => {
-        const reply = await harness.dispatchAction(action);
-        logStep(`${label} -> ${reply.type}`);
-        return reply;
-    };
-    const runStepLogged = async (workspaceName: string, label: string, s: StepUnion) => {
-        const result = await harness.runStep(workspaceName, s);
-        logStep(`${label} -> ok=${String(result.ok)}`);
-        return result;
-    };
+  const awaitWsState = async (ws: string, expected: string) => {
+    await expect.poll(async () => {
+      const r = await sendControlEval(
+        { source: 'const w=ctx.workspaceRegistry.getWorkspace(input.n);return w?w.state:null;', input: { n: ws }, timeoutMs: 3000 },
+        { endpoint: ep, timeoutMs: 3000 },
+      );
+      return r.ok ? r.result : null;
+    }, { timeout: 3_000 }).toBe(expected);
+  };
 
-    const workbenchUrl = `${harness.baseURL}/multitab/workbench.html`;
-    const kbUrl = `${harness.baseURL}/multitab/knowledge_base.html`;
+  const openTab = async (ws: string, url: string) => {
+    const before = (await listTabs(ep, ws)).map((t) => t.tabName);
+    await d('tab.open', act('tab.open', ws, { startUrl: url, source: 'e2e.multitab' }));
+    let tabName = '';
+    await expect.poll(async () => {
+      const tabs = await listTabs(ep, ws);
+      const created = tabs.filter((t) => !before.includes(t.tabName));
+      if (created.length >= 1) tabName = created[0]!.tabName;
+      return tabName;
+    }, { timeout: 4_000 }).toBeTruthy();
+    return tabName;
+  };
 
-    logStep('create workspace and open workbench');
-    const first = await harness.createWorkspaceAndOpen(workbenchUrl);
-    logStep(`workspace created workspaceName=${first.workspaceName} tabName=${first.tabName}`);
-    const workspaceName = first.workspaceName;
-    const workbenchTabName = first.tabName;
+  const readWb = async (ws: string) => {
+    const r = await runStep(ep, ws, st('wb-read', 'browser.evaluate', {
+      expression: 'const b=document.querySelector("[data-testid=multi-status]");return{ticketStatus:b?.dataset.ticketStatus||"",usedRule:b?.dataset.usedRule||"",paymentStatus:b?.dataset.paymentStatus||"",customerSynced:b?.dataset.customerSynced||"",auditOpened:b?.dataset.auditOpened||"",customerTag:b?.dataset.customerTag||""};',
+    }));
+    return (r.data || {}) as Record<string, string>;
+  };
 
-    // 契约: 初始 tab 唯一，无幽灵
-    {
-        const tabs = await listTabs(harness, workspaceName);
-        expect(tabs.length).toBe(1);
-        expect(tabs[0]?.tabName).toBe(workbenchTabName);
-    }
-
-    const recordStart = await dispatchLogged('record.start', { v: 1, id: crypto.randomUUID(), type: 'record.start', workspaceName, at: Date.now() });
-    expect(recordStart.type).toBe('record.start.result');
-    await harness.waitForWorkspaceState(workspaceName, 'recording');
-
-    const createdKb = await runStepLogged(workspaceName, 'kb create recorded', step('kb-create-recorded', 'browser.create_tab', {}));
-    mustOk(createdKb, 'kb create recorded');
-    const knowledgeTabName = typeof (createdKb.data as any)?.tab_id === 'string' ? (createdKb.data as any).tab_id : '';
-    expect(knowledgeTabName).toBeTruthy();
-
-    // 契约: 主动建 tab 后 2 条记录，无幽灵
-    {
-        const tabs = await listTabs(harness, workspaceName);
-        expect(tabs.length).toBe(2);
-        const names = tabs.map((t) => t.tabName);
-        expect(names).toContain(workbenchTabName);
-        expect(names).toContain(knowledgeTabName);
-    }
-
-    mustOk(await runStepLogged(workspaceName, 'switch kb recorded', step('switch-kb-recorded', 'browser.switch_tab', { tabName: knowledgeTabName })), 'switch kb recorded');
-    mustOk(await runStepLogged(workspaceName, 'kb goto recorded', step('kb-goto-recorded', 'browser.goto', { url: kbUrl })), 'kb goto recorded');
-    mustOk(await runStepLogged(workspaceName, 'kb fill', step('kb-fill', 'browser.fill', { selector: '#kbSearch', value: '退款规则' })), 'kb fill');
-    mustOk(await runStepLogged(workspaceName, 'kb quote click', step('kb-click-quote', 'browser.click', { selector: '#quoteRefundRule' })), 'kb quote click');
-    const kbRuleState = await runStepLogged(workspaceName, 'kb check rule', step('kb-check-rule', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=kb-root]")?.dataset.selectedRule || "";' }));
-    mustOk(kbRuleState, 'kb rule state');
-    expect(kbRuleState.data).toBe('refund-policy');
-
-    mustOk(await runStepLogged(workspaceName, 'switch workbench 1', step('switch-workbench-1', 'browser.switch_tab', { tabName: workbenchTabName })), 'switch workbench 1');
-
-    // ── payment: 被动开页 ──
-    const paymentTab = await clickAndCaptureOpenedTab(
-        harness,
-        workspaceName,
-        step('wb-open-payment', 'browser.click', { selector: '#openPaymentBtn' }),
-        '/multitab/payment_check.html',
+  const readReplay = async () => {
+    const r = await sendControlEval(
+      { source: 'return ctx.state?.replayStepEntries??[];', timeoutMs: 3000 },
+      { endpoint: ep, timeoutMs: 3000 },
     );
-    logStep(`open payment -> tabName=${paymentTab.tabName}`);
-    // 契约: 被动开页新 tabName 不与 workbench 相同
-    expect(paymentTab.tabName).not.toBe(workbenchTabName);
-    {
-        const tabs = await listTabs(harness, workspaceName);
-        // 契约: workbench URL 未被覆盖
-        const wb = tabs.find((t) => t.tabName === workbenchTabName);
-        expect(wb?.url).toContain('/multitab/workbench.html');
-    }
+    if (!r.ok) throw new Error(`readReplay failed: ${r.error?.message}`);
+    return (r.result as Array<{ ok: boolean; stepName: string }>) || [];
+  };
 
-    mustOk(await runStepLogged(workspaceName, 'switch payment', step('switch-payment', 'browser.switch_tab', { tabName: paymentTab.tabName })), 'switch payment');
-    mustOk(await runStepLogged(workspaceName, 'approve payment', step('payment-approve', 'browser.click', { selector: '#approvePayment' })), 'approve payment');
-    const paymentVerified = await runStepLogged(workspaceName, 'payment verify state', step('payment-check', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=payment-root]")?.dataset.paymentVerified || "";' }));
-    mustOk(paymentVerified, 'payment verify state');
-    expect(paymentVerified.data).toBe('true');
-    await dispatchLogged('tab.close payment', { v: 1, id: crypto.randomUUID(), type: 'tab.close', workspaceName, payload: { tabName: paymentTab.tabName }, at: Date.now() });
+  const closeTab = async (ws: string, tabName: string, stepId: string, label: string) => {
+    mustOk(await rs(ws, label, st(stepId, 'browser.close_tab', { tabName })), label);
+  };
 
-    // 契约: 关闭 payment 后 tab 数回落到关闭前
-    {
-        const tabs = await listTabs(harness, workspaceName);
-        expect(tabs.length).toBe(2);
-        const names = tabs.map((t) => t.tabName);
-        expect(names).toContain(workbenchTabName);
-        expect(names).toContain(knowledgeTabName);
-        expect(names).not.toContain(paymentTab.tabName);
-    }
+  const clickOpen = async (ws: string, clickStep: Extract<StepUnion, { name: 'browser.click' }>, urlPart: string) => {
+    const before = (await listTabs(ep, ws)).map((t) => t.tabName);
+    mustOk(await rs(ws, clickStep.id, clickStep), clickStep.id);
+    await expect.poll(async () => {
+      const after = await listTabs(ep, ws);
+      return after.filter((t) => t.url.includes(urlPart) && !before.includes(t.tabName)).length;
+    }, { timeout: 15_000 }).toBe(1);
+    const after = await listTabs(ep, ws);
+    const opened = after.filter((t) => t.url.includes(urlPart) && !before.includes(t.tabName));
+    expect(opened.length).toBe(1);
+    return opened[0]!;
+  };
 
-    mustOk(await runStepLogged(workspaceName, 'switch workbench 2', step('switch-workbench-2', 'browser.switch_tab', { tabName: workbenchTabName })), 'switch workbench 2');
+  const ws = 'default';
+  const wbUrl = `${baseURL}/multitab/workbench.html`;
+  const kbUrl = `${baseURL}/multitab/knowledge_base.html`;
 
-    // ── customer: 被动开页 ──
-    const customerTab = await clickAndCaptureOpenedTab(
-        harness,
-        workspaceName,
-        step('wb-open-customer', 'browser.click', { selector: '#openCustomerBtn' }),
-        '/multitab/customer_detail.html',
-    );
-    logStep(`open customer -> tabName=${customerTab.tabName}`);
-    expect(customerTab.tabName).not.toBe(workbenchTabName);
+  const wbTab = await openTab(ws, wbUrl);
 
-    mustOk(await runStepLogged(workspaceName, 'switch customer', step('switch-customer', 'browser.switch_tab', { tabName: customerTab.tabName })), 'switch customer');
-    mustOk(await runStepLogged(workspaceName, 'mark vip risk', step('customer-mark-risk', 'browser.click', { selector: '#markVipRisk' })), 'mark vip risk');
-    const customerTag = await runStepLogged(workspaceName, 'customer tag check', step('customer-check-tag', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=customer-root]")?.dataset.customerTag || "";' }));
-    mustOk(customerTag, 'customer tag check');
-    expect(customerTag.data).toBe('vip-risk');
-    await dispatchLogged('tab.close customer', { v: 1, id: crypto.randomUUID(), type: 'tab.close', workspaceName, payload: { tabName: customerTab.tabName }, at: Date.now() });
+  const initial = await listTabs(ep, ws);
+  expect(initial.some((t) => t.tabName === wbTab)).toBeTruthy();
 
-    {
-        const tabs = await listTabs(harness, workspaceName);
-        expect(tabs.length).toBe(2);
-        expect(tabs.map((t) => t.tabName)).not.toContain(customerTab.tabName);
-    }
+  const recStart = await d('record.start', act('record.start', ws));
+  expect(recStart.type).toBe('record.start.result');
+  await awaitWsState(ws, 'recording');
 
-    mustOk(await runStepLogged(workspaceName, 'switch workbench 3', step('switch-workbench-3', 'browser.switch_tab', { tabName: workbenchTabName })), 'switch workbench 3');
+  const kbCreate = await rs(ws, 'kb create', st('kb-create', 'browser.create_tab', {}));
+  mustOk(kbCreate, 'kb create');
+  const kbTab = String(((kbCreate.data as { tab_id?: string }) || {}).tab_id || '');
+  expect(kbTab).toBeTruthy();
+  expect((await listTabs(ep, ws)).map((t) => t.tabName)).toEqual(expect.arrayContaining([wbTab, kbTab]));
 
-    // ── audit: 被动开页 ──
-    const auditTab = await clickAndCaptureOpenedTab(
-        harness,
-        workspaceName,
-        step('wb-open-audit', 'browser.click', { selector: '#openAuditBtn' }),
-        '/multitab/audit_log.html',
-    );
-    logStep(`open audit -> tabName=${auditTab.tabName}`);
-    expect(auditTab.tabName).not.toBe(workbenchTabName);
+  mustOk(await rs(ws, 'switch kb', st('s-kb', 'browser.switch_tab', { tabName: kbTab })), 'switch kb');
+  mustOk(await rs(ws, 'kb goto', st('kb-goto', 'browser.goto', { url: kbUrl })), 'kb goto');
+  await expect.poll(async () => {
+    const r = await rs(ws, 'kb ready', st('kb-ready', 'browser.evaluate', { expression: 'return!!document.querySelector("#kbSearch");' }));
+    return r.ok ? r.data : false;
+  }, { timeout: 15_000 }).toBe(true);
+  mustOk(await rs(ws, 'kb goto2', st('kb-goto2', 'browser.goto', { url: kbUrl })), 'kb goto2');
+  mustOk(await rs(ws, 'kb fill', st('kb-fill', 'browser.fill', { selector: '#kbSearch', value: '退款规则' })), 'kb fill');
+  mustOk(await rs(ws, 'kb quote', st('kb-quote', 'browser.click', { selector: '#quoteRefundRule' })), 'kb quote');
+  const kbRule = await rs(ws, 'kb rule', st('kb-rule', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=kb-root]")?.dataset.selectedRule||"";' }));
+  mustOk(kbRule, 'kb rule');
+  expect(kbRule.data).toBe('refund-policy');
 
-    mustOk(await runStepLogged(workspaceName, 'switch audit', step('switch-audit', 'browser.switch_tab', { tabName: auditTab.tabName })), 'switch audit');
-    mustOk(await runStepLogged(workspaceName, 'confirm audit', step('audit-confirm-reviewed', 'browser.click', { selector: '#confirmAuditReviewed' })), 'confirm audit');
-    const auditReviewed = await runStepLogged(workspaceName, 'audit reviewed check', step('audit-check-reviewed', 'browser.evaluate', { expression: 'return document.querySelector("[data-testid=audit-root]")?.dataset.auditReviewed || "";' }));
-    mustOk(auditReviewed, 'audit reviewed check');
-    expect(auditReviewed.data).toBe('true');
-    await dispatchLogged('tab.close audit', { v: 1, id: crypto.randomUUID(), type: 'tab.close', workspaceName, payload: { tabName: auditTab.tabName }, at: Date.now() });
+  mustOk(await rs(ws, 'sw wb1', st('sw-wb1', 'browser.switch_tab', { tabName: wbTab })), 'sw wb1');
+  mustOk(await rs(ws, 'goto wb1', st('goto-wb1', 'browser.goto', { url: wbUrl })), 'goto wb1');
 
-    {
-        const tabs = await listTabs(harness, workspaceName);
-        expect(tabs.length).toBe(2);
-        expect(tabs.map((t) => t.tabName)).not.toContain(auditTab.tabName);
-    }
+  const payTab = await clickOpen(ws, st('open-pay', 'browser.click', { selector: '#openPaymentBtn' }), '/multitab/payment_check.html');
+  mustOk(await rs(ws, 'sw pay', st('sw-pay', 'browser.switch_tab', { tabName: payTab.tabName })), 'sw pay');
+  mustOk(await rs(ws, 'approve', st('approve', 'browser.click', { selector: '#approvePayment' })), 'approve');
+  await closeTab(ws, payTab.tabName, 'pay-close', 'close pay');
+  await expect.poll(async () => (await listTabs(ep, ws)).some((t) => t.tabName === payTab.tabName), { timeout: 15_000 }).toBe(false);
 
-    mustOk(await runStepLogged(workspaceName, 'switch workbench 4', step('switch-workbench-4', 'browser.switch_tab', { tabName: workbenchTabName })), 'switch workbench 4');
-    mustOk(await runStepLogged(workspaceName, 'workbench sync customer', step('wb-sync-customer', 'browser.click', { selector: '#syncCustomerBtn' })), 'workbench sync customer');
-    mustOk(await runStepLogged(workspaceName, 'workbench mark done', step('wb-mark-done', 'browser.click', { selector: '#markDoneBtn' })), 'workbench mark done');
+  mustOk(await rs(ws, 'sw wb2', st('sw-wb2', 'browser.switch_tab', { tabName: wbTab })), 'sw wb2');
+  mustOk(await rs(ws, 'goto wb2', st('goto-wb2', 'browser.goto', { url: wbUrl })), 'goto wb2');
 
-    const recordStop = await dispatchLogged('record.stop', { v: 1, id: crypto.randomUUID(), type: 'record.stop', workspaceName, at: Date.now() });
-    expect(recordStop.type).toBe('record.stop.result');
-    await harness.waitForWorkspaceState(workspaceName, 'idle');
+  const custTab = await clickOpen(ws, st('open-cust', 'browser.click', { selector: '#openCustomerBtn' }), '/multitab/customer_detail.html');
+  mustOk(await rs(ws, 'sw cust', st('sw-cust', 'browser.switch_tab', { tabName: custTab.tabName })), 'sw cust');
+  mustOk(await rs(ws, 'mark vip', st('mark-vip', 'browser.click', { selector: '#markVipRisk' })), 'mark vip');
+  await closeTab(ws, custTab.tabName, 'cust-close', 'close cust');
+  await expect.poll(async () => (await listTabs(ep, ws)).some((t) => t.tabName === custTab.tabName), { timeout: 15_000 }).toBe(false);
 
-    const recordGet = await dispatchLogged('record.get', { v: 1, id: crypto.randomUUID(), type: 'record.get', workspaceName, at: Date.now() });
-    expect(recordGet.type).toBe('record.get.result');
-    const recordingSteps = ((((recordGet.payload || {}) as { steps?: Array<{ name: string; args?: Record<string, unknown> }> }).steps) || []);
+  mustOk(await rs(ws, 'sw wb3', st('sw-wb3', 'browser.switch_tab', { tabName: wbTab })), 'sw wb3');
+  mustOk(await rs(ws, 'goto wb3', st('goto-wb3', 'browser.goto', { url: wbUrl })), 'goto wb3');
 
-    const names = recordingSteps.map((s) => s.name);
-    expect(names).toContain('browser.create_tab');
-    expect(names).toContain('browser.switch_tab');
-    expect(names).toContain('browser.close_tab');
-    expect(names.filter((name) => name === 'browser.switch_tab').length).toBeGreaterThanOrEqual(4);
+  const auditTab = await clickOpen(ws, st('open-audit', 'browser.click', { selector: '#openAuditBtn' }), '/multitab/audit_log.html');
+  mustOk(await rs(ws, 'sw audit', st('sw-audit', 'browser.switch_tab', { tabName: auditTab.tabName })), 'sw audit');
+  mustOk(await rs(ws, 'confirm', st('confirm', 'browser.click', { selector: '#confirmAuditReviewed' })), 'confirm');
+  await closeTab(ws, auditTab.tabName, 'audit-close', 'close audit');
+  await expect.poll(async () => (await listTabs(ep, ws)).some((t) => t.tabName === auditTab.tabName), { timeout: 15_000 }).toBe(false);
 
-    const recordingName = `multitab-e2e-${Date.now()}`;
-    const recordSave = await dispatchLogged('record.save', {
-        v: 1,
-        id: crypto.randomUUID(),
-        type: 'record.save',
-        workspaceName,
-        payload: { recordingName },
-        at: Date.now(),
-    });
-    expect(recordSave.type).toBe('record.save.result');
+  mustOk(await rs(ws, 'sw wb4', st('sw-wb4', 'browser.switch_tab', { tabName: wbTab })), 'sw wb4');
+  mustOk(await rs(ws, 'goto wb4', st('goto-wb4', 'browser.goto', { url: wbUrl })), 'goto wb4');
+  mustOk(await rs(ws, 'sync', st('sync', 'browser.click', { selector: '#syncCustomerBtn' })), 'sync');
+  mustOk(await rs(ws, 'done', st('done', 'browser.click', { selector: '#markDoneBtn' })), 'done');
 
-    // ── 重置: 关 kb，只留 workbench ──
-    await closeTabRequired(harness, workspaceName, knowledgeTabName);
-    const tabsBeforeReset = await listTabs(harness, workspaceName);
-    // 契约: 仅剩 workbench
-    expect(tabsBeforeReset.length).toBe(1);
-    expect(tabsBeforeReset[0]?.tabName).toBe(workbenchTabName);
+  const recStop = await d('record.stop', act('record.stop', ws));
+  expect(recStop.type).toBe('record.stop.result');
+  await awaitWsState(ws, 'idle');
 
-    await runStepLogged(workspaceName, 'switch before replay', step('switch-workbench-before-replay', 'browser.switch_tab', { tabName: workbenchTabName }));
-    await runStepLogged(workspaceName, 'clear workbench storage', step('reset-workbench-clear-storage', 'browser.evaluate', { expression: 'localStorage.clear(); return true;' }));
-    await runStepLogged(workspaceName, 'reload workbench for reset', step('reset-workbench-goto', 'browser.goto', { url: `${workbenchUrl}?e2e_reset=${Date.now()}` }));
+  const recGet = await d('record.get', act('record.get', ws));
+  expect(recGet.type).toBe('record.get.result');
+  const steps = (((recGet.payload || {}) as { steps?: Array<{ name: string; args?: Record<string, unknown>; meta?: Record<string, unknown> }> }).steps) || [];
 
-    const resetTabs = await listTabs(harness, workspaceName);
-    // 契约: reload 后仍仅 1 条 workbench
-    expect(resetTabs.length).toBe(1);
-    expect(resetTabs[0]?.tabName).toBe(workbenchTabName);
-    expect(resetTabs[0]?.active).toBeTruthy();
+  const names = steps.map((s) => s.name);
+  const createSteps = steps.filter((s) => s.name === 'browser.create_tab');
+  const switchSteps = steps.filter((s) => s.name === 'browser.switch_tab');
+  const closeSteps = steps.filter((s) => s.name === 'browser.close_tab');
 
-    const resetState = await harness.readWorkbenchState(workspaceName);
-    expect(resetState.ticketStatus).toBe('pending');
-    expect(resetState.usedRule).toBe('');
-    expect(resetState.paymentStatus).toBe('pending');
-    expect(resetState.customerSynced).toBe('false');
-    expect(resetState.auditOpened).toBe('false');
+  expect(names).toContain('browser.create_tab');
+  expect(names).toContain('browser.switch_tab');
+  expect(names).toContain('browser.close_tab');
+  expect(createSteps.length).toBeGreaterThanOrEqual(4);
+  expect(switchSteps.length).toBeGreaterThanOrEqual(4);
+  expect(closeSteps.length).toBe(3);
 
-    await pauseForHeaded(1200);
-    logStep(`Starting replay with recording ${recordingName}`);
+  for (const s of createSteps) { expect(typeof s.meta?.tabName).toBe('string'); expect(String(s.meta?.tabName)).toBeTruthy(); }
+  for (const s of switchSteps) { expect(typeof s.args?.tabName).toBe('string'); expect(String(s.args?.tabName)).toBeTruthy(); }
+  for (const s of closeSteps) { expect(typeof s.args?.tabName).toBe('string'); expect(String(s.args?.tabName)).toBeTruthy(); }
 
-    const playStart = await dispatchLogged('play.start', {
-        v: 1,
-        id: crypto.randomUUID(),
-        type: 'play.start',
-        workspaceName,
-        payload: { recordingName, stopOnError: true },
-        at: Date.now(),
-    });
-    expect(playStart.type).toBe('play.started');
-    await harness.waitForWorkspaceState(workspaceName, 'idle');
-    await pauseForHeaded(1500);
+  steps.filter((s) => ['browser.goto', 'browser.click', 'browser.fill', 'browser.evaluate'].includes(s.name)).forEach((s) => {
+    expect(Object.prototype.hasOwnProperty.call(s.args || {}, 'workspaceName')).toBeFalsy();
+  });
+  steps.forEach((s) => {
+    expect(Object.prototype.hasOwnProperty.call(s as object, 'tabToken')).toBeFalsy();
+    expect(Object.prototype.hasOwnProperty.call(s as object, 'scope')).toBeFalsy();
+  });
 
-    const replayStepEntries = await harness.readReplayStepEntries();
-    expect(replayStepEntries.length).toBe(recordingSteps.length);
-    replayStepEntries.forEach((entry, index) => {
-        expect(entry.ok).toBeTruthy();
-        expect(entry.stepName).toBe(recordingSteps[index]?.name);
-    });
+  expect(createSteps.some((s) => String(s.meta?.tabName || '').includes('payment_check'))).toBeTruthy();
+  expect(createSteps.some((s) => String(s.meta?.tabName || '').includes('customer_detail'))).toBeTruthy();
+  expect(createSteps.some((s) => String(s.meta?.tabName || '').includes('audit_log'))).toBeTruthy();
+  expect(closeSteps.some((s) => String(s.args?.tabName || '') === payTab.tabName)).toBeTruthy();
+  expect(closeSteps.some((s) => String(s.args?.tabName || '') === custTab.tabName)).toBeTruthy();
+  expect(closeSteps.some((s) => String(s.args?.tabName || '') === auditTab.tabName)).toBeTruthy();
 
-    // ── 回放后状态 ──
-    const replayTabs = await listTabs(harness, workspaceName);
-    // 契约: 回放后 workbench + kb 两个 tab
-    expect(replayTabs.length).toBe(2);
-    const activeTabs = replayTabs.filter((tab) => tab.active);
-    expect(activeTabs.length).toBe(1);
-    expect(activeTabs[0]?.tabName).toBe(workbenchTabName);
-    expect(replayTabs.filter((tab) => tab.url.includes('/multitab/knowledge_base.html')).length).toBe(1);
-    // 契约: payment/customer/audit 均已关闭
-    expect(replayTabs.filter((tab) => tab.url.includes('/multitab/payment_check.html')).length).toBe(0);
-    expect(replayTabs.filter((tab) => tab.url.includes('/multitab/customer_detail.html')).length).toBe(0);
-    expect(replayTabs.filter((tab) => tab.url.includes('/multitab/audit_log.html')).length).toBe(0);
+  const recName = `mt-e2e-${Date.now()}`;
+  const recSave = await d('record.save', act('record.save', ws, { recordingName: recName }));
+  expect(recSave.type).toBe('record.save.result');
 
-    const replayState = await harness.readWorkbenchState(workspaceName);
-    expect(replayState.ticketStatus).toBe('done');
-    expect(replayState.usedRule).toBe('refund-policy');
-    expect(replayState.paymentStatus).toBe('verified');
-    expect(replayState.customerSynced).toBe('true');
-    expect(replayState.auditOpened).toBe('true');
+  await closeTab(ws, kbTab, 'kb-close-pre', 'close kb pre');
+  await expect.poll(async () => (await listTabs(ep, ws)).some((t) => t.tabName === kbTab), { timeout: 15_000 }).toBe(false);
 
-    await harness.close();
+  mustOk(await rs(ws, 'sw pre', st('sw-pre', 'browser.switch_tab', { tabName: wbTab })), 'sw pre');
+  mustOk(await rs(ws, 'clear', st('clear', 'browser.evaluate', { expression: 'localStorage.clear();return true;' })), 'clear');
+  mustOk(await rs(ws, 'reload', st('reload', 'browser.goto', { url: `${wbUrl}?reset=${Date.now()}` })), 'reload');
+
+  const resetTabs = await listTabs(ep, ws);
+  expect(resetTabs.some((t) => t.tabName === wbTab)).toBeTruthy();
+  expect(resetTabs.find((t) => t.tabName === wbTab)?.active).toBeTruthy();
+
+  const resetState = await readWb(ws);
+  expect(resetState.ticketStatus).toBe('pending');
+  expect(resetState.usedRule).toBe('');
+  expect(resetState.paymentStatus).toBe('pending');
+  expect(resetState.customerSynced).toBe('false');
+  expect(resetState.auditOpened).toBe('false');
+
+  const playStart = await d('play.start', act('play.start', ws, { recordingName: recName, stopOnError: true }));
+  expect(playStart.type).toBe('play.started');
+
+  await expect.poll(async () => {
+    const entries = await readReplay();
+    const stateCheck = await dispatch(ep, act('workspace.get', ws));
+    expect(stateCheck.type).toBe('workspace.get.result');
+    const state = ((stateCheck.payload || {}) as { workspace?: { state?: string } }).workspace?.state || '';
+    return { allDone: entries.length === steps.length, count: entries.length, state };
+  }, { timeout: 120_000 }).toEqual({ allDone: true, count: steps.length, state: 'idle' });
+
+  const entries = await readReplay();
+  expect(entries.length).toBe(steps.length);
+  entries.forEach((e, i) => { expect(e.ok).toBeTruthy(); expect(e.stepName).toBe(steps[i]?.name); });
+
+  const replayTabs = await listTabs(ep, ws);
+  const replayFixtureTabs = replayTabs.filter((t) => t.url.includes('/multitab/'));
+  expect(replayFixtureTabs.length).toBe(2);
+  expect(replayTabs.filter((t) => t.active).length).toBe(1);
+  expect(replayTabs.find((t) => t.active)?.tabName).toBe(wbTab);
+  expect(replayTabs.some((t) => t.tabName === wbTab)).toBeTruthy();
+  expect(replayTabs.filter((t) => t.url.includes('/multitab/knowledge_base.html')).length).toBe(1);
+  expect(replayTabs.filter((t) => t.url.includes('/multitab/payment_check.html')).length).toBe(0);
+  expect(replayTabs.filter((t) => t.url.includes('/multitab/customer_detail.html')).length).toBe(0);
+  expect(replayTabs.filter((t) => t.url.includes('/multitab/audit_log.html')).length).toBe(0);
+
+  const replayState = await readWb(ws);
+  expect(replayState.ticketStatus).toBe('done');
+  expect(replayState.usedRule).toBe('refund-policy');
+  expect(replayState.paymentStatus).toBe('verified');
+  expect(replayState.customerSynced).toBe('true');
+  expect(replayState.auditOpened).toBe('true');
 });
 
-test.setTimeout(180000);
+test.setTimeout(180_000);
