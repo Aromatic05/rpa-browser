@@ -191,6 +191,11 @@ const handleAction = async (action: Action) => {
         id: action.id,
         type: action.type,
         workspaceName: action.workspaceName || null,
+        payload: action.payload ?? null,
+        payloadKeys:
+            action.payload && typeof action.payload === 'object'
+                ? Object.keys(action.payload as Record<string, unknown>)
+                : [],
     });
 
     try {

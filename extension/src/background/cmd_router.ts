@@ -68,7 +68,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const handleTabOpen = async (action: Action) => {
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const createId = typeof payload.createId === 'string' ? payload.createId.trim() : '';
-        const created = await chrome.tabs.create({ url: 'chrome://newtab', active: true });
+        const created = await chrome.tabs.create({ url: 'https://example.com', active: true });
         if (typeof created.id === 'number' && typeof created.windowId === 'number') {
             await life.ensureOpenedAndBound(created.id, created.windowId, { createId });
         }
