@@ -1,11 +1,33 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
+import { ACTION_TYPES } from '../../../actions/action_types';
 import type { ToolsBuildContext } from './context';
 
 export const createTabsTools = (base: ToolsBuildContext) => ({
-    'trace.tabs.create': async (_args: { workspaceName: string; url?: string; timeout?: number }) =>
-        await base.run('trace.tabs.create', _args, async () => {
-            const tabName = crypto.randomUUID();
-            return { tabName };
+    'trace.tabs.create': async (args: { workspaceName: string; url?: string; timeout?: number }) =>
+        await base.run('trace.tabs.create', args, async () => {
+            if (!base.opts.dispatchAction) {
+                throw new Error('missing action dispatcher');
+            }
+            const workspaceName = args.workspaceName || base.opts.workspaceName;
+            if (!workspaceName) {
+                throw new Error('workspaceName is required');
+            }
+            const createId = crypto.randomUUID();
+            const opened = await base.opts.dispatchAction({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: ACTION_TYPES.TAB_OPEN,
+                workspaceName,
+                payload: {
+                    source: 'trace.tabs.create',
+                    createId,
+                },
+                at: Date.now(),
+            });
+            if (opened.type.endsWith('.failed')) {
+                throw new Error(String((opened.payload as { message?: unknown })?.message || 'tab.open failed'));
+            }
+            return { tabName: createId };
         }),
 
     'trace.tabs.switch': async (args: { workspaceName: string; tabName: string }) =>

@@ -6,7 +6,7 @@ import { ERROR_CODES } from '../../actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
 import { isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';
-import { recordFirstTabPageUrl, recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
+import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeTab = {
     name: string;
@@ -18,8 +18,7 @@ export type RuntimeTab = {
 };
 
 export type WorkspaceTabs = {
-    createTab: (input: { tabName: string; page?: Page | null; url?: string; title?: string; at?: number }) => RuntimeTab;
-    createMetadataTab: (input: { tabName: string; url?: string; title?: string; at?: number }) => RuntimeTab;
+    createTab: (input: { tabName: string; at?: number }) => RuntimeTab;
     awaitTabPage: (tabName: string, timeoutMs: number) => Promise<Page>;
     createTabPage: (tabName: string, input?: { startUrl?: string }) => Promise<Page>;
     bindPage: (tabName: string, page: Page) => RuntimeTab | null;
@@ -55,9 +54,9 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         const at = input.at ?? now();
         const tab: RuntimeTab = {
             name: input.tabName,
-            page: input.page ?? null,
-            url: input.url ?? '',
-            title: input.title ?? '',
+            page: null,
+            url: '',
+            title: '',
             createdAt: at,
             updatedAt: at,
         };
@@ -67,8 +66,6 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         }
         return tab;
     };
-
-    const createMetadataTab: WorkspaceTabs['createMetadataTab'] = (input) => createTab(input);
 
     const awaitTabPage: WorkspaceTabs['awaitTabPage'] = async (tabName, timeoutMs) => {
         const existing = tabs.get(tabName);
@@ -146,7 +143,7 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
 
     const reassignTab: WorkspaceTabs['reassignTab'] = (tabName, input) => {
         if (!tabs.has(tabName)) {
-            createTab({ tabName, at: input.at });
+            throw new Error(`tab not found: ${tabName}`);
         }
         activeTabName = tabName;
         return tabs.get(tabName)!;
@@ -154,7 +151,6 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
 
     return {
         createTab,
-        createMetadataTab,
         awaitTabPage,
         createTabPage,
         bindPage,
@@ -210,6 +206,21 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
         const { action, workspace } = input;
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const shouldRecordLifecycle = () => workspace.state === 'recording' && isWorkspaceRecordingEnabled(deps.recordingState, workspace.name);
+        const closeViaLifecycle = async (tabName: string, source: string, at?: number) => {
+            const closingTab = workspace.tabs.getTab(tabName);
+            await workspace.tabs.closeTab(tabName);
+            if (shouldRecordLifecycle()) {
+                recordTabClosed(deps.recordingState, {
+                    workspaceName: workspace.name,
+                    tabName,
+                    tabRef: tabName,
+                    urlAtRecord: closingTab?.url || '',
+                    at,
+                    navDedupeWindowMs: deps.navDedupeWindowMs,
+                });
+            }
+            return replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at });
+        };
 
         switch (action.type) {
             case 'tab.list': {
@@ -230,73 +241,34 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 };
             }
 
-            case 'tab.create': {
-                const tabName = crypto.randomUUID();
-                const startUrl = typeof payload.startUrl === 'string' ? payload.startUrl : undefined;
-                workspace.tabs.createMetadataTab({ tabName, url: startUrl || '' });
-                await workspace.tabs.createTabPage(tabName, { startUrl });
-                workspace.tabs.setActiveTab(tabName);
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
-            }
-
-            case 'tab.close': {
-                const tabName = requireTabName(payload);
-                await workspace.tabs.closeTab(tabName);
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
-            }
-
             case 'tab.setActive': {
                 const tabName = requireTabName(payload);
-                workspace.tabs.setActiveTab(tabName);
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName }), events: [] };
-            }
-
-            case 'tab.opened': {
-                const tabName = requireTabName(payload);
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
-                const url = typeof payload.url === 'string' ? payload.url : '';
-                const title = typeof payload.title === 'string' ? payload.title : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
-                const prevActiveTab = workspace.tabs.getActiveTab()?.name || null;
-                const wasTabPresent = workspace.tabs.hasTab(tabName);
-                if (!workspace.tabs.hasTab(tabName)) {
-                    workspace.tabs.createMetadataTab({ tabName, url, title, at });
-                } else {
-                    workspace.tabs.updateTab(tabName, { url, title, updatedAt: at });
-                }
                 workspace.tabs.setActiveTab(tabName);
                 if (shouldRecordLifecycle()) {
-                    if (!wasTabPresent) {
-                        recordTabCreated(deps.recordingState, {
-                            workspaceName: workspace.name,
-                            tabName,
-                            tabRef: tabName,
-                            urlAtRecord: url,
-                            at,
-                            navDedupeWindowMs: deps.navDedupeWindowMs,
-                        });
-                    }
-                    if (prevActiveTab !== tabName) {
-                        recordTabActivated(deps.recordingState, {
-                            workspaceName: workspace.name,
-                            tabName,
-                            tabRef: tabName,
-                            urlAtRecord: url,
-                            at,
-                            navDedupeWindowMs: deps.navDedupeWindowMs,
-                        });
-                    }
-                    recordFirstTabPageUrl(deps.recordingState, {
+                    const runtimeTab = workspace.tabs.getTab(tabName);
+                    recordTabActivated(deps.recordingState, {
                         workspaceName: workspace.name,
                         tabName,
                         tabRef: tabName,
-                        url,
-                        urlAtRecord: url,
+                        urlAtRecord: runtimeTab?.url || '',
                         at,
                         navDedupeWindowMs: deps.navDedupeWindowMs,
                     });
                 }
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source }), events: [] };
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.opened': {
+                const chromeTabNo = typeof payload.chromeTabNo === 'number' ? payload.chromeTabNo : null;
+                const windowId = typeof payload.windowId === 'number' ? payload.windowId : null;
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const openedAt = typeof payload.openedAt === 'number' ? payload.openedAt : undefined;
+
+                // Reply IS tab.bind — Agent allocates tabName and sends bind command to Extension
+                const tabName = crypto.randomUUID();
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, chromeTabNo, windowId, source, openedAt }, 'tab.bind'), events: [] };
             }
 
             case 'tab.report': {
@@ -309,18 +281,35 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                     return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
                 }
                 workspace.tabs.reportTab(tabName, { url, title, at });
-                if (shouldRecordLifecycle() && url) {
-                    recordFirstTabPageUrl(deps.recordingState, {
-                        workspaceName: workspace.name,
-                        tabName,
-                        tabRef: tabName,
-                        url,
-                        urlAtRecord: url,
-                        at,
-                        navDedupeWindowMs: deps.navDedupeWindowMs,
-                    });
-                }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.bound': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+                const chromeTabNo = typeof payload.chromeTabNo === 'number' ? payload.chromeTabNo : null;
+                const windowId = typeof payload.windowId === 'number' ? payload.windowId : null;
+                const boundAt = typeof payload.boundAt === 'number' ? payload.boundAt : undefined;
+                const url = typeof payload.url === 'string' ? payload.url : '';
+                if (!tabName) {
+                    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'tabName is required');
+                }
+                if (!workspace.tabs.hasTab(tabName)) {
+                    const at = boundAt ?? now();
+                    workspace.tabs.createTab({ tabName, at });
+                    if (shouldRecordLifecycle()) {
+                        recordTabCreated(deps.recordingState, {
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            urlAtRecord: url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                } else {
+                    workspace.tabs.updateTab(tabName, { updatedAt: boundAt });
+                }
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, chromeTabNo, windowId, reportedAt: boundAt }), events: [] };
             }
 
             case 'tab.closed': {
@@ -330,19 +319,7 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 if (!tabName) {
                     return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
                 }
-                const closingTab = workspace.tabs.getTab(tabName);
-                await workspace.tabs.closeTab(tabName);
-                if (shouldRecordLifecycle()) {
-                    recordTabClosed(deps.recordingState, {
-                        workspaceName: workspace.name,
-                        tabName,
-                        tabRef: tabName,
-                        urlAtRecord: closingTab?.url || '',
-                        at,
-                        navDedupeWindowMs: deps.navDedupeWindowMs,
-                    });
-                }
-                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
+                return { reply: await closeViaLifecycle(tabName, source, at), events: [] };
             }
 
             case 'tab.ping': {
@@ -358,10 +335,9 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
             }
 
-            case 'tab.reassign': {
+            case 'tab.reassigned': {
                 const tabName = requireTabName(payload);
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
-                const windowId = typeof payload.windowId === 'number' ? payload.windowId : undefined;
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
                 workspace.tabs.reassignTab(tabName, { at });
                 return {
@@ -369,7 +345,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                         workspaceName: workspace.name,
                         tabName,
                         source,
-                        windowId,
                         reportedAt: at,
                     }),
                     events: [],
@@ -382,9 +357,8 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 const url = typeof payload.url === 'string' ? payload.url : '';
                 const at = typeof payload.at === 'number' ? payload.at : undefined;
                 workspace.tabs.setActiveTab(tabName);
-                if (url) {
-                    workspace.tabs.updateTab(tabName, { url, updatedAt: at });
-                }
+                // Tab layer does not update URL; content-script facts are the
+                // source of truth.  updateTab({url}) is intentionally absent here.
                 if (shouldRecordLifecycle()) {
                     const runtimeTab = workspace.tabs.getTab(tabName);
                     recordTabActivated(deps.recordingState, {
@@ -395,17 +369,6 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                         at,
                         navDedupeWindowMs: deps.navDedupeWindowMs,
                     });
-                    if (runtimeTab?.url || url) {
-                        recordFirstTabPageUrl(deps.recordingState, {
-                            workspaceName: workspace.name,
-                            tabName,
-                            tabRef: tabName,
-                            url: runtimeTab?.url || url,
-                            urlAtRecord: runtimeTab?.url || url,
-                            at,
-                            navDedupeWindowMs: deps.navDedupeWindowMs,
-                        });
-                    }
                 }
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
             }

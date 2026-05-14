@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { failedAction, isFailedAction, type Action } from './action_protocol';
 import { ERROR_CODES } from './results';
-import { isRequestActionType, ACTION_TYPES } from './action_types';
+import { isRequestActionType, isDerivedEventActionType, ACTION_TYPES } from './action_types';
 import type { WorkspaceRegistry } from '../runtime/workspace/registry';
 
 export type ActionWsTap = (stage: string, data: Record<string, unknown>) => void;
@@ -52,7 +52,7 @@ const parseInboundAction = (raw: unknown): Action => {
     if ('scope' in rec || 'tabName' in rec) {
         throw new Error('invalid action: legacy address fields are not allowed');
     }
-    if (!isRequestActionType(rec.type)) {
+    if (!isRequestActionType(rec.type) && !isDerivedEventActionType(rec.type)) {
         throw new Error(`invalid action: unsupported type '${rec.type}'`);
     }
     return rec as Action;
@@ -80,19 +80,17 @@ const getStringField = (value: UnknownRecord, key: string): string | null =>
 const isMutatingAction = (type: string) =>
     type === ACTION_TYPES.WORKSPACE_CREATE ||
     type === ACTION_TYPES.WORKSPACE_SET_ACTIVE ||
-    type === ACTION_TYPES.TAB_CREATE ||
     type === ACTION_TYPES.TAB_SET_ACTIVE ||
-    type === ACTION_TYPES.TAB_CLOSE ||
     type === ACTION_TYPES.TAB_CLOSED ||
-    type === ACTION_TYPES.TAB_REASSIGN;
+    type === ACTION_TYPES.TAB_REASSIGNED;
 
 const REPORT_STATE_SYNC_ACTIONS = new Set<string>([
     ACTION_TYPES.WORKSPACE_CREATE,
-    ACTION_TYPES.TAB_CREATE,
     ACTION_TYPES.TAB_OPENED,
     ACTION_TYPES.TAB_REPORTED,
+    ACTION_TYPES.TAB_CLOSE,
     ACTION_TYPES.TAB_CLOSED,
-    ACTION_TYPES.TAB_REASSIGN,
+    ACTION_TYPES.TAB_REASSIGNED,
 ]);
 
 const createWorkspaceListAction = (workspaceRegistry: WorkspaceRegistry, reason: string): Action => {

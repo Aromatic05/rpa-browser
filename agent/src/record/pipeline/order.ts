@@ -1,13 +1,10 @@
-import type { StepName, StepUnion } from '../../runner/steps/types';
+import type { StepUnion } from '../../runner/steps/types';
 import { getLogger } from '../../logging/logger';
-
-const isUserActionBeforeGoto = (stepName: StepName): boolean =>
-    stepName === 'browser.click' || stepName === 'browser.fill' || stepName === 'browser.press_key';
 
 const isTabLifecycleStep = (stepName: StepName): boolean =>
     stepName === 'browser.create_tab' || stepName === 'browser.switch_tab' || stepName === 'browser.close_tab';
 
-export const normalizeRecordingStepOrder = (steps: StepUnion[], navDedupeWindowMs: number): StepUnion[] => {
+export const normalizeRecordingStepOrder = (steps: StepUnion[], _navDedupeWindowMs: number): StepUnion[] => {
     const indexed = steps.map((step, index) => ({ step, index }));
     const lifecycleGotoIds = new Set<string>();
     for (let index = 1; index < steps.length; index += 1) {
@@ -21,6 +18,13 @@ export const normalizeRecordingStepOrder = (steps: StepUnion[], navDedupeWindowM
     const isLifecycleBarrier = (step: StepUnion): boolean =>
         isTabLifecycleStep(step.name) || lifecycleGotoIds.has(step.id);
     const compare = (a: (typeof indexed)[number], b: (typeof indexed)[number]): number => {
+        const aSeq = a.step.meta?.recordSeq;
+        const bSeq = b.step.meta?.recordSeq;
+        if (typeof aSeq === 'number' && typeof bSeq === 'number' && aSeq !== bSeq) {
+            return aSeq - bSeq;
+        }
+        if (typeof aSeq === 'number' && typeof bSeq !== 'number') {return -1;}
+        if (typeof aSeq !== 'number' && typeof bSeq === 'number') {return 1;}
         if (isLifecycleBarrier(a.step) || isLifecycleBarrier(b.step)) {
             return a.index - b.index;
         }
@@ -28,13 +32,6 @@ export const normalizeRecordingStepOrder = (steps: StepUnion[], navDedupeWindowM
         const bTs = b.step.meta?.ts;
         const aTab = a.step.meta?.tabName;
         const bTab = b.step.meta?.tabName;
-        if (aTab && bTab && aTab === bTab && typeof aTs === 'number' && typeof bTs === 'number') {
-            const delta = Math.abs(aTs - bTs);
-            if (delta <= navDedupeWindowMs) {
-                if (isUserActionBeforeGoto(a.step.name) && b.step.name === 'browser.goto') {return -1;}
-                if (a.step.name === 'browser.goto' && isUserActionBeforeGoto(b.step.name)) {return 1;}
-            }
-        }
         if (typeof aTs === 'number' && typeof bTs === 'number' && aTs !== bTs) {
             return aTs - bTs;
         }

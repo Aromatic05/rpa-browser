@@ -9,6 +9,14 @@ export type PreparedPanelAction = {
     payload?: Record<string, unknown>;
     address?: PanelActionAddress;
 };
+const UUIDorUnsafe = (): string => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    const now = Date.now().toString(16).padStart(12, '0');
+    return `${rand()}-${rand().slice(0, 4)}-4${rand().slice(0, 3)}-a${rand().slice(0, 3)}-${now}${rand().slice(0, 4)}`.slice(0, 36);
+};
 
 const WORKSPACE_REQUIRED_PREFIXES = [
     'tab.',
@@ -48,7 +56,7 @@ export const preparePanelAction = (
             return {
                 error: {
                     v: 1,
-                    id: crypto.randomUUID(),
+                    id: UUIDorUnsafe(),
                     type: `${type}.failed`,
                     payload: { code: 'ERR_BAD_ARGS', message: 'workspaceName is required' },
                 },

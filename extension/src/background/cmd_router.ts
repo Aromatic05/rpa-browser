@@ -54,6 +54,33 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     const handleInboundAction = (action: Action) => {
         projectInboundAction(action, state, options.onRefresh);
+        if (action.type === ACTION_TYPES.TAB_OPEN) {
+            void handleTabOpen(action);
+        }
+        if (action.type === ACTION_TYPES.TAB_BIND) {
+            void life.handleBindCommand(action);
+        }
+        if (action.type === ACTION_TYPES.TAB_CLOSE) {
+            void handleTabClose(action);
+        }
+    };
+
+    const handleTabOpen = async (action: Action) => {
+        const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const createId = typeof payload.createId === 'string' ? payload.createId.trim() : '';
+        const created = await chrome.tabs.create({ url: 'https://example.com', active: true });
+        if (typeof created.id === 'number' && typeof created.windowId === 'number') {
+            await life.ensureOpenedAndBound(created.id, created.windowId, { createId });
+        }
+    };
+
+    const handleTabClose = async (action: Action) => {
+        const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+        if (!tabName) return;
+        const chromeTabNo = state.findChromeTabNoByBindingName(tabName);
+        if (typeof chromeTabNo !== 'number') return;
+        await chrome.tabs.remove(chromeTabNo);
     };
 
     const bootstrapState = async () => {
@@ -70,6 +97,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const data = payloadOf(reply);
         const activeWorkspaceName = typeof data.activeWorkspaceName === 'string' ? data.activeWorkspaceName : null;
         if (activeWorkspaceName) {state.setActiveWorkspaceName(activeWorkspaceName);}
+        await life.bindExistingTabs();
     };
 
     const handleMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (payload?: unknown) => void) => {
@@ -78,43 +106,91 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (typedMessage.type === MSG.HELLO) {
             const chromeTabNo = sender.tab?.id;
-            if (typeof chromeTabNo !== 'number') {return;}
-            const bindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName : '';
+            if (typeof chromeTabNo !== 'number') {
+                sendResponse({ ok: false, error: 'sender tab unavailable' });
+                return;
+            }
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
             const url = typeof typedMessage.url === 'string' ? typedMessage.url : sender.tab?.url ?? '';
-            state.upsertTab(chromeTabNo, bindingName, url, windowId);
-            const mapped = state.getBindingWorkspaceTab(bindingName);
-            if (mapped && typeof windowId === 'number') {
-                state.setWindowWorkspace(windowId, mapped.workspaceName);
-                if (state.getActiveChromeTabNo() === chromeTabNo) {
-                    state.setActiveWorkspaceName(mapped.workspaceName);
+            (async () => {
+                let bindingName = state.getTabState(chromeTabNo)?.bindingName?.trim() ?? '';
+                if (!bindingName) {
+                    const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
+                    const ensured = inflight ? await inflight : await life.ensureBoundTabRef(chromeTabNo, windowId);
+                    bindingName = ensured?.bindingName?.trim() ?? '';
                 }
-            }
-            sendResponse({ ok: true });
-            return;
+                if (bindingName) {
+                    state.upsertTab(chromeTabNo, bindingName, url, windowId);
+                    const mapped = state.getBindingWorkspaceTab(bindingName);
+                    if (mapped && typeof windowId === 'number') {
+                        state.setWindowWorkspace(windowId, mapped.workspaceName);
+                        if (state.getActiveChromeTabNo() === chromeTabNo) {
+                            state.setActiveWorkspaceName(mapped.workspaceName);
+                        }
+                    }
+                    chrome.tabs.sendMessage(chromeTabNo, { type: MSG.SET_TOKEN, tabName: bindingName }, () => {
+                        void chrome.runtime.lastError;
+                    });
+                }
+                sendResponse({ ok: true, tabName: bindingName });
+            })().catch((error: unknown) => {
+                sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+            });
+            return true;
         }
 
         if (typedMessage.type === MSG.ENSURE_BOUND_TOKEN) {
             (async () => {
                 const chromeTabNo = sender.tab?.id;
-                const windowId = sender.tab?.windowId;
-                if (typeof chromeTabNo !== 'number' || typeof windowId !== 'number') {
+                if (typeof chromeTabNo !== 'number') {
                     sendResponse({ ok: false, error: 'sender tab unavailable' });
                     return;
                 }
-                const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName : undefined;
-                const bound = await life.ensureBoundTabRef(chromeTabNo, windowId, preferredBindingName);
-                if (!bound) {
-                    sendResponse({ ok: false, error: 'binding unavailable' });
+
+                const tabState = state.getTabState(chromeTabNo);
+                const bindingName = tabState?.bindingName;
+                if (bindingName) {
+                    const mapped = state.getBindingWorkspaceTab(bindingName);
+                    if (mapped) {
+                        sendResponse({
+                            ok: true,
+                            bindingName,
+                            workspaceName: mapped.workspaceName,
+                            tabName: mapped.tabName,
+                            windowId: tabState.windowId,
+                        });
+                        return;
+                    }
+                }
+
+                const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
+                if (inflight) {
+                    const bound = await inflight;
+                    if (bound) {
+                        sendResponse({
+                            ok: true,
+                            bindingName: bound.bindingName,
+                            workspaceName: bound.workspaceName,
+                            tabName: bound.tabName,
+                            windowId: bound.windowId,
+                        });
+                        return;
+                    }
+                }
+
+                const ensured = await life.ensureBoundTabRef(chromeTabNo, sender.tab?.windowId);
+                if (ensured) {
+                    sendResponse({
+                        ok: true,
+                        bindingName: ensured.bindingName,
+                        workspaceName: ensured.workspaceName,
+                        tabName: ensured.tabName,
+                        windowId: ensured.windowId,
+                    });
                     return;
                 }
-                sendResponse({
-                    ok: true,
-                    bindingName: bound.bindingName,
-                    workspaceName: bound.workspaceName,
-                    tabName: bound.tabName,
-                    windowId: bound.windowId,
-                });
+
+                sendResponse({ ok: false, error: 'not bound' });
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
             });
@@ -123,6 +199,40 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
         if (typedMessage.type === MSG.ACTION) {
             (async () => {
+                const chromeTabNo = sender.tab?.id;
+                const action = typedMessage.action as Record<string, unknown> | null | undefined;
+                if (
+                    isRecord(action) &&
+                    typeof action.type === 'string' &&
+                    action.type === ACTION_TYPES.TAB_BOUND
+                ) {
+                    sendResponse({
+                        v: 1,
+                        id: crypto.randomUUID(),
+                        type: `${ACTION_TYPES.TAB_BOUND}.failed`,
+                        replyTo: typeof action.id === 'string' ? action.id : '',
+                        payload: { code: 'BAD_REQUEST', message: 'tab.bound from content script is not allowed' },
+                        at: Date.now(),
+                    } satisfies Action);
+                    return;
+                }
+                if (typeof chromeTabNo === 'number') {
+                    const tabState = state.getTabState(chromeTabNo);
+                    const bindingName = tabState?.bindingName;
+                    if (bindingName) {
+                        const mapped = state.getBindingWorkspaceTab(bindingName);
+                        if (mapped) {
+                            if (isRecord(action)) {
+                                if (!action.workspaceName || typeof action.workspaceName !== 'string') {
+                                    action.workspaceName = mapped.workspaceName;
+                                }
+                                if (isRecord(action.payload)) {
+                                    action.payload.tabName = bindingName;
+                                }
+                            }
+                        }
+                    }
+                }
                 const reply = await dispatchActionRequest(typedMessage.action, options.wsClient);
                 sendResponse(reply);
             })().catch((error: unknown) => {
@@ -140,6 +250,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
 
     return {
         handleInboundAction,
+        handleTabClose,
         resolveActionTargetTabName,
         handleMessage,
         onActivated: life.onActivated,

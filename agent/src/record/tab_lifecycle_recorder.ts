@@ -28,35 +28,6 @@ const isSameTab = (step: StepUnion, tabRef: string): boolean => {
     return stepTabName === tabRef || metaTabName === tabRef;
 };
 
-const shouldSkipCreated = (steps: StepUnion[], tabRef: string): boolean => {
-    for (let i = steps.length - 1; i >= 0; i -= 1) {
-        const step = steps[i];
-        if (!isSameTab(step, tabRef)) {continue;}
-        if (step.name === 'browser.close_tab') {return false;}
-        if (step.name === 'browser.create_tab') {return true;}
-        return false;
-    }
-    return false;
-};
-
-const shouldSkipClosed = (steps: StepUnion[], tabRef: string): boolean => {
-    for (let i = steps.length - 1; i >= 0; i -= 1) {
-        const step = steps[i];
-        if (!isSameTab(step, tabRef)) {continue;}
-        return step.name === 'browser.close_tab';
-    }
-    return false;
-};
-
-const shouldSkipActivated = (steps: StepUnion[], tabRef: string): boolean => {
-    for (let i = steps.length - 1; i >= 0; i -= 1) {
-        const step = steps[i];
-        if (!isSameTab(step, tabRef)) {continue;}
-        if (step.name === 'browser.goto') {continue;}
-        return step.name === 'browser.switch_tab';
-    }
-    return false;
-};
 
 const isOrdinaryPageUrl = (url: string): boolean =>
     url.startsWith('http://') || url.startsWith('https://');
@@ -85,8 +56,6 @@ const shouldSkipFirstPageGoto = (steps: StepUnion[], tabRef: string): boolean =>
 };
 
 export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
-    const steps = getRecordedSteps(state, input.workspaceName);
-    if (shouldSkipCreated(steps, input.tabRef)) {return { accepted: false };}
     const ts = input.at ?? Date.now();
     return appendWorkspaceRecordingStep(
         state,
@@ -95,6 +64,9 @@ export const recordTabCreated = (state: RecordingState, input: TabLifecycleInput
         {
             id: crypto.randomUUID(),
             name: 'browser.create_tab',
+            // CRITICAL CONTRACT:
+            // In recordings, browser.create_tab.args.tabName is treated as the recorded create-result identity,
+            // not a user input argument. Replay must bind this recorded identity to a runtime tab or fail-fast.
             args: { tabName: input.tabName },
             meta: {
                 source: 'record',
@@ -136,9 +108,44 @@ export const recordFirstTabPageUrl = (state: RecordingState, input: FirstPageUrl
     );
 };
 
-export const recordTabActivated = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
+export const recordTabNavigation = (state: RecordingState, input: FirstPageUrlInput): { accepted: boolean } => {
+    if (!isOrdinaryPageUrl(input.url)) {return { accepted: false };}
     const steps = getRecordedSteps(state, input.workspaceName);
-    if (shouldSkipActivated(steps, input.tabRef)) {return { accepted: false };}
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+        const step = steps[i];
+        if (!isSameTab(step, input.tabRef)) {continue;}
+        if (step.name === 'browser.close_tab') {return { accepted: false };}
+        if (step.name === 'browser.create_tab') {break;}
+        if (step.name === 'browser.switch_tab') {continue;}
+        if (step.name === 'browser.goto') {
+            const args = (step.args || {}) as Record<string, unknown>;
+            if (typeof args.url === 'string' && args.url === input.url) {return { accepted: false };}
+            break;
+        }
+    }
+    const ts = input.at ?? Date.now();
+    return appendWorkspaceRecordingStep(
+        state,
+        input.workspaceName,
+        input.tabName,
+        {
+            id: crypto.randomUUID(),
+            name: 'browser.goto',
+            args: { url: input.url },
+            meta: {
+                source: 'record',
+                ts,
+                workspaceName: input.workspaceName,
+                tabName: input.tabName,
+                urlAtRecord: input.url,
+            },
+        },
+        input.navDedupeWindowMs,
+        { flushPendingFill: false, updateNavigateDedupe: false },
+    );
+};
+
+export const recordTabActivated = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
     const ts = input.at ?? Date.now();
     return appendWorkspaceRecordingStep(
         state,
@@ -160,8 +167,6 @@ export const recordTabActivated = (state: RecordingState, input: TabLifecycleInp
 };
 
 export const recordTabClosed = (state: RecordingState, input: TabLifecycleInput): { accepted: boolean } => {
-    const steps = getRecordedSteps(state, input.workspaceName);
-    if (shouldSkipClosed(steps, input.tabRef)) {return { accepted: false };}
     const ts = input.at ?? Date.now();
     return appendWorkspaceRecordingStep(
         state,

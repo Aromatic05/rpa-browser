@@ -1,13 +1,14 @@
 {
     "name": "rpa-extension-monorepo",
     "private": true,
-    "packageManager": "pnpm@10.28.0",
+    "packageManager": "pnpm@11.0.9",
     "scripts": {
         "dev:agent": "pnpm --filter ./agent dev:hot",
         "dev:cdp": "pnpm build:extension && pnpm --filter ./agent dev:cdp",
         "dev:mcp": "pnpm --filter ./agent mcp:hot",
         "build:extension": "pnpm --filter ./extension build && pnpm --filter ./start_extension build",
         "dev": "pnpm build:extension && pnpm dev:agent",
+        "dev:headless": "pnpm build:extension && pnpm --filter ./agent dev:headless",
         "mock:dev": "pnpm -C mock dev",
         "mock:dev:ant": "pnpm -C mock dev:ant",
         "mock:dev:element": "pnpm -C mock dev:element",

@@ -73,9 +73,7 @@ export const browserReloadInputSchema = z.object({
     tabName: z.string().optional(),
 });
 
-export const browserCreateTabInputSchema = z.object({
-    tabName: z.string(),
-});
+export const browserCreateTabInputSchema = z.object({}).strict();
 
 export const browserSwitchTabInputSchema = z.object({
     tabName: z.string(),
@@ -462,10 +460,8 @@ export const toolInputJsonSchemas = {
     },
     'browser.create_tab': {
         type: 'object',
-        required: ['tabName'],
-        properties: {
-            tabName: { type: 'string' },
-        },
+        required: [],
+        properties: {},
         additionalProperties: false,
     },
     'browser.switch_tab': {

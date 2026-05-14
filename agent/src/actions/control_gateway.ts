@@ -13,7 +13,7 @@ export const routeControlAction = async (deps: GatewayDeps, action: Action): Pro
     if (action.workspaceName) {
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'control gateway does not accept workspace action');
     }
-    if (action.type === 'tab.list' || action.type === 'tab.create' || action.type === 'tab.close' || action.type === 'tab.setActive') {
+    if (action.type === 'tab.list' || action.type === 'tab.close' || action.type === 'tab.setActive') {
         return unsupportedActionFailure(action);
     }
 

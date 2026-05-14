@@ -6,7 +6,7 @@ import type { RecorderEvent } from '../capture/recorder';
 import { startRecordedStepEnrichment } from '../enhancement/queue';
 import { ensureManifest, ensureTabInManifest } from './manifest';
 import { fillEventKey, flushPendingChoiceEvents, flushPendingFillEvents, isFillLikeEvent, queuePendingFillEvent, queueRecordingStep } from './pending';
-import { getWorkspaceUnsavedToken, isWorkspaceRecordingEnabled, type RecordingState } from './state';
+import { getWorkspaceUnsavedToken, isWorkspaceRecordingEnabled, nextRecordingSeq, type RecordingState } from './state';
 import { normalizeRecorderEvent } from '../normalizer';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -14,6 +14,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isTabLifecycleStep = (stepName: StepName): boolean =>
     stepName === 'browser.create_tab' || stepName === 'browser.switch_tab' || stepName === 'browser.close_tab';
+const navigateDedupeKey = (recordingToken: string, tabName: string): string => `${recordingToken}::${tabName}`;
 
 export const createStep = <TName extends StepName>(
     name: TName,
@@ -195,6 +196,7 @@ export const appendWorkspaceRecordingEvent = async (
     const recordLog = getLogger('record');
     if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
+    const eventRecordSeq = nextRecordingSeq(state, effectiveToken);
     const tabScopedCacheKey = `${effectiveToken}::${tabName}`;
     if (state.replaying.has(tabName)) {return { accepted: false };}
     const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim()) : undefined;
@@ -224,6 +226,23 @@ export const appendWorkspaceRecordingEvent = async (
             tabName?: string;
         }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
     };
+    const removeRecordedStep = (stepId: string) => {
+        const list = state.recordings.get(effectiveToken) || [];
+        const next = list.filter((item) => item.id !== stepId);
+        state.recordings.set(effectiveToken, next);
+        const enhancements = state.recordingEnhancements.get(effectiveToken);
+        if (enhancements && Object.prototype.hasOwnProperty.call(enhancements, stepId)) {
+            delete enhancements[stepId];
+        }
+    };
+    const replaceRecordedStep = (stepId: string, nextStep: StepUnion) => {
+        const list = state.recordings.get(effectiveToken) || [];
+        const index = list.findIndex((item) => item.id === stepId);
+        if (index === -1) {return false;}
+        list[index] = nextStep;
+        state.recordings.set(effectiveToken, list);
+        return true;
+    };
     if (event.type === 'navigate') {
         flushPendingChoiceEvents(state, effectiveToken, buildNormalizeContext(), hooks, { workspaceName, page, reason: 'navigate' });
         flushPendingFillEvents(state, effectiveToken, { workspaceName, page }, hooks);
@@ -237,11 +256,7 @@ export const appendWorkspaceRecordingEvent = async (
     }
 
     if (event.type === 'navigate') {
-        const last = state.lastNavigateTs.get(effectiveToken) || 0;
-        if (event.ts - last < navDedupeWindowMs) {
-            return { accepted: false };
-        }
-        state.lastNavigateTs.set(effectiveToken, event.ts);
+        state.lastNavigateTs.set(navigateDedupeKey(effectiveToken, tabName), event.ts);
         state.recordSnapshotCache.delete(tabScopedCacheKey);
     }
 
@@ -264,8 +279,42 @@ export const appendWorkspaceRecordingEvent = async (
     }
 
     if (isFillLikeEvent(event)) {
-        queuePendingFillEvent(state, effectiveToken, tabName, event);
+        queuePendingFillEvent(state, effectiveToken, tabName, event, eventRecordSeq);
         return { accepted: true };
+    }
+
+    let provisionalClickStep: StepUnion | undefined;
+    if (event.type === 'click') {
+        const provisional = toStep(event);
+        if (provisional && provisional.name === 'browser.click') {
+            const normalized = enrichRecordedStep(state, effectiveToken, tabName, provisional);
+            normalized.meta = { ...(normalized.meta || { source: 'record' }), recordSeq: eventRecordSeq };
+            const list = state.recordings.get(effectiveToken) || [];
+            list.push(normalized);
+            state.recordings.set(effectiveToken, list);
+            provisionalClickStep = normalized;
+            recordLog('step_queued', {
+                stepId: normalized.id,
+                stepName: normalized.name,
+                ts: normalized.meta?.ts,
+                tabName: normalized.meta?.tabName || tabName,
+                workspaceName,
+                provisional: true,
+            });
+            startRecordedStepEnrichment({
+                state,
+                recordingToken: effectiveToken,
+                stepId: normalized.id,
+                event,
+                page,
+                snapshotCache: state.recordSnapshotCache,
+                cacheKey: tabScopedCacheKey,
+                workspaceName,
+                stepName: normalized.name,
+                ts: normalized.meta?.ts,
+                tabName: normalized.meta?.tabName || tabName,
+            });
+        }
     }
 
     let currentEvent = event;
@@ -289,14 +338,49 @@ export const appendWorkspaceRecordingEvent = async (
                 : undefined,
         });
         if (normalizedEvent.status === 'pending') {
+            if (provisionalClickStep) {
+                removeRecordedStep(provisionalClickStep.id);
+            }
             return { accepted: true };
         }
         if (normalizedEvent.status === 'handled') {
+            if (provisionalClickStep && normalizedEvent.step.name === 'browser.click') {
+                const merged = enrichRecordedStep(
+                    state,
+                    effectiveToken,
+                    tabName,
+                    {
+                        ...normalizedEvent.step,
+                        id: provisionalClickStep.id,
+                    } as StepUnion,
+                );
+                merged.meta = { ...(merged.meta || { source: 'record' }), recordSeq: eventRecordSeq };
+                replaceRecordedStep(provisionalClickStep.id, merged);
+                recordLog('step_updated', {
+                    stepId: merged.id,
+                    stepName: merged.name,
+                    ts: merged.meta?.ts,
+                    tabName: merged.meta?.tabName || tabName,
+                    workspaceName,
+                });
+                if (normalizedEvent.continueCurrentEvent) {
+                    provisionalClickStep = undefined;
+                    continue;
+                }
+                return { accepted: true };
+            }
+            if (provisionalClickStep) {
+                removeRecordedStep(provisionalClickStep.id);
+                provisionalClickStep = undefined;
+            }
             queueRecordingStep(
                 state,
                 effectiveToken,
                 tabName,
-                normalizedEvent.step,
+                {
+                    ...normalizedEvent.step,
+                    meta: { ...(normalizedEvent.step.meta || { source: 'record' }), recordSeq: eventRecordSeq },
+                } as StepUnion,
                 normalizedEvent.enhancementEvent,
                 hooks,
                 { workspaceName, page },
@@ -316,8 +400,13 @@ export const appendWorkspaceRecordingEvent = async (
         break;
     }
 
+    if (provisionalClickStep) {
+        return { accepted: true };
+    }
+
     const step = toStep(currentEvent);
     if (!step) {return { accepted: false };}
+    step.meta = { ...(step.meta || { source: 'record' }), recordSeq: eventRecordSeq };
     const normalized = enrichRecordedStep(state, effectiveToken, tabName, step);
     const list = state.recordings.get(effectiveToken) || [];
     list.push(normalized);
@@ -388,12 +477,14 @@ export const appendWorkspaceRecordingStep = (
     }
 
     const ts = step.meta?.ts ?? Date.now();
+    const recordSeq = typeof step.meta?.recordSeq === 'number' ? step.meta.recordSeq : nextRecordingSeq(state, effectiveToken);
     const normalized = enrichRecordedStep(state, effectiveToken, tabName, {
         ...step,
         meta: {
             ...step.meta,
             source: step.meta?.source ?? 'record',
             ts,
+            recordSeq,
             tabName: step.meta?.tabName || tabName,
         },
     });
@@ -402,10 +493,12 @@ export const appendWorkspaceRecordingStep = (
         state.lastClickTs.set(effectiveToken, ts);
     }
     if (normalized.name === 'browser.goto') {
-        const last = state.lastNavigateTs.get(effectiveToken) || 0;
+        const stepTabName = normalized.meta?.tabName || tabName;
+        const dedupeKey = navigateDedupeKey(effectiveToken, stepTabName);
+        const last = state.lastNavigateTs.get(dedupeKey) || 0;
         if (options?.updateNavigateDedupe !== false) {
             if (ts - last < navDedupeWindowMs) {return { accepted: false };}
-            state.lastNavigateTs.set(effectiveToken, ts);
+            state.lastNavigateTs.set(dedupeKey, ts);
         }
     }
 

@@ -47,6 +47,7 @@ export type RecordingState = {
     recordingManifests: Map<string, RecordingManifest>;
     workspaceUnsavedRecording: Map<string, string>;
     workspaceSnapshots: Map<string, WorkspaceSavedSnapshot>;
+    recordSeq: Map<string, number>;
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
     lastScrollY: Map<string, number>;
@@ -54,7 +55,7 @@ export type RecordingState = {
     pendingEnhancements: Map<string, Set<Promise<void>>>;
     replaying: Set<string>;
     replayCancel: Set<string>;
-    pendingFillEvents: Map<string, Map<string, { event: RecorderEvent; tabName: string }>>;
+    pendingFillEvents: Map<string, Map<string, { event: RecorderEvent; tabName: string; recordSeq?: number }>>;
     pendingChoiceEvents: Map<string, Map<string, PendingChoiceSession>>;
     pendingSuppressedClicks: Map<string, PendingSuppressedClick[]>;
 };
@@ -66,6 +67,7 @@ export const createRecordingState = (): RecordingState => ({
     recordingManifests: new Map(),
     workspaceUnsavedRecording: new Map(),
     workspaceSnapshots: new Map(),
+    recordSeq: new Map(),
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
     lastScrollY: new Map(),
@@ -107,6 +109,7 @@ export const resetWorkspaceUnsavedRecording = (
         startedAt: Date.now(),
         tabs: [],
     });
+    state.recordSeq.set(token, 0);
     state.lastNavigateTs.set(token, 0);
     state.lastClickTs.set(token, 0);
     state.lastScrollY.set(token, 0);
@@ -144,6 +147,7 @@ export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceN
     state.recordings.set(token, []);
     state.recordingEnhancements.delete(token);
     state.recordingManifests.delete(token);
+    state.recordSeq.set(token, 0);
     state.lastNavigateTs.set(token, 0);
     state.lastClickTs.set(token, 0);
     state.lastScrollY.set(token, 0);
@@ -175,4 +179,10 @@ export const getWorkspaceUnsavedRecordingBundle = (
 export const cleanupRecording = (state: RecordingState, tabName: string): void => {
     state.replaying.delete(tabName);
     state.replayCancel.delete(tabName);
+};
+
+export const nextRecordingSeq = (state: RecordingState, recordingToken: string): number => {
+    const next = (state.recordSeq.get(recordingToken) || 0) + 1;
+    state.recordSeq.set(recordingToken, next);
+    return next;
 };

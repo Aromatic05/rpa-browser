@@ -8,6 +8,7 @@
  */
 
 import type { BrowserContext, Locator, Page } from 'playwright';
+import type { Action } from '../../actions/action_protocol';
 import type {
     ConsoleEntry,
     NetworkEntry,
@@ -114,6 +115,7 @@ export const createTraceTools = (opts: {
     context?: BrowserContext;
     pageRegistry?: PageRegistry;
     workspaceName?: string;
+    dispatchAction?: (action: Action) => Promise<Action>;
     sinks?: TraceSink[];
     hooks?: TraceHooks;
     tags?: TraceTags;
@@ -147,6 +149,7 @@ export const createTraceTools = (opts: {
         opts: {
             pageRegistry: opts.pageRegistry,
             workspaceName: opts.workspaceName,
+            dispatchAction: opts.dispatchAction,
         },
         ctx,
         getCurrentPage: () => currentPage,

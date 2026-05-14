@@ -21,7 +21,6 @@ export default tseslint.config(
       "**/docs/**",
       // sample/demo/test-case fixtures: skip lint to keep signal focused on runtime code
       "agent/tests/**",
-      "agent/tests/specs/**",
       "agent/tests/integration/scenarios/**",
       "agent/scripts/**",
       "agent/debug/snapshot-viewer/**",

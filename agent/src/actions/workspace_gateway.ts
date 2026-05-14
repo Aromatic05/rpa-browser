@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import type { Action } from './action_protocol';
+import { replyAction } from './action_protocol';
 import { ActionError } from './results';
 import { ERROR_CODES } from './results';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
@@ -21,11 +23,26 @@ const resolveWorkspace = (deps: GatewayDeps, workspaceName: string): RuntimeWork
     return workspace;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
 export const routeWorkspaceAction = async (deps: GatewayDeps, action: Action): Promise<Action> => {
     try {
         const workspaceName = requireWorkspaceName(action);
-        const workspace = resolveWorkspace(deps, workspaceName);
 
+        // Outbound commands: forward to Extension, no Agent state change
+        if (action.type === 'tab.open') {
+            deps.emit?.(action);
+            return replyAction(action, { workspaceName, createId: crypto.randomUUID(), source: 'tab.open' });
+        }
+        if (action.type === 'tab.close') {
+            const payload = isRecord(action.payload) ? action.payload : {};
+            const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+            deps.emit?.(action);
+            return replyAction(action, { workspaceName, tabName, source: 'tab.close' });
+        }
+
+        const workspace = resolveWorkspace(deps, workspaceName);
         const result = await workspace.router.handle(action, workspace, deps.workspaceRegistry);
 
         for (const event of result.events) {

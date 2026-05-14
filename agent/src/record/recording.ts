@@ -113,6 +113,7 @@ export const disableWorkspaceRecording = (state: RecordingState, workspaceName: 
 };
 
 const navListenerPages = new WeakSet<Page>();
+const isOrdinaryPageUrl = (url: string): boolean => url.startsWith('http://') || url.startsWith('https://');
 
 export const installNavigationRecorder = (
     state: RecordingState,
@@ -125,22 +126,19 @@ export const installNavigationRecorder = (
     navListenerPages.add(page);
     page.on('framenavigated', (frame) => {
         if (frame !== page.mainFrame()) {return;}
+        const url = frame.url();
+        if (!isOrdinaryPageUrl(url)) {return;}
         if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return;}
-        const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
-        const lastClick = state.lastClickTs.get(effectiveToken) || 0;
-        const source = Date.now() - lastClick < navDedupeWindowMs ? 'click' : 'direct';
-        const navigateEvent: RecorderEvent = {
+        const event: RecorderEvent = {
+            recorderVersion: 'payload-v2',
             tabName,
             ts: Date.now(),
+            url,
+            pageTitle: '',
+            viewport: undefined,
             type: 'navigate',
-            url: frame.url(),
-            source,
         };
-        if (recorderEventSink) {
-            void recorderEventSink(navigateEvent, page, tabName);
-            return;
-        }
-        void appendWorkspaceRecordingEvent(state, workspaceName, tabName, navigateEvent, navDedupeWindowMs, page);
+        void appendWorkspaceRecordingEvent(state, workspaceName, tabName, event, navDedupeWindowMs, page);
     });
 };
 

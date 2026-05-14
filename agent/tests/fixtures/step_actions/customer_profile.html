@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>客户资料编辑 - 后台管理</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --text: #1d2a39;
+      --muted: #5e6f84;
+      --line: #d6dfeb;
+      --accent: #1a73e8;
+      --ok: #0f9d58;
+      --warn: #d77b00;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", "PingFang SC", sans-serif; color: var(--text); background: linear-gradient(180deg, #eef3fb 0%, #f8fbff 100%); }
+    .page { max-width: 1060px; margin: 18px auto; padding: 0 16px 24px; min-height: 1800px; }
+    .top { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; margin-bottom: 14px; }
+    h1 { margin: 0; font-size: 22px; }
+    .sub { color: var(--muted); margin-top: 6px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+    .card h2 { font-size: 16px; margin: 0 0 12px; }
+    .field { margin-bottom: 10px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    input[type="text"], textarea, select { width: 100%; border: 1px solid #b8c7db; border-radius: 8px; padding: 8px 10px; font-size: 14px; background: #fff; }
+    textarea { min-height: 84px; resize: vertical; }
+    .inline { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+    .btns { display: flex; gap: 10px; margin-top: 8px; }
+    button { border: 1px solid #a8b9cf; background: #fff; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+    #saveBtn { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .help-wrap { position: relative; display: inline-block; border-bottom: 1px dashed #93a6be; color: #365b84; }
+    #helpTooltip { display: none; position: absolute; top: 22px; left: 0; background: #20344d; color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 12px; min-width: 180px; z-index: 9; }
+    .scroll-box { border: 1px solid #cad7e7; border-radius: 8px; height: 120px; overflow: auto; background: #fbfdff; padding: 8px; }
+    .log-row { padding: 5px 0; border-bottom: 1px dashed #d9e4f1; font-size: 13px; }
+    .status, .result { margin-top: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13px; background: #f6f9ff; border: 1px solid #d7e3f4; }
+    .result { background: #f3fff8; border-color: #c9ebd9; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="top">
+      <h1>客户资料编辑</h1>
+      <div class="sub">CRM 后台 / 客户中心 / 档案维护</div>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>客户基础信息</h2>
+        <div class="field">
+          <label for="customerName">客户名称</label>
+          <input id="customerName" data-testid="customer-name" type="text" placeholder="请输入客户名称" />
+        </div>
+        <div class="field">
+          <label for="customerLevel">客户等级</label>
+          <select id="customerLevel" data-testid="customer-level">
+            <option value="normal">普通</option>
+            <option value="silver">银牌</option>
+            <option value="gold">金牌</option>
+            <option value="vip">VIP</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="contactName">联系人</label>
+          <input id="contactName" data-testid="contact-name" type="text" placeholder="请输入联系人" />
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>联系信息与备注</h2>
+        <div class="field">
+          <label for="searchBox">历史工单搜索</label>
+          <input id="searchBox" data-testid="search-box" type="text" placeholder="输入关键词后回车" />
+        </div>
+        <div class="field">
+          <label for="notes">备注</label>
+          <textarea id="notes" data-testid="notes"></textarea>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>偏好设置</h2>
+        <div class="field inline">
+          <label><input id="mailNotify" data-testid="mail-notify" type="checkbox" /> 启用邮件通知</label>
+        </div>
+        <div class="field">
+          <label>客户状态</label>
+          <div class="inline">
+            <label><input type="radio" name="customer-status" value="active" data-testid="status-active" checked /> 正常</label>
+            <label><input type="radio" name="customer-status" value="paused" data-testid="status-paused" /> 暂停</label>
+          </div>
+        </div>
+        <div class="field">
+          <span id="helpZone" class="help-wrap" data-testid="help-zone">字段说明悬停查看
+            <span id="helpTooltip">客户等级影响折扣审批流与售后 SLA。</span>
+          </span>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>操作与日志</h2>
+        <div class="btns">
+          <button id="saveBtn" data-testid="save-btn" type="button">保存</button>
+          <button id="resetBtn" data-testid="reset-btn" type="button">重置</button>
+        </div>
+        <div id="logContainer" data-testid="log-container" class="scroll-box" tabindex="0" aria-label="操作日志滚动区"></div>
+      </article>
+    </section>
+
+    <section id="liveStatus" class="status" data-testid="live-status" data-customer-name="" data-level="normal" data-mail-notify="false" data-status="active" data-last-key="" data-scroll-top="0" data-help-visible="false">
+      实时状态：客户名(空) | 等级(normal) | 邮件通知(false) | 状态(active) | 按键(无) | 滚动(0) | 提示(false)
+    </section>
+
+    <section id="resultZone" class="result mono" data-testid="result-zone" data-saved="false" data-summary="">
+      保存结果：未保存
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const initial = {
+      customerName: '',
+      contactName: '',
+      notes: '',
+      customerLevel: 'normal',
+      mailNotify: false,
+      status: 'active',
+      search: '',
+      lastKey: '',
+      helpVisible: false,
+      scrollTop: 0,
+      saved: false,
+      summary: ''
+    };
+    const state = { ...initial };
+
+    function appendLog(text) {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      row.textContent = new Date().toISOString() + ' | ' + text;
+      $('logContainer').appendChild(row);
+    }
+    for (let i = 1; i <= 30; i++) appendLog('初始化日志项 #' + i);
+
+    function syncStatus() {
+      const status = $('liveStatus');
+      status.dataset.customerName = state.customerName;
+      status.dataset.level = state.customerLevel;
+      status.dataset.mailNotify = String(state.mailNotify);
+      status.dataset.status = state.status;
+      status.dataset.lastKey = state.lastKey;
+      status.dataset.scrollTop = String(state.scrollTop);
+      status.dataset.helpVisible = String(state.helpVisible);
+      status.textContent = `实时状态：客户名(${state.customerName || '空'}) | 等级(${state.customerLevel}) | 邮件通知(${state.mailNotify}) | 状态(${state.status}) | 按键(${state.lastKey || '无'}) | 滚动(${state.scrollTop}) | 提示(${state.helpVisible})`;
+    }
+
+    function syncResult() {
+      const zone = $('resultZone');
+      zone.dataset.saved = String(state.saved);
+      zone.dataset.summary = state.summary;
+      zone.textContent = state.saved ? '保存结果：' + state.summary : '保存结果：未保存';
+    }
+
+    $('customerName').addEventListener('input', (e) => { state.customerName = e.target.value; syncStatus(); });
+    $('contactName').addEventListener('input', (e) => { state.contactName = e.target.value; syncStatus(); });
+    $('notes').addEventListener('input', (e) => { state.notes = e.target.value; syncStatus(); });
+    $('customerLevel').addEventListener('change', (e) => { state.customerLevel = e.target.value; appendLog('等级切换为 ' + state.customerLevel); syncStatus(); });
+    $('mailNotify').addEventListener('change', (e) => { state.mailNotify = !!e.target.checked; syncStatus(); });
+    document.querySelectorAll('input[name="customer-status"]').forEach((el) => {
+      el.addEventListener('change', (e) => {
+        if (e.target.checked) state.status = e.target.value;
+        syncStatus();
+      });
+    });
+    $('searchBox').addEventListener('keydown', (e) => {
+      state.lastKey = e.key;
+      if (e.key === 'Enter') {
+        state.search = e.target.value;
+        appendLog('回车搜索：' + state.search);
+      }
+      syncStatus();
+    });
+    $('helpZone').addEventListener('mouseenter', () => { state.helpVisible = true; $('helpTooltip').style.display = 'block'; syncStatus(); });
+    $('helpZone').addEventListener('mouseleave', () => { state.helpVisible = false; $('helpTooltip').style.display = 'none'; syncStatus(); });
+    $('logContainer').addEventListener('scroll', (e) => { state.scrollTop = e.target.scrollTop; syncStatus(); });
+    window.addEventListener('scroll', () => { state.scrollTop = Math.max(state.scrollTop, Math.floor(window.scrollY)); syncStatus(); });
+
+    $('saveBtn').addEventListener('click', () => {
+      state.saved = true;
+      state.summary = `name=${state.customerName};contact=${state.contactName};level=${state.customerLevel};mail=${state.mailNotify};status=${state.status};notes=${state.notes};search=${state.search}`;
+      appendLog('执行保存');
+      syncResult();
+    });
+
+    $('resetBtn').addEventListener('click', () => {
+      Object.assign(state, initial);
+      $('customerName').value = '';
+      $('contactName').value = '';
+      $('notes').value = '';
+      $('customerLevel').value = 'normal';
+      $('mailNotify').checked = false;
+      document.querySelector('input[name="customer-status"][value="active"]').checked = true;
+      $('searchBox').value = '';
+      $('logContainer').scrollTop = 0;
+      $('helpTooltip').style.display = 'none';
+      syncStatus();
+      syncResult();
+      appendLog('执行重置');
+    });
+
+    syncStatus();
+    syncResult();
+  </script>
+</body>
+</html>

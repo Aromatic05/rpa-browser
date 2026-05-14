@@ -7,7 +7,6 @@ import type { WorkspaceRegistry } from '../workspace/registry';
 import type { PageRegistry } from './page_registry';
 import type { RecordingState } from '../../record/recording';
 import type { Workflow } from '../../workflow';
-import { recordFirstTabPageUrl, recordTabActivated, recordTabClosed, recordTabCreated } from '../../record/tab_lifecycle_recorder';
 
 export type RuntimeLifecycleDeps = {
     workspaceRegistry: WorkspaceRegistry;
@@ -77,46 +76,18 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
         }
         const workspace = deps.workspaceRegistry.getWorkspace(workspaceName)
             || deps.workspaceRegistry.createWorkspace(workspaceName, deps.ensureWorkflow(workspaceName));
-        const wasTabPresent = workspace.tabs.hasTab(bindingName);
-        const prevActiveTabName = workspace.tabs.getActiveTab()?.name || null;
-        if (!wasTabPresent) {
-            workspace.tabs.createTab({ tabName: bindingName, page, url: page.url() });
-        } else {
+        // Tab identity is committed by TabsControl tab.bound handler.
+        // onPageBound only binds the Playwright page to an existing tab.
+        if (workspace.tabs.hasTab(bindingName)) {
             workspace.tabs.bindPage(bindingName, page);
+            workspace.tabs.setActiveTab(bindingName);
         }
-        workspace.tabs.setActiveTab(bindingName);
         deps.runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page });
 
         if (deps.isWorkspaceRecordingEnabled(deps.recordingState, workspaceName)) {
             deps.attachTabToRecordingManifest(deps.recordingState, workspaceName, bindingName, {
                 tabRef: bindingName,
                 url: page.url(),
-            });
-            if (!wasTabPresent) {
-                recordTabCreated(deps.recordingState, {
-                    workspaceName,
-                    tabName: bindingName,
-                    tabRef: bindingName,
-                    urlAtRecord: page.url(),
-                    navDedupeWindowMs: deps.navDedupeWindowMs,
-                });
-            }
-            if (prevActiveTabName !== bindingName) {
-                recordTabActivated(deps.recordingState, {
-                    workspaceName,
-                    tabName: bindingName,
-                    tabRef: bindingName,
-                    urlAtRecord: page.url(),
-                    navDedupeWindowMs: deps.navDedupeWindowMs,
-                });
-            }
-            recordFirstTabPageUrl(deps.recordingState, {
-                workspaceName,
-                tabName: bindingName,
-                tabRef: bindingName,
-                url: page.url(),
-                urlAtRecord: page.url(),
-                navDedupeWindowMs: deps.navDedupeWindowMs,
             });
             void deps.ensureRecorder(deps.recordingState, workspaceName, page, bindingName, deps.navDedupeWindowMs);
             void deps.setRecorderRuntimeEnabled(page, true);
@@ -134,20 +105,6 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
 
     const onBindingClosed = (bindingName: string) => {
         staleNotifiedTabs.delete(bindingName);
-        const workspaceName = findWorkspaceNameByTabName(bindingName);
-        if (workspaceName && deps.isWorkspaceRecordingEnabled(deps.recordingState, workspaceName)) {
-            const workspace = deps.workspaceRegistry.getWorkspace(workspaceName);
-            const tab = workspace?.tabs.getTab(bindingName);
-            if (workspace && tab) {
-                recordTabClosed(deps.recordingState, {
-                    workspaceName,
-                    tabName: bindingName,
-                    tabRef: bindingName,
-                    urlAtRecord: tab.url,
-                    navDedupeWindowMs: deps.navDedupeWindowMs,
-                });
-            }
-        }
         deps.cleanupRecording(deps.recordingState, bindingName);
     };
 

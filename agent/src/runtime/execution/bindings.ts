@@ -1,4 +1,5 @@
 import type { Page } from 'playwright';
+import type { Action } from '../../actions/action_protocol';
 import { ActionError, ERROR_CODES } from '../../actions/results';
 import { createTraceTools, type BrowserAutomationTools } from '../../runner/trace';
 import type { RunnerPluginHost } from '../../runner/hotreload/plugin_host';
@@ -38,6 +39,7 @@ type ExecutionBindingsOptions = {
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
+    dispatchAction?: (action: Action) => Promise<Action>;
 };
 
 const isBindableUrl = (url: string): boolean => {
@@ -60,6 +62,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
                     context: binding.page.context(),
                     pageRegistry: options.pageRegistry,
                     workspaceName: binding.workspaceName,
+                    dispatchAction: options.dispatchAction,
                     sinks: options.traceSinks,
                     hooks: options.traceHooks,
                     tags: { workspaceName: binding.workspaceName, tabName: binding.tabName } as any,
@@ -76,6 +79,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             context: page.context(),
             pageRegistry: options.pageRegistry,
             workspaceName: workspaceName,
+            dispatchAction: options.dispatchAction,
             sinks: options.traceSinks,
             hooks: options.traceHooks,
             tags: { workspaceName, tabName } as any,
@@ -159,7 +163,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
     const createExecutableTab: ExecutionBindings['createExecutableTab'] = async (input) => {
         const page = await input.pageRegistry.createPageBinding(input.tabName, { startUrl: input.startUrl });
         if (!input.workspace.tabs.hasTab(input.tabName)) {
-            input.workspace.tabs.createMetadataTab({ tabName: input.tabName, url: page.url() });
+            input.workspace.tabs.createTab({ tabName: input.tabName });
         }
         input.workspace.tabs.bindPage(input.tabName, page);
         input.workspace.tabs.updateTab(input.tabName, { url: page.url() });

@@ -6,3 +6,5 @@ packages:
   - mock
   - mock/ant-app
   - mock/element-app
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8" /><title>审计日志</title>
+<style>body{font-family:"Segoe UI","PingFang SC",sans-serif;margin:18px;background:#f8fbff;color:#1f2d3d}.card{background:#fff;border:1px solid #d6e4f1;border-radius:10px;padding:14px;max-width:720px}li{margin:6px 0}button{padding:8px 12px;border:1px solid #9db5cf;border-radius:8px;background:#fff;cursor:pointer}</style></head>
+<body>
+<section class="card" data-testid="audit-root" data-audit-reviewed="false">
+  <h1 style="margin:0 0 8px">审计日志页</h1>
+  <ul>
+    <li>22:01 订单创建</li>
+    <li>22:03 退款请求提交</li>
+    <li>22:05 客服介入处理</li>
+  </ul>
+  <button id="confirmAuditReviewed" data-testid="confirm-audit-reviewed" type="button">确认已查看审计日志</button>
+  <p id="auditStatusText">状态：未查看</p>
+</section>
+<script>
+  const root = document.querySelector('[data-testid="audit-root"]');
+  const text = document.getElementById('auditStatusText');
+  document.getElementById('confirmAuditReviewed').addEventListener('click', () => {
+    root.dataset.auditReviewed = 'true';
+    text.textContent = '审计日志已查看';
+    try { localStorage.setItem('wb_audit_reviewed', 'true'); } catch {}
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ kind: 'workbench-sync', auditReviewed: true }, '*');
+    }
+  });
+</script>
+</body>
+</html>

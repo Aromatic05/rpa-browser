@@ -183,7 +183,7 @@ export type StepArgsMap = {
     'browser.goto': { url: string };
     'browser.go_back': Record<string, never>;
     'browser.reload': Record<string, never>;
-    'browser.create_tab': { tabName: string };
+    'browser.create_tab': { tabName?: string };
     'browser.switch_tab': { tabName: string };
     'browser.close_tab': { tabName: string };
     'browser.get_page_info': Record<string, never>;
@@ -384,6 +384,7 @@ export type StepMeta = {
     requestId?: string;
     source: 'mcp' | 'play' | 'script' | 'record' | 'control-rpc' | 'dsl';
     ts?: number;
+    recordSeq?: number;
     workspaceName?: string;
     tabName?: string;
     urlAtRecord?: string;

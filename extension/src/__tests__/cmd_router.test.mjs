@@ -137,6 +137,8 @@ await log('window focus sends workspace.setActive and window.focused', async () 
             url: 'https://example.com',
         },
     });
+    router.onCreated({ id: 11, windowId: 7, url: 'https://example.com', title: 'Example' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     router.onFocusChanged(7);
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -202,7 +204,7 @@ await log('workspace.create returns workspace shell without opening window', asy
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), false);
 });
 
-await log('tabs.onCreated does not emit binding actions', async () => {
+await log('tabs.onCreated emits tab.opened binding action', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
@@ -241,10 +243,10 @@ await log('tabs.onCreated does not emit binding actions', async () => {
     router.onCreated({ id: 22, windowId: 7, url: 'https://example.com/new', title: 'New' });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), true);
 });
 
-await log('tabs.onCreated reuses pre-bound tab reference scope when window mapping is not ready', async () => {
+await log('tabs.onCreated emits tab.opened once for pre-bound URL mapping', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
@@ -274,7 +276,7 @@ await log('tabs.onCreated reuses pre-bound tab reference scope when window mappi
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     const openedCount = sent.filter((action) => action.type === ACTION_TYPES.TAB_OPENED).length;
-    assert.equal(openedCount, 0);
+    assert.equal(openedCount, 1);
 });
 
 await log('workflow.open projection uses workspaceName/tabName without payload tabName', async () => {

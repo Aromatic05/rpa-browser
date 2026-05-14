@@ -1,6 +1,5 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { mapTraceError } from '../helpers/target';
 
 export const executeBrowserSwitchTab = async (
     step: Step<'browser.switch_tab'>,
@@ -16,19 +15,21 @@ export const executeBrowserSwitchTab = async (
         };
     }
     const workspace = deps.resolveWorkspace(workspaceName);
-    workspace.tabs.setActiveTab(tabName);
+    if (!workspace.tabs.hasTab(tabName)) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: { code: 'ERR_TAB_NOT_FOUND', message: `browser.switch_tab target tab not found: ${tabName}` },
+        };
+    }
+    const timeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
     const binding = await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: deps.pageRegistry,
         tabName,
-        timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
+        timeoutMs,
     });
-    const result = await binding.traceTools['trace.tabs.switch']({
-        workspaceName,
-        tabName,
-    });
-    if (!result.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
-    }
+    await binding.page.bringToFront();
+    workspace.tabs.setActiveTab(tabName);
     return { stepId: step.id, ok: true };
 };

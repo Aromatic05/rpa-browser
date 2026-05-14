@@ -78,6 +78,9 @@ const runStepsDeps: RunStepsDeps = {
         }
         return workspace;
     },
+    dispatchAction: async () => {
+        throw new Error('dispatchAction not initialized');
+    },
     pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
@@ -121,7 +124,7 @@ onPageBoundHook = (page, tabName) => {
         void ensureRecorder(recordingState, workspaceName, page, tabName, NAV_DEDUPE_WINDOW_MS);
     }
     if (!workspace.tabs.hasTab(tabName)) {
-        workspace.tabs.createTab({ tabName, page, url: page.url() });
+        workspace.tabs.createTab({ tabName });
     } else {
         workspace.tabs.bindPage(tabName, page);
     }
@@ -134,6 +137,7 @@ const controlActionDispatcher = createActionDispatcher({
     workspaceRegistry,
     log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
 });
+runStepsDeps.dispatchAction = async (action) => await controlActionDispatcher.dispatch(action);
 const controlServer = createControlServer({
     evalContext: {
         deps: runStepsDeps,

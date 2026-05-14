@@ -52,6 +52,7 @@
 
 - `Development/DevelopmentGuide.md`
 - `Development/TestGuide.md`
+- `Development/TestGovernance.md`
 - `Development/TaskBoard.md`
 
 ## 使用建议

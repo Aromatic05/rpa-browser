@@ -52,6 +52,16 @@ type SendExports = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
+const isOrdinaryPageUrl = (url: string): boolean =>
+    url.startsWith('http://') || url.startsWith('https://');
+const UUIDorUnsafe = (): string => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    const now = Date.now().toString(16).padStart(12, '0');
+    return `${rand()}-${rand().slice(0, 4)}-4${rand().slice(0, 3)}-a${rand().slice(0, 3)}-${now}${rand().slice(0, 4)}`.slice(0, 36);
+};
 
 // 协议与发送模块（动态 import，避免内容脚本模块化限制）
 const loadProtocol = (() => {
@@ -107,15 +117,16 @@ const loadFloatingUI = (() => {
 
     // tabName + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<{ tabName: string; workspaceName: string }> | null = null;
-    const sendReport = async (tabName?: string, workspaceName?: string) => {
-        const resolved = tabName ? { tabName, workspaceName: workspaceName ?? '' } : await ensureToken();
+    let lastReportedUrl = '';
+    const sendReport = async (workspaceName?: string) => {
+        const resolved = workspaceName ? { workspaceName } : await ensureToken();
         const { send } = await loadSend();
         await send.action({
             v: 1,
-            id: crypto.randomUUID(),
+            id: UUIDorUnsafe(),
             type: 'tab.report',
+            workspaceName: resolved.workspaceName,
             payload: {
-                tabName: resolved.tabName,
                 source: 'extension.content',
                 url: location.href,
                 title: document.title,
@@ -123,16 +134,44 @@ const loadFloatingUI = (() => {
             },
         });
     };
+    const sendReportIfUrlChanged = async (workspaceName?: string, force = false) => {
+        const url = location.href;
+        if (!force && url === lastReportedUrl) {return;}
+        await sendReport(workspaceName);
+        lastReportedUrl = url;
+    };
     const ensureToken = () => {
         tokenReady ??= (async () => {
                 const mod = await loadTokenBridge();
                 const result = await mod.ensureTabNameAsync();
                 mod.bindHello(result.tabName, () => {
-                    void sendReport(result.tabName, result.workspaceName);
+                    // hello is only for binding refresh; URL ownership is handled
+                    // by report-on-change hooks below.
                 });
                 return result;
             })();
         return tokenReady!;
+    };
+    const bindReportOnUrlChange = () => {
+        const emit = () => {
+            if (!isOrdinaryPageUrl(location.href)) {return;}
+            void sendReportIfUrlChanged();
+        };
+        const originalPush = history.pushState.bind(history);
+        const originalReplace = history.replaceState.bind(history);
+        history.pushState = ((...args: Parameters<typeof history.pushState>) => {
+            originalPush(...args);
+            emit();
+            return undefined;
+        }) as History['pushState'];
+        history.replaceState = ((...args: Parameters<typeof history.replaceState>) => {
+            originalReplace(...args);
+            emit();
+            return undefined;
+        }) as History['replaceState'];
+        window.addEventListener('popstate', emit);
+        window.addEventListener('hashchange', emit);
+        window.addEventListener('pageshow', emit);
     };
 
     chrome.runtime.onMessage.addListener(
@@ -158,6 +197,7 @@ const loadFloatingUI = (() => {
                         return;
                     }
                     sessionStorage.setItem('__rpa_tab_name', tabName);
+                    sessionStorage.setItem('__rpa_tab_name_confirmed', '1');
                     window.name = `__RPA_TAB_NAME__:${tabName}`;
                     (window as any).__rpa_tab_name = tabName;
                     sendResponse({ ok: true, tabName, url: location.href });
@@ -177,7 +217,7 @@ const loadFloatingUI = (() => {
         const { send } = await loadSend();
         await send.action({
             v: 1,
-            id: crypto.randomUUID(),
+            id: UUIDorUnsafe(),
             type: 'tab.ping',
             workspaceName,
             payload: {
@@ -204,7 +244,8 @@ const loadFloatingUI = (() => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
         const { tabName, workspaceName } = await ensureToken();
-        void sendReport(tabName);
+        bindReportOnUrlChange();
+        void sendReportIfUrlChanged(workspaceName, true);
         startHeartbeat();
         uiHandle = mountFloatingUI({
             tabName,
@@ -213,7 +254,6 @@ const loadFloatingUI = (() => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
                 const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
-                const scopedTabName = typedScope.tabName ?? tabName;
                 const normalizedPayload =
                     type === 'record.event'
                         ? {
@@ -227,14 +267,11 @@ const loadFloatingUI = (() => {
                         : (payload ?? {});
                 const action = {
                     v: 1 as const,
-                    id: crypto.randomUUID(),
+                    id: UUIDorUnsafe(),
                     type,
                     workspaceName: typedScope.workspaceName,
                     payload: normalizedPayload,
                 };
-                if (!hasExplicitScope && action.payload && typeof action.payload === 'object') {
-                    (action.payload as Record<string, unknown>).tabName = scopedTabName;
-                }
                 return await send.action(action);
             },
             onEvent: (handler) => {

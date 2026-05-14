@@ -42,18 +42,21 @@ const REPLAY_OPTIONS = {
     scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 },
 };
 const NAV_DEDUPE_WINDOW_MS = 1200;
-const WS_TAP_ENABLED = process.env.RPA_WS_TAP === '1';
-
 const actionLog = getLogger('action');
 const log = (...args: unknown[]) => { actionLog.info('[RPA:agent]', ...args); };
 const logWarning = (...args: unknown[]) => { actionLog.warning('[RPA:agent]', ...args); };
 const logError = (...args: unknown[]) => { actionLog.error('[RPA:agent]', ...args); };
+const WS_TAP_ENABLED = process.env.RPA_WS_TAP === '1';
+
 const wsTap = (stage: string, data: Record<string, unknown>) => {
     if (!WS_TAP_ENABLED) {return;}
     actionLog.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });
 };
 let broadcast: (action: Action) => void = () => undefined;
 let workspaceRegistry: ReturnType<typeof createWorkspaceRegistry>;
+let dispatchActionForTrace: (action: Action) => Promise<Action> = async () => {
+    throw new Error('dispatchAction not initialized');
+};
 
 const paths = resolvePaths();
 const recordingState = createRecordingState();
@@ -106,6 +109,7 @@ const runtimeRegistry = createExecutionBindings({
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,
+    dispatchAction: async (action) => await dispatchActionForTrace(action),
 });
 
 const runStepsDeps: RunStepsDeps = {
@@ -116,6 +120,9 @@ const runStepsDeps: RunStepsDeps = {
             throw new Error(`workspace not found: ${workspaceName}`);
         }
         return workspace;
+    },
+    dispatchAction: async () => {
+        throw new Error('dispatchAction not initialized');
     },
     pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
@@ -176,12 +183,19 @@ const actionDispatcher = createActionDispatcher({
     log: actionLogger,
     emit: (action) => broadcast(action),
 });
+dispatchActionForTrace = async (action) => await actionDispatcher.dispatch(action);
+runStepsDeps.dispatchAction = async (action) => await actionDispatcher.dispatch(action);
 
 const handleAction = async (action: Action) => {
     log('action.inbound', {
         id: action.id,
         type: action.type,
         workspaceName: action.workspaceName || null,
+        payload: action.payload ?? null,
+        payloadKeys:
+            action.payload && typeof action.payload === 'object'
+                ? Object.keys(action.payload as Record<string, unknown>)
+                : [],
     });
 
     try {

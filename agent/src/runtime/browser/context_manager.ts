@@ -224,6 +224,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
         contextPromise = chromium
             .launchPersistentContext(options.userDataDir, {
                 headless,
+                channel: 'chromium',
                 viewport: null,
                 args: launchArgs,
             })

@@ -16,10 +16,14 @@ declare global {
 }
 
 const TAB_NAME_KEY = '__rpa_tab_name';
+const TAB_NAME_CONFIRMED_KEY = '__rpa_tab_name_confirmed';
 const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
 
 const readTokenFromWindowName = (): string | null => {
     try {
+        // Popup/new-tab created via window.open can inherit opener's window.name.
+        // Treat such inherited value as untrusted to avoid cross-tab token bleed.
+        if (window.opener && !window.opener.closed) {return null;}
         const raw = window.name;
         if (!raw.startsWith(TAB_NAME_WIN_NAME_PREFIX)) {return null;}
         const token = raw.slice(TAB_NAME_WIN_NAME_PREFIX.length).trim();
@@ -38,58 +42,57 @@ const writeTokenToWindowName = (tabName: string) => {
 };
 
 export const ensureTabName = (): string => {
-    const tabName = sessionStorage.getItem(TAB_NAME_KEY) ?? readTokenFromWindowName() ?? '';
-    if (!tabName) {return '';}
-    sessionStorage.setItem(TAB_NAME_KEY, tabName);
-    writeTokenToWindowName(tabName);
-    window.__rpa_tab_name = tabName;
-    return tabName;
+    const fromWindow = readTokenFromWindowName();
+    if (fromWindow) {
+        sessionStorage.setItem(TAB_NAME_KEY, fromWindow);
+        window.__rpa_tab_name = fromWindow;
+        return fromWindow;
+    }
+    const fromSession = sessionStorage.getItem(TAB_NAME_KEY);
+    if (fromSession) {
+        window.__rpa_tab_name = fromSession;
+        return fromSession;
+    }
+    return '';
 };
 
 export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspaceName: string }> => {
     let tabName = ensureTabName();
-    let workspaceName = '';
-    for (let i = 0; i < 3; i += 1) {
-        const runtimeReply = await new Promise<{ ok: boolean; tabName?: string; workspaceName?: string }>((resolve) => {
-            chrome.runtime.sendMessage(
-                {
-                    type: MSG.ENSURE_BOUND_TOKEN,
-                    source: 'extension.content',
-                    tabName,
-                    url: location.href,
-                    title: document.title,
-                    at: Date.now(),
-                },
-                (response: unknown) => {
-                    if (chrome.runtime.lastError) {
-                        resolve({ ok: false });
-                        return;
-                    }
-                    resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string; workspaceName?: string });
-                },
-            );
-        });
-        if (runtimeReply.ok && runtimeReply.tabName) {
-            tabName = runtimeReply.tabName;
-            workspaceName = runtimeReply.workspaceName ?? '';
-            sessionStorage.setItem(TAB_NAME_KEY, tabName);
-            writeTokenToWindowName(tabName);
-            window.__rpa_tab_name = tabName;
-            break;
-        }
-        if (i < 2) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 120));
-        }
-    }
-    if (!tabName) {
+    const runtimeReply = await new Promise<{ ok: boolean; tabName?: string; workspaceName?: string }>((resolve) => {
+        chrome.runtime.sendMessage(
+            {
+                type: MSG.ENSURE_BOUND_TOKEN,
+                source: 'extension.content',
+                // Do not bias SW resolution with potentially inherited token.
+                tabName: '',
+                url: location.href,
+                title: document.title,
+                at: Date.now(),
+            },
+            (response: unknown) => {
+                if (chrome.runtime.lastError) {
+                    resolve({ ok: false });
+                    return;
+                }
+                resolve((response ?? { ok: false }) as { ok: boolean; tabName?: string; workspaceName?: string });
+            },
+        );
+    });
+    if (!runtimeReply.ok || !runtimeReply.tabName) {
         throw new Error('bound tab token unavailable');
     }
+    tabName = runtimeReply.tabName;
+    const workspaceName = runtimeReply.workspaceName ?? '';
+    sessionStorage.setItem(TAB_NAME_KEY, tabName);
+    sessionStorage.setItem(TAB_NAME_CONFIRMED_KEY, '1');
+    writeTokenToWindowName(tabName);
+    window.__rpa_tab_name = tabName;
     return { tabName, workspaceName };
 };
 
-export const bindHello = (tabName: string, onHello?: () => void): () => void => {
+export const bindHello = (_tabName: string, onHello?: () => void): () => void => {
     const sendHello = () => {
-        void send.hello({ tabName, url: location.href });
+        void send.hello({ url: location.href });
         onHello?.();
     };
 
