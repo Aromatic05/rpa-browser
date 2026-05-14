@@ -107,10 +107,25 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (typedMessage.type === MSG.HELLO) {
             const chromeTabNo = sender.tab?.id;
             if (typeof chromeTabNo !== 'number') {return;}
-            const bindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName : '';
+            const incomingBinding = typeof typedMessage.tabName === 'string' ? typedMessage.tabName : '';
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
             const url = typeof typedMessage.url === 'string' ? typedMessage.url : sender.tab?.url ?? '';
+            const existing = state.getTabState(chromeTabNo);
+            const stableBinding = typeof existing?.bindingName === 'string' ? existing.bindingName.trim() : '';
+            const bindingName = stableBinding || incomingBinding;
             state.upsertTab(chromeTabNo, bindingName, url, windowId);
+            if (stableBinding && incomingBinding && incomingBinding !== stableBinding) {
+                log.warning('[RPA:sw]', 'hello token mismatch; preserving existing binding', {
+                    chromeTabNo,
+                    incomingBinding,
+                    stableBinding,
+                    url,
+                });
+                // Best-effort: push canonical token back to content script.
+                chrome.tabs.sendMessage(chromeTabNo, { type: MSG.SET_TOKEN, tabName: stableBinding }, () => {
+                    void chrome.runtime.lastError;
+                });
+            }
             const mapped = state.getBindingWorkspaceTab(bindingName);
             if (mapped && typeof windowId === 'number') {
                 state.setWindowWorkspace(windowId, mapped.workspaceName);
@@ -159,6 +174,18 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         });
                         return;
                     }
+                }
+
+                const ensured = await life.ensureBoundTabRef(chromeTabNo, sender.tab?.windowId);
+                if (ensured) {
+                    sendResponse({
+                        ok: true,
+                        bindingName: ensured.bindingName,
+                        workspaceName: ensured.workspaceName,
+                        tabName: ensured.tabName,
+                        windowId: ensured.windowId,
+                    });
+                    return;
                 }
 
                 sendResponse({ ok: false, error: 'not bound' });

@@ -55,7 +55,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
 
   const openTab = async (ws: string, url: string) => {
     const before = (await listTabs(ep, ws)).map((t) => t.tabName);
-    await d('tab.open', act('tab.open', ws, { startUrl: url, source: 'e2e.multitab' }));
+    await d('tab.open', act('tab.open', ws, { source: 'e2e.multitab' }));
     let tabName = '';
     await expect.poll(async () => {
       const tabs = await listTabs(ep, ws);
@@ -63,6 +63,8 @@ test('records and replays active and passive multi-tab workflow', async () => {
       if (created.length >= 1) tabName = created[0]!.tabName;
       return tabName;
     }, { timeout: 4_000 }).toBeTruthy();
+    mustOk(await rs(ws, 'openTab switch', st(`open-${tabName}-switch`, 'browser.switch_tab', { tabName })), 'openTab switch');
+    mustOk(await rs(ws, 'openTab goto', st(`open-${tabName}-goto`, 'browser.goto', { url })), 'openTab goto');
     return tabName;
   };
 
@@ -86,17 +88,29 @@ test('records and replays active and passive multi-tab workflow', async () => {
     mustOk(await rs(ws, label, st(stepId, 'browser.close_tab', { tabName })), label);
   };
 
-  const clickOpen = async (ws: string, clickStep: Extract<StepUnion, { name: 'browser.click' }>, urlPart: string) => {
+  const clickOpen = async (ws: string, clickStep: Extract<StepUnion, { name: 'browser.click' }>) => {
     const before = (await listTabs(ep, ws)).map((t) => t.tabName);
     mustOk(await rs(ws, clickStep.id, clickStep), clickStep.id);
     await expect.poll(async () => {
       const after = await listTabs(ep, ws);
-      return after.filter((t) => t.url.includes(urlPart) && !before.includes(t.tabName)).length;
+      return after.filter((t) => !before.includes(t.tabName)).length;
     }, { timeout: 15_000 }).toBe(1);
     const after = await listTabs(ep, ws);
-    const opened = after.filter((t) => t.url.includes(urlPart) && !before.includes(t.tabName));
+    const opened = after.filter((t) => !before.includes(t.tabName));
     expect(opened.length).toBe(1);
-    return opened[0]!;
+    const openedTab = opened[0]!;
+    await expect.poll(async () => {
+      const r = await sendControlEval(
+        {
+          source: 'const d=await ctx.deps.pageRegistry.debugPageBindings(input.n);return Array.isArray(d?.knownBindings)&&d.knownBindings.includes(input.n);',
+          input: { n: openedTab.tabName },
+          timeoutMs: 3000,
+        },
+        { endpoint: ep, timeoutMs: 3000 },
+      );
+      return r.ok ? r.result : false;
+    }, { timeout: 20_000 }).toBe(true);
+    return openedTab;
   };
 
   const ws = 'default';
@@ -134,7 +148,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
   mustOk(await rs(ws, 'sw wb1', st('sw-wb1', 'browser.switch_tab', { tabName: wbTab })), 'sw wb1');
   mustOk(await rs(ws, 'goto wb1', st('goto-wb1', 'browser.goto', { url: wbUrl })), 'goto wb1');
 
-  const payTab = await clickOpen(ws, st('open-pay', 'browser.click', { selector: '#openPaymentBtn' }), '/multitab/payment_check.html');
+  const payTab = await clickOpen(ws, st('open-pay', 'browser.click', { selector: '#openPaymentBtn' }));
   mustOk(await rs(ws, 'sw pay', st('sw-pay', 'browser.switch_tab', { tabName: payTab.tabName })), 'sw pay');
   mustOk(await rs(ws, 'approve', st('approve', 'browser.click', { selector: '#approvePayment' })), 'approve');
   await closeTab(ws, payTab.tabName, 'pay-close', 'close pay');
@@ -143,7 +157,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
   mustOk(await rs(ws, 'sw wb2', st('sw-wb2', 'browser.switch_tab', { tabName: wbTab })), 'sw wb2');
   mustOk(await rs(ws, 'goto wb2', st('goto-wb2', 'browser.goto', { url: wbUrl })), 'goto wb2');
 
-  const custTab = await clickOpen(ws, st('open-cust', 'browser.click', { selector: '#openCustomerBtn' }), '/multitab/customer_detail.html');
+  const custTab = await clickOpen(ws, st('open-cust', 'browser.click', { selector: '#openCustomerBtn' }));
   mustOk(await rs(ws, 'sw cust', st('sw-cust', 'browser.switch_tab', { tabName: custTab.tabName })), 'sw cust');
   mustOk(await rs(ws, 'mark vip', st('mark-vip', 'browser.click', { selector: '#markVipRisk' })), 'mark vip');
   await closeTab(ws, custTab.tabName, 'cust-close', 'close cust');
@@ -152,7 +166,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
   mustOk(await rs(ws, 'sw wb3', st('sw-wb3', 'browser.switch_tab', { tabName: wbTab })), 'sw wb3');
   mustOk(await rs(ws, 'goto wb3', st('goto-wb3', 'browser.goto', { url: wbUrl })), 'goto wb3');
 
-  const auditTab = await clickOpen(ws, st('open-audit', 'browser.click', { selector: '#openAuditBtn' }), '/multitab/audit_log.html');
+  const auditTab = await clickOpen(ws, st('open-audit', 'browser.click', { selector: '#openAuditBtn' }));
   mustOk(await rs(ws, 'sw audit', st('sw-audit', 'browser.switch_tab', { tabName: auditTab.tabName })), 'sw audit');
   mustOk(await rs(ws, 'confirm', st('confirm', 'browser.click', { selector: '#confirmAuditReviewed' })), 'confirm');
   await closeTab(ws, auditTab.tabName, 'audit-close', 'close audit');

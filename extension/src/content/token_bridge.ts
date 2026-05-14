@@ -20,6 +20,9 @@ const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
 
 const readTokenFromWindowName = (): string | null => {
     try {
+        // Popup/new-tab created via window.open can inherit opener's window.name.
+        // Treat such inherited value as untrusted to avoid cross-tab token bleed.
+        if (window.opener && !window.opener.closed) {return null;}
         const raw = window.name;
         if (!raw.startsWith(TAB_NAME_WIN_NAME_PREFIX)) {return null;}
         const token = raw.slice(TAB_NAME_WIN_NAME_PREFIX.length).trim();
@@ -38,6 +41,9 @@ const writeTokenToWindowName = (tabName: string) => {
 };
 
 export const ensureTabName = (): string => {
+    if (window.opener && !window.opener.closed) {
+        return '';
+    }
     const fromWindow = readTokenFromWindowName();
     if (fromWindow) {
         sessionStorage.setItem(TAB_NAME_KEY, fromWindow);
@@ -46,7 +52,8 @@ export const ensureTabName = (): string => {
     }
     const fromSession = sessionStorage.getItem(TAB_NAME_KEY);
     if (fromSession) {
-        sessionStorage.removeItem(TAB_NAME_KEY);
+        window.__rpa_tab_name = fromSession;
+        return fromSession;
     }
     return '';
 };
@@ -58,7 +65,8 @@ export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspace
             {
                 type: MSG.ENSURE_BOUND_TOKEN,
                 source: 'extension.content',
-                tabName,
+                // Do not bias SW resolution with potentially inherited token.
+                tabName: '',
                 url: location.href,
                 title: document.title,
                 at: Date.now(),
