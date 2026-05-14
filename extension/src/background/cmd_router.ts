@@ -34,6 +34,28 @@ const payloadOf = (action: Action | null | undefined): Record<string, unknown> =
     return (action.payload ?? {}) as Record<string, unknown>;
 };
 
+const WORKSPACE_SCOPED_ACTION_PREFIXES = [
+    'tab.',
+    'record.',
+    'play.',
+    'dsl.',
+    'checkpoint.',
+    'entity_rules.',
+    'task.run.',
+];
+
+const shouldAttachWorkspaceFromSender = (action: Record<string, unknown>): boolean => {
+    const actionType = action.type;
+    return typeof actionType === 'string'
+        && WORKSPACE_SCOPED_ACTION_PREFIXES.some((prefix) => actionType.startsWith(prefix));
+};
+
+const shouldRefreshAfterContentAction = (action: Record<string, unknown>): boolean => {
+    const actionType = action.type;
+    return typeof actionType === 'string'
+        && actionType === ACTION_TYPES.RECORD_SAVE;
+};
+
 export const createCmdRouter = (options: CmdRouterOptions) => {
     const log = options.logger ?? createLogger('sw');
     const state = createRouterState(log);
@@ -231,21 +253,22 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 if (typeof chromeTabNo === 'number') {
                     const tabState = state.getTabState(chromeTabNo);
                     const bindingName = tabState?.bindingName;
-                    if (bindingName) {
+                    if (bindingName && isRecord(action) && shouldAttachWorkspaceFromSender(action)) {
                         const mapped = state.getBindingWorkspaceTab(bindingName);
                         if (mapped) {
-                            if (isRecord(action)) {
-                                if (!action.workspaceName || typeof action.workspaceName !== 'string') {
-                                    action.workspaceName = mapped.workspaceName;
-                                }
-                                if (isRecord(action.payload)) {
-                                    action.payload.tabName = bindingName;
-                                }
+                            if (!action.workspaceName || typeof action.workspaceName !== 'string') {
+                                action.workspaceName = mapped.workspaceName;
+                            }
+                            if (isRecord(action.payload)) {
+                                action.payload.tabName = bindingName;
                             }
                         }
                     }
                 }
                 const reply = await dispatchActionRequest(typedMessage.action, options.wsClient);
+                if (isRecord(action) && shouldRefreshAfterContentAction(action)) {
+                    options.onRefresh();
+                }
                 sendResponse(reply);
             })().catch((error: unknown) => {
                 sendResponse({

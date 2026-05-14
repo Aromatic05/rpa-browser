@@ -103,8 +103,8 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             }
             const action = payload as Action;
             wsTap('ext.inbound.parsed', summarizeActionEnvelope(action));
-            // Resolve pending promise by replyTo first — handles non-*.result reply types like tab.bind
-            if (action.replyTo) {
+            const kind = classifyActionType(action.type);
+            if (kind === 'reply' && action.replyTo) {
                 const resolver = pending.get(action.replyTo);
                 if (resolver) {
                     pending.delete(action.replyTo);
@@ -112,7 +112,6 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            const kind = classifyActionType(action.type);
             if (kind !== 'reply' && isDispatchActionType(action.type)) {
                 options.onAction(action);
             }

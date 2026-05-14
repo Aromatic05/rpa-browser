@@ -228,6 +228,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (requestType === 'tab.setActive' && !action.type.endsWith('.failed')) {
             void refreshTabs();
         }
+        if (requestType === 'record.save' && !action.type.endsWith('.failed')) {
+            void refreshRecordings();
+        }
         if (requestType === 'workflow.saveAs' && !action.type.endsWith('.failed')) {
             void refreshWorkspaces();
             void refreshTabs();

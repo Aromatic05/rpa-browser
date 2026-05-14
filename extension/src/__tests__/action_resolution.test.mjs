@@ -53,9 +53,17 @@ await log('workspace action without workspaceName fails', async () => {
     assert.equal(reply.type, 'tab.list.failed');
 });
 
-await log('payload.workspaceName is rejected', async () => {
+await log('payload.workspaceName is accepted when top-level workspaceName is absent', async () => {
     const reply = await dispatchActionRequest(
         { v: 1, id: 'req-5', type: 'workspace.list', payload: { workspaceName: 'ws-1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'workspace.list.result');
+});
+
+await log('top-level workspaceName conflicts with payload.workspaceName', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-5-conflict', type: 'tab.list', workspaceName: 'ws-1', payload: { workspaceName: 'ws-2' } },
         mkWsClient(),
     );
     assert.equal(reply.type, 'action.dispatch.failed');
