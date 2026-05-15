@@ -4,24 +4,12 @@ import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
 import type { RouterState, TabRuntimeState } from './state.js';
 
-const isFailedReply = (action: Action | null | undefined): boolean => {
-    if (!action) {return false;}
-    return action.type.endsWith('.failed');
-};
-
-const payloadOf = (action: Action | null | undefined): Record<string, unknown> => {
-    if (!action) {return {};}
-    return (action.payload ?? {}) as Record<string, unknown>;
-};
-
 const LIFECYCLE_THROTTLE_MS = 180;
-
-const toStringOrUndefined = (value: unknown): string | undefined =>
-    typeof value === 'string' ? value : typeof value === 'number' ? String(value) : undefined;
 
 export type LifecycleOptions = {
     state: RouterState;
     sendAction: (action: Action) => Promise<Action>;
+    sessionWorkspaceName: string;
     onRefresh: () => void;
 };
 
@@ -51,7 +39,7 @@ export type LifecycleRuntime = {
     ensureOpenedAndBound: (
         chromeTabNo: number,
         windowId: number,
-        options?: { createId?: string; workspaceName?: string },
+        options?: { createId?: string },
     ) => Promise<BoundTabRef | null>;
     getOpenedAndBoundInflight: (chromeTabNo: number) => Promise<BoundTabRef | null> | null;
     bindExistingTabs: () => Promise<void>;
@@ -68,8 +56,8 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         return typeof owner === 'number' && owner !== chromeTabNo;
     };
 
-    const emitLifecycleAction = async (type: 'tab.activated' | 'tab.closed', payload: Record<string, unknown>, workspaceName?: string) => {
-        await options.sendAction({ v: 1, id: crypto.randomUUID(), type, workspaceName, payload });
+    const emitLifecycleAction = async (type: 'tab.activated' | 'tab.closed', payload: Record<string, unknown>) => {
+        await options.sendAction({ v: 1, id: crypto.randomUUID(), type, workspaceName: options.sessionWorkspaceName, payload });
     };
 
     const emitActivatedIfActive = async (input: {
@@ -100,7 +88,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 at: now,
                 windowId: input.windowId,
             },
-            input.workspaceName,
         );
     };
 
@@ -108,30 +95,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     const pushBindingNameToTab = async (chromeTabNo: number, bindingName: string) => {
         const result = await send.toTabTransport<{ ok: boolean }>(chromeTabNo, MSG.SET_TOKEN, { tabName: bindingName }, { timeoutMs: 1200 });
         return result.ok && result.data?.ok === true;
-    };
-
-    const resolveWorkspaceName = async (bindingName: string, windowId: number, preferredWorkspaceName?: string) => {
-        if (preferredWorkspaceName && preferredWorkspaceName.trim().length > 0) {
-            return preferredWorkspaceName;
-        }
-        const mapped = options.state.getBindingWorkspaceTab(bindingName);
-        if (mapped?.workspaceName) {return mapped.workspaceName;}
-        const fromWindow = options.state.getWindowWorkspace(windowId);
-        if (fromWindow) {return fromWindow;}
-        const active = options.state.getActiveWorkspaceName();
-        if (active) {return active;}
-
-        const reply = await options.sendAction({ v: 1, id: crypto.randomUUID(), type: ACTION_TYPES.WORKSPACE_LIST, payload: {} });
-        if (isFailedReply(reply)) {
-            const error = payloadOf(reply);
-            throw new Error(`workspace.list failed: ${String(error.code || 'ERR')}:${String(error.message || 'unknown')}`);
-        }
-        const payload = payloadOf(reply);
-        const remoteActive = toStringOrUndefined(payload.activeWorkspaceName) ?? toStringOrUndefined(payload.workspaceName);
-        if (!remoteActive) {throw new Error(`workspace mapping missing for bindingName=${bindingName}`);}
-        options.state.setActiveWorkspaceName(remoteActive);
-        options.state.setWindowWorkspace(windowId, remoteActive);
-        return remoteActive;
     };
 
     const ensureBoundTabRefInternal = async (chromeTabNo: number, hintedWindowId?: number, preferredBindingName?: string): Promise<BoundTabRef | null> => {
@@ -161,7 +124,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (bindingName) {
             const mapped = options.state.getBindingWorkspaceTab(bindingName);
             if (mapped) {
-                return { chromeTabNo, windowId, bindingName, workspaceName: mapped.workspaceName, tabName: mapped.tabName, urlHint };
+                return { chromeTabNo, windowId, bindingName, workspaceName: options.sessionWorkspaceName, tabName: mapped.tabName, urlHint };
             }
         }
 
@@ -205,8 +168,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         void (async () => {
             const bound = await ensureBoundTabRef(chromeTabNo, info.windowId);
             if (!bound) {return;}
-            options.state.setActiveWorkspaceName(bound.workspaceName);
-            options.state.setWindowWorkspace(info.windowId, bound.workspaceName);
             const now = Date.now();
             const key = `${String(info.windowId)}:${String(chromeTabNo)}:${bound.bindingName}`;
             if (options.state.shouldThrottleTabActivated(key, now, LIFECYCLE_THROTTLE_MS)) {return;}
@@ -220,7 +181,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                     at: now,
                     windowId: info.windowId,
                 },
-                bound.workspaceName,
             );
         })();
 
@@ -232,7 +192,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         const removed = options.state.removeTab(chromeTabNo);
         if (options.state.getActiveChromeTabNo() === chromeTabNo) {options.state.setActiveChromeTabNo(null);}
         if (removed?.bindingName) {
-            const mapped = options.state.getBindingWorkspaceTab(removed.bindingName);
             void emitLifecycleAction(
                 ACTION_TYPES.TAB_CLOSED,
                 {
@@ -242,7 +201,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                     at: Date.now(),
                     windowId: removed.windowId,
                 },
-                mapped?.workspaceName,
             );
             options.state.removeBindingWorkspaceTab(removed.bindingName);
         }
@@ -269,31 +227,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
 
     const onAttached = (chromeTabNo: number, info: chrome.tabs.TabAttachInfo) => {
         void (async () => {
-            const bound = await ensureBoundTabRef(chromeTabNo, info.newWindowId);
-            if (!bound) {return;}
-            const mapped = options.state.getBindingWorkspaceTab(bound.bindingName);
-            const targetWorkspaceName = options.state.getWindowWorkspace(info.newWindowId);
-            if (!mapped || !targetWorkspaceName || mapped.workspaceName === targetWorkspaceName) {
-                if (mapped) {options.state.setWindowWorkspace(info.newWindowId, mapped.workspaceName);}
-                return;
-            }
-            const result = await options.sendAction({
-                v: 1,
-                id: crypto.randomUUID(),
-                type: ACTION_TYPES.TAB_REASSIGNED,
-                workspaceName: mapped.workspaceName,
-                payload: { workspaceName: targetWorkspaceName, tabName: bound.bindingName, source: 'extension.sw', windowId: info.newWindowId, at: Date.now() },
-            });
-            if (!isFailedReply(result)) {
-                const resultPayload = payloadOf(result);
-                const workspaceName = toStringOrUndefined(resultPayload.workspaceName) ?? targetWorkspaceName;
-                const tabName = toStringOrUndefined(resultPayload.tabName) ?? mapped.tabName;
-                options.state.upsertBindingWorkspaceTab(bound.bindingName, workspaceName, tabName);
-                options.state.setWindowWorkspace(info.newWindowId, workspaceName);
-                if (options.state.getActiveWindowId() === info.newWindowId) {
-                    options.state.setActiveWorkspaceName(workspaceName);
-                }
-            }
+            await ensureBoundTabRef(chromeTabNo, info.newWindowId);
             options.onRefresh();
         })();
     };
@@ -304,27 +238,18 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         void (async () => {
             const active = await getActiveTabNameForWindow(windowId);
             if (!active) {return;}
-            const mapped = options.state.getBindingWorkspaceTab(options.state.getTabState(active.chromeTabNo)?.bindingName || '');
-            if (!mapped) {return;}
             const now = Date.now();
-            const key = `${String(windowId)}:${mapped.workspaceName}`;
+            const key = `${String(windowId)}:${options.sessionWorkspaceName}`;
             if (options.state.shouldThrottleWorkspaceActivated(key, now, LIFECYCLE_THROTTLE_MS)) {
                 options.onRefresh();
                 return;
             }
-            options.state.setActiveWorkspaceName(mapped.workspaceName);
-            options.state.setWindowWorkspace(windowId, mapped.workspaceName);
-            await options.sendAction({ v: 1, id: crypto.randomUUID(), type: ACTION_TYPES.WORKSPACE_SET_ACTIVE, payload: { workspaceName: mapped.workspaceName } });
             options.onRefresh();
         })();
     };
 
     const onWindowRemoved = (windowId: number) => {
-        const workspaceName = options.state.getWindowWorkspace(windowId);
-        options.state.clearWindowWorkspace(windowId);
-        if (workspaceName && options.state.getActiveWorkspaceName() === workspaceName) {
-            options.state.setActiveWorkspaceName(null);
-        }
+        void windowId;
         options.onRefresh();
     };
 
@@ -333,13 +258,13 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     const ensureOpenedAndBound = async (
         chromeTabNo: number,
         windowId: number,
-        openedOptions?: { createId?: string; workspaceName?: string },
+        openedOptions?: { createId?: string },
     ): Promise<BoundTabRef | null> => {
         const existing = options.state.getTabState(chromeTabNo);
         if (existing?.bindingName) {
             const mapped = options.state.getBindingWorkspaceTab(existing.bindingName);
             if (mapped) {
-                return { chromeTabNo, windowId, bindingName: existing.bindingName, workspaceName: mapped.workspaceName, tabName: mapped.tabName, urlHint: existing.lastUrl ?? '' };
+                return { chromeTabNo, windowId, bindingName: existing.bindingName, workspaceName: options.sessionWorkspaceName, tabName: mapped.tabName, urlHint: existing.lastUrl ?? '' };
             }
         }
         const inflight = inflightOpenedAndBound.get(chromeTabNo);
@@ -351,7 +276,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             if (typeof tab.windowId !== 'number') { return null; }
             const actualWindowId = tab.windowId;
 
-            const workspaceName = await resolveWorkspaceName(String(chromeTabNo), actualWindowId, openedOptions?.workspaceName);
+            const workspaceName = options.sessionWorkspaceName;
 
             const reply = await options.sendAction({
                 v: 1,
@@ -375,7 +300,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
 
             options.state.upsertBindingWorkspaceTab(tabName, workspaceName, tabName);
             options.state.upsertTab(chromeTabNo, tabName, typeof tab.url === 'string' ? tab.url : '', actualWindowId);
-            options.state.setWindowWorkspace(actualWindowId, workspaceName);
 
             await options.sendAction({
                 v: 1,
@@ -411,15 +335,14 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         // Skip if already bound (ensureOpenedAndBound won the race)
         if (options.state.getTabState(chromeTabNo)?.bindingName) { return; }
 
-        options.state.upsertBindingWorkspaceTab(tabName, action.workspaceName ?? '', tabName);
+        options.state.upsertBindingWorkspaceTab(tabName, options.sessionWorkspaceName, tabName);
         options.state.upsertTab(chromeTabNo, tabName, '', windowId);
-        options.state.setWindowWorkspace(windowId, action.workspaceName ?? '');
 
         await options.sendAction({
             v: 1,
             id: crypto.randomUUID(),
             type: ACTION_TYPES.TAB_BOUND,
-            workspaceName: action.workspaceName,
+            workspaceName: options.sessionWorkspaceName,
             payload: {
                 tabName,
                 chromeTabNo,

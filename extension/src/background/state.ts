@@ -20,17 +20,10 @@ export type RouterState = {
     getBindingWorkspaceTab: (bindingName: string) => BindingWorkspaceTab | undefined;
     upsertBindingWorkspaceTab: (bindingName: string, workspaceName: string, tabName: string) => void;
     removeBindingWorkspaceTab: (bindingName: string) => void;
-    getWindowWorkspace: (windowId: number) => string | undefined;
-    setWindowWorkspace: (windowId: number, workspaceName: string) => void;
-    clearWindowWorkspace: (windowId: number) => void;
-    clearWindowMappings: () => void;
     getActiveChromeTabNo: () => number | null;
     setActiveChromeTabNo: (chromeTabNo: number | null) => void;
-    getActiveWorkspaceName: () => string | null;
-    setActiveWorkspaceName: (workspaceName: string | null) => void;
     getActiveWindowId: () => number | null;
     setActiveWindowId: (windowId: number | null) => void;
-    bindWorkspaceToWindowIfKnown: (bindingName: string) => void;
     shouldThrottleTabActivated: (key: string, now: number, thresholdMs: number) => boolean;
     shouldThrottleWorkspaceActivated: (key: string, now: number, thresholdMs: number) => boolean;
     resetStartupState: () => void;
@@ -40,10 +33,8 @@ export type RouterState = {
 export const createRouterState = (logger?: Logger): RouterState => {
     const tabState = new Map<number, TabRuntimeState>();
     const bindingNameToWorkspaceTab = new Map<string, BindingWorkspaceTab>();
-    const windowToWorkspaceName = new Map<number, string>();
 
     let activeChromeTabNo: number | null = null;
-    let activeWorkspaceName: string | null = null;
     let activeWindowId: number | null = null;
     let lastTabActivatedKey = '';
     let lastTabActivatedAt = 0;
@@ -79,16 +70,6 @@ export const createRouterState = (logger?: Logger): RouterState => {
         bindingNameToWorkspaceTab.set(bindingName, { workspaceName, tabName });
     };
 
-    const bindWorkspaceToWindowIfKnown = (bindingName: string) => {
-        const mapped = bindingNameToWorkspaceTab.get(bindingName);
-        if (!mapped) {return;}
-        const chromeTabNo = findChromeTabNoByBindingName(bindingName);
-        if (chromeTabNo === null) {return;}
-        const windowId = tabState.get(chromeTabNo)?.windowId;
-        if (typeof windowId !== 'number') {return;}
-        windowToWorkspaceName.set(windowId, mapped.workspaceName);
-    };
-
     const shouldThrottleTabActivated = (key: string, now: number, thresholdMs: number) => {
         const duplicated = key === lastTabActivatedKey && now - lastTabActivatedAt < thresholdMs;
         if (!duplicated) {
@@ -107,10 +88,6 @@ export const createRouterState = (logger?: Logger): RouterState => {
         return duplicated;
     };
 
-    const clearWindowMappings = () => {
-        windowToWorkspaceName.clear();
-    };
-
     return {
         upsertTab,
         removeTab: (chromeTabNo: number) => {
@@ -125,34 +102,17 @@ export const createRouterState = (logger?: Logger): RouterState => {
         removeBindingWorkspaceTab: (bindingName: string) => {
             bindingNameToWorkspaceTab.delete(bindingName);
         },
-        getWindowWorkspace: (windowId: number) => windowToWorkspaceName.get(windowId),
-        setWindowWorkspace: (windowId: number, workspaceName: string) => {
-            windowToWorkspaceName.set(windowId, workspaceName);
-        },
-        clearWindowWorkspace: (windowId: number) => {
-            windowToWorkspaceName.delete(windowId);
-        },
-        clearWindowMappings,
         getActiveChromeTabNo: () => activeChromeTabNo,
         setActiveChromeTabNo: (chromeTabNo: number | null) => {
             activeChromeTabNo = chromeTabNo;
-        },
-        getActiveWorkspaceName: () => activeWorkspaceName,
-        setActiveWorkspaceName: (workspaceName: string | null) => {
-            activeWorkspaceName = workspaceName;
         },
         getActiveWindowId: () => activeWindowId,
         setActiveWindowId: (windowId: number | null) => {
             activeWindowId = windowId;
         },
-        bindWorkspaceToWindowIfKnown,
         shouldThrottleTabActivated,
         shouldThrottleWorkspaceActivated,
-        resetStartupState: () => {
-            clearWindowMappings();
-        },
-        resetInstalledState: () => {
-            clearWindowMappings();
-        },
+        resetStartupState: () => undefined,
+        resetInstalledState: () => undefined,
     };
 };

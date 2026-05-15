@@ -85,6 +85,7 @@ await log('workspace.list action triggers refresh dispatch', async () => {
     const sent = [];
     let refreshed = 0;
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             return { ok: true, data: {} };
@@ -105,10 +106,11 @@ await log('workspace.list action triggers refresh dispatch', async () => {
     assert.equal(sent.length, 0);
 });
 
-await log('window focus sends workspace.setActive and window.focused', async () => {
+await log('window focus keeps workspace session scoped', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-1' } };
@@ -143,13 +145,14 @@ await log('window focus sends workspace.setActive and window.focused', async () 
     router.onFocusChanged(7);
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(sent.some((action) => action.type === ACTION_TYPES.WORKSPACE_SET_ACTIVE), true);
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.WORKSPACE_SET_ACTIVE), false);
 });
 
 await log('window remove keeps router stable', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
@@ -170,6 +173,7 @@ await log('workspace.create returns workspace shell without opening window', asy
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
@@ -208,6 +212,7 @@ await log('panel control actions are not rebound to sender workspace', async () 
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
@@ -261,6 +266,7 @@ await log('panel record actions are rebound without refreshing recordings', asyn
     const sent = [];
     let refreshed = 0;
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
@@ -315,6 +321,7 @@ await log('tabs.onCreated emits tab.opened binding action', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
@@ -357,6 +364,7 @@ await log('tabs.onCreated emits tab.opened once for pre-bound URL mapping', asyn
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
@@ -390,6 +398,7 @@ await log('workflow.open projection uses workspaceName/tabName without payload t
     globalThis.chrome = createChromeMock();
     let refreshed = 0;
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async () => ({ ok: true, data: {} })),
         onRefresh: () => {
             refreshed += 1;
@@ -410,6 +419,7 @@ await log('agent-created window binds from preferred content tabName', async () 
     chrome.tabs.get = async (tabName) => ({ id: tabName, windowId: 44, url: 'https://example.com/agent' });
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             return { ok: true, data: {} };
@@ -445,7 +455,7 @@ await log('agent-created window binds from preferred content tabName', async () 
 
     assert.equal(tokenReply?.ok, true);
     assert.equal(tokenReply?.tabName, 'tab-agent');
-    assert.equal(tokenReply?.workspaceName, 'ws-agent');
+    assert.equal(tokenReply?.workspaceName, 'ws-bound');
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 
     let actionReply = null;
@@ -468,7 +478,7 @@ await log('agent-created window binds from preferred content tabName', async () 
 
     const recordAction = sent.find((action) => action.type === ACTION_TYPES.RECORD_EVENT);
     assert.equal(actionReply?.type, `${ACTION_TYPES.RECORD_EVENT}.result`, JSON.stringify(actionReply));
-    assert.equal(recordAction?.workspaceName, 'ws-agent');
+    assert.equal(recordAction?.workspaceName, 'ws-bound');
     assert.equal(recordAction?.payload?.tabName, 'tab-agent');
 });
 
@@ -491,6 +501,7 @@ await log('workspace.list works without tab token', async () => {
     };
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
@@ -527,6 +538,7 @@ await log('workspace.list works without tab token', async () => {
 await log('router rejects non-request action type from panel ingress', async () => {
     globalThis.chrome = createChromeMock();
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async () => {
             throw new Error('ws should not be called');
         }),

@@ -238,7 +238,7 @@ await log('dispatchActionRequest does not need lifecycle or router state', async
     assert.deepEqual(calls, ['workspace.list']);
 });
 
-await log('projection updates router state for workspace.changed', async () => {
+await log('projection refreshes without workspace ownership mapping', async () => {
     globalThis.chrome = { windows: { WINDOW_ID_NONE: -1 } };
     const calls = [];
     const state = {
@@ -257,6 +257,5 @@ await log('projection updates router state for workspace.changed', async () => {
         () => { refreshed += 1; },
     );
     assert.equal(refreshed, 1);
-    assert.deepEqual(calls[0], ['setActiveWorkspaceName', 'ws-1']);
-    assert.deepEqual(calls[1], ['setWindowWorkspace', 7, 'ws-1']);
+    assert.deepEqual(calls, []);
 });
