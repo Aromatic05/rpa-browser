@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { Page } from 'playwright';
+import type { BrowserContext, Page, Worker } from 'playwright';
 import { createContextManager } from './context_manager';
 import { createPageRegistry, type PageRegistry } from './page_registry';
 import { startActionWsClient, type ActionWsClient, type ActionWsTap } from '../../actions/ws_client';
@@ -41,6 +41,31 @@ const buildStartUrl = (workspaceName: string, wsPort: number): string => {
         rpaWsPort: String(wsPort),
     });
     return `chrome://newtab/?${params.toString()}`;
+};
+
+const configureExtensionSession = async (context: BrowserContext, workspaceName: string, wsPort: number) => {
+    const worker = await resolveExtensionServiceWorker(context);
+    await worker.evaluate(
+        async (config: { workspaceName: string; wsPort: number }) => {
+            const chromeApi = (globalThis as any).chrome;
+            await chromeApi.storage.local.set({
+                rpaWorkspaceName: config.workspaceName,
+                rpaWsPort: config.wsPort,
+            });
+        },
+        { workspaceName, wsPort },
+    );
+};
+
+const resolveExtensionServiceWorker = async (context: BrowserContext): Promise<Worker> => {
+    const pick = () => context.serviceWorkers().find((worker) => worker.url().includes('/entry/sw.js')) || null;
+    const existing = pick();
+    if (existing) {return existing;}
+    const worker = await context.waitForEvent('serviceworker', { timeout: 5000 });
+    if (worker.url().includes('/entry/sw.js')) {return worker;}
+    const matched = pick();
+    if (matched) {return matched;}
+    throw new Error('extension service worker not found');
 };
 
 export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSessionOptions): WorkspaceBrowserSession => {
@@ -98,7 +123,8 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                 onListening: (url) => options.onListening?.(options.workspaceName, url),
                 wsTap: options.wsTap,
             });
-            await contextManager.getContext();
+            const context = await contextManager.getContext();
+            await configureExtensionSession(context, options.workspaceName, wsPort);
             status = 'running';
         },
         stop: async () => {

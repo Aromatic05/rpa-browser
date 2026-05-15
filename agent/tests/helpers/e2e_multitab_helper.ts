@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { sendControlEval } from '../../src/control/client';
-import { getDefaultControlEndpoint } from '../../src/control/transport';
 import type { StepUnion } from '../../src/runner/steps/types';
 import type { Action } from '../../src/actions/action_protocol';
 
@@ -25,12 +24,12 @@ export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHand
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-e2e-'));
   const userDataDir = path.join(tempRoot, 'user-data');
   await fs.mkdir(userDataDir, { recursive: true });
-  const endpoint = getDefaultControlEndpoint();
+  const endpoint = path.join(tempRoot, 'agent.sock');
   const keepTemp = process.env.RPA_E2E_KEEP_TEMP === '1';
 
   const proc = spawn('pnpm', [headed ? 'dev' : 'dev:headless'], {
     cwd: path.resolve(process.cwd()),
-    env: { ...process.env, RPA_CONTROL_EVAL: '1', RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: path.join(tempRoot, 'workflow') },
+    env: { ...process.env, RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: path.join(tempRoot, 'workflow') },
     stdio: 'pipe',
   });
 
@@ -41,7 +40,7 @@ export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHand
     while (Date.now() < dl) {
       if (proc.exitCode !== null) throw new Error(`agent exited: ${proc.exitCode} ${stderr}`);
       try {
-        const r = await sendControlEval({ source: 'return { ready: !!ctx?.deps?.pageRegistry };', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 });
+        const r = await sendControlEval({ source: 'return { ready: !!ctx?.workspaceRegistry && !!ctx?.dispatch && !!ctx?.runStep };', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 });
         if (r.ok && (r.result as { ready?: boolean })?.ready) return;
       } catch {}
       await sleep(100);

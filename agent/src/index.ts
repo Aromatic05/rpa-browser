@@ -236,6 +236,8 @@ registerControlShutdown(controlServer, log);
     if (workspaceRegistry.listWorkspaces().length === 0) {
         const created = workspaceRegistry.createWorkspace('default', ensureWorkflowOnFs('default'));
         assert.ok(created.name, 'bootstrap workspaceName missing');
+        workspaceRegistry.setActiveWorkspace(created.name);
+        await created.browserSession.start();
         log('workspace.bootstrap.created', { workspaceName: created.name });
     }
     log(`Control RPC listening on ${controlServer.endpoint}`);

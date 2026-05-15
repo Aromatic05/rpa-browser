@@ -11,7 +11,7 @@ import { send } from '../shared/send.js';
 import { createWsClient } from '../actions/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 import { createActionBus } from '../background/action_bus.js';
-import { readSessionConfig } from '../background/session_config.js';
+import { readSessionConfig, SESSION_CONFIG_KEYS } from '../background/session_config.js';
 
 const log = createLogger('sw');
 const REFRESH_DEBOUNCE_MS = 120;
@@ -53,13 +53,16 @@ const scheduleRefresh = () => {
 };
 
 const actionBus = createActionBus();
+let initialized = false;
 
-void (async () => {
+const initRuntime = async () => {
+    if (initialized) {return;}
     const sessionConfig = await readSessionConfig();
     if (!sessionConfig) {
         log.warning('session config missing; websocket connection skipped');
         return;
     }
+    initialized = true;
 
     const wsClient = createWsClient({
         wsPort: sessionConfig.wsPort,
@@ -116,4 +119,12 @@ void (async () => {
 
     chrome.runtime.onStartup.addListener(() => { router.onStartup(); });
     chrome.runtime.onInstalled.addListener(() => { router.onInstalled(); });
-})();
+};
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') {return;}
+    if (!Object.keys(changes).some((key) => SESSION_CONFIG_KEYS.has(key))) {return;}
+    void initRuntime();
+});
+
+void initRuntime();

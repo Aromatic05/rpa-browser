@@ -2,6 +2,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const getDefaultControlEndpoint = (): string => {
+    const configured = process.env.RPA_CONTROL_ENDPOINT;
+    if (typeof configured === 'string' && configured.trim().length > 0) {
+        return configured;
+    }
+
     if (process.platform === 'win32') {
         return '\\\\.\\pipe\\rpa-browser-agent';
     }

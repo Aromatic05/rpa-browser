@@ -1,5 +1,8 @@
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
+const TAB_NAME_KEY = '__rpa_tab_name';
+const TAB_NAME_CONFIRMED_KEY = '__rpa_tab_name_confirmed';
+const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
 const MSG_ENSURE_BOUND_TOKEN = 'RPA_ENSURE_BOUND_TOKEN';
 
 const wsStatusEl = document.getElementById('wsStatus');
@@ -13,6 +16,7 @@ const log = (...args: unknown[]) => { console.warn('[RPA:start]', ...args); };
 declare global {
     interface Window {
         __rpa_tab_token?: string;
+        __rpa_tab_name?: string;
         __TAB_TOKEN__?: string;
     }
 }
@@ -133,9 +137,12 @@ const setStatus = (text: string, ok = false) => {
 
 const applyTabName = (tabName: string) => {
     sessionStorage.setItem(TAB_TOKEN_KEY, tabName);
-    window.name = `${TAB_TOKEN_WIN_NAME_PREFIX}${tabName}`;
+    sessionStorage.setItem(TAB_NAME_KEY, tabName);
+    sessionStorage.setItem(TAB_NAME_CONFIRMED_KEY, '1');
+    window.name = `${TAB_NAME_WIN_NAME_PREFIX}${tabName}`;
     window.__rpa_tab_token = tabName;
     window.__TAB_TOKEN__ = tabName;
+    window.__rpa_tab_name = tabName;
 };
 
 const ensureBoundToken = async (): Promise<BoundScope> => {

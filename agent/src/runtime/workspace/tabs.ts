@@ -264,10 +264,16 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 const chromeTabNo = typeof payload.chromeTabNo === 'number' ? payload.chromeTabNo : null;
                 const windowId = typeof payload.windowId === 'number' ? payload.windowId : null;
                 const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const urlHint = typeof payload.urlHint === 'string' ? payload.urlHint : undefined;
                 const openedAt = typeof payload.openedAt === 'number' ? payload.openedAt : undefined;
 
-                // Reply IS tab.bind — Agent allocates tabName and sends bind command to Extension
                 const tabName = crypto.randomUUID();
+                workspace.browserSession.pageRegistry.createPendingBindingClaim({
+                    bindingName: tabName,
+                    source,
+                    url: urlHint,
+                    createdAt: openedAt,
+                });
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, chromeTabNo, windowId, source, openedAt }, 'tab.bind'), events: [] };
             }
 
@@ -309,6 +315,7 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                 } else {
                     workspace.tabs.updateTab(tabName, { updatedAt: boundAt });
                 }
+                await workspace.browserSession.pageRegistry.claimPendingBinding(tabName);
                 return { reply: replyAction(action, { workspaceName: workspace.name, tabName, chromeTabNo, windowId, reportedAt: boundAt }), events: [] };
             }
 

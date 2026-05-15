@@ -4,6 +4,7 @@ export type ExtensionSessionConfig = {
 };
 
 const STORAGE_KEYS = ['rpaWorkspaceName', 'rpaWsPort'] as const;
+export const SESSION_CONFIG_KEYS = new Set<string>(STORAGE_KEYS);
 
 const readStorage = async (): Promise<Record<string, unknown>> =>
     await chrome.storage.local.get([...STORAGE_KEYS]);

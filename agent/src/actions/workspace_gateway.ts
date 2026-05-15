@@ -33,6 +33,7 @@ export const routeWorkspaceAction = async (deps: GatewayDeps, action: Action): P
         // Outbound commands: forward to Extension, no Agent state change
         if (action.type === 'tab.open') {
             const workspace = resolveWorkspace(deps, workspaceName);
+            await workspace.browserSession.start();
             const createId = crypto.randomUUID();
             const payload = isRecord(action.payload) ? action.payload : {};
             workspace.browserSession.emit({ ...action, payload: { ...payload, createId } });

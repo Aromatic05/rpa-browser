@@ -156,6 +156,40 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         }
     };
 
+    const isBoundPage = (candidate: Page) => {
+        for (const [bindingName, page] of bindingToPage.entries()) {
+            if (page.isClosed()) {
+                bindingToPage.delete(bindingName);
+                bindingUpdatedAt.delete(bindingName);
+                continue;
+            }
+            if (page === candidate) {return true;}
+        }
+        return false;
+    };
+
+    const isLikelyClaimPage = (page: Page, claim: PendingBindingClaim) => {
+        const claimUrl = claim.url?.trim();
+        if (!claimUrl) {return false;}
+        const pageUrl = page.url();
+        if (pageUrl === claimUrl) {return true;}
+        if (pageUrl.startsWith(claimUrl) || claimUrl.startsWith(pageUrl)) {return true;}
+        if (claimUrl.startsWith('chrome://newtab')) {
+            return pageUrl.startsWith('chrome://newtab') || pageUrl.startsWith('chrome-extension://');
+        }
+        return false;
+    };
+
+    const claimPageFromContext = async (claim: PendingBindingClaim) => {
+        const context = await options.getContext();
+        const candidates = context.pages().filter((page) => !page.isClosed() && !isBoundPage(page));
+        const matched = candidates.find((page) => isLikelyClaimPage(page, claim));
+        const page = matched || (candidates.length === 1 ? candidates[0] : null);
+        if (!page) {return false;}
+        await bindPage(page, claim.bindingName);
+        return resolveKnownPage(claim.bindingName) === page;
+    };
+
     const awaitPageBinding = async (bindingName: string, awaitOptions: AwaitPageBindingOptions) => {
         if (!bindingName) {throw new Error('missing bindingName');}
         const existing = resolveKnownPage(bindingName);
@@ -279,12 +313,13 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             });
         },
         claimPendingBinding: async (bindingName: string) => {
-            if (!pendingClaims.has(bindingName)) {return false;}
+            const claim = pendingClaims.get(bindingName);
+            if (!claim) {return false;}
             if (!bindingToPage.get(bindingName)) {
                 await scanContextPages();
             }
             const page = bindingToPage.get(bindingName);
-            if (!page || page.isClosed()) {return false;}
+            if ((!page || page.isClosed()) && !await claimPageFromContext(claim)) {return false;}
             pendingClaims.delete(bindingName);
             return true;
         },
