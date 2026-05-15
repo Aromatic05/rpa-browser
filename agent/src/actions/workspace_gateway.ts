@@ -32,13 +32,17 @@ export const routeWorkspaceAction = async (deps: GatewayDeps, action: Action): P
 
         // Outbound commands: forward to Extension, no Agent state change
         if (action.type === 'tab.open') {
-            deps.emit?.(action);
-            return replyAction(action, { workspaceName, createId: crypto.randomUUID(), source: 'tab.open' });
+            const workspace = resolveWorkspace(deps, workspaceName);
+            const createId = crypto.randomUUID();
+            const payload = isRecord(action.payload) ? action.payload : {};
+            workspace.browserSession.emit({ ...action, payload: { ...payload, createId } });
+            return replyAction(action, { workspaceName, createId, source: 'tab.open' });
         }
         if (action.type === 'tab.close') {
+            const workspace = resolveWorkspace(deps, workspaceName);
             const payload = isRecord(action.payload) ? action.payload : {};
             const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
-            deps.emit?.(action);
+            workspace.browserSession.emit(action);
             return replyAction(action, { workspaceName, tabName, source: 'tab.close' });
         }
 
