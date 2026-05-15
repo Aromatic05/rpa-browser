@@ -22,10 +22,14 @@ const __dirname = path.dirname(__filename);
 export type ContextManagerOptions = {
     extensionPaths: string[];
     userDataDir: string;
+    startUrl?: string;
     onPage?: (page: Page) => void;
 };
 
-type ContextProvider = () => Promise<BrowserContext>;
+type ContextProvider = {
+    getContext: () => Promise<BrowserContext>;
+    close: () => Promise<void>;
+};
 
 const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void, onPageClosed?: (page: Page) => void) => {
     if (onPage) {
@@ -53,7 +57,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
     let cdpStderr: (() => string) | undefined;
     let cdpPid: number | undefined;
     let cdpSelfLaunched = false;
-    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
+    const startUrl = options.startUrl || process.env.RPA_START_URL || 'chrome://newtab/';
     const pageLifecycle: Array<{ ts: number; event: string; url: string }> = [];
 
     const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
@@ -89,7 +93,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
         }
     };
 
-    return async () => {
+    const getContext = async () => {
         if (contextRef) {return contextRef;}
         if (contextPromise) {return await contextPromise;}
 
@@ -171,6 +175,24 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             });
         return await contextPromise;
     };
+
+    const close = async () => {
+        const context = contextRef;
+        contextRef = undefined;
+        contextPromise = undefined;
+        if (context) {
+            await context.close().catch(() => undefined);
+        }
+        if (cdpLocalStop) {
+            await cdpLocalStop().catch(() => undefined);
+        }
+        cdpLocalStop = undefined;
+        cdpStderr = undefined;
+        cdpPid = undefined;
+        cdpSelfLaunched = false;
+    };
+
+    return { getContext, close };
 };
 
 const createExtensionContextProvider = (options: ContextManagerOptions): ContextProvider => {
@@ -178,7 +200,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
     const infraLog = getLogger('infra');
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
-    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
+    const startUrl = options.startUrl || process.env.RPA_START_URL || 'chrome://newtab/';
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
     const pageLifecycle: Array<{ ts: number; event: string; url: string }> = [];
     let browserDisconnected = false;
@@ -211,7 +233,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
         }
     };
 
-    return async () => {
+    const getContext = async () => {
         if (contextRef) {return contextRef;}
         if (contextPromise) {return await contextPromise;}
 
@@ -276,6 +298,17 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
             });
         return await contextPromise;
     };
+
+    const close = async () => {
+        const context = contextRef;
+        contextRef = undefined;
+        contextPromise = undefined;
+        if (context) {
+            await context.close().catch(() => undefined);
+        }
+    };
+
+    return { getContext, close };
 };
 
 /**
@@ -283,10 +316,10 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
  */
 export const createContextManager = (options: ContextManagerOptions) => {
     const browserMode = (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
-    const getContext =
+    const provider =
         browserMode === 'cdp' ? createCdpContextProvider(options) : createExtensionContextProvider(options);
 
-    return { getContext };
+    return provider;
 };
 
 /**
@@ -298,6 +331,6 @@ export const resolvePaths = () => {
         path.resolve(__dirname, '../../../../extension/dist'),
         path.resolve(__dirname, '../../../../start_extension/dist'),
     ];
-    const userDataDir = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
-    return { extensionPaths, userDataDir };
+    const userDataRoot = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
+    return { extensionPaths, userDataRoot };
 };

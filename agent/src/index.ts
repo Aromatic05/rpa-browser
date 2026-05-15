@@ -1,9 +1,7 @@
-import crypto from 'node:crypto';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
-import { createContextManager, resolvePaths } from './runtime/browser/context_manager';
-import { createPageRegistry } from './runtime/browser/page_registry';
+import { resolvePaths } from './runtime/browser/context_manager';
 import { createWorkspaceRegistry } from './runtime/workspace/registry';
 import { createExecutionBindings } from './runtime/execution/bindings';
 import {
@@ -22,9 +20,7 @@ import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
-import { ACTION_TYPES } from './actions/action_types';
 import { createActionDispatcher } from './actions/dispatcher';
-import { startActionWsClient } from './actions/ws_client';
 import { createControlServer, registerControlShutdown } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 import { createRuntimeLifecycle } from './runtime/browser/lifecycle';
@@ -33,7 +29,6 @@ import { createPortAllocator } from './runtime/service/ports';
 import type { RunStepsDeps } from './runner/run_steps_types';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
-const WS_PORT = Number(process.env.RPA_WS_PORT || 17333);
 const TAB_PING_TIMEOUT_MS = 45000;
 const TAB_PING_WATCHDOG_INTERVAL_MS = 5000;
 const REPLAY_OPTIONS = {
@@ -52,10 +47,19 @@ const wsTap = (stage: string, data: Record<string, unknown>) => {
     if (!WS_TAP_ENABLED) {return;}
     actionLog.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });
 };
-let broadcast: (action: Action) => void = () => undefined;
 let workspaceRegistry: ReturnType<typeof createWorkspaceRegistry>;
 let dispatchActionForTrace: (action: Action) => Promise<Action> = async () => {
     throw new Error('dispatchAction not initialized');
+};
+
+const emitAction = (action: Action) => {
+    if (action.workspaceName) {
+        workspaceRegistry.getWorkspace(action.workspaceName)?.browserSession.emit(action);
+        return;
+    }
+    for (const workspace of workspaceRegistry.listWorkspaces()) {
+        workspace.browserSession.emit(action);
+    }
 };
 
 const paths = resolvePaths();
@@ -63,14 +67,6 @@ const recordingState = createRecordingState();
 
 let onPageBoundHook: (page: Page, bindingName: string) => void = () => undefined;
 let onBindingClosedHook: (bindingName: string) => void = () => undefined;
-
-const contextManager = createContextManager({
-    extensionPaths: paths.extensionPaths,
-    userDataDir: paths.userDataDir,
-    onPage: (page) => {
-        void pageRegistry.bindPage(page);
-    },
-});
 
 const config = getRunnerConfig();
 initLogger(config);
@@ -97,15 +93,7 @@ if (process.env.NODE_ENV !== 'production') {
     runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
 }
 
-const pageRegistry = createPageRegistry({
-    tabNameKey: TAB_NAME_KEY,
-    getContext: contextManager.getContext,
-    onPageBound: (page, bindingName) => onPageBoundHook(page, bindingName),
-    onBindingClosed: (bindingName) => onBindingClosedHook(bindingName),
-});
-
 const runtimeRegistry = createExecutionBindings({
-    pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,
@@ -124,7 +112,6 @@ const runStepsDeps: RunStepsDeps = {
     dispatchAction: async () => {
         throw new Error('dispatchAction not initialized');
     },
-    pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
@@ -132,15 +119,26 @@ const runStepsDeps: RunStepsDeps = {
 setRunStepsDeps(runStepsDeps);
 
 workspaceRegistry = createWorkspaceRegistry({
-    pageRegistry,
+    tabNameKey: TAB_NAME_KEY,
+    extensionPaths: paths.extensionPaths,
+    userDataRoot: paths.userDataRoot,
     runtime: runtimeRegistry,
     recordingState,
     replayOptions: REPLAY_OPTIONS,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-    emit: (action) => broadcast(action),
+    emit: (action) => emitAction(action),
     runStepsDeps,
     runnerConfig: config,
     portAllocator: createPortAllocator(),
+    dispatchAction: async (action) => await handleAction(action),
+    onPageBound: (page, bindingName) => onPageBoundHook(page, bindingName),
+    onBindingClosed: (bindingName) => onBindingClosedHook(bindingName),
+    onWsError: (error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logError('action.dispatch.failed', { message });
+    },
+    onWsListening: (workspaceName, url) => { log('workspace WS listening', { workspaceName, url }); },
+    wsTap,
 });
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
@@ -157,7 +155,7 @@ const lifecycle = createRuntimeLifecycle({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
     pingTimeoutMs: TAB_PING_TIMEOUT_MS,
     pingWatchdogIntervalMs: TAB_PING_WATCHDOG_INTERVAL_MS,
-    emit: (action) => broadcast(action),
+    emit: (action) => emitAction(action),
     ensureWorkflow: ensureWorkflowOnFs,
     ensureRecorder,
     setRecorderRuntimeEnabled,
@@ -167,12 +165,12 @@ const lifecycle = createRuntimeLifecycle({
 });
 onPageBoundHook = lifecycle.onPageBound;
 onBindingClosedHook = lifecycle.onBindingClosed;
-lifecycle.startWatchdog(pageRegistry);
+lifecycle.startWatchdog();
 
 installRecorderEventSink({
     recordingState,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-    emit: (action) => broadcast(action),
+    emit: (action) => emitAction(action),
     findWorkspaceNameByTabName: lifecycle.findWorkspaceNameByTabName,
     wsTap,
 });
@@ -181,7 +179,7 @@ const runnerScope = createRunnerScopeRegistry(2);
 const actionDispatcher = createActionDispatcher({
     workspaceRegistry,
     log: actionLogger,
-    emit: (action) => broadcast(action),
+    emit: (action) => emitAction(action),
 });
 dispatchActionForTrace = async (action) => await actionDispatcher.dispatch(action);
 runStepsDeps.dispatchAction = async (action) => await actionDispatcher.dispatch(action);
@@ -215,22 +213,6 @@ const handleAction = async (action: Action) => {
     }
 };
 
-const actionWsClient = startActionWsClient({
-    port: WS_PORT,
-    host: '127.0.0.1',
-    workspaceRegistry,
-    dispatchAction: async (action) => {
-        return await handleAction(action);
-    },
-    onError: (error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        logError('action.dispatch.failed', { message });
-    },
-    onListening: (url) => { log(`WS listening on ${url}`); },
-    wsTap,
-});
-broadcast = actionWsClient.broadcastAction;
-
 const controlServer = createControlServer({
     evalContext: {
         deps: runStepsDeps,
@@ -250,22 +232,14 @@ const controlServer = createControlServer({
 registerControlShutdown(controlServer, log);
 
 (async () => {
-    await contextManager.getContext();
     await controlServer.start();
     if (workspaceRegistry.listWorkspaces().length === 0) {
         const created = workspaceRegistry.createWorkspace('default', ensureWorkflowOnFs('default'));
         assert.ok(created.name, 'bootstrap workspaceName missing');
         log('workspace.bootstrap.created', { workspaceName: created.name });
     }
-    broadcast({
-        v: 1,
-        id: crypto.randomUUID(),
-        type: ACTION_TYPES.WORKSPACE_SYNC,
-        payload: { reason: 'bootstrap' },
-        at: Date.now(),
-    });
     log(`Control RPC listening on ${controlServer.endpoint}`);
-    log('Playwright Chromium launched with extension.');
+    log('Agent runtime initialized.');
 })().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     logError('Fatal startup error:', message);

@@ -1,4 +1,3 @@
-import type { Page } from 'playwright';
 import type { Workflow } from '../../workflow';
 import { createWorkspaceTabs, createTabsControl, type WorkspaceTabs } from './tabs';
 import { createRecordControl, type RecordControl } from '../../record/control';
@@ -19,12 +18,14 @@ import { createWorkspaceMcpService } from '../../mcp/service';
 import { getLogger } from '../../logging/logger';
 import type { PageRegistry } from '../browser/page_registry';
 import type { ExecutionBindings } from '../execution/bindings';
+import type { WorkspaceBrowserSession } from '../browser/browser_session';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing';
 
 export type RuntimeWorkspace = {
     name: string;
     workflow: Workflow;
+    browserSession: WorkspaceBrowserSession;
     tabs: WorkspaceTabs;
     record: RecordControl;
     dsl: DslControl;
@@ -41,13 +42,7 @@ export type RuntimeWorkspace = {
 export type CreateRuntimeWorkspaceDeps = {
     name: string;
     workflow: Workflow;
-    pageRegistry: {
-        awaitPageBinding: (bindingName: string, options: { timeoutMs: number }) => Promise<Page>;
-        createPageBinding: (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
-        touchBinding?: (bindingName: string) => void;
-        closePage?: (bindingName: string) => Promise<void>;
-        debugPageBindings?: (bindingName: string) => Promise<unknown>;
-    };
+    browserSession: WorkspaceBrowserSession;
     runtime: ExecutionBindings;
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
@@ -96,17 +91,18 @@ export const leaveWorkspaceState = (
 
 export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): RuntimeWorkspace => {
     const now = Date.now();
+    const pageRegistry = deps.browserSession.pageRegistry;
     const tabs = createWorkspaceTabs({
-        awaitPageBinding: (tabName, timeoutMs) => deps.pageRegistry.awaitPageBinding(tabName, { timeoutMs }),
-        createPageBinding: (tabName, input) => deps.pageRegistry.createPageBinding(tabName, input),
-        touchBinding: deps.pageRegistry.touchBinding,
+        awaitPageBinding: (tabName, timeoutMs) => pageRegistry.awaitPageBinding(tabName, { timeoutMs }),
+        createPageBinding: (tabName, input) => pageRegistry.createPageBinding(tabName, input),
+        touchBinding: pageRegistry.touchBinding,
     });
     const record = createRecordControl({
         recordingState: deps.recordingState,
         replayOptions: deps.replayOptions,
         navDedupeWindowMs: deps.navDedupeWindowMs,
         runtime: deps.runtime,
-        pageRegistry: deps.pageRegistry as PageRegistry,
+        pageRegistry: pageRegistry as PageRegistry,
         emit: deps.emit,
         log: getLogger('action'),
     });
@@ -140,6 +136,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     const workspace: RuntimeWorkspace = {
         name: deps.name,
         workflow: deps.workflow,
+        browserSession: deps.browserSession,
         tabs,
         record,
         dsl,

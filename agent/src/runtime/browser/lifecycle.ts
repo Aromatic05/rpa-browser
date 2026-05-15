@@ -4,7 +4,6 @@ import type { Action } from '../../actions/action_protocol';
 import { ACTION_TYPES } from '../../actions/action_types';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceRegistry } from '../workspace/registry';
-import type { PageRegistry } from './page_registry';
 import type { RecordingState } from '../../record/recording';
 import type { Workflow } from '../../workflow';
 
@@ -32,7 +31,7 @@ export type RuntimeLifecycleDeps = {
 export type RuntimeLifecycle = {
     onPageBound: (page: Page, bindingName: string) => void;
     onBindingClosed: (bindingName: string) => void;
-    startWatchdog: (pageRegistry: PageRegistry) => void;
+    startWatchdog: () => void;
     stopWatchdog: () => void;
     findWorkspaceNameByTabName: (tabName: string) => string | null;
 };
@@ -82,7 +81,7 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
             workspace.tabs.bindPage(bindingName, page);
             workspace.tabs.setActiveTab(bindingName);
         }
-        deps.runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page });
+        deps.runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page, pageRegistry: workspace.browserSession.pageRegistry });
 
         if (deps.isWorkspaceRecordingEnabled(deps.recordingState, workspaceName)) {
             deps.attachTabToRecordingManifest(deps.recordingState, workspaceName, bindingName, {
@@ -108,20 +107,22 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
         deps.cleanupRecording(deps.recordingState, bindingName);
     };
 
-    const startWatchdog = (pageRegistry: PageRegistry) => {
+    const startWatchdog = () => {
         if (watchdogTimer) {return;}
         watchdogTimer = setInterval(() => {
-            const staleTabs = pageRegistry.listStaleBindings(deps.pingTimeoutMs, Date.now());
-            for (const stale of staleTabs) {
-                if (staleNotifiedTabs.has(stale.bindingName)) {continue;}
-                staleNotifiedTabs.add(stale.bindingName);
-                const workspaceName = findWorkspaceNameByTabName(stale.bindingName);
-                emitWorkspaceSync('ping-timeout', {
-                    workspaceName,
-                    tabName: stale.bindingName,
-                    lastSeenAt: stale.lastSeenAt,
-                });
-                void pageRegistry.closePage(stale.bindingName);
+            for (const workspace of deps.workspaceRegistry.listWorkspaces()) {
+                const pageRegistry = workspace.browserSession.pageRegistry;
+                const staleTabs = pageRegistry.listStaleBindings(deps.pingTimeoutMs, Date.now());
+                for (const stale of staleTabs) {
+                    if (staleNotifiedTabs.has(stale.bindingName)) {continue;}
+                    staleNotifiedTabs.add(stale.bindingName);
+                    emitWorkspaceSync('ping-timeout', {
+                        workspaceName: workspace.name,
+                        tabName: stale.bindingName,
+                        lastSeenAt: stale.lastSeenAt,
+                    });
+                    void pageRegistry.closePage(stale.bindingName);
+                }
             }
         }, deps.pingWatchdogIntervalMs);
     };

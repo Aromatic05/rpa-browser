@@ -7,6 +7,7 @@ import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
 import type { ExecutionBindings } from '../execution/bindings';
+import { createWorkspaceBrowserSession, type CreateWorkspaceBrowserSessionOptions } from '../browser/browser_session';
 
 export type { RuntimeWorkspace };
 
@@ -22,13 +23,9 @@ export type WorkspaceRegistry = {
 };
 
 export type WorkspaceRuntimeDeps = {
-    pageRegistry: {
-        awaitPageBinding: (bindingName: string, options: { timeoutMs: number }) => Promise<import('playwright').Page>;
-        createPageBinding: (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<import('playwright').Page>;
-        touchBinding?: (bindingName: string) => void;
-        closePage?: (bindingName: string) => Promise<void>;
-        debugPageBindings?: (bindingName: string) => Promise<unknown>;
-    };
+    tabNameKey: string;
+    extensionPaths: string[];
+    userDataRoot: string;
     runtime: ExecutionBindings;
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
@@ -37,11 +34,18 @@ export type WorkspaceRuntimeDeps = {
     runStepsDeps: RunStepsDeps;
     runnerConfig: RunnerConfig;
     portAllocator: PortAllocator;
+    dispatchAction: CreateWorkspaceBrowserSessionOptions['dispatchAction'];
+    onPageBound?: CreateWorkspaceBrowserSessionOptions['onPageBound'];
+    onBindingClosed?: CreateWorkspaceBrowserSessionOptions['onBindingClosed'];
+    onWsError?: CreateWorkspaceBrowserSessionOptions['onError'];
+    onWsListening?: CreateWorkspaceBrowserSessionOptions['onListening'];
+    wsTap?: CreateWorkspaceBrowserSessionOptions['wsTap'];
 };
 
 export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {
     const workspaces = new Map<string, RuntimeWorkspace>();
     let activeWorkspaceName: string | null = null;
+    let registry: WorkspaceRegistry;
 
     const createWorkspace = (workspaceName: string, workflow: Workflow) => {
         if (workflow.name !== workspaceName) {
@@ -50,10 +54,24 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
         if (workspaces.has(workspaceName)) {
             return workspaces.get(workspaceName)!;
         }
+        const browserSession = createWorkspaceBrowserSession({
+            workspaceName,
+            tabNameKey: runtimeDeps.tabNameKey,
+            extensionPaths: runtimeDeps.extensionPaths,
+            userDataRoot: runtimeDeps.userDataRoot,
+            workspaceRegistry: registry,
+            portAllocator: runtimeDeps.portAllocator,
+            dispatchAction: runtimeDeps.dispatchAction,
+            onPageBound: runtimeDeps.onPageBound,
+            onBindingClosed: runtimeDeps.onBindingClosed,
+            onError: runtimeDeps.onWsError,
+            onListening: runtimeDeps.onWsListening,
+            wsTap: runtimeDeps.wsTap,
+        });
         const workspace = createRuntimeWorkspace({
             name: workspaceName,
             workflow,
-            pageRegistry: runtimeDeps.pageRegistry,
+            browserSession,
             runtime: runtimeDeps.runtime,
             recordingState: runtimeDeps.recordingState,
             replayOptions: runtimeDeps.replayOptions,
@@ -95,7 +113,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
         return renamed;
     };
 
-    return {
+    registry = {
         createWorkspace,
         hasWorkspace: (workspaceName) => workspaces.has(workspaceName),
         getWorkspace: (workspaceName) => workspaces.get(workspaceName) || null,
@@ -117,4 +135,5 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
         },
         getActiveWorkspace: () => (activeWorkspaceName ? workspaces.get(activeWorkspaceName) || null : null),
     };
+    return registry;
 };

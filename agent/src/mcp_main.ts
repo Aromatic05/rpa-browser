@@ -1,7 +1,6 @@
 import path from 'node:path';
 import type { Page } from 'playwright';
-import { createContextManager, resolvePaths } from './runtime/browser/context_manager';
-import { createPageRegistry } from './runtime/browser/page_registry';
+import { resolvePaths } from './runtime/browser/context_manager';
 import { createWorkspaceRegistry } from './runtime/workspace/registry';
 import { createExecutionBindings } from './runtime/execution/bindings';
 import { createRecordingState, cleanupRecording, ensureRecorder, isWorkspaceRecordingEnabled } from './record/recording';
@@ -37,14 +36,6 @@ const recordingState = createRecordingState();
 let onPageBoundHook: (page: Page, tabName: string) => void = () => undefined;
 let onBindingClosedHook: (tabName: string) => void = () => undefined;
 
-const contextManager = createContextManager({
-    extensionPaths: paths.extensionPaths,
-    userDataDir: paths.userDataDir,
-    onPage: (page) => {
-        void pageRegistry.bindPage(page);
-    },
-});
-
 const config = getRunnerConfig();
 initLogger(config);
 const traceSinks = config.observability.traceFileEnabled
@@ -53,15 +44,7 @@ const traceSinks = config.observability.traceFileEnabled
 const runnerPluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
 await runnerPluginHost.load();
 
-const pageRegistry = createPageRegistry({
-    tabNameKey: TAB_NAME_KEY,
-    getContext: contextManager.getContext,
-    onPageBound: (page, tabName) => onPageBoundHook(page, tabName),
-    onBindingClosed: (tabName) => onBindingClosedHook(tabName),
-});
-
 const runtimeRegistry = createExecutionBindings({
-    pageRegistry,
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
@@ -81,7 +64,6 @@ const runStepsDeps: RunStepsDeps = {
     dispatchAction: async () => {
         throw new Error('dispatchAction not initialized');
     },
-    pageRegistry,
     stepSinks: [createConsoleStepSink('[step]')],
     config,
     pluginHost: runnerPluginHost,
@@ -91,7 +73,9 @@ setRunStepsDeps(runStepsDeps);
 const portAllocator = createPortAllocator();
 
 const workspaceRegistry = createWorkspaceRegistry({
-    pageRegistry,
+    tabNameKey: TAB_NAME_KEY,
+    extensionPaths: paths.extensionPaths,
+    userDataRoot: paths.userDataRoot,
     runtime: runtimeRegistry,
     recordingState,
     replayOptions: REPLAY_OPTIONS,
@@ -99,6 +83,11 @@ const workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
     portAllocator,
+    dispatchAction: async (action) => await controlActionDispatcher.dispatch(action),
+    onPageBound: (page, tabName) => onPageBoundHook(page, tabName),
+    onBindingClosed: (tabName) => onBindingClosedHook(tabName),
+    onWsError: (error) => logError('action.dispatch.failed', error instanceof Error ? error.message : String(error)),
+    onWsListening: (workspaceName, url) => logNotice('workspace WS listening', { workspaceName, url }),
 });
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
@@ -129,7 +118,7 @@ onPageBoundHook = (page, tabName) => {
         workspace.tabs.bindPage(tabName, page);
     }
     workspace.tabs.setActiveTab(tabName);
-    runtimeRegistry.bindPage({ workspaceName, tabName, page });
+    runtimeRegistry.bindPage({ workspaceName, tabName, page, pageRegistry: workspace.browserSession.pageRegistry });
 };
 onBindingClosedHook = (tabName) => { cleanupRecording(recordingState, tabName); };
 
@@ -158,12 +147,12 @@ registerControlShutdown(controlServer, logNotice);
 
 void (async () => {
     try {
-        await contextManager.getContext();
         await controlServer.start();
         logNotice(`Control RPC listening on ${controlServer.endpoint}`);
-        logNotice('Playwright Chromium launched with extension.');
 
         const workspace = workspaceRegistry.createWorkspace('default', ensureWorkflowOnFs('default'));
+        await workspace.browserSession.start();
+        logNotice('Playwright Chromium launched with extension.');
         const mcpResult = await workspace.mcp.start();
         logNotice('Workspace MCP server started', {
             workspaceName: mcpResult.workspaceName,
