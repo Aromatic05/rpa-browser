@@ -13,6 +13,7 @@ export type WsClient = {
 
 export type WsClientOptions = {
     onAction: (action: Action) => void;
+    wsPort: number;
     logger?: Logger;
 };
 
@@ -57,7 +58,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         if (wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
             return wsReady ?? Promise.resolve();
         }
-        wsRef = new WebSocket('ws://127.0.0.1:17333');
+        wsRef = new WebSocket(`ws://127.0.0.1:${String(options.wsPort)}`);
         wsReady = new Promise((resolve, reject) => {
             let settled = false;
             const settleResolve = () => {

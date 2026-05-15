@@ -11,6 +11,7 @@ import { send } from '../shared/send.js';
 import { createWsClient } from '../actions/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 import { createActionBus } from '../background/action_bus.js';
+import { readSessionConfig } from '../background/session_config.js';
 
 const log = createLogger('sw');
 const REFRESH_DEBOUNCE_MS = 120;
@@ -53,56 +54,66 @@ const scheduleRefresh = () => {
 
 const actionBus = createActionBus();
 
-const wsClient = createWsClient({
-    onAction: (action) => {
-        router.handleInboundAction(action);
-        actionBus.publish(action);
-    },
-    logger: log,
-});
+void (async () => {
+    const sessionConfig = await readSessionConfig();
+    if (!sessionConfig) {
+        log.warning('session config missing; websocket connection skipped');
+        return;
+    }
 
-const logForwarder = createBufferedLogForwarder(
-    (entries: LogEntry[]) => {
-        wsClient.sendFireAndForget({
-            v: 1,
-            id: crypto.randomUUID(),
-            type: 'log.ext',
-            payload: { entries },
-            at: Date.now(),
-        });
-    },
-    { maxBatchSize: 24, flushIntervalMs: 2000 },
-);
-setLogForwarder(logForwarder.forwarder);
+    const wsClient = createWsClient({
+        wsPort: sessionConfig.wsPort,
+        onAction: (action) => {
+            router.handleInboundAction(action);
+            actionBus.publish(action);
+        },
+        logger: log,
+    });
 
-const router = createCmdRouter({
-    wsClient,
-    onRefresh: scheduleRefresh,
-    logger: log,
-});
+    const logForwarder = createBufferedLogForwarder(
+        (entries: LogEntry[]) => {
+            wsClient.sendFireAndForget({
+                v: 1,
+                id: crypto.randomUUID(),
+                type: 'log.ext',
+                payload: { entries },
+                at: Date.now(),
+            });
+        },
+        { maxBatchSize: 24, flushIntervalMs: 2000 },
+    );
+    setLogForwarder(logForwarder.forwarder);
 
-actionBus.subscribe(
-    ['**'],
-    async (action) => {
-        const targetTabName = router.resolveActionTargetTabName(action);
-        if (targetTabName === null) {return;}
-        await send.toTabTransport(targetTabName, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
-    },
-);
+    const router = createCmdRouter({
+        wsClient,
+        sessionWorkspaceName: sessionConfig.workspaceName,
+        onRefresh: scheduleRefresh,
+        logger: log,
+    });
 
-void router.bootstrapState();
+    actionBus.subscribe(
+        ['**'],
+        async (action) => {
+            const targetTabName = router.resolveActionTargetTabName(action);
+            if (targetTabName === null) {return;}
+            await send.toTabTransport(targetTabName, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
+        },
+    );
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) =>
-    router.handleMessage(message, sender, sendResponse),
-);
+    void router.bootstrapState();
 
-chrome.tabs.onActivated.addListener((info) => { router.onActivated(info); });
-chrome.tabs.onRemoved.addListener((tabName) => { router.onRemoved(tabName); });
-chrome.tabs.onUpdated.addListener((tabName, changeInfo, tab) => { router.onUpdated(tabName, changeInfo, tab); });
-chrome.tabs.onCreated.addListener((tab) => { router.onCreated(tab); });
-chrome.tabs.onAttached.addListener((tabName, info) => { router.onAttached(tabName, info); });
-chrome.windows.onFocusChanged.addListener((windowId) => { router.onFocusChanged(windowId); });
-chrome.windows.onRemoved.addListener((windowId) => { router.onWindowRemoved(windowId); });
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) =>
+        router.handleMessage(message, sender, sendResponse),
+    );
 
-chrome.runtime.onStartup.addListener(() => { router.onStartup(); });
-chrome.runtime.onInstalled.addListener(() => { router.onInstalled(); });
+    chrome.tabs.onActivated.addListener((info) => { router.onActivated(info); });
+    chrome.tabs.onRemoved.addListener((tabName) => { router.onRemoved(tabName); });
+    chrome.tabs.onUpdated.addListener((tabName, changeInfo, tab) => { router.onUpdated(tabName, changeInfo, tab); });
+    chrome.tabs.onCreated.addListener((tab) => { router.onCreated(tab); });
+    chrome.tabs.onAttached.addListener((tabName, info) => { router.onAttached(tabName, info); });
+    chrome.windows.onFocusChanged.addListener((windowId) => { router.onFocusChanged(windowId); });
+    chrome.windows.onRemoved.addListener((windowId) => { router.onWindowRemoved(windowId); });
+
+    chrome.runtime.onStartup.addListener(() => { router.onStartup(); });
+    chrome.runtime.onInstalled.addListener(() => { router.onInstalled(); });
+})();
