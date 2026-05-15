@@ -25,7 +25,7 @@ export const executeBrowserSwitchTab = async (
     const timeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
     const binding = await deps.runtime.awaitExecutableTab({
         workspace,
-        pageRegistry: deps.pageRegistry,
+        pageRegistry: workspace.browserSession.pageRegistry,
         tabName,
         timeoutMs,
     });

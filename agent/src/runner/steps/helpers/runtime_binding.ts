@@ -13,7 +13,7 @@ export const awaitPageBoundBinding = async (
     }
     await deps.runtime.awaitExecutableTab({
         workspace,
-        pageRegistry: deps.pageRegistry,
+        pageRegistry: workspace.browserSession.pageRegistry,
         tabName: resolvedTabName,
         timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
     });

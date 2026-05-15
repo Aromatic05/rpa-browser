@@ -11,13 +11,14 @@ import type { PageRegistry } from '../browser/page_registry';
 export type ExecutionBinding = {
     workspaceName: string;
     tabName: string;
+    pageRegistry: PageRegistry;
     page: Page;
     traceTools: BrowserAutomationTools;
     traceCtx: TraceContext;
 };
 
 export type ExecutionBindings = {
-    bindPage: (input: { workspaceName: string; tabName: string; page: Page }) => ExecutionBinding;
+    bindPage: (input: { workspaceName: string; tabName: string; page: Page; pageRegistry?: PageRegistry }) => ExecutionBinding;
     awaitExecutableTab: (input: {
         workspace: RuntimeWorkspace;
         pageRegistry: PageRegistry;
@@ -35,7 +36,7 @@ export type ExecutionBindings = {
 };
 
 type ExecutionBindingsOptions = {
-    pageRegistry: PageRegistry;
+    pageRegistry?: PageRegistry;
     traceHooks?: TraceHooks;
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
@@ -60,7 +61,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
                 const { tools, ctx } = plugin.createTraceTools({
                     page: binding.page,
                     context: binding.page.context(),
-                    pageRegistry: options.pageRegistry,
+                    pageRegistry: binding.pageRegistry,
                     workspaceName: binding.workspaceName,
                     dispatchAction: options.dispatchAction,
                     sinks: options.traceSinks,
@@ -73,18 +74,18 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         });
     }
 
-    const createBinding = (workspaceName: string, tabName: string, page: Page): ExecutionBinding => {
+    const createBinding = (workspaceName: string, tabName: string, page: Page, pageRegistry: PageRegistry): ExecutionBinding => {
         const { tools, ctx } = resolveCreateTraceTools()({
             page,
             context: page.context(),
-            pageRegistry: options.pageRegistry,
+            pageRegistry,
             workspaceName: workspaceName,
             dispatchAction: options.dispatchAction,
             sinks: options.traceSinks,
             hooks: options.traceHooks,
             tags: { workspaceName, tabName } as any,
         });
-        const binding: ExecutionBinding = { workspaceName, tabName, page, traceTools: tools, traceCtx: ctx };
+        const binding: ExecutionBinding = { workspaceName, tabName, pageRegistry, page, traceTools: tools, traceCtx: ctx };
         const key = keyOf(workspaceName, tabName);
         bindings.set(key, binding);
         const tabs = workspaceTabs.get(workspaceName) || new Set<string>();
@@ -105,13 +106,17 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         return binding;
     };
 
-    const bindPage = (input: { workspaceName: string; tabName: string; page: Page }): ExecutionBinding => {
+    const bindPage = (input: { workspaceName: string; tabName: string; page: Page; pageRegistry?: PageRegistry }): ExecutionBinding => {
         const existing = bindings.get(keyOf(input.workspaceName, input.tabName));
         if (existing?.page === input.page) {
             activeTabs.set(input.workspaceName, input.tabName);
             return existing;
         }
-        return createBinding(input.workspaceName, input.tabName, input.page);
+        const pageRegistry = input.pageRegistry ?? options.pageRegistry;
+        if (!pageRegistry) {
+            throw new Error(`pageRegistry is required to bind page: ${input.workspaceName}/${input.tabName}`);
+        }
+        return createBinding(input.workspaceName, input.tabName, input.page, pageRegistry);
     };
 
     const buildTimeoutError = async (input: {
@@ -154,7 +159,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
                 input.workspace.tabs.bindPage(input.tabName, page);
                 input.workspace.tabs.updateTab(input.tabName, { url: page.url() });
             }
-            return bindPage({ workspaceName: input.workspace.name, tabName: input.tabName, page });
+            return createBinding(input.workspace.name, input.tabName, page, input.pageRegistry);
         } catch {
             throw await buildTimeoutError(input);
         }
@@ -167,7 +172,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         }
         input.workspace.tabs.bindPage(input.tabName, page);
         input.workspace.tabs.updateTab(input.tabName, { url: page.url() });
-        return bindPage({ workspaceName: input.workspace.name, tabName: input.tabName, page });
+        return createBinding(input.workspace.name, input.tabName, page, input.pageRegistry);
     };
 
     const resolveBinding = async (workspaceName: string, tabName?: string): Promise<ExecutionBinding> => {
