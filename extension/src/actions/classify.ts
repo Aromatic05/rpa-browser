@@ -35,6 +35,7 @@ export const classifyActionRoute = (action: Action): ActionRouteKind => {
     const isControlCommand = action.type === 'workspace.list'
         || action.type === 'workspace.create'
         || action.type === 'workspace.setActive'
+        || action.type === 'workspace.close'
         || action.type === 'workflow.list'
         || action.type === 'workflow.create'
         || action.type === 'workflow.open';

@@ -17,6 +17,11 @@ const toWorkspaceSummary = (workspace: any) => ({
     workspaceName: workspace.name,
     activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
     tabCount: workspace.tabs.listTabs().length,
+    browserSession: {
+        status: workspace.browserSession.status,
+        wsPort: workspace.browserSession.wsPort,
+        userDataDir: workspace.browserSession.userDataDir,
+    },
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
 });
@@ -55,6 +60,19 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             workspaceRegistry.setActiveWorkspace(targetName);
             return { reply: replyAction(action, { workspaceName: targetName }), events: [] };
         }
+        case 'workspace.close': {
+            const payload = (action.payload ?? {}) as { workspaceName?: string };
+            const targetName = (payload.workspaceName || '').trim();
+            if (!targetName) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required');
+            }
+            const target = workspaceRegistry.getWorkspace(targetName);
+            if (!target) {
+                throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workspace not found: ${targetName}`);
+            }
+            await target.browserSession.stop();
+            return { reply: replyAction(action, { workspaceName: targetName, closed: true }), events: [] };
+        }
         case 'workflow.list': {
             return {
                 reply: replyAction(action, { workflows: listWorkflowNames().map((workflowName) => ({ workflowName })) }),
@@ -86,6 +104,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after open');
             }
             workspaceRegistry.setActiveWorkspace(workspace.name);
+            await workspace.browserSession.start();
             if (workspace.tabs.listTabs().length === 0) {
                 const tabName = crypto.randomUUID();
                 workspace.tabs.createTab({ tabName });
