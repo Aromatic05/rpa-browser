@@ -49,6 +49,9 @@ export const routeWorkspaceAction = async (deps: GatewayDeps, action: Action): P
 
         const workspace = resolveWorkspace(deps, workspaceName);
         const result = await workspace.router.handle(action, workspace, deps.workspaceRegistry);
+        if (action.type === 'tab.setActive') {
+            workspace.browserSession.emit(action);
+        }
 
         for (const event of result.events) {
             deps.emit?.(event);

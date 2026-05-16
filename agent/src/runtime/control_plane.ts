@@ -58,6 +58,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workspace not found: ${targetName}`);
             }
             workspaceRegistry.setActiveWorkspace(targetName);
+            target.browserSession.emit(action);
             return { reply: replyAction(action, { workspaceName: targetName }), events: [] };
         }
         case 'workspace.close': {

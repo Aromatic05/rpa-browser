@@ -18,6 +18,14 @@ test('workspace runtime owns browser session boundaries', () => {
     assert.equal(indexSrc.includes('startActionWsClient'), false);
 });
 
+test('setActive actions are forwarded through workspace browser session', () => {
+    const workspaceGatewaySrc = read('src/actions/workspace_gateway.ts');
+    const controlPlaneSrc = read('src/runtime/control_plane.ts');
+
+    assert.match(workspaceGatewaySrc, /action\.type === 'tab\.setActive'[\s\S]*workspace\.browserSession\.emit\(action\)/);
+    assert.match(controlPlaneSrc, /case 'workspace\.setActive'[\s\S]*target\.browserSession\.emit\(action\)/);
+});
+
 test('extension session uses profile websocket config without bootstrap reset', () => {
     const wsClientSrc = read('../extension/src/actions/ws_client.ts');
     const cmdRouterSrc = read('../extension/src/background/cmd_router.ts');

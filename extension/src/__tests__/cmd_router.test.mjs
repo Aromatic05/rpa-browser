@@ -41,6 +41,7 @@ const withActionReplies = (handler) => ({
 const createChromeMock = () => ({
     windows: {
         WINDOW_ID_NONE: -1,
+        update: async () => ({ ok: true }),
         create: async ({ url, focused }) => ({
             id: 31,
             focused,
@@ -167,6 +168,73 @@ await log('window remove keeps router stable', async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     assert.equal(Array.isArray(sent), true);
+});
+
+await log('inbound tab.setActive activates mapped chrome tab and window', async () => {
+    const calls = [];
+    globalThis.chrome = createChromeMock();
+    chrome.tabs.update = async (tabId, updateInfo) => {
+        calls.push(['tabs.update', tabId, updateInfo]);
+        return { ok: true };
+    };
+    chrome.windows.update = async (windowId, updateInfo) => {
+        calls.push(['windows.update', windowId, updateInfo]);
+        return { ok: true };
+    };
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async () => ({ ok: true, data: {} })),
+        onRefresh: () => undefined,
+    });
+
+    router.handleInboundAction({
+        v: 1,
+        id: 'bind-active-tab',
+        type: ACTION_TYPES.TAB_BIND,
+        workspaceName: 'ws-bound',
+        payload: { tabName: 'tab-bound', chromeTabNo: 11, windowId: 7 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    router.handleInboundAction({
+        v: 1,
+        id: 'activate-tab',
+        type: ACTION_TYPES.TAB_SET_ACTIVE,
+        workspaceName: 'ws-bound',
+        payload: { tabName: 'tab-bound' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(calls, [
+        ['tabs.update', 11, { active: true }],
+        ['windows.update', 7, { focused: true }],
+    ]);
+});
+
+await log('inbound workspace.setActive focuses current workspace window', async () => {
+    const calls = [];
+    globalThis.chrome = createChromeMock();
+    chrome.windows.update = async (windowId, updateInfo) => {
+        calls.push(['windows.update', windowId, updateInfo]);
+        return { ok: true };
+    };
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async () => ({ ok: true, data: {} })),
+        onRefresh: () => undefined,
+    });
+
+    router.onActivated({ tabId: 11, windowId: 7 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    calls.length = 0;
+    router.handleInboundAction({
+        v: 1,
+        id: 'activate-workspace',
+        type: ACTION_TYPES.WORKSPACE_SET_ACTIVE,
+        payload: { workspaceName: 'ws-bound' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(calls.some((call) => call[0] === 'windows.update' && call[1] === 7 && call[2]?.focused === true), true);
 });
 
 await log('workspace.create returns workspace shell without opening window', async () => {

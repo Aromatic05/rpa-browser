@@ -76,8 +76,14 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (action.type === ACTION_TYPES.TAB_BIND) {
             void life.handleBindCommand(action);
         }
+        if (action.type === ACTION_TYPES.TAB_SET_ACTIVE) {
+            void handleTabSetActive(action);
+        }
         if (action.type === ACTION_TYPES.TAB_CLOSE) {
             void handleTabClose(action);
+        }
+        if (action.type === ACTION_TYPES.WORKSPACE_SET_ACTIVE) {
+            void life.activateWorkspaceWindow();
         }
     };
 
@@ -107,6 +113,13 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         const chromeTabNo = state.findChromeTabNoByBindingName(tabName);
         if (typeof chromeTabNo !== 'number') return;
         await chrome.tabs.remove(chromeTabNo);
+    };
+
+    const handleTabSetActive = async (action: Action) => {
+        const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+        if (!tabName) {return;}
+        await life.activateTabByName(tabName);
     };
 
     const bootstrapState = async () => {

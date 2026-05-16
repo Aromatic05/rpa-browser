@@ -218,6 +218,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             state.unsavedStepCount = Number(unsaved.stepCount || 0);
         }
         if (requestType === 'workspace.setActive' && !action.type.endsWith('.failed')) {
+            const workspaceName = typeof payload.workspaceName === 'string' ? payload.workspaceName : '';
+            if (workspaceName) {
+                state.activeWorkspaceName = workspaceName;
+                const activeWorkspace = state.workspaces.find((workspace) => workspace.workspaceName === workspaceName);
+                state.activeTabName = activeWorkspace?.activeTabName || '';
+            }
             void refreshTabs();
         }
         if (requestType === 'workflow.open' && !action.type.endsWith('.failed')) {
@@ -226,6 +232,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             void refreshRecordings();
         }
         if (requestType === 'tab.setActive' && !action.type.endsWith('.failed')) {
+            const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+            if (tabName) {
+                state.activeTabName = tabName;
+                state.tabs = state.tabs.map((tab) => ({ ...tab, active: tab.tabName === tabName }));
+            }
             void refreshTabs();
         }
         if (requestType === 'record.save' && !action.type.endsWith('.failed')) {
