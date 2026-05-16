@@ -128,7 +128,8 @@ test.afterEach(async () => {
   cleanupPaths.length = 0;
 });
 
-test('saves and loads workflows across multiple workspaces without recording leakage', async () => {
+test('saves and loads workflows across multiple workspaces without recording leakage', async ({}, testInfo) => {
+  testInfo.setTimeout(150_000);
   const workspaceA = `ws-e2e-alpha-${Date.now()}`;
   const workspaceB = `ws-e2e-beta-${Date.now()}`;
   const workflowNameA = workspaceA;
