@@ -268,7 +268,15 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     const onUpdated = (chromeTabNo: number, changeInfo: chrome.tabs.TabChangeInfo, tab?: chrome.tabs.Tab) => {
         if (!changeInfo.url && typeof tab?.windowId !== 'number') {return;}
         const existing = options.state.getTabState(chromeTabNo);
-        if (!existing?.bindingName) {return;}
+        if (!existing?.bindingName) {
+            if (typeof tab?.windowId === 'number') {
+                void (async () => {
+                    await ensureOpenedAndBound(chromeTabNo, tab.windowId);
+                    options.onRefresh();
+                })();
+            }
+            return;
+        }
         options.state.upsertTab(chromeTabNo, existing.bindingName, changeInfo.url ?? existing.lastUrl, typeof tab?.windowId === 'number' ? tab.windowId : undefined);
     };
 

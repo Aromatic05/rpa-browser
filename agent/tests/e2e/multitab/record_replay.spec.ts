@@ -96,8 +96,8 @@ test('records and replays active and passive multi-tab workflow', async () => {
     await expect.poll(async () => {
       const r = await sendControlEval(
         {
-          source: 'const d=await ctx.deps.pageRegistry.debugPageBindings(input.n);return Array.isArray(d?.knownBindings)&&d.knownBindings.includes(input.n);',
-          input: { n: openedTab.tabName },
+          source: 'const w=ctx.workspaceRegistry.getWorkspace(input.w);const d=await w.browserSession.pageRegistry.debugPageBindings(input.n);return Array.isArray(d?.knownBindings)&&d.knownBindings.includes(input.n);',
+          input: { w: ws, n: openedTab.tabName },
           timeoutMs: 3000,
         },
         { endpoint: ep, timeoutMs: 3000 },

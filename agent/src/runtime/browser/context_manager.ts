@@ -242,6 +242,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
         const launchArgs = [
             `--disable-extensions-except=${extensionArg}`,
             `--load-extension=${extensionArg}`,
+            '--disable-popup-blocking',
         ];
         contextPromise = chromium
             .launchPersistentContext(options.userDataDir, {

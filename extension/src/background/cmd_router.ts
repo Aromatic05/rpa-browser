@@ -213,6 +213,20 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     return;
                 }
 
+                if (typeof sender.tab?.windowId === 'number') {
+                    const opened = await life.ensureOpenedAndBound(chromeTabNo, sender.tab.windowId);
+                    if (opened) {
+                        sendResponse({
+                            ok: true,
+                            bindingName: opened.bindingName,
+                            workspaceName: options.sessionWorkspaceName,
+                            tabName: opened.tabName,
+                            windowId: opened.windowId,
+                        });
+                        return;
+                    }
+                }
+
                 sendResponse({ ok: false, error: 'not bound' });
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -279,7 +293,11 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             life.onActivated(info);
         },
         onRemoved: life.onRemoved,
-        onUpdated: life.onUpdated,
+        onUpdated: (chromeTabNo: number, changeInfo: chrome.tabs.TabChangeInfo, tab?: chrome.tabs.Tab) => {
+            if (pendingCommandOpenCount > 0) {return;}
+            if (commandCreatedTabs.has(chromeTabNo)) {return;}
+            life.onUpdated(chromeTabNo, changeInfo, tab);
+        },
         onCreated: (tab: chrome.tabs.Tab) => {
             if (pendingCommandOpenCount > 0) {return;}
             if (typeof tab.id === 'number' && commandCreatedTabs.has(tab.id)) {return;}

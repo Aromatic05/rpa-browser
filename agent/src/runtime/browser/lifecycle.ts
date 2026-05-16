@@ -79,7 +79,6 @@ export const createRuntimeLifecycle = (deps: RuntimeLifecycleDeps): RuntimeLifec
         // onPageBound only binds the Playwright page to an existing tab.
         if (workspace.tabs.hasTab(bindingName)) {
             workspace.tabs.bindPage(bindingName, page);
-            workspace.tabs.setActiveTab(bindingName);
         }
         deps.runtimeRegistry.bindPage({ workspaceName, tabName: bindingName, page, pageRegistry: workspace.browserSession.pageRegistry });
 

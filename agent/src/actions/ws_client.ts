@@ -19,6 +19,7 @@ export type StartActionWsClientOptions = {
 
 export type ActionWsClient = {
     broadcastAction: (action: Action) => void;
+    waitForClient: (timeoutMs?: number) => Promise<void>;
     close: () => Promise<void>;
 };
 
@@ -153,6 +154,28 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
     const wsTap = options.wsTap ?? (() => undefined);
     const host = options.host ?? DEFAULT_HOST;
     const wsClients = new Set<WebSocket>();
+    const clientWaiters = new Set<{ resolve: () => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+    let closed = false;
+
+    const resolveClientWaiters = () => {
+        const waiters = Array.from(clientWaiters);
+        clientWaiters.clear();
+        waiters.forEach((waiter) => {
+            clearTimeout(waiter.timer);
+            waiter.resolve();
+        });
+    };
+
+    const rejectClientWaiters = (error: Error) => {
+        const waiters = Array.from(clientWaiters);
+        clientWaiters.clear();
+        waiters.forEach((waiter) => {
+            clearTimeout(waiter.timer);
+            waiter.reject(error);
+        });
+    };
+
+    const hasOpenClient = () => Array.from(wsClients).some((client) => client.readyState === client.OPEN);
 
     const sendToAll = (action: Action) => {
         wsTap('agent.broadcast', summarizeActionEnvelope(action));
@@ -183,6 +206,7 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
 
     wss.on('connection', (socket) => {
         wsClients.add(socket);
+        resolveClientWaiters();
         socket.on('message', (data) => {
             let raw: unknown;
             let rawText = '';
@@ -244,7 +268,25 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
         });
     });
 
+    const waitForClient = async (timeoutMs = 5000) => {
+        if (hasOpenClient()) {return;}
+        if (closed) {throw new Error('workspace action websocket server closed');}
+        await new Promise<void>((resolve, reject) => {
+            const waiter = {
+                resolve,
+                reject,
+                timer: setTimeout(() => {
+                    clientWaiters.delete(waiter);
+                    reject(new Error(`workspace action websocket client did not connect within ${timeoutMs}ms`));
+                }, timeoutMs),
+            };
+            clientWaiters.add(waiter);
+        });
+    };
+
     const close = async () => {
+        closed = true;
+        rejectClientWaiters(new Error('workspace action websocket server closed'));
         wsClients.forEach((client) => {
             try { client.close(); } catch { /* ignore */ }
         });
@@ -253,5 +295,5 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
         });
     };
 
-    return { broadcastAction, close };
+    return { broadcastAction, waitForClient, close };
 };

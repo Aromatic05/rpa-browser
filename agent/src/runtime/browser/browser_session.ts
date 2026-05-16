@@ -73,6 +73,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
     let wsPort: number | null = null;
     let status: BrowserSessionStatus = 'stopped';
     let wsClient: ActionWsClient | null = null;
+    let startPromise: Promise<void> | null = null;
 
     let contextManager = createContextManager({
         extensionPaths: options.extensionPaths,
@@ -102,32 +103,51 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
         pageRegistry,
         start: async () => {
             if (status === 'running') {return;}
-            if (status === 'starting') {return;}
-            status = 'starting';
-            wsPort = await options.portAllocator.allocate(options.workspaceName, 'action-ws');
-            const configuredContextManager = createContextManager({
-                extensionPaths: options.extensionPaths,
-                userDataDir,
-                startUrl: buildStartUrl(options.workspaceName, wsPort),
-                onPage: (page) => {
-                    void pageRegistry.bindPage(page);
-                },
-            });
-            contextManager = configuredContextManager;
-            wsClient = startActionWsClient({
-                port: wsPort,
-                host: '127.0.0.1',
-                workspaceRegistry: options.workspaceRegistry,
-                dispatchAction: options.dispatchAction,
-                onError: options.onError ?? (() => undefined),
-                onListening: (url) => options.onListening?.(options.workspaceName, url),
-                wsTap: options.wsTap,
-            });
-            const context = await contextManager.getContext();
-            await configureExtensionSession(context, options.workspaceName, wsPort);
-            status = 'running';
+            if (startPromise) {return await startPromise;}
+            startPromise = (async () => {
+                status = 'starting';
+                wsPort = await options.portAllocator.allocate(options.workspaceName, 'action-ws');
+                const configuredContextManager = createContextManager({
+                    extensionPaths: options.extensionPaths,
+                    userDataDir,
+                    startUrl: buildStartUrl(options.workspaceName, wsPort),
+                    onPage: (page) => {
+                        void pageRegistry.bindPage(page);
+                    },
+                });
+                contextManager = configuredContextManager;
+                wsClient = startActionWsClient({
+                    port: wsPort,
+                    host: '127.0.0.1',
+                    workspaceRegistry: options.workspaceRegistry,
+                    dispatchAction: options.dispatchAction,
+                    onError: options.onError ?? (() => undefined),
+                    onListening: (url) => options.onListening?.(options.workspaceName, url),
+                    wsTap: options.wsTap,
+                });
+                const context = await contextManager.getContext();
+                await configureExtensionSession(context, options.workspaceName, wsPort);
+                await wsClient.waitForClient(5000);
+                status = 'running';
+            })();
+            try {
+                await startPromise;
+            } catch (error) {
+                status = 'stopped';
+                await wsClient?.close().catch(() => undefined);
+                wsClient = null;
+                await contextManager.close().catch(() => undefined);
+                options.portAllocator.release(options.workspaceName, 'action-ws');
+                wsPort = null;
+                throw error;
+            } finally {
+                startPromise = null;
+            }
         },
         stop: async () => {
+            if (startPromise) {
+                await startPromise.catch(() => undefined);
+            }
             if (status === 'stopped') {return;}
             status = 'stopping';
             await wsClient?.close();

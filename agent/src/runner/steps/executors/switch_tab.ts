@@ -1,5 +1,7 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
+import crypto from 'node:crypto';
+import { ACTION_TYPES } from '../../../actions/action_types';
 
 export const executeBrowserSwitchTab = async (
     step: Step<'browser.switch_tab'>,
@@ -31,5 +33,21 @@ export const executeBrowserSwitchTab = async (
     });
     await binding.page.bringToFront();
     workspace.tabs.setActiveTab(tabName);
+    const activated = await deps.dispatchAction({
+        v: 1,
+        id: crypto.randomUUID(),
+        type: ACTION_TYPES.TAB_SET_ACTIVE,
+        workspaceName,
+        payload: { tabName, source: 'browser.switch_tab' },
+        at: Date.now(),
+    });
+    if (activated.type.endsWith('.failed')) {
+        const payload = activated.payload as { message?: unknown } | undefined;
+        return {
+            stepId: step.id,
+            ok: false,
+            error: { code: 'ERR_TAB_SET_ACTIVE_FAILED', message: String(payload?.message || 'tab.setActive failed') },
+        };
+    }
     return { stepId: step.id, ok: true };
 };
