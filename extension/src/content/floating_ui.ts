@@ -10,6 +10,7 @@ export type FloatingUIOptions = {
         address?: { workspaceName?: string; tabName?: string },
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
+    onEnterAnnotation?: () => void;
 };
 
 export type FloatingUIHandle = {
@@ -517,6 +518,13 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 { label: 'entity_rules.delete', type: 'entity_rules.delete' },
             ]),
         );
+        if (opts.onEnterAnnotation) {
+            const annotateBox = document.createElement('div');
+            annotateBox.className = 'section';
+            annotateBox.appendChild(Object.assign(document.createElement('div'), { className: 'title', textContent: 'Entity Rules Annotator' }));
+            annotateBox.appendChild(createButton('进入标注模式', () => { opts.onEnterAnnotation?.(); }, true));
+            root.appendChild(annotateBox);
+        }
         return root;
     };
 
