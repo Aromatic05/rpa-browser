@@ -107,7 +107,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
-    const entityRules = createEntityRulesControl();
+    const entityRules = createEntityRulesControl({ runStepsDeps: deps.runStepsDeps });
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const tabsControl = createTabsControl({
         recordingState: deps.recordingState,

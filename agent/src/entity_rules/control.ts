@@ -6,11 +6,18 @@ import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { Workflow, WorkflowEntityRules } from '../workflow';
 import { createWorkspaceEntityRulesProvider, type WorkspaceEntityRulesProvider } from './provider';
 import { createWorkspaceEntityRulesRuntime } from './runtime';
+import {
+    handleAnnotatorAction,
+    isAnnotatorAction,
+    type EntityRulesControlDeps,
+} from './annotator/actions';
 
 export type EntityRulesControl = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
     getProvider: (workflow: Workflow) => WorkspaceEntityRulesProvider;
 };
+
+export type { EntityRulesControlDeps };
 
 const requireProfileName = (payload: Record<string, unknown>): string => {
     const profileName = typeof payload.profileName === 'string' ? payload.profileName.trim() : '';
@@ -28,12 +35,19 @@ const requireEntityRulesArtifact = (payload: Record<string, unknown>): WorkflowE
     return artifact;
 };
 
-export const createEntityRulesControl = (): EntityRulesControl => ({
+export const createEntityRulesControl = (deps?: EntityRulesControlDeps): EntityRulesControl => ({
     getProvider: (workflow) => createWorkspaceEntityRulesProvider(workflow),
     handle: async (input) => {
         const { action, workspace } = input;
         if (!action.type.startsWith('entity_rules.')) {
             throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
+        }
+
+        if (isAnnotatorAction(action.type)) {
+            if (!deps) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, 'annotator actions require runtime deps');
+            }
+            return await handleAnnotatorAction(action, workspace, deps, action);
         }
 
         const runtime = createWorkspaceEntityRulesRuntime(workspace.workflow);
