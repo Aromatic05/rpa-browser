@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { maybeEnterCheckpoint, maybePickCheckpoint, setCheckpoints } from '../../../src/runner/checkpoint/match';
-import { maybeBindCheckpoint } from '../../../src/runner/checkpoint/bind';
-import { maybeRunCheckpoint } from '../../../src/runner/checkpoint/run';
-import { foldCheckpointResult } from '../../../src/runner/checkpoint/fold';
-import type { CheckpointCtx } from '../../../src/runner/checkpoint/types';
-import type { FailedCtx } from '../../../src/runner/failed_ctx';
-import type { StepResult, StepUnion } from '../../../src/runner/steps/types';
+import { maybeEnterCheckpoint, maybePickCheckpoint, setCheckpoints } from '../../../../src/runner/checkpoint/match';
+import { maybeBindCheckpoint } from '../../../../src/runner/checkpoint/bind';
+import { maybeRunCheckpoint } from '../../../../src/runner/checkpoint/run';
+import { foldCheckpointResult } from '../../../../src/runner/checkpoint/fold';
+import type { CheckpointCtx } from '../../../../src/runner/checkpoint/types';
+import type { FailedCtx } from '../../../../src/runner/failed_ctx';
+import type { StepResult, StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const rawFailure: StepResult = {
     stepId: 's1',
@@ -55,7 +56,6 @@ const createCtx = (overrides?: Partial<CheckpointCtx>): CheckpointCtx => {
 
 const createBindingWithBusinessEntity = (businessTag: string) => {
     const workspaceName = 'ws-1';
-    const tabName = 'tab-1';
     const tabName = 'tab-token-1';
     const url = 'https://example.test/orders';
     const snapshot = {
@@ -71,7 +71,6 @@ const createBindingWithBusinessEntity = (businessTag: string) => {
     return {
         workspaceName,
         tabName,
-        tabName,
         page: { url: () => url },
         traceTools: {
             'trace.page.getInfo': async () => ({ ok: true, data: { url } }),
@@ -83,7 +82,7 @@ const createBindingWithBusinessEntity = (businessTag: string) => {
                     version: 1,
                     entries: {
                         [`${workspaceName}:${tabName}`]: {
-                            pageIdentity: { workspaceName, tabName, tabName, url },
+                            pageIdentity: { workspaceName, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView: {
@@ -267,13 +266,10 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
     const result = await maybePickCheckpoint(
         createCtx({
             failedCtx: createFailedCtx({
-                deps: {
-                    runtime: {
-                        ensureActivePage: async () => binding,
-                    },
-                    pluginHost: {} as any,
-                    config: {} as any,
-                } as any,
+                deps: completeRunStepsDeps(
+                    { pluginHost: {} as any, config: {} as any },
+                    binding,
+                ),
             }),
         }),
     );

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
-import { buildExternalIndexes } from '../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
-import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import { resolveTableRowAction, resolveTableRowByPrimaryKey } from '../../../src/runner/steps/executors/snapshot/core/entity_query';
-import type { EntityIndex, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { buildSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
+import { buildExternalIndexes } from '../../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
+import { buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import { resolveTableRowAction, resolveTableRowByPrimaryKey } from '../../../../src/runner/steps/executors/snapshot/core/entity_query';
+import type { EntityIndex, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 const createTableSnapshot = (withRuleOverlay = true) => {
     const headerOrderNo: UnifiedNode = { id: 'header_order_no', role: 'columnheader', name: '订单编号', children: [] };

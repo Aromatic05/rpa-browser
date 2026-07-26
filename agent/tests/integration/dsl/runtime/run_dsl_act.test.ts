@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDsl, parseDsl, runDsl } from '../../../src/dsl';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { normalizeDsl, parseDsl, runDsl } from '../../../../src/dsl';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {
     name: string;
@@ -10,11 +11,10 @@ type StubCall = {
 };
 
 const createDeps = (calls: StubCall[]): RunStepsDeps =>
-    ({
+    completeRunStepsDeps({
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl',
-                tabName: 'tab-dsl',
                 tabName: 'tk-dsl',
                 traceCtx: { cache: {} },
             }),
@@ -45,7 +45,7 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                     },
                 }) as any,
         } as any,
-    }) as RunStepsDeps;
+    });
 
 test('runDsl executes type/select/snapshot as browser steps', async () => {
     const calls: StubCall[] = [];
@@ -73,7 +73,7 @@ test('runDsl executes type/select/snapshot as browser steps', async () => {
         ['browser.query', 'browser.type', 'browser.select_option', 'browser.snapshot'],
     );
     assert.deepEqual(calls[1].args, { nodeId: 'buyer-input', text: 'alice' });
-    assert.deepEqual(calls[2].args, { nodeId: 'buyer-input', values: ['approved'] });
+    assert.deepEqual(calls[2].args, { nodeId: 'buyer-input', kind: 'native_select', values: ['approved'] });
     assert.deepEqual(calls[3].args, {});
 });
 

@@ -30,7 +30,7 @@ export type PageRegistry = {
     createPage: () => Promise<Page>;
     bindPage: (page: Page, hintedBindingName?: string) => Promise<string | null>;
     awaitPageBinding: (bindingName: string, options: AwaitPageBindingOptions) => Promise<Page>;
-    createPageBinding: (bindingName: string, input?: { startUrl?: string }) => Promise<Page>;
+    createPageBinding: (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
     touchBinding: (bindingName: string, at?: number) => boolean;
     listStaleBindings: (timeoutMs: number, now?: number) => Array<{ bindingName: string; lastSeenAt: number }>;
     closePage: (bindingName: string) => Promise<void>;
@@ -88,7 +88,7 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         await page.addInitScript({ content: script });
         try {
             await page.evaluate(
-                (args: { name: string; key: string }) => {
+                (args: { name: string; key: string; confirmedKey: string; winNamePrefix: string }) => {
                     sessionStorage.setItem(args.key, args.name);
                     sessionStorage.setItem(args.confirmedKey, '1');
                     try { window.name = `${args.winNamePrefix}${args.name}`; } catch {}
@@ -156,6 +156,40 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         }
     };
 
+    const isBoundPage = (candidate: Page) => {
+        for (const [bindingName, page] of bindingToPage.entries()) {
+            if (page.isClosed()) {
+                bindingToPage.delete(bindingName);
+                bindingUpdatedAt.delete(bindingName);
+                continue;
+            }
+            if (page === candidate) {return true;}
+        }
+        return false;
+    };
+
+    const isLikelyClaimPage = (page: Page, claim: PendingBindingClaim) => {
+        const claimUrl = claim.url?.trim();
+        if (!claimUrl) {return false;}
+        const pageUrl = page.url();
+        if (pageUrl === claimUrl) {return true;}
+        if (pageUrl.startsWith(claimUrl) || claimUrl.startsWith(pageUrl)) {return true;}
+        if (claimUrl.startsWith('chrome://newtab')) {
+            return pageUrl.startsWith('chrome://newtab') || pageUrl.startsWith('chrome-extension://');
+        }
+        return false;
+    };
+
+    const claimPageFromContext = async (claim: PendingBindingClaim) => {
+        const context = await options.getContext();
+        const candidates = context.pages().filter((page) => !page.isClosed() && !isBoundPage(page));
+        const matched = candidates.find((page) => isLikelyClaimPage(page, claim));
+        const page = matched || (candidates.length === 1 ? candidates[0] : null);
+        if (!page) {return false;}
+        await bindPage(page, claim.bindingName);
+        return resolveKnownPage(claim.bindingName) === page;
+    };
+
     const awaitPageBinding = async (bindingName: string, awaitOptions: AwaitPageBindingOptions) => {
         if (!bindingName) {throw new Error('missing bindingName');}
         const existing = resolveKnownPage(bindingName);
@@ -198,12 +232,20 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         });
     };
 
-    const createPageBinding = async (bindingName: string, input?: { startUrl?: string }) => {
+    const createPageInNewWindow = async (context: BrowserContext): Promise<Page> => {
+        const seedPage = context.pages().find((page) => !page.isClosed()) || await context.newPage();
+        const pagePromise = context.waitForEvent('page', { timeout: 5000 });
+        const cdp = await context.newCDPSession(seedPage);
+        await cdp.send('Target.createTarget', { url: 'about:blank', newWindow: true });
+        return await pagePromise;
+    };
+
+    const createPageBinding = async (bindingName: string, input?: { startUrl?: string; newWindow?: boolean }) => {
         if (!bindingName) {throw new Error('missing bindingName');}
         const existing = resolveKnownPage(bindingName);
         if (existing) {return existing;}
         const context = await options.getContext();
-        const page = await context.newPage();
+        const page = input?.newWindow === true ? await createPageInNewWindow(context) : await context.newPage();
         await installBindingNameToPage(page, bindingName);
         if (input?.startUrl) {
             await page.goto(input.startUrl, { waitUntil: 'domcontentloaded' });
@@ -271,12 +313,13 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
             });
         },
         claimPendingBinding: async (bindingName: string) => {
-            if (!pendingClaims.has(bindingName)) {return false;}
+            const claim = pendingClaims.get(bindingName);
+            if (!claim) {return false;}
             if (!bindingToPage.get(bindingName)) {
                 await scanContextPages();
             }
             const page = bindingToPage.get(bindingName);
-            if (!page || page.isClosed()) {return false;}
+            if ((!page || page.isClosed()) && !await claimPageFromContext(claim)) {return false;}
             pendingClaims.delete(bindingName);
             return true;
         },

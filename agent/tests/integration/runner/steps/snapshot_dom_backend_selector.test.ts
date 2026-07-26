@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBackendDomSelectorMap } from '../../../src/runner/steps/executors/snapshot/indexes/dom_backend_selector';
+import { buildBackendDomSelectorMap } from '../../../../src/runner/steps/executors/snapshot/indexes/dom_backend_selector';
 
 test('buildBackendDomSelectorMap builds full css chain by backendDOMNodeId', () => {
     const domTree = {

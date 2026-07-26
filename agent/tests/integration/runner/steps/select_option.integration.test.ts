@@ -4,12 +4,14 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import type { Step, StepResult } from '../../../src/runner/steps/types';
-import { executeBrowserSelectOption, findTargetNode } from '../../../src/runner/steps/executors/select_option/index';
-import { createTraceTools } from '../../../src/runner/trace/tools';
-import { getRunnerConfig } from '../../../src/config';
-import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
-import { generateSemanticSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import type { Step, StepResult } from '../../../../src/runner/steps/types';
+import { executeBrowserSelectOption, findTargetNode } from '../../../../src/runner/steps/executors/select_option/index';
+import { createTraceTools } from '../../../../src/runner/trace/tools';
+import { getRunnerConfig } from '../../../../src/config';
+import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import { generateSemanticSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import { resolveChromeExecutable } from '../../../../src/runtime/browser/cdp_launcher';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const fixtureUrl = () => {
     const filePath = path.resolve(process.cwd(), 'tests/fixtures/trace_select_option_fixture.html');
@@ -18,6 +20,7 @@ const fixtureUrl = () => {
 
 const setupBinding = async () => {
     const browser = await chromium.launch({
+        executablePath: resolveChromeExecutable(),
         headless: true,
         chromiumSandbox: false,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -40,13 +43,14 @@ const setupBinding = async () => {
         traceCtx: ctx,
     };
 
-    const deps = {
-        runtime: {
-            resolveBinding: async () => binding,
+    const deps = completeRunStepsDeps(
+        {
+            runtime: { resolveBinding: async (_workspaceName: string, _tabName?: string) => binding },
+            config: getRunnerConfig(),
+            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
         },
-        config: getRunnerConfig(),
-        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-    } as any;
+        binding,
+    );
 
     return { browser, page, binding, deps, snapshot };
 };
@@ -73,7 +77,7 @@ test('select_option: resolve target node by #id selector', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'tn-id',
             name: 'browser.select_option',
-            args: { selector: '#native-select', values: ['processing'] },
+            args: { selector: '#native-select', kind: 'native_select', values: ['processing'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -100,7 +104,7 @@ test('select_option: resolve target node by data-testid selector via attrIndex',
     const step: Step<'browser.select_option'> = {
         id: 'tn-testid',
         name: 'browser.select_option',
-        args: { selector: '[data-testid="combo-test"]', values: ['x'] },
+        args: { selector: '[data-testid="combo-test"]', kind: 'native_select', values: ['x'] },
     };
     const node = findTargetNode(snapshot, step, step.args.selector!);
     assert.ok(node, 'target node should be found via data-testid');
@@ -117,7 +121,7 @@ test('select_option: resolve target node via locatorIndex direct.query', async (
         const step: Step<'browser.select_option'> = {
             id: 'tn-locator-query',
             name: 'browser.select_option',
-            args: { selector: locatorQuery!, values: ['processing'] },
+            args: { selector: locatorQuery!, kind: 'native_select', values: ['processing'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -132,7 +136,7 @@ test('select_option: unmappable selector returns ERR_NOT_FOUND', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'tn-unmappable',
             name: 'browser.select_option',
-            args: { selector: '#nonexistent-element', values: ['anything'] },
+            args: { selector: '#nonexistent-element', kind: 'native_select', values: ['anything'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -154,7 +158,7 @@ test('select_option: native_select value match', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'ns-value',
             name: 'browser.select_option',
-            args: { nodeId: selectNodeId!, values: ['processing'] },
+            args: { nodeId: selectNodeId!, kind: 'native_select', values: ['processing'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -171,7 +175,7 @@ test('select_option: native_select label match', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'ns-label',
             name: 'browser.select_option',
-            args: { nodeId: selectNodeId!, values: ['已完成'] },
+            args: { nodeId: selectNodeId!, kind: 'native_select', values: ['已完成'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -188,7 +192,7 @@ test('select_option: native_select empty values returns ERR_BAD_ARGS', async () 
         const step: Step<'browser.select_option'> = {
             id: 'ns-empty',
             name: 'browser.select_option',
-            args: { nodeId: selectNodeId!, values: [] },
+            args: { nodeId: selectNodeId!, kind: 'native_select', values: [] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -208,7 +212,7 @@ test('select_option: native_select option not found returns error', async () => 
         const step: Step<'browser.select_option'> = {
             id: 'ns-notfound',
             name: 'browser.select_option',
-            args: { nodeId: selectNodeId!, values: ['nonexistent'] },
+            args: { nodeId: selectNodeId!, kind: 'native_select', values: ['nonexistent'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -229,7 +233,7 @@ test('select_option: native_select label already selected state unchanged return
         const step: Step<'browser.select_option'> = {
             id: 'ns-label-unchanged',
             name: 'browser.select_option',
-            args: { nodeId: selectNodeId!, values: ['待审批'] },
+            args: { nodeId: selectNodeId!, kind: 'native_select', values: ['待审批'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -257,7 +261,7 @@ test('select_option: native_select state unchanged neither value nor label match
         const step: Step<'browser.select_option'> = {
             id: 'ns-unchanged-nomatch',
             name: 'browser.select_option',
-            args: { nodeId: selectNodeId!, values: ['processing'] },
+            args: { nodeId: selectNodeId!, kind: 'native_select', values: ['processing'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -277,7 +281,7 @@ test('select_option: radio_group single value select success', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'rg-select',
             name: 'browser.select_option',
-            args: { selector: '#status-radio-group', values: ['processing'] },
+            args: { selector: '#status-radio-group', kind: 'radio_group', values: ['processing'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -292,7 +296,7 @@ test('select_option: radio_group multiple values returns ERR_BAD_ARGS', async ()
         const step: Step<'browser.select_option'> = {
             id: 'rg-multi',
             name: 'browser.select_option',
-            args: { selector: '#status-radio-group', values: ['processing', 'done'] },
+            args: { selector: '#status-radio-group', kind: 'radio_group', values: ['processing', 'done'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -310,7 +314,7 @@ test('select_option: radio_group option not found returns ERR_NOT_FOUND', async 
         const step: Step<'browser.select_option'> = {
             id: 'rg-notfound',
             name: 'browser.select_option',
-            args: { selector: '#status-radio-group', values: ['nonexistent'] },
+            args: { selector: '#status-radio-group', kind: 'radio_group', values: ['nonexistent'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -328,7 +332,7 @@ test('select_option: radio_group already selected asserts group state without cl
         const step: Step<'browser.select_option'> = {
             id: 'rg-already',
             name: 'browser.select_option',
-            args: { selector: '#status-radio-group', values: ['pending'] },
+            args: { selector: '#status-radio-group', kind: 'radio_group', values: ['pending'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -343,7 +347,7 @@ test('select_option: radio_group asserts no other radio checked after action', a
     // that would remove the group-wide state validation.
     const fs = await import('node:fs');
     const source = fs.readFileSync(
-        new URL('../../../src/runner/steps/executors/select_option/choice_group.ts', import.meta.url).pathname,
+        new URL('../../../../src/runner/steps/executors/select_option/choice_group.ts', import.meta.url).pathname,
         'utf8',
     );
     assert.equal(source.includes('other radio options should not be selected'), true);
@@ -358,7 +362,7 @@ test('select_option: radio_group ambiguous match returns ERR_AMBIGUOUS', async (
         const step: Step<'browser.select_option'> = {
             id: 'rg-ambiguous',
             name: 'browser.select_option',
-            args: { selector: '#status-radio-group', values: ['待审批'] },
+            args: { selector: '#status-radio-group', kind: 'radio_group', values: ['待审批'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -378,7 +382,7 @@ test('select_option: checkbox_group check missing items', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'cbg-check',
             name: 'browser.select_option',
-            args: { selector: '#tag-checkbox-group', values: ['normal', 'urgent', 'important'] },
+            args: { selector: '#tag-checkbox-group', kind: 'checkbox_group', values: ['normal', 'urgent', 'important'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -394,7 +398,7 @@ test('select_option: checkbox_group uncheck extra items', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'cbg-uncheck',
             name: 'browser.select_option',
-            args: { selector: '#tag-checkbox-group', values: ['urgent'] },
+            args: { selector: '#tag-checkbox-group', kind: 'checkbox_group', values: ['urgent'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -409,7 +413,7 @@ test('select_option: checkbox_group order-independent equivalence', async () => 
         const step: Step<'browser.select_option'> = {
             id: 'cbg-order',
             name: 'browser.select_option',
-            args: { selector: '#tag-checkbox-group', values: ['low', 'urgent', 'important'] },
+            args: { selector: '#tag-checkbox-group', kind: 'checkbox_group', values: ['low', 'urgent', 'important'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -424,7 +428,7 @@ test('select_option: checkbox_group option not found returns ERR_NOT_FOUND', asy
         const step: Step<'browser.select_option'> = {
             id: 'cbg-notfound',
             name: 'browser.select_option',
-            args: { selector: '#tag-checkbox-group', values: ['nonexistent'] },
+            args: { selector: '#tag-checkbox-group', kind: 'checkbox_group', values: ['nonexistent'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -442,7 +446,7 @@ test('select_option: checkbox_group label-based matching uses matched nodeIds', 
         const step: Step<'browser.select_option'> = {
             id: 'cbg-label',
             name: 'browser.select_option',
-            args: { selector: '#tag-checkbox-group', values: ['低优先级'] },
+            args: { selector: '#tag-checkbox-group', kind: 'checkbox_group', values: ['低优先级'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -457,7 +461,7 @@ test('select_option: checkbox_group ambiguous match returns ERR_AMBIGUOUS', asyn
         const step: Step<'browser.select_option'> = {
             id: 'cbg-ambiguous',
             name: 'browser.select_option',
-            args: { selector: '#tag-checkbox-group', values: ['紧急'] },
+            args: { selector: '#tag-checkbox-group', kind: 'checkbox_group', values: ['紧急'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -476,7 +480,7 @@ test('select_option: checkbox_group extra checked not cleaned returns ERR_ASSERT
         await page.evaluate(() => {
             document.querySelectorAll('#tag-checkbox-group input[type="checkbox"]').forEach((cb) => {
                 cb.addEventListener('click', (e) => {
-                    if ((e.target as HTMLInputElement).checked) {
+                    if (!(e.target as HTMLInputElement).checked) {
                         e.preventDefault();
                         e.stopImmediatePropagation();
                     }
@@ -495,7 +499,7 @@ test('select_option: checkbox_group extra checked not cleaned returns ERR_ASSERT
         const step: Step<'browser.select_option'> = {
             id: 'cbg-extra',
             name: 'browser.select_option',
-            args: { selector: '#tag-checkbox-group', values: ['urgent'] },
+            args: { selector: '#tag-checkbox-group', kind: 'checkbox_group', values: ['urgent'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -515,7 +519,7 @@ test('select_option: custom_select via trigger/popup/option from component', asy
         const step: Step<'browser.select_option'> = {
             id: 'cs-select',
             name: 'browser.select_option',
-            args: { selector: '#combobox-trigger', values: ['审批中'] },
+            args: { selector: '#combobox-trigger', kind: 'custom_select', values: ['审批中'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, true, `expected ok, got ${JSON.stringify(result.error)}`);
@@ -530,7 +534,7 @@ test('select_option: custom_select multiple values returns ERR_BAD_ARGS', async 
         const step: Step<'browser.select_option'> = {
             id: 'cs-multi',
             name: 'browser.select_option',
-            args: { selector: '#combobox-trigger', values: ['processing', 'done'] },
+            args: { selector: '#combobox-trigger', kind: 'custom_select', values: ['processing', 'done'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -548,7 +552,7 @@ test('select_option: custom_select option not found returns ERR_NOT_FOUND', asyn
         const step: Step<'browser.select_option'> = {
             id: 'cs-notfound',
             name: 'browser.select_option',
-            args: { selector: '#combobox-trigger', values: ['nonexistent'] },
+            args: { selector: '#combobox-trigger', kind: 'custom_select', values: ['nonexistent'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -589,7 +593,7 @@ test('select_option: custom_select popupNodeId missing returns ERR_NOT_FOUND', a
         const step: Step<'browser.select_option'> = {
             id: 'cs-nopopup',
             name: 'browser.select_option',
-            args: { selector: '#broken-trigger', values: ['anything'] },
+            args: { selector: '#broken-trigger', kind: 'custom_select', values: ['anything'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -627,7 +631,7 @@ test('select_option: custom_select aria-selected set but component state unchang
         const step: Step<'browser.select_option'> = {
             id: 'cs-ariaselected-stale',
             name: 'browser.select_option',
-            args: { selector: '#stale-trigger', values: ['稳定值'] },
+            args: { selector: '#stale-trigger', kind: 'custom_select', values: ['稳定值'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -657,7 +661,7 @@ test('select_option: custom_select post-action control missing returns ERR_ASSER
         const step: Step<'browser.select_option'> = {
             id: 'cs-postaction-missing',
             name: 'browser.select_option',
-            args: { selector: '#combobox-trigger', values: ['审批中'] },
+            args: { selector: '#combobox-trigger', kind: 'custom_select', values: ['审批中'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);
@@ -679,6 +683,7 @@ test('select_option: controlRef not found returns ERR_NOT_FOUND', async () => {
             name: 'browser.select_option',
             args: {
                 selector: '#button-chip',
+                kind: 'native_select',
                 values: ['anything'],
             },
         };
@@ -700,6 +705,7 @@ test('select_option: select_option only accepts canonical args', async () => {
             name: 'browser.select_option',
             args: {
                 selector: '#native-select',
+                kind: 'native_select',
                 values: ['processing'],
             },
         };
@@ -718,7 +724,7 @@ test('select_option: stale state unchanged returns error', async () => {
         const step: Step<'browser.select_option'> = {
             id: 'stale',
             name: 'browser.select_option',
-            args: { selector: '#stale-trigger', values: ['稳定值'] },
+            args: { selector: '#stale-trigger', kind: 'custom_select', values: ['稳定值'] },
         };
         const result = await executeBrowserSelectOption(step, deps, 'ws1');
         assert.equal(result.ok, false);

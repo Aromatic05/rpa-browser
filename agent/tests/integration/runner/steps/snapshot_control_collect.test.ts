@@ -6,10 +6,10 @@ import {
     attachControlRefsToNodes,
     buildControlRef,
     buildDomIdToNodeIdMap,
-} from '../../../src/runner/steps/executors/snapshot/control';
-import type { ControlCollectContext } from '../../../src/runner/steps/executors/snapshot/control/types';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { registerSelectOptionControls } from '../../../src/runner/steps/executors/select_option/register_controls';
+} from '../../../../src/runner/steps/executors/snapshot/control';
+import type { ControlCollectContext } from '../../../../src/runner/steps/executors/snapshot/control/types';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { registerSelectOptionControls } from '../../../../src/runner/steps/executors/select_option/register_controls';
 
 const makeNode = (id: string, role: string, children: UnifiedNode[] = []): UnifiedNode => ({
     id,

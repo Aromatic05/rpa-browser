@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { queryBusinessEntity, resolveBusinessEntityTarget } from '../../../src/runner/steps/executors/snapshot/core/business_entity_resolver';
+import { queryBusinessEntity, resolveBusinessEntityTarget } from '../../../../src/runner/steps/executors/snapshot/core/business_entity_resolver';
 import { withEntityRuleSnapshotContext } from './helper';
 
 test('order-list fixture supports query envelope and table row target resolution', async () => {

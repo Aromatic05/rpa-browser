@@ -147,9 +147,17 @@ export const resolveChoiceGroupControl = (input: ResolveControlInput): SelectOpt
 };
 
 export const resolveCustomSelectControl = (input: ResolveControlInput): SelectOptionControl | StepResult => {
-    const { snapshot, stepArgs } = input;
+    const { snapshot, stepArgs, targetNode } = input;
     if (stepArgs.kind !== 'custom_select') {
         return badArgs(input.stepId, 'custom_select control resolution only supports custom_select', {
+            kind: stepArgs.kind,
+        });
+    }
+
+    if (targetNode?.role === 'combobox' && !targetNode.control?.ref) {
+        return notFound(input.stepId, 'custom_select target has no registered control', {
+            targetNodeId: targetNode.id,
+            targetRole: targetNode.role,
             kind: stepArgs.kind,
         });
     }

@@ -7,13 +7,13 @@ import {
     collectControlComponents,
     attachControlRefsToNodes,
     buildControlRef,
-} from '../../../src/runner/steps/executors/snapshot/control';
+} from '../../../../src/runner/steps/executors/snapshot/control';
 import type {
     ControlCollector,
     ControlCollectContext,
     BaseControlComponent,
-} from '../../../src/runner/steps/executors/snapshot/control/types';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+} from '../../../../src/runner/steps/executors/snapshot/control/types';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 const makeNode = (id: string, role: string, children: UnifiedNode[] = []): UnifiedNode => ({
     id,

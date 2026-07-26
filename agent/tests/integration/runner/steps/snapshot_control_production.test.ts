@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateSemanticSnapshotFromRaw } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import { generateSemanticSnapshotFromRaw } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
 
 const walk = (node: any, visitor: (node: any) => void) => {
     visitor(node);

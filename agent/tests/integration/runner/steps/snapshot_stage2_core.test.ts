@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fuseDomAndA11y } from '../../../src/runner/steps/executors/snapshot/stages/fusion';
-import { buildSpatialLayers } from '../../../src/runner/steps/executors/snapshot/stages/spatial';
-import { detectRegions } from '../../../src/runner/steps/executors/snapshot/stages/regions';
-import { processRegion } from '../../../src/runner/steps/executors/snapshot/pipeline/process_region';
-import type { NodeGraph, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { fuseDomAndA11y } from '../../../../src/runner/steps/executors/snapshot/stages/fusion';
+import { buildSpatialLayers } from '../../../../src/runner/steps/executors/snapshot/stages/spatial';
+import { detectRegions } from '../../../../src/runner/steps/executors/snapshot/stages/regions';
+import { processRegion } from '../../../../src/runner/steps/executors/snapshot/pipeline/process_region';
+import type { NodeGraph, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { getNodeAttr } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { snapshotNode as node } from '../../../helpers/snapshot_node';
 
 type RawFixture = {
     domTree: unknown;
@@ -45,29 +47,11 @@ const replaceRegion = (layer: UnifiedNode, target: UnifiedNode, next: UnifiedNod
 
 test('buildSpatialLayers should keep main body first and lift overlays', () => {
     const graph: NodeGraph = {
-        root: {
-            id: 'root',
-            role: 'document',
-            children: [
-                {
-                    id: 'main',
-                    role: 'main',
-                    children: [],
-                    attrs: { class: 'content' },
-                },
-                {
-                    id: 'dialog-overlay',
-                    role: 'dialog',
-                    children: [],
-                },
-                {
-                    id: 'fixed-overlay',
-                    role: 'generic',
-                    attrs: { position: 'fixed', zIndex: '80' },
-                    children: [],
-                },
-            ],
-        },
+        root: node('root', 'document', [
+            node('main', 'main', [], { attrs: { class: 'content' } }),
+            node('dialog-overlay', 'dialog'),
+            node('fixed-overlay', 'generic', [], { attrs: { position: 'fixed', zIndex: '80' } }),
+        ]),
     };
 
     const layered = buildSpatialLayers(graph);
@@ -77,7 +61,7 @@ test('buildSpatialLayers should keep main body first and lift overlays', () => {
     assert.equal(layered.root.children[2]?.id, 'fixed-overlay');
 });
 
-test('detectBusinessEntities should tag entityId/entityType on fixture dataset', () => {
+test('detectBusinessEntities should tag entityId/entityType on fixture dataset', { skip: !fs.existsSync(FIXTURE_DIR) }, () => {
     const fixtureFiles = fs
         .readdirSync(FIXTURE_DIR)
         .filter((name) => name.endsWith('.raw.json'))
@@ -104,13 +88,13 @@ test('detectBusinessEntities should tag entityId/entityType on fixture dataset',
         let allowedTypeCount = 0;
         let entityIdCount = 0;
         walk(root, (node) => {
-            const attrs = node.attrs || {};
-            if (!attrs.entityType) {return;}
+            const entityType = getNodeAttr(node, 'entityType');
+            if (!entityType) {return;}
             entityCount += 1;
-            if (SUPPORTED_ENTITY_TYPES.has(attrs.entityType)) {
+            if (SUPPORTED_ENTITY_TYPES.has(entityType)) {
                 allowedTypeCount += 1;
             }
-            if (attrs.entityId) {
+            if (getNodeAttr(node, 'entityId')) {
                 entityIdCount += 1;
             }
         });

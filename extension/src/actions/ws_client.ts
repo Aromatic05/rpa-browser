@@ -7,12 +7,15 @@ import { classifyActionType, isDispatchActionType } from './action_types.js';
 import { createLogger, type Logger } from '../shared/logger.js';
 
 export type WsClient = {
+    connect: () => Promise<void>;
+    reconnect: (wsPort: number) => Promise<void>;
     sendAction: (action: Action) => Promise<Action>;
     sendFireAndForget: (action: Action) => void;
 };
 
 export type WsClientOptions = {
     onAction: (action: Action) => void;
+    wsPort: number;
     logger?: Logger;
 };
 
@@ -37,9 +40,10 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             type: typeof rec.type === 'string' ? rec.type : undefined,
             workspaceName: typeof rec.workspaceName === 'string' ? rec.workspaceName : undefined,
             payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-            payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
+            payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [],
         };
     };
+    let currentWsPort = options.wsPort;
     let wsRef: WebSocket | null = null;
     let wsReady: Promise<void> | null = null;
     const pending = new Map<string, (reply: Action) => void>();
@@ -57,7 +61,8 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         if (wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
             return wsReady ?? Promise.resolve();
         }
-        wsRef = new WebSocket('ws://127.0.0.1:17333');
+        const socket = new WebSocket(`ws://127.0.0.1:${String(currentWsPort)}`);
+        wsRef = socket;
         wsReady = new Promise((resolve, reject) => {
             let settled = false;
             const settleResolve = () => {
@@ -73,20 +78,20 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             const timeoutId = setTimeout(() => {
                 settleReject('ws connect timeout');
             }, 4000);
-            wsRef?.addEventListener('open', () => {
+            socket.addEventListener('open', () => {
                 clearTimeout(timeoutId);
                 settleResolve();
             });
-            wsRef?.addEventListener('error', () => {
+            socket.addEventListener('error', () => {
                 clearTimeout(timeoutId);
                 settleReject('ws connect error');
             });
-            wsRef?.addEventListener('close', () => {
+            socket.addEventListener('close', () => {
                 clearTimeout(timeoutId);
                 settleReject('ws closed before open');
             });
         });
-        wsRef.addEventListener('message', (event) => {
+        socket.addEventListener('message', (event) => {
             let payload: unknown = event.data;
             if (typeof payload === 'string') {
                 const rawText = payload;
@@ -103,8 +108,8 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             }
             const action = payload as Action;
             wsTap('ext.inbound.parsed', summarizeActionEnvelope(action));
-            // Resolve pending promise by replyTo first — handles non-*.result reply types like tab.bind
-            if (action.replyTo) {
+            const kind = classifyActionType(action.type);
+            if (kind === 'reply' && action.replyTo) {
                 const resolver = pending.get(action.replyTo);
                 if (resolver) {
                     pending.delete(action.replyTo);
@@ -112,21 +117,42 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
                     return;
                 }
             }
-            const kind = classifyActionType(action.type);
             if (kind !== 'reply' && isDispatchActionType(action.type)) {
                 options.onAction(action);
             }
         });
-        wsRef.addEventListener('close', () => {
+        socket.addEventListener('close', () => {
+            if (wsRef !== socket) {return;}
             wsRef = null;
             wsReady = null;
             pending.forEach((resolver, requestId) => { resolver(mkFailedReply(requestId, 'ERR_CLOSED', 'ws closed')); });
             pending.clear();
         });
-        wsRef.addEventListener('error', () => {
+        socket.addEventListener('error', () => {
             log.warning('ws error');
         });
         return wsReady;
+    };
+
+    const reconnect = async (wsPort: number) => {
+        if (!Number.isInteger(wsPort) || wsPort <= 0) {
+            throw new Error(`invalid ws port: ${String(wsPort)}`);
+        }
+        if (currentWsPort === wsPort && wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
+            await connect(); return;
+        }
+        const previous = wsRef;
+        wsRef = null;
+        wsReady = null;
+        pending.forEach((resolver, requestId) => { resolver(mkFailedReply(requestId, 'ERR_RECONNECT', 'ws reconfigured')); });
+        pending.clear();
+        currentWsPort = wsPort;
+        try {
+            previous?.close();
+        } catch {
+            // The old socket may already be closed while reconfiguring.
+        }
+        await connect();
     };
 
     const sendAction = (action: Action) => {
@@ -163,5 +189,5 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             });
     };
 
-    return { sendAction, sendFireAndForget };
+    return { connect, reconnect, sendAction, sendFireAndForget };
 };

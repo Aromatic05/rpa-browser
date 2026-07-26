@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDsl } from '../../../src/dsl/parser';
-import { DslParseError } from '../../../src/dsl/diagnostics/errors';
+import { parseDsl } from '../../../../src/dsl/parser';
+import { DslParseError } from '../../../../src/dsl/diagnostics/errors';
 
 test('parseDsl parses if block', () => {
     const program = parseDsl(`

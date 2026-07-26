@@ -53,9 +53,17 @@ await log('workspace action without workspaceName fails', async () => {
     assert.equal(reply.type, 'tab.list.failed');
 });
 
-await log('payload.workspaceName is rejected', async () => {
+await log('payload.workspaceName is accepted when top-level workspaceName is absent', async () => {
     const reply = await dispatchActionRequest(
         { v: 1, id: 'req-5', type: 'workspace.list', payload: { workspaceName: 'ws-1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'workspace.list.result');
+});
+
+await log('top-level workspaceName conflicts with payload.workspaceName', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-5-conflict', type: 'tab.list', workspaceName: 'ws-1', payload: { workspaceName: 'ws-2' } },
         mkWsClient(),
     );
     assert.equal(reply.type, 'action.dispatch.failed');
@@ -230,7 +238,7 @@ await log('dispatchActionRequest does not need lifecycle or router state', async
     assert.deepEqual(calls, ['workspace.list']);
 });
 
-await log('projection updates router state for workspace.changed', async () => {
+await log('projection refreshes without workspace ownership mapping', async () => {
     globalThis.chrome = { windows: { WINDOW_ID_NONE: -1 } };
     const calls = [];
     const state = {
@@ -249,6 +257,5 @@ await log('projection updates router state for workspace.changed', async () => {
         () => { refreshed += 1; },
     );
     assert.equal(refreshed, 1);
-    assert.deepEqual(calls[0], ['setActiveWorkspaceName', 'ws-1']);
-    assert.deepEqual(calls[1], ['setWindowWorkspace', 7, 'ws-1']);
+    assert.deepEqual(calls, []);
 });

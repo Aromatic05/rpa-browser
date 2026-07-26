@@ -7,6 +7,7 @@ export type CdpLaunchOptions = {
     port: number;
     userDataDir: string;
     chromePath?: string;
+    startUrl?: string;
     extensionPaths?: string[];
     logger?: (...args: unknown[]) => void;
     timeoutMs?: number;
@@ -21,6 +22,23 @@ export type CdpLaunchResult = {
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const managedChromeProcesses = new Set<ReturnType<typeof spawn>>();
+let agentExitHookInstalled = false;
+
+const registerManagedChromeProcess = (proc: ReturnType<typeof spawn>) => {
+    managedChromeProcesses.add(proc);
+    if (!agentExitHookInstalled) {
+        agentExitHookInstalled = true;
+        process.once('exit', () => {
+            for (const child of managedChromeProcesses) {
+                if (child.exitCode === null) {
+                    try { child.kill('SIGKILL'); } catch { /* ignore */ }
+                }
+            }
+        });
+    }
+};
 
 const defaultChromeCandidates = () => {
     if (process.platform === 'linux') {
@@ -44,13 +62,18 @@ const defaultChromeCandidates = () => {
     return ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable'];
 };
 
-const commandExists = (command: string) => {
+const resolveCommandPath = (command: string): string | null => {
     const probe = process.platform === 'win32' ? 'where' : 'which';
-    const result = spawnSync(probe, [command], { stdio: 'ignore' });
-    return result.status === 0;
+    const result = spawnSync(probe, [command], { encoding: 'utf8' });
+    if (result.status !== 0) {return null;}
+    const first = result.stdout
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .find(Boolean);
+    return first || null;
 };
 
-const resolveChromeExecutable = (explicitPath?: string) => {
+export const resolveChromeExecutable = (explicitPath?: string): string => {
     if (explicitPath?.trim()) {return explicitPath.trim();}
     const fromEnv = process.env.RPA_CDP_CHROME_PATH?.trim();
     if (fromEnv) {return fromEnv;}
@@ -62,7 +85,8 @@ const resolveChromeExecutable = (explicitPath?: string) => {
             unavailable.push(candidate);
             continue;
         }
-        if (commandExists(candidate)) {return candidate;}
+        const resolved = resolveCommandPath(candidate);
+        if (resolved) {return resolved;}
         unavailable.push(candidate);
     }
     throw new Error(`No Chrome/Chromium executable found. Tried: ${unavailable.join(', ')}`);
@@ -86,7 +110,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     const timeoutMs = opts.timeoutMs ?? 20000;
     const endpoint = `http://127.0.0.1:${opts.port}`;
     const chromePath = resolveChromeExecutable(opts.chromePath);
-    const startUrl = process.env.RPA_START_URL?.trim() || 'chrome://newtab/';
+    const startUrl = opts.startUrl?.trim() || process.env.RPA_START_URL?.trim() || 'chrome://newtab/';
     fs.mkdirSync(opts.userDataDir, { recursive: true });
 
     const args = [
@@ -94,6 +118,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         `--user-data-dir=${opts.userDataDir}`,
         '--no-first-run',
         '--no-default-browser-check',
+        '--disable-popup-blocking',
         startUrl,
     ];
     const extensionPaths = (opts.extensionPaths || []).filter(Boolean);
@@ -110,11 +135,14 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     });
 
     let stderr = '';
-    proc.stderr?.on('data', (chunk) => {
+    proc.stderr.on('data', (chunk) => {
         stderr += String(chunk);
     });
 
+    registerManagedChromeProcess(proc);
+
     proc.on('exit', (code, signal) => {
+        managedChromeProcesses.delete(proc);
         const isError = code !== 0 && code !== null;
         infraLog.warning('[RPA:infra]', 'Chrome process exited', {
             pid: proc.pid,
@@ -128,7 +156,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
 
     const stop = async () =>
         { await new Promise<void>((resolve) => {
-            if (proc.exitCode !== null || proc.killed) {resolve(); return;}
+            if (proc.exitCode !== null) {resolve(); return;}
             proc.once('exit', () => { resolve(); });
             proc.kill('SIGTERM');
             setTimeout(() => {

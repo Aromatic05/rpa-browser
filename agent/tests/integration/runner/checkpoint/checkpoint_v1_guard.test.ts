@@ -86,8 +86,8 @@ test('query naming guard', async () => {
     for (const source of [resolverSource, stepTypesSource]) {
         assert.equal(source.includes('table.hasNextPage'), true);
         assert.equal(source.includes('table.nextPageTarget'), true);
-        assert.equal(source.includes('table.hasNextPage'), false);
-        assert.equal(source.includes('table.nextPageTarget'), false);
+        assert.equal(source.includes('table.has_next_page'), false);
+        assert.equal(source.includes('table.next_page_target'), false);
     }
 });
 
@@ -95,7 +95,7 @@ test('serialization guard', async () => {
     const stepTypesSource = await readAgentFile('src/runner/steps/types.ts');
     const resolveTargetSource = await readAgentFile('src/runner/steps/helpers/resolve_target.ts');
     const serializationSource = await readAgentFile('src/runner/serialization/types.ts');
-    const serializationTestSource = await readAgentFile('tests/runner/serialization/serialization_yaml.test.ts');
+    const serializationTestSource = await readAgentFile('tests/integration/runner/serialization/serialization_yaml.test.ts');
 
     assert.equal(stepTypesSource.includes('export type Target'), false);
     assert.equal(stepTypesSource.includes('target?: Target'), false);

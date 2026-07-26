@@ -19,7 +19,7 @@ export const registerControlShutdown = (
     };
 
     const bind = (signal: NodeJS.Signals) => {
-        process.once(signal, () => {
+        process.on(signal, () => {
             void closeOnce(signal).finally(() => {
                 process.exit(0);
             });

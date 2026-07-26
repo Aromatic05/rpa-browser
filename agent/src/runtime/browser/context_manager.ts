@@ -11,10 +11,11 @@
  * - start page 失败不能影响整体启动（容错）
  */
 import { chromium, type BrowserContext, type Page } from 'playwright';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getLogger } from '../../logging/logger';
-import { launchLocalChromeForCdp } from './cdp_launcher';
+import { launchLocalChromeForCdp, resolveChromeExecutable } from './cdp_launcher';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,10 +23,55 @@ const __dirname = path.dirname(__filename);
 export type ContextManagerOptions = {
     extensionPaths: string[];
     userDataDir: string;
+    startUrl?: string;
+    cdpPort?: number;
+    cdpEndpoint?: string;
+    chromePath?: string;
     onPage?: (page: Page) => void;
 };
 
-type ContextProvider = () => Promise<BrowserContext>;
+type ContextProvider = {
+    getContext: () => Promise<BrowserContext>;
+    close: () => Promise<void>;
+};
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const waitForBrowserDisconnected = async (
+    browser: ReturnType<BrowserContext['browser']> | undefined,
+    timeoutMs = 5000,
+): Promise<void> => {
+    if (!browser?.isConnected()) {return;}
+    await Promise.race([
+        new Promise<void>((resolve) => browser.once('disconnected', () => { resolve(); })),
+        sleep(timeoutMs).then(() => {
+            if (browser.isConnected()) {
+                throw new Error(`browser did not disconnect within ${timeoutMs}ms`);
+            }
+        }),
+    ]);
+};
+
+const hasPathEntry = (entryPath: string): boolean => {
+    try {
+        fs.lstatSync(entryPath);
+        return true;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {return false;}
+        throw error;
+    }
+};
+
+const waitForProfileRelease = async (userDataDir: string, timeoutMs = 5000): Promise<void> => {
+    const lockPath = path.join(userDataDir, 'SingletonLock');
+    const deadline = Date.now() + timeoutMs;
+    while (hasPathEntry(lockPath) && Date.now() < deadline) {
+        await sleep(50);
+    }
+    if (hasPathEntry(lockPath)) {
+        throw new Error(`browser profile lock was not released: ${lockPath}`);
+    }
+};
 
 const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void, onPageClosed?: (page: Page) => void) => {
     if (onPage) {
@@ -36,10 +82,10 @@ const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void
     }
     if (onPageClosed) {
         context.on('page', (page) => {
-            page.on('close', () => onPageClosed(page));
+            page.on('close', () => { onPageClosed(page); });
         });
         for (const page of context.pages()) {
-            page.on('close', () => onPageClosed(page));
+            page.on('close', () => { onPageClosed(page); });
         }
     }
 };
@@ -53,13 +99,16 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
     let cdpStderr: (() => string) | undefined;
     let cdpPid: number | undefined;
     let cdpSelfLaunched = false;
-    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
+    const startUrl = options.startUrl || process.env.RPA_START_URL || 'chrome://newtab/';
     const pageLifecycle: Array<{ ts: number; event: string; url: string }> = [];
 
-    const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
-    const cdpPort = Number(process.env.RPA_CDP_PORT || 9222);
+    const cdpEndpoint = options.cdpEndpoint?.trim() || process.env.RPA_CDP_ENDPOINT?.trim() || '';
+    const cdpPort = options.cdpPort ?? Number(process.env.RPA_CDP_PORT || 9222);
     const cdpAutoLaunch = !['0', 'false', 'no'].includes((process.env.RPA_CDP_AUTO_LAUNCH || 'true').toLowerCase());
-    const cdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim() || path.resolve(options.userDataDir, 'cdp-browser');
+    const configuredCdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim();
+    const cdpUserDataDir = options.cdpPort !== undefined
+        ? path.resolve(options.userDataDir, 'cdp-browser')
+        : configuredCdpUserDataDir || path.resolve(options.userDataDir, 'cdp-browser');
 
     const onPageOpened = (page: Page) => {
         pageLifecycle.push({ ts: Date.now(), event: 'opened', url: page.url() });
@@ -89,7 +138,7 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
         }
     };
 
-    return async () => {
+    const getContext = async () => {
         if (contextRef) {return contextRef;}
         if (contextPromise) {return await contextPromise;}
 
@@ -101,6 +150,8 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             const launched = await launchLocalChromeForCdp({
                 port: cdpPort,
                 userDataDir: cdpUserDataDir,
+                chromePath: options.chromePath,
+                startUrl,
                 extensionPaths: options.extensionPaths,
                 logger: (...args) => { actionLog.info('[RPA:agent]', ...args); },
             });
@@ -171,6 +222,24 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             });
         return await contextPromise;
     };
+
+    const close = async () => {
+        const context = contextRef;
+        contextRef = undefined;
+        contextPromise = undefined;
+        if (context) {
+            await context.close().catch(() => undefined);
+        }
+        if (cdpLocalStop) {
+            await cdpLocalStop().catch(() => undefined);
+        }
+        cdpLocalStop = undefined;
+        cdpStderr = undefined;
+        cdpPid = undefined;
+        cdpSelfLaunched = false;
+    };
+
+    return { getContext, close };
 };
 
 const createExtensionContextProvider = (options: ContextManagerOptions): ContextProvider => {
@@ -178,7 +247,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
     const infraLog = getLogger('infra');
     let contextPromise: Promise<BrowserContext> | undefined;
     let contextRef: BrowserContext | undefined;
-    const startUrl = process.env.RPA_START_URL || 'chrome://newtab/';
+    const startUrl = options.startUrl || process.env.RPA_START_URL || 'chrome://newtab/';
     const headless = ['1', 'true', 'yes'].includes((process.env.RPA_HEADLESS || '').toLowerCase());
     const pageLifecycle: Array<{ ts: number; event: string; url: string }> = [];
     let browserDisconnected = false;
@@ -211,7 +280,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
         }
     };
 
-    return async () => {
+    const getContext = async () => {
         if (contextRef) {return contextRef;}
         if (contextPromise) {return await contextPromise;}
 
@@ -220,11 +289,21 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
         const launchArgs = [
             `--disable-extensions-except=${extensionArg}`,
             `--load-extension=${extensionArg}`,
+            '--disable-popup-blocking',
         ];
+        const explicitChromePath =
+            options.chromePath?.trim() ||
+            process.env.RPA_CHROME_PATH?.trim() ||
+            process.env.RPA_CDP_CHROME_PATH?.trim();
+        const bundledChromePath = chromium.executablePath();
+        const executablePath = explicitChromePath ||
+            (bundledChromePath && fs.existsSync(bundledChromePath)
+                ? bundledChromePath
+                : resolveChromeExecutable());
         contextPromise = chromium
             .launchPersistentContext(options.userDataDir, {
                 headless,
-                channel: 'chromium',
+                executablePath,
                 viewport: null,
                 args: launchArgs,
             })
@@ -276,28 +355,45 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
             });
         return await contextPromise;
     };
+
+    const close = async () => {
+        const context = contextRef;
+        const browser = context?.browser();
+        contextRef = undefined;
+        contextPromise = undefined;
+        if (context) {
+            await context.close();
+        }
+        if (browser?.isConnected()) {
+            await browser.close();
+        }
+        await waitForBrowserDisconnected(browser);
+        await waitForProfileRelease(options.userDataDir);
+    };
+
+    return { getContext, close };
 };
 
 /**
  * 创建 context 管理器。内部缓存 BrowserContext，并处理启动与关闭回收。
  */
-export const createContextManager = (options: ContextManagerOptions) => {
+export const createContextManager = (options: ContextManagerOptions): ContextProvider => {
     const browserMode = (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
-    const getContext =
+    const provider =
         browserMode === 'cdp' ? createCdpContextProvider(options) : createExtensionContextProvider(options);
 
-    return { getContext };
+    return provider;
 };
 
 /**
  * 解析扩展与用户数据目录路径。
  * 使用相对路径，便于 monorepo 下的运行与打包。
  */
-export const resolvePaths = () => {
+export const resolvePaths = (): { extensionPaths: string[]; userDataRoot: string } => {
     const extensionPaths = [
         path.resolve(__dirname, '../../../../extension/dist'),
         path.resolve(__dirname, '../../../../start_extension/dist'),
     ];
-    const userDataDir = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
-    return { extensionPaths, userDataDir };
+    const userDataRoot = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
+    return { extensionPaths, userDataRoot };
 };

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDslScope, resolveDslValue, setDslValue } from '../../../src/dsl/runtime';
-import { DslRuntimeError } from '../../../src/dsl/diagnostics/errors';
+import { createDslScope, resolveDslValue, setDslValue } from '../../../../src/dsl/runtime';
+import { DslRuntimeError } from '../../../../src/dsl/diagnostics/errors';
 
 test('resolveDslValue resolves ref nested objects and arrays', () => {
     const scope = createDslScope({ user: { name: 'alice' }, ids: ['a', 'b'] });

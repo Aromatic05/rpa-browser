@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDslTaskRunner } from '../../../src/dsl/runtime';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { createDslTaskRunner } from '../../../../src/dsl/runtime';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {
     name: string;
@@ -10,11 +11,10 @@ type StubCall = {
 };
 
 const createDeps = (calls: StubCall[], opts?: { failFill?: boolean; delayMs?: number }): RunStepsDeps =>
-    ({
+    completeRunStepsDeps({
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-task',
-                tabName: 'tab-dsl-task',
                 tabName: 'tk-dsl-task',
                 traceCtx: { cache: {} },
             }),
@@ -53,7 +53,7 @@ const createDeps = (calls: StubCall[], opts?: { failFill?: boolean; delayMs?: nu
                     },
                 }) as any,
         } as any,
-    }) as RunStepsDeps;
+    });
 
 test('task_runner runs multiple steps through one runId and preserves queue order', async () => {
     const calls: StubCall[] = [];

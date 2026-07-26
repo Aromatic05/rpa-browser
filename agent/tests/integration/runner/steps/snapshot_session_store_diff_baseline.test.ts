@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 import {
     ensureFreshSnapshot,
     ensureSnapshotSessionEntry,
@@ -8,9 +8,9 @@ import {
     readSnapshotDiffBaseline,
     shouldMarkSnapshotDirtyByStep,
     writeSnapshotDiffBaseline,
-} from '../../../src/runner/steps/executors/snapshot/core/session_store';
-import { buildSnapshotDiffBaselineKey } from '../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
-import { buildSnapshotFromViewRoot } from '../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
+} from '../../../../src/runner/steps/executors/snapshot/core/session_store';
+import { buildSnapshotDiffBaselineKey } from '../../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
+import { buildSnapshotFromViewRoot } from '../../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
 
 const createBaselineRoot = (id: string): UnifiedNode => ({
     id,

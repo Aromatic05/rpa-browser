@@ -14,7 +14,7 @@ const getCheckpointBinding = async (ctx: CheckpointCtx) => {
     }
     return await ctx.failedCtx.deps.runtime.awaitExecutableTab({
         workspace,
-        pageRegistry: ctx.failedCtx.deps.pageRegistry,
+        pageRegistry: workspace.browserSession.pageRegistry,
         tabName,
         timeoutMs: ctx.failedCtx.deps.config.waitPolicy.pageReadyTimeoutMs,
     });

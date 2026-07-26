@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { SnapshotResult, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { executeBrowserQuery } from '../../../src/runner/steps/executors/query';
-import type { Step } from '../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { SnapshotResult, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { executeBrowserQuery } from '../../../../src/runner/steps/executors/query';
+import type { Step } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createNode = (id: string, role: string, name?: string): UnifiedNode => ({
     id,
@@ -39,23 +40,19 @@ const createSnapshot = (): SnapshotResult => {
             row_2: { tag: 'tr', 'data-row': '2' },
             btn_next: { tag: 'button', disabled: 'false' },
         },
+        controlIndex: {},
         contentStore: {},
     };
 };
 
-const createDeps = (snapshot: SnapshotResult): RunStepsDeps => ({
-    runtime: {
-        ensureActivePage: async () => ({
-            traceCtx: {
-                cache: {
-                    latestSnapshot: snapshot,
-                },
-            },
-        }),
-    } as any,
-    config: {} as any,
-    pluginHost: {} as any,
-});
+const createDeps = (snapshot: SnapshotResult): RunStepsDeps => {
+    const binding = {
+        workspaceName: 'ws-1',
+        tabName: 'tab-1',
+        traceCtx: { cache: { latestSnapshot: snapshot } },
+    };
+    return completeRunStepsDeps({ config: {} as any, pluginHost: {} as any }, binding);
+};
 
 test('browser.query can find rows from snapshot descendants', async () => {
     const step: Step<'browser.query'> = {

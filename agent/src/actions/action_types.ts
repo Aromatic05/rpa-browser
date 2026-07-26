@@ -13,6 +13,7 @@ export const REQUEST_ACTION_TYPES = {
     WORKSPACE_LIST: 'workspace.list',
     WORKSPACE_CREATE: 'workspace.create',
     WORKSPACE_SET_ACTIVE: 'workspace.setActive',
+    WORKSPACE_CLOSE: 'workspace.close',
 
     TAB_LIST: 'tab.list',
     TAB_CLOSE: 'tab.close',

@@ -235,7 +235,7 @@ const writeRunnerStepResultCache = async (
         if (!tabName) {return;}
         const binding = await deps.runtime.awaitExecutableTab({
             workspace,
-            pageRegistry: deps.pageRegistry,
+            pageRegistry: workspace.browserSession.pageRegistry,
             tabName,
             timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
         });
@@ -409,7 +409,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     }
                     const binding = await resolvedDeps.runtime.awaitExecutableTab({
                         workspace,
-                        pageRegistry: resolvedDeps.pageRegistry,
+                        pageRegistry: workspace.browserSession.pageRegistry,
                         tabName,
                         timeoutMs: resolvedDeps.config.waitPolicy.pageReadyTimeoutMs,
                     });

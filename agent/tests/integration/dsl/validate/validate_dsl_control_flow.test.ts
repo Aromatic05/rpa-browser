@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { DslProgram } from '../../../src/dsl/ast';
-import { normalizeDsl } from '../../../src/dsl/normalize';
-import { validateDsl } from '../../../src/dsl/validate';
+import type { DslProgram } from '../../../../src/dsl/ast';
+import { normalizeDsl } from '../../../../src/dsl/normalize';
+import { validateDsl } from '../../../../src/dsl/validate';
 
 test('validateDsl allows for item refs inside loop body', () => {
     const program: DslProgram = {

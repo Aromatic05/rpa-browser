@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { setNodeAttr, setNodeAttrs, setNodeContent } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import { projectInteractionStateContent } from '../../../src/runner/steps/executors/snapshot/pipeline/content_tokens';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { setNodeAttr, setNodeAttrs, setNodeContent } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { projectInteractionStateContent } from '../../../../src/runner/steps/executors/snapshot/pipeline/content_tokens';
 import {
     buildSnapshotFromViewRoot,
     buildSnapshotView,
     computeMinimalChangedSubtree,
-} from '../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
+} from '../../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
 
 const createNode = (id: string, role: string, children: UnifiedNode[] = []): UnifiedNode => ({
     id,

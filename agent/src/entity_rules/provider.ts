@@ -17,16 +17,16 @@ export type WorkspaceEntityRulesProvider = {
 const toBundle = (artifact: WorkflowEntityRules): NormalizedEntityRuleBundle => toEntityRuleBundle(artifact);
 
 const isBundleMatched = (bundle: NormalizedEntityRuleBundle, input: ResolveEntityRulesBundleInput): boolean => {
-    if (input.pageKind && bundle.page.kind !== input.pageKind) {
-        return false;
+    if (bundle.page.urlPattern) {
+        if (!input.pageUrl) {
+            return false;
+        }
+        return new RegExp(bundle.page.urlPattern).test(input.pageUrl);
     }
-    if (!bundle.page.urlPattern) {
-        return true;
+    if (input.pageKind) {
+        return bundle.page.kind === input.pageKind;
     }
-    if (!input.pageUrl) {
-        return false;
-    }
-    return new RegExp(bundle.page.urlPattern).test(input.pageUrl);
+    return true;
 };
 
 export const createWorkspaceEntityRulesProvider = (workflow: Workflow): WorkspaceEntityRulesProvider => {

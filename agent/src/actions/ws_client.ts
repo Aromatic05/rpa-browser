@@ -19,6 +19,8 @@ export type StartActionWsClientOptions = {
 
 export type ActionWsClient = {
     broadcastAction: (action: Action) => void;
+    waitForListening: (timeoutMs?: number) => Promise<void>;
+    waitForClient: (timeoutMs?: number) => Promise<void>;
     close: () => Promise<void>;
 };
 
@@ -37,7 +39,7 @@ const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
         type: typeof rec.type === 'string' ? rec.type : undefined,
         workspaceName: typeof rec.workspaceName === 'string' ? rec.workspaceName : undefined,
         payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
+        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [],
     };
 };
 
@@ -128,7 +130,7 @@ const createProjectedActions = (workspaceRegistry: WorkspaceRegistry, action: Ac
             v: 1,
             id: crypto.randomUUID(),
             type: ACTION_TYPES.WORKSPACE_CHANGED,
-            payload: { workspaceName: workspaceName, tabName: tabName, sourceType: action.type },
+            payload: { workspaceName, tabName, sourceType: action.type },
             workspaceName: workspaceName || undefined,
             at: Date.now(),
         });
@@ -153,6 +155,36 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
     const wsTap = options.wsTap ?? (() => undefined);
     const host = options.host ?? DEFAULT_HOST;
     const wsClients = new Set<WebSocket>();
+    const clientWaiters = new Set<{ resolve: () => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+    let closed = false;
+    let listening = false;
+    let listeningError: Error | null = null;
+    let resolveListening!: () => void;
+    let rejectListening!: (error: Error) => void;
+    const listeningPromise = new Promise<void>((resolve, reject) => {
+        resolveListening = resolve;
+        rejectListening = reject;
+    });
+
+    const resolveClientWaiters = () => {
+        const waiters = Array.from(clientWaiters);
+        clientWaiters.clear();
+        waiters.forEach((waiter) => {
+            clearTimeout(waiter.timer);
+            waiter.resolve();
+        });
+    };
+
+    const rejectClientWaiters = (error: Error) => {
+        const waiters = Array.from(clientWaiters);
+        clientWaiters.clear();
+        waiters.forEach((waiter) => {
+            clearTimeout(waiter.timer);
+            waiter.reject(error);
+        });
+    };
+
+    const hasOpenClient = () => Array.from(wsClients).some((client) => client.readyState === client.OPEN);
 
     const sendToAll = (action: Action) => {
         wsTap('agent.broadcast', summarizeActionEnvelope(action));
@@ -178,11 +210,24 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
     const wss = new WebSocketServer({ host, port: options.port });
 
     wss.on('listening', () => {
+        listening = true;
+        resolveListening();
         options.onListening?.(`ws://${host}:${options.port}`);
+    });
+
+    wss.on('error', (error) => {
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        listeningError = normalized;
+        if (!listening) {
+            rejectListening(normalized);
+        }
+        rejectClientWaiters(normalized);
+        options.onError(normalized);
     });
 
     wss.on('connection', (socket) => {
         wsClients.add(socket);
+        resolveClientWaiters();
         socket.on('message', (data) => {
             let raw: unknown;
             let rawText = '';
@@ -244,14 +289,57 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
         });
     });
 
+    const waitForListening = async (timeoutMs = 5000) => {
+        if (listening) {return;}
+        if (listeningError) {throw listeningError;}
+        if (closed) {throw new Error('workspace action websocket server closed');}
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            await Promise.race([
+                listeningPromise,
+                new Promise<void>((_resolve, reject) => {
+                    timer = setTimeout(() => { reject(new Error(`workspace action websocket server did not listen within ${timeoutMs}ms`)); }, timeoutMs);
+                }),
+            ]);
+        } finally {
+            if (timer) {clearTimeout(timer);}
+        }
+    };
+
+    const waitForClient = async (timeoutMs = 5000) => {
+        if (hasOpenClient()) {return;}
+        if (closed) {throw new Error('workspace action websocket server closed');}
+        await new Promise<void>((resolve, reject) => {
+            const waiter = {
+                resolve,
+                reject,
+                timer: setTimeout(() => {
+                    clientWaiters.delete(waiter);
+                    reject(new Error(`workspace action websocket client did not connect within ${timeoutMs}ms`));
+                }, timeoutMs),
+            };
+            clientWaiters.add(waiter);
+        });
+    };
+
     const close = async () => {
+        closed = true;
+        const closeError = new Error('workspace action websocket server closed');
+        if (!listening) {
+            rejectListening(closeError);
+        }
+        rejectClientWaiters(closeError);
         wsClients.forEach((client) => {
             try { client.close(); } catch { /* ignore */ }
         });
         await new Promise<void>((resolve) => {
-            wss.close(() => resolve());
+            try {
+                wss.close(() => { resolve(); });
+            } catch {
+                resolve();
+            }
         });
     };
 
-    return { broadcastAction, close };
+    return { broadcastAction, waitForListening, waitForClient, close };
 };

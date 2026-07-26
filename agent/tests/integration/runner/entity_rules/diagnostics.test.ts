@@ -1,24 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { getRunnerConfig } from '../../../src/config';
-import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { executeBrowserEntity } from '../../../src/runner/steps/executors/entity';
-import { executeBrowserQuery } from '../../../src/runner/steps/executors/query';
-import { applyBusinessEntityRules } from '../../../src/runner/steps/executors/snapshot/entity_rules/apply';
-import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import { buildSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
-import { buildExternalIndexes } from '../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
+import { getRunnerConfig } from '../../../../src/config';
+import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import { executeBrowserEntity } from '../../../../src/runner/steps/executors/entity';
+import { executeBrowserQuery } from '../../../../src/runner/steps/executors/query';
+import { applyBusinessEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/apply';
+import { buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import { buildSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
+import { buildExternalIndexes } from '../../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
 import type {
     EntityIndex,
     EntityRuleDiagnostic,
     FinalEntityView,
     SnapshotResult,
     UnifiedNode,
-} from '../../../src/runner/steps/executors/snapshot/core/types';
-import type { NormalizedEntityRuleBundle } from '../../../src/runner/steps/executors/snapshot/entity_rules/types';
-import type { Step } from '../../../src/runner/steps/types';
+} from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
+import type { NormalizedEntityRuleBundle } from '../../../../src/runner/steps/executors/snapshot/entity_rules/types';
+import type { Step } from '../../../../src/runner/steps/types';
 
 type FixtureOptions = {
     missingFieldControl?: boolean;
@@ -30,12 +31,10 @@ type FixtureOptions = {
 
 const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView): RunStepsDeps => {
     const workspaceName = 'ws-diagnostics';
-    const tabName = 'tab-diagnostics';
     const tabName = 'tab-token-diagnostics';
     const url = 'https://example.test/entity-diagnostics';
     const binding = {
         workspaceName,
-        tabName,
         tabName,
         page: { url: () => url },
         traceCtx: {
@@ -44,7 +43,7 @@ const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView):
                     version: 1,
                     entries: {
                         [`${workspaceName}:${tabName}`]: {
-                            pageIdentity: { workspaceName, tabName, tabName, url },
+                            pageIdentity: { workspaceName, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView,
@@ -60,13 +59,13 @@ const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView):
         },
     };
 
-    return {
-        runtime: {
-            ensureActivePage: async () => binding,
-        } as any,
-        config: getRunnerConfig(),
-        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-    };
+    return completeRunStepsDeps(
+        {
+            config: getRunnerConfig(),
+            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
+        },
+        binding,
+    );
 };
 
 const createFixture = (options: FixtureOptions = {}): { snapshot: SnapshotResult; finalEntityView: FinalEntityView } => {

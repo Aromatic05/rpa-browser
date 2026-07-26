@@ -1,18 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { executeBrowserCompute } from '../../../src/runner/steps/executors/compute';
-import type { Step } from '../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import { executeBrowserCompute } from '../../../../src/runner/steps/executors/compute';
+import type { Step } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
-const createDeps = (cache: Record<string, unknown> = {}): RunStepsDeps => ({
-    runtime: {
-        ensureActivePage: async () => ({
-            traceCtx: { cache },
-        }),
-    } as any,
-    config: {} as any,
-    pluginHost: {} as any,
-});
+const createDeps = (cache: Record<string, unknown> = {}): RunStepsDeps =>
+    completeRunStepsDeps(
+        { config: {} as any, pluginHost: {} as any },
+        { workspaceName: 'ws-1', tabName: 'tab-1', traceCtx: { cache } },
+    );
 
 test('browser.compute supports len and nested get/eq/not', async () => {
     const step: Step<'browser.compute'> = {

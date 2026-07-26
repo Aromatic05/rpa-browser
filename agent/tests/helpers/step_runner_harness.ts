@@ -15,7 +15,7 @@ export const createStep = <TName extends StepName>(name: TName, args: StepArgsMa
     id: crypto.randomUUID(),
     name,
     args,
-});
+} as StepUnion);
 
 export const createTestPluginHost = async () => {
     const entryFile = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
@@ -33,11 +33,13 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
     const workspaceName = `ws-${crypto.randomUUID()}`;
 
     const pluginHost = await createTestPluginHost();
-    const { registry: workspaceRegistry } = createWorkspaceHarness();
+    const { registry: workspaceRegistry } = createWorkspaceHarness({ pageRegistry });
     const runtimeWorkspace = workspaceRegistry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
     runtimeWorkspace.tabs.createTab({
         tabName,
     });
+    runtimeWorkspace.tabs.bindPage(tabName, page);
+    runtimeWorkspace.tabs.updateTab(tabName, { url: page.url(), title: await page.title() });
     runtimeWorkspace.tabs.setActiveTab(tabName);
     const runtime = createExecutionBindings({
         pageRegistry,
@@ -46,12 +48,25 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
     });
     runtime.bindPage({ workspaceName, tabName, page });
 
-    const deps = { runtime, config: getRunnerConfig(), pluginHost };
+    const deps = {
+        runtime,
+        config: getRunnerConfig(),
+        pluginHost,
+        resolveWorkspace: (name: string) => {
+            if (name !== workspaceName) {throw new Error(`workspace not found: ${name}`);}
+            return runtimeWorkspace;
+        },
+        dispatchAction: async (action: any) => ({ ...action, id: crypto.randomUUID(), type: `${action.type}.result`, replyTo: action.id }),
+        resolveEntityRulesProvider: (name: string) => {
+            if (name !== workspaceName) {return null;}
+            return runtimeWorkspace.entityRules.getProvider(runtimeWorkspace.workflow);
+        },
+    };
 
     const run = async (steps: StepUnion[]) => {
         const { pipe, checkpoint } = await runStepList(workspaceName, steps, deps, { stopOnError: true });
-        const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown }>;
-        const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data }));
+        const items = pipe.items as Array<{ stepId: string; ok: boolean; data?: unknown; error?: unknown }>;
+        const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
     };
 

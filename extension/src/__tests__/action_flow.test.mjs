@@ -41,7 +41,8 @@ class FakeWebSocket {
     static CLOSED = 3;
     static instances = [];
 
-    constructor() {
+    constructor(url) {
+        this.url = url;
         this.readyState = FakeWebSocket.CONNECTING;
         this.OPEN = FakeWebSocket.OPEN;
         this.listeners = new Map();
@@ -80,6 +81,7 @@ await log('ws client resolves pending only on reply actions', async () => {
     try {
         const received = [];
         const client = createWsClient({
+            wsPort: 17001,
             onAction: (action) => {
                 received.push(action.type);
             },
@@ -119,6 +121,26 @@ await log('ws client resolves pending only on reply actions', async () => {
         const reply = await promise;
         assert.equal(reply.type, 'play.start.result');
         assert.equal(received.includes('play.step.started'), true);
+    } finally {
+        globalThis.WebSocket = OriginalWebSocket;
+        FakeWebSocket.instances.length = 0;
+    }
+});
+
+await log('ws client reconnect switches ports and closes the previous socket', async () => {
+    const OriginalWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = FakeWebSocket;
+    try {
+        const client = createWsClient({ wsPort: 17001, onAction: () => undefined });
+        await client.connect();
+        const first = FakeWebSocket.instances.at(-1);
+        assert.equal(first.url, 'ws://127.0.0.1:17001');
+        await client.reconnect(17002);
+        const second = FakeWebSocket.instances.at(-1);
+        assert.notEqual(second, first);
+        assert.equal(first.readyState, FakeWebSocket.CLOSED);
+        assert.equal(second.url, 'ws://127.0.0.1:17002');
+        assert.equal(second.readyState, FakeWebSocket.OPEN);
     } finally {
         globalThis.WebSocket = OriginalWebSocket;
         FakeWebSocket.instances.length = 0;

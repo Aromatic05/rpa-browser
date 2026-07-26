@@ -2,12 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fuseDomAndA11y } from '../../../src/runner/steps/executors/snapshot/stages/fusion';
-import { buildSpatialLayers, isNoiseLayer } from '../../../src/runner/steps/executors/snapshot/stages/spatial';
-import { detectRegions } from '../../../src/runner/steps/executors/snapshot/stages/regions';
-import { processRegion } from '../../../src/runner/steps/executors/snapshot/pipeline/process_region';
-import { generateSemanticSnapshotFromRaw } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { fuseDomAndA11y } from '../../../../src/runner/steps/executors/snapshot/stages/fusion';
+import { buildSpatialLayers, isNoiseLayer } from '../../../../src/runner/steps/executors/snapshot/stages/spatial';
+import { detectRegions } from '../../../../src/runner/steps/executors/snapshot/stages/regions';
+import { processRegion } from '../../../../src/runner/steps/executors/snapshot/pipeline/process_region';
+import { generateSemanticSnapshotFromRaw } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { getNodeAttrs, getNodeContent } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
 
 type RawFixture = {
     domTree: unknown;
@@ -114,7 +115,7 @@ test('snapshot stage2/3 acceptance on fixture dataset', { skip: !HAS_FIXTURE_DIR
 
         walk(root, (node) => {
             nodeCount += 1;
-            const attrs = node.attrs || {};
+            const attrs = getNodeAttrs(node) || {};
             if (attrs.entityId) {entityCount += 1;}
             if (attrs.entityType && ENTITY_TYPES.has(attrs.entityType)) {entityTypeCount += 1;}
             if (attrs.actionIntent) {actionIntentCount += 1;}
@@ -181,10 +182,11 @@ test('shop.yingdao table cells should keep stable roles and avoid guessed names'
 
     let pollutedCellCount = 0;
     walk(root, (node) => {
-        const tag = node.attrs?.tag;
+        const tag = getNodeAttrs(node)?.tag;
         if (tag !== 'td' && tag !== 'th') {return;}
-        if (!node.name || !node.content) {return;}
-        if (node.name !== node.content) {
+        const content = getNodeContent(node);
+        if (!node.name || !content) {return;}
+        if (node.name !== content) {
             pollutedCellCount += 1;
         }
     });

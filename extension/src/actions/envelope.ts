@@ -34,17 +34,26 @@ export const validateActionEnvelope = (incoming: unknown): EnvelopeOk | Envelope
         return { ok: false, code: 'ERR_BAD_ARGS', message: 'legacy address fields are not allowed' };
     }
     const payload = incoming.payload;
-    if (
-        isRecord(payload)
-        && (
+    if (isRecord(payload)) {
+        if (
             has(payload, 'workspaceName')
-            || has(payload, 'scope')
+            && typeof incoming.workspaceName === 'string'
+            && incoming.workspaceName.trim().length > 0
+        ) {
+            return {
+                ok: false,
+                code: 'ERR_BAD_ARGS',
+                message: 'workspaceName conflict: top-level and payload.workspaceName cannot both be set',
+            };
+        }
+        if (
+            has(payload, 'scope')
             || has(payload, 'workspaceId')
             || has(payload, 'tabToken')
             || has(payload, 'tabId')
-        )
-    ) {
-        return { ok: false, code: 'ERR_BAD_ARGS', message: 'payload.workspaceName is not allowed' };
+        ) {
+            return { ok: false, code: 'ERR_BAD_ARGS', message: 'legacy payload address fields are not allowed' };
+        }
     }
     if (!isRequestActionType(type)) {
         return { ok: false, code: 'ERR_BAD_ARGS', message: `unsupported command type '${type}'` };

@@ -378,7 +378,15 @@ export const executeCustomSelect = async (
 
     const afterSnapshot = await generateSemanticSnapshot(binding.page);
     const finalState = readFinalCustomSelectState(step.id, afterSnapshot, finalControlRef);
-    if (isStepResult(finalState)) {return finalState;}
+    if (isStepResult(finalState)) {
+        if (finalState.error?.code === 'ERR_NOT_FOUND') {
+            return assertionFailed(step.id, 'custom_select control missing after action', {
+                controlRef: finalControlRef,
+                cause: finalState.error,
+            });
+        }
+        return finalState;
+    }
     stepLog.debug('select_option_custom_final_state', {
         stepId: step.id,
         controlRef: finalState.controlRef,

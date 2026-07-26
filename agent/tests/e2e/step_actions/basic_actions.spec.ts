@@ -3,7 +3,7 @@ import { startAgent, runStep, dispatch } from '../../helpers/e2e_multitab_helper
 import { startFixtureServer } from '../../helpers/server';
 import type { StepUnion } from '../../../src/runner/steps/types';
 
-const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args });
+const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args } as unknown as Extract<StepUnion, { name: T }>);
 const log = (m: string) => console.log(`[e2e-mt][${new Date().toISOString()}] ${m}`);
 
 let ep = '';
@@ -30,8 +30,22 @@ test('E2E-1 step actions should work via agent + extension + workspace on real f
   const d = async (label: string, action: Parameters<typeof dispatch>[1]) => { const r = await dispatch(ep, action); log(`${label} -> ${r.type}`); return r; };
   const rs = async (label: string, s: StepUnion) => { const r = await runStep(ep, ws, s); log(`${label} -> ok=${String(r.ok)}`); return r; };
 
+  const beforeTabsReply = await d('tab.list.before', { v: 1, id: crypto.randomUUID(), type: 'tab.list', workspaceName: ws, payload: {}, at: Date.now() });
+  expect(beforeTabsReply.type).toBe('tab.list.result');
+  const beforeTabs = new Set((((beforeTabsReply.payload || {}) as { tabs?: Array<{ tabName: string }> }).tabs || []).map((tab) => tab.tabName));
+
   const openReply = await d('tab.open', { v: 1, id: crypto.randomUUID(), type: 'tab.open', workspaceName: ws, payload: { startUrl: fixtureUrl, source: 'e2e.step_actions' }, at: Date.now() });
   expect(openReply.type).toBe('tab.open.result');
+
+  let openedTabName = '';
+  await expect.poll(async () => {
+    const listed = await dispatch(ep, { v: 1, id: crypto.randomUUID(), type: 'tab.list', workspaceName: ws, payload: {}, at: Date.now() });
+    const created = (((listed.payload || {}) as { tabs?: Array<{ tabName: string }> }).tabs || []).find((tab) => !beforeTabs.has(tab.tabName));
+    openedTabName = created?.tabName || '';
+    return openedTabName;
+  }, { timeout: 15_000 }).toBeTruthy();
+  const switchResult = await rs('s1-switch', st('s1-switch', 'browser.switch_tab', { tabName: openedTabName }));
+  expect(switchResult.ok).toBeTruthy();
 
   const gotoResult = await rs('s1-goto', st('s1-goto', 'browser.goto', { url: fixtureUrl }));
   expect(gotoResult.ok).toBeTruthy();

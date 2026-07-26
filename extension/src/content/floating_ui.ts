@@ -218,6 +218,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             state.unsavedStepCount = Number(unsaved.stepCount || 0);
         }
         if (requestType === 'workspace.setActive' && !action.type.endsWith('.failed')) {
+            const workspaceName = typeof payload.workspaceName === 'string' ? payload.workspaceName : '';
+            if (workspaceName) {
+                state.activeWorkspaceName = workspaceName;
+                const activeWorkspace = state.workspaces.find((workspace) => workspace.workspaceName === workspaceName);
+                state.activeTabName = activeWorkspace?.activeTabName ?? '';
+            }
             void refreshTabs();
         }
         if (requestType === 'workflow.open' && !action.type.endsWith('.failed')) {
@@ -226,7 +232,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             void refreshRecordings();
         }
         if (requestType === 'tab.setActive' && !action.type.endsWith('.failed')) {
+            const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+            if (tabName) {
+                state.activeTabName = tabName;
+                state.tabs = state.tabs.map((tab) => ({ ...tab, active: tab.tabName === tabName }));
+            }
             void refreshTabs();
+        }
+        if (requestType === 'record.save' && !action.type.endsWith('.failed')) {
+            void refreshRecordings();
         }
         if (requestType === 'workflow.saveAs' && !action.type.endsWith('.failed')) {
             void refreshWorkspaces();
@@ -271,7 +285,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const row2 = document.createElement('div');
         row2.className = 'row';
         row2.append(
-            createButton('Clear Output', () => setOutput({})),
+            createButton('Clear Output', () => { setOutput({}); }),
             createButton('record.list', refreshRecordings),
         );
         box.appendChild(row2);
@@ -368,7 +382,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         row1.className = 'row';
         row1.append(
             createButton('tab.list', refreshTabs),
-            createButton('tab.create', () => { chrome.tabs.create({}); }),
+            createButton('tab.create', () => { void chrome.tabs.create({}); }),
         );
         const row2 = document.createElement('div');
         row2.className = 'row';
@@ -553,7 +567,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         btn.textContent = name;
         btn.addEventListener('click', () => {
             state.activeView = name;
-            Array.from(tabsBar.children).forEach((c) => c.classList.remove('active'));
+            Array.from(tabsBar.children).forEach((c) => { c.classList.remove('active'); });
             btn.classList.add('active');
             renderActiveView();
         });
@@ -584,5 +598,5 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         });
     };
 
-    return { unmount: () => host.remove(), scheduleRefresh };
+    return { unmount: () => { host.remove(); }, scheduleRefresh };
 };

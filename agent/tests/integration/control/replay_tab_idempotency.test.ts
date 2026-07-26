@@ -25,7 +25,7 @@ const step = <T extends StepUnion['name']>(id: string, name: T, args: Extract<St
     name,
     args,
     meta,
-});
+} as unknown as Extract<StepUnion, { name: T }>);
 
 const createHarness = () => {
     const tabs = createWorkspaceTabs({

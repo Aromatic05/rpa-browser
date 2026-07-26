@@ -494,9 +494,14 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         }
         collectTabEffectsFromDiff(tabEffectRegister, runtimeTabsBeforeStep, runtimeTabsAfterStep, remappedStep.name, req.workspace);
         if (tabEffectRegister.pendingCreatedTab.state === 'conflict' || tabEffectRegister.pendingClosedTab.state === 'conflict') {
-            const conflictReason = tabEffectRegister.pendingCreatedTab.state === 'conflict'
-                ? tabEffectRegister.pendingCreatedTab.reason
-                : tabEffectRegister.pendingClosedTab.reason;
+            let conflictReason: string;
+            if (tabEffectRegister.pendingCreatedTab.state === 'conflict') {
+                conflictReason = tabEffectRegister.pendingCreatedTab.reason;
+            } else if (tabEffectRegister.pendingClosedTab.state === 'conflict') {
+                conflictReason = tabEffectRegister.pendingClosedTab.reason;
+            } else {
+                throw new Error('unreachable tab effect conflict state');
+            }
             return {
                 ok: false,
                 results: stepResults,

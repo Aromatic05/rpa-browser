@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fuseDomAndA11y } from '../../../src/runner/steps/executors/snapshot/stages/fusion';
-import { getNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { RuntimeStateMap } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { fuseDomAndA11y } from '../../../../src/runner/steps/executors/snapshot/stages/fusion';
+import { getNodeAttr } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { RuntimeStateMap } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 type DomNode = {
     id: string;

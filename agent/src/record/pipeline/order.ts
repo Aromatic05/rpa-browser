@@ -1,4 +1,4 @@
-import type { StepUnion } from '../../runner/steps/types';
+import type { StepName, StepUnion } from '../../runner/steps/types';
 import { getLogger } from '../../logging/logger';
 
 const isTabLifecycleStep = (stepName: StepName): boolean =>

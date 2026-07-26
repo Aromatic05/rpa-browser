@@ -1,25 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { finalizeLabel } from '../../../src/runner/steps/executors/snapshot/stages/finalize_label';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { compress } from '../../../../src/runner/steps/executors/snapshot/stages/compress';
+import { finalizeLabel } from '../../../../src/runner/steps/executors/snapshot/stages/finalize_label';
+import { getNodeContent, getNodeSemanticHints } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { snapshotNode as node } from '../../../helpers/snapshot_node';
 
-const node = (
-    id: string,
-    role: string,
-    children: UnifiedNode[] = [],
-    patch: Partial<UnifiedNode> = {},
-): UnifiedNode => ({
-    id,
-    role,
-    children,
-    ...patch,
-});
-
-test('finalizeLabel should migrate fieldLabel to surviving field carrier and finalize button text/action', () => {
+test('compress and finalizeLabel migrate field semantics to the surviving control', () => {
     const input = node('input', 'input', [], { attrs: { tag: 'input' } });
     const fieldShell = node('field-shell', 'div', [input], {
-        fieldLabel: '关键字',
-        attrs: { fieldLabel: '关键字', tag: 'div' },
+        semantic: { fieldLabel: '关键字' },
+        attrs: { tag: 'div' },
     });
     const action = node('action', 'button', [], {
         content: '删除',
@@ -27,84 +17,76 @@ test('finalizeLabel should migrate fieldLabel to surviving field carrier and fin
     });
     const root = node('root', 'root', [fieldShell, action]);
 
-    finalizeLabel(root);
+    const compressed = compress(root);
+    assert.ok(compressed);
+    finalizeLabel(compressed);
 
-    assert.equal(fieldShell.fieldLabel, undefined);
-    assert.equal(fieldShell.attrs?.fieldLabel, undefined);
-    assert.equal(input.fieldLabel, '关键字');
-    assert.equal(input.attrs?.fieldLabel, '关键字');
+    const survivingInput = compressed.children.find((child) => child.id === 'input');
+    assert.ok(survivingInput);
+    assert.equal(getNodeSemanticHints(survivingInput)?.fieldLabel, '关键字');
     assert.equal(action.name, '删除');
-    assert.equal(action.content, '删除');
-    assert.equal(action.actionIntent, 'delete');
+    assert.equal(getNodeContent(action), '删除');
+    assert.equal(getNodeSemanticHints(action)?.actionIntent, 'delete');
 });
 
-test('finalizeLabel should backfill missing input fieldLabel from local scope label', () => {
+test('finalizeLabel backfills a missing field label from local scope text', () => {
     const label = node('label', 'label', [], { content: '邮箱' });
     const input = node('input', 'input', [], { attrs: { tag: 'input' } });
-    const form = node('form', 'form', [label, input], {
-        formRole: 'form',
-        attrs: { formRole: 'form', tag: 'form' },
-    });
+    const form = node('form', 'form', [label, input], { attrs: { tag: 'form' } });
 
     finalizeLabel(form);
 
-    assert.equal(input.fieldLabel, '邮箱');
-    assert.equal(input.attrs?.fieldLabel, '邮箱');
+    assert.equal(getNodeSemanticHints(input)?.fieldLabel, '邮箱');
+    assert.equal(input.name, '邮箱');
 });
 
-test('finalizeLabel should settle container title for card-like entity after compress', () => {
+test('finalizeLabel settles a title for a card-like container', () => {
     const title = node('title', 'heading', [], { content: '订单列表' });
     const card = node('card', 'section', [title], {
-        entityType: 'card',
-        attrs: { entityType: 'card', tag: 'section' },
+        semantic: { entityNodeId: 'card', entityKind: 'panel' },
+        attrs: { tag: 'section' },
     });
 
     finalizeLabel(card);
 
     assert.equal(card.name, '订单列表');
-    assert.equal(card.content, '订单列表');
 });
 
-test('finalizeLabel should migrate entityId from shell to nearest retained semantic carrier', () => {
+test('compress migrates entity semantics from a removable shell to its semantic child', () => {
     const link = node('link', 'link', [], {
         target: { ref: '/detail', kind: 'url' },
         attrs: { tag: 'a' },
     });
     const shell = node('shell', 'div', [link], {
-        entityId: 'entity:item-1',
-        attrs: { entityId: 'entity:item-1', tag: 'div' },
+        semantic: { entityNodeId: 'shell', entityKind: 'panel' },
+        attrs: { tag: 'div' },
     });
     const root = node('root', 'root', [shell]);
 
-    finalizeLabel(root);
-
-    assert.equal(shell.entityId, undefined);
-    assert.equal(shell.attrs?.entityId, undefined);
-    assert.equal(link.entityId, 'entity:item-1');
-    assert.equal(link.attrs?.entityId, 'entity:item-1');
+    const compressed = compress(root);
+    assert.ok(compressed);
+    const survivingLink = compressed.children[0];
+    assert.equal(survivingLink.id, 'link');
+    assert.equal(getNodeSemanticHints(survivingLink)?.entityNodeId, 'shell');
+    assert.equal(getNodeSemanticHints(survivingLink)?.entityKind, 'panel');
 });
 
-test('finalizeLabel should repair invalid parentEntityId and actionTargetId after compression', () => {
+test('finalizeLabel preserves LCA targets and fills a missing action intent', () => {
     const button = node('button', 'button', [], {
         content: '删除',
-        parentEntityId: 'entity:missing-parent',
-        actionTargetId: 'entity:missing-target',
-        attrs: {
-            tag: 'button',
-            parentEntityId: 'entity:missing-parent',
-            actionTargetId: 'entity:missing-target',
+        semantic: {
+            entityNodeId: 'row',
+            entityKind: 'table',
+            actionTargetNodeId: 'row',
         },
+        attrs: { tag: 'button' },
     });
-    const row = node('row', 'row', [button], {
-        entityId: 'entity:row-1',
-        entityType: 'row',
-        attrs: { entityId: 'entity:row-1', entityType: 'row' },
-    });
+    const row = node('row', 'row', [button]);
 
     finalizeLabel(row);
 
-    assert.equal(button.parentEntityId, 'entity:row-1');
-    assert.equal(button.attrs?.parentEntityId, 'entity:row-1');
-    assert.equal(button.actionTargetId, 'entity:row-1');
-    assert.equal(button.attrs?.actionTargetId, 'entity:row-1');
+    const hints = getNodeSemanticHints(button);
+    assert.equal(hints?.entityNodeId, 'row');
+    assert.equal(hints?.actionTargetNodeId, 'row');
+    assert.equal(hints?.actionIntent, 'delete');
 });

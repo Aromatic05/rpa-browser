@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setNodeAttrs } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { EntityRecord, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { buildStructureEntityIndex } from '../../../src/runner/steps/executors/snapshot/stages/entity_index';
-import { detectGroups } from '../../../src/runner/steps/executors/snapshot/stages/groups';
-import { deriveGroupTableKeyHint } from '../../../src/runner/steps/executors/snapshot/stages/table_key';
+import { setNodeAttrs } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { EntityRecord, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { buildStructureEntityIndex } from '../../../../src/runner/steps/executors/snapshot/stages/entity_index';
+import { detectGroups } from '../../../../src/runner/steps/executors/snapshot/stages/groups';
+import { deriveGroupTableKeyHint } from '../../../../src/runner/steps/executors/snapshot/stages/table_key';
 
 const node = (id: string, role: string, children: UnifiedNode[] = [], attrs: Record<string, string> = {}): UnifiedNode => {
     const next: UnifiedNode = {

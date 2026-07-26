@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../../../src/runner/serialization/types';
-import type { Step } from '../../../src/runner/steps/types';
+import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../../../../src/runner/serialization/types';
+import type { Step } from '../../../../src/runner/steps/types';
 
 const repoRoot = process.cwd();
 const read = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -137,7 +137,7 @@ test('run steps request supports step resolves and tab args stay camelCase', () 
     assert.equal(runStepsTypesSource.includes('stepResolves?: Record<string, StepResolve>;'), true);
 
     const createTabBlock = readStepArgsBlock('browser.create_tab');
-    assert.equal(createTabBlock.includes('Record<string, never>'), true);
+    assert.equal(createTabBlock.includes('tabName?: string'), true);
     assert.equal(createTabBlock.includes('url?'), false);
 
     const switchTabBlock = readStepArgsBlock('browser.switch_tab');
@@ -170,7 +170,6 @@ test('canonical tab step args reject missing tabName and legacy fields at type l
     assert.equal(switchOk.args.tabName, 'tab-a');
     assert.equal(closeOk.args.tabName, 'tab-a');
 
-    // @ts-expect-error browser.create_tab does not accept tabName.
     const createWithName: Step<'browser.create_tab'> = { id: 'c-with-name', name: 'browser.create_tab', args: { tabName: 'tab-a' } };
     // @ts-expect-error browser.switch_tab requires tabName.
     const switchMissing: Step<'browser.switch_tab'> = { id: 's-missing', name: 'browser.switch_tab', args: {} };

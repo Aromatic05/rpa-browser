@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDsl, parseDsl, runDsl } from '../../../src/dsl';
-import type { Logger } from '../../../src/logging/logger';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { normalizeDsl, parseDsl, runDsl } from '../../../../src/dsl';
+import type { Logger } from '../../../../src/logging/logger';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type LogCall = {
     level: 'debug' | 'error';
@@ -12,11 +13,10 @@ type LogCall = {
 };
 
 const createDeps = (): RunStepsDeps =>
-    ({
+    completeRunStepsDeps({
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl',
-                tabName: 'tab-dsl',
                 tabName: 'tk-dsl',
                 traceCtx: { cache: {} },
             }),
@@ -32,7 +32,7 @@ const createDeps = (): RunStepsDeps =>
                     }),
                 }) as any,
         } as any,
-    }) as RunStepsDeps;
+    });
 
 const createMockLogger = (calls: LogCall[]): Logger => {
     const logger = ((...args: unknown[]) => {

@@ -7,11 +7,11 @@ import {
     browserCloseTabInputSchema,
     browserSwitchTabInputSchema,
     toolInputJsonSchemas,
-} from '../../src/mcp/schemas';
-import type { RecordingManifest } from '../../src/record/recording';
-import type { RecordingTabManifest } from '../../src/record/recording';
-import type { RecordedStepEnhancement } from '../../src/record/types';
-import type { SnapshotPageIdentity } from '../../src/runner/steps/executors/snapshot/core/types';
+} from '../../../src/mcp/schemas';
+import type { RecordingManifest } from '../../../src/record/recording';
+import type { RecordingTabManifest } from '../../../src/record/recording';
+import type { RecordedStepEnhancement } from '../../../src/record/types';
+import type { SnapshotPageIdentity } from '../../../src/runner/steps/executors/snapshot/core/types';
 
 type ExpectTrue<T extends true> = T;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -47,7 +47,7 @@ const _snapshotPageIdentityKeys = expectTrue<
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT = path.resolve(__dirname, '..', '..');
+const ROOT = path.resolve(__dirname, '..', '..', '..');
 
 test('mcp zod schemas accept expected tab args', () => {
     const switchResult = browserSwitchTabInputSchema.safeParse({
@@ -72,10 +72,8 @@ test('mcp tool schemas expose single tabName fields', () => {
 test('guards avoid duplicate legacy address checks', () => {
     const dispatcherText = fs.readFileSync(path.join(ROOT, 'src/actions/dispatcher.ts'), 'utf8');
     const indexText = fs.readFileSync(path.join(ROOT, 'src/index.ts'), 'utf8');
-    const actionCallText = fs.readFileSync(path.join(ROOT, 'src/control/action_bridge.ts'), 'utf8');
 
     assert.equal(dispatcherText.includes("'tabName' in payload"), false);
     assert.equal(indexText.includes("'workspaceName' in rec"), false);
-    assert.equal(actionCallText.includes("'tabName' in params || 'tabName' in params"), false);
     assert.equal(indexText.includes("'workspaceName' in rec ||"), false);
 });

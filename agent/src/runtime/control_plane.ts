@@ -4,19 +4,41 @@ import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
 import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
 import { getLogger } from '../logging/logger';
+import type { RuntimeWorkspace, WorkspaceRegistry } from './workspace/registry';
 
 export type ControlPlaneResult = { reply: Action; events: Action[] };
 
 export type RuntimeControlInput = {
     action: Action;
-    workspaceRegistry: any;
+    workspaceRegistry: WorkspaceRegistry;
 };
 
 const randomName = () => crypto.randomUUID();
-const toWorkspaceSummary = (workspace: any) => ({
+
+const stopWorkspaceRuntime = async (workspace: RuntimeWorkspace): Promise<void> => {
+    let firstError: unknown;
+    try {
+        await workspace.mcp.stop();
+    } catch (error) {
+        firstError = error;
+    }
+    try {
+        await workspace.browserSession.stop();
+    } catch (error) {
+        firstError = firstError || error;
+    }
+    if (firstError) {throw firstError;}
+};
+const toWorkspaceSummary = (workspace: RuntimeWorkspace) => ({
     workspaceName: workspace.name,
     activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
     tabCount: workspace.tabs.listTabs().length,
+    browserSession: {
+        status: workspace.browserSession.status,
+        wsPort: workspace.browserSession.wsPort,
+        cdpPort: workspace.browserSession.cdpPort,
+        userDataDir: workspace.browserSession.userDataDir,
+    },
     createdAt: workspace.createdAt,
     updatedAt: workspace.updatedAt,
 });
@@ -29,7 +51,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             const active = workspaceRegistry.getActiveWorkspace();
             return {
                 reply: replyAction(action, {
-                    workspaces: workspaceRegistry.listWorkspaces().map((workspace: any) => toWorkspaceSummary(workspace)),
+                    workspaces: workspaceRegistry.listWorkspaces().map((workspace) => toWorkspaceSummary(workspace)),
                     activeWorkspaceName: active?.name ?? null,
                 }),
                 events: [],
@@ -53,7 +75,22 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workspace not found: ${targetName}`);
             }
             workspaceRegistry.setActiveWorkspace(targetName);
+            target.browserSession.emit(action);
             return { reply: replyAction(action, { workspaceName: targetName }), events: [] };
+        }
+        case 'workspace.close': {
+            const payload = (action.payload ?? {}) as { workspaceName?: string };
+            const targetName = (payload.workspaceName || '').trim();
+            if (!targetName) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'workspaceName is required');
+            }
+            const target = workspaceRegistry.getWorkspace(targetName);
+            if (!target) {
+                throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workspace not found: ${targetName}`);
+            }
+            await stopWorkspaceRuntime(target);
+            workspaceRegistry.removeWorkspace(targetName);
+            return { reply: replyAction(action, { workspaceName: targetName, closed: true }), events: [] };
         }
         case 'workflow.list': {
             return {
@@ -85,7 +122,23 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             if (workspace.name !== workspace.workflow.name) {
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after open');
             }
-            return { reply: replyAction(action, { workflowName, workspaceName: workspace.name, opened: true }), events: [] };
+            workspaceRegistry.setActiveWorkspace(workspace.name);
+            await workspace.browserSession.start();
+            if (workspace.tabs.listTabs().length === 0) {
+                const tabName = crypto.randomUUID();
+                workspace.tabs.createTab({ tabName });
+                await workspace.tabs.createTabPage(tabName, { startUrl: 'about:blank', newWindow: true });
+            }
+            const event: Action = {
+                v: 1,
+                id: crypto.randomUUID(),
+                type: 'workspace.changed',
+                workspaceName: workspace.name,
+                payload: { workspaceName: workspace.name, activeWorkspaceName: workspace.name, sourceType: action.type },
+                at: Date.now(),
+                traceId: action.traceId,
+            };
+            return { reply: replyAction(action, { workflowName, workspaceName: workspace.name, opened: true }), events: [event] };
         }
         case 'workflow.rename': {
             const payload = (action.payload ?? {}) as { fromName?: string; toName?: string };
@@ -93,6 +146,10 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             const toName = (payload.toName || '').trim();
             if (!fromName || !toName) {
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'fromName and toName are required');
+            }
+            const currentWorkspace = workspaceRegistry.getWorkspace(fromName);
+            if (currentWorkspace) {
+                await stopWorkspaceRuntime(currentWorkspace);
             }
             renameWorkflowOnFs(fromName, toName);
             const renamedWorkflow = loadWorkflowFromFs(toName);
@@ -136,6 +193,10 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             };
         }
         case 'workflow.resetDefault': {
+            const currentDefault = workspaceRegistry.getWorkspace('default');
+            if (currentDefault) {
+                await stopWorkspaceRuntime(currentDefault);
+            }
             deleteWorkflowFromFs('default');
             const workflow = createWorkflowOnFs('default');
             workspaceRegistry.removeWorkspace('default');

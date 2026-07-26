@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Workflow Artifact Runtime</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    form { display: grid; gap: 12px; max-width: 520px; padding: 20px; border: 1px solid #ccc; }
+    .field { display: grid; gap: 4px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Workflow Artifact Runtime</h1>
+    <form id="customerForm" aria-label="客户表单" onsubmit="return false;">
+      <h2>客户资料</h2>
+      <div class="field">
+        <label for="customerName">客户名称</label>
+        <input id="customerName" name="customerName" aria-label="客户名称" />
+      </div>
+      <div class="field">
+        <label for="customerCode">客户编号</label>
+        <input id="customerCode" name="customerCode" aria-label="客户编号" />
+      </div>
+      <div class="field">
+        <label for="customerType">客户类型</label>
+        <select id="customerType" name="customerType" aria-label="客户类型">
+          <option value="enterprise">企业</option>
+          <option value="individual">个人</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="note">备注</label>
+        <textarea id="note" name="note" aria-label="备注"></textarea>
+      </div>
+      <button id="submitBtn" type="button">提交</button>
+    </form>
+    <output id="state" data-submitted="false"></output>
+  </main>
+  <script>
+    document.querySelector('#submitBtn').addEventListener('click', () => {
+      const value = document.querySelector('#customerName').value;
+      const state = document.querySelector('#state');
+      state.value = value;
+      state.dataset.submitted = 'true';
+      state.textContent = value;
+    });
+  </script>
+</body>
+</html>

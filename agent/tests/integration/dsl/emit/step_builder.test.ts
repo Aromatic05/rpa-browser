@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../../../src/dsl/emit';
+import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../../../../src/dsl/emit';
 
 test('step_builder maps DSL statements to browser steps', () => {
     const query = buildQueryStep({
@@ -28,7 +28,7 @@ test('step_builder maps DSL statements to browser steps', () => {
     assert.equal(type.name, 'browser.type');
     assert.deepEqual(type.args, { nodeId: 'buyer-input', text: 'alice' });
     assert.equal(select.name, 'browser.select_option');
-    assert.deepEqual(select.args, { nodeId: 'buyer-input', values: ['approved'] });
+    assert.deepEqual(select.args, { nodeId: 'buyer-input', kind: 'native_select', values: ['approved'] });
     assert.equal(snapshot.name, 'browser.snapshot');
     assert.deepEqual(snapshot.args, {});
 });

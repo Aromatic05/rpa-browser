@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>客户线索录入</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #d1d5db;
+      --accent: #0f766e;
+      --danger: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #eef5ff 0%, var(--bg) 100%);
+      color: var(--ink);
+    }
+    .container { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    h1, h2 { margin: 0 0 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 14px; }
+    input, select, textarea {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+      width: 100%;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    .priority { display: flex; align-items: center; gap: 14px; }
+    .priority input { width: auto; }
+    .priority button {
+      background: #e0f2f1;
+      color: var(--ink);
+      border: 1px solid #99f6e4;
+      padding: 8px 12px;
+    }
+    .actions { display: flex; gap: 10px; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: #fff;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    #resetBtn { background: var(--danger); }
+    .result {
+      background: #f9fafb;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 14px;
+      white-space: pre-wrap;
+      min-height: 80px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="card">
+      <h1>客户线索录入页</h1>
+      <p>用于 workflow saveAs/load 回放验收。</p>
+    </section>
+
+    <section class="card">
+      <h2>客户信息</h2>
+      <div class="grid">
+        <div class="field">
+          <label for="customerName">客户名称</label>
+          <input id="customerName" name="customerName" />
+        </div>
+        <div class="field">
+          <label for="source">客户来源</label>
+          <select id="source" name="source">
+            <option value="">请选择</option>
+            <option value="web">web</option>
+            <option value="referral">referral</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>跟进信息</h2>
+      <div class="grid">
+        <div class="field">
+          <label for="owner">负责人</label>
+          <input id="owner" name="owner" />
+        </div>
+        <div class="field">
+          <label>优先级</label>
+          <div class="priority">
+            <input id="priorityHigh" type="radio" name="priority" value="high" />
+            <label for="priorityHigh">high</label>
+            <button id="chooseHighPriority" type="button">选择 high</button>
+            <input id="priorityNormal" type="radio" name="priority" value="normal" />
+            <label for="priorityNormal">normal</label>
+            <button id="chooseNormalPriority" type="button">选择 normal</button>
+          </div>
+        </div>
+      </div>
+      <div class="field" style="margin-top: 12px;">
+        <label for="note">备注</label>
+        <textarea id="note" name="note"></textarea>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>提交区</h2>
+      <div class="actions">
+        <button id="submitBtn" type="button">提交</button>
+        <button id="resetBtn" type="button">重置</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>结果回显</h2>
+      <div
+        id="result"
+        class="result"
+        data-customer-name=""
+        data-source=""
+        data-owner=""
+        data-priority=""
+        data-note=""
+        data-submitted="false"
+      >未提交</div>
+    </section>
+  </div>
+
+  <script>
+    const getValue = (selector) => document.querySelector(selector).value.trim();
+    const getPriority = () => {
+      const checked = document.querySelector('input[name="priority"]:checked');
+      return checked ? checked.value : '';
+    };
+
+    const result = document.querySelector('#result');
+
+    const resetResult = () => {
+      result.dataset.customerName = '';
+      result.dataset.source = '';
+      result.dataset.owner = '';
+      result.dataset.priority = '';
+      result.dataset.note = '';
+      result.dataset.submitted = 'false';
+      result.textContent = '未提交';
+    };
+
+    const writeResult = () => {
+      const customerName = getValue('#customerName');
+      const source = getValue('#source');
+      const owner = getValue('#owner');
+      const priority = getPriority();
+      const note = getValue('#note');
+      result.dataset.customerName = customerName;
+      result.dataset.source = source;
+      result.dataset.owner = owner;
+      result.dataset.priority = priority;
+      result.dataset.note = note;
+      result.dataset.submitted = 'true';
+      result.textContent = `提交成功\n客户: ${customerName}\n来源: ${source}\n负责人: ${owner}\n优先级: ${priority}\n备注: ${note}`;
+    };
+
+    document.querySelector('#submitBtn').addEventListener('click', writeResult);
+    document.querySelector('#chooseHighPriority').addEventListener('click', () => {
+      document.querySelector('#priorityHigh').checked = true;
+    });
+    document.querySelector('#chooseNormalPriority').addEventListener('click', () => {
+      document.querySelector('#priorityNormal').checked = true;
+    });
+    document.querySelector('#resetBtn').addEventListener('click', () => {
+      document.querySelector('#customerName').value = '';
+      document.querySelector('#source').value = '';
+      document.querySelector('#owner').value = '';
+      document.querySelectorAll('input[name="priority"]').forEach((el) => { el.checked = false; });
+      document.querySelector('#note').value = '';
+      resetResult();
+    });
+
+    resetResult();
+  </script>
+</body>
+</html>

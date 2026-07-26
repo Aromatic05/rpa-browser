@@ -43,7 +43,7 @@ export const getFailedCtx = async (input: {
         }
         const binding = await input.deps.runtime.awaitExecutableTab({
             workspace,
-            pageRegistry: input.deps.pageRegistry,
+            pageRegistry: workspace.browserSession.pageRegistry,
             tabName,
             timeoutMs: input.deps.config.waitPolicy.pageReadyTimeoutMs,
         });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applySnapshotOverlay } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import type { SnapshotResult, SnapshotOverlays, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { applySnapshotOverlay } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import type { SnapshotResult, SnapshotOverlays, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 const rootNode: UnifiedNode = {
     id: 'root',
@@ -45,7 +45,8 @@ const baseSnapshot: SnapshotResult = {
     locatorIndex: {},
     bboxIndex: {},
     attrIndex: {},
-    contentStore: {},
+    controlIndex: {},
+        contentStore: {},
 };
 
 test('delete overlay should suppress both base and added entities on same node', () => {

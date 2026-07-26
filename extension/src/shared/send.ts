@@ -78,7 +78,7 @@ export const send = {
     /**
      * 向 SW 发送 hello（content -> SW）。
      */
-    hello: (payload: { url: string }): Promise<TransportResult<{ ok: boolean }>> =>
+    hello: (payload: { url: string; tabName?: string }): Promise<TransportResult<{ ok: boolean }>> =>
         runtimeTransport<{ ok: boolean }>(
             { type: MSG.HELLO, ...payload },
             5000,

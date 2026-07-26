@@ -41,6 +41,7 @@ const withActionReplies = (handler) => ({
 const createChromeMock = () => ({
     windows: {
         WINDOW_ID_NONE: -1,
+        update: async () => ({ ok: true }),
         create: async ({ url, focused }) => ({
             id: 31,
             focused,
@@ -85,6 +86,7 @@ await log('workspace.list action triggers refresh dispatch', async () => {
     const sent = [];
     let refreshed = 0;
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             return { ok: true, data: {} };
@@ -105,10 +107,11 @@ await log('workspace.list action triggers refresh dispatch', async () => {
     assert.equal(sent.length, 0);
 });
 
-await log('window focus sends workspace.setActive and window.focused', async () => {
+await log('window focus keeps workspace session scoped', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             return { ok: true, data: { workspaceName: 'ws-1', tabName: 'tab-1' } };
@@ -143,13 +146,14 @@ await log('window focus sends workspace.setActive and window.focused', async () 
     router.onFocusChanged(7);
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(sent.some((action) => action.type === ACTION_TYPES.WORKSPACE_SET_ACTIVE), true);
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.WORKSPACE_SET_ACTIVE), false);
 });
 
 await log('window remove keeps router stable', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
@@ -166,10 +170,78 @@ await log('window remove keeps router stable', async () => {
     assert.equal(Array.isArray(sent), true);
 });
 
+await log('inbound tab.setActive activates mapped chrome tab and window', async () => {
+    const calls = [];
+    globalThis.chrome = createChromeMock();
+    chrome.tabs.update = async (tabId, updateInfo) => {
+        calls.push(['tabs.update', tabId, updateInfo]);
+        return { ok: true };
+    };
+    chrome.windows.update = async (windowId, updateInfo) => {
+        calls.push(['windows.update', windowId, updateInfo]);
+        return { ok: true };
+    };
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async () => ({ ok: true, data: {} })),
+        onRefresh: () => undefined,
+    });
+
+    router.handleInboundAction({
+        v: 1,
+        id: 'bind-active-tab',
+        type: ACTION_TYPES.TAB_BIND,
+        workspaceName: 'ws-bound',
+        payload: { tabName: 'tab-bound', chromeTabNo: 11, windowId: 7 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    router.handleInboundAction({
+        v: 1,
+        id: 'activate-tab',
+        type: ACTION_TYPES.TAB_SET_ACTIVE,
+        workspaceName: 'ws-bound',
+        payload: { tabName: 'tab-bound' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(calls, [
+        ['tabs.update', 11, { active: true }],
+        ['windows.update', 7, { focused: true }],
+    ]);
+});
+
+await log('inbound workspace.setActive focuses current workspace window', async () => {
+    const calls = [];
+    globalThis.chrome = createChromeMock();
+    chrome.windows.update = async (windowId, updateInfo) => {
+        calls.push(['windows.update', windowId, updateInfo]);
+        return { ok: true };
+    };
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async () => ({ ok: true, data: {} })),
+        onRefresh: () => undefined,
+    });
+
+    router.onActivated({ tabId: 11, windowId: 7 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    calls.length = 0;
+    router.handleInboundAction({
+        v: 1,
+        id: 'activate-workspace',
+        type: ACTION_TYPES.WORKSPACE_SET_ACTIVE,
+        payload: { workspaceName: 'ws-bound' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(calls.some((call) => call[0] === 'windows.update' && call[1] === 7 && call[2]?.focused === true), true);
+});
+
 await log('workspace.create returns workspace shell without opening window', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
@@ -204,10 +276,120 @@ await log('workspace.create returns workspace shell without opening window', asy
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_PING), false);
 });
 
+await log('panel control actions are not rebound to sender workspace', async () => {
+    globalThis.chrome = createChromeMock();
+    const sent = [];
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
+                return { ok: true, data: { activeWorkspaceName: 'ws-bound', workspaces: [{ workspaceName: 'ws-bound', tabCount: 1 }] } };
+            }
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return { ok: true, data: { workspaceName: 'ws-bound', tabName: 'tab-bound' } };
+            }
+            if (action.type === ACTION_TYPES.WORKSPACE_CREATE) {
+                return { ok: true, data: { workspaceName: 'ws-new' } };
+            }
+            return { ok: true, data: {} };
+        }),
+        onRefresh: () => undefined,
+    });
+
+    router.handleInboundAction({
+        v: 1,
+        id: 'bind-bound-1',
+        type: ACTION_TYPES.TAB_BIND,
+        workspaceName: 'ws-bound',
+        payload: { tabName: 'tab-bound', chromeTabNo: 11, windowId: 7 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    let reply = null;
+    router.handleMessage(
+        {
+            type: MSG.ACTION,
+            action: {
+                v: 1,
+                id: 'create-bound-1',
+                type: ACTION_TYPES.WORKSPACE_CREATE,
+                payload: {},
+            },
+        },
+        { tab: { id: 11, windowId: 7, url: 'https://example.com' } },
+        (payload) => {
+            reply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const createAction = sent.find((action) => action.type === ACTION_TYPES.WORKSPACE_CREATE);
+    assert.equal(reply?.type, `${ACTION_TYPES.WORKSPACE_CREATE}.result`);
+    assert.equal(createAction?.workspaceName, undefined);
+});
+
+await log('panel record actions are rebound without refreshing recordings', async () => {
+    globalThis.chrome = createChromeMock();
+    const sent = [];
+    let refreshed = 0;
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
+                return { ok: true, data: { activeWorkspaceName: 'ws-bound', workspaces: [{ workspaceName: 'ws-bound', tabCount: 1 }] } };
+            }
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return { ok: true, data: { workspaceName: 'ws-bound', tabName: 'tab-bound' } };
+            }
+            return { ok: true, data: {} };
+        }),
+        onRefresh: () => {
+            refreshed += 1;
+        },
+    });
+
+    router.handleInboundAction({
+        v: 1,
+        id: 'bind-bound-2',
+        type: ACTION_TYPES.TAB_BIND,
+        workspaceName: 'ws-bound',
+        payload: { tabName: 'tab-bound', chromeTabNo: 11, windowId: 7 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    refreshed = 0;
+
+    let reply = null;
+    router.handleMessage(
+        {
+            type: MSG.ACTION,
+            action: {
+                v: 1,
+                id: 'record-event-1',
+                type: ACTION_TYPES.RECORD_EVENT,
+                payload: { id: 's1', name: 'browser.click', args: { selector: '#submit' } },
+            },
+        },
+        { tab: { id: 11, windowId: 7, url: 'https://example.com' } },
+        (payload) => {
+            reply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const recordAction = sent.find((action) => action.type === ACTION_TYPES.RECORD_EVENT);
+    assert.equal(reply?.type, `${ACTION_TYPES.RECORD_EVENT}.result`, JSON.stringify(reply));
+    assert.equal(recordAction?.workspaceName, 'ws-bound');
+    assert.equal(recordAction?.payload?.tabName, 'tab-bound');
+    assert.equal(refreshed, 0);
+});
+
 await log('tabs.onCreated emits tab.opened binding action', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
@@ -250,6 +432,7 @@ await log('tabs.onCreated emits tab.opened once for pre-bound URL mapping', asyn
     globalThis.chrome = createChromeMock();
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.TAB_OPENED) {
@@ -283,6 +466,7 @@ await log('workflow.open projection uses workspaceName/tabName without payload t
     globalThis.chrome = createChromeMock();
     let refreshed = 0;
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async () => ({ ok: true, data: {} })),
         onRefresh: () => {
             refreshed += 1;
@@ -296,6 +480,74 @@ await log('workflow.open projection uses workspaceName/tabName without payload t
         payload: { workspaceName: 'ws-1', tabName: 'tab-1' },
     });
     assert.equal(refreshed, 1);
+});
+
+await log('agent-created window binds from preferred content tabName', async () => {
+    globalThis.chrome = createChromeMock();
+    chrome.tabs.get = async (tabName) => ({ id: tabName, windowId: 44, url: 'https://example.com/agent' });
+    const sent = [];
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            return { ok: true, data: {} };
+        }),
+        onRefresh: () => undefined,
+    });
+
+    router.handleInboundAction({
+        v: 1,
+        id: 'evt-agent-tab-bound',
+        type: ACTION_TYPES.TAB_BOUND,
+        workspaceName: 'ws-agent',
+        payload: {
+            workspaceName: 'ws-agent',
+            tabName: 'tab-agent',
+            url: 'https://example.com/agent',
+        },
+    });
+
+    let tokenReply = null;
+    router.handleMessage(
+        {
+            type: MSG.ENSURE_BOUND_TOKEN,
+            tabName: 'tab-agent',
+            url: 'https://example.com/agent',
+        },
+        { tab: { id: 33, windowId: 44, url: 'https://example.com/agent' } },
+        (payload) => {
+            tokenReply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(tokenReply?.ok, true);
+    assert.equal(tokenReply?.tabName, 'tab-agent');
+    assert.equal(tokenReply?.workspaceName, 'ws-bound');
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
+
+    let actionReply = null;
+    router.handleMessage(
+        {
+            type: MSG.ACTION,
+            action: {
+                v: 1,
+                id: 'agent-record-event',
+                type: ACTION_TYPES.RECORD_EVENT,
+                payload: { id: 's-agent', name: 'browser.click', args: { selector: '#submit' } },
+            },
+        },
+        { tab: { id: 33, windowId: 44, url: 'https://example.com/agent' } },
+        (payload) => {
+            actionReply = payload;
+        },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const recordAction = sent.find((action) => action.type === ACTION_TYPES.RECORD_EVENT);
+    assert.equal(actionReply?.type, `${ACTION_TYPES.RECORD_EVENT}.result`, JSON.stringify(actionReply));
+    assert.equal(recordAction?.workspaceName, 'ws-bound');
+    assert.equal(recordAction?.payload?.tabName, 'tab-agent');
 });
 
 await log('workspace.list works without tab token', async () => {
@@ -317,6 +569,7 @@ await log('workspace.list works without tab token', async () => {
     };
     const sent = [];
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async (action) => {
             sent.push(action);
             if (action.type === ACTION_TYPES.WORKSPACE_LIST) {
@@ -353,6 +606,7 @@ await log('workspace.list works without tab token', async () => {
 await log('router rejects non-request action type from panel ingress', async () => {
     globalThis.chrome = createChromeMock();
     const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
         wsClient: withActionReplies(async () => {
             throw new Error('ws should not be called');
         }),

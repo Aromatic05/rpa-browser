@@ -3,15 +3,17 @@ import net from 'node:net';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { chromium } from 'playwright';
-import { getLogger, initLogger } from '../../../src/logging/logger';
-import { loadRunnerConfig } from '../../../src/config/loader';
-import { defaultEntityRuleConfig } from '../../../src/config/entity_rules';
-import { generateSemanticSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
-import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import { normalizeText } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { FinalEntityView, SnapshotResult } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { createEntityRuleFixtureRoot } from '../profile_fixture';
+import { chromium, type Browser } from 'playwright';
+import { getLogger, initLogger } from '../../../../src/logging/logger';
+import { loadRunnerConfig } from '../../../../src/config/loader';
+import { defaultEntityRuleConfig } from '../../../../src/config/entity_rules';
+import { loadEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/loader';
+import type { WorkspaceEntityRulesProvider } from '../../../../src/entity_rules/provider';
+import { generateSemanticSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import { buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import { normalizeText } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { FinalEntityView, SnapshotResult } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { createEntityRuleFixtureRoot, entityRuleProfileDir } from '../profile_fixture';
 
 const entityLog = getLogger('entity');
 
@@ -21,6 +23,33 @@ export type EntityRuleVerifyCase = {
     pagePath: string;
 };
 
+
+const createFixtureEntityRulesProvider = (
+    rootDir: string,
+    profile: string,
+): WorkspaceEntityRulesProvider => {
+    const resolve = (input: { pageKind?: any; pageUrl?: string } = {}) =>
+        loadEntityRules({
+            pageKind: input.pageKind,
+            pageUrl: input.pageUrl,
+            config: {
+                ...defaultEntityRuleConfig,
+                enabled: true,
+                rootDir,
+                selection: 'explicit',
+                profiles: [profile],
+                strict: true,
+            },
+        }).bundle || null;
+    return {
+        listBundles: () => {
+            const bundle = resolve();
+            return bundle ? [bundle] : [];
+        },
+        getBundle: (profileName) => profileName === profile ? resolve() : null,
+        resolveBundle: resolve,
+    };
+};
 export type EntityRuleSnapshotContext = {
     snapshot: SnapshotResult;
     finalEntityView: FinalEntityView;
@@ -28,7 +57,7 @@ export type EntityRuleSnapshotContext = {
 
 export const verifyEntityRuleGoldenCase = async (testCase: EntityRuleVerifyCase) => {
     const actual = await collectEntityRuleActual(testCase);
-    const profileDir = path.resolve(process.cwd(), 'tests/entity_rules/profiles', testCase.profile);
+    const profileDir = entityRuleProfileDir(testCase.profile);
     const expectedFinalPath = path.join(profileDir, 'expected.final_entities.json');
     const expectedHintsPath = path.join(profileDir, 'expected.node_hints.json');
 
@@ -46,23 +75,18 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
     initLogger(config);
 
     const mockServer = await startMockApp(testCase.app);
-    const browser = await chromium.launch({ headless: true });
-    const fixture = await createEntityRuleFixtureRoot();
+    let browser: Browser | null = null;
+    let fixture: Awaited<ReturnType<typeof createEntityRuleFixtureRoot>> | null = null;
 
     try {
+        browser = await chromium.launch({ headless: true });
+        fixture = await createEntityRuleFixtureRoot();
         const page = await browser.newPage();
         const url = `${mockServer.baseUrl}${testCase.pagePath}`;
         await page.goto(url, { waitUntil: 'domcontentloaded' });
 
         const snapshot = await generateSemanticSnapshot(page, {
-            entityRuleConfig: {
-                ...defaultEntityRuleConfig,
-                enabled: true,
-                rootDir: fixture.rootDir,
-                selection: 'explicit',
-                profiles: [testCase.profile],
-                strict: true,
-            },
+            entityRulesProvider: createFixtureEntityRulesProvider(fixture.rootDir, testCase.profile),
         });
 
         const finalEntityView = buildFinalEntityViewFromSnapshot(snapshot, {
@@ -76,8 +100,8 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
             nodeHints: normalizeNodeHints(snapshot),
         };
     } finally {
-        await fixture.cleanup();
-        await browser.close();
+        await fixture?.cleanup();
+        await browser?.close();
         await mockServer.close();
     }
 };
@@ -92,23 +116,18 @@ export const withEntityRuleSnapshotContext = async <T>(
     initLogger(config);
 
     const mockServer = await startMockApp(testCase.app);
-    const browser = await chromium.launch({ headless: true });
-    const fixture = await createEntityRuleFixtureRoot();
+    let browser: Browser | null = null;
+    let fixture: Awaited<ReturnType<typeof createEntityRuleFixtureRoot>> | null = null;
 
     try {
+        browser = await chromium.launch({ headless: true });
+        fixture = await createEntityRuleFixtureRoot();
         const page = await browser.newPage();
         const url = `${mockServer.baseUrl}${testCase.pagePath}`;
         await page.goto(url, { waitUntil: 'domcontentloaded' });
 
         const snapshot = await generateSemanticSnapshot(page, {
-            entityRuleConfig: {
-                ...defaultEntityRuleConfig,
-                enabled: true,
-                rootDir: fixture.rootDir,
-                selection: 'explicit',
-                profiles: [testCase.profile],
-                strict: true,
-            },
+            entityRulesProvider: createFixtureEntityRulesProvider(fixture.rootDir, testCase.profile),
         });
 
         const finalEntityView = buildFinalEntityViewFromSnapshot(snapshot, {
@@ -122,22 +141,25 @@ export const withEntityRuleSnapshotContext = async <T>(
             finalEntityView,
         });
     } finally {
-        await fixture.cleanup();
-        await browser.close();
+        await fixture?.cleanup();
+        await browser?.close();
         await mockServer.close();
     }
 };
 
 export const startMockApp = async (app: 'ant' | 'element'): Promise<{ baseUrl: string; close: () => Promise<void> }> => {
     const rootDir = path.resolve(process.cwd(), '../mock');
+    const appDirName = app === 'ant' ? 'ant-app' : 'element-app';
     const packageName = app === 'ant' ? '@mock/ant-app' : '@mock/element-app';
+    const appDir = path.join(rootDir, appDirName);
+    const viteCli = path.join(appDir, 'node_modules', 'vite', 'bin', 'vite.js');
     const port = await getFreePort();
 
     const proc = spawn(
-        'pnpm',
-        ['-C', rootDir, '--filter', packageName, 'exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+        process.execPath,
+        [viteCli, '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
         {
-            cwd: rootDir,
+            cwd: appDir,
             stdio: ['ignore', 'pipe', 'pipe'],
             env: process.env,
         },
@@ -242,8 +264,8 @@ const normalizeFinalEntities = (
             }),
         )
         .sort((left, right) => {
-            const leftKey = `${left.businessTag || ''}:${left.nodeDomId || ''}:${left.kind}`;
-            const rightKey = `${right.businessTag || ''}:${right.nodeDomId || ''}:${right.kind}`;
+            const leftKey = `${left.businessTag || ''}:${left.name || ''}:${left.kind}`;
+            const rightKey = `${right.businessTag || ''}:${right.name || ''}:${right.kind}`;
             return leftKey.localeCompare(rightKey);
         });
 };

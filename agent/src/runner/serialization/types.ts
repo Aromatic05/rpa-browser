@@ -88,6 +88,9 @@ export const validateStepFileForSerialization = (file: StepFile): void => {
         if ('resolveId' in step) {
             throw new Error(`core yaml must not include steps[${index}].resolveId; use steps[${index}].args.resolveId instead`);
         }
+        if ('meta' in step) {
+            throw new Error(`core yaml must not include steps[${index}].meta`);
+        }
         assertNoCoreHintFields(step, `steps[${index}]`);
         assertNoLegacyActionTargetFields(step, `steps[${index}]`);
     }
@@ -247,6 +250,9 @@ const assertCheckpointContentUsesSerializedStepShape = (checkpoint: Checkpoint, 
             continue;
         }
 
+        if ('meta' in item) {
+            throw new Error(`core yaml must not include ${currentPath}.content[${index}].meta`);
+        }
         assertNoLegacyActionTargetFields(
             { name: String((item as { name?: string }).name || ''), args: (item as { args?: unknown }).args },
             `${currentPath}.content[${index}]`,
