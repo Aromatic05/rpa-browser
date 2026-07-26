@@ -8,7 +8,7 @@
 import { createLogger, createBufferedLogForwarder, setLogForwarder, type LogEntry } from '../shared/logger.js';
 import { MSG } from '../shared/protocol.js';
 import { send } from '../shared/send.js';
-import { createWsClient } from '../actions/ws_client.js';
+import { createWsClient, type WsClient } from '../actions/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 import { createActionBus } from '../background/action_bus.js';
 import { readSessionConfig, SESSION_CONFIG_KEYS } from '../background/session_config.js';
@@ -20,6 +20,10 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshInFlight = false;
 let refreshQueued = false;
 let activeSessionKey = '';
+let activeWorkspaceName = '';
+let activeWsClient: WsClient | null = null;
+let initPromise: Promise<void> | null = null;
+let initQueued = false;
 
 const dispatchRefresh = () => {
     if (refreshInFlight) {
@@ -56,8 +60,7 @@ const scheduleRefresh = () => {
 const actionBus = createActionBus();
 let initialized = false;
 
-const initRuntime = async () => {
-    if (initialized) {return;}
+const initializeRuntime = async () => {
     const sessionConfig = await readSessionConfig();
     if (!sessionConfig) {
         log.warning('session config missing; websocket connection skipped');
@@ -66,24 +69,65 @@ const initRuntime = async () => {
     const sessionKey = `${sessionConfig.workspaceName}:${String(sessionConfig.wsPort)}`;
     if (initialized) {
         if (activeSessionKey === sessionKey) {return;}
-        log.warning('session config changed; reloading extension runtime', {
+        if (activeWorkspaceName !== sessionConfig.workspaceName || !activeWsClient) {
+            log.warning('session workspace changed; reloading extension runtime', {
+                previous: activeSessionKey,
+                next: sessionKey,
+            });
+            chrome.runtime.reload();
+            return;
+        }
+        log.warning('session websocket port changed; reconnecting', {
             previous: activeSessionKey,
             next: sessionKey,
         });
-        chrome.runtime.reload();
+        await activeWsClient.reconnect(sessionConfig.wsPort);
+        activeSessionKey = sessionKey;
+        scheduleRefresh();
         return;
     }
-    initialized = true;
-    activeSessionKey = sessionKey;
 
+    let router: ReturnType<typeof createCmdRouter> | null = null;
     const wsClient = createWsClient({
         wsPort: sessionConfig.wsPort,
         onAction: (action) => {
+            if (!router) {
+                log.warning('inbound action received before router initialization', { type: action.type });
+                return;
+            }
             router.handleInboundAction(action);
             actionBus.publish(action);
         },
         logger: log,
     });
+
+    router = createCmdRouter({
+        wsClient,
+        sessionWorkspaceName: sessionConfig.workspaceName,
+        onRefresh: scheduleRefresh,
+        logger: log,
+    });
+
+    const unsubscribeActionBus = actionBus.subscribe(
+        ['**'],
+        async (action) => {
+            const targetTabName = router?.resolveActionTargetTabName(action) ?? null;
+            if (targetTabName === null) {return;}
+            await send.toTabTransport(targetTabName, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
+        },
+    );
+
+    try {
+        await wsClient.connect();
+    } catch (error) {
+        unsubscribeActionBus();
+        throw error;
+    }
+
+    initialized = true;
+    activeSessionKey = sessionKey;
+    activeWorkspaceName = sessionConfig.workspaceName;
+    activeWsClient = wsClient;
 
     const logForwarder = createBufferedLogForwarder(
         (entries: LogEntry[]) => {
@@ -98,22 +142,6 @@ const initRuntime = async () => {
         { maxBatchSize: 24, flushIntervalMs: 2000 },
     );
     setLogForwarder(logForwarder.forwarder);
-
-    const router = createCmdRouter({
-        wsClient,
-        sessionWorkspaceName: sessionConfig.workspaceName,
-        onRefresh: scheduleRefresh,
-        logger: log,
-    });
-
-    actionBus.subscribe(
-        ['**'],
-        async (action) => {
-            const targetTabName = router.resolveActionTargetTabName(action);
-            if (targetTabName === null) {return;}
-            await send.toTabTransport(targetTabName, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
-        },
-    );
 
     void router.bootstrapState();
 
@@ -131,6 +159,24 @@ const initRuntime = async () => {
 
     chrome.runtime.onStartup.addListener(() => { router.onStartup(); });
     chrome.runtime.onInstalled.addListener(() => { router.onInstalled(); });
+};
+
+const initRuntime = async (): Promise<void> => {
+    if (initPromise) {
+        initQueued = true;
+        return await initPromise;
+    }
+    initPromise = (async () => {
+        do {
+            initQueued = false;
+            await initializeRuntime();
+        } while (initQueued);
+    })();
+    try {
+        await initPromise;
+    } finally {
+        initPromise = null;
+    }
 };
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
