@@ -20,6 +20,7 @@ const toWorkspaceSummary = (workspace: any) => ({
     browserSession: {
         status: workspace.browserSession.status,
         wsPort: workspace.browserSession.wsPort,
+        cdpPort: workspace.browserSession.cdpPort,
         userDataDir: workspace.browserSession.userDataDir,
     },
     createdAt: workspace.createdAt,
@@ -129,6 +130,10 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             if (!fromName || !toName) {
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'fromName and toName are required');
             }
+            const currentWorkspace = workspaceRegistry.getWorkspace(fromName);
+            if (currentWorkspace) {
+                await currentWorkspace.browserSession.stop();
+            }
             renameWorkflowOnFs(fromName, toName);
             const renamedWorkflow = loadWorkflowFromFs(toName);
             const workspace = workspaceRegistry.renameWorkspace(fromName, toName, renamedWorkflow);
@@ -171,6 +176,10 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             };
         }
         case 'workflow.resetDefault': {
+            const currentDefault = workspaceRegistry.getWorkspace('default');
+            if (currentDefault) {
+                await currentDefault.browserSession.stop();
+            }
             deleteWorkflowFromFs('default');
             const workflow = createWorkflowOnFs('default');
             workspaceRegistry.removeWorkspace('default');

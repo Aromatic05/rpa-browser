@@ -143,7 +143,17 @@ const controlServer = createControlServer({
         },
     },
 });
-registerControlShutdown(controlServer, logNotice);
+registerControlShutdown({
+    close: async () => {
+        await controlServer.close();
+        await Promise.allSettled(
+            workspaceRegistry.listWorkspaces().map(async (workspace) => {
+                await workspace.mcp.stop().catch(() => undefined);
+                await workspace.browserSession.stop();
+            }),
+        );
+    },
+}, logNotice);
 
 void (async () => {
     try {

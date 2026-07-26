@@ -100,14 +100,12 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             throw new Error(`workspace already exists: ${toName}`);
         }
         workspaces.delete(fromName);
-        const renamed: RuntimeWorkspace = {
-            ...existing,
-            name: toName,
-            workflow,
-            updatedAt: Date.now(),
-        };
-        workspaces.set(toName, renamed);
-        if (activeWorkspaceName === fromName) {
+        const wasActive = activeWorkspaceName === fromName;
+        if (wasActive) {
+            activeWorkspaceName = null;
+        }
+        const renamed = createWorkspace(toName, workflow);
+        if (wasActive) {
             activeWorkspaceName = toName;
         }
         return renamed;
