@@ -1,6 +1,7 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import { mapTraceError } from '../helpers/target';
+import { ensureWorkspaceActiveTab } from '../helpers/runtime_binding';
 
 const findNewWorkspaceTab = async (
     workspace: ReturnType<RunStepsDeps['resolveWorkspace']>,
@@ -30,14 +31,19 @@ export const executeBrowserCreateTab = async (
     const knownTabNames = new Set(workspace.tabs.listTabs().map((tab) => tab.name));
     const activeTabName = workspace.tabs.getActiveTab()?.name;
     if (!activeTabName) {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_TAB_NOT_FOUND',
-                message: 'browser.create_tab requires an active tab to drive trace tab creation',
-            },
-        };
+        try {
+            const tabName = await ensureWorkspaceActiveTab(deps, workspaceName);
+            return { stepId: step.id, ok: true, data: { tabName } };
+        } catch (error) {
+            return {
+                stepId: step.id,
+                ok: false,
+                error: {
+                    code: 'ERR_PAGE_BINDING_TIMEOUT',
+                    message: error instanceof Error ? error.message : String(error),
+                },
+            };
+        }
     }
 
     const boundTimeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;

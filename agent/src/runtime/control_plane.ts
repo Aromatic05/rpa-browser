@@ -13,6 +13,21 @@ export type RuntimeControlInput = {
 };
 
 const randomName = () => crypto.randomUUID();
+
+const stopWorkspaceRuntime = async (workspace: any): Promise<void> => {
+    let firstError: unknown;
+    try {
+        await workspace.mcp?.stop?.();
+    } catch (error) {
+        firstError = error;
+    }
+    try {
+        await workspace.browserSession?.stop?.();
+    } catch (error) {
+        firstError = firstError || error;
+    }
+    if (firstError) {throw firstError;}
+};
 const toWorkspaceSummary = (workspace: any) => ({
     workspaceName: workspace.name,
     activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
@@ -72,7 +87,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             if (!target) {
                 throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workspace not found: ${targetName}`);
             }
-            await target.browserSession.stop();
+            await stopWorkspaceRuntime(target);
             workspaceRegistry.removeWorkspace(targetName);
             return { reply: replyAction(action, { workspaceName: targetName, closed: true }), events: [] };
         }
@@ -133,7 +148,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             }
             const currentWorkspace = workspaceRegistry.getWorkspace(fromName);
             if (currentWorkspace) {
-                await currentWorkspace.browserSession.stop();
+                await stopWorkspaceRuntime(currentWorkspace);
             }
             renameWorkflowOnFs(fromName, toName);
             const renamedWorkflow = loadWorkflowFromFs(toName);
@@ -179,7 +194,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
         case 'workflow.resetDefault': {
             const currentDefault = workspaceRegistry.getWorkspace('default');
             if (currentDefault) {
-                await currentDefault.browserSession.stop();
+                await stopWorkspaceRuntime(currentDefault);
             }
             deleteWorkflowFromFs('default');
             const workflow = createWorkflowOnFs('default');

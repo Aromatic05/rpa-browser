@@ -177,6 +177,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         }
         input.workspace.tabs.bindPage(input.tabName, page);
         input.workspace.tabs.updateTab(input.tabName, { url: page.url() });
+        input.workspace.tabs.setActiveTab(input.tabName);
         return bindPage({
             workspaceName: input.workspace.name,
             tabName: input.tabName,

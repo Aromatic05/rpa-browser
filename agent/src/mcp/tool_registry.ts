@@ -18,7 +18,7 @@ type ToolDefinition = {
 };
 
 const toolDefinitions: ToolDefinition[] = [
-    { name: 'browser.create_tab', description: 'Create tab.', group: 'tab_navigation' },
+    { name: 'browser.create_tab', description: 'Use the browser startup tab when none exists; otherwise create an additional tab.', group: 'tab_navigation' },
     { name: 'browser.list_tabs', description: 'List tabs.', group: 'tab_navigation' },
     { name: 'browser.switch_tab', description: 'Switch tab.', group: 'tab_navigation' },
     { name: 'browser.close_tab', description: 'Close tab.', group: 'tab_navigation' },

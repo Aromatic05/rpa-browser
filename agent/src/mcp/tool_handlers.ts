@@ -104,13 +104,19 @@ const resolveTabNameOrActiveWs = (deps: WorkspaceMcpToolDeps, tabName?: string):
 const resolveScopeWs = (
     deps: WorkspaceMcpToolDeps,
     tabName: string | undefined,
-): { tabName: string } => {
-    const resolvedTabName = resolveTabNameOrActiveWs(deps, tabName);
-    if (!deps.workspace.tabs.hasTab(resolvedTabName)) {
-        throw new Error('tab not found');
+): { tabName: string } | null => {
+    const explicitTabName = typeof tabName === 'string' ? tabName.trim() : '';
+    if (explicitTabName) {
+        if (!deps.workspace.tabs.hasTab(explicitTabName)) {
+            throw new Error('tab not found');
+        }
+        deps.workspace.tabs.setActiveTab(explicitTabName);
+        return { tabName: explicitTabName };
     }
-    deps.workspace.tabs.setActiveTab(resolvedTabName);
-    return { tabName: resolvedTabName };
+    const activeTab = deps.workspace.tabs.getActiveTab();
+    if (!activeTab?.name) {return null;}
+    deps.workspace.tabs.setActiveTab(activeTab.name);
+    return { tabName: activeTab.name };
 };
 
 const runSingleStepWs = async (
@@ -118,11 +124,13 @@ const runSingleStepWs = async (
     tabName: string | undefined,
     step: StepUnion,
 ) => {
-    const scope = resolveScopeWs(deps, tabName);
-    deps.workspace.tabs.setActiveTab(scope.tabName);
-    const isCreateTabStep = step.name === 'browser.create_tab';
-    const isReadOnlyStep = step.name === 'browser.get_page_info' || step.name === 'browser.list_tabs';
-    if (!isCreateTabStep && !isReadOnlyStep && deps.awaitTabPage) {
+    const isWorkspaceListStep = step.name === 'browser.list_tabs';
+    const scope = isWorkspaceListStep ? null : resolveScopeWs(deps, tabName);
+    if (scope) {
+        deps.workspace.tabs.setActiveTab(scope.tabName);
+    }
+    const isReadOnlyStep = step.name === 'browser.get_page_info' || isWorkspaceListStep;
+    if (scope && !isReadOnlyStep && deps.awaitTabPage) {
         await deps.awaitTabPage(scope.tabName, deps.config?.waitPolicy.pageReadyTimeoutMs || 1500);
     }
     const { pipe, checkpoint } = await runStepList(deps.workspace.name, [step], deps.runStepsDeps, {

@@ -23,8 +23,10 @@ Use these to enter and manage the browsing session:
 
 Default start:
 
-1. `browser.create_tab`
-2. `browser.goto`
+1. `browser.goto` directly; when the workspace has no tab, it starts the browser and claims the existing startup tab.
+2. `browser.snapshot` with a small depth.
+
+Use `browser.create_tab` only when an additional tab is required. If no tab exists, `browser.create_tab` also claims the startup tab instead of opening a redundant second tab.
 
 Do not begin with debugging tools.
 
@@ -177,13 +179,14 @@ If `browser.evaluate` must be used:
 
 Follow this sequence unless there is a strong reason not to:
 
-1. `browser.create_tab`
-2. `browser.goto`
-3. `browser.snapshot` with small `depth`
-4. `browser.snapshot` with `contain` for the relevant subtree
-5. optionally use entity tools if the page is business-heavy
-6. act with `click`, `fill`, `select_option`, or `press_key`
-7. verify with `browser.snapshot`, often with `diff: true`
+1. `browser.goto` (automatically claims the startup tab when the workspace is empty)
+2. `browser.snapshot` with small `depth`
+3. `browser.snapshot` with `contain` for the relevant subtree
+4. optionally use entity tools if the page is business-heavy
+5. act with `click`, `fill`, `select_option`, or `press_key`
+6. verify with `browser.snapshot`, often with `diff: true`
+
+Call `browser.create_tab` only for an additional independent tab.
 
 Do not jump straight to evaluate, screenshot, console, or network.
 
@@ -191,10 +194,9 @@ Do not jump straight to evaluate, screenshot, console, or network.
 
 ### Open and inspect a page
 
-1. `browser.create_tab`
-2. `browser.goto`
-3. shallow `browser.snapshot`
-4. focused `browser.snapshot` with `contain`
+1. `browser.goto` directly
+2. shallow `browser.snapshot`
+3. focused `browser.snapshot` with `contain`
 
 Use the sequence: overview first, subtree second, action third.
 
