@@ -244,3 +244,19 @@ test('awaitExecutableTab reuses the existing binding and preserves trace cache f
     assert.equal(second, first);
     assert.deepEqual(second.traceCtx.cache.latestSnapshot, { marker: 'keep-me' });
 });
+
+test('createExecutableTab makes the new tab active when other tabs already exist', async () => {
+    const { tabs, pageRegistry } = createTabs();
+    tabs.createTab({ tabName: 'existing' });
+    const workspace = createWorkspace('ws', tabs, pageRegistry);
+    const bindings = createExecutionBindings({ pageRegistry });
+
+    await bindings.createExecutableTab({
+        workspace,
+        pageRegistry,
+        tabName: 'created',
+        startUrl: 'about:blank#created',
+    });
+
+    assert.equal(tabs.getActiveTab()?.name, 'created');
+});

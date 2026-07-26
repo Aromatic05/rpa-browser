@@ -272,6 +272,11 @@ test('workflow.resetDefault discards persisted artifacts and creates a fresh def
         const workflow = createWorkflowOnFs('default');
         workflow.save({ kind: 'dsl', name: 'main', content: 'wait 1' } as any);
         const previous = registry.createWorkspace('default', workflow);
+        let mcpStops = 0;
+        previous.mcp.stop = async () => {
+            mcpStops += 1;
+            return { serviceName: 'mcp', workspaceName: 'default', status: 'stopped' };
+        };
         previous.browserSession.stop = async () => undefined;
 
         const reset = await handleRuntimeControlAction({
@@ -282,10 +287,59 @@ test('workflow.resetDefault discards persisted artifacts and creates a fresh def
         const current = registry.getWorkspace('default');
         assert.ok(current);
         assert.notEqual(current, previous);
+        assert.equal(mcpStops, 1);
         assert.deepEqual(current.workflow.list({ kind: 'dsl' }), []);
         assert.deepEqual(current.workflow.list({ kind: 'checkpoint' }), []);
         assert.deepEqual(current.workflow.list({ kind: 'entity_rules' }), []);
     } finally {
         cleanup('default');
+    }
+});
+
+test('workflow lifecycle stops MCP services before removing or replacing runtimes', async () => {
+    const { registry } = createWorkspaceHarness();
+    const closeName = uniqueName('wf-mcp-close');
+    const renameSource = uniqueName('wf-mcp-rename-source');
+    const renameTarget = uniqueName('wf-mcp-rename-target');
+    cleanup(closeName);
+    cleanup(renameSource);
+    cleanup(renameTarget);
+
+    try {
+        const closeWorkspace = registry.createWorkspace(closeName, createWorkflowOnFs(closeName));
+        let closeMcpStops = 0;
+        closeWorkspace.mcp.stop = async () => {
+            closeMcpStops += 1;
+            return { serviceName: 'mcp', workspaceName: closeName, status: 'stopped' };
+        };
+        closeWorkspace.browserSession.stop = async () => undefined;
+
+        await handleRuntimeControlAction({
+            action: { v: 1, id: 'mcp-close', type: 'workspace.close', payload: { workspaceName: closeName } },
+            workspaceRegistry: registry,
+        } as any);
+        assert.equal(closeMcpStops, 1);
+        assert.equal(registry.getWorkspace(closeName), null);
+
+        const renameWorkspace = registry.createWorkspace(renameSource, createWorkflowOnFs(renameSource));
+        let renameMcpStops = 0;
+        renameWorkspace.mcp.stop = async () => {
+            renameMcpStops += 1;
+            return { serviceName: 'mcp', workspaceName: renameSource, status: 'stopped' };
+        };
+        renameWorkspace.browserSession.stop = async () => undefined;
+
+        await handleRuntimeControlAction({
+            action: { v: 1, id: 'mcp-rename', type: 'workflow.rename', payload: { fromName: renameSource, toName: renameTarget } },
+            workspaceRegistry: registry,
+        } as any);
+        assert.equal(renameMcpStops, 1);
+        assert.equal(registry.getWorkspace(renameSource), null);
+        assert.equal(registry.getWorkspace(renameTarget)?.mcp.status().status, 'stopped');
+
+    } finally {
+        cleanup(closeName);
+        cleanup(renameSource);
+        cleanup(renameTarget);
     }
 });

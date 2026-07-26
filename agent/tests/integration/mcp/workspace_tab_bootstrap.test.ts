@@ -91,12 +91,13 @@ test('goto rejects an unknown explicit tab before page bootstrap', async () => {
     assert.deepEqual(harness.calls, []);
 });
 
-test('goto rejects when no active tab exists', async () => {
+test('goto without an active tab defers first-tab bootstrap to the executor', async () => {
     const harness = createHarness();
-    await assert.rejects(
-        () => harness.handlers['browser.goto']({ url: 'https://example.com' }),
-        /active tab not found/,
-    );
+    const result = await harness.handlers['browser.goto']({ url: 'https://example.com' });
+    assert.equal(result.ok, true);
+    assert.equal(harness.calls.length, 1);
+    assert.equal(harness.calls[0].name, 'browser.goto');
+    assert.deepEqual(harness.awaitedTabs, []);
 });
 
 test('goto awaits the selected workspace page then executes the current step', async () => {
