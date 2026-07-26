@@ -544,17 +544,25 @@ const isDeleteNode = (node: UnifiedNode, isRoot: boolean): boolean => {
 
     const tag = nodeTag(node);
     if (DELETE_TAGS.has(tag)) {return true;}
+    if (isSeparatorNoiseNode(node)) {return true;}
     if (isDecorativeNoise(node)) {return true;}
     if (isMeaninglessEmptyShell(node)) {return true;}
     return false;
 };
 
 const isCollapsibleShell = (node: UnifiedNode, parent: UnifiedNode | null): boolean => {
-    if (isProtectedNode(node)) {return false;}
+    if (isInteractiveNode(node)) {return false;}
+    if (node.target) {return false;}
+    if (hasHardSemanticBoundary(node)) {return false;}
+    if (PRESERVE_ROLES.has(nodeRole(node))) {return false;}
+    if (isMeaningfulImageNode(node)) {return false;}
     if (!isWrapperRoleOrTag(node)) {return false;}
     if (node.children.length === 0) {return false;}
+    if (hasSemanticPayload(node) && node.children.length !== 1) {return false;}
 
     const ownTexts = collectOwnLiftableTexts(node);
+    const hasHeavyOwnText = Boolean(normalizeText(node.name || getNodeContent(node))) && ownTexts.length === 0;
+    if (hasHeavyOwnText) {return false;}
     if (ownTexts.length > 0 && !(parent && canReceiveLiftedText(parent))) {return false;}
     return true;
 };
@@ -568,14 +576,110 @@ const isAtomicSemanticNode = (node: UnifiedNode): boolean => {
 };
 
 const truncateAtomicNode = (node: UnifiedNode) => {
+    const originalChildren = [...node.children];
     const droppedTexts: Array<string | undefined> = [];
+    const keptChildren: UnifiedNode[] = [];
+    const strictAtomic = isStrictAtomicNode(node);
+
     for (const child of node.children) {
+        if (strictAtomic) {
+            collectDescendantLiftableTexts(child, droppedTexts);
+            continue;
+        }
+        if (shouldKeepInsideAtomic(node, child)) {
+            keptChildren.push(child);
+            continue;
+        }
         collectDescendantLiftableTexts(child, droppedTexts);
     }
-    node.children = [];
+
+    node.children = keptChildren;
+    normalizeAtomicText(node, originalChildren);
     if (droppedTexts.length > 0 && canReceiveLiftedText(node)) {
         applyLiftedText(node, compactLiftTexts(droppedTexts));
     }
+};
+
+const normalizeAtomicText = (node: UnifiedNode, originalChildren: UnifiedNode[]) => {
+    if (nodeRole(node) !== 'heading') {return;}
+
+    const cleanedName = sanitizeHeadingText(node.name, originalChildren);
+    const cleanedContent = sanitizeHeadingText(getNodeContent(node), originalChildren);
+    if (cleanedName) {node.name = cleanedName;}
+    if (cleanedContent) {setNodeContent(node, cleanedContent);}
+    if (!cleanedContent && cleanedName) {setNodeContent(node, cleanedName);}
+    if (!cleanedName && cleanedContent) {node.name = cleanedContent;}
+};
+
+const sanitizeHeadingText = (value: string | undefined, originalChildren: UnifiedNode[]): string | undefined => {
+    const normalized = normalizeText(value);
+    if (!normalized) {return undefined;}
+
+    let text = normalized.replace(/^\s*(image|图像|图片)\s*[:：]\s*/i, '').trim();
+    if (!text) {return undefined;}
+
+    if (hasImageLikeChild(originalChildren)) {
+        const firstCjk = text.search(/[\u3400-\u9FFF]/u);
+        if (firstCjk > 0) {
+            const prefix = text.slice(0, firstCjk).trim();
+            if (
+                prefix.length >= 3 &&
+                prefix.length <= 80 &&
+                /^[A-Za-z0-9\s+&|/_.:-]+$/.test(prefix) &&
+                /[A-Za-z]/.test(prefix)
+            ) {
+                text = text.slice(firstCjk).trim();
+            }
+        }
+    }
+
+    return normalizeText(text);
+};
+
+const hasImageLikeChild = (children: UnifiedNode[]): boolean =>
+    children.some((child) => {
+        const role = nodeRole(child);
+        const tag = nodeTag(child);
+        return role === 'image' || role === 'img' || tag === 'img';
+    });
+
+const isStrictAtomicNode = (node: UnifiedNode): boolean => {
+    const role = nodeRole(node);
+    const tag = nodeTag(node);
+    return role === 'link' || tag === 'a';
+};
+
+const shouldKeepInsideAtomic = (parent: UnifiedNode, child: UnifiedNode): boolean => {
+    const parentRole = nodeRole(parent);
+    const parentText = normalizeText(parent.name || getNodeContent(parent));
+
+    if (parentRole === 'heading' && parentText) {
+        if (!isInteractiveNode(child)) {return false;}
+        if (!hasDistinctTarget(parent, child)) {return false;}
+        return Boolean(normalizeText(child.name || getNodeContent(child)));
+    }
+
+    if (PRESERVE_ROLES.has(nodeRole(child))) {return true;}
+    if (isMeaningfulImageNode(child)) {return true;}
+    if (hasHeavyText(child) && !parentText) {return true;}
+
+    if (isInteractiveNode(child)) {
+        if (!hasDistinctTarget(parent, child)) {return false;}
+        return Boolean(normalizeText(child.name || getNodeContent(child)));
+    }
+    return false;
+};
+
+const hasHeavyText = (node: UnifiedNode): boolean => {
+    const text = normalizeText(node.name || getNodeContent(node));
+    return Boolean(text && !isLightweightText(text));
+};
+
+const hasDistinctTarget = (parent: UnifiedNode, child: UnifiedNode): boolean => {
+    const parentTarget = normalizeText(parent.target?.ref);
+    const childTarget = normalizeText(child.target?.ref);
+    if (!childTarget) {return false;}
+    return !parentTarget || parentTarget !== childTarget;
 };
 
 const removeRedundantTextChildren = (node: UnifiedNode) => {
@@ -616,12 +720,21 @@ const applyLiftedText = (node: UnifiedNode, rawTexts: string[]) => {
         if (mergedContent.includes(picked) || isNearDuplicateText(mergedContent, picked)) {
             continue;
         }
-        mergedContent = `${mergedContent} ${picked}`.trim();
+        if (!canMergeLiftedText(node)) {continue;}
+        const merged = `${mergedContent} ${picked}`.trim();
+        if (merged.length <= 64) {
+            mergedContent = merged;
+        }
     }
 
     if (mergedContent) {
         setNodeContent(node, mergedContent);
     }
+};
+
+const canMergeLiftedText = (node: UnifiedNode): boolean => {
+    if (isInteractiveNode(node)) {return false;}
+    return MERGE_TEXT_ROLES.has(nodeRole(node));
 };
 
 const shouldAttachName = (node: UnifiedNode): boolean => {
@@ -639,6 +752,11 @@ const hasSemanticPayload = (node: UnifiedNode): boolean => {
     const hints = getNodeSemanticHints(node);
     if (!hints) {return false;}
     return Boolean(hints.entityNodeId || hints.fieldLabel || hints.actionIntent || hints.actionTargetNodeId);
+};
+
+const hasHardSemanticBoundary = (node: UnifiedNode): boolean => {
+    const kind = getNodeSemanticHints(node)?.entityKind;
+    return Boolean(kind && HARD_ENTITY_KINDS.has(kind));
 };
 
 const isProtectedNode = (node: UnifiedNode): boolean => {
@@ -701,6 +819,19 @@ const isTruthyAttr = (raw: string | undefined): boolean => {
     const value = normalizeText(raw)?.toLowerCase();
     if (!value) {return false;}
     return value === 'true' || value === '1' || value === 'yes' || value === 'hidden';
+};
+
+const isSeparatorNoiseNode = (node: UnifiedNode): boolean => {
+    if (isInteractiveNode(node)) {return false;}
+    if (node.children.length > 0) {return false;}
+    if (node.target) {return false;}
+
+    const className = nodeClassName(node);
+    if (!className || !SEPARATOR_CLASS_PATTERN.test(className)) {return false;}
+
+    const text = normalizeText(node.name || getNodeContent(node));
+    if (!text) {return true;}
+    return text.length <= 3 && SEPARATOR_TEXT_PATTERN.test(text);
 };
 
 const isDecorativeNoise = (node: UnifiedNode): boolean => {
@@ -878,10 +1009,17 @@ const PRESERVE_ROLES = new Set([
     'dialog',
     'alertdialog',
     'table',
+    'row',
+    'cell',
+    'gridcell',
+    'columnheader',
+    'rowheader',
     'list',
+    'listitem',
     'toolbar',
 ]);
 const NAME_RECEIVER_ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'option']);
+const MERGE_TEXT_ROLES = new Set(['heading', 'label', 'cell', 'gridcell', 'columnheader', 'rowheader', 'paragraph']);
 const TEXT_RECEIVER_ROLES = new Set([
     ...NAME_RECEIVER_ROLES,
     'heading',
@@ -974,7 +1112,10 @@ const REGION_BUDGET_PROFILE: Record<RegionBudgetKind, RegionBudgetProfile> = {
     },
 };
 const IMPORTANCE_HARD_KEEP_SCORE = 6.6;
+const HARD_ENTITY_KINDS = new Set(['form', 'table', 'dialog', 'list', 'toolbar', 'kv']);
 const DECORATIVE_CLASS_PATTERN = /\b(icon|spinner|loading|skeleton|divider)\b/i;
+const SEPARATOR_CLASS_PATTERN = /\b(separator|breadcrumb-separator)\b/i;
+const SEPARATOR_TEXT_PATTERN = /^[\/|>»›·•-]+$/;
 const HIDDEN_CLASS_PATTERN = /\b(hidden|is-hidden|u-hidden|visually-hidden|sr-only|d-none)\b/i;
 const HIDDEN_STYLE_PATTERN =
     /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?|content-visibility\s*:\s*hidden)\b/i;

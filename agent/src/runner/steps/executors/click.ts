@@ -64,7 +64,7 @@ export const executeBrowserClick = async (
     const binding = await awaitPageBoundBinding(deps, workspaceName);
     const visibleTimeoutMs = deps.config.waitPolicy.visibleTimeoutMs;
     const pageReadyTimeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs;
-    const candidateClickTimeoutMs = Math.max(deps.config.waitPolicy.candidateClickTimeoutMs, 3000);
+    const candidateClickTimeoutMs = deps.config.waitPolicy.candidateClickTimeoutMs;
     const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
     const hardTimeoutMs = deps.config.waitPolicy.interactionTimeoutMs;
 
