@@ -13,6 +13,7 @@ export type WorkspaceBrowserSession = {
     workspaceName: string;
     userDataDir: string;
     wsPort: number | null;
+    cdpPort: number | null;
     status: BrowserSessionStatus;
     pageRegistry: PageRegistry;
     start: () => Promise<void>;
@@ -61,41 +62,71 @@ const resolveExtensionServiceWorker = async (context: BrowserContext): Promise<W
     const pick = () => context.serviceWorkers().find((worker) => worker.url().includes('/entry/sw.js')) || null;
     const existing = pick();
     if (existing) {return existing;}
-    const worker = await context.waitForEvent('serviceworker', { timeout: 5000 });
+    const worker = await context.waitForEvent('serviceworker', { timeout: 10_000 });
     if (worker.url().includes('/entry/sw.js')) {return worker;}
     const matched = pick();
     if (matched) {return matched;}
     throw new Error('extension service worker not found');
 };
 
+const browserMode = () => (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
+
 export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSessionOptions): WorkspaceBrowserSession => {
     const userDataDir = path.join(options.userDataRoot, 'workspaces', options.workspaceName);
+    const configuredCdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
+    const managedCdpProcess = browserMode() === 'cdp' && !configuredCdpEndpoint;
+    const chromePath = process.env.RPA_CHROME_PATH?.trim() || process.env.RPA_CDP_CHROME_PATH?.trim() || undefined;
+
     let wsPort: number | null = null;
+    let cdpPort: number | null = null;
     let status: BrowserSessionStatus = 'stopped';
     let wsClient: ActionWsClient | null = null;
     let startPromise: Promise<void> | null = null;
+    let sessionRef: WorkspaceBrowserSession | null = null;
 
-    let contextManager = createContextManager({
+    const createSessionContextManager = (assignedCdpPort: number | null, startUrl: string) => createContextManager({
         extensionPaths: options.extensionPaths,
         userDataDir,
-        startUrl: 'chrome://newtab/',
+        startUrl,
+        cdpPort: assignedCdpPort ?? undefined,
+        cdpEndpoint: configuredCdpEndpoint || undefined,
+        chromePath,
         onPage: (page) => {
             void pageRegistry.bindPage(page);
         },
     });
 
+    let contextManager = createSessionContextManager(null, 'chrome://newtab/');
+
     const pageRegistry = createPageRegistry({
         tabNameKey: options.tabNameKey,
-        getContext: () => contextManager.getContext(),
+        getContext: async () => {
+            if (sessionRef && sessionRef.status !== 'running') {
+                await sessionRef.start();
+            }
+            return await contextManager.getContext();
+        },
         onPageBound: options.onPageBound,
         onBindingClosed: options.onBindingClosed,
     });
+
+    const releasePorts = () => {
+        options.portAllocator.release(options.workspaceName, 'action-ws');
+        if (managedCdpProcess) {
+            options.portAllocator.release(options.workspaceName, 'browser-cdp');
+        }
+        wsPort = null;
+        cdpPort = null;
+    };
 
     const session: WorkspaceBrowserSession = {
         workspaceName: options.workspaceName,
         userDataDir,
         get wsPort() {
             return wsPort;
+        },
+        get cdpPort() {
+            return cdpPort;
         },
         get status() {
             return status;
@@ -107,15 +138,11 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
             startPromise = (async () => {
                 status = 'starting';
                 wsPort = await options.portAllocator.allocate(options.workspaceName, 'action-ws');
-                const configuredContextManager = createContextManager({
-                    extensionPaths: options.extensionPaths,
-                    userDataDir,
-                    startUrl: buildStartUrl(options.workspaceName, wsPort),
-                    onPage: (page) => {
-                        void pageRegistry.bindPage(page);
-                    },
-                });
-                contextManager = configuredContextManager;
+                if (managedCdpProcess) {
+                    cdpPort = await options.portAllocator.allocate(options.workspaceName, 'browser-cdp');
+                }
+
+                contextManager = createSessionContextManager(cdpPort, buildStartUrl(options.workspaceName, wsPort));
                 wsClient = startActionWsClient({
                     port: wsPort,
                     host: '127.0.0.1',
@@ -125,9 +152,11 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                     onListening: (url) => options.onListening?.(options.workspaceName, url),
                     wsTap: options.wsTap,
                 });
+
+                await wsClient.waitForListening(5000);
                 const context = await contextManager.getContext();
                 await configureExtensionSession(context, options.workspaceName, wsPort);
-                await wsClient.waitForClient(5000);
+                await wsClient.waitForClient(10_000);
                 status = 'running';
             })();
             try {
@@ -137,8 +166,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                 await wsClient?.close().catch(() => undefined);
                 wsClient = null;
                 await contextManager.close().catch(() => undefined);
-                options.portAllocator.release(options.workspaceName, 'action-ws');
-                wsPort = null;
+                releasePorts();
                 throw error;
             } finally {
                 startPromise = null;
@@ -148,19 +176,19 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
             if (startPromise) {
                 await startPromise.catch(() => undefined);
             }
-            if (status === 'stopped') {return;}
+            if (status === 'stopped' && !wsClient && wsPort === null && cdpPort === null) {return;}
             status = 'stopping';
-            await wsClient?.close();
+            await wsClient?.close().catch(() => undefined);
             wsClient = null;
-            await contextManager.close();
-            options.portAllocator.release(options.workspaceName, 'action-ws');
-            wsPort = null;
+            await contextManager.close().catch(() => undefined);
+            releasePorts();
             status = 'stopped';
         },
         emit: (action) => {
             wsClient?.broadcastAction(action);
         },
     };
+    sessionRef = session;
 
     return session;
 };

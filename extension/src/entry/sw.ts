@@ -19,6 +19,7 @@ const REFRESH_DEBOUNCE_MS = 120;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshInFlight = false;
 let refreshQueued = false;
+let activeSessionKey = '';
 
 const dispatchRefresh = () => {
     if (refreshInFlight) {
@@ -62,7 +63,18 @@ const initRuntime = async () => {
         log.warning('session config missing; websocket connection skipped');
         return;
     }
+    const sessionKey = `${sessionConfig.workspaceName}:${String(sessionConfig.wsPort)}`;
+    if (initialized) {
+        if (activeSessionKey === sessionKey) {return;}
+        log.warning('session config changed; reloading extension runtime', {
+            previous: activeSessionKey,
+            next: sessionKey,
+        });
+        chrome.runtime.reload();
+        return;
+    }
     initialized = true;
+    activeSessionKey = sessionKey;
 
     const wsClient = createWsClient({
         wsPort: sessionConfig.wsPort,

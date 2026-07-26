@@ -11,10 +11,11 @@
  * - start page 失败不能影响整体启动（容错）
  */
 import { chromium, type BrowserContext, type Page } from 'playwright';
+import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getLogger } from '../../logging/logger';
-import { launchLocalChromeForCdp } from './cdp_launcher';
+import { launchLocalChromeForCdp, resolveChromeExecutable } from './cdp_launcher';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,9 @@ export type ContextManagerOptions = {
     extensionPaths: string[];
     userDataDir: string;
     startUrl?: string;
+    cdpPort?: number;
+    cdpEndpoint?: string;
+    chromePath?: string;
     onPage?: (page: Page) => void;
 };
 
@@ -60,10 +64,13 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
     const startUrl = options.startUrl || process.env.RPA_START_URL || 'chrome://newtab/';
     const pageLifecycle: Array<{ ts: number; event: string; url: string }> = [];
 
-    const cdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
-    const cdpPort = Number(process.env.RPA_CDP_PORT || 9222);
+    const cdpEndpoint = options.cdpEndpoint?.trim() || process.env.RPA_CDP_ENDPOINT?.trim() || '';
+    const cdpPort = options.cdpPort ?? Number(process.env.RPA_CDP_PORT || 9222);
     const cdpAutoLaunch = !['0', 'false', 'no'].includes((process.env.RPA_CDP_AUTO_LAUNCH || 'true').toLowerCase());
-    const cdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim() || path.resolve(options.userDataDir, 'cdp-browser');
+    const configuredCdpUserDataDir = process.env.RPA_CDP_USER_DATA_DIR?.trim();
+    const cdpUserDataDir = options.cdpPort !== undefined
+        ? path.resolve(options.userDataDir, 'cdp-browser')
+        : configuredCdpUserDataDir || path.resolve(options.userDataDir, 'cdp-browser');
 
     const onPageOpened = (page: Page) => {
         pageLifecycle.push({ ts: Date.now(), event: 'opened', url: page.url() });
@@ -105,6 +112,8 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             const launched = await launchLocalChromeForCdp({
                 port: cdpPort,
                 userDataDir: cdpUserDataDir,
+                chromePath: options.chromePath,
+                startUrl,
                 extensionPaths: options.extensionPaths,
                 logger: (...args) => { actionLog.info('[RPA:agent]', ...args); },
             });
@@ -244,10 +253,19 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
             `--load-extension=${extensionArg}`,
             '--disable-popup-blocking',
         ];
+        const explicitChromePath =
+            options.chromePath?.trim() ||
+            process.env.RPA_CHROME_PATH?.trim() ||
+            process.env.RPA_CDP_CHROME_PATH?.trim();
+        const bundledChromePath = chromium.executablePath();
+        const executablePath = explicitChromePath ||
+            (bundledChromePath && fs.existsSync(bundledChromePath)
+                ? bundledChromePath
+                : resolveChromeExecutable());
         contextPromise = chromium
             .launchPersistentContext(options.userDataDir, {
                 headless,
-                channel: 'chromium',
+                executablePath,
                 viewport: null,
                 args: launchArgs,
             })
