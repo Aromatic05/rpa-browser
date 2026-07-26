@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runDslSource } from '../../../src/dsl/runtime';
-import { DslValidationError } from '../../../src/dsl/diagnostics/errors';
-import type { DslCheckpointProvider } from '../../../src/dsl/emit';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { Checkpoint } from '../../../src/runner/checkpoint';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { runDslSource } from '../../../../src/dsl/runtime';
+import { DslValidationError } from '../../../../src/dsl/diagnostics/errors';
+import type { DslCheckpointProvider } from '../../../../src/dsl/emit';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { Checkpoint } from '../../../../src/runner/checkpoint';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createDeps = (calls: Array<Record<string, unknown>>): RunStepsDeps =>
-    ({
+    completeRunStepsDeps({
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-source',
-                tabName: 'tab-dsl-source',
                 tabName: 'tk-dsl-source',
                 traceCtx: { cache: {} },
             }),
@@ -35,7 +35,7 @@ const createDeps = (calls: Array<Record<string, unknown>>): RunStepsDeps =>
                     },
                 }) as any,
         } as any,
-    }) as RunStepsDeps;
+    });
 
 test('runDslSource executes parse normalize validate and run', async () => {
     const calls: Array<Record<string, unknown>> = [];

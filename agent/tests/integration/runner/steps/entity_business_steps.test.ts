@@ -1,20 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { executeBrowserEntity } from '../../../src/runner/steps/executors/entity';
-import { executeBrowserQuery } from '../../../src/runner/steps/executors/query';
-import type { Step } from '../../../src/runner/steps/types';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { getRunnerConfig } from '../../../src/config';
-import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
-import { buildSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
-import { buildExternalIndexes } from '../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
-import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import type { EntityIndex, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { executeBrowserEntity } from '../../../../src/runner/steps/executors/entity';
+import { executeBrowserQuery } from '../../../../src/runner/steps/executors/query';
+import type { Step } from '../../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import { getRunnerConfig } from '../../../../src/config';
+import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import { buildSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
+import { buildExternalIndexes } from '../../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
+import { buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import type { EntityIndex, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createDeps = (): RunStepsDeps => {
     const workspaceName = 'ws-entity';
-    const tabName = 'tab-entity';
     const tabName = 'tab-token-entity';
     const url = 'https://example.test/entity';
 
@@ -92,7 +92,7 @@ const createDeps = (): RunStepsDeps => {
         version: 1,
         entries: {
             [`${workspaceName}:${tabName}`]: {
-                pageIdentity: { workspaceName, tabName, tabName, url },
+                pageIdentity: { workspaceName, tabName, url },
                 baseSnapshot: snapshot,
                 finalSnapshot: snapshot,
                 finalEntityView,
@@ -108,18 +108,17 @@ const createDeps = (): RunStepsDeps => {
     const binding = {
         workspaceName,
         tabName,
-        tabName,
         page: { url: () => url },
         traceCtx: { cache: { snapshotSessionStore } },
     };
 
-    return {
-        runtime: {
-            ensureActivePage: async () => binding,
-        } as any,
-        config: getRunnerConfig(),
-        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-    };
+    return completeRunStepsDeps(
+        {
+            config: getRunnerConfig(),
+            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
+        },
+        binding,
+    );
 };
 
 test('executeBrowserQuery supports op=entity and op=entity.target', async () => {

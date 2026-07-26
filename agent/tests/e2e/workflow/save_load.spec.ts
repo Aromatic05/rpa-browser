@@ -9,7 +9,7 @@ import type { StepUnion } from '../../../src/runner/steps/types';
 import { dispatch, runStep, startAgent } from '../../helpers/e2e_multitab_helper';
 import { startFixtureServer } from '../../helpers/server';
 
-const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args });
+const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args } as unknown as Extract<StepUnion, { name: T }>);
 
 const actWorkspace = (type: string, workspaceName: string, payload: Record<string, unknown> = {}): Action => ({
   v: 1,

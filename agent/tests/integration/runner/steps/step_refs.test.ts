@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runStepList } from '../../../src/runner/run_steps';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { runStepList } from '../../../../src/runner/run_steps';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {
     op: string;
@@ -12,12 +13,11 @@ type StubCall = {
 const createDeps = (calls: StubCall[], opts?: { noActivePage?: boolean }): RunStepsDeps => {
     const binding = {
         workspaceName: 'ws-ref',
-        tabName: 'tab-ref',
         tabName: 'tk-ref',
         traceCtx: { cache: {} as Record<string, unknown> },
     };
 
-    return {
+    return completeRunStepsDeps({
         runtime: {
             ensureActivePage: async () => {
                 if (opts?.noActivePage) {
@@ -25,7 +25,7 @@ const createDeps = (calls: StubCall[], opts?: { noActivePage?: boolean }): RunSt
                 }
                 return binding;
             },
-        } as any,
+        },
         config: {} as any,
         pluginHost: {
             getExecutors: () =>
@@ -97,7 +97,7 @@ const createDeps = (calls: StubCall[], opts?: { noActivePage?: boolean }): RunSt
                     },
                 }) as any,
         } as any,
-    };
+    }, binding);
 };
 
 const runWithSteps = async (steps: StepUnion[], opts?: { stopOnError?: boolean }) => {
@@ -127,7 +127,7 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
                 businessTag: 'order.form.main',
                 target: { kind: 'form.field', fieldKey: 'buyer' },
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'fillBuyer',
             name: 'browser.fill',
@@ -135,7 +135,7 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
                 nodeId: '{{resolveField.data.nodeId}}',
                 value: '张三',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'resolveSubmit',
             name: 'browser.query',
@@ -144,21 +144,21 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
                 businessTag: 'order.form.main',
                 target: { kind: 'form.action', actionIntent: 'submit' },
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'clickSubmit',
             name: 'browser.click',
             args: {
                 nodeId: '{{resolveSubmit.data.nodeId}}',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'queryRows',
             name: 'browser.query',
             args: {
                 op: 'rows',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'selectRow',
             name: 'browser.select_option',
@@ -166,14 +166,14 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
                 nodeId: '{{queryRows.data.nodeIds.0}}',
                 values: ['approved'],
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'queryCount',
             name: 'browser.query',
             args: {
                 op: 'count',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'clickWithTimeout',
             name: 'browser.click',
@@ -181,7 +181,7 @@ test('runner resolves query result refs for nodeId/value/nodeIds and composes ac
                 nodeId: 'submit_button',
                 timeout: '{{queryCount.data.value}}',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
     ]);
 
     assert.equal(checkpoint.status, 'completed');
@@ -225,7 +225,7 @@ test('runner returns ERR_BAD_ARGS when referenced step does not exist', async ()
             args: {
                 nodeId: '{{missingStep.data.nodeId}}',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
     ]);
 
     assert.equal(checkpoint.status, 'failed');
@@ -242,14 +242,14 @@ test('runner returns ERR_DEPENDENCY_FAILED when referenced step is failed', asyn
                 args: {
                     op: 'fail',
                 },
-            } as StepUnion,
+            } as unknown as StepUnion,
             {
                 id: 'clickAfterFailedDep',
                 name: 'browser.click',
                 args: {
                     nodeId: '{{qFail.data.nodeId}}',
                 },
-            } as StepUnion,
+            } as unknown as StepUnion,
         ],
         { stopOnError: false },
     );
@@ -268,14 +268,14 @@ test('runner returns ERR_BAD_ARGS when ref path is missing', async () => {
             args: {
                 op: 'rows',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'clickMissingPath',
             name: 'browser.click',
             args: {
                 nodeId: '{{qRows.data.unknownPath}}',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
     ]);
 
     assert.equal(checkpoint.status, 'failed');
@@ -291,14 +291,14 @@ test('runner returns ERR_BAD_ARGS for partial interpolation strings', async () =
             args: {
                 op: 'rows',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
         {
             id: 'clickPartialRef',
             name: 'browser.click',
             args: {
                 id: 'prefix-{{qRows.data.nodeIds.0}}',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
     ]);
 
     assert.equal(checkpoint.status, 'failed');
@@ -315,7 +315,7 @@ test('runner does not require active page for no-ref step args', async () => {
             args: {
                 op: 'rows',
             },
-        } as StepUnion,
+        } as unknown as StepUnion,
     ], deps);
 
     assert.equal(checkpoint.status, 'completed');

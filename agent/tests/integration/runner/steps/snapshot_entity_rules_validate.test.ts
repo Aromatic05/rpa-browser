@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateEntityRules } from '../../../src/runner/steps/executors/snapshot/entity_rules/validate';
+import { validateEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/validate';
+import type { EntityAnnotationSet, EntityRuleSet } from '../../../../src/runner/steps/executors/snapshot/entity_rules/types';
 
-const makeValid = () => ({
+const makeValid = (): { match: EntityRuleSet; annotation: EntityAnnotationSet } => ({
     match: {
         version: 1,
         page: { kind: 'table' },

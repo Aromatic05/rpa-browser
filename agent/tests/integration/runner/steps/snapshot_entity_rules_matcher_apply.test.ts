@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matchEntityRules } from '../../../src/runner/steps/executors/snapshot/entity_rules/matcher';
-import { applyEntityRuleBindings } from '../../../src/runner/steps/executors/snapshot/entity_rules/apply';
-import type { EntityIndex, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { getNodeSemanticHints, setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { NormalizedEntityRuleBundle } from '../../../src/runner/steps/executors/snapshot/entity_rules/types';
+import { matchEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/matcher';
+import { applyEntityRuleBindings } from '../../../../src/runner/steps/executors/snapshot/entity_rules/apply';
+import type { EntityIndex, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { getNodeSemanticHints, setNodeAttr } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { NormalizedEntityRuleBundle } from '../../../../src/runner/steps/executors/snapshot/entity_rules/types';
 
 const buildFixture = () => {
     const deleteBtn: UnifiedNode = { id: 'node_delete', role: 'button', name: 'Delete', children: [] };

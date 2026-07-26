@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
-import { compress } from '../../../src/runner/steps/executors/snapshot/stages/compress';
-import { buildStructureEntityIndex } from '../../../src/runner/steps/executors/snapshot/stages/entity_index';
-import { cloneTreeWithRuntime, normalizeText, setNodeAttrs, setNodeContent } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { EntityIndex, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { compress } from '../../../../src/runner/steps/executors/snapshot/stages/compress';
+import { buildStructureEntityIndex } from '../../../../src/runner/steps/executors/snapshot/stages/entity_index';
+import { cloneTreeWithRuntime, normalizeText, setNodeAttrs, setNodeContent } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { EntityIndex, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 type PerfPoint = {
     size: number;

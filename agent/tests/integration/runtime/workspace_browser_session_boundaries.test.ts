@@ -27,7 +27,7 @@ test('setActive actions are forwarded through workspace browser session', () => 
 });
 
 test('extension session uses profile websocket config without bootstrap reset', () => {
-    const wsClientSrc = read('../extension/src/actions/ws_client.ts');
+    const wsClientSrc = read('../../../src/actions/ws_client.ts');
     const cmdRouterSrc = read('../extension/src/background/cmd_router.ts');
     const lifeSrc = read('../extension/src/background/life.ts');
 

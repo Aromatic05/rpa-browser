@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { createWorkspaceHarness } from '../helpers/workspace_harness';
-import { handleRuntimeControlAction } from '../../src/runtime/control_plane';
-import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../src/workflow';
-import { isRequestActionType } from '../../src/actions/action_types';
+import { createWorkspaceHarness } from '../../helpers/workspace_harness';
+import { handleRuntimeControlAction } from '../../../src/runtime/control_plane';
+import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../../src/workflow';
+import { isRequestActionType } from '../../../src/actions/action_types';
 
 const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
@@ -55,7 +55,7 @@ test('workflow.open opens a tab only for tabless workspace', async () => {
         workspaceRegistry: registry,
     } as any);
     assert.equal(opened.reply.type, 'workflow.open.result');
-    assert.equal(opened.reply.payload.workspaceName, workflowName);
+    assert.equal((opened.reply.payload as Record<string, unknown>).workspaceName, workflowName);
     assert.equal(registry.getActiveWorkspace()?.name, workflowName);
     assert.deepEqual(opened.events.map((event) => event.type), ['workspace.changed']);
 

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildLocatorIndex } from '../../../src/runner/steps/executors/snapshot/indexes/locator';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { buildLocatorIndex } from '../../../../src/runner/steps/executors/snapshot/indexes/locator';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { setNodeAttr } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
 
 test('locator index includes menuitem nodes with executable role locator', () => {
     const root: UnifiedNode = {

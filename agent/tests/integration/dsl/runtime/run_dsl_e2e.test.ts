@@ -2,25 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { runDslSource } from '../../../src/dsl/runtime';
-import type { DslCheckpointProvider } from '../../../src/dsl/emit';
-import type { Checkpoint } from '../../../src/runner/checkpoint';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { runDslSource } from '../../../../src/dsl/runtime';
+import type { DslCheckpointProvider } from '../../../../src/dsl/emit';
+import type { Checkpoint } from '../../../../src/runner/checkpoint';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {
     name: string;
     args: Record<string, unknown>;
 };
 
-const fixturePath = path.resolve(process.cwd(), 'tests/dsl/fixtures/order_flow.dsl');
+const fixturePath = path.resolve(process.cwd(), 'tests/integration/dsl/fixtures/order_flow.dsl');
 
 const createDeps = (calls: StubCall[]): RunStepsDeps =>
-    ({
+    completeRunStepsDeps({
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-e2e',
-                tabName: 'tab-dsl-e2e',
                 tabName: 'tk-dsl-e2e',
                 traceCtx: { cache: {} },
             }),
@@ -47,7 +47,7 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                     },
                 }) as any,
         } as any,
-    }) as RunStepsDeps;
+    });
 
 test('runDslSource executes the order flow fixture end to end', async () => {
     const source = fs.readFileSync(fixturePath, 'utf8');

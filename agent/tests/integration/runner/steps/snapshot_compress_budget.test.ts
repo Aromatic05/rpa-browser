@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compress } from '../../../src/runner/steps/executors/snapshot/stages/compress';
-import { setNodeAttrs, setNodeContent } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { compress } from '../../../../src/runner/steps/executors/snapshot/stages/compress';
+import { setNodeAttrs, setNodeContent } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 const createNode = (id: string, role: string, children: UnifiedNode[] = []): UnifiedNode => ({
     id,

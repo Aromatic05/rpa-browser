@@ -1,67 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyLCA } from '../../../src/runner/steps/executors/snapshot/stages/lca';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { applyLCA } from '../../../../src/runner/steps/executors/snapshot/stages/lca';
+import { getNodeSemanticHints } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { snapshotNode as node } from '../../../helpers/snapshot_node';
 
-const makeNode = (partial: Partial<UnifiedNode> & { id: string; role: string }): UnifiedNode => ({
-    id: partial.id,
-    role: partial.role,
-    children: partial.children || [],
-    tier: partial.tier || 'B',
-    name: partial.name,
-    content: partial.content,
-    attrs: partial.attrs,
-    bbox: partial.bbox,
-    target: partial.target,
+test('applyLCA attaches field semantics from the nearest form entity', () => {
+    const label = node('label-1', 'label', [], { content: 'Email' });
+    const input = node('input-1', 'textbox');
+    const form = node('form-1', 'form', [label, input]);
+
+    applyLCA(form, [{ nodeId: 'form-1', kind: 'form' }]);
+
+    const hints = getNodeSemanticHints(input);
+    assert.equal(hints?.entityNodeId, 'form-1');
+    assert.equal(hints?.entityKind, 'form');
+    assert.equal(hints?.fieldLabel, 'Email');
 });
 
-test('applyLCA should attach fieldLabel and entityId for input-like control', () => {
-    const label = makeNode({ id: 'label-1', role: 'label', content: 'Email' });
-    const input = makeNode({ id: 'input-1', role: 'textbox' });
-    const form = makeNode({
-        id: 'form-1',
-        role: 'form',
-        attrs: { entityType: 'form', entityId: 'entity:form-1' },
-        children: [label, input],
-    });
+test('applyLCA attaches action intent and target from the nearest table entity', () => {
+    const actionButton = node('btn-1', 'button', [], { content: 'Delete row' });
+    const row = node('row-1', 'row', [actionButton]);
 
-    applyLCA(form, [form]);
+    applyLCA(row, [{ nodeId: 'row-1', kind: 'table' }]);
 
-    assert.equal(input.attrs?.entityId, 'entity:form-1');
-    assert.equal(input.attrs?.fieldLabel, 'Email');
+    const hints = getNodeSemanticHints(actionButton);
+    assert.equal(hints?.entityNodeId, 'row-1');
+    assert.equal(hints?.entityKind, 'table');
+    assert.equal(hints?.actionTargetNodeId, 'row-1');
+    assert.equal(hints?.actionIntent, 'delete');
 });
 
-test('applyLCA should attach action intent and target for row button', () => {
-    const actionButton = makeNode({ id: 'btn-1', role: 'button', content: 'Delete row' });
-    const row = makeNode({
-        id: 'row-1',
-        role: 'row',
-        attrs: { entityType: 'row', entityId: 'entity:row-1' },
-        children: [actionButton],
-    });
-
-    applyLCA(row, [row]);
-
-    assert.equal(actionButton.attrs?.entityId, 'entity:row-1');
-    assert.equal(actionButton.attrs?.actionTargetId, 'entity:row-1');
-    assert.equal(actionButton.attrs?.actionIntent, 'delete');
-});
-
-test('applyLCA should mark search-like textbox with search intent', () => {
-    const searchInput = makeNode({
-        id: 'search-1',
-        role: 'textbox',
+test('applyLCA marks search-like textboxes with search intent', () => {
+    const searchInput = node('search-1', 'textbox', [], {
         attrs: { placeholder: 'Search items' },
     });
-    const card = makeNode({
-        id: 'card-1',
-        role: 'article',
-        attrs: { entityType: 'card', entityId: 'entity:card-1' },
-        children: [searchInput],
-    });
+    const card = node('card-1', 'article', [searchInput]);
 
-    applyLCA(card, [card]);
+    applyLCA(card, [{ nodeId: 'card-1', kind: 'panel' }]);
 
-    assert.equal(searchInput.attrs?.entityId, 'entity:card-1');
-    assert.equal(searchInput.attrs?.actionIntent, 'search');
+    const hints = getNodeSemanticHints(searchInput);
+    assert.equal(hints?.entityNodeId, 'card-1');
+    assert.equal(hints?.entityKind, 'panel');
+    assert.equal(hints?.fieldLabel, 'Search items');
 });

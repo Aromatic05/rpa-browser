@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectRawData, waitForSnapshotReady } from '../../../src/runner/steps/executors/snapshot/stages/collect';
+import { collectRawData, waitForSnapshotReady } from '../../../../src/runner/steps/executors/snapshot/stages/collect';
 
 test('waitForSnapshotReady uses lightweight settle for interaction mode', async () => {
     const states: Array<'domcontentloaded' | 'networkidle'> = [];

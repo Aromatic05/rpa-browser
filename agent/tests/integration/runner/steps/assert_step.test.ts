@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { executeBrowserAssert } from '../../../src/runner/steps/executors/assert';
-import type { Step } from '../../../src/runner/steps/types';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { getRunnerConfig } from '../../../src/config';
-import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
+import { executeBrowserAssert } from '../../../../src/runner/steps/executors/assert';
+import type { Step } from '../../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import { getRunnerConfig } from '../../../../src/config';
+import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createDeps = (options: {
     url?: string;
@@ -13,7 +14,6 @@ const createDeps = (options: {
     entityCount?: number;
 }): RunStepsDeps => {
     const workspaceName = 'ws-1';
-    const tabName = 'tab-1';
     const tabName = 'tab-token-1';
     const currentUrl = options.url || 'https://example.test/page';
     const traceTools = {
@@ -38,7 +38,6 @@ const createDeps = (options: {
             [`${workspaceName}:${tabName}`]: {
                 pageIdentity: {
                     workspaceName,
-                    tabName,
                     tabName,
                     url: currentUrl,
                 },
@@ -76,7 +75,6 @@ const createDeps = (options: {
     const binding = {
         workspaceName,
         tabName,
-        tabName,
         page: { url: () => currentUrl },
         traceTools,
         traceCtx: {
@@ -86,13 +84,13 @@ const createDeps = (options: {
         },
     };
 
-    return {
-        runtime: {
-            ensureActivePage: async () => binding,
-        } as any,
-        config: getRunnerConfig(),
-        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-    };
+    return completeRunStepsDeps(
+        {
+            config: getRunnerConfig(),
+            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
+        },
+        binding,
+    );
 };
 
 const createAssertStep = (args: Step<'browser.assert'>['args']): Step<'browser.assert'> => ({

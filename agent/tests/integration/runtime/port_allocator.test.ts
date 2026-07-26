@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPortAllocator } from '../../src/runtime/service/ports';
+import { createPortAllocator } from '../../../src/runtime/service/ports';
 
 test('allocates a port for workspaceName + serviceName', async () => {
     const allocator = createPortAllocator(19000);

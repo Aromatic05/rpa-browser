@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { entityAnnotationSetSchema, entityMatchRuleSetSchema } from '../../../src/runner/steps/executors/snapshot/entity_rules/schema';
+import { entityAnnotationSetSchema, entityMatchRuleSetSchema } from '../../../../src/runner/steps/executors/snapshot/entity_rules/schema';
 
 test('match rule schema accepts valid payload', () => {
     const parsed = entityMatchRuleSetSchema.safeParse({

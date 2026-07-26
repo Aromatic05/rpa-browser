@@ -318,7 +318,7 @@ test('workspace.ts has no mcp router backfill', () => {
 
 // ── WorkspaceTabs lifecycle via full workspace ──
 
-test('WorkspaceTabs.ensurePage creates page and binds tab', async () => {
+test('WorkspaceTabs.createTabPage creates page and binds existing metadata', async () => {
     let pageCreated = false;
     const { registry } = createWorkspaceHarness({
         getPage: async () => {
@@ -329,7 +329,8 @@ test('WorkspaceTabs.ensurePage creates page and binds tab', async () => {
     const wfName = `wf-${crypto.randomUUID()}`;
     const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
 
-    const page = await ws.tabs.ensurePage('new-tab');
+    ws.tabs.createTab({ tabName: 'new-tab' });
+    const page = await ws.tabs.createTabPage('new-tab');
     assert.equal(pageCreated, true);
     assert.ok(ws.tabs.hasTab('new-tab'));
 });

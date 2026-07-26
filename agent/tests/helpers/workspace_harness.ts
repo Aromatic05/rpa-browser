@@ -50,7 +50,6 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
     const runtime = createExecutionBindings({ pageRegistry: testPageRegistry });
     const runStepsDeps = options.runStepsDeps || ({
         runtime,
-        pageRegistry: testPageRegistry,
         resolveWorkspace: () => {
             throw new Error('resolveWorkspace is not configured in test helper');
         },
@@ -59,9 +58,17 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         pluginHost: {
             getExecutors: () => ({}),
         },
+        dispatchAction: async (action: Action) => ({
+            ...action,
+            id: `${action.id}-reply`,
+            type: `${action.type}.result`,
+            replyTo: action.id,
+        }),
     } as unknown as RunStepsDeps);
     const registry = createWorkspaceRegistry({
-        pageRegistry: testPageRegistry,
+        tabNameKey: '__rpa_tab_name',
+        extensionPaths: [],
+        userDataRoot: '/tmp/rpa-browser-tests',
         runtime: runStepsDeps.runtime,
         recordingState,
         replayOptions: { clickDelayMs: 1, stepIntervalMs: 1, scroll: { minDelta: 1, maxDelta: 2, minSteps: 1, maxSteps: 2 } },
@@ -70,6 +77,7 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         runStepsDeps,
         runnerConfig: getRunnerConfig(),
         portAllocator: createPortAllocator(20000),
+        dispatchAction: runStepsDeps.dispatchAction,
     });
     runStepsDeps.resolveWorkspace = (workspaceName: string) => {
         const workspace = registry.getWorkspace(workspaceName);

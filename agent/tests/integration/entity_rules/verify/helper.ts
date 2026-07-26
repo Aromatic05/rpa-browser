@@ -4,13 +4,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { chromium } from 'playwright';
-import { getLogger, initLogger } from '../../../src/logging/logger';
-import { loadRunnerConfig } from '../../../src/config/loader';
-import { defaultEntityRuleConfig } from '../../../src/config/entity_rules';
-import { generateSemanticSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
-import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import { normalizeText } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { FinalEntityView, SnapshotResult } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { getLogger, initLogger } from '../../../../src/logging/logger';
+import { loadRunnerConfig } from '../../../../src/config/loader';
+import { defaultEntityRuleConfig } from '../../../../src/config/entity_rules';
+import { loadEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/loader';
+import type { WorkspaceEntityRulesProvider } from '../../../../src/entity_rules/provider';
+import { generateSemanticSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import { buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import { normalizeText } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { FinalEntityView, SnapshotResult } from '../../../../src/runner/steps/executors/snapshot/core/types';
 import { createEntityRuleFixtureRoot } from '../profile_fixture';
 
 const entityLog = getLogger('entity');
@@ -21,6 +23,33 @@ export type EntityRuleVerifyCase = {
     pagePath: string;
 };
 
+
+const createFixtureEntityRulesProvider = (
+    rootDir: string,
+    profile: string,
+): WorkspaceEntityRulesProvider => {
+    const resolve = (input: { pageKind?: any; pageUrl?: string } = {}) =>
+        loadEntityRules({
+            pageKind: input.pageKind,
+            pageUrl: input.pageUrl,
+            config: {
+                ...defaultEntityRuleConfig,
+                enabled: true,
+                rootDir,
+                selection: 'explicit',
+                profiles: [profile],
+                strict: true,
+            },
+        }).bundle || null;
+    return {
+        listBundles: () => {
+            const bundle = resolve();
+            return bundle ? [bundle] : [];
+        },
+        getBundle: (profileName) => profileName === profile ? resolve() : null,
+        resolveBundle: resolve,
+    };
+};
 export type EntityRuleSnapshotContext = {
     snapshot: SnapshotResult;
     finalEntityView: FinalEntityView;
@@ -55,14 +84,7 @@ export const collectEntityRuleActual = async (testCase: EntityRuleVerifyCase) =>
         await page.goto(url, { waitUntil: 'domcontentloaded' });
 
         const snapshot = await generateSemanticSnapshot(page, {
-            entityRuleConfig: {
-                ...defaultEntityRuleConfig,
-                enabled: true,
-                rootDir: fixture.rootDir,
-                selection: 'explicit',
-                profiles: [testCase.profile],
-                strict: true,
-            },
+            entityRulesProvider: createFixtureEntityRulesProvider(fixture.rootDir, testCase.profile),
         });
 
         const finalEntityView = buildFinalEntityViewFromSnapshot(snapshot, {
@@ -101,14 +123,7 @@ export const withEntityRuleSnapshotContext = async <T>(
         await page.goto(url, { waitUntil: 'domcontentloaded' });
 
         const snapshot = await generateSemanticSnapshot(page, {
-            entityRuleConfig: {
-                ...defaultEntityRuleConfig,
-                enabled: true,
-                rootDir: fixture.rootDir,
-                selection: 'explicit',
-                profiles: [testCase.profile],
-                strict: true,
-            },
+            entityRulesProvider: createFixtureEntityRulesProvider(fixture.rootDir, testCase.profile),
         });
 
         const finalEntityView = buildFinalEntityViewFromSnapshot(snapshot, {
@@ -242,8 +257,8 @@ const normalizeFinalEntities = (
             }),
         )
         .sort((left, right) => {
-            const leftKey = `${left.businessTag || ''}:${left.nodeDomId || ''}:${left.kind}`;
-            const rightKey = `${right.businessTag || ''}:${right.nodeDomId || ''}:${right.kind}`;
+            const leftKey = `${left.businessTag || ''}:${left.name || ''}:${left.kind}`;
+            const rightKey = `${right.businessTag || ''}:${right.name || ''}:${right.kind}`;
             return leftKey.localeCompare(rightKey);
         });
 };

@@ -1,16 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { classifyActionRoute, isControlAction, isWorkspaceAction } from '../../src/actions/classify';
+import { classifyActionRoute, isControlAction, isWorkspaceAction } from '../../../src/actions/classify';
 import {
     REQUEST_ACTION_TYPES,
     classifyActionType,
     isRequestActionType,
-} from '../../src/actions/action_types';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
-import { createPortAllocator } from '../../src/runtime/service/ports';
-import type { Action } from '../../src/actions/action_protocol';
-import type { RunStepsDeps } from '../../src/runner/run_steps_types';
+} from '../../../src/actions/action_types';
+import { createWorkspaceHarness } from '../../helpers/workspace_harness';
+import type { Action } from '../../../src/actions/action_protocol';
 
 const stubAction = (type: string, opts?: { workspaceName?: string; payload?: Record<string, unknown> }): Action => ({
     v: 1,
@@ -21,52 +19,23 @@ const stubAction = (type: string, opts?: { workspaceName?: string; payload?: Rec
     at: Date.now(),
 });
 
-const createMinimalWorkspaceRegistry = () => {
-    const portAllocator = createPortAllocator(20000);
-    const stubPageRegistry = {
-        getPage: async () => {
-            throw new Error('not implemented in test');
-        },
-    };
-    const stubRecordingState = {
-        recordingEnabled: new Set<string>(),
-        recordingTokens: new Map<string, string>(),
-        recordings: new Map(),
-    };
-    const stubRunStepsDeps: RunStepsDeps = {
-        runtime: null as unknown as RunStepsDeps['runtime'],
-        config: {} as RunStepsDeps['config'],
-        pluginHost: {} as RunStepsDeps['pluginHost'],
-    };
-    return createWorkspaceRegistry({
-        pageRegistry: stubPageRegistry as any,
-        recordingState: stubRecordingState as any,
-        replayOptions: { clickDelayMs: 300, stepIntervalMs: 900, scroll: { minDelta: 220, maxDelta: 520, minSteps: 2, maxSteps: 4 } },
-        navDedupeWindowMs: 1200,
-        runStepsDeps: stubRunStepsDeps,
-        runnerConfig: {
-            checkpointPolicy: { enabled: false, filePath: '/tmp/.test-checkpoints', flushIntervalMs: 0 },
-            mcpPolicy: {},
-        } as any,
-        portAllocator,
-    });
-};
+const createMinimalWorkspaceRegistry = () => createWorkspaceHarness().registry;
 
-test('mcp.start without workspaceName routes to control', () => {
+test('mcp.start without workspaceName is control-shaped but routes to workspace validation', () => {
     const action = stubAction('mcp.start');
     assert.equal(isControlAction(action), true);
     assert.equal(isWorkspaceAction(action), false);
-    assert.equal(classifyActionRoute(action), 'control');
+    assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-test('mcp.stop without workspaceName routes to control', () => {
+test('mcp.stop without workspaceName routes to workspace validation', () => {
     const action = stubAction('mcp.stop');
-    assert.equal(classifyActionRoute(action), 'control');
+    assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-test('mcp.status without workspaceName routes to control', () => {
+test('mcp.status without workspaceName routes to workspace validation', () => {
     const action = stubAction('mcp.status');
-    assert.equal(classifyActionRoute(action), 'control');
+    assert.equal(classifyActionRoute(action), 'workspace');
 });
 
 test('mcp.start with workspaceName is a workspace action', () => {
@@ -90,14 +59,14 @@ test('mcp.start routes to workspace when workspaceName present', () => {
     assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-test('mcp.start routes to control when workspaceName missing', () => {
+test('mcp.start still selects workspace route when workspaceName is missing', () => {
     const action = stubAction('mcp.start');
-    assert.equal(classifyActionRoute(action), 'control');
+    assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-test('mcp.status routes to control when workspaceName missing', () => {
+test('mcp.status still selects workspace route when workspaceName is missing', () => {
     const action = stubAction('mcp.status');
-    assert.equal(classifyActionRoute(action), 'control');
+    assert.equal(classifyActionRoute(action), 'workspace');
 });
 
 test('mcp.start is a registered request action type', () => {
@@ -165,7 +134,7 @@ test('REQUEST_ACTION_TYPES includes MCP actions', () => {
 });
 
 test('browser.* StepNames are not in request action types', () => {
-    const requestTypes = new Set(Object.values(REQUEST_ACTION_TYPES));
+    const requestTypes = new Set<string>(Object.values(REQUEST_ACTION_TYPES));
     assert.equal(requestTypes.has('browser.goto'), false);
     assert.equal(requestTypes.has('browser.click'), false);
     assert.equal(requestTypes.has('browser.snapshot'), false);

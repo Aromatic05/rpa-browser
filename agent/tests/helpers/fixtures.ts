@@ -1,13 +1,11 @@
 import { test as base, chromium, expect } from '@playwright/test';
-import type { Browser } from '@playwright/test';
 import { startFixtureServer } from './server';
 
-type Fixtures = {
-    browser: Browser;
+type WorkerFixtures = {
     fixtureURL: string;
 };
 
-export const test = base.extend<Fixtures>({
+export const test = base.extend<{}, WorkerFixtures>({
     browser: [
         async ({}, use) => {
             const browser = await chromium.launch({

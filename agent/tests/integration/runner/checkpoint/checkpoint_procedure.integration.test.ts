@@ -7,13 +7,15 @@ import {
     createStepsQueue,
     readResultPipe,
     runSteps,
-} from '../../../src/runner/run_steps';
-import type { Checkpoint } from '../../../src/runner/checkpoint';
-import { executeBrowserCheckpoint } from '../../../src/runner/steps/executors/checkpoint';
-import { executeBrowserCompute } from '../../../src/runner/steps/executors/compute';
-import { executeBrowserQuery } from '../../../src/runner/steps/executors/query';
-import type { SnapshotResult, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import type { StepUnion } from '../../../src/runner/steps/types';
+} from '../../../../src/runner/run_steps';
+import type { Checkpoint } from '../../../../src/runner/checkpoint';
+import type { CheckpointAction } from '../../../../src/runner/checkpoint/types';
+import { executeBrowserCheckpoint } from '../../../../src/runner/steps/executors/checkpoint';
+import { executeBrowserCompute } from '../../../../src/runner/steps/executors/compute';
+import { executeBrowserQuery } from '../../../../src/runner/steps/executors/query';
+import type { SnapshotResult, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createNode = (id: string, role: string, name?: string): UnifiedNode => ({
     id,
@@ -48,6 +50,7 @@ const createTableFixtureSnapshot = (): SnapshotResult => {
             row_2: { tag: 'tr' },
             next_page: { tag: 'button' },
         },
+        controlIndex: {},
         contentStore: {},
     };
 };
@@ -55,14 +58,10 @@ const createTableFixtureSnapshot = (): SnapshotResult => {
 const createDeps = () => {
     const binding = {
         workspaceName: 'ws-1',
-        tabName: 'tab-1',
         tabName: 'tk-1',
         traceCtx: { cache: {} as Record<string, unknown> },
     };
-    return {
-        runtime: {
-            ensureActivePage: async () => binding,
-        } as any,
+    return completeRunStepsDeps({
         config: {} as any,
         pluginHost: {
             getExecutors: () =>
@@ -87,11 +86,11 @@ const createDeps = () => {
                     'browser.click': async (step: StepUnion) => ({
                         stepId: step.id,
                         ok: true,
-                        data: { clickedId: (step.args as { id?: unknown }).id },
+                        data: { clickedId: (step.args as { nodeId?: unknown }).nodeId },
                     }),
                 }) as any,
         } as any,
-    };
+    }, binding);
 };
 
 const runWithCheckpoints = async (step: StepUnion, checkpoints: Checkpoint[], deps = createDeps() as any) => {
@@ -223,11 +222,11 @@ test('browser.checkpoint supports query compute act and local/output data flow',
                     step: {
                         name: 'browser.click',
                         args: {
-                            id: { ref: 'local.actionTarget.nodeIds.0' },
+                            nodeId: { ref: 'local.actionTarget.nodeIds.0' },
                         },
                     },
                     saveAs: 'clickResult',
-                },
+                } as unknown as CheckpointAction,
             ],
             output: {
                 rowCount: { ref: 'local.rowCount.value' },

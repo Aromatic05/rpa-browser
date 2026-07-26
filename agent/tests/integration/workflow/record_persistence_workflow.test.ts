@@ -4,8 +4,8 @@ import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveWorkflowRecordingDir, saveWorkflowRecordingArtifacts } from '../../src/record/persistence';
-import type { StepUnion } from '../../src/runner/steps/types';
+import { resolveWorkflowRecordingDir, saveWorkflowRecordingArtifacts } from '../../../src/record/persistence';
+import type { StepUnion } from '../../../src/runner/steps/types';
 
 test('saveWorkflowRecordingArtifacts writes into workflow records directory with manifest', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'wf-record-'));

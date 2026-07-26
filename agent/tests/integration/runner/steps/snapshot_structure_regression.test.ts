@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateSemanticSnapshotFromRaw } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
-import type { GroupEntity, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { generateSemanticSnapshotFromRaw } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import type { GroupEntity, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 type RawFixture = {
     domTree: unknown;

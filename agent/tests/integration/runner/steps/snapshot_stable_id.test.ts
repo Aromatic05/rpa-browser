@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assignStableIds } from '../../../src/runner/steps/executors/snapshot/core/stable_id';
-import { getNodeAttr, setNodeAttrs } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { assignStableIds } from '../../../../src/runner/steps/executors/snapshot/core/stable_id';
+import { getNodeAttr, setNodeAttrs } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 const node = (
     id: string,

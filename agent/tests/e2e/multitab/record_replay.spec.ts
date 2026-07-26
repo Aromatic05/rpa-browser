@@ -6,7 +6,7 @@ import { sendControlEval } from '../../../src/control/client';
 import type { StepUnion } from '../../../src/runner/steps/types';
 import type { Action } from '../../../src/actions/action_protocol';
 
-const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args });
+const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args } as unknown as Extract<StepUnion, { name: T }>);
 const mustOk = (r: { ok: boolean; error?: { code?: string; message?: string } }, label: string) => { expect(r.ok, `${label} failed: ${JSON.stringify(r.error)}`).toBeTruthy(); };
 const log = (m: string) => console.log(`[e2e-mt][${new Date().toISOString()}] ${m}`);
 

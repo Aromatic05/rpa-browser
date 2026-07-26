@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
-import { buildExternalIndexes } from '../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
-import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
+import { buildSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
+import { buildExternalIndexes } from '../../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
+import { buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
 import {
     queryBusinessEntity,
     resolveBusinessEntityTarget,
-} from '../../../src/runner/steps/executors/snapshot/core/business_entity_resolver';
-import type { EntityIndex, FinalEntityView, SnapshotResult, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+} from '../../../../src/runner/steps/executors/snapshot/core/business_entity_resolver';
+import type { EntityIndex, FinalEntityView, SnapshotResult, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 const createFixture = (): {
     snapshot: SnapshotResult;

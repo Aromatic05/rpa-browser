@@ -1,13 +1,14 @@
+import type { Page } from 'playwright';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { chromium } from 'playwright';
-import { runStepList } from '../../src/runner/run_steps';
-import type { RunStepsDeps } from '../../src/runner/run_steps';
-import type { StepUnion } from '../../src/runner/steps/types';
+import { runStepList } from '../../../src/runner/run_steps';
+import type { RunStepsDeps } from '../../../src/runner/run_steps';
+import type { StepUnion } from '../../../src/runner/steps/types';
 import { createEntityRuleFixtureRoot } from '../entity_rules/profile_fixture';
 import { startMockApp } from '../entity_rules/verify/helper';
-import { createStepExecutionHarness } from '../helpers/step_runner_harness';
+import { createStepExecutionHarness } from '../../helpers/step_runner_harness';
 
 type ExecutorSpy = {
     fillNodeIds: string[];

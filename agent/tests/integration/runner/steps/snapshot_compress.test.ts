@@ -1,19 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compress } from '../../../src/runner/steps/executors/snapshot/stages/compress';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-
-const node = (
-    id: string,
-    role: string,
-    children: UnifiedNode[] = [],
-    patch: Partial<UnifiedNode> = {},
-): UnifiedNode => ({
-    id,
-    role,
-    children,
-    ...patch,
-});
+import { compress } from '../../../../src/runner/steps/executors/snapshot/stages/compress';
+import { getNodeContent, getNodeSemanticHints } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { snapshotNode as node } from '../../../helpers/snapshot_node';
 
 test('compress should delete script/style/svg/path and empty decorative shells', () => {
     const root = node('root', 'root', [
@@ -53,7 +42,7 @@ test('compress should collapse wrapper shells and lift child text to interactive
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].role, 'button');
     assert.equal(out.children[0].name, '查询');
-    assert.equal(out.children[0].content, '查询');
+    assert.equal(getNodeContent(out.children[0]), '查询');
     assert.equal(out.children[0].children.length, 0);
 });
 
@@ -61,9 +50,8 @@ test('compress should keep entity/structure nodes even if they look like wrapper
     const rowEntity = node('row-entity', 'div', [
         node('cell-1', 'cell', [], { attrs: { tag: 'td' } }),
     ], {
-        entityId: 'entity:row-1',
-        entityType: 'row',
-        attrs: { tag: 'div', entityId: 'entity:row-1', entityType: 'row' },
+        semantic: { entityNodeId: 'row-entity', entityKind: 'table' },
+        attrs: { tag: 'div' },
     });
     const root = node('root', 'root', [rowEntity]);
 
@@ -71,7 +59,7 @@ test('compress should keep entity/structure nodes even if they look like wrapper
     assert.ok(out);
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].id, 'row-entity');
-    assert.equal(out.children[0].entityType, 'row');
+    assert.equal(getNodeSemanticHints(out.children[0])?.entityKind, 'table');
 });
 
 test('compress should not blindly lift long mixed text into parent', () => {
@@ -93,9 +81,9 @@ test('compress should not blindly lift long mixed text into parent', () => {
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].role, 'button');
     assert.equal(out.children[0].name, undefined);
-    assert.equal(out.children[0].content, undefined);
+    assert.equal(getNodeContent(out.children[0]), undefined);
     assert.equal(out.children[0].children.length, 1);
-    assert.equal(out.children[0].children[0].content, longText);
+    assert.equal(getNodeContent(out.children[0].children[0]), longText);
 });
 
 test('compress should keep list/listitem boundary while preserving link atom', () => {
@@ -185,7 +173,7 @@ test('compress should remove duplicated text fragments under completed heading',
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].role, 'heading');
     assert.equal(out.children[0].children.length, 0);
-    assert.equal(out.children[0].content, '订单列表 （今日）');
+    assert.equal(getNodeContent(out.children[0]), '订单列表 （今日）');
 });
 
 test('compress should flatten multi-layer layout wrappers but keep card boundary', () => {
@@ -197,8 +185,8 @@ test('compress should flatten multi-layer layout wrappers but keep card boundary
                         node('btn', 'button', [], { name: '查看', content: '查看', attrs: { tag: 'button' } }),
                     ], { attrs: { tag: 'div', class: 'card-body' } }),
                 ], {
-                    entityType: 'card',
-                    attrs: { tag: 'section', entityType: 'card' },
+                    semantic: { entityNodeId: 'card', entityKind: 'panel' },
+                    attrs: { tag: 'section' },
                 }),
             ], { attrs: { tag: 'div', class: 'col center' } }),
         ], { attrs: { tag: 'div', class: 'row container' } }),
@@ -219,15 +207,12 @@ test('compress should flatten entity-marked layout shell when child can absorb s
                 node('action', 'button', [], { name: '删除', content: '删除', attrs: { tag: 'button' } }),
             ], { attrs: { tag: 'div' } }),
         ], {
-            entityId: 'entity:x',
-            entityType: 'unknown',
-            parentEntityId: 'entity:p',
-            attrs: {
-                tag: 'div',
-                entityId: 'entity:x',
-                entityType: 'unknown',
-                parentEntityId: 'entity:p',
+            semantic: {
+                entityNodeId: 'shell',
+                entityKind: 'panel',
+                actionTargetNodeId: 'parent',
             },
+            attrs: { tag: 'div' },
         }),
     ]);
 
@@ -235,8 +220,8 @@ test('compress should flatten entity-marked layout shell when child can absorb s
     assert.ok(out);
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].role, 'row');
-    assert.equal(out.children[0].entityId, 'entity:x');
-    assert.equal(out.children[0].parentEntityId, 'entity:p');
+    assert.equal(getNodeSemanticHints(out.children[0])?.entityNodeId, 'shell');
+    assert.equal(getNodeSemanticHints(out.children[0])?.actionTargetNodeId, 'parent');
 });
 
 test('compress should cut non-page subtree in one shot', () => {
@@ -318,8 +303,6 @@ test('compress should still drop head subtree when head is wrongly marked as ent
                 entityId: 'entity:n0.0',
                 entityType: 'card',
             },
-            entityId: 'entity:n0.0',
-            entityType: 'card',
         }),
         node('body', 'body', [
             node('main', 'main', [], { content: '正文', attrs: { tag: 'main' } }),
@@ -354,7 +337,7 @@ test('compress should remove breadcrumb separator and collapse wrapper span', ()
     assert.ok(out);
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].role, 'link');
-    assert.equal(out.children[0].content, '主页');
+    assert.equal(getNodeContent(out.children[0]), '主页');
 });
 
 test('compress should enforce strict atomic link and cut heading/image descendants', () => {
@@ -381,7 +364,7 @@ test('compress should enforce strict atomic link and cut heading/image descendan
     assert.equal(out.children.length, 1);
     assert.equal(out.children[0].role, 'link');
     assert.equal(out.children[0].name, '影刀商城');
-    assert.equal(out.children[0].content, '影刀商城');
+    assert.equal(getNodeContent(out.children[0]), '影刀商城');
     assert.equal(out.children[0].children.length, 0);
 });
 
@@ -411,7 +394,7 @@ test('compress should atomize polluted heading and drop image/span/b descendants
     assert.equal(out.children[0].role, 'heading');
     assert.equal(out.children[0].children.length, 0);
     assert.equal(
-        out.children[0].content,
+        getNodeContent(out.children[0]),
         '基于 Arch Linux、开箱即用的Linux发行版，提供出色的操作系统用户体验',
     );
     assert.equal(

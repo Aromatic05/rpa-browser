@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
-import { buildExternalIndexes } from '../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
-import { applySnapshotOverlay, buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import type { EntityIndex, SnapshotOverlays, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import { buildSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
+import { buildExternalIndexes } from '../../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
+import { applySnapshotOverlay, buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import type { EntityIndex, SnapshotOverlays, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 
 const createBaseSnapshot = () => {
     const table: UnifiedNode = { id: 'table_1', role: 'table', name: 'Auto Table', children: [] };

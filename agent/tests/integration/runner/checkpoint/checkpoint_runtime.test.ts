@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCheckpointScope, resolveCheckpointValue, runCheckpointProcedure } from '../../../src/runner/checkpoint/runtime';
-import type { Checkpoint } from '../../../src/runner/checkpoint/types';
+import { createCheckpointScope, resolveCheckpointValue, runCheckpointProcedure } from '../../../../src/runner/checkpoint/runtime';
+import type { Checkpoint } from '../../../../src/runner/checkpoint/types';
 
 test('resolveCheckpointValue reads input/local/output refs', () => {
     const scope = createCheckpointScope({ x: 1 });

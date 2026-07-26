@@ -1,30 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import type { Step } from '../../../src/runner/steps/types';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { getRunnerConfig } from '../../../src/config';
-import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
-import { executeBrowserSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
-import { markSnapshotSessionDirty } from '../../../src/runner/steps/executors/snapshot/core/session_store';
+import type { Step } from '../../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import { getRunnerConfig } from '../../../../src/config';
+import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import { executeBrowserSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import { markSnapshotSessionDirty } from '../../../../src/runner/steps/executors/snapshot/core/session_store';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createDeps = (page: any, cache: Record<string, unknown> = {}): RunStepsDeps => {
     const binding = {
         workspaceName: 'ws-token',
-        tabName: 'tab-token',
         tabName: 'tab-token',
         page: page as any,
         traceTools: {},
         traceCtx: { cache: { ...cache } },
     };
 
-    return {
-        runtime: {
-            ensureActivePage: async () => binding,
-        } as any,
-        config: getRunnerConfig(),
-        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-    };
+    return completeRunStepsDeps(
+        {
+            runtime: { resolveBinding: async (_workspaceName: string, _tabName?: string) => binding },
+            config: getRunnerConfig(),
+            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
+        },
+        binding,
+    );
 };
 
 const createDynamicSnapshotPage = (initialValue = '') => {
@@ -248,7 +249,7 @@ const hasProjectedContent = (node: any, expected: string): boolean => {
     if (!node || typeof node !== 'object') {return false;}
     if (node.content === expected) {return true;}
     const children = Array.isArray(node.children) ? node.children : [];
-    return children.some((child) => hasProjectedContent(child, expected));
+    return children.some((child: unknown) => hasProjectedContent(child, expected));
 };
 
 test('executeBrowserSnapshot diff surfaces textbox interaction as content token change', async () => {

@@ -9,16 +9,16 @@ import {
     runStepList,
     runSteps,
     setRunStepsDeps,
-} from '../../../src/runner/run_steps';
-import { loadRunnerConfig } from '../../../src/config/loader';
-import type { Checkpoint } from '../../../src/runner/checkpoint';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepResolve, StepUnion } from '../../../src/runner/steps/types';
+} from '../../../../src/runner/run_steps';
+import { loadRunnerConfig } from '../../../../src/config/loader';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
+import type { Checkpoint } from '../../../../src/runner/checkpoint';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({
         workspaceName: 'ws-1',
-        tabName: 'tab-1',
         tabName: 'tk-1',
         page: { url: () => 'https://example.test/page' },
         traceCtx: { cache: {} },
@@ -26,7 +26,7 @@ const createRuntime = () => ({
     }),
 });
 
-const createDeps = (executors: Record<string, (step: StepUnion) => Promise<any>>): RunStepsDeps => ({
+const createDeps = (executors: Record<string, (step: StepUnion) => Promise<any>>): RunStepsDeps => completeRunStepsDeps({
     runtime: createRuntime() as any,
     config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
     pluginHost: {

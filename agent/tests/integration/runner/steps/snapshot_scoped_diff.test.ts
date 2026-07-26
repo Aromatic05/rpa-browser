@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import { setNodeAttr, setNodeContent } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { setNodeAttr, setNodeContent } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
 import {
     buildSnapshotDiffBaselineKey,
     buildSnapshotFromViewRoot,
     buildSnapshotView,
     computeMinimalChangedSubtree,
-} from '../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
+} from '../../../../src/runner/steps/executors/snapshot/pipeline/scoped_diff';
 
 const collectNodeIds = (root: UnifiedNode): string[] => {
     const ids: string[] = [];

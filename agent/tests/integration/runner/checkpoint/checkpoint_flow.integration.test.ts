@@ -9,15 +9,15 @@ import {
     runSteps,
     sendSignal,
     setRunStepsDeps,
-} from '../../../src/runner/run_steps';
-import { loadRunnerConfig } from '../../../src/config/loader';
-import type { StepUnion } from '../../../src/runner/steps/types';
-import type { Checkpoint } from '../../../src/runner/checkpoint';
+} from '../../../../src/runner/run_steps';
+import { loadRunnerConfig } from '../../../../src/config/loader';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import type { Checkpoint } from '../../../../src/runner/checkpoint';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({
         workspaceName: 'ws-1',
-        tabName: 'tab-1',
         tabName: 'tk-1',
         page: { url: () => 'https://example.test/page' },
         traceCtx: { cache: {} },
@@ -29,13 +29,13 @@ const createRuntime = () => ({
 });
 
 const createDeps = (executors: Record<string, (step: StepUnion) => Promise<any>>) => {
-    setRunStepsDeps({
+    setRunStepsDeps(completeRunStepsDeps({
         runtime: createRuntime() as any,
         config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
         pluginHost: {
             getExecutors: () => executors,
         } as any,
-    });
+    }));
 };
 
 const baseStep = (): StepUnion => ({ id: 's1', name: 'browser.click', args: { selector: '#x' } }) as StepUnion;

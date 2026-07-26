@@ -2,28 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { chromium, type Page } from 'playwright';
-import { getRunnerConfig } from '../../../src/config';
-import { validateEntityRules } from '../../../src/runner/steps/executors/snapshot/entity_rules/validate';
-import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { runStepList } from '../../../src/runner/run_steps';
-import { executeBrowserQuery } from '../../../src/runner/steps/executors/query';
-import { getNodeSemanticHints, setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import { buildFinalEntityViewFromSnapshot } from '../../../src/runner/steps/executors/snapshot/core/overlay';
-import { buildSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
-import { buildExternalIndexes } from '../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
-import { applyBusinessEntityRules } from '../../../src/runner/steps/executors/snapshot/entity_rules/apply';
+import { getRunnerConfig } from '../../../../src/config';
+import { validateEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/validate';
+import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import { runStepList } from '../../../../src/runner/run_steps';
+import { executeBrowserQuery } from '../../../../src/runner/steps/executors/query';
+import { getNodeSemanticHints, setNodeAttr } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { buildFinalEntityViewFromSnapshot } from '../../../../src/runner/steps/executors/snapshot/core/overlay';
+import { buildSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/build_snapshot';
+import { buildExternalIndexes } from '../../../../src/runner/steps/executors/snapshot/indexes/external_indexes';
+import { applyBusinessEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/apply';
 import type {
     EntityIndex,
     FinalEntityView,
     SnapshotResult,
     UnifiedNode,
-} from '../../../src/runner/steps/executors/snapshot/core/types';
-import type { NormalizedEntityRuleBundle } from '../../../src/runner/steps/executors/snapshot/entity_rules/types';
-import type { Step, StepUnion } from '../../../src/runner/steps/types';
+} from '../../../../src/runner/steps/executors/snapshot/core/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
+import type { NormalizedEntityRuleBundle } from '../../../../src/runner/steps/executors/snapshot/entity_rules/types';
+import type { Step, StepUnion } from '../../../../src/runner/steps/types';
 import { createEntityRuleFixtureRoot } from '../../entity_rules/profile_fixture';
 import { startMockApp } from '../../entity_rules/verify/helper';
-import { createStepExecutionHarness } from '../../helpers/step_runner_harness';
+import { createStepExecutionHarness } from '../../../helpers/step_runner_harness';
 
 type PaginationFixtureOptions = {
     disabledNext?: boolean;
@@ -37,12 +38,10 @@ type ExecutorSpy = {
 
 const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView): RunStepsDeps => {
     const workspaceName = 'ws-pagination';
-    const tabName = 'tab-pagination';
     const tabName = 'tab-token-pagination';
     const url = 'https://example.test/entity-pagination';
     const binding = {
         workspaceName,
-        tabName,
         tabName,
         page: { url: () => url },
         traceCtx: {
@@ -51,7 +50,7 @@ const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView):
                     version: 1,
                     entries: {
                         [`${workspaceName}:${tabName}`]: {
-                            pageIdentity: { workspaceName, tabName, tabName, url },
+                            pageIdentity: { workspaceName, tabName, url },
                             baseSnapshot: snapshot,
                             finalSnapshot: snapshot,
                             finalEntityView,
@@ -67,13 +66,13 @@ const createDeps = (snapshot: SnapshotResult, finalEntityView: FinalEntityView):
         },
     };
 
-    return {
-        runtime: {
-            ensureActivePage: async () => binding,
-        } as any,
-        config: getRunnerConfig(),
-        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-    };
+    return completeRunStepsDeps(
+        {
+            config: getRunnerConfig(),
+            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
+        },
+        binding,
+    );
 };
 
 const createPaginationFixture = (
@@ -407,11 +406,12 @@ test('browser.query table.hasNextPage reports enabled next page state', async ()
 
     const result = await executeBrowserQuery(step, deps, 'ws-pagination');
     assert.equal(result.ok, true);
-    assert.equal(result.data?.kind, 'value');
-    assert.equal(result.data?.value, true);
-    assert.equal(result.data?.meta?.query, 'table.hasNextPage');
-    assert.equal(result.data?.meta?.targetNodeId, 'pager_next');
-    assert.equal(result.data?.meta?.reason, 'nextActionEnabled');
+    const data = result.data as { kind: string; value: boolean; meta: Record<string, unknown> };
+    assert.equal(data.kind, 'value');
+    assert.equal(data.value, true);
+    assert.equal(data.meta.query, 'table.hasNextPage');
+    assert.equal(data.meta.targetNodeId, 'pager_next');
+    assert.equal(data.meta.reason, 'nextActionEnabled');
 });
 
 test('browser.query table.hasNextPage reports disabled next page state', async () => {
@@ -429,9 +429,10 @@ test('browser.query table.hasNextPage reports disabled next page state', async (
 
     const result = await executeBrowserQuery(step, deps, 'ws-pagination');
     assert.equal(result.ok, true);
-    assert.equal(result.data?.kind, 'value');
-    assert.equal(result.data?.value, false);
-    assert.equal(result.data?.meta?.reason, 'nextActionDisabled');
+    const data = result.data as { kind: string; value: boolean; meta: Record<string, unknown> };
+    assert.equal(data.kind, 'value');
+    assert.equal(data.value, false);
+    assert.equal(data.meta.reason, 'nextActionDisabled');
 });
 
 test('browser.query table.nextPageTarget resolves enabled next page node', async () => {
@@ -449,10 +450,11 @@ test('browser.query table.nextPageTarget resolves enabled next page node', async
 
     const result = await executeBrowserQuery(step, deps, 'ws-pagination');
     assert.equal(result.ok, true);
-    assert.equal(result.data?.kind, 'nodeId');
-    assert.equal(result.data?.nodeId, 'pager_next');
-    assert.equal(result.data?.meta?.targetKind, 'table.nextPage');
-    assert.equal(result.data?.meta?.actionIntent, 'nextPage');
+    const data = result.data as { kind: string; nodeId: string; meta: Record<string, unknown> };
+    assert.equal(data.kind, 'nodeId');
+    assert.equal(data.nodeId, 'pager_next');
+    assert.equal(data.meta.targetKind, 'table.nextPage');
+    assert.equal(data.meta.actionIntent, 'nextPage');
 });
 
 test('browser.query table.nextPageTarget rejects disabled next page node', async () => {

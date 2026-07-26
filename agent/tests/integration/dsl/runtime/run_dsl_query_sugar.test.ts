@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runDslSource } from '../../../src/dsl/runtime';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { runDslSource } from '../../../../src/dsl/runtime';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { StepUnion } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {
     name: string;
@@ -10,11 +11,10 @@ type StubCall = {
 };
 
 const createDeps = (calls: StubCall[]): RunStepsDeps =>
-    ({
+    completeRunStepsDeps({
         runtime: {
             ensureActivePage: async () => ({
                 workspaceName: 'ws-dsl-query-sugar',
-                tabName: 'tab-dsl-query-sugar',
                 tabName: 'tk-dsl-query-sugar',
                 traceCtx: { cache: {} },
             }),
@@ -33,7 +33,7 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                     },
                 }) as any,
         } as any,
-    }) as RunStepsDeps;
+    });
 
 test('runDslSource executes query table sugar and writes vars', async () => {
     const calls: StubCall[] = [];

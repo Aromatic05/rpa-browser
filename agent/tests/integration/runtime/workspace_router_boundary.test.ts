@@ -81,26 +81,26 @@ const createRouterWithStubs = () => {
     const mcpControl = createStubControl();
 
     const deps: WorkspaceRouterDeps = {
-        tabsControl,
-        recordControl,
-        dslControl,
-        checkpointControl,
-        entityRulesControl,
-        runnerControl,
-        mcpControl
+        tabsControl: tabsControl as any,
+        recordControl: recordControl as any,
+        dslControl: dslControl as any,
+        checkpointControl: checkpointControl as any,
+        entityRulesControl: entityRulesControl as any,
+        runnerControl: runnerControl as any,
+        mcpControl: mcpControl as any
     };
 
     const router = createWorkspaceRouter(deps);
 
     return {
         router,
-        tabsControl,
-        recordControl,
-        dslControl,
-        checkpointControl,
-        entityRulesControl,
-        runnerControl,
-        mcpControl
+        tabsControl: tabsControl as any,
+        recordControl: recordControl as any,
+        dslControl: dslControl as any,
+        checkpointControl: checkpointControl as any,
+        entityRulesControl: entityRulesControl as any,
+        runnerControl: runnerControl as any,
+        mcpControl: mcpControl as any
     };
 };
 
@@ -237,7 +237,7 @@ test('WorkspaceRouter does not parse tab payload', async () => {
     await router.handle(action, workspace, registry);
     assert.equal(tabsControl.calls.length, 1);
     // Router forwarded the action; it didn't parse the payload itself
-    assert.equal(tabsControl.calls[0].action.payload.tabName, 'tab-1');
+    assert.equal((tabsControl.calls[0].action.payload as Record<string, unknown>).tabName, 'tab-1');
 });
 
 test('WorkspaceRouter does not construct mcp reply', async () => {
@@ -344,9 +344,8 @@ import { createRecordingState } from '../../../src/record/recording';
 test('TabsControl handles tab.list', async () => {
     const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
-        getPage: async () => {
-            throw new Error('not implemented');
-        },
+        awaitPageBinding: async () => {throw new Error('not implemented');},
+        createPageBinding: async () => {throw new Error('not implemented');},
     });
     const workspace = {
         name: 'ws-1',
@@ -364,7 +363,8 @@ test('TabsControl handles tab.list', async () => {
 test('TabsControl tab.activated sets tab active', async () => {
     const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
-        getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+        awaitPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+        createPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
     });
     tabs.createTab({ tabName: 'a' });
     const workspace = {
@@ -382,7 +382,8 @@ test('TabsControl tab.activated sets tab active', async () => {
 test('TabsControl tab.reassigned errors on unknown tab', async () => {
     const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
-        getPage: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+        awaitPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
+        createPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
     });
     const workspace = {
         name: 'ws-1',

@@ -1,17 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Action } from '../../src/actions/action_protocol';
-import { runControlEval } from '../../src/control/eval';
-import { parseControlEvalCli } from '../../src/control_cli';
+import type { Action } from '../../../src/actions/action_protocol';
+import { runControlEval, type ControlEvalContextDeps } from '../../../src/control/eval';
+import { parseControlEvalCli } from '../../../src/control_cli';
 
-const createContext = () => ({
+const createContext = (): ControlEvalContextDeps => ({
     deps: {} as any,
     workspaceRegistry: {
         getWorkspace: (name: string) => ({ name }),
     } as any,
     config: {} as any,
     dispatch: async (action: Action) => action,
-    resolveWorkspace: (workspaceName: string) => ({ name: workspaceName }),
+    resolveWorkspace: (workspaceName: string) => ({ name: workspaceName } as any),
     checkpointProvider: () => undefined,
 });
 

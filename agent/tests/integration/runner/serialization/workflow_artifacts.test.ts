@@ -9,13 +9,13 @@ import type {
     SingleCheckpointFile,
     StepFile,
     StepResolveFile,
-} from '../../../src/runner/serialization/types';
+} from '../../../../src/runner/serialization/types';
 import {
     validateCheckpointResolveFileForSerialization,
     validateSingleCheckpointFileForSerialization,
     validateStepFileForSerialization,
     validateStepResolveFileForSerialization,
-} from '../../../src/runner/serialization/types';
+} from '../../../../src/runner/serialization/types';
 
 const workflowsDir = path.resolve(process.cwd(), 'tests/fixtures/workflows');
 

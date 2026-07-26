@@ -7,12 +7,13 @@ import {
     createStepsQueue,
     readResultPipe,
     runSteps,
-} from '../../src/runner/run_steps';
-import type { RunStepsDeps } from '../../src/runner/run_steps';
-import { executeBrowserCompute } from '../../src/runner/steps/executors/compute';
-import { executeBrowserQuery } from '../../src/runner/steps/executors/query';
-import type { SnapshotResult, UnifiedNode } from '../../src/runner/steps/executors/snapshot/core/types';
-import type { StepUnion } from '../../src/runner/steps/types';
+} from '../../../src/runner/run_steps';
+import type { RunStepsDeps } from '../../../src/runner/run_steps';
+import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
+import { executeBrowserCompute } from '../../../src/runner/steps/executors/compute';
+import { executeBrowserQuery } from '../../../src/runner/steps/executors/query';
+import type { SnapshotResult, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
+import type { StepUnion } from '../../../src/runner/steps/types';
 
 const createNode = (id: string, role: string, name?: string): UnifiedNode => ({
     id,
@@ -48,15 +49,15 @@ const createTableFixtureSnapshot = (): SnapshotResult => {
             row_2: { tag: 'tr' },
             next_page: { tag: 'button' },
         },
+        controlIndex: {},
         contentStore: {},
     };
 };
 
-const createDeps = (snapshot: SnapshotResult): RunStepsDeps => ({
+const createDeps = (snapshot: SnapshotResult): RunStepsDeps => completeRunStepsDeps({
     runtime: (() => {
         const binding = {
             workspaceName: 'ws-1',
-            tabName: 'tab-1',
             tabName: 'tk-1',
             traceCtx: {
                 cache: {

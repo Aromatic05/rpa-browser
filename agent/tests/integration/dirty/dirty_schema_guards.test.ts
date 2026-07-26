@@ -7,11 +7,11 @@ import {
     browserCloseTabInputSchema,
     browserSwitchTabInputSchema,
     toolInputJsonSchemas,
-} from '../../src/mcp/schemas';
-import type { RecordingManifest } from '../../src/record/recording';
-import type { RecordingTabManifest } from '../../src/record/recording';
-import type { RecordedStepEnhancement } from '../../src/record/types';
-import type { SnapshotPageIdentity } from '../../src/runner/steps/executors/snapshot/core/types';
+} from '../../../src/mcp/schemas';
+import type { RecordingManifest } from '../../../src/record/recording';
+import type { RecordingTabManifest } from '../../../src/record/recording';
+import type { RecordedStepEnhancement } from '../../../src/record/types';
+import type { SnapshotPageIdentity } from '../../../src/runner/steps/executors/snapshot/core/types';
 
 type ExpectTrue<T extends true> = T;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

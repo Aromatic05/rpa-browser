@@ -15,7 +15,7 @@ export const createStep = <TName extends StepName>(name: TName, args: StepArgsMa
     id: crypto.randomUUID(),
     name,
     args,
-});
+} as StepUnion);
 
 export const createTestPluginHost = async () => {
     const entryFile = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
@@ -46,7 +46,16 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
     });
     runtime.bindPage({ workspaceName, tabName, page });
 
-    const deps = { runtime, config: getRunnerConfig(), pluginHost };
+    const deps = {
+        runtime,
+        config: getRunnerConfig(),
+        pluginHost,
+        resolveWorkspace: (name: string) => {
+            if (name !== workspaceName) {throw new Error(`workspace not found: ${name}`);}
+            return runtimeWorkspace;
+        },
+        dispatchAction: async (action: any) => ({ ...action, id: crypto.randomUUID(), type: `${action.type}.result`, replyTo: action.id }),
+    };
 
     const run = async (steps: StepUnion[]) => {
         const { pipe, checkpoint } = await runStepList(workspaceName, steps, deps, { stopOnError: true });

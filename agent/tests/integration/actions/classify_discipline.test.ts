@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { classifyActionRoute, isControlAction, isWorkspaceAction } from '../../src/actions/classify';
-import { isRequestActionType } from '../../src/actions/action_types';
-import type { Action } from '../../src/actions/action_protocol';
+import { classifyActionRoute, isControlAction, isWorkspaceAction } from '../../../src/actions/classify';
+import { isRequestActionType } from '../../../src/actions/action_types';
+import type { Action } from '../../../src/actions/action_protocol';
 
 const stubAction = (
     type: string,
@@ -271,12 +271,12 @@ test('browser.* action types are not request actions', () => {
 // ---- CONTROL_ACTIONS / WORKSPACE_ACTIONS must not exist ----
 
 test('agent classify does not export CONTROL_ACTIONS', async () => {
-    const mod = await import('../../src/actions/classify');
+    const mod = await import('../../../src/actions/classify');
     assert.equal('CONTROL_ACTIONS' in mod, false);
 });
 
 test('agent classify does not export WORKSPACE_ACTIONS', async () => {
-    const mod = await import('../../src/actions/classify');
+    const mod = await import('../../../src/actions/classify');
     assert.equal('WORKSPACE_ACTIONS' in mod, false);
 });
 

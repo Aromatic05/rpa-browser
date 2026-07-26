@@ -1,20 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import type { Step } from '../../../src/runner/steps/types';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { getRunnerConfig } from '../../../src/config';
-import { executeBrowserClick } from '../../../src/runner/steps/executors/click';
-import { executeBrowserFill } from '../../../src/runner/steps/executors/fill';
-import { executeBrowserSelectOption } from '../../../src/runner/steps/executors/select_option';
-import { executeBrowserPressKey, normalizeBrowserPressKey } from '../../../src/runner/steps/executors/press_key';
-import { executeBrowserSnapshot } from '../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
-import { executeBrowserMouse } from '../../../src/runner/steps/executors/mouse';
-import { executeBrowserGetContent } from '../../../src/runner/steps/executors/get_content';
-import { executeBrowserScroll } from '../../../src/runner/steps/executors/scroll';
-import { executeBrowserHover } from '../../../src/runner/steps/executors/hover';
-import { RunnerPluginHost } from '../../../src/runner/hotreload/plugin_host';
-import { setNodeAttr } from '../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import type { Step } from '../../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import { getRunnerConfig } from '../../../../src/config';
+import { executeBrowserClick } from '../../../../src/runner/steps/executors/click';
+import { executeBrowserFill } from '../../../../src/runner/steps/executors/fill';
+import { executeNativeSelect } from '../../../../src/runner/steps/executors/select_option/native_select';
+import { executeBrowserPressKey, normalizeBrowserPressKey } from '../../../../src/runner/steps/executors/press_key';
+import { executeBrowserSnapshot } from '../../../../src/runner/steps/executors/snapshot/pipeline/snapshot';
+import { executeBrowserMouse } from '../../../../src/runner/steps/executors/mouse';
+import { executeBrowserGetContent } from '../../../../src/runner/steps/executors/get_content';
+import { executeBrowserScroll } from '../../../../src/runner/steps/executors/scroll';
+import { executeBrowserHover } from '../../../../src/runner/steps/executors/hover';
+import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import { setNodeAttr } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unknown> = {}): RunStepsDeps => {
     const traceToolsWithDefaults = {
@@ -33,13 +34,14 @@ const createDeps = (traceTools: any, page: any = {}, cache: Record<string, unkno
         traceTools: traceToolsWithDefaults,
         traceCtx: { cache: { ...cache } },
     };
-    return {
-        runtime: {
-            resolveBinding: async () => binding,
-        } as any,
-        config: getRunnerConfig(),
-        pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-    };
+    return completeRunStepsDeps(
+        {
+            runtime: { resolveBinding: async (_workspaceName: string, _tabName?: string) => binding },
+            config: getRunnerConfig(),
+            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
+        },
+        binding,
+    );
 };
 
 const createSemanticSnapshotPage = (initialUrl = 'https://example.test') => {
@@ -495,7 +497,6 @@ test('click waits page readiness once, uses candidate click timeout, and stops a
                     ],
                 },
             },
-            policy: { targetPath: 'resolve.hint.raw.css' },
         },
     };
 
@@ -576,7 +577,6 @@ test('click highlight failure falls through to next candidate', async () => {
                     ],
                 },
             },
-            policy: { targetPath: 'resolve.hint.raw.css' },
         },
     };
     const result = await executeBrowserClick(step, deps, 'ws1');
@@ -683,14 +683,11 @@ test('target scroll highlights and page scroll does not highlight', async () => 
     assert.equal(pageCalls.includes('trace.page.scrollBy'), true);
 });
 
-test('select_option validates against selected labels after action', async () => {
+test('native select accepts selected labels returned after action', async () => {
     const calls: string[] = [];
     const traceTools = {
-        'trace.locator.scrollIntoView': async () => ({ ok: true }),
-        'trace.locator.waitForVisible': async () => ({ ok: true }),
         'trace.locator.selectOption': async () => {
             calls.push('trace.locator.selectOption');
-            // Simulate UI library returning option values, not labels.
             return { ok: true, data: { selected: ['v-approve'] } };
         },
         'trace.locator.readSelectState': async () => ({
@@ -698,14 +695,31 @@ test('select_option validates against selected labels after action', async () =>
             data: { selectedValues: ['v-approve'], selectedLabels: ['审批中'] },
         }),
     };
-    const deps = createDeps(traceTools);
+    const deps = createDeps(traceTools, {
+        locator: () => ({
+            evaluate: async () => ({ values: ['v-approve'], labels: ['审批中'] }),
+        }),
+    });
     const step: Step<'browser.select_option'> = {
         id: 's3-select',
         name: 'browser.select_option',
-        args: { selector: '#status', values: ['审批中'] },
+        args: { selector: '#status', kind: 'native_select', values: ['审批中'] },
     };
+    const control = {
+        kind: 'native_select',
+        ref: 'control:native_select:status',
+        component: {
+            controlNodeId: 'status-node',
+            data: { options: [] },
+        },
+    } as any;
+    const snapshot = {
+        locatorIndex: {
+            'status-node': { direct: { kind: 'css', query: '#status', source: 'id' } },
+        },
+    } as any;
 
-    const result = await executeBrowserSelectOption(step, deps, 'ws1');
+    const result = await executeNativeSelect(step, deps, 'ws1', control, snapshot);
     assert.equal(result.ok, true);
     assert.deepEqual(calls, ['trace.locator.selectOption']);
 });
@@ -749,7 +763,7 @@ test('snapshot returns UnifiedNode root and keeps latest snapshot in trace cache
     const step: Step<'browser.snapshot'> = {
         id: 's5',
         name: 'browser.snapshot',
-        args: { includeA11y: true },
+        args: {},
     };
 
     const result = await executeBrowserSnapshot(step, deps, 'ws1');

@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { executeBrowserCaptureResolve } from '../../../src/runner/steps/executors/capture_resolve';
-import type { SnapshotResult, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import type { Step } from '../../../src/runner/steps/types';
+import { executeBrowserCaptureResolve } from '../../../../src/runner/steps/executors/capture_resolve';
+import type { SnapshotResult, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import type { Step } from '../../../../src/runner/steps/types';
+import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createNode = (id: string, role: string, name?: string): UnifiedNode => ({
     id,
@@ -37,23 +38,16 @@ const createSnapshot = (count = 1, repeatedText = 'Orders'): SnapshotResult => {
         locatorIndex,
         bboxIndex,
         attrIndex,
+        controlIndex: {},
         contentStore: {},
     };
 };
 
 const createDeps = (snapshot: SnapshotResult) =>
-    ({
-        runtime: {
-            ensureActivePage: async () => ({
-                workspaceName: 'ws-1',
-                tabName: 'tab-1',
-                tabName: 'tk-1',
-                traceCtx: { cache: { latestSnapshot: snapshot } },
-            }),
-        },
-        config: {} as any,
-        pluginHost: {} as any,
-    }) as any;
+    completeRunStepsDeps(
+        { config: {} as any, pluginHost: {} as any },
+        { workspaceName: 'ws-1', tabName: 'tk-1', traceCtx: { cache: { latestSnapshot: snapshot } } },
+    );
 
 test('capture_resolve rejects missing target inputs', async () => {
     const step: Step<'browser.capture_resolve'> = {

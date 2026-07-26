@@ -159,7 +159,9 @@ test('McpControl does not call serviceLifecycle', () => {
     assert.ok(!content.includes('serviceLifecycle'));
 });
 
-test('mcp runtime passes workspace.tabs.ensurePage as getPage', () => {
+test('mcp runtime passes workspace.tabs.awaitTabPage to tool handlers', () => {
     const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/runtime.ts'), 'utf8');
-    assert.ok(content.includes('ensurePage'));
+    assert.ok(content.includes('awaitTabPage'));
+    assert.ok(content.includes('awaitTabPage:'));
+    assert.ok(!content.includes('ensurePage'));
 });
