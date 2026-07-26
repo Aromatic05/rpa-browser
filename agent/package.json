@@ -19,7 +19,7 @@
         "control": "tsx src/control_cli.ts",
         "test:runner:bundle": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --packages=external --outfile=.runner-dist/plugin.mjs --sourcemap",
         "test:runner:bundle:watch": "esbuild src/runner/plugin_entry.ts --bundle --format=esm --platform=node --packages=external --outfile=.runner-dist/plugin.mjs --sourcemap --watch",
-        "test:unit": "node --import tsx --test \"tests/integration/config/**/*.test.ts\" \"tests/integration/control/**/*.test.ts\" \"tests/integration/dsl/**/*.test.ts\" \"tests/integration/mcp/**/*.test.ts\" \"tests/integration/runner/checkpoint/**/*.test.ts\" \"tests/integration/runner/hotreload/**/*.test.ts\" \"tests/integration/runner/steps/**/*.test.ts\" \"tests/integration/runner/trace/runtime/**/*.test.ts\" tests/integration/protocol_stream.test.ts",
+        "test:unit": "node --import tsx --test \"tests/integration/config/**/*.test.ts\" \"tests/integration/control/**/*.test.ts\" \"tests/integration/dsl/**/*.test.ts\" \"tests/integration/mcp/**/*.test.ts\" \"tests/integration/workflow/**/*.test.ts\" \"tests/integration/runner/checkpoint/**/*.test.ts\" \"tests/integration/runner/hotreload/**/*.test.ts\" \"tests/integration/runner/steps/**/*.test.ts\" \"tests/integration/runner/trace/runtime/**/*.test.ts\" tests/integration/protocol_stream.test.ts",
         "test:integration:run": "pnpm test:runner:bundle && pnpm -C .. build:extension && node --import tsx --test --test-concurrency=1 \"tests/integration/**/*.test.ts\"",
         "test:integration": "RPA_INTEGRATION_HEADED=false pnpm test:integration:run",
         "test:integration:headed": "RPA_INTEGRATION_HEADED=true pnpm test:integration:run",

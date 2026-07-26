@@ -7,6 +7,7 @@ import type { Action } from '../../src/actions/action_protocol';
 import { createPortAllocator } from '../../src/runtime/service/ports';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import type { PageRegistry } from '../../src/runtime/browser/page_registry';
+import type { WorkspaceBrowserSession } from '../../src/runtime/browser/browser_session';
 
 export type WorkspaceHarnessOptions = {
     recordingState?: RecordingState;
@@ -78,6 +79,20 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         runnerConfig: getRunnerConfig(),
         portAllocator: createPortAllocator(20000),
         dispatchAction: runStepsDeps.dispatchAction,
+        createBrowserSession: (sessionOptions): WorkspaceBrowserSession => {
+            const session: WorkspaceBrowserSession = {
+                workspaceName: sessionOptions.workspaceName,
+                userDataDir: `/tmp/rpa-browser-tests/workspaces/${sessionOptions.workspaceName}`,
+                wsPort: null,
+                cdpPort: null,
+                status: 'stopped',
+                pageRegistry: testPageRegistry,
+                start: async () => { session.status = 'running'; },
+                stop: async () => { session.status = 'stopped'; },
+                emit: () => undefined,
+            };
+            return session;
+        },
     });
     runStepsDeps.resolveWorkspace = (workspaceName: string) => {
         const workspace = registry.getWorkspace(workspaceName);

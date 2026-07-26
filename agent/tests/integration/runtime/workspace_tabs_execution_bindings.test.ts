@@ -217,3 +217,30 @@ test('createExecutableTab materializes metadata and a browser page', async () =>
     assert.equal(tabs.getTab('new-tab')?.page, binding.page);
     assert.equal(tabs.getActiveTab()?.name, 'new-tab');
 });
+
+test('awaitExecutableTab reuses the existing binding and preserves trace cache for the same page', async () => {
+    const page = createStubPage({ url: 'https://stable-binding.test' });
+    const pages = { tab: page };
+    const { tabs, pageRegistry } = createTabs(pages);
+    tabs.createTab({ tabName: 'tab' });
+    const workspace = createWorkspace('ws', tabs, pageRegistry);
+    const bindings = createExecutionBindings({ pageRegistry });
+
+    const first = await bindings.awaitExecutableTab({
+        workspace,
+        pageRegistry,
+        tabName: 'tab',
+        timeoutMs: 100,
+    });
+    first.traceCtx.cache.latestSnapshot = { marker: 'keep-me' };
+
+    const second = await bindings.awaitExecutableTab({
+        workspace,
+        pageRegistry,
+        tabName: 'tab',
+        timeoutMs: 100,
+    });
+
+    assert.equal(second, first);
+    assert.deepEqual(second.traceCtx.cache.latestSnapshot, { marker: 'keep-me' });
+});
