@@ -14,6 +14,7 @@ export type WorkspaceHarnessOptions = {
     getPage?: (tabName: string, startUrl?: string) => Promise<Page>;
     emit?: (action: Action) => void;
     runStepsDeps?: RunStepsDeps;
+    pageRegistry?: PageRegistry;
 };
 
 export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) => {
@@ -31,7 +32,7 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         frames: () => [],
         context: () => ({}) as any,
     } as unknown as Page));
-    const testPageRegistry: PageRegistry = {
+    const testPageRegistry: PageRegistry = options.pageRegistry || {
         createPage: async () => await getPage('', 'about:blank'),
         bindPage: async () => null,
         awaitPageBinding: async (bindingName) => await getPage(bindingName, 'about:blank'),

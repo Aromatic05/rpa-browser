@@ -1,5 +1,4 @@
 const TAB_TOKEN_KEY = '__rpa_tab_token';
-const TAB_TOKEN_WIN_NAME_PREFIX = '__RPA_TAB_TOKEN__:';
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_NAME_CONFIRMED_KEY = '__rpa_tab_name_confirmed';
 const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
@@ -72,8 +71,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const asString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
 const readSessionConfigFromUrl = (): SessionConfig | null => {
     const params = new URLSearchParams(location.search);
-    const workspaceName = (params.get('rpaWorkspaceName') || '').trim();
-    const wsPort = Number(params.get('rpaWsPort') || '');
+    const workspaceName = (params.get('rpaWorkspaceName') ?? '').trim();
+    const wsPort = Number(params.get('rpaWsPort') ?? '');
     if (!workspaceName || !Number.isInteger(wsPort) || wsPort <= 0) {return null;}
     return { workspaceName, wsPort };
 };
@@ -280,43 +279,44 @@ const renderWorkflowList = (items: WorkflowListItem[], workspaceScoped?: boolean
         const openBtn = document.createElement('button');
         openBtn.className = 'primary';
         openBtn.textContent = '打开 workflow';
-        openBtn.addEventListener('click', async () => {
-            const opened = await sendAction<WorkflowOpenData>('workflow.open', { scene: item.scene }, workspaceScoped);
-            if (!opened.ok) {
-                if (restoreStatusEl) {
-                    restoreStatusEl.textContent = `open failed: ${opened.error?.message ?? 'unknown'}`;
+        openBtn.addEventListener('click', () => {
+            void (async () => {
+                const opened = await sendAction<WorkflowOpenData>('workflow.open', { scene: item.scene }, workspaceScoped);
+                if (!opened.ok) {
+                    if (restoreStatusEl) {
+                        restoreStatusEl.textContent = `open failed: ${opened.error?.message ?? 'unknown'}`;
+                    }
+                    return;
                 }
-                return;
-            }
-            const workspaceName = opened.data?.workspaceName;
-            const tabName = opened.data?.tabName;
-            if (!workspaceName) {
-                if (restoreStatusEl) {
-                    restoreStatusEl.textContent = 'open failed: invalid workflow.open response';
+                const workspaceName = opened.data?.workspaceName;
+                if (!workspaceName) {
+                    if (restoreStatusEl) {
+                        restoreStatusEl.textContent = 'open failed: invalid workflow.open response';
+                    }
+                    return;
                 }
-                return;
-            }
-            if (restoreStatusEl) {
-                restoreStatusEl.textContent = `open done: ${workspaceName}`;
-            }
+                if (restoreStatusEl) {
+                    restoreStatusEl.textContent = `open done: ${workspaceName}`;
+                }
+            })();
         });
 
         const runBtn = document.createElement('button');
         runBtn.textContent = '运行';
-        runBtn.addEventListener('click', async () => {
-            await runWorkflowAction(item.scene, 'workflow.releaseRun', 'run', workspaceScoped);
+        runBtn.addEventListener('click', () => {
+            void runWorkflowAction(item.scene, 'workflow.releaseRun', 'run', workspaceScoped);
         });
 
         const testBtn = document.createElement('button');
         testBtn.textContent = '测试 DSL';
-        testBtn.addEventListener('click', async () => {
-            await runWorkflowAction(item.scene, 'workflow.dsl.test', 'dsl test', workspaceScoped);
+        testBtn.addEventListener('click', () => {
+            void runWorkflowAction(item.scene, 'workflow.dsl.test', 'dsl test', workspaceScoped);
         });
 
         const saveRecordBtn = document.createElement('button');
         saveRecordBtn.textContent = '保存录制';
-        saveRecordBtn.addEventListener('click', async () => {
-            await runWorkflowAction(item.scene, 'workflow.record.save', 'record save', workspaceScoped);
+        saveRecordBtn.addEventListener('click', () => {
+            void runWorkflowAction(item.scene, 'workflow.record.save', 'record save', workspaceScoped);
         });
 
         actions.append(openBtn, runBtn, testBtn, saveRecordBtn);
@@ -356,7 +356,7 @@ void (async () => {
 })();
 refreshRestoreBtn?.addEventListener('click', () => {
     void (async () => {
-        const bound = await ensureBoundToken();
+        await ensureBoundToken();
         await refreshWorkflowList(false);
     })();
 });

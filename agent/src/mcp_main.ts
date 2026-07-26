@@ -27,7 +27,6 @@ if (!process.env.RPA_USER_DATA_DIR) {
 }
 
 const actionLog = getLogger('action');
-const log = (...args: unknown[]) => { actionLog.info('[RPA:mcp]', ...args); };
 const logNotice = (...args: unknown[]) => { actionLog.warning('[RPA:mcp]', ...args); };
 const logError = (...args: unknown[]) => { actionLog.error('[RPA:mcp]', ...args); };
 
@@ -84,10 +83,10 @@ const workspaceRegistry = createWorkspaceRegistry({
     runnerConfig: config,
     portAllocator,
     dispatchAction: async (action) => await controlActionDispatcher.dispatch(action),
-    onPageBound: (page, tabName) => onPageBoundHook(page, tabName),
-    onBindingClosed: (tabName) => onBindingClosedHook(tabName),
-    onWsError: (error) => logError('action.dispatch.failed', error instanceof Error ? error.message : String(error)),
-    onWsListening: (workspaceName, url) => logNotice('workspace WS listening', { workspaceName, url }),
+    onPageBound: (page, tabName) => { onPageBoundHook(page, tabName); },
+    onBindingClosed: (tabName) => { onBindingClosedHook(tabName); },
+    onWsError: (error) => { logError('action.dispatch.failed', error instanceof Error ? error.message : String(error)); },
+    onWsListening: (workspaceName, url) => { logNotice('workspace WS listening', { workspaceName, url }); },
 });
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);

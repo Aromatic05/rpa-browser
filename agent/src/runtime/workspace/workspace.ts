@@ -16,7 +16,6 @@ import { ActionError, ERROR_CODES } from '../../actions/results';
 import type { PortAllocator } from '../service/ports';
 import { createWorkspaceMcpService } from '../../mcp/service';
 import { getLogger } from '../../logging/logger';
-import type { PageRegistry } from '../browser/page_registry';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceBrowserSession } from '../browser/browser_session';
 
@@ -102,7 +101,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         replayOptions: deps.replayOptions,
         navDedupeWindowMs: deps.navDedupeWindowMs,
         runtime: deps.runtime,
-        pageRegistry: pageRegistry as PageRegistry,
+        pageRegistry,
         emit: deps.emit,
         log: getLogger('action'),
     });

@@ -36,6 +36,14 @@ export type CreateWorkspaceBrowserSessionOptions = {
     wsTap?: ActionWsTap;
 };
 
+type ExtensionChromeApi = {
+    storage: {
+        local: {
+            set: (values: Record<string, unknown>) => Promise<void>;
+        };
+    };
+};
+
 const buildStartUrl = (workspaceName: string, wsPort: number): string => {
     const params = new URLSearchParams({
         rpaWorkspaceName: workspaceName,
@@ -48,7 +56,7 @@ const configureExtensionSession = async (context: BrowserContext, workspaceName:
     const worker = await resolveExtensionServiceWorker(context);
     await worker.evaluate(
         async (config: { workspaceName: string; wsPort: number }) => {
-            const chromeApi = (globalThis as any).chrome;
+            const chromeApi = (globalThis as typeof globalThis & { chrome: ExtensionChromeApi }).chrome;
             await chromeApi.storage.local.set({
                 rpaWorkspaceName: config.workspaceName,
                 rpaWsPort: config.wsPort,
@@ -141,7 +149,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
             if (status === 'stopping') {
                 throw new Error(`workspace browser session is stopping: ${options.workspaceName}`);
             }
-            if (startPromise) {return await startPromise;}
+            if (startPromise) {await startPromise; return;}
             startPromise = (async () => {
                 status = 'starting';
                 wsPort = await options.portAllocator.allocate(options.workspaceName, 'action-ws');
@@ -180,7 +188,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
             }
         },
         stop: async () => {
-            if (stopPromise) {return await stopPromise;}
+            if (stopPromise) {await stopPromise; return;}
             stopPromise = (async () => {
                 if (startPromise) {
                     await startPromise.catch(() => undefined);

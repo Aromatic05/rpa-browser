@@ -26,7 +26,7 @@
         "test:e2e": "RPA_E2E_HEADED=0 pnpm test:e2e:run",
         "test:runner": "node --import tsx --test \"tests/integration/runner/**/*.test.ts\"",
         "test:trace": "node --import tsx --test \"tests/integration/trace/**/*.test.ts\"",
-        "test:entity-rules": "node --import tsx --test \"tests/integration/entity_rules/**/*.test.ts\"",
+        "test:entity-rules": "node --import tsx --test --test-concurrency=1 tests/integration/entity_rules/*.test.ts tests/integration/entity_rules/*/*.test.ts",
         "test:smoke:mcp": "tsx scripts/mcp_smoke_client.ts",
         "test:unit:keyslot": "SNAPSHOT_KEYSLOT_DATASET=1 node --import tsx --test tests/integration/runner/steps/snapshot_keyslot_dataset.test.ts",
         "test:unit:snapshot:perf": "SNAPSHOT_PERF_BASELINE=1 node --import tsx --test tests/integration/runner/steps/snapshot_performance_baseline.test.ts",

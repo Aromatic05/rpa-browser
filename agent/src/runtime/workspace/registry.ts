@@ -1,4 +1,4 @@
-import { createRuntimeWorkspace, type RuntimeWorkspace, type CreateRuntimeWorkspaceDeps } from './workspace';
+import { createRuntimeWorkspace, type RuntimeWorkspace } from './workspace';
 import type { Workflow } from '../../workflow';
 import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
@@ -46,7 +46,6 @@ export type WorkspaceRuntimeDeps = {
 export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {
     const workspaces = new Map<string, RuntimeWorkspace>();
     let activeWorkspaceName: string | null = null;
-    let registry: WorkspaceRegistry;
 
     const createWorkspace = (workspaceName: string, workflow: Workflow) => {
         if (workflow.name !== workspaceName) {
@@ -112,8 +111,8 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
         return renamed;
     };
 
-    registry = {
-        createWorkspace,
+    const registry: WorkspaceRegistry = {
+        createWorkspace: (workspaceName, workflow) => createWorkspace(workspaceName, workflow),
         hasWorkspace: (workspaceName) => workspaces.has(workspaceName),
         getWorkspace: (workspaceName) => workspaces.get(workspaceName) || null,
         listWorkspaces: () => Array.from(workspaces.values()),

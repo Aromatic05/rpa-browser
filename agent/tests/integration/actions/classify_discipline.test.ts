@@ -221,7 +221,7 @@ test('agent and extension classify workspace routing is consistent', async () =>
     const workspaceCases = [
         'tab.list', 'tab.close', 'tab.open',
         'tab.bind', 'tab.setActive', 'tab.opened', 'tab.report', 'tab.activated',
-        'tab.closed', 'tab.ping', 'tab.reassigned',
+        'tab.closed', 'tab.ping',
         'record.start', 'record.stop', 'record.get', 'record.save',
         'record.load', 'record.clear', 'record.list', 'record.event',
         'play.start', 'play.stop',
@@ -238,6 +238,13 @@ test('agent and extension classify workspace routing is consistent', async () =>
         assert.equal(classifyActionRoute(action), 'workspace', `agent: ${type} should be workspace`);
         assert.equal(extMod.classifyActionRoute(action), 'workspace', `extension: ${type} should be workspace`);
     }
+});
+
+test('agent and extension classify fixed events consistently', async () => {
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
+    const action = stubAction('tab.reassigned', { workspaceName: 'ws-1' });
+    assert.equal(classifyActionRoute(action), 'event');
+    assert.equal(extMod.classifyActionRoute(action), 'event');
 });
 
 test('agent and extension classify invalid routing is consistent', async () => {

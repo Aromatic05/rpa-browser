@@ -93,7 +93,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         pendingCommandOpenCount += 1;
         try {
             const created = await chrome.tabs.create({ url: 'https://example.com', active: true });
-            if (created && typeof created.id === 'number' && typeof created.windowId === 'number') {
+            if (typeof created.id === 'number' && typeof created.windowId === 'number') {
                 commandCreatedTabs.add(created.id);
                 try {
                     await life.ensureOpenedAndBound(created.id, created.windowId, { createId });

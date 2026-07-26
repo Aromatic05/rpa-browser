@@ -41,9 +41,9 @@ const waitForBrowserDisconnected = async (
     browser: ReturnType<BrowserContext['browser']> | undefined,
     timeoutMs = 5000,
 ): Promise<void> => {
-    if (!browser || !browser.isConnected()) {return;}
+    if (!browser?.isConnected()) {return;}
     await Promise.race([
-        new Promise<void>((resolve) => browser.once('disconnected', () => resolve())),
+        new Promise<void>((resolve) => browser.once('disconnected', () => { resolve(); })),
         sleep(timeoutMs).then(() => {
             if (browser.isConnected()) {
                 throw new Error(`browser did not disconnect within ${timeoutMs}ms`);
@@ -82,10 +82,10 @@ const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void
     }
     if (onPageClosed) {
         context.on('page', (page) => {
-            page.on('close', () => onPageClosed(page));
+            page.on('close', () => { onPageClosed(page); });
         });
         for (const page of context.pages()) {
-            page.on('close', () => onPageClosed(page));
+            page.on('close', () => { onPageClosed(page); });
         }
     }
 };
@@ -377,7 +377,7 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
 /**
  * 创建 context 管理器。内部缓存 BrowserContext，并处理启动与关闭回收。
  */
-export const createContextManager = (options: ContextManagerOptions) => {
+export const createContextManager = (options: ContextManagerOptions): ContextProvider => {
     const browserMode = (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
     const provider =
         browserMode === 'cdp' ? createCdpContextProvider(options) : createExtensionContextProvider(options);
@@ -389,7 +389,7 @@ export const createContextManager = (options: ContextManagerOptions) => {
  * 解析扩展与用户数据目录路径。
  * 使用相对路径，便于 monorepo 下的运行与打包。
  */
-export const resolvePaths = () => {
+export const resolvePaths = (): { extensionPaths: string[]; userDataRoot: string } => {
     const extensionPaths = [
         path.resolve(__dirname, '../../../../extension/dist'),
         path.resolve(__dirname, '../../../../start_extension/dist'),

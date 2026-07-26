@@ -43,10 +43,11 @@ export const executeBrowserSwitchTab = async (
     });
     if (activated.type.endsWith('.failed')) {
         const payload = activated.payload as { message?: unknown } | undefined;
+        const message = typeof payload?.message === 'string' ? payload.message : 'tab.setActive failed';
         return {
             stepId: step.id,
             ok: false,
-            error: { code: 'ERR_TAB_SET_ACTIVE_FAILED', message: String(payload?.message || 'tab.setActive failed') },
+            error: { code: 'ERR_TAB_SET_ACTIVE_FAILED', message },
         };
     }
     return { stepId: step.id, ok: true };

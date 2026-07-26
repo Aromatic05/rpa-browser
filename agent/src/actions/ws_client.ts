@@ -39,7 +39,7 @@ const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
         type: typeof rec.type === 'string' ? rec.type : undefined,
         workspaceName: typeof rec.workspaceName === 'string' ? rec.workspaceName : undefined,
         payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
+        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [],
     };
 };
 
@@ -130,7 +130,7 @@ const createProjectedActions = (workspaceRegistry: WorkspaceRegistry, action: Ac
             v: 1,
             id: crypto.randomUUID(),
             type: ACTION_TYPES.WORKSPACE_CHANGED,
-            payload: { workspaceName: workspaceName, tabName: tabName, sourceType: action.type },
+            payload: { workspaceName, tabName, sourceType: action.type },
             workspaceName: workspaceName || undefined,
             at: Date.now(),
         });
@@ -298,7 +298,7 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
             await Promise.race([
                 listeningPromise,
                 new Promise<void>((_resolve, reject) => {
-                    timer = setTimeout(() => reject(new Error(`workspace action websocket server did not listen within ${timeoutMs}ms`)), timeoutMs);
+                    timer = setTimeout(() => { reject(new Error(`workspace action websocket server did not listen within ${timeoutMs}ms`)); }, timeoutMs);
                 }),
             ]);
         } finally {
@@ -334,7 +334,7 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
         });
         await new Promise<void>((resolve) => {
             try {
-                wss.close(() => resolve());
+                wss.close(() => { resolve(); });
             } catch {
                 resolve();
             }

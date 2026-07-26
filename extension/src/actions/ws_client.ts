@@ -40,7 +40,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             type: typeof rec.type === 'string' ? rec.type : undefined,
             workspaceName: typeof rec.workspaceName === 'string' ? rec.workspaceName : undefined,
             payloadType: Array.isArray(payload) ? 'array' : typeof payload,
-            payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload as Record<string, unknown>).slice(0, 12) : [],
+            payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : [],
         };
     };
     let currentWsPort = options.wsPort;
@@ -139,7 +139,7 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
             throw new Error(`invalid ws port: ${String(wsPort)}`);
         }
         if (currentWsPort === wsPort && wsRef && (wsRef.readyState === WebSocket.OPEN || wsRef.readyState === WebSocket.CONNECTING)) {
-            return await connect();
+            await connect(); return;
         }
         const previous = wsRef;
         wsRef = null;
@@ -147,7 +147,11 @@ export const createWsClient = (options: WsClientOptions): WsClient => {
         pending.forEach((resolver, requestId) => { resolver(mkFailedReply(requestId, 'ERR_RECONNECT', 'ws reconfigured')); });
         pending.clear();
         currentWsPort = wsPort;
-        try { previous?.close(); } catch {}
+        try {
+            previous?.close();
+        } catch {
+            // The old socket may already be closed while reconfiguring.
+        }
         await connect();
     };
 

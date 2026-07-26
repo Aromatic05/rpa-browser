@@ -9,6 +9,9 @@ type TreeNode = {
     role?: string;
     tag?: string;
     text?: string;
+    name?: string;
+    content?: string | { ref?: string };
+    target?: { ref?: string; kind?: string };
     children?: TreeNode[];
 };
 
@@ -64,17 +67,31 @@ const collectTags = (node: TreeNode | null | undefined, out: string[]) => {
     }
 };
 
-const collectTexts = (node: TreeNode | null | undefined, out: string[]) => {
+const collectSemanticTexts = (node: TreeNode | null | undefined, out: Set<string>) => {
     if (!node) {return;}
-    if (typeof node.text === 'string' && node.text.trim()) {out.push(node.text.trim());}
+    for (const value of [node.name, typeof node.content === 'string' ? node.content : undefined]) {
+        const text = value?.trim();
+        if (text) {out.add(text);}
+    }
     for (const child of node.children || []) {
-        collectTexts(child, out);
+        collectSemanticTexts(child, out);
     }
 };
 
-const shape = (node: TreeNode | null | undefined): string => {
-    if (!node) {return 'x';}
-    return `(${(node.children || []).map((child) => shape(child)).join('')})`;
+const collectRoles = (node: TreeNode | null | undefined, out: Set<string>) => {
+    if (!node) {return;}
+    if (node.role) {out.add(node.role);}
+    for (const child of node.children || []) {
+        collectRoles(child, out);
+    }
+};
+
+const collectNodes = (node: TreeNode | null | undefined, out: TreeNode[]) => {
+    if (!node) {return;}
+    out.push(node);
+    for (const child of node.children || []) {
+        collectNodes(child, out);
+    }
 };
 
 test('getDomTree keeps complex structure and removes script/style nodes', async () => {
@@ -100,7 +117,7 @@ test('getDomTree keeps complex structure and removes script/style nodes', async 
     }
 });
 
-test('generateSemanticSnapshot should preserve dom subtree shape when no pruning rule is active', async () => {
+test('generateSemanticSnapshot preserves semantic content while compressing wrappers', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();
@@ -116,28 +133,30 @@ test('generateSemanticSnapshot should preserve dom subtree shape when no pruning
         const domCount = countNodes(domTree as TreeNode);
         const snapshotMainCount = countNodes(snapshotMain as TreeNode);
 
-        assert.equal(
-            snapshotMainCount,
-            domCount,
-            `main subtree should keep all dom nodes (dom=${domCount}, snapshotMain=${snapshotMainCount})`,
+        assert.ok(
+            snapshotMainCount >= 12 && snapshotMainCount <= domCount,
+            `semantic snapshot should remain structurally rich without expanding the DOM (dom=${domCount}, snapshotMain=${snapshotMainCount})`,
         );
 
-        assert.equal(
-            shape(snapshotMain as TreeNode),
-            shape(domTree as TreeNode),
-            'main subtree shape should match dom tree shape',
-        );
+        const semanticTexts = new Set<string>();
+        collectSemanticTexts(snapshotMain as TreeNode, semanticTexts);
+        for (const expected of ['A', 'B', 'Title', 'Desc', 'Name', 'Save', 'item-1', 'item-2', 'chat']) {
+            assert.equal(semanticTexts.has(expected), true, `semantic text should be preserved: ${expected}`);
+        }
 
-        const domTexts: string[] = [];
-        const snapshotTexts: string[] = [];
-        collectTexts(domTree as TreeNode, domTexts);
-        collectTexts(snapshotMain as TreeNode, snapshotTexts);
+        const roles = new Set<string>();
+        collectRoles(snapshotMain as TreeNode, roles);
+        for (const expected of ['navigation', 'link', 'heading', 'form', 'textbox', 'button', 'list', 'listitem', 'complementary']) {
+            assert.equal(roles.has(expected), true, `semantic role should be preserved: ${expected}`);
+        }
 
-        assert.deepEqual(
-            snapshotTexts.sort(),
-            domTexts.sort(),
-            'text-bearing nodes should be preserved in snapshot main subtree',
-        );
+        const nodes: TreeNode[] = [];
+        collectNodes(snapshotMain as TreeNode, nodes);
+        const linkTargets = nodes
+            .filter((node) => node.role === 'link')
+            .map((node) => node.target?.ref)
+            .sort();
+        assert.deepEqual(linkTargets, ['/a', '/b']);
 
         assert.equal(snapshot.root.role, 'root');
         assert.ok(countNodes(snapshot.root as TreeNode) >= snapshotMainCount + 1);

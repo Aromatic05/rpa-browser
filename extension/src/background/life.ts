@@ -72,11 +72,11 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         let activeTab: chrome.tabs.Tab | undefined;
         try {
             const activeTabs = await chrome.tabs.query({ active: true, windowId: input.windowId });
-            activeTab = activeTabs[0];
+            activeTab = activeTabs.at(0);
         } catch {
             return;
         }
-        if (typeof activeTab?.id !== 'number' || activeTab.id !== input.chromeTabNo) {return;}
+        if (!activeTab || typeof activeTab.id !== 'number' || activeTab.id !== input.chromeTabNo) {return;}
         const now = Date.now();
         const key = `${String(input.windowId)}:${String(input.chromeTabNo)}:${input.tabName}`;
         if (options.state.shouldThrottleTabActivated(key, now, LIFECYCLE_THROTTLE_MS)) {return;}
@@ -96,7 +96,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
 
     const pushBindingNameToTab = async (chromeTabNo: number, bindingName: string) => {
         const result = await send.toTabTransport<{ ok: boolean }>(chromeTabNo, MSG.SET_TOKEN, { tabName: bindingName }, { timeoutMs: 1200 });
-        return result.ok && result.data?.ok === true;
+        return result.ok && result.data.ok === true;
     };
 
     const focusChromeTab = async (chromeTabNo: number) => {
@@ -176,7 +176,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         }
         if (!urlHint) {
             if (!tab) {tab = await chrome.tabs.get(chromeTabNo);}
-            urlHint = tab?.url ?? '';
+            urlHint = tab.url ?? '';
         }
 
         if (bindingName) {
@@ -330,7 +330,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         if (existing?.bindingName) {
             const mapped = options.state.getBindingWorkspaceTab(existing.bindingName);
             if (mapped) {
-                return { chromeTabNo, windowId, bindingName: existing.bindingName, workspaceName: options.sessionWorkspaceName, tabName: mapped.tabName, urlHint: existing.lastUrl ?? '' };
+                return { chromeTabNo, windowId, bindingName: existing.bindingName, workspaceName: options.sessionWorkspaceName, tabName: mapped.tabName, urlHint: existing.lastUrl };
             }
         }
         const inflight = inflightOpenedAndBound.get(chromeTabNo);
@@ -351,7 +351,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 workspaceName,
                 payload: {
                     source: 'extension.sw',
-                    createId: openedOptions?.createId || '',
+                    createId: openedOptions?.createId ?? '',
                     chromeTabNo,
                     windowId: actualWindowId,
                     urlHint: typeof tab.url === 'string' ? tab.url : '',
@@ -388,7 +388,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         })();
 
         inflightOpenedAndBound.set(chromeTabNo, promise);
-        promise.finally(() => { inflightOpenedAndBound.delete(chromeTabNo); });
+        void promise.finally(() => { inflightOpenedAndBound.delete(chromeTabNo); });
         return await promise;
     };
 

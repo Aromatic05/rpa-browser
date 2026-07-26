@@ -4,31 +4,32 @@ import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
 import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
 import { getLogger } from '../logging/logger';
+import type { RuntimeWorkspace, WorkspaceRegistry } from './workspace/registry';
 
 export type ControlPlaneResult = { reply: Action; events: Action[] };
 
 export type RuntimeControlInput = {
     action: Action;
-    workspaceRegistry: any;
+    workspaceRegistry: WorkspaceRegistry;
 };
 
 const randomName = () => crypto.randomUUID();
 
-const stopWorkspaceRuntime = async (workspace: any): Promise<void> => {
+const stopWorkspaceRuntime = async (workspace: RuntimeWorkspace): Promise<void> => {
     let firstError: unknown;
     try {
-        await workspace.mcp?.stop?.();
+        await workspace.mcp.stop();
     } catch (error) {
         firstError = error;
     }
     try {
-        await workspace.browserSession?.stop?.();
+        await workspace.browserSession.stop();
     } catch (error) {
         firstError = firstError || error;
     }
     if (firstError) {throw firstError;}
 };
-const toWorkspaceSummary = (workspace: any) => ({
+const toWorkspaceSummary = (workspace: RuntimeWorkspace) => ({
     workspaceName: workspace.name,
     activeTabName: workspace.tabs.getActiveTab()?.name ?? null,
     tabCount: workspace.tabs.listTabs().length,
@@ -50,7 +51,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             const active = workspaceRegistry.getActiveWorkspace();
             return {
                 reply: replyAction(action, {
-                    workspaces: workspaceRegistry.listWorkspaces().map((workspace: any) => toWorkspaceSummary(workspace)),
+                    workspaces: workspaceRegistry.listWorkspaces().map((workspace) => toWorkspaceSummary(workspace)),
                     activeWorkspaceName: active?.name ?? null,
                 }),
                 events: [],

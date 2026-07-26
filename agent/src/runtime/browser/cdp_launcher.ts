@@ -66,14 +66,14 @@ const resolveCommandPath = (command: string): string | null => {
     const probe = process.platform === 'win32' ? 'where' : 'which';
     const result = spawnSync(probe, [command], { encoding: 'utf8' });
     if (result.status !== 0) {return null;}
-    const first = String(result.stdout || '')
+    const first = result.stdout
         .split(/\r?\n/)
         .map((item) => item.trim())
         .find(Boolean);
     return first || null;
 };
 
-export const resolveChromeExecutable = (explicitPath?: string) => {
+export const resolveChromeExecutable = (explicitPath?: string): string => {
     if (explicitPath?.trim()) {return explicitPath.trim();}
     const fromEnv = process.env.RPA_CDP_CHROME_PATH?.trim();
     if (fromEnv) {return fromEnv;}
@@ -135,7 +135,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     });
 
     let stderr = '';
-    proc.stderr?.on('data', (chunk) => {
+    proc.stderr.on('data', (chunk) => {
         stderr += String(chunk);
     });
 

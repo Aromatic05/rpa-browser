@@ -12,7 +12,7 @@ type MatchResult = {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT = path.resolve(__dirname, '..', '..');
+const ROOT = path.resolve(__dirname, '..', '..', '..');
 const IGNORE_DIRS = new Set(['node_modules', '.git', '.artifacts', 'test-results', '.runner-hot', '.runner-dist']);
 const SOURCE_EXTS = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']);
 

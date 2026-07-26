@@ -23,7 +23,7 @@ let activeSessionKey = '';
 let activeWorkspaceName = '';
 let activeWsClient: WsClient | null = null;
 let initPromise: Promise<void> | null = null;
-let initQueued = false;
+let initGeneration = 0;
 
 const dispatchRefresh = () => {
     if (refreshInFlight) {
@@ -111,7 +111,7 @@ const initializeRuntime = async () => {
     const unsubscribeActionBus = actionBus.subscribe(
         ['**'],
         async (action) => {
-            const targetTabName = router?.resolveActionTargetTabName(action) ?? null;
+            const targetTabName = router.resolveActionTargetTabName(action);
             if (targetTabName === null) {return;}
             await send.toTabTransport(targetTabName, MSG.ACTION_EVENT, { action }, { timeoutMs: 1500 });
         },
@@ -162,15 +162,18 @@ const initializeRuntime = async () => {
 };
 
 const initRuntime = async (): Promise<void> => {
+    initGeneration += 1;
     if (initPromise) {
-        initQueued = true;
-        return await initPromise;
+        await initPromise;
+        return;
     }
     initPromise = (async () => {
-        do {
-            initQueued = false;
+        let completedGeneration = 0;
+        while (completedGeneration < initGeneration) {
+            const targetGeneration = initGeneration;
             await initializeRuntime();
-        } while (initQueued);
+            completedGeneration = targetGeneration;
+        }
     })();
     try {
         await initPromise;

@@ -1,9 +1,29 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
+import type { WorkflowEntityRules } from '../../../src/workflow';
 
-const TEST_PROFILES_DIR = path.resolve(process.cwd(), 'tests/entity_rules/profiles');
-const TEST_WORKFLOWS_DIR = path.resolve(process.cwd(), 'tests/entity_rules/workflows');
+const FIXTURE_ROOT = path.dirname(fileURLToPath(import.meta.url));
+const TEST_PROFILES_DIR = path.join(FIXTURE_ROOT, 'profiles');
+const TEST_WORKFLOWS_DIR = path.join(FIXTURE_ROOT, 'workflows');
+
+export const entityRuleProfileDir = (profile: string): string => path.join(TEST_PROFILES_DIR, profile);
+
+export const loadEntityRuleArtifact = async (profile: string): Promise<WorkflowEntityRules> => {
+    const profileDir = entityRuleProfileDir(profile);
+    const [matchSource, annotationSource] = await Promise.all([
+        fs.readFile(path.join(profileDir, 'match.yaml'), 'utf8'),
+        fs.readFile(path.join(profileDir, 'annotation.yaml'), 'utf8'),
+    ]);
+    return {
+        kind: 'entity_rules',
+        name: profile,
+        match: parse(matchSource),
+        annotation: parse(annotationSource),
+    };
+};
 
 export type EntityRuleFixtureRoot = {
     rootDir: string;

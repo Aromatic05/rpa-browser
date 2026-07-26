@@ -3,13 +3,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 
-const repoRoot = path.resolve(import.meta.dirname, '../../..');
-const read = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
+const agentRoot = path.resolve(import.meta.dirname, '../../..');
+const repositoryRoot = path.resolve(agentRoot, '..');
+const readAgent = (relativePath: string) => fs.readFileSync(path.join(agentRoot, relativePath), 'utf8');
+const readRepository = (relativePath: string) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 
 test('workspace runtime owns browser session boundaries', () => {
-    const workspaceSrc = read('src/runtime/workspace/workspace.ts');
-    const registrySrc = read('src/runtime/workspace/registry.ts');
-    const indexSrc = read('src/index.ts');
+    const workspaceSrc = readAgent('src/runtime/workspace/workspace.ts');
+    const registrySrc = readAgent('src/runtime/workspace/registry.ts');
+    const indexSrc = readAgent('src/index.ts');
 
     assert.match(workspaceSrc, /browserSession: WorkspaceBrowserSession/);
     assert.match(registrySrc, /userDataRoot/);
@@ -19,17 +21,17 @@ test('workspace runtime owns browser session boundaries', () => {
 });
 
 test('setActive actions are forwarded through workspace browser session', () => {
-    const workspaceGatewaySrc = read('src/actions/workspace_gateway.ts');
-    const controlPlaneSrc = read('src/runtime/control_plane.ts');
+    const workspaceGatewaySrc = readAgent('src/actions/workspace_gateway.ts');
+    const controlPlaneSrc = readAgent('src/runtime/control_plane.ts');
 
     assert.match(workspaceGatewaySrc, /action\.type === 'tab\.setActive'[\s\S]*workspace\.browserSession\.emit\(action\)/);
     assert.match(controlPlaneSrc, /case 'workspace\.setActive'[\s\S]*target\.browserSession\.emit\(action\)/);
 });
 
 test('extension session uses profile websocket config without bootstrap reset', () => {
-    const wsClientSrc = read('../../../src/actions/ws_client.ts');
-    const cmdRouterSrc = read('../extension/src/background/cmd_router.ts');
-    const lifeSrc = read('../extension/src/background/life.ts');
+    const wsClientSrc = readAgent('src/actions/ws_client.ts');
+    const cmdRouterSrc = readRepository('extension/src/background/cmd_router.ts');
+    const lifeSrc = readRepository('extension/src/background/life.ts');
 
     assert.equal(wsClientSrc.includes('17333'), false);
     assert.equal(cmdRouterSrc.includes('WORKFLOW_RESET_DEFAULT'), false);

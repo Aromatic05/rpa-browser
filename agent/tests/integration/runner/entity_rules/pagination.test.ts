@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { chromium, type Page } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import { getRunnerConfig } from '../../../../src/config';
 import { validateEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/validate';
 import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
@@ -22,7 +22,7 @@ import type {
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 import type { NormalizedEntityRuleBundle } from '../../../../src/runner/steps/executors/snapshot/entity_rules/types';
 import type { Step, StepUnion } from '../../../../src/runner/steps/types';
-import { createEntityRuleFixtureRoot } from '../../entity_rules/profile_fixture';
+import { loadEntityRuleArtifact } from '../../entity_rules/profile_fixture';
 import { startMockApp } from '../../entity_rules/verify/helper';
 import { createStepExecutionHarness } from '../../../helpers/step_runner_harness';
 
@@ -289,26 +289,19 @@ const withAntEntityRuleRunner = async <T>(
     }) => Promise<T>,
 ): Promise<T> => {
     const mockServer = await startMockApp('ant');
-    const browser = await chromium.launch({
-        headless: true,
-        chromiumSandbox: false,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    const fixture = await createEntityRuleFixtureRoot();
+    let browser: Browser | null = null;
 
     try {
+        browser = await chromium.launch({
+            headless: true,
+            chromiumSandbox: false,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
         const context = await browser.newContext();
         const page = await context.newPage();
         const runner = await createStepExecutionHarness(page);
-
-        runner.deps.config.entityRules = {
-            ...runner.deps.config.entityRules,
-            enabled: true,
-            rootDir: fixture.rootDir,
-            selection: 'explicit',
-            profiles: ['oa-ant-orders'],
-            strict: true,
-        };
+        const workspace = runner.deps.resolveWorkspace(runner.workspaceName);
+        workspace.workflow.save(await loadEntityRuleArtifact('oa-ant-orders'));
 
         await page.goto(`${mockServer.baseUrl}/entity-rules/fixtures/order-list`, { waitUntil: 'domcontentloaded' });
 
@@ -318,8 +311,7 @@ const withAntEntityRuleRunner = async <T>(
             deps: runner.deps,
         });
     } finally {
-        await fixture.cleanup();
-        await browser.close();
+        await browser?.close();
         await mockServer.close();
     }
 };

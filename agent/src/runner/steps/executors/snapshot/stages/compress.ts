@@ -1115,7 +1115,7 @@ const IMPORTANCE_HARD_KEEP_SCORE = 6.6;
 const HARD_ENTITY_KINDS = new Set(['form', 'table', 'dialog', 'list', 'toolbar', 'kv']);
 const DECORATIVE_CLASS_PATTERN = /\b(icon|spinner|loading|skeleton|divider)\b/i;
 const SEPARATOR_CLASS_PATTERN = /\b(separator|breadcrumb-separator)\b/i;
-const SEPARATOR_TEXT_PATTERN = /^[\/|>»›·•-]+$/;
+const SEPARATOR_TEXT_PATTERN = /^[/|>»›·•-]+$/;
 const HIDDEN_CLASS_PATTERN = /\b(hidden|is-hidden|u-hidden|visually-hidden|sr-only|d-none)\b/i;
 const HIDDEN_STYLE_PATTERN =
     /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0+)?|content-visibility\s*:\s*hidden)\b/i;

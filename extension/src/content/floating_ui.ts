@@ -222,7 +222,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             if (workspaceName) {
                 state.activeWorkspaceName = workspaceName;
                 const activeWorkspace = state.workspaces.find((workspace) => workspace.workspaceName === workspaceName);
-                state.activeTabName = activeWorkspace?.activeTabName || '';
+                state.activeTabName = activeWorkspace?.activeTabName ?? '';
             }
             void refreshTabs();
         }
@@ -285,7 +285,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const row2 = document.createElement('div');
         row2.className = 'row';
         row2.append(
-            createButton('Clear Output', () => setOutput({})),
+            createButton('Clear Output', () => { setOutput({}); }),
             createButton('record.list', refreshRecordings),
         );
         box.appendChild(row2);
@@ -382,7 +382,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         row1.className = 'row';
         row1.append(
             createButton('tab.list', refreshTabs),
-            createButton('tab.create', () => { chrome.tabs.create({}); }),
+            createButton('tab.create', () => { void chrome.tabs.create({}); }),
         );
         const row2 = document.createElement('div');
         row2.className = 'row';
@@ -567,7 +567,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         btn.textContent = name;
         btn.addEventListener('click', () => {
             state.activeView = name;
-            Array.from(tabsBar.children).forEach((c) => c.classList.remove('active'));
+            Array.from(tabsBar.children).forEach((c) => { c.classList.remove('active'); });
             btn.classList.add('active');
             renderActiveView();
         });
@@ -598,5 +598,5 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         });
     };
 
-    return { unmount: () => host.remove(), scheduleRefresh };
+    return { unmount: () => { host.remove(); }, scheduleRefresh };
 };
