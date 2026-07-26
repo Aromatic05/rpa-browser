@@ -159,7 +159,12 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
                 input.workspace.tabs.bindPage(input.tabName, page);
                 input.workspace.tabs.updateTab(input.tabName, { url: page.url() });
             }
-            return createBinding(input.workspace.name, input.tabName, page, input.pageRegistry);
+            return bindPage({
+                workspaceName: input.workspace.name,
+                tabName: input.tabName,
+                page,
+                pageRegistry: input.pageRegistry,
+            });
         } catch {
             throw await buildTimeoutError(input);
         }
@@ -172,7 +177,12 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
         }
         input.workspace.tabs.bindPage(input.tabName, page);
         input.workspace.tabs.updateTab(input.tabName, { url: page.url() });
-        return createBinding(input.workspace.name, input.tabName, page, input.pageRegistry);
+        return bindPage({
+            workspaceName: input.workspace.name,
+            tabName: input.tabName,
+            page,
+            pageRegistry: input.pageRegistry,
+        });
     };
 
     const resolveBinding = async (workspaceName: string, tabName?: string): Promise<ExecutionBinding> => {

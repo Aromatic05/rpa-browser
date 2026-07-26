@@ -73,6 +73,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `workspace not found: ${targetName}`);
             }
             await target.browserSession.stop();
+            workspaceRegistry.removeWorkspace(targetName);
             return { reply: replyAction(action, { workspaceName: targetName, closed: true }), events: [] };
         }
         case 'workflow.list': {
@@ -110,7 +111,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             if (workspace.tabs.listTabs().length === 0) {
                 const tabName = crypto.randomUUID();
                 workspace.tabs.createTab({ tabName });
-                await workspace.tabs.createTabPage(tabName, { startUrl: 'https://example.com', newWindow: true });
+                await workspace.tabs.createTabPage(tabName, { startUrl: 'about:blank', newWindow: true });
             }
             const event: Action = {
                 v: 1,

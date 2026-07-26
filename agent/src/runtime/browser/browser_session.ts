@@ -82,6 +82,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
     let status: BrowserSessionStatus = 'stopped';
     let wsClient: ActionWsClient | null = null;
     let startPromise: Promise<void> | null = null;
+    let stopPromise: Promise<void> | null = null;
     let sessionRef: WorkspaceBrowserSession | null = null;
 
     const createSessionContextManager = (assignedCdpPort: number | null, startUrl: string) => createContextManager({
@@ -101,6 +102,9 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
     const pageRegistry = createPageRegistry({
         tabNameKey: options.tabNameKey,
         getContext: async () => {
+            if (sessionRef?.status === 'stopping') {
+                throw new Error(`workspace browser session is stopping: ${options.workspaceName}`);
+            }
             if (sessionRef && sessionRef.status !== 'running') {
                 await sessionRef.start();
             }
@@ -134,6 +138,9 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
         pageRegistry,
         start: async () => {
             if (status === 'running') {return;}
+            if (status === 'stopping') {
+                throw new Error(`workspace browser session is stopping: ${options.workspaceName}`);
+            }
             if (startPromise) {return await startPromise;}
             startPromise = (async () => {
                 status = 'starting';
@@ -173,16 +180,35 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
             }
         },
         stop: async () => {
-            if (startPromise) {
-                await startPromise.catch(() => undefined);
+            if (stopPromise) {return await stopPromise;}
+            stopPromise = (async () => {
+                if (startPromise) {
+                    await startPromise.catch(() => undefined);
+                }
+                if (status === 'stopped' && !wsClient && wsPort === null && cdpPort === null) {return;}
+                status = 'stopping';
+                let closeError: unknown;
+                try {
+                    await wsClient?.close();
+                } catch (error) {
+                    closeError = error;
+                }
+                wsClient = null;
+                try {
+                    await contextManager.close();
+                } catch (error) {
+                    closeError = closeError || error;
+                } finally {
+                    releasePorts();
+                    status = 'stopped';
+                }
+                if (closeError) {throw closeError;}
+            })();
+            try {
+                await stopPromise;
+            } finally {
+                stopPromise = null;
             }
-            if (status === 'stopped' && !wsClient && wsPort === null && cdpPort === null) {return;}
-            status = 'stopping';
-            await wsClient?.close().catch(() => undefined);
-            wsClient = null;
-            await contextManager.close().catch(() => undefined);
-            releasePorts();
-            status = 'stopped';
         },
         emit: (action) => {
             wsClient?.broadcastAction(action);

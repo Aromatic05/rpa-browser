@@ -7,7 +7,7 @@ import type { RunnerConfig } from '../../config';
 import type { Action } from '../../actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
 import type { ExecutionBindings } from '../execution/bindings';
-import { createWorkspaceBrowserSession, type CreateWorkspaceBrowserSessionOptions } from '../browser/browser_session';
+import { createWorkspaceBrowserSession, type CreateWorkspaceBrowserSessionOptions, type WorkspaceBrowserSession } from '../browser/browser_session';
 
 export type { RuntimeWorkspace };
 
@@ -40,6 +40,7 @@ export type WorkspaceRuntimeDeps = {
     onWsError?: CreateWorkspaceBrowserSessionOptions['onError'];
     onWsListening?: CreateWorkspaceBrowserSessionOptions['onListening'];
     wsTap?: CreateWorkspaceBrowserSessionOptions['wsTap'];
+    createBrowserSession?: (options: CreateWorkspaceBrowserSessionOptions) => WorkspaceBrowserSession;
 };
 
 export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {
@@ -54,7 +55,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
         if (workspaces.has(workspaceName)) {
             return workspaces.get(workspaceName)!;
         }
-        const browserSession = createWorkspaceBrowserSession({
+        const browserSession = (runtimeDeps.createBrowserSession || createWorkspaceBrowserSession)({
             workspaceName,
             tabNameKey: runtimeDeps.tabNameKey,
             extensionPaths: runtimeDeps.extensionPaths,

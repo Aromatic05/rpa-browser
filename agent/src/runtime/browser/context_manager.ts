@@ -35,6 +35,44 @@ type ContextProvider = {
     close: () => Promise<void>;
 };
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const waitForBrowserDisconnected = async (
+    browser: ReturnType<BrowserContext['browser']> | undefined,
+    timeoutMs = 5000,
+): Promise<void> => {
+    if (!browser || !browser.isConnected()) {return;}
+    await Promise.race([
+        new Promise<void>((resolve) => browser.once('disconnected', () => resolve())),
+        sleep(timeoutMs).then(() => {
+            if (browser.isConnected()) {
+                throw new Error(`browser did not disconnect within ${timeoutMs}ms`);
+            }
+        }),
+    ]);
+};
+
+const hasPathEntry = (entryPath: string): boolean => {
+    try {
+        fs.lstatSync(entryPath);
+        return true;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {return false;}
+        throw error;
+    }
+};
+
+const waitForProfileRelease = async (userDataDir: string, timeoutMs = 5000): Promise<void> => {
+    const lockPath = path.join(userDataDir, 'SingletonLock');
+    const deadline = Date.now() + timeoutMs;
+    while (hasPathEntry(lockPath) && Date.now() < deadline) {
+        await sleep(50);
+    }
+    if (hasPathEntry(lockPath)) {
+        throw new Error(`browser profile lock was not released: ${lockPath}`);
+    }
+};
+
 const bindContextPages = (context: BrowserContext, onPage?: (page: Page) => void, onPageClosed?: (page: Page) => void) => {
     if (onPage) {
         context.on('page', onPage);
@@ -320,11 +358,17 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
 
     const close = async () => {
         const context = contextRef;
+        const browser = context?.browser();
         contextRef = undefined;
         contextPromise = undefined;
         if (context) {
-            await context.close().catch(() => undefined);
+            await context.close();
         }
+        if (browser?.isConnected()) {
+            await browser.close();
+        }
+        await waitForBrowserDisconnected(browser);
+        await waitForProfileRelease(options.userDataDir);
     };
 
     return { getContext, close };
