@@ -330,7 +330,7 @@ test('annotator.save: workflow artifact reloads, validates, and revision is stab
         };
 
         // Scenario 11: save -> workflow reloads + validates
-        const saved = executeSave(runtime, pageIdentity, draft, artifact.name, null);
+        const saved = executeSave(runtime, pageIdentity, snapshot, draft, artifact.name, null);
         assert.equal(saved.saved, true);
         assert.equal(saved.profileName, artifact.name);
 
@@ -347,7 +347,7 @@ test('annotator.save: workflow artifact reloads, validates, and revision is stab
 
         // revision conflict: re-save with stale revision -> ERR_CONFLICT
         assert.throws(
-            () => executeSave(runtime, pageIdentity, draft, artifact.name, 'stale-revision'),
+            () => executeSave(runtime, pageIdentity, snapshot, draft, artifact.name, 'stale-revision'),
             (error: unknown) => (error as { code?: string }).code === 'ERR_CONFLICT',
         );
 

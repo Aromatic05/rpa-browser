@@ -3,13 +3,15 @@ import { ActionError, ERROR_CODES } from '../../actions/results';
 import type { ControlPlaneResult } from '../../runtime/control_plane';
 import type { RuntimeWorkspace } from '../../runtime/workspace/workspace';
 import type { RunStepsDeps } from '../../runner/run_steps';
-import type { SnapshotPageIdentity } from '../../runner/steps/executors/snapshot/core/types';
+import type { SnapshotPageIdentity, SnapshotResult } from '../../runner/steps/executors/snapshot/core/types';
 import { ensureFreshEntityContext } from '../../runner/steps/executors/entity_context';
 import { createWorkspaceEntityRulesProvider } from '../provider';
 import { createWorkspaceEntityRulesRuntime, type WorkspaceEntityRulesRuntime } from '../runtime';
 import { recognizeEntities } from './recognize';
 import { pickFromFingerprint } from './picking';
-import { buildOpenResult, detectStale, prepareSaveArtifact, runCheck } from './pipeline';
+import { buildOpenResult, runCheck } from './pipeline';
+import { compileCanvasDraft } from './compile';
+import { evaluateSaveGate, type SaveGateBlockCode } from './save_gate';
 import { computeArtifactRevision, isRevisionConflict } from './revision';
 import type { WorkflowEntityRules } from '../../workflow';
 import type { CanvasDraft } from './types';
@@ -128,12 +130,30 @@ const handleSave = async (ctx: HandlerContext): Promise<Record<string, unknown>>
         'annotator.save',
     );
     const runtime = createWorkspaceEntityRulesRuntime(workspace.workflow);
-    return executeSave(runtime, fresh.entry.pageIdentity, draft, profileName, expectedRevision);
+    return executeSave(
+        runtime,
+        fresh.entry.pageIdentity,
+        fresh.snapshot,
+        draft,
+        profileName,
+        expectedRevision,
+    );
+};
+
+const errorCodeForBlock = (code: SaveGateBlockCode): typeof ERROR_CODES[keyof typeof ERROR_CODES] => {
+    if (code === 'revision_conflict') {
+        return ERROR_CODES.ERR_CONFLICT;
+    }
+    if (code === 'page_stale') {
+        return ERROR_CODES.ERR_STALE;
+    }
+    return ERROR_CODES.ERR_BAD_ARGS;
 };
 
 export const executeSave = (
     runtime: WorkspaceEntityRulesRuntime,
     pageIdentity: SnapshotPageIdentity,
+    snapshot: SnapshotResult,
     draft: CanvasDraft,
     profileName: string,
     expectedRevision: string | null,
@@ -143,27 +163,35 @@ export const executeSave = (
     artifactRevision: string;
     saved: true;
 } => {
-    const preparation = prepareSaveArtifact(draft, profileName);
-    if (!preparation.ok) {
-        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, preparation.errors.join('; '));
-    }
-
+    const draftToCompile: CanvasDraft = { ...draft, profileName };
+    const compileResult = compileCanvasDraft(draftToCompile);
     const currentStored = runtime.get(profileName);
-    if (isRevisionConflict(currentStored, expectedRevision)) {
+    const revisionConflict = isRevisionConflict(currentStored, expectedRevision);
+
+    const checkResult = runCheck(snapshot, draftToCompile, pageIdentity.url);
+    const gate = evaluateSaveGate(
+        draftToCompile,
+        checkResult.results,
+        checkResult.stale,
+        revisionConflict,
+        compileResult,
+    );
+    if (!gate.ok) {
         throw new ActionError(
-            ERROR_CODES.ERR_CONFLICT,
-            'entity_rules artifact revision conflict: stored artifact changed since open',
+            errorCodeForBlock(gate.code),
+            `save blocked (${gate.code}): ${gate.message}`,
+            { blockCode: gate.code },
         );
     }
 
-    if (detectStale(pageIdentity.url, draft)) {
+    if (!compileResult.ok) {
         throw new ActionError(
-            ERROR_CODES.ERR_STALE,
-            'page identity changed since open; re-check before save',
+            ERROR_CODES.ERR_INTERNAL,
+            'save gate passed but compile result is unavailable',
         );
     }
 
-    const saved = runtime.save(preparation.artifact);
+    const saved = runtime.save(compileResult.artifact);
     const artifactRevision = computeArtifactRevision(saved);
     return {
         profileName: saved.name,

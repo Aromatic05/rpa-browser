@@ -14,6 +14,11 @@ import {
     type AnnotatorClient,
     type AnnotatorReply,
 } from './protocol/annotator_client.js';
+import {
+    createSessionStore,
+    type SessionStorageLike,
+    type SessionStore,
+} from './state/session_store.js';
 
 export type {AnnotatorHandle, AnnotatorHandlers} from './mount.js';
 
@@ -35,6 +40,46 @@ const buildClient = (
     return createAnnotatorClient(wrapped);
 };
 
+const memoryStorage = (): SessionStorageLike & {_store: Map<string, unknown>} => {
+    const store = new Map<string, unknown>();
+    return {
+        _store: store,
+        get: async (key) => store.get(key) ?? null,
+        set: async (key, value) => {
+            store.set(key, value);
+        },
+        remove: async (key) => {
+            store.delete(key);
+        },
+    };
+};
+
+const createWebSessionStorage = (): SessionStorageLike => {
+    if (typeof window === 'undefined') {
+        return memoryStorage();
+    }
+    try {
+        const storage = window.sessionStorage;
+        const probeKey = '__rpa_annotator_storage_probe__';
+        storage.setItem(probeKey, '1');
+        storage.removeItem(probeKey);
+        return {
+            get: async (key) => {
+                const raw = storage.getItem(key);
+                return raw ? (JSON.parse(raw) as unknown) : null;
+            },
+            set: async (key, value) => {
+                storage.setItem(key, JSON.stringify(value));
+            },
+            remove: async (key) => {
+                storage.removeItem(key);
+            },
+        };
+    } catch {
+        return memoryStorage();
+    }
+};
+
 const mountVueApp: MountAppFn = (root, handlers) => {
     const styleEl = root.ownerDocument.createElement('style');
     styleEl.setAttribute('data-rpa-annotator-style', 'true');
@@ -42,12 +87,12 @@ const mountVueApp: MountAppFn = (root, handlers) => {
     root.appendChild(styleEl);
     const reactiveState = reactive(initialState()) as AnnotatorState;
     const client = buildClient(handlers.dispatch);
+    const sessionStore: SessionStore = createSessionStore(createWebSessionStorage());
     const app: VueApp = createApp(RootApp, {
         state: reactiveState,
         client,
+        sessionStore,
         onExit: handlers.onExit,
-        onCheck: handlers.onCheck,
-        onSave: handlers.onSave,
     });
     app.mount(root);
     const handle: AnnotatorAppHandle = {

@@ -9,10 +9,19 @@ import {
     redo,
     draftEdited,
     pickReceived,
-    enterAnnotation,
     failed,
     type AnnotatorState,
 } from './state/annotator_state.js';
+import type {SessionStore} from './state/session_store.js';
+import {
+    runCheckLoop,
+    runSaveLoop,
+    runRecognizeLoop,
+    restoreSessionDraft,
+    persistSessionDraft,
+    decideSelectAction,
+} from './state/annotator_loop.js';
+import {resolveKeyboardAction} from './keyboard.js';
 import {
     addAnnotation,
     deleteAnnotation,
@@ -49,12 +58,11 @@ import type {
 const props = defineProps<{
     state: AnnotatorState;
     client: AnnotatorClient | null;
+    sessionStore?: SessionStore | null;
 }>();
 
 const emit = defineEmits<{
     (e: 'exit'): void;
-    (e: 'check'): void;
-    (e: 'save'): void;
 }>();
 
 const viewport = ref({
@@ -150,6 +158,36 @@ const onSelectAnnotation = (annotationId: string): void => {
     pickCandidateIndex.value = 0;
     pickTargetAnnotationId.value = null;
     applyState(pickReceived(props.state, {annotationId, entityId}));
+    if (decideSelectAction(annotationId, props.state.latestCheck).reselect) {
+        enterPickMode(annotationId);
+    }
+};
+
+const runCheck = async (): Promise<void> => {
+    if (!props.state.canvasDraft || pickMode.value) {
+        return;
+    }
+    applyState({...props.state, mode: 'checking', error: null});
+    const next = await runCheckLoop(props.state, props.client);
+    applyState(next);
+};
+
+const runSave = async (): Promise<void> => {
+    if (!props.state.canvasDraft || !props.state.dirty || pickMode.value) {
+        return;
+    }
+    applyState({...props.state, mode: 'saving', error: null});
+    const next = await runSaveLoop(props.state, props.client, props.sessionStore);
+    applyState(next);
+};
+
+const runRecognize = async (): Promise<void> => {
+    if (!props.state.canvasDraft || pickMode.value) {
+        return;
+    }
+    applyState({...props.state, error: null});
+    const next = await runRecognizeLoop(props.state, props.client);
+    applyState(next);
 };
 
 const entityIdForAnnotation = (annotationId: string): string | null => {
@@ -327,10 +365,64 @@ const onChooseType = (recommended: RecommendedType): void => {
     }
 };
 
-const onEnterAnnotation = (): void => {
-    applyState(enterAnnotation(props.state));
-    emit('check');
+const onKeyDown = (event: KeyboardEvent): void => {
+    const action = resolveKeyboardAction(event, {
+        annotatorActive: props.state.mode !== 'idle',
+        inPickMode: pickMode.value,
+        hasSelection: props.state.currentAnnotationId !== null,
+        canUndo: props.state.history.past.length > 0,
+        canRedo: props.state.history.future.length > 0,
+    });
+    switch (action.type) {
+        case 'cancel':
+            if (pickMode.value) {
+                onPickCancel();
+            } else if (props.state.currentAnnotationId) {
+                applyState(pickReceived(props.state, {annotationId: null}));
+            }
+            break;
+        case 'confirm':
+            if (pickMode.value) {
+                onPickConfirm();
+            }
+            break;
+        case 'delete':
+            if (props.state.currentAnnotationId) {
+                onDeleteAnnotation(props.state.currentAnnotationId);
+            }
+            break;
+        case 'save':
+            event.preventDefault();
+            void runSave();
+            break;
+        case 'undo':
+            event.preventDefault();
+            applyUndo();
+            break;
+        case 'redo':
+            event.preventDefault();
+            applyRedo();
+            break;
+        case 'none':
+            break;
+    }
 };
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const schedulePersist = (): void => {
+    if (!props.state.dirty || !props.state.canvasDraft) {
+        return;
+    }
+    if (persistTimer) {
+        clearTimeout(persistTimer);
+    }
+    persistTimer = setTimeout(() => {
+        persistTimer = null;
+        void persistSessionDraft(props.state, props.sessionStore);
+    }, 400);
+};
+
+let sessionRestoredFor: string | null = null;
 
 onMounted(() => {
     refreshViewport();
@@ -341,6 +433,7 @@ onMounted(() => {
             void onPickEvent(event);
         },
     });
+    document.addEventListener('keydown', onKeyDown, true);
     const w = win();
     if (w) {
         w.addEventListener('scroll', scheduler.schedule, {capture: true, passive: true});
@@ -360,6 +453,11 @@ onUnmounted(() => {
         pickerDetach();
         pickerDetach = null;
     }
+    if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
+    }
+    document.removeEventListener('keydown', onKeyDown, true);
     if (mutationObserver) {
         mutationObserver.disconnect();
         mutationObserver = null;
@@ -375,7 +473,27 @@ watch(
     () => props.state.canvasDraft,
     () => {
         scheduler.schedule();
+        schedulePersist();
     },
+);
+
+watch(
+    () => props.state.pageIdentity,
+    (pageIdentity) => {
+        if (!pageIdentity) {
+            return;
+        }
+        const sig = `${pageIdentity.workspaceName}|${pageIdentity.tabName}|${pageIdentity.url}|${props.state.profileName ?? ''}`;
+        if (sessionRestoredFor === sig) {
+            return;
+        }
+        sessionRestoredFor = sig;
+        void (async () => {
+            const next = await restoreSessionDraft(props.state, props.sessionStore);
+            applyState(next);
+        })();
+    },
+    {immediate: true},
 );
 </script>
 
@@ -384,6 +502,7 @@ watch(
         <div class="annotator-toolbar">
             <span class="annotator-mode">mode: {{ state.mode }}</span>
             <span class="annotator-flag" v-if="state.dirty">dirty</span>
+            <span class="annotator-flag annotator-flag-saved" v-if="!state.dirty && state.artifactRevision">已保存</span>
             <span class="annotator-flag" v-if="state.stale">stale</span>
             <span class="annotator-flag annotator-flag-error" v-if="state.error">{{ state.error }}</span>
             <span class="annotator-flag annotator-flag-pick" v-if="pickMode">pick</span>
@@ -394,6 +513,12 @@ watch(
                 :disabled="!currentEntity || pickMode"
                 @click="enterPickMode(null)"
             >新增标注</button>
+            <button
+                type="button"
+                class="annotator-btn"
+                :disabled="!state.canvasDraft || pickMode"
+                @click="runRecognize"
+            >重新识别</button>
             <button
                 type="button"
                 class="annotator-btn"
@@ -410,13 +535,13 @@ watch(
                 type="button"
                 class="annotator-btn"
                 :disabled="!state.canvasDraft || pickMode"
-                @click="onEnterAnnotation"
+                @click="runCheck"
             >check</button>
             <button
                 type="button"
                 class="annotator-btn annotator-primary"
                 :disabled="!state.dirty || !state.canvasDraft || pickMode"
-                @click="emit('save')"
+                @click="runSave"
             >save</button>
             <button
                 type="button"

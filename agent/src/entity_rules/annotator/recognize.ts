@@ -18,6 +18,7 @@ import type {
 import { entityCanvasId } from './identifiers';
 import type { RecognizedItem } from './runtime_types';
 import { buildNodeIndex, buildParentById, isDescendantOrSelf } from './picking';
+import { protectiveMerge } from './merge';
 
 export const inferPageKind = (finalEntityView: FinalEntityView | undefined): EntityKind => {
     if (!finalEntityView) {
@@ -223,6 +224,26 @@ const summarizeEntity = (
     origin,
 });
 
+const buildFreshInferredEntities = (
+    snapshot: SnapshotResult,
+    finalEntityView: FinalEntityView | undefined,
+): CanvasEntityDraft[] => {
+    const significantEntities = (finalEntityView?.entities || []).filter(isSignificantEntity);
+    const inferredNodeIds = new Set<string>();
+    const entities: CanvasEntityDraft[] = [];
+    let autoIndex = 0;
+    for (const record of significantEntities) {
+        if (inferredNodeIds.has(record.nodeId)) {
+            continue;
+        }
+        inferredNodeIds.add(record.nodeId);
+        const inferred = buildInferredEntity(snapshot, record, autoIndex);
+        autoIndex += 1;
+        entities.push(inferred);
+    }
+    return entities;
+};
+
 export const recognizeEntities = (
     snapshot: SnapshotResult,
     finalEntityView: FinalEntityView | undefined,
@@ -231,51 +252,18 @@ export const recognizeEntities = (
     const pageKind = existingDraft?.page.kind || inferPageKind(finalEntityView);
     const page: CanvasPageDraft = existingDraft?.page || { kind: pageKind };
 
-    const existingByNodeId = new Map<string, CanvasEntityDraft>();
-    if (existingDraft) {
-        for (const entity of existingDraft.entities) {
-            existingByNodeId.set(entity.id, entity);
-        }
-    }
+    const freshEntities = buildFreshInferredEntities(snapshot, finalEntityView);
+    const { draft: canvasDraft } = protectiveMerge(existingDraft, freshEntities, page);
 
-    const inferredNodeIds = new Set<string>();
-    const entities: CanvasEntityDraft[] = existingDraft ? [...existingDraft.entities] : [];
-    let inferredIndex = entities.length;
-    const recognized: RecognizedItem[] = [];
-
-    for (const existing of entities) {
-        recognized.push(summarizeEntity(existing, 'existing'));
-    }
-
-    const significantEntities = (finalEntityView?.entities || []).filter(isSignificantEntity);
-    let autoIndex = 0;
-    for (const record of significantEntities) {
-        if (inferredNodeIds.has(record.nodeId)) {
-            continue;
-        }
-        inferredNodeIds.add(record.nodeId);
-        const inferred = buildInferredEntity(snapshot, record, inferredIndex + autoIndex);
-        autoIndex += 1;
-        entities.push(inferred);
-        recognized.push(summarizeEntity(inferred, 'inferred'));
-    }
-
-    const canvasDraft: CanvasDraft = existingDraft
-        ? { ...existingDraft, entities }
-        : {
-              version: 1,
-              profileName: '',
-              page,
-              entities,
-              preserved: {
-                  matchRaw: { version: 1, page, entities: [] },
-                  annotationRaw: { version: 1, page, annotations: [] },
-                  preservedByCanvasId: {},
-                  ruleIdToCanvasId: {},
-                  locatorRules: [],
-                  ruleRefs: [],
-              },
-          };
+    const existingTags = new Set(
+        (existingDraft?.entities || []).map((entity) => entity.businessTag),
+    );
+    const recognized: RecognizedItem[] = canvasDraft.entities.map((entity) =>
+        summarizeEntity(
+            entity,
+            existingTags.has(entity.businessTag) ? 'existing' : 'inferred',
+        ),
+    );
 
     return { canvasDraft, recognized };
 };

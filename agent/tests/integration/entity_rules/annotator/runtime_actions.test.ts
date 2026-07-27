@@ -28,6 +28,9 @@ import {
     pickFromFingerprint,
 } from '../../../../src/entity_rules/annotator/picking';
 import { recognizeEntities } from '../../../../src/entity_rules/annotator/recognize';
+import { importEntityRulesToCanvasDraft } from '../../../../src/entity_rules/annotator/import';
+import { compileCanvasDraft } from '../../../../src/entity_rules/annotator/compile';
+import { validateEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/validate';
 import {
     buildOpenResult,
     runCheck,
@@ -609,10 +612,65 @@ const stablePageIdentity: SnapshotPageIdentity = {
     url: 'http://test/form',
 };
 
+const createFormSnapshot = (): SnapshotResult => {
+    const input = newTextNode('input_buyer', 'textbox', '');
+    setNodeAttr(input, 'class', 'ant-input');
+    setNodeAttr(input, 'tag', 'input');
+    setNodeBbox(input, { x: 10, y: 10, width: 200, height: 24 });
+    const form = newTextNode('form_main', 'form', '订单表单');
+    setNodeAttr(form, 'class', 'ant-form');
+    setNodeAttr(form, 'tag', 'form');
+    setNodeBbox(form, { x: 0, y: 0, width: 400, height: 300 });
+    form.children = [input];
+    const root: UnifiedNode = { id: 'root', role: 'root', children: [form] };
+    const entityIndex: EntityIndex = {
+        entities: {
+            ent_form: {
+                id: 'ent_form',
+                type: 'region',
+                kind: 'form',
+                nodeId: 'form_main',
+                name: '订单表单',
+            },
+        },
+        byNodeId: {},
+    };
+    entityIndex.byNodeId['form_main'] = [
+        { type: 'region', entityId: 'ent_form', role: 'container' },
+    ];
+    entityIndex.byNodeId['input_buyer'] = [
+        { type: 'region', entityId: 'ent_form', role: 'descendant' },
+    ];
+    const { nodeIndex, bboxIndex, attrIndex, contentStore } = buildExternalIndexes(root);
+    return buildSnapshot({
+        root,
+        nodeIndex,
+        entityIndex,
+        locatorIndex: {},
+        bboxIndex,
+        attrIndex,
+        contentStore,
+    });
+};
+
+const emptySnapshot = (): SnapshotResult => {
+    const root: UnifiedNode = { id: 'root', role: 'root', children: [] };
+    return buildSnapshot({
+        root,
+        nodeIndex: { root },
+        entityIndex: { entities: {}, byNodeId: {} },
+        locatorIndex: {},
+        bboxIndex: {},
+        attrIndex: {},
+        contentStore: {},
+    });
+};
+
 test('executeSave saves a new profile when expectedRevision is null', () => {
     const runtime = createWorkspaceEntityRulesRuntime(createInMemoryWorkflow());
     const draft = buildValidDraft('brand-new');
-    const result = executeSave(runtime, stablePageIdentity, draft, 'brand-new', null);
+    const snapshot = createFormSnapshot();
+    const result = executeSave(runtime, stablePageIdentity, snapshot, draft, 'brand-new', null);
     assert.equal(result.saved, true);
     assert.equal(result.profileName, 'brand-new');
     assert.equal(result.artifactRevision, computeArtifactRevision(result.entityRules));
@@ -622,9 +680,18 @@ test('executeSave saves a new profile when expectedRevision is null', () => {
 test('executeSave rejects with ERR_CONFLICT when expectedRevision mismatches stored', () => {
     const runtime = createWorkspaceEntityRulesRuntime(createInMemoryWorkflow());
     const draft = buildValidDraft('conflict-profile');
-    executeSave(runtime, stablePageIdentity, draft, 'conflict-profile', null);
+    const snapshot = createFormSnapshot();
+    executeSave(runtime, stablePageIdentity, snapshot, draft, 'conflict-profile', null);
     assert.throws(
-        () => executeSave(runtime, stablePageIdentity, draft, 'conflict-profile', 'stale-revision'),
+        () =>
+            executeSave(
+                runtime,
+                stablePageIdentity,
+                snapshot,
+                draft,
+                'conflict-profile',
+                'stale-revision',
+            ),
         (error: unknown) => (error as { code?: string }).code === 'ERR_CONFLICT',
     );
 });
@@ -632,10 +699,12 @@ test('executeSave rejects with ERR_CONFLICT when expectedRevision mismatches sto
 test('executeSave re-save succeeds when expectedRevision matches current stored', () => {
     const runtime = createWorkspaceEntityRulesRuntime(createInMemoryWorkflow());
     const draft = buildValidDraft('idempotent');
-    const first = executeSave(runtime, stablePageIdentity, draft, 'idempotent', null);
+    const snapshot = createFormSnapshot();
+    const first = executeSave(runtime, stablePageIdentity, snapshot, draft, 'idempotent', null);
     const second = executeSave(
         runtime,
         stablePageIdentity,
+        snapshot,
         draft,
         'idempotent',
         first.artifactRevision,
@@ -652,6 +721,7 @@ test('executeSave rejects with ERR_STALE when page url no longer matches draft u
             executeSave(
                 runtime,
                 { workspaceName: 'ws', tabName: 'tab', url: 'http://test/other' },
+                emptySnapshot(),
                 draft,
                 'stale-profile',
                 null,
@@ -665,7 +735,7 @@ test('executeSave rejects with ERR_BAD_ARGS when draft does not compile', () => 
     const draft = buildValidDraft('bad-profile');
     draft.entities[0].target = {};
     assert.throws(
-        () => executeSave(runtime, stablePageIdentity, draft, 'bad-profile', null),
+        () => executeSave(runtime, stablePageIdentity, emptySnapshot(), draft, 'bad-profile', null),
         (error: unknown) => (error as { code?: string }).code === 'ERR_BAD_ARGS',
     );
 });
@@ -705,4 +775,62 @@ test('recognizeEntities produces an inferred entity from finalEntityView without
     assert.ok(form, 'inferred form entity missing');
     assert.equal(form?.origin, 'inferred');
     assert.ok(recognized.some((item) => item.fieldCount > 0));
+});
+
+test('full save round-trip: edit -> check (all unique) -> save -> reload -> semantic preserved', () => {
+    const runtime = createWorkspaceEntityRulesRuntime(createInMemoryWorkflow());
+    const snapshot = createFormSnapshot();
+    const draft = buildValidDraft('round-trip');
+
+    const editedEntity = {
+        ...draft.entities[0],
+        name: '编辑后的表单',
+        target: { kind: 'form' as const, nameContains: '订单表单' },
+        annotations: [
+            {
+                ...draft.entities[0].annotations[0],
+                name: '采购人',
+                target: { classContains: 'ant-input' },
+                origin: 'confirmed' as const,
+            },
+        ],
+    };
+    const editedDraft: CanvasDraft = {
+        ...draft,
+        entities: [editedEntity],
+    };
+
+    const checkBeforeSave = runCheck(snapshot, editedDraft, stablePageIdentity.url);
+    const entityResultBefore = checkBeforeSave.results.find((r) =>
+        r.canvasAnnotationId === 'entity:e0',
+    );
+    assert.ok(entityResultBefore);
+    assert.equal(entityResultBefore!.status, 'unique');
+    assert.equal(entityResultBefore!.matchCount, 1);
+
+    const saved = executeSave(
+        runtime,
+        stablePageIdentity,
+        snapshot,
+        editedDraft,
+        'round-trip',
+        null,
+    );
+    assert.equal(saved.saved, true);
+
+    const reloaded = runtime.get('round-trip');
+    assert.ok(reloaded, 'reloaded artifact must exist');
+    const revalidated = validateEntityRules(reloaded!.name, reloaded!.match, reloaded!.annotation);
+    assert.equal(revalidated.ok, true, 'reloaded artifact must re-validate');
+
+    const recompiled = compileCanvasDraft(importEntityRulesToCanvasDraft(reloaded!));
+    assert.equal(recompiled.ok, true, 're-imported canvas draft must recompile');
+
+    const checkAfterReload = runCheck(snapshot, importEntityRulesToCanvasDraft(reloaded!), stablePageIdentity.url);
+    const entityResultAfter = checkAfterReload.results.find((r) =>
+        r.canvasAnnotationId === 'entity:e0',
+    );
+    assert.ok(entityResultAfter);
+    assert.equal(entityResultAfter!.status, 'unique', 'entity still resolves after round-trip');
+    assert.equal(entityResultAfter!.matchCount, 1);
 });

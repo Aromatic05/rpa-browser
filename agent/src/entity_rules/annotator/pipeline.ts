@@ -25,7 +25,6 @@ import type {
     VisualTargetRole,
 } from './runtime_types';
 import type { CanvasDraft } from './types';
-
 type OpenContext = {
     snapshot: SnapshotResult;
     finalEntityView: FinalEntityView;
@@ -39,6 +38,10 @@ const collectAnnotationIds = (
 ): Array<{ id: string; expect: 'unique' | 'one_or_more' }> => {
     const out: Array<{ id: string; expect: 'unique' | 'one_or_more' }> = [];
     for (const entity of draft.entities) {
+        out.push({
+            id: `entity:${entity.id}`,
+            expect: entity.expect ?? 'unique',
+        });
         for (const annotation of entity.annotations) {
             out.push({
                 id: annotation.id,
@@ -413,6 +416,31 @@ export const runCheck = (
     diagnostics.push(...(overlay.diagnostics || []));
 
     const results: CheckResultByAnnotation[] = annotationSpecs.map((spec) => {
+        if (spec.id.startsWith('entity:')) {
+            const entityId = spec.id.slice('entity:'.length);
+            const ruleId = compileResult.ruleIdByEntityId[entityId];
+            if (!ruleId) {
+                return {
+                    canvasAnnotationId: spec.id,
+                    status: 'invalid',
+                    matchCount: 0,
+                    expected: spec.expect,
+                    message: messageForStatus('invalid', 0, stale),
+                    nodeIds: [],
+                };
+            }
+            const binding = bindings[ruleId];
+            const matchCount = binding?.matchedNodeIds.length ?? 0;
+            const status = statusFromCount(matchCount, spec.expect);
+            return {
+                canvasAnnotationId: spec.id,
+                status,
+                matchCount,
+                expected: spec.expect,
+                message: messageForStatus(status, matchCount, stale),
+                nodeIds: binding?.matchedNodeIds || [],
+            };
+        }
         const ruleId = compileResult.ruleIdByAnnotationId[spec.id];
         if (!ruleId) {
             return {
@@ -438,17 +466,4 @@ export const runCheck = (
     });
 
     return { results, stale };
-};
-
-export type SavePreparation =
-    | { ok: true; artifact: WorkflowEntityRules }
-    | { ok: false; errors: string[] };
-
-export const prepareSaveArtifact = (draft: CanvasDraft, profileName: string): SavePreparation => {
-    const draftToCompile: CanvasDraft = { ...draft, profileName };
-    const compileResult = compileCanvasDraft(draftToCompile);
-    if (!compileResult.ok) {
-        return { ok: false, errors: compileResult.errors };
-    }
-    return { ok: true, artifact: compileResult.artifact };
 };
