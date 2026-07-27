@@ -139,6 +139,52 @@ annotations:
         nodeRuleId: submit_btn
 ```
 
+## 可视化标注
+
+可视化标注器（visual annotator）提供在真实页面上直接产出 entity_rules 的 best-effort 路径。对应 `agent/src/entity_rules/annotator/*`。
+
+### 1. 编辑模型
+
+- 编辑态模型为 `CanvasDraft`：`WorkflowEntityRules → CanvasDraft → WorkflowEntityRules`。
+- 打开已存规则时 `importEntityRulesToCanvasDraft` 导入为草稿；保存时 `compileCanvasDraft` 编译回 `WorkflowEntityRules`。
+
+### 2. Plan B 不透明保留
+
+- Canvas 未建模的字段（如 `keyHint`、locator 规则）通过 `preserved` 块无损保留。
+- 保存时若保留项无法回挂到 canvas（`opaque_unmergeable`），save gate 会阻断保存，避免静默丢规则。
+- 禁止新旧路径并存：所有保存都走 compile → validate → match → apply → gate 单链路。
+
+### 3. check 与 save 流程
+
+```
+compileCanvasDraft -> validateEntityRules -> matchEntityRules -> apply -> evaluateSaveGate -> workflow.save
+```
+
+- check 按 annotation 报告 `unique` / `multiple` / `missing` / `invalid`。
+- save gate 校验：page stale、revision conflict、primary entity unresolved、confirmed annotation 未解析、opaque unmergeable。
+
+### 4. 页面身份与修订冲突
+
+- `detectStale`：当 `draft.page.urlPattern` 与当前 URL 不匹配时标记 stale，阻断保存（`ERR_STALE`）。
+- `revision`：保存基于内容哈希；expectedRevision 与存储不一致时返回 `ERR_CONFLICT`，避免覆盖 Debug 面板并发改动。
+
+### 5. 首版本支持范围
+
+支持：
+
+- 顶层文档、普通 DOM、open Shadow Root。
+
+不支持：
+
+- 跨域 iframe。
+- closed Shadow Root。
+- canvas / svg 内部结构。
+- 浏览器原生 UI（select 下拉、文件选择器等）。
+
+### 6. best-effort 声明
+
+标注器的 pick / recognize 为启发式推断，对任意页面不保证识别成功；class 共享（如多个 `ant-input`）会导致目标歧义，需人工确认 target。
+
 ## 限制
 
 - schema 字段不可随意扩展。

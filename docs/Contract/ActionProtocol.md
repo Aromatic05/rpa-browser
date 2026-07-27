@@ -87,6 +87,18 @@ Action routing 由两层判定：
 - `task.run.*` 转发给 `RunnerControl.handle`。
 - `mcp.*` 转发给 `McpControl.handle`。
 
+## entity_rules.annotator.* action catalog
+
+可视化标注器 action（workspace route，需 runtime deps）：
+
+- `entity_rules.annotator.open`：基于当前 snapshot 返回 `{ pageKind, profileName, canvasDraft, artifactRevision, visualTargetRefs }`。
+- `entity_rules.annotator.pick`：payload `{ fingerprint }`，返回 `{ candidateChain, matchedNodeIds, resolution }`（control/field/region 候选链 + 推荐 target）。
+- `entity_rules.annotator.recognize`：payload `{ canvasDraft? }`，返回 `{ canvasDraft, recognized }`（推断 entity/field/action）。
+- `entity_rules.annotator.check`：payload `{ canvasDraft }`，返回 `{ results, stale }`（每条 annotation 的 unique/multiple/missing 状态）。
+- `entity_rules.annotator.save`：payload `{ canvasDraft, profileName, expectedRevision? }`，通过 save gate 后返回 `{ profileName, entityRules, artifactRevision, saved: true }`；失败返回 `ERR_CONFLICT` / `ERR_STALE` / `ERR_BAD_ARGS`。
+
+legacy `entity_rules.list/get/save/delete` 仍由同一 control 处理（无需 runtime deps），与 annotator 共享 workflow artifact。
+
 ## Control 命名
 
 - 领域 action 处理入口统一叫 Control（如 `TabsControl`、`McpControl`、`RecordControl`）。

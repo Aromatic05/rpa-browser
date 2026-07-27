@@ -48,8 +48,19 @@
 当前仅预留、未形成完整自动化 UI：
 
 - 全功能 DSL 编辑器
-- entity_rules 可视化标注器
 - 多 DSL 文件图形化选择
+
+## entity_rules 可视化标注器
+
+entity_rules 可视化标注器已实现（best-effort，首版本）。流程：
+
+1. `entity_rules.annotator.open`：对当前页面生成 snapshot，导入已存规则为 CanvasDraft。
+2. `entity_rules.annotator.pick`：用户点选 DOM，返回 control/field/region 候选链与推荐 target。
+3. `entity_rules.annotator.recognize`：基于 snapshot 推断 entity / field / action 草稿。
+4. `entity_rules.annotator.check`：compile → validate → match，按 annotation 报告 unique / multiple / missing。
+5. `entity_rules.annotator.save`：通过 save gate（stale / revision / unresolved 校验）后写回 workflow artifact。
+
+入口在 Debug 面板"进入标注模式"，使用独立 Shadow DOM 宿主，不干扰目标页面。首版本支持顶层文档与 open Shadow Root；不支持跨域 iframe、closed Shadow Root、canvas 内部与浏览器原生 UI，对任意页面不保证识别成功。
 
 ## 失败反馈闭环
 

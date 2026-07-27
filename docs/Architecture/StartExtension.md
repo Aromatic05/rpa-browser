@@ -38,8 +38,8 @@ workflow artifact 在 agent 侧受路径校验与绑定策略控制。start_exte
 ## 当前限制
 
 - 暂无完整 DSL 编辑器。
-- 暂无人工标注 UI。
 - 暂无多 DSL 文件选择 UI。
+- entity_rules 可视化标注器已实现（首版本，best-effort）：通过 Debug 面板的"进入标注模式"入口启动，挂载在独立 Shadow DOM 宿主（`rpa-entity-annotator-host`），与 Debug 面板宿主并存，均带 `data-rpa-snapshot-ignore`。
 
 ## 风险提示
 
