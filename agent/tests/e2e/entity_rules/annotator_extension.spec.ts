@@ -80,8 +80,8 @@ test('loads the built extension and opens the annotator through the Debug panel'
             `},
         ))).data, {timeout: 20_000}).toEqual({style: true, canvas: true, toolbar: true, mode: 'editing'});
 
-        const recognizeTarget = (await runStep(agent.endpoint, workspaceName, step(
-            `recognize-target-${Date.now()}`, 'browser.evaluate', {expression: `
+        const recognizePoint = (await runStep(agent.endpoint, workspaceName, step(
+            `recognize-point-${Date.now()}`, 'browser.evaluate', {expression: `
                 const button = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
                     ?.querySelector('[data-annotator-action="recognize"]');
                 if (!(button instanceof HTMLButtonElement) || button.disabled) return null;
@@ -89,13 +89,111 @@ test('loads the built extension and opens the annotator through the Debug panel'
                 return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
             `},
         ))).data as {x: number; y: number} | null;
-        expect(recognizeTarget).not.toBeNull();
+        expect(recognizePoint).not.toBeNull();
         expect((await runStep(agent.endpoint, workspaceName, step(
-            `recognize-hit-${Date.now()}`, 'browser.evaluate', {expression: `
-                const hit = document.elementFromPoint(${recognizeTarget!.x}, ${recognizeTarget!.y});
-                return {id: hit?.id || '', annotator: hit?.getAttribute('data-rpa-annotator-host') || ''};
+            `recognize-${Date.now()}`, 'browser.mouse', {
+                action: 'click',
+                x: recognizePoint!.x,
+                y: recognizePoint!.y,
+            },
+        ))).ok).toBe(true);
+
+        await expect.poll(async () => (await runStep(agent.endpoint, workspaceName, step(
+            `recognized-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                const app = root?.querySelector('.annotator-root');
+                const add = [...(root?.querySelectorAll('button') || [])]
+                    .find((button) => button.textContent?.trim() === '新增标注');
+                return {
+                    draft: app?.getAttribute('data-annotator-draft'),
+                    profile: app?.getAttribute('data-annotator-profile') || '',
+                    addEnabled: add instanceof HTMLButtonElement && !add.disabled,
+                    error: root?.querySelector('.annotator-flag-error')?.textContent?.trim() || '',
+                };
             `},
-        ))).data).toEqual({id: 'rpa-entity-annotator-host', annotator: 'true'});
+        ))).data, {timeout: 20_000}).toEqual({
+            draft: 'present',
+            profile: expect.any(String),
+            addEnabled: true,
+            error: '',
+        });
+
+        const addPoint = (await runStep(agent.endpoint, workspaceName, step(
+            `add-point-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                const add = [...(root?.querySelectorAll('button') || [])]
+                    .find((button) => button.textContent?.trim() === '新增标注');
+                if (!(add instanceof HTMLButtonElement) || add.disabled) return null;
+                const rect = add.getBoundingClientRect();
+                return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+            `},
+        ))).data as {x: number; y: number} | null;
+        expect(addPoint).not.toBeNull();
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `pick-mode-${Date.now()}`, 'browser.mouse', {
+                action: 'click',
+                x: addPoint!.x,
+                y: addPoint!.y,
+            },
+        ))).ok).toBe(true);
+
+        const inputPoint = (await runStep(agent.endpoint, workspaceName, step(
+            `input-point-${Date.now()}`, 'browser.evaluate', {expression: `
+                const input = document.querySelector('#customerName');
+                if (!(input instanceof HTMLElement)) return null;
+                const rect = input.getBoundingClientRect();
+                return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+            `},
+        ))).data as {x: number; y: number} | null;
+        expect(inputPoint).not.toBeNull();
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `page-hit-${Date.now()}`, 'browser.evaluate', {expression: `
+                return document.elementFromPoint(${inputPoint!.x}, ${inputPoint!.y})?.id || '';
+            `},
+        ))).data).toBe('customerName');
+
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `page-click-${Date.now()}`, 'browser.mouse', {
+                action: 'click',
+                x: inputPoint!.x,
+                y: inputPoint!.y,
+            },
+        ))).ok).toBe(true);
+
+        await expect.poll(async () => (await runStep(agent.endpoint, workspaceName, step(
+            `candidate-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                return Boolean(root?.querySelector('.annotator-pick-overlay .annotator-pick-confirm'));
+            `},
+        ))).data, {timeout: 20_000}).toBe(true);
+
+        const confirmPoint = (await runStep(agent.endpoint, workspaceName, step(
+            `confirm-point-${Date.now()}`, 'browser.evaluate', {expression: `
+                const button = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                    ?.querySelector('.annotator-pick-confirm');
+                if (!(button instanceof HTMLButtonElement)) return null;
+                const rect = button.getBoundingClientRect();
+                return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+            `},
+        ))).data as {x: number; y: number} | null;
+        expect(confirmPoint).not.toBeNull();
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `confirm-${Date.now()}`, 'browser.mouse', {
+                action: 'click',
+                x: confirmPoint!.x,
+                y: confirmPoint!.y,
+            },
+        ))).ok).toBe(true);
+
+        await expect.poll(async () => (await runStep(agent.endpoint, workspaceName, step(
+            `confirmed-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                return {
+                    pickOpen: Boolean(root?.querySelector('.annotator-pick-overlay')),
+                    labels: root?.querySelectorAll('.annotator-label').length || 0,
+                };
+            `},
+        ))).data, {timeout: 20_000}).toEqual({pickOpen: false, labels: expect.any(Number)});
     } finally {
         await agent.close();
         await fixture.close();

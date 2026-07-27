@@ -84,6 +84,7 @@ const mountVueApp: MountAppFn = (root, handlers) => {
         client,
         sessionStore,
         onExit: handlers.onExit,
+        onPickModeChange: handlers.onPickModeChange,
     });
     app.mount(appRoot);
     const handle: AnnotatorAppHandle = {

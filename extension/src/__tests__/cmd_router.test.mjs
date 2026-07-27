@@ -523,7 +523,7 @@ await log('agent-created window binds from preferred content tabName', async () 
 
     assert.equal(tokenReply?.ok, true);
     assert.equal(tokenReply?.tabName, 'tab-agent');
-    assert.equal(tokenReply?.workspaceName, 'ws-bound');
+    assert.equal(tokenReply?.workspaceName, 'ws-agent');
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 
     let actionReply = null;
@@ -534,6 +534,7 @@ await log('agent-created window binds from preferred content tabName', async () 
                 v: 1,
                 id: 'agent-record-event',
                 type: ACTION_TYPES.RECORD_EVENT,
+                workspaceName: 'stale-default',
                 payload: { id: 's-agent', name: 'browser.click', args: { selector: '#submit' } },
             },
         },
@@ -546,7 +547,7 @@ await log('agent-created window binds from preferred content tabName', async () 
 
     const recordAction = sent.find((action) => action.type === ACTION_TYPES.RECORD_EVENT);
     assert.equal(actionReply?.type, `${ACTION_TYPES.RECORD_EVENT}.result`, JSON.stringify(actionReply));
-    assert.equal(recordAction?.workspaceName, 'ws-bound');
+    assert.equal(recordAction?.workspaceName, 'ws-agent');
     assert.equal(recordAction?.payload?.tabName, 'tab-agent');
 });
 

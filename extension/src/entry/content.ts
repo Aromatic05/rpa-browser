@@ -153,6 +153,7 @@ const loadAnnotator = (() => {
 
     // tabName + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<{ tabName: string; workspaceName: string }> | null = null;
+    let currentBinding: { tabName: string; workspaceName: string } | null = null;
     let lastReportedUrl = '';
     const sendReport = async (workspaceName?: string) => {
         const resolved = workspaceName ? { workspaceName } : await ensureToken();
@@ -177,9 +178,13 @@ const loadAnnotator = (() => {
         lastReportedUrl = url;
     };
     const ensureToken = () => {
+        if (currentBinding) {
+            return Promise.resolve(currentBinding);
+        }
         tokenReady ??= (async () => {
                 const mod = await loadTokenBridge();
                 const result = await mod.ensureTabNameAsync();
+                currentBinding = result;
                 mod.bindHello(result.tabName, () => {
                     // hello is only for binding refresh; URL ownership is handled
                     // by report-on-change hooks below.
@@ -228,6 +233,9 @@ const loadAnnotator = (() => {
                 }
                 if (message.type === MSG.SET_TOKEN) {
                     const tabName = typeof message.tabName === 'string' ? message.tabName : '';
+                    const workspaceName = typeof message.workspaceName === 'string'
+                        ? message.workspaceName
+                        : currentBinding?.workspaceName ?? '';
                     if (!tabName) {
                         sendResponse({ ok: false, error: 'missing tabName' });
                         return;
@@ -236,7 +244,9 @@ const loadAnnotator = (() => {
                     sessionStorage.setItem('__rpa_tab_name_confirmed', '1');
                     window.name = `__RPA_TAB_NAME__:${tabName}`;
                     (window as any).__rpa_tab_name = tabName;
-                    sendResponse({ ok: true, tabName, url: location.href });
+                    currentBinding = {tabName, workspaceName};
+                    tokenReady = Promise.resolve(currentBinding);
+                    sendResponse({ ok: true, tabName, workspaceName, url: location.href });
                 }
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: String(error) });
@@ -286,13 +296,18 @@ const loadAnnotator = (() => {
         startHeartbeat();
         const dispatchAnnotator = async (type: string, payload?: Record<string, unknown>): Promise<unknown> => {
             const { send } = await loadSend();
-            return await send.action({
+            const binding = await ensureToken();
+            const request: ActionShape = {
                 v: 1,
                 id: UUIDorUnsafe(),
                 type,
-                workspaceName,
+                workspaceName: binding.workspaceName,
                 payload: payload ?? {},
-            });
+            };
+            consumeActionEvent?.(request);
+            const reply = await send.action(request) as ActionShape;
+            consumeActionEvent?.(reply);
+            return reply;
         };
         uiHandle = mountFloatingUI({
             tabName,
@@ -326,6 +341,7 @@ const loadAnnotator = (() => {
             },
             onEnterAnnotation: () => {
                 void (async () => {
+                    const binding = await ensureToken();
                     if (!annotatorHandle) {
                         try {
                             const { startAnnotator } = await loadAnnotator();
@@ -358,10 +374,13 @@ const loadAnnotator = (() => {
                     }
                     annotatorHandle.show();
                     const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
-                        workspaceName,
-                        tabName,
                         url: location.href,
                     }) as ActionShape;
+                    if (openReply.type.endsWith('.failed')) {
+                        console.error('[rpa] annotator open failed:', openReply.payload);
+                        annotatorHandle.exit();
+                        return;
+                    }
                     if (openReply && isRecord(openReply.payload)) {
                         annotatorHandle.open(openReply.payload);
                     }

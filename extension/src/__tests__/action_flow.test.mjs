@@ -30,6 +30,9 @@ await log('action type classifier separates command/reply/event', async () => {
     assert.equal(classifyActionType('workspace.list'), 'command');
     assert.equal(classifyActionType('workspace.list.result'), 'reply');
     assert.equal(classifyActionType('workspace.list.failed'), 'reply');
+    assert.equal(classifyActionType('entity_rules.list.result'), 'reply');
+    assert.equal(classifyActionType('entity_rules.annotator.open.result'), 'reply');
+    assert.equal(classifyActionType('entity_rules.annotator.recognize.failed'), 'reply');
     assert.equal(classifyActionType('play.failed'), 'event');
     assert.equal(classifyActionType('play.step.finished'), 'event');
 });
@@ -121,6 +124,43 @@ await log('ws client resolves pending only on reply actions', async () => {
         const reply = await promise;
         assert.equal(reply.type, 'play.start.result');
         assert.equal(received.includes('play.step.started'), true);
+    } finally {
+        globalThis.WebSocket = OriginalWebSocket;
+        FakeWebSocket.instances.length = 0;
+    }
+});
+
+await log('ws client resolves entity_rules annotator replies with underscored domains', async () => {
+    const OriginalWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = FakeWebSocket;
+    try {
+        const client = createWsClient({ wsPort: 17001, onAction: () => undefined });
+        const request = {
+            v: 1,
+            id: 'annotator-open-1',
+            type: 'entity_rules.annotator.open',
+            workspaceName: 'ws-1',
+            payload: { url: 'https://example.test/form' },
+        };
+        const promise = client.sendAction(request);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const ws = FakeWebSocket.instances.at(-1);
+        assert.ok(ws, 'websocket instance should be created');
+        ws.emit('message', {
+            data: JSON.stringify({
+                v: 1,
+                id: 'annotator-open-reply-1',
+                type: 'entity_rules.annotator.open.result',
+                replyTo: request.id,
+                workspaceName: 'ws-1',
+                payload: { canvasDraft: null },
+            }),
+        });
+        const reply = await Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('annotator reply did not settle')), 100)),
+        ]);
+        assert.equal(reply.type, 'entity_rules.annotator.open.result');
     } finally {
         globalThis.WebSocket = OriginalWebSocket;
         FakeWebSocket.instances.length = 0;

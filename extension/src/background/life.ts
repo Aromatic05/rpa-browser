@@ -94,8 +94,17 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     };
 
 
-    const pushBindingNameToTab = async (chromeTabNo: number, bindingName: string) => {
-        const result = await send.toTabTransport<{ ok: boolean }>(chromeTabNo, MSG.SET_TOKEN, { tabName: bindingName }, { timeoutMs: 1200 });
+    const pushBindingNameToTab = async (
+        chromeTabNo: number,
+        bindingName: string,
+        workspaceName: string,
+    ) => {
+        const result = await send.toTabTransport<{ ok: boolean }>(
+            chromeTabNo,
+            MSG.SET_TOKEN,
+            { tabName: bindingName, workspaceName },
+            { timeoutMs: 1200 },
+        );
         return result.ok && result.data.ok === true;
     };
 
@@ -382,7 +391,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
                 urlHint: typeof tab.url === 'string' ? tab.url : '',
             });
 
-            void pushBindingNameToTab(chromeTabNo, tabName);
+            void pushBindingNameToTab(chromeTabNo, tabName, workspaceName);
 
             return { chromeTabNo, windowId: actualWindowId, bindingName: tabName, workspaceName, tabName, urlHint: typeof tab.url === 'string' ? tab.url : '' };
         })();
@@ -401,14 +410,15 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         // Skip if already bound (ensureOpenedAndBound won the race)
         if (options.state.getTabState(chromeTabNo)?.bindingName) { return; }
 
-        options.state.upsertBindingWorkspaceTab(tabName, options.sessionWorkspaceName, tabName);
+        const workspaceName = action.workspaceName ?? options.sessionWorkspaceName;
+        options.state.upsertBindingWorkspaceTab(tabName, workspaceName, tabName);
         options.state.upsertTab(chromeTabNo, tabName, '', windowId);
 
         await options.sendAction({
             v: 1,
             id: crypto.randomUUID(),
             type: ACTION_TYPES.TAB_BOUND,
-            workspaceName: options.sessionWorkspaceName,
+            workspaceName,
             payload: {
                 tabName,
                 chromeTabNo,
@@ -417,7 +427,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             },
         });
 
-        void pushBindingNameToTab(chromeTabNo, tabName);
+        void pushBindingNameToTab(chromeTabNo, tabName, workspaceName);
     };
 
     const bindExistingTabs = async () => {

@@ -37,6 +37,23 @@ const makeDraft = (name: string): CanvasDraft => ({
     preserved: {},
 });
 
+const makeRecognizedDraft = (name: string): CanvasDraft => ({
+    ...makeDraft(name),
+    entities: [
+        {
+            id: 'e0',
+            source: 'region',
+            kind: 'form',
+            name: '客户信息',
+            businessTag: 'form.customer',
+            target: {kind: 'form', nameContains: '客户信息'},
+            annotations: [],
+            columns: [],
+            origin: 'inferred',
+        },
+    ],
+});
+
 const makeOpenResult = (overrides: Partial<AnnotatorOpenResult> = {}): AnnotatorOpenResult => ({
     workspaceName: 'ws-1',
     tabName: 'tab-1',
@@ -144,13 +161,14 @@ test('runRecognizeLoop applies protective-merged draft via draftEdited so it is 
 
 test('runRecognizeLoop creates the first draft from an empty open result', async () => {
     const empty = openLoaded(initialState(), makeOpenResult({canvasDraft: null, profileName: null}));
-    const recognized = makeDraft('');
+    const recognized = makeRecognizedDraft('');
     const client = mockClient({recognize: async () => ({canvasDraft: recognized, recognized: []})});
     const next = await runRecognizeLoop(empty, client);
     assert.equal(next.profileName, 'page-test-page');
     assert.equal(next.canvasDraft?.profileName, 'page-test-page');
     assert.equal(next.canvasDraft?.page.urlPattern, '^http://test/page(?:[/?#]|$)');
     assert.equal(next.dirty, true);
+    assert.equal(next.currentEntityId, 'e0', 'first recognition must focus an entity so adding annotations is possible');
 });
 
 test('restoreSessionDraft restores an unsaved draft when page identity matches', async () => {

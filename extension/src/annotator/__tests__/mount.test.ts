@@ -85,16 +85,25 @@ test('annotator host and debug panel host coexist in the document', () => {
 test('mountAnnotator appends host to documentElement and returns a handle that can show/hide', () => {
     const dom = new JSDOM('<!doctype html><html><body></body></html>');
     const doc = dom.window.document;
+    let mountedHandlers: AnnotatorHandlers | null = null;
     const handle = mountAnnotator({
         document: doc,
         handlers: noopHandlers,
-        mountApp: noopMountApp,
+        mountApp: (root, handlers) => {
+            mountedHandlers = handlers;
+            return noopMountApp(root, handlers);
+        },
     });
     const host = doc.getElementById(ANNOTATOR_HOST_ID) as HTMLDivElement;
     assert.ok(host, 'host should be attached to document');
     assert.equal(host.style.display, 'none');
     handle.show();
     assert.equal(host.style.display, 'block');
+    assert.equal(host.style.pointerEvents, 'auto', 'editing mode must keep toolbar and labels interactive');
+    mountedHandlers?.onPickModeChange?.(true);
+    assert.equal(host.style.pointerEvents, 'none', 'pick mode must let pointer input reach the page');
+    mountedHandlers?.onPickModeChange?.(false);
+    assert.equal(host.style.pointerEvents, 'auto', 'leaving pick mode restores canvas interaction');
     handle.hide();
     assert.equal(host.style.display, 'none');
     handle.unmount();

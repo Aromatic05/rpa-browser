@@ -92,10 +92,10 @@ const domainPrefixes = new Set<string>([
     ...Object.values(REQUEST_ACTION_TYPES).map((type) => type.split('.')[0]),
     'action',
 ]);
-const SEGMENT_RE = /^[a-z][a-zA-Z0-9]*$/;
-const resultOrFailureTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\.(result|failed)$/;
-const eventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.(started|progress|completed|canceled|event)$/;
-const stepEventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.step\.(started|finished)$/;
+const SEGMENT_RE = /^[a-z][a-zA-Z0-9_]*$/;
+const resultOrFailureTypeRe = /^([a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)+)\.(result|failed)$/;
+const eventTypeRe = /^([a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)*)\.(started|progress|completed|canceled|event)$/;
+const stepEventTypeRe = /^([a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)*)\.step\.(started|finished)$/;
 
 const hasAllowedPrefix = (domain: string) => {
     const first = domain.split('.')[0] || '';

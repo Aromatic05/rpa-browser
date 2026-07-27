@@ -67,6 +67,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     (e: 'exit'): void;
+    (e: 'pickModeChange', picking: boolean): void;
 }>();
 
 const viewport = ref({
@@ -523,6 +524,13 @@ watch(
     () => {
         scheduler.schedule();
         schedulePersist();
+    },
+);
+
+watch(
+    pickMode,
+    (picking) => {
+        emit('pickModeChange', picking);
     },
 );
 

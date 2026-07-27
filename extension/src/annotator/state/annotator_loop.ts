@@ -87,7 +87,12 @@ export const runRecognizeLoop = async (
                 ...(reply.canvasDraft.page.urlPattern ? {} : {urlPattern: pageUrlPattern(state)}),
             },
         };
-        return {...draftEdited(state, canvasDraft), profileName};
+        const next = draftEdited(state, canvasDraft);
+        return {
+            ...next,
+            profileName,
+            currentEntityId: next.currentEntityId ?? canvasDraft.entities[0]?.id ?? null,
+        };
     } catch (error) {
         return failed(state, `recognize failed: ${errorMessage(error)}`);
     }

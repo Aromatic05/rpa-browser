@@ -148,11 +148,19 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                 }
                 if (bindingName) {
                     state.upsertTab(chromeTabNo, bindingName, url, windowId);
-                    chrome.tabs.sendMessage(chromeTabNo, { type: MSG.SET_TOKEN, tabName: bindingName }, () => {
+                    const mapped = state.getBindingWorkspaceTab(bindingName);
+                    const workspaceName = mapped?.workspaceName ?? options.sessionWorkspaceName;
+                    chrome.tabs.sendMessage(chromeTabNo, {
+                        type: MSG.SET_TOKEN,
+                        tabName: mapped?.tabName ?? bindingName,
+                        workspaceName,
+                    }, () => {
                         void chrome.runtime.lastError;
                     });
+                    sendResponse({ ok: true, tabName: mapped?.tabName ?? bindingName, workspaceName });
+                    return;
                 }
-                sendResponse({ ok: true, tabName: bindingName });
+                sendResponse({ ok: true, tabName: bindingName, workspaceName: options.sessionWorkspaceName });
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
             });
@@ -175,12 +183,35 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({
                             ok: true,
                             bindingName,
-                            workspaceName: options.sessionWorkspaceName,
+                            workspaceName: mapped.workspaceName,
                             tabName: mapped.tabName,
                             windowId: tabState.windowId,
                         });
                         return;
                     }
+                }
+
+                const preferredBindingName = typeof typedMessage.tabName === 'string'
+                    ? typedMessage.tabName.trim()
+                    : '';
+                const preferredMapped = preferredBindingName
+                    ? state.getBindingWorkspaceTab(preferredBindingName)
+                    : null;
+                if (preferredMapped) {
+                    state.upsertTab(
+                        chromeTabNo,
+                        preferredBindingName,
+                        typedMessage.url ?? sender.tab?.url ?? '',
+                        sender.tab?.windowId,
+                    );
+                    sendResponse({
+                        ok: true,
+                        bindingName: preferredBindingName,
+                        workspaceName: preferredMapped.workspaceName,
+                        tabName: preferredMapped.tabName,
+                        windowId: sender.tab?.windowId,
+                    });
+                    return;
                 }
 
                 const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
@@ -190,7 +221,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({
                             ok: true,
                             bindingName: bound.bindingName,
-                            workspaceName: options.sessionWorkspaceName,
+                            workspaceName: bound.workspaceName,
                             tabName: bound.tabName,
                             windowId: bound.windowId,
                         });
@@ -198,7 +229,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     }
                 }
 
-                const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName.trim() : '';
                 const ensured = await life.ensureBoundTabRef(chromeTabNo, sender.tab?.windowId, preferredBindingName);
                 if (ensured) {
                     state.upsertBindingWorkspaceTab(ensured.bindingName, options.sessionWorkspaceName, ensured.tabName);
@@ -206,7 +236,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     sendResponse({
                         ok: true,
                         bindingName: ensured.bindingName,
-                        workspaceName: options.sessionWorkspaceName,
+                        workspaceName: ensured.workspaceName,
                         tabName: ensured.tabName,
                         windowId: ensured.windowId,
                     });
@@ -219,7 +249,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({
                             ok: true,
                             bindingName: opened.bindingName,
-                            workspaceName: options.sessionWorkspaceName,
+                            workspaceName: opened.workspaceName,
                             tabName: opened.tabName,
                             windowId: opened.windowId,
                         });
@@ -257,11 +287,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     const tabState = state.getTabState(chromeTabNo);
                     const bindingName = tabState?.bindingName;
                     if (bindingName && isRecord(action) && shouldAttachWorkspaceFromSender(action)) {
-                        if (!action.workspaceName || typeof action.workspaceName !== 'string') {
-                            action.workspaceName = options.sessionWorkspaceName;
-                        }
+                        const mapped = state.getBindingWorkspaceTab(bindingName);
+                        action.workspaceName = mapped?.workspaceName ?? options.sessionWorkspaceName;
                         if (isRecord(action.payload)) {
-                            action.payload.tabName = bindingName;
+                            action.payload.tabName = mapped?.tabName ?? bindingName;
                         }
                     }
                 }

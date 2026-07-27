@@ -18,6 +18,7 @@ export type AnnotatorHandlers = {
     onRedo: () => void;
     onCheck: () => void;
     onSave: () => void;
+    onPickModeChange?: (picking: boolean) => void;
     dispatch?: AnnotatorDispatch;
 };
 
@@ -75,7 +76,13 @@ export type AnnotatorHandle = {
 export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => {
     const doc = opts.document ?? document;
     const {host, shadow} = createAnnotatorHost(doc);
-    const app = opts.mountApp(shadow, opts.handlers);
+    const app = opts.mountApp(shadow, {
+        ...opts.handlers,
+        onPickModeChange: (picking) => {
+            host.style.pointerEvents = picking ? 'none' : 'auto';
+            opts.handlers.onPickModeChange?.(picking);
+        },
+    });
     doc.documentElement.appendChild(host);
     return {
         unmount: () => {
