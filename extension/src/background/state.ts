@@ -12,6 +12,13 @@ type BindingWorkspaceTab = {
     tabName: string;
 };
 
+export type RouterStateSnapshot = {
+    tabs: Array<{chromeTabNo: number} & TabRuntimeState>;
+    bindings: Array<{bindingName: string} & BindingWorkspaceTab>;
+    activeChromeTabNo: number | null;
+    activeWindowId: number | null;
+};
+
 export type RouterState = {
     upsertTab: (chromeTabNo: number, bindingName: string, url: string, windowId?: number | null) => void;
     removeTab: (chromeTabNo: number) => TabRuntimeState | undefined;
@@ -28,6 +35,8 @@ export type RouterState = {
     shouldThrottleWorkspaceActivated: (key: string, now: number, thresholdMs: number) => boolean;
     resetStartupState: () => void;
     resetInstalledState: () => void;
+    snapshot: () => RouterStateSnapshot;
+    restore: (snapshot: RouterStateSnapshot) => void;
 };
 
 export const createRouterState = (logger?: Logger): RouterState => {
@@ -114,5 +123,41 @@ export const createRouterState = (logger?: Logger): RouterState => {
         shouldThrottleWorkspaceActivated,
         resetStartupState: () => undefined,
         resetInstalledState: () => undefined,
+        snapshot: () => ({
+            tabs: [...tabState.entries()].map(([chromeTabNo, state]) => ({chromeTabNo, ...state})),
+            bindings: [...bindingNameToWorkspaceTab.entries()].map(([bindingName, mapping]) => ({bindingName, ...mapping})),
+            activeChromeTabNo,
+            activeWindowId,
+        }),
+        restore: (snapshot: RouterStateSnapshot) => {
+            tabState.clear();
+            bindingNameToWorkspaceTab.clear();
+            for (const tab of snapshot.tabs || []) {
+                if (!Number.isInteger(tab.chromeTabNo) || !tab.bindingName) {continue;}
+                tabState.set(tab.chromeTabNo, {
+                    bindingName: tab.bindingName,
+                    lastUrl: tab.lastUrl || '',
+                    windowId: typeof tab.windowId === 'number' ? tab.windowId : null,
+                    updatedAt: typeof tab.updatedAt === 'number' ? tab.updatedAt : Date.now(),
+                });
+            }
+            for (const binding of snapshot.bindings || []) {
+                if (!binding.bindingName || !binding.workspaceName || !binding.tabName) {continue;}
+                bindingNameToWorkspaceTab.set(binding.bindingName, {
+                    workspaceName: binding.workspaceName,
+                    tabName: binding.tabName,
+                });
+            }
+            activeChromeTabNo = typeof snapshot.activeChromeTabNo === 'number'
+                ? snapshot.activeChromeTabNo
+                : null;
+            activeWindowId = typeof snapshot.activeWindowId === 'number'
+                ? snapshot.activeWindowId
+                : null;
+            lastTabActivatedKey = '';
+            lastTabActivatedAt = 0;
+            lastWorkspaceSetActiveKey = '';
+            lastWorkspaceSetActiveAt = 0;
+        },
     };
 };

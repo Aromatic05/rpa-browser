@@ -21,7 +21,7 @@
     ],
     "web_accessible_resources": [
         {
-            "resources": ["shared/*.js", "content/*.js", "annotator/*.js"],
+            "resources": ["shared/*.js", "content/*.js", "annotator/*.js", "rpa-build.json"],
             "matches": ["<all_urls>"]
         }
     ]

@@ -4,9 +4,9 @@
     "packageManager": "pnpm@11.0.9",
     "scripts": {
         "dev:agent": "pnpm --filter ./agent dev:hot",
-        "dev:cdp": "pnpm build:extension && pnpm --filter ./agent dev:cdp",
+        "dev:cdp": "node scripts/dev_cdp.mjs",
         "dev:mcp": "pnpm --filter ./agent mcp:hot",
-        "build:extension": "pnpm --filter ./extension build && pnpm --filter ./start_extension build",
+        "build:extension": "node scripts/build_extensions.mjs",
         "dev": "pnpm build:extension && pnpm dev:agent",
         "dev:headless": "pnpm build:extension && pnpm --filter ./agent dev:headless",
         "mock:dev": "pnpm -C mock dev",

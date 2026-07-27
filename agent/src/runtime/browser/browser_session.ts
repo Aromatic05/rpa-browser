@@ -6,6 +6,11 @@ import { startActionWsClient, type ActionWsClient, type ActionWsTap } from '../.
 import type { Action } from '../../actions/action_protocol';
 import type { WorkspaceRegistry } from '../workspace/registry';
 import type { PortAllocator } from '../service/ports';
+import {
+    resolveExtensionBuildStampPath,
+    startExtensionDevReloader,
+    type ExtensionDevReloader,
+} from './extension_dev_reload';
 
 export type BrowserSessionStatus = 'stopped' | 'starting' | 'running' | 'stopping';
 
@@ -78,6 +83,8 @@ const resolveExtensionServiceWorker = async (context: BrowserContext): Promise<W
 };
 
 const browserMode = () => (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
+const extensionAutoReloadEnabled = () =>
+    ['1', 'true', 'yes', 'on'].includes((process.env.RPA_EXTENSION_AUTO_RELOAD || '').trim().toLowerCase());
 
 export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSessionOptions): WorkspaceBrowserSession => {
     const userDataDir = path.join(options.userDataRoot, 'workspaces', options.workspaceName);
@@ -92,6 +99,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
     let startPromise: Promise<void> | null = null;
     let stopPromise: Promise<void> | null = null;
     let sessionRef: WorkspaceBrowserSession | null = null;
+    let extensionDevReloader: ExtensionDevReloader | null = null;
 
     const createSessionContextManager = (assignedCdpPort: number | null, startUrl: string) => createContextManager({
         extensionPaths: options.extensionPaths,
@@ -172,12 +180,31 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                 const context = await contextManager.getContext();
                 await configureExtensionSession(context, options.workspaceName, wsPort);
                 await wsClient.waitForClient(10_000);
+                if (extensionAutoReloadEnabled()) {
+                    extensionDevReloader = startExtensionDevReloader({
+                        stampPath: resolveExtensionBuildStampPath(options.extensionPaths),
+                        extensionPaths: options.extensionPaths,
+                        workspaceName: options.workspaceName,
+                        getContext: async () => await contextManager.getContext(),
+                        configureMainExtension: async (reloadContext) => {
+                            if (wsPort === null) {throw new Error('workspace action websocket port is unavailable');}
+                            await configureExtensionSession(reloadContext, options.workspaceName, wsPort);
+                        },
+                        startUrl: () => {
+                            if (wsPort === null) {return 'chrome://newtab/';}
+                            return buildStartUrl(options.workspaceName, wsPort);
+                        },
+                        onError: options.onError,
+                    });
+                }
                 status = 'running';
             })();
             try {
                 await startPromise;
             } catch (error) {
                 status = 'stopped';
+                await extensionDevReloader?.close().catch(() => undefined);
+                extensionDevReloader = null;
                 await wsClient?.close().catch(() => undefined);
                 wsClient = null;
                 await contextManager.close().catch(() => undefined);
@@ -196,6 +223,12 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                 if (status === 'stopped' && !wsClient && wsPort === null && cdpPort === null) {return;}
                 status = 'stopping';
                 let closeError: unknown;
+                try {
+                    await extensionDevReloader?.close();
+                } catch (error) {
+                    closeError = error;
+                }
+                extensionDevReloader = null;
                 try {
                     await wsClient?.close();
                 } catch (error) {

@@ -636,6 +636,41 @@ await log('router rejects non-request action type from panel ingress', async () 
     assert.equal(reply?.payload?.code, 'ERR_BAD_ARGS');
 });
 
+await log('router snapshot restores tab identity without reopening existing tabs', async () => {
+    globalThis.chrome = createChromeMock();
+    const firstSent = [];
+    const first = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            firstSent.push(action);
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return {ok: true, data: {tabName: 'tab-preserved'}};
+            }
+            return {ok: true, data: {}};
+        }),
+        onRefresh: () => undefined,
+    });
+    first.onCreated({id: 11, windowId: 7, url: 'https://example.com'});
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const snapshot = first.snapshotState();
+    assert.equal(snapshot.tabs[0]?.bindingName, 'tab-preserved');
+    assert.equal(snapshot.bindings[0]?.tabName, 'tab-preserved');
+
+    const secondSent = [];
+    const second = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            secondSent.push(action);
+            return {ok: true, data: {}};
+        }),
+        onRefresh: () => undefined,
+    });
+    second.restoreState(snapshot);
+    await second.bootstrapState();
+    assert.deepEqual(second.snapshotState(), snapshot);
+    assert.equal(secondSent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
+});
+
 await log('source guard: content/start_extension do not directly issue tab.init/tab.opened', async () => {
     const contentSrc = fs.readFileSync(new URL('../content/token_bridge.ts', import.meta.url), 'utf8');
     const startSrc = fs.readFileSync(new URL('../../../start_extension/src/entry/newtab.ts', import.meta.url), 'utf8');

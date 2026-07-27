@@ -36,6 +36,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     if (document.getElementById(ROOT_ID)) {
         return { unmount: () => undefined, scheduleRefresh: () => undefined };
     }
+    const manifest = chrome.runtime.getManifest();
+    const buildId = manifest.version_name || manifest.version;
+    const buildLabel = buildId.includes('-') ? buildId.slice(buildId.lastIndexOf('-') + 1) : buildId;
 
     const state = {
         activeView: 'Conn' as ViewKey,
@@ -72,6 +75,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       :host { all: initial; }
       .wrap { display:flex; flex-direction:column; align-items:flex-end; gap:8px; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
       .launchers { display:flex; align-items:center; gap:8px; }
+      .build-id { min-width:56px; height:24px; display:grid; place-items:center; border:1px solid #cbd5e1; border-radius:999px; padding:0 8px; background:rgba(255,255,255,.94); color:#475569; font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; box-shadow:0 4px 12px rgba(15,23,42,.10); }
       .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.22); }
       .annotate-launch { height:38px; padding:0 14px; border:none; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(37,99,235,.28); }
       .annotate-launch:hover { background:#1d4ed8; }
@@ -105,6 +109,10 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     annotateLaunch.className = 'annotate-launch';
     annotateLaunch.textContent = '标注页面';
     annotateLaunch.setAttribute('aria-label', '打开页面语义标注器');
+    const buildBadge = document.createElement('span');
+    buildBadge.className = 'build-id';
+    buildBadge.textContent = `#${buildLabel}`;
+    buildBadge.title = `当前扩展构建：${buildId}`;
     const ball = document.createElement('button');
     ball.className = 'ball';
     ball.textContent = 'RPA';
@@ -120,7 +128,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     footer.appendChild(out);
 
     panel.append(tabsBar, body, footer);
-    launchers.append(annotateLaunch, ball);
+    launchers.append(buildBadge, annotateLaunch, ball);
     wrap.append(launchers, panel);
     shadow.append(style, wrap);
     document.documentElement.appendChild(host);

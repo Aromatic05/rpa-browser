@@ -12,9 +12,24 @@ import { createWsClient, type WsClient } from '../actions/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 import { createActionBus } from '../background/action_bus.js';
 import { readSessionConfig, SESSION_CONFIG_KEYS } from '../background/session_config.js';
+import type {RouterStateSnapshot} from '../background/state.js';
 
 const log = createLogger('sw');
 const REFRESH_DEBOUNCE_MS = 120;
+const DEV_ROUTER_STATE_KEY = 'rpa.dev.router-state';
+
+type DevRuntimeBridge = {
+    buildId: string;
+    prepareReload: () => Promise<{
+        buildId: string;
+        tabCount: number;
+        snapshot: RouterStateSnapshot;
+    }>;
+};
+
+type DevWorkerGlobal = typeof globalThis & {
+    __rpaDevRuntime?: DevRuntimeBridge;
+};
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshInFlight = false;
@@ -107,6 +122,27 @@ const initializeRuntime = async () => {
         onRefresh: scheduleRefresh,
         logger: log,
     });
+
+    const storedDevState = await chrome.storage.local.get(DEV_ROUTER_STATE_KEY);
+    const routerSnapshot = storedDevState[DEV_ROUTER_STATE_KEY] as RouterStateSnapshot | undefined;
+    if (routerSnapshot && Array.isArray(routerSnapshot.tabs) && Array.isArray(routerSnapshot.bindings)) {
+        router.restoreState(routerSnapshot);
+        await chrome.storage.local.remove(DEV_ROUTER_STATE_KEY);
+        log.info('dev.reload.state-restored', {
+            tabCount: routerSnapshot.tabs.length,
+            bindingCount: routerSnapshot.bindings.length,
+        });
+    }
+
+    const buildId = chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version;
+    (globalThis as DevWorkerGlobal).__rpaDevRuntime = {
+        buildId,
+        prepareReload: async () => {
+            const snapshot = router!.snapshotState();
+            await chrome.storage.local.set({[DEV_ROUTER_STATE_KEY]: snapshot});
+            return {buildId, tabCount: snapshot.tabs.length, snapshot};
+        },
+    };
 
     const unsubscribeActionBus = actionBus.subscribe(
         ['**'],

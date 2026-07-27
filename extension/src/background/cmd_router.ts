@@ -371,5 +371,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         onStartup: life.onStartup,
         onInstalled: life.onInstalled,
         bootstrapState,
+        snapshotState: state.snapshot,
+        restoreState: state.restore,
     };
 };

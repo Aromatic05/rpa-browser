@@ -119,6 +119,7 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-popup-blocking',
+        '--enable-unsafe-extension-debugging',
         startUrl,
     ];
     const extensionPaths = (opts.extensionPaths || []).filter(Boolean);
