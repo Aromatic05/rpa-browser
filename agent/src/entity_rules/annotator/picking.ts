@@ -204,6 +204,69 @@ const matchByTagClassText = (
     return bestScore >= 2 ? bestNodeId : null;
 };
 
+type FingerprintHint = PickFingerprint['ancestors'][number];
+
+const scoreFingerprintHint = (
+    node: UnifiedNode,
+    hint: FingerprintHint,
+): {score: number; classMatched: boolean} => {
+    let score = 0;
+    const nodeClasses = new Set(classTokensOf(node));
+    const classMatched = hint.classTokens.some((token) => nodeClasses.has(normalizeLower(token)));
+    if (classMatched) {score += 8;}
+    const tag = nodeTagName(node);
+    if (tag && hint.tagName && tag === normalizeLower(hint.tagName)) {score += 2;}
+    const nodeText = normalizeCompactLower(node.name || getNodeContent(node));
+    const hintedText = normalizeCompactLower(hint.ariaLabel || hint.text);
+    if (hintedText && nodeText && (nodeText === hintedText || nodeText.includes(hintedText))) {
+        score += 3;
+    }
+    return {score, classMatched};
+};
+
+const matchFingerprintHint = (
+    snapshot: SnapshotResult,
+    hint: FingerprintHint,
+): string | null => {
+    let bestNodeId: string | null = null;
+    let bestScore = 0;
+    let bestClassMatched = false;
+    for (const node of Object.values(snapshot.nodeIndex)) {
+        const scored = scoreFingerprintHint(node, hint);
+        if (scored.score > bestScore) {
+            bestNodeId = node.id;
+            bestScore = scored.score;
+            bestClassMatched = scored.classMatched;
+        }
+    }
+    return bestNodeId && (bestClassMatched || bestScore >= 5) ? bestNodeId : null;
+};
+
+const matchByAncestorChain = (
+    snapshot: SnapshotResult,
+    fingerprint: PickFingerprint,
+): string | null => {
+    for (const ancestor of fingerprint.ancestors) {
+        const matched = matchFingerprintHint(snapshot, ancestor);
+        if (matched) {return matched;}
+    }
+    return null;
+};
+
+const augmentSnapshotBboxesFromFingerprint = (
+    snapshot: SnapshotResult,
+    fingerprint: PickFingerprint,
+): SnapshotResult => {
+    const bboxIndex = {...snapshot.bboxIndex};
+    for (const ancestor of fingerprint.ancestors) {
+        if (!ancestor.rect) {continue;}
+        const matchedNodeId = matchFingerprintHint(snapshot, ancestor);
+        if (!matchedNodeId) {continue;}
+        bboxIndex[matchedNodeId] = ancestor.rect;
+    }
+    return {...snapshot, bboxIndex};
+};
+
 export const resolveClickedNode = (
     snapshot: SnapshotResult,
     fingerprint: PickFingerprint,
@@ -233,9 +296,19 @@ export const resolveClickedNode = (
                 return { nodeId: up, reason: 'bbox', matchedNodeIds: [up] };
             }
         }
-        return { nodeId: bestNodeId, reason: 'bbox', matchedNodeIds: [bestNodeId] };
+        const ancestorFallback = matchByAncestorChain(snapshot, fingerprint);
+        if (ancestorFallback) {
+            return { nodeId: ancestorFallback, reason: 'fallback', matchedNodeIds: [ancestorFallback] };
+        }
+        if (bestNodeId !== snapshot.root.id) {
+            return { nodeId: bestNodeId, reason: 'bbox', matchedNodeIds: [bestNodeId] };
+        }
     }
 
+    const ancestorFallback = matchByAncestorChain(snapshot, fingerprint);
+    if (ancestorFallback) {
+        return { nodeId: ancestorFallback, reason: 'fallback', matchedNodeIds: [ancestorFallback] };
+    }
     const fallback = matchByTagClassText(snapshot, fingerprint);
     if (fallback) {
         return { nodeId: fallback, reason: 'fallback', matchedNodeIds: [fallback] };
@@ -737,6 +810,7 @@ const buildEntityCandidateChain = (
             chain.push({
                 level: directRoot.type === 'region' ? 'region' : 'group',
                 nodeId: cursor,
+                bbox: snapshot.bboxIndex[cursor],
                 kind: directRoot.kind,
                 role: normalizeText(node.role),
                 text: normalizeText(node.name || getNodeContent(node)),
@@ -759,6 +833,7 @@ const buildEntityCandidateChain = (
                 chain.push({
                     level: 'region',
                     nodeId: cursor,
+                    bbox: snapshot.bboxIndex[cursor],
                     kind,
                     role: normalizeText(node.role),
                     text: normalizeText(node.name || getNodeContent(node)),
@@ -787,6 +862,87 @@ const buildEntityCandidateChain = (
         candidate.enclosingEntityNodeId = candidate.nodeId;
     }
     return chain;
+};
+
+const GENERIC_CONTAINER_CLASSES = new Set([
+    'app',
+    'body',
+    'container',
+    'content',
+    'field',
+    'layout',
+    'main',
+    'page',
+    'root',
+    'row',
+    'wrapper',
+]);
+
+const chooseDomAncestorKind = (
+    ancestor: FingerprintHint,
+    roots: EntityRootEntry[],
+): EntityKind => {
+    const tag = normalizeLower(ancestor.tagName);
+    const hint = normalizeCompactLower([
+        ancestor.text,
+        ancestor.ariaLabel,
+        ...ancestor.classTokens,
+    ].filter(Boolean).join(' '));
+    if (tag === 'form') {return 'form';}
+    if (hint.includes('table') || hint.includes('列表') || hint.includes('结果')) {return 'table';}
+    if (hint.includes('list')) {return 'list';}
+    return chooseCompositeKind(roots);
+};
+
+const buildEntityCandidateChainFromFingerprint = (
+    snapshot: SnapshotResult,
+    fingerprint: PickFingerprint,
+): PickCandidate[] => {
+    const roots = listEntityRoots(snapshot.entityIndex);
+    const clickedArea = Math.max(1, fingerprint.rect.width * fingerprint.rect.height);
+    const candidates: PickCandidate[] = [];
+    const seenClasses = new Set<string>();
+    fingerprint.ancestors.forEach((ancestor, index) => {
+        const rect = ancestor.rect;
+        if (!rect || rect.width <= 0 || rect.height <= 0) {return;}
+        if (rect.width * rect.height < clickedArea * 1.4) {return;}
+        const classToken = ancestor.classTokens
+            .map((token) => normalizeLower(token))
+            .filter((token) => isStableClassToken(token) && !GENERIC_CONTAINER_CLASSES.has(token))
+            .sort((left, right) => right.length - left.length)[0];
+        if (!classToken || seenClasses.has(classToken)) {return;}
+        const tag = normalizeLower(ancestor.tagName);
+        if (!['article', 'div', 'form', 'section'].includes(tag)) {return;}
+        seenClasses.add(classToken);
+        const nodeId = `dom-container:${classToken}`;
+        const kind = chooseDomAncestorKind(ancestor, roots);
+        candidates.push({
+            level: tag === 'form' ? 'group' : 'region',
+            nodeId,
+            bbox: rect,
+            kind,
+            role: normalizeText(ancestor.role),
+            text: normalizeText(ancestor.ariaLabel || ancestor.text),
+            entityRef: {
+                entityId: nodeId,
+                nodeId,
+                kind,
+                type: 'node',
+            },
+            score: 100 - index,
+            matchCount: 1,
+            matchedNodeIds: [],
+            proposedTargets: [{classContains: classToken}],
+            stabilityHint: 'stable',
+            expect: 'unique',
+            enclosingEntityNodeId: nodeId,
+        });
+    });
+    return candidates.sort((left, right) => {
+        const leftArea = (left.bbox?.width || 0) * (left.bbox?.height || 0);
+        const rightArea = (right.bbox?.width || 0) * (right.bbox?.height || 0);
+        return leftArea - rightArea;
+    });
 };
 
 export const buildCandidateChain = (
@@ -822,6 +978,7 @@ export const buildCandidateChain = (
             const candidate: PickCandidate = {
                 level: classification.level,
                 nodeId: cursor,
+                bbox: snapshot.bboxIndex[cursor],
                 role: normalizeText(node.role),
                 text: normalizeText(node.name || getNodeContent(node)),
                 fieldKey: classification.fieldKey,
@@ -880,10 +1037,17 @@ export const pickFromFingerprint = (
     fingerprint: PickFingerprint,
     purpose: PickPurpose = 'annotation',
 ): { candidateChain: PickCandidate[]; matchedNodeIds: string[]; resolution: PickResolution } => {
-    const resolution = resolveClickedNode(snapshot, fingerprint);
+    const enrichedSnapshot = augmentSnapshotBboxesFromFingerprint(snapshot, fingerprint);
+    const resolution = resolveClickedNode(enrichedSnapshot, fingerprint);
     const candidateChain = purpose === 'entity'
-        ? buildEntityCandidateChain(snapshot, resolution.nodeId)
-        : buildCandidateChain(snapshot, finalEntityView, resolution.nodeId);
+        ? (() => {
+            const snapshotCandidates = buildEntityCandidateChain(enrichedSnapshot, resolution.nodeId);
+            const browserCandidates = buildEntityCandidateChainFromFingerprint(enrichedSnapshot, fingerprint);
+            return browserCandidates.length > snapshotCandidates.length
+                ? browserCandidates
+                : snapshotCandidates;
+        })()
+        : buildCandidateChain(enrichedSnapshot, finalEntityView, resolution.nodeId);
     return {
         candidateChain,
         matchedNodeIds: resolution.matchedNodeIds,

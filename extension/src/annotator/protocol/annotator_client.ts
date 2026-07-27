@@ -4,6 +4,7 @@ import type {
     AnnotatorPickResult,
     AnnotatorRecognizeResult,
     AnnotatorSaveResult,
+    AnnotatorVisualizeResult,
     CanvasDraft,
     PickFingerprint,
     PickPurpose,
@@ -23,6 +24,7 @@ export type AnnotatorClient = {
     open: (payload: { workspaceName: string; tabName: string; url: string }) => Promise<AnnotatorOpenResult>;
     pick: (payload: { fingerprint: PickFingerprint; purpose: PickPurpose }) => Promise<AnnotatorPickResult>;
     recognize: (payload: { canvasDraft?: CanvasDraft | null }) => Promise<AnnotatorRecognizeResult>;
+    visualize: (payload: {canvasDraft: CanvasDraft}) => Promise<AnnotatorVisualizeResult>;
     check: (payload: { canvasDraft: CanvasDraft }) => Promise<AnnotatorCheckResult>;
     save: (payload: {
         canvasDraft: CanvasDraft;
@@ -53,6 +55,9 @@ export const createAnnotatorClient = (dispatch: AnnotatorDispatch): AnnotatorCli
     ),
     recognize: (payload) => unwrap<AnnotatorRecognizeResult>(
         dispatch('entity_rules.annotator.recognize', payload as unknown as Record<string, unknown>),
+    ),
+    visualize: (payload) => unwrap<AnnotatorVisualizeResult>(
+        dispatch('entity_rules.annotator.visualize', payload as unknown as Record<string, unknown>),
     ),
     check: (payload) => unwrap<AnnotatorCheckResult>(
         dispatch('entity_rules.annotator.check', payload as unknown as Record<string, unknown>),

@@ -73,7 +73,8 @@ const openState = (): AnnotatorState => openLoaded(initialState(), makeOpenResul
 const mockClient = (overrides: Partial<AnnotatorClient> = {}): AnnotatorClient => ({
     open: async () => makeOpenResult(),
     pick: async () => ({ candidateChain: [], matchedNodeIds: [], resolution: { nodeId: null, reason: 'none', matchedNodeIds: [] } }),
-    recognize: async () => ({ canvasDraft: makeDraft('refreshed'), recognized: [] }),
+    recognize: async () => ({ canvasDraft: makeDraft('refreshed'), recognized: [], visualTargetRefs: [] }),
+    visualize: async () => ({visualTargetRefs: []}),
     check: async () => ({ results: [], stale: false }),
     save: async () => ({ profileName: 'profile-a', artifactRevision: 'rev-002', saved: true }),
     ...overrides,
@@ -178,13 +179,27 @@ test('runRecognizeLoop applies protective-merged draft via draftEdited so it is 
     const s = draftEdited(openState(), makeRecognizedDraft('profile-a'));
     const before = s.canvasDraft!;
     const merged = makeRecognizedDraft('refreshed');
-    const client = mockClient({ recognize: async () => ({ canvasDraft: merged, recognized: [] }) });
+    const visualTargetRefs = [{
+        entityId: 'e0',
+        nodeId: 'customer-form',
+        role: 'entity' as const,
+        canvasAnnotationId: 'entity:e0',
+        bbox: {x: 10, y: 20, width: 300, height: 180},
+    }];
+    const client = mockClient({
+        recognize: async () => ({canvasDraft: merged, recognized: [], visualTargetRefs}),
+    });
     const next = await runRecognizeLoop(s, client);
     assert.equal(next.canvasDraft?.profileName, 'profile-a');
     assert.equal(next.canvasDraft?.page.urlPattern, '^http://test/page(?:[/?#]|$)');
     assert.equal(next.dirty, true);
     assert.equal(next.history.past.at(-1), before, 'previous draft retained for undo');
     assert.equal(next.latestCheck, null);
+    assert.deepEqual(
+        next.visualBindings,
+        visualTargetRefs,
+        'unsaved recognition geometry is immediately available to the canvas',
+    );
 });
 
 test('runRecognizeLoop refuses to recognize before an entity scope is confirmed', async () => {
@@ -192,7 +207,7 @@ test('runRecognizeLoop refuses to recognize before an entity scope is confirmed'
     let calls = 0;
     const client = mockClient({recognize: async () => {
         calls += 1;
-        return {canvasDraft: makeRecognizedDraft(''), recognized: []};
+        return {canvasDraft: makeRecognizedDraft(''), recognized: [], visualTargetRefs: []};
     }});
     const next = await runRecognizeLoop(empty, client);
     assert.equal(calls, 0);

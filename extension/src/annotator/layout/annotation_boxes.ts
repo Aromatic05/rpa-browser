@@ -257,6 +257,7 @@ export const annotationLabelTarget = (
     const firstBox = annotationBox.boxes[0];
     return {
         annotationId: annotationBox.annotationId,
+        kind: annotationBox.kind,
         targetCenter: center,
         targetBox: firstBox,
     };

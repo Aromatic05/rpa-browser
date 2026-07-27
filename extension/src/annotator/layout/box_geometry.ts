@@ -4,15 +4,20 @@ export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; width: number; height: number };
 export type ViewportScroll = { x: number; y: number };
 
-export const computeBoxRect = (
+/**
+ * Snapshot boxes come from getBoundingClientRect(), so they are already expressed
+ * in CSS viewport pixels. Only the scroll delta since that snapshot should be
+ * projected locally while a fresh visual binding request is in flight.
+ */
+export const projectViewportRect = (
     targetBox: PickRect,
-    scroll: ViewportScroll,
-    viewportZoom: number,
+    capturedScroll: ViewportScroll,
+    currentScroll: ViewportScroll,
 ): Rect => ({
-    x: (targetBox.x - scroll.x) * viewportZoom,
-    y: (targetBox.y - scroll.y) * viewportZoom,
-    width: targetBox.width * viewportZoom,
-    height: targetBox.height * viewportZoom,
+    x: targetBox.x - (currentScroll.x - capturedScroll.x),
+    y: targetBox.y - (currentScroll.y - capturedScroll.y),
+    width: targetBox.width,
+    height: targetBox.height,
 });
 
 export const computeCenter = (rect: Rect): Point => ({

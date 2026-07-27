@@ -8,6 +8,73 @@ import type {
 
 export type AnnotatorProductStage = 'scope' | 'recognize' | 'review' | 'edit';
 
+export type CanvasPresentation = {
+    dimOutsideEntity: boolean;
+    showEntity: boolean;
+    showObjects: boolean;
+    showLabels: boolean;
+    showEditor: boolean;
+};
+
+export const deriveCanvasPresentation = (
+    stage: AnnotatorProductStage,
+    pickMode: boolean,
+    hasEntity: boolean,
+): CanvasPresentation => {
+    if (!hasEntity || stage === 'scope') {
+        return {
+            dimOutsideEntity: false,
+            showEntity: false,
+            showObjects: false,
+            showLabels: false,
+            showEditor: false,
+        };
+    }
+    const inspectable = !pickMode && (stage === 'review' || stage === 'edit');
+    return {
+        dimOutsideEntity: true,
+        showEntity: true,
+        showObjects: inspectable,
+        showLabels: inspectable,
+        showEditor: inspectable,
+    };
+};
+
+const KIND_COLOR: Record<AnnotationBox['kind'], string> = {
+    entity: '#2563eb',
+    field: '#16a34a',
+    action: '#ea580c',
+    column: '#7c3aed',
+    pagination: '#0f766e',
+};
+
+export type AnnotationVisualState = {
+    status: 'inferred' | 'confirmed' | 'error' | 'ignored';
+    dashed: boolean;
+    color: string;
+};
+
+export const annotationVisualState = (
+    box: AnnotationBox,
+    check: CheckResultByAnnotation | null,
+): AnnotationVisualState => {
+    if (box.disposition === 'ignored') {
+        return {status: 'ignored', dashed: true, color: '#94a3b8'};
+    }
+    const broken = check && (
+        check.status === 'missing' ||
+        check.status === 'invalid' ||
+        (check.status === 'multiple' && check.expected === 'unique')
+    );
+    if (broken) {
+        return {status: 'error', dashed: false, color: '#dc2626'};
+    }
+    if (box.origin === 'inferred') {
+        return {status: 'inferred', dashed: true, color: KIND_COLOR[box.kind]};
+    }
+    return {status: 'confirmed', dashed: false, color: KIND_COLOR[box.kind]};
+};
+
 export const deriveProductStage = (input: {
     hasDraft: boolean;
     hasObjects: boolean;

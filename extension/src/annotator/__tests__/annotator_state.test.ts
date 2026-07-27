@@ -99,6 +99,17 @@ test('pickReceived updates currentEntityId/currentAnnotationId and stays in edit
     assert.equal(s.mode, 'editing');
 });
 
+test('pickReceived accepts explicit null to clear a selected annotation or entity', () => {
+    let s = openLoaded(initialState(), makeOpenResult());
+    s = pickReceived(s, {entityId: 'ent-1', annotationId: 'ann-1'});
+    s = pickReceived(s, {annotationId: null});
+    assert.equal(s.currentEntityId, 'ent-1');
+    assert.equal(s.currentAnnotationId, null);
+    s = pickReceived(s, {entityId: null});
+    assert.equal(s.currentEntityId, null);
+    assert.equal(s.currentAnnotationId, null);
+});
+
 test('checkCompleted sets latestCheck and stale flag', () => {
     let s = openLoaded(initialState(), makeOpenResult());
     const results: CheckResultByAnnotation[] = [

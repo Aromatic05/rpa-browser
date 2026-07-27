@@ -9,7 +9,7 @@ import { createWorkspaceEntityRulesProvider } from '../provider';
 import { createWorkspaceEntityRulesRuntime, type WorkspaceEntityRulesRuntime } from '../runtime';
 import { recognizeEntities } from './recognize';
 import { pickFromFingerprint } from './picking';
-import { buildOpenResult, runCheck } from './pipeline';
+import { buildDraftVisualTargetRefs, buildOpenResult, runCheck } from './pipeline';
 import { compileCanvasDraft } from './compile';
 import { evaluateSaveGate, type SaveGateBlockCode } from './save_gate';
 import { computeArtifactRevision, isRevisionConflict } from './revision';
@@ -104,7 +104,31 @@ const handleRecognize = async (ctx: HandlerContext): Promise<Record<string, unkn
         'annotator.recognize',
     );
     const result = recognizeEntities(fresh.snapshot, fresh.finalEntityView, existingDraft);
-    return result as unknown as Record<string, unknown>;
+    return {
+        ...result,
+        visualTargetRefs: buildDraftVisualTargetRefs(
+            fresh.snapshot,
+            fresh.finalEntityView,
+            result.canvasDraft,
+        ),
+    } as unknown as Record<string, unknown>;
+};
+
+const handleVisualize = async (ctx: HandlerContext): Promise<Record<string, unknown>> => {
+    const {workspace, deps, payload} = ctx;
+    const draft = requireCanvasDraft(payload);
+    const fresh = await ensureFreshEntityContext(
+        deps.runStepsDeps,
+        workspace.name,
+        'annotator.visualize',
+    );
+    return {
+        visualTargetRefs: buildDraftVisualTargetRefs(
+            fresh.snapshot,
+            fresh.finalEntityView,
+            draft,
+        ),
+    };
 };
 
 const handleCheck = async (ctx: HandlerContext): Promise<Record<string, unknown>> => {
@@ -206,6 +230,7 @@ const HANDLERS: Record<string, (ctx: HandlerContext) => Promise<Record<string, u
     'entity_rules.annotator.open': handleOpen,
     'entity_rules.annotator.pick': handlePick,
     'entity_rules.annotator.recognize': handleRecognize,
+    'entity_rules.annotator.visualize': handleVisualize,
     'entity_rules.annotator.check': handleCheck,
     'entity_rules.annotator.save': handleSave,
 };

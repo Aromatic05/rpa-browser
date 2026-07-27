@@ -49,6 +49,12 @@ const cloneDraft = (draft: CanvasDraft): CanvasDraft => ({
     entities: draft.entities.map((entity) => ({
         ...entity,
         target: {...entity.target},
+        ...(entity.primaryKey ? {
+            primaryKey: {
+                fieldKey: entity.primaryKey.fieldKey,
+                ...(entity.primaryKey.columns ? {columns: [...entity.primaryKey.columns]} : {}),
+            },
+        } : {}),
         annotations: entity.annotations.map((annotation) => ({
             ...annotation,
             target: {...annotation.target},
@@ -163,7 +169,39 @@ export const updateColumn = (
     if (!entity) {return next;}
     const index = entity.columns.findIndex((column) => column.id === columnId);
     if (index === -1) {return next;}
+    const previousFieldKey = entity.columns[index].fieldKey;
     entity.columns[index] = {...entity.columns[index], ...patch, origin: 'confirmed'};
+    const nextFieldKey = entity.columns[index].fieldKey;
+    if (entity.primaryKey && previousFieldKey !== nextFieldKey) {
+        if (entity.primaryKey.fieldKey === previousFieldKey) {
+            entity.primaryKey.fieldKey = nextFieldKey;
+        }
+        if (entity.primaryKey.columns) {
+            entity.primaryKey.columns = entity.primaryKey.columns.map((fieldKey) =>
+                fieldKey === previousFieldKey ? nextFieldKey : fieldKey,
+            );
+        }
+    }
+    return next;
+};
+
+export const setColumnPrimaryKey = (
+    draft: CanvasDraft,
+    entityId: string,
+    columnId: string,
+    selected: boolean,
+): CanvasDraft => {
+    const next = cloneDraft(draft);
+    const entity = next.entities[findEntityIndex(next, entityId)];
+    if (!entity || entity.kind !== 'table') {return next;}
+    const column = entity.columns.find((item) => item.id === columnId && item.disposition === 'active');
+    if (!column) {return next;}
+    if (selected) {
+        entity.primaryKey = {fieldKey: column.fieldKey};
+    } else if (entity.primaryKey?.fieldKey === column.fieldKey) {
+        delete entity.primaryKey;
+    }
+    entity.origin = 'confirmed';
     return next;
 };
 
@@ -243,7 +281,14 @@ export const deleteVisualItem = (
     const entity = next.entities[entityIndex];
     const columnIndex = entity.columns.findIndex((column) => column.id === visualItemId);
     if (columnIndex !== -1) {
+        const removedFieldKey = entity.columns[columnIndex].fieldKey;
         entity.columns.splice(columnIndex, 1);
+        if (
+            entity.primaryKey?.fieldKey === removedFieldKey ||
+            entity.primaryKey?.columns?.includes(removedFieldKey)
+        ) {
+            delete entity.primaryKey;
+        }
         return next;
     }
     for (const column of entity.columns) {

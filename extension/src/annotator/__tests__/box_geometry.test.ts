@@ -1,27 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    computeBoxRect,
     computeCenter,
+    projectViewportRect,
     unionRect,
 } from '../layout/box_geometry.js';
 
-test('computeBoxRect subtracts scroll offset and applies zoom', () => {
-    const rect = computeBoxRect(
+test('projectViewportRect keeps fresh DOMRect coordinates unchanged', () => {
+    const rect = projectViewportRect(
         {x: 200, y: 400, width: 100, height: 50},
         {x: 50, y: 100},
-        2,
+        {x: 50, y: 100},
     );
-    assert.deepEqual(rect, {x: 300, y: 600, width: 200, height: 100});
+    assert.deepEqual(rect, {x: 200, y: 400, width: 100, height: 50});
 });
 
-test('computeBoxRect with zero scroll and unit zoom is identity', () => {
-    const rect = computeBoxRect(
+test('projectViewportRect shifts stale viewport boxes by scroll delta only', () => {
+    const rect = projectViewportRect(
         {x: 12, y: 34, width: 56, height: 78},
-        {x: 0, y: 0},
-        1,
+        {x: 0, y: 100},
+        {x: 20, y: 260},
     );
-    assert.deepEqual(rect, {x: 12, y: 34, width: 56, height: 78});
+    assert.deepEqual(rect, {x: -8, y: -126, width: 56, height: 78});
 });
 
 test('computeCenter returns midpoint of rect', () => {

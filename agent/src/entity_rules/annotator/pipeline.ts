@@ -365,6 +365,37 @@ const buildVisualTargetRefs = (
     return refs;
 };
 
+export const buildDraftVisualTargetRefs = (
+    snapshot: SnapshotResult,
+    finalEntityView: FinalEntityView | undefined,
+    canvasDraft: CanvasDraft,
+): VisualTargetRef[] => {
+    const compileResult = compileCanvasDraft(canvasDraft);
+    if (!compileResult.ok) {
+        return buildVisualTargetRefs(finalEntityView, {snapshot, canvasDraft});
+    }
+    const validated = validateEntityRules(
+        compileResult.artifact.name,
+        compileResult.artifact.match,
+        compileResult.artifact.annotation,
+    );
+    if (!validated.ok) {
+        return buildVisualTargetRefs(finalEntityView, {snapshot, canvasDraft});
+    }
+    const bindings = matchEntityRules(validated.bundle, {
+        root: snapshot.root,
+        entityIndex: snapshot.entityIndex,
+        nodeIndex: snapshot.nodeIndex,
+    });
+    return buildVisualTargetRefs(finalEntityView, {
+        snapshot,
+        canvasDraft,
+        ruleIdByAnnotationId: compileResult.ruleIdByAnnotationId,
+        ruleIdByEntityId: compileResult.ruleIdByEntityId,
+        bindings,
+    });
+};
+
 export const buildOpenResult = (ctx: OpenContext): AnnotatorOpenResult => {
     const pageKind = inferPageKind(ctx.finalEntityView);
     const pageUrl = ctx.pageIdentity.url;

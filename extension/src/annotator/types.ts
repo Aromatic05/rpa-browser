@@ -131,6 +131,7 @@ export type PickAncestorFingerprint = {
     role?: string;
     text?: string;
     ariaLabel?: string;
+    rect?: PickRect;
 };
 
 export type PickFingerprint = {
@@ -159,6 +160,7 @@ export type PickPurpose = 'entity' | 'annotation';
 export type PickCandidate = {
     level: PickCandidateLevel;
     nodeId: string;
+    bbox?: PickRect;
     kind?: EntityKind;
     role?: string;
     text?: string;
@@ -216,6 +218,11 @@ export type AnnotatorPickResult = {
 export type AnnotatorRecognizeResult = {
     canvasDraft: CanvasDraft;
     recognized: RecognizedItem[];
+    visualTargetRefs: VisualTargetRef[];
+};
+
+export type AnnotatorVisualizeResult = {
+    visualTargetRefs: VisualTargetRef[];
 };
 
 export type AnnotatorCheckResult = {

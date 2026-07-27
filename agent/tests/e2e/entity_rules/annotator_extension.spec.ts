@@ -1,11 +1,11 @@
-import { test, expect } from '@playwright/test';
+import {test, expect} from '@playwright/test';
 import crypto from 'node:crypto';
-import { dispatch, runStep, startAgent } from '../../helpers/e2e_multitab_helper';
-import { startFixtureServer } from '../../helpers/server';
-import { startMockApp } from '../../integration/entity_rules/verify/helper';
-import { loadEntityRuleArtifact } from '../../integration/entity_rules/profile_fixture';
-import type { Action } from '../../../src/actions/action_protocol';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import {dispatch, runStep, startAgent} from '../../helpers/e2e_multitab_helper';
+import {startFixtureServer} from '../../helpers/server';
+import {startMockApp} from '../../integration/entity_rules/verify/helper';
+import {loadEntityRuleArtifact} from '../../integration/entity_rules/profile_fixture';
+import type {Action} from '../../../src/actions/action_protocol';
+import type {StepUnion} from '../../../src/runner/steps/types';
 
 const action = (
     type: string,
@@ -31,841 +31,508 @@ const controlAction = (type: string, payload: Record<string, unknown> = {}): Act
 const step = <T extends StepUnion['name']>(
     id: string,
     name: T,
-    args: Extract<StepUnion, { name: T }>['args'],
-): Extract<StepUnion, { name: T }> => ({ id, name, args } as Extract<StepUnion, { name: T }>);
+    args: Extract<StepUnion, {name: T}>['args'],
+): Extract<StepUnion, {name: T}> => ({id, name, args} as Extract<StepUnion, {name: T}>);
 
-test('requires entity selection before recognizing and saving internal annotations', async ({}, testInfo) => {
+type AgentHandle = Awaited<ReturnType<typeof startAgent>>;
+type Point = {x: number; y: number};
+
+const createWorkspacePage = async (
+    agent: AgentHandle,
+    workspaceName: string,
+    url: string,
+): Promise<string> => {
+    expect(
+        (await dispatch(agent.endpoint, controlAction('workspace.create', {workspaceName}))).type,
+    ).toBe('workspace.create.result');
+    const before = await dispatch(agent.endpoint, action('tab.list', workspaceName));
+    const beforeNames = new Set(
+        ((before.payload as {tabs?: Array<{tabName: string}>})?.tabs || []).map((tab) => tab.tabName),
+    );
+    expect((await dispatch(agent.endpoint, action('tab.open', workspaceName))).type).toBe('tab.open.result');
+
+    let tabName = '';
+    await expect.poll(async () => {
+        const listed = await dispatch(agent.endpoint, action('tab.list', workspaceName));
+        tabName = ((listed.payload as {tabs?: Array<{tabName: string}>})?.tabs || [])
+            .find((tab) => !beforeNames.has(tab.tabName))?.tabName || '';
+        return tabName;
+    }, {timeout: 20_000}).not.toBe('');
+
+    expect((await runStep(
+        agent.endpoint,
+        workspaceName,
+        step(`switch-${Date.now()}`, 'browser.switch_tab', {tabName}),
+    )).ok).toBe(true);
+    expect((await runStep(
+        agent.endpoint,
+        workspaceName,
+        step(`goto-${Date.now()}`, 'browser.goto', {url}),
+    )).ok).toBe(true);
+    return tabName;
+};
+
+const evaluate = async <T>(
+    agent: AgentHandle,
+    workspaceName: string,
+    expression: string,
+): Promise<T> => (
+    await runStep(
+        agent.endpoint,
+        workspaceName,
+        step(`evaluate-${Date.now()}-${crypto.randomUUID()}`, 'browser.evaluate', {expression}),
+    )
+).data as T;
+
+const click = async (
+    agent: AgentHandle,
+    workspaceName: string,
+    point: Point,
+): Promise<void> => {
+    expect((await runStep(
+        agent.endpoint,
+        workspaceName,
+        step(`click-${Date.now()}-${crypto.randomUUID()}`, 'browser.mouse', {
+            action: 'click',
+            ...point,
+        }),
+    )).ok).toBe(true);
+};
+
+const shadowButtonPoint = async (
+    agent: AgentHandle,
+    workspaceName: string,
+    selector: string,
+): Promise<Point> => {
+    const point = await evaluate<Point | null>(agent, workspaceName, `
+        const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+        const button = root?.querySelector(${JSON.stringify(selector)});
+        if (!(button instanceof HTMLButtonElement) || button.disabled) return null;
+        const rect = button.getBoundingClientRect();
+        return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    `);
+    expect(point, `${selector} should be visible and enabled`).not.toBeNull();
+    return point!;
+};
+
+const pageElementPoint = async (
+    agent: AgentHandle,
+    workspaceName: string,
+    selector: string,
+    text?: string,
+): Promise<Point> => {
+    const point = await evaluate<Point | null>(agent, workspaceName, `
+        const candidates = [...document.querySelectorAll(${JSON.stringify(selector)})];
+        const element = ${text ? `candidates.find((item) => (item.textContent || '').replace(/\\s+/g, '').includes(${JSON.stringify(text)}))` : 'candidates[0]'};
+        if (!(element instanceof HTMLElement)) return null;
+        element.scrollIntoView({block: 'center', inline: 'center'});
+        const rect = element.getBoundingClientRect();
+        return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    `);
+    expect(point, `${selector}${text ? ` containing ${text}` : ''} should be visible`).not.toBeNull();
+    return point!;
+};
+
+const openAnnotator = async (agent: AgentHandle, workspaceName: string): Promise<void> => {
+    let point: Point | null = null;
+    await expect.poll(async () => {
+        point = await evaluate<Point | null>(agent, workspaceName, `
+            const button = document.querySelector('#rpa-floating-panel')?.shadowRoot
+                ?.querySelector('.annotate-launch');
+            if (!(button instanceof HTMLButtonElement)) return null;
+            const rect = button.getBoundingClientRect();
+            return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+        `);
+        return point;
+    }, {timeout: 20_000}).not.toBeNull();
+    await click(agent, workspaceName, point!);
+};
+
+const closeEditCard = async (agent: AgentHandle, workspaceName: string): Promise<void> => {
+    await click(agent, workspaceName, await shadowButtonPoint(
+        agent,
+        workspaceName,
+        '.annotator-edit-card .close-card',
+    ));
+    await expect.poll(async () => await evaluate<boolean>(agent, workspaceName, `
+        return !document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+            ?.querySelector('.annotator-edit-card');
+    `), {timeout: 10_000}).toBe(true);
+};
+
+test('selects an entity, recognizes presets automatically, and edits the page directly', async ({}, testInfo) => {
     testInfo.setTimeout(180_000);
     const fixture = await startFixtureServer();
     const agent = await startAgent();
     const workspaceName = `annotator-entity-first-${Date.now()}`;
     try {
-        expect(
-            (await dispatch(agent.endpoint, controlAction('workspace.create', { workspaceName })))
-                .type,
-        ).toBe('workspace.create.result');
-        const before = await dispatch(agent.endpoint, action('tab.list', workspaceName));
-        const beforeNames = new Set(
-            ((before.payload as { tabs?: Array<{ tabName: string }> })?.tabs || []).map(
-                (tab) => tab.tabName,
-            ),
+        await createWorkspacePage(
+            agent,
+            workspaceName,
+            `${fixture.baseURL}/workflow/order_query.html`,
         );
-        expect((await dispatch(agent.endpoint, action('tab.open', workspaceName))).type).toBe(
-            'tab.open.result',
-        );
-        let tabName = '';
-        await expect
-            .poll(
-                async () => {
-                    const listed = await dispatch(
-                        agent.endpoint,
-                        action('tab.list', workspaceName),
-                    );
-                    tabName =
-                        (
-                            (listed.payload as { tabs?: Array<{ tabName: string }> })?.tabs || []
-                        ).find((tab) => !beforeNames.has(tab.tabName))?.tabName || '';
-                    return tabName;
-                },
-                { timeout: 10_000 },
-            )
-            .toBeTruthy();
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step('switch', 'browser.switch_tab', { tabName }),
-                )
-            ).ok,
-        ).toBe(true);
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step('goto', 'browser.goto', {
-                        url: `${fixture.baseURL}/workflow/order_query.html`,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`fixture-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                return {
-                    rows: document.querySelectorAll('.orders-results tbody tr').length,
-                    module: Boolean(document.querySelector('.orders-module')),
-                };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 20_000 },
-            )
-            .toEqual({ rows: 2, module: true });
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return {
+                rows: document.querySelectorAll('.orders-results tbody tr').length,
+                module: Boolean(document.querySelector('.orders-module')),
+            };
+        `), {timeout: 20_000}).toEqual({rows: 2, module: true});
 
-        const shadowButtonPoint = async (selector: string): Promise<{ x: number; y: number }> => {
-            const point = (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`shadow-button-${Date.now()}`, 'browser.evaluate', {
-                        expression: `
-                    const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                    const button = root?.querySelector(${JSON.stringify(selector)});
-                    if (!(button instanceof HTMLButtonElement) || button.disabled) return null;
-                    const rect = button.getBoundingClientRect();
-                    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
-                `,
-                    }),
-                )
-            ).data as { x: number; y: number } | null;
-            expect(point, `${selector} should be enabled`).not.toBeNull();
-            return point!;
-        };
-
-        let launcherPoint: {x: number; y: number} | null = null;
-        await expect.poll(async () => {
-            launcherPoint = (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`launcher-${Date.now()}`, 'browser.evaluate', {
-                        expression: `
-                    const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
-                    const button = root?.querySelector('.annotate-launch');
-                    if (!(button instanceof HTMLButtonElement)) return null;
-                    const rect = button.getBoundingClientRect();
-                    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
-                `,
-                    }),
-                )
-            ).data as {x: number; y: number} | null;
-            return launcherPoint;
-        }, {timeout: 20_000}).not.toBeNull();
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`launch-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...launcherPoint!,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
-
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`empty-state-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const shell = root?.querySelector('.annotator-shell');
-                return {
-                    mode: shell?.getAttribute('data-annotator-mode'),
-                    draft: shell?.getAttribute('data-annotator-draft'),
-                    selectEntity: Boolean(root?.querySelector('[data-annotator-action="select-entity"]')),
-                    recognize: Boolean(root?.querySelector('[data-annotator-action="recognize"]')),
-                };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 20_000 },
-            )
-            .toEqual({
-                mode: 'editing',
-                draft: 'empty',
-                selectEntity: true,
-                recognize: false,
-            });
-        const selectEntityPoint = await shadowButtonPoint(
-            '[data-annotator-action="select-entity"]',
-        );
-        const selectHit = (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`select-hit-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const button = root?.querySelector('[data-annotator-action="select-entity"]');
-                const rect = button?.getBoundingClientRect();
-                const x = ${selectEntityPoint.x};
-                const y = ${selectEntityPoint.y};
-                const shadowHit = root?.elementFromPoint?.(x, y);
-                const docHit = document.elementFromPoint(x, y);
-                return {
-                    shadowTag: shadowHit?.tagName || '',
-                    shadowText: shadowHit?.textContent?.replace(/\\s+/g, ' ').trim() || '',
-                    shadowAction: shadowHit?.closest?.('button')?.getAttribute('data-annotator-action') || '',
-                    docId: docHit?.id || '',
-                    hostPointer: getComputedStyle(document.querySelector('#rpa-entity-annotator-host')).pointerEvents,
-                    rect: rect ? {left: rect.left, top: rect.top, width: rect.width, height: rect.height} : null,
-                    viewport: {width: innerWidth, height: innerHeight},
-                };
-            `,
-                }),
-            )
-        ).data;
-        expect(selectHit).toEqual({
-            shadowTag: expect.any(String),
-            shadowText: expect.stringContaining('在页面中选择区域'),
-            shadowAction: 'select-entity',
-            docId: 'rpa-entity-annotator-host',
-            hostPointer: 'auto',
-            rect: expect.any(Object),
-            viewport: expect.any(Object),
+        await openAnnotator(agent, workspaceName);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const host = document.querySelector('#rpa-entity-annotator-host');
+            const root = host?.shadowRoot;
+            const shell = root?.querySelector('.annotator-shell');
+            return {
+                mode: shell?.getAttribute('data-annotator-mode') || '',
+                draft: shell?.getAttribute('data-annotator-draft') || '',
+                selectText: root?.querySelector('[data-annotator-action="select-entity"]')
+                    ?.textContent?.trim() || '',
+                recognizeButton: Boolean(root?.querySelector('[data-annotator-action="recognize"]')),
+                hostPointer: host ? getComputedStyle(host).pointerEvents : '',
+            };
+        `), {timeout: 20_000}).toEqual({
+            mode: 'editing',
+            draft: 'empty',
+            selectText: '开始选择',
+            recognizeButton: false,
+            hostPointer: 'none',
         });
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`select-entity-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...selectEntityPoint,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
 
-        await expect.poll(async () => (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`pick-mode-active-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                return {
-                    pickMode: root?.querySelector('.annotator-shell')?.getAttribute('data-pick-mode') || '',
-                    guide: Boolean(root?.querySelector('.pick-guide')),
-                };
-            `,
-                }),
-            )
-        ).data, {timeout: 10_000}).toEqual({pickMode: 'active', guide: true});
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '[data-annotator-action="select-entity"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return root?.querySelector('.annotator-shell')?.getAttribute('data-pick-mode') || '';
+        `), {timeout: 10_000}).toBe('active');
 
-        const tableCellPoint = (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`table-cell-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                const cell = document.querySelector('.orders-results tbody td');
-                if (!(cell instanceof HTMLElement)) return null;
-                const rect = cell.getBoundingClientRect();
-                return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
-            `,
-                }),
-            )
-        ).data as { x: number; y: number } | null;
-        expect(tableCellPoint).not.toBeNull();
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`pick-entity-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...tableCellPoint!,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
+        await click(agent, workspaceName, await pageElementPoint(
+            agent,
+            workspaceName,
+            '.orders-results tbody td',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return {
+                open: Boolean(root?.querySelector('.annotator-pick-overlay')),
+                text: root?.querySelector('.annotator-pick-overlay')?.textContent
+                    ?.replace(/\\s+/g, ' ').trim() || '',
+            };
+        `), {timeout: 20_000}).toEqual({
+            open: true,
+            text: expect.stringContaining('订单查询列表'),
+        });
 
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`entity-candidate-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const overlay = root?.querySelector('.annotator-pick-overlay');
-                return {
-                    open: Boolean(overlay),
-                    text: overlay?.textContent?.replace(/\\s+/g, ' ').trim() || '',
-                    guide: Boolean(root?.querySelector('.pick-guide')),
-                    error: root?.querySelector('.product-error p')?.textContent?.trim() || '',
-                };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 20_000 },
-            )
-            .toEqual({
-                open: true,
-                text: expect.stringContaining('订单查询列表'),
-                guide: true,
-                error: '',
-            });
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '.annotator-pick-confirm',
+        ));
 
-        const confirmEntityPoint = await shadowButtonPoint('.annotator-pick-confirm');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`confirm-entity-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...confirmEntityPoint,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const host = document.querySelector('#rpa-entity-annotator-host');
+            const root = host?.shadowRoot;
+            const shell = root?.querySelector('.annotator-shell');
+            return {
+                stage: shell?.getAttribute('data-product-stage') || '',
+                draft: shell?.getAttribute('data-annotator-draft') || '',
+                hostPointer: host ? getComputedStyle(host).pointerEvents : '',
+                dimmed: Boolean(root?.querySelector('.annotator-dim')),
+                entityFocused: Boolean(root?.querySelector('.annotator-box.kind-entity')),
+                recognizeButton: Boolean(root?.querySelector('[data-annotator-action="recognize"]')),
+                dockText: root?.querySelector('.edit-dock')?.textContent
+                    ?.replace(/\\s+/g, ' ').trim() || '',
+                markers: {
+                    field: document.querySelectorAll('[data-rpa-annotation-kind="field"]').length,
+                    column: document.querySelectorAll('[data-rpa-annotation-kind="column"]').length,
+                    action: document.querySelectorAll('[data-rpa-annotation-kind="action"]').length,
+                    pagination: document.querySelectorAll('[data-rpa-annotation-kind="pagination"]').length,
+                },
+                labels: root?.querySelectorAll('.annotator-label').length || 0,
+            };
+        `), {timeout: 30_000}).toEqual({
+            stage: 'edit',
+            draft: 'present',
+            hostPointer: 'none',
+            dimmed: true,
+            entityFocused: true,
+            recognizeButton: false,
+            dockText: expect.stringContaining('检查标注'),
+            markers: {field: 2, column: 5, action: 0, pagination: 2},
+            labels: 0,
+        });
 
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`scope-confirmed-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                return {
-                    draft: root?.querySelector('.annotator-shell')?.getAttribute('data-annotator-draft'),
-                    stage: root?.querySelector('.annotator-shell')?.getAttribute('data-product-stage') || '',
-                    entityCount: root?.querySelectorAll('.annotator-entity-item').length || 0,
-                    recognize: Boolean(root?.querySelector('[data-annotator-action="recognize"]')),
-                    objectList: Boolean(root?.querySelector('.annotator-object-list')),
-                };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 20_000 },
-            )
-            .toEqual({
-                draft: 'present',
-                stage: 'recognize',
-                entityCount: 1,
-                recognize: true,
-                objectList: false,
-            });
+        const entityAlignment = async (): Promise<number | null> => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            const actual = document.querySelector('.orders-module')?.getBoundingClientRect();
+            const visual = root?.querySelector('.annotator-box.kind-entity rect')?.getBoundingClientRect();
+            if (!actual || !visual) return null;
+            return Math.max(
+                Math.abs(actual.left - visual.left),
+                Math.abs(actual.top - visual.top),
+                Math.abs(actual.width - visual.width),
+                Math.abs(actual.height - visual.height),
+            );
+        `);
+        await expect.poll(entityAlignment, {timeout: 10_000}).toBeLessThanOrEqual(2);
+        expect(await evaluate(agent, workspaceName, `
+            document.body.style.minHeight = '1800px';
+            window.scrollTo(0, 120);
+            return window.scrollY;
+        `)).toBe(120);
+        await expect.poll(entityAlignment, {timeout: 15_000}).toBeLessThanOrEqual(2);
+        await evaluate(agent, workspaceName, `window.scrollTo(0, 0); return window.scrollY;`);
 
-        const recognizePoint = await shadowButtonPoint('[data-annotator-action="recognize"]');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`recognize-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...recognizePoint,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
+        const headerPoint = await pageElementPoint(agent, workspaceName, 'th', '订单编号');
+        const headerHit = await evaluate(agent, workspaceName, `
+            const point = ${JSON.stringify(headerPoint)};
+            const hit = document.elementFromPoint(point.x, point.y);
+            return {tag: hit?.tagName || '', host: hit?.id || ''};
+        `);
+        expect(headerHit).toEqual({tag: 'TH', host: ''});
+        await click(agent, workspaceName, headerPoint);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                ?.querySelector('.annotator-edit-card')?.textContent
+                ?.replace(/\\s+/g, ' ').trim() || '';
+        `), {timeout: 10_000}).toEqual(expect.stringContaining('表格列订单编号'));
+        expect(await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                ?.querySelector('.annotator-edit-card')?.textContent?.includes('业务区域') || false;
+        `)).toBe(false);
+        await closeEditCard(agent, workspaceName);
 
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`recognized-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const shell = root?.querySelector('.annotator-shell');
-                return {
-                    stage: shell?.getAttribute('data-product-stage') || '',
-                    summaryCards: root?.querySelectorAll('.review-summary > div').length || 0,
-                    profile: shell?.getAttribute('data-annotator-profile') || '',
-                    error: root?.querySelector('.annotator-error-banner p')?.textContent?.trim() || '',
-                };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 30_000 },
-            )
-            .toEqual({
-                stage: 'review',
-                summaryCards: 5,
-                profile: expect.stringMatching(/.+/),
-                error: '',
-            });
-        const reviewPoint = await shadowButtonPoint('.review-stage .primary-action');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`review-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...reviewPoint,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
-        const objectCount = (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`object-count-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
-                    ?.querySelectorAll('.annotator-object-item').length || 0;
-            `,
-                }),
-            )
-        ).data as number;
-        expect(objectCount).toBeGreaterThan(1);
+        await click(agent, workspaceName, await pageElementPoint(
+            agent,
+            workspaceName,
+            '#orderNoQuery',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                ?.querySelector('.annotator-edit-card')?.textContent
+                ?.replace(/\\s+/g, ' ').trim() || '';
+        `), {timeout: 10_000}).toEqual(expect.stringContaining('字段订单编号'));
+        await closeEditCard(agent, workspaceName);
 
-        const savePoint = await shadowButtonPoint('.annotator-save-action');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`save-${Date.now()}`, 'browser.mouse', { action: 'click', ...savePoint }),
-                )
-            ).ok,
-        ).toBe(true);
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`saved-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                return {
-                    status: root?.querySelector('.annotator-status')?.textContent?.trim() || '',
-                    error: root?.querySelector('.annotator-error-banner p')?.textContent?.trim() || '',
-                };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 30_000 },
-            )
-            .toEqual({ status: '已保存', error: '' });
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '.annotator-save-action',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return {
+                saveText: root?.querySelector('.annotator-save-action')?.textContent
+                    ?.replace(/\\s+/g, ' ').trim() || '',
+                error: root?.querySelector('.annotator-error-banner p')?.textContent?.trim() || '',
+            };
+        `), {timeout: 30_000}).toEqual({saveText: '✓ 已保存', error: ''});
 
-        const listedRules = await dispatch(
-            agent.endpoint,
-            action('entity_rules.list', workspaceName),
-        );
+        const listedRules = await dispatch(agent.endpoint, action('entity_rules.list', workspaceName));
         expect(listedRules.type).toBe('entity_rules.list.result');
-        const savedRules =
-            (listedRules.payload as { entityRules?: Array<{ name?: string }> })?.entityRules || [];
-        expect(
-            savedRules.some((rule) => typeof rule.name === 'string' && rule.name.length > 0),
-        ).toBe(true);
+        expect(((listedRules.payload as {entityRules?: Array<{name?: string}>})?.entityRules || [])
+            .some((rule) => Boolean(rule.name))).toBe(true);
 
-        const exitPoint = await shadowButtonPoint('[aria-label="退出页面标注"]');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`exit-${Date.now()}`, 'browser.mouse', { action: 'click', ...exitPoint }),
-                )
-            ).ok,
-        ).toBe(true);
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`exited-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const annotator = document.querySelector('#rpa-entity-annotator-host');
-                return annotator instanceof HTMLElement && annotator.style.display === 'none';
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 10_000 },
-            )
-            .toBe(true);
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '[aria-label="退出"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const host = document.querySelector('#rpa-entity-annotator-host');
+            return host instanceof HTMLElement && host.style.display === 'none';
+        `), {timeout: 10_000}).toBe(true);
 
-        const reopenPoint = (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`reopen-point-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                const button = document.querySelector('#rpa-floating-panel')?.shadowRoot?.querySelector('.annotate-launch');
-                if (!(button instanceof HTMLButtonElement)) return null;
-                const rect = button.getBoundingClientRect();
-                return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
-            `,
-                }),
-            )
-        ).data as { x: number; y: number } | null;
-        expect(reopenPoint).not.toBeNull();
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`reopen-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...reopenPoint!,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`reopened-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                return {
-                    draft: root?.querySelector('.annotator-shell')?.getAttribute('data-annotator-draft'),
-                    status: root?.querySelector('.annotator-status')?.textContent?.trim() || '',
-                    entityCount: root?.querySelectorAll('.annotator-entity-item').length || 0,
-                };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 20_000 },
-            )
-            .toEqual({ draft: 'present', status: '已保存', entityCount: 1 });
+        await openAnnotator(agent, workspaceName);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return {
+                draft: root?.querySelector('.annotator-shell')?.getAttribute('data-annotator-draft') || '',
+                stage: root?.querySelector('.annotator-shell')?.getAttribute('data-product-stage') || '',
+                saveText: root?.querySelector('.annotator-save-action')?.textContent
+                    ?.replace(/\\s+/g, ' ').trim() || '',
+                columns: document.querySelectorAll('[data-rpa-annotation-kind="column"]').length,
+            };
+        `), {timeout: 20_000}).toEqual({
+            draft: 'present',
+            stage: 'edit',
+            saveText: '✓ 已保存',
+            columns: 5,
+        });
     } finally {
         await agent.close();
         await fixture.close();
     }
 });
 
-test('renders table columns, repeated row actions and pagination from saved rules', async ({}, testInfo) => {
+test('uses direct DOM markers for saved table rules and edits one representative action', async ({}, testInfo) => {
     testInfo.setTimeout(150_000);
     const mock = await startMockApp('ant');
     const agent = await startAgent();
     const workspaceName = `annotator-table-${Date.now()}`;
     try {
-        expect(
-            (await dispatch(agent.endpoint, controlAction('workspace.create', { workspaceName })))
-                .type,
-        ).toBe('workspace.create.result');
-        const before = await dispatch(agent.endpoint, action('tab.list', workspaceName));
-        const previousNames = new Set(
-            ((before.payload as { tabs?: Array<{ tabName?: string }> })?.tabs || [])
-                .map((tab) => tab.tabName)
-                .filter((name): name is string => Boolean(name)),
-        );
-        expect((await dispatch(agent.endpoint, action('tab.open', workspaceName))).type).toBe(
-            'tab.open.result',
-        );
-        let tabName = '';
-        await expect
-            .poll(
-                async () => {
-                    const listed = await dispatch(
-                        agent.endpoint,
-                        action('tab.list', workspaceName),
-                    );
-                    const tabs =
-                        (listed.payload as { tabs?: Array<{ tabName?: string }> })?.tabs || [];
-                    tabName =
-                        tabs.find((tab) => tab.tabName && !previousNames.has(tab.tabName))
-                            ?.tabName || '';
-                    return tabName;
-                },
-                { timeout: 20_000 },
-            )
-            .not.toBe('');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`switch-${Date.now()}`, 'browser.switch_tab', { tabName }),
-                )
-            ).ok,
-        ).toBe(true);
-
+        await createWorkspacePage(agent, workspaceName, 'about:blank');
         const artifact = await loadEntityRuleArtifact('oa-ant-orders');
-        expect(
-            (
-                await dispatch(
-                    agent.endpoint,
-                    action('entity_rules.save', workspaceName, { entityRules: artifact }),
-                )
-            ).type,
-        ).toBe('entity_rules.save.result');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`goto-${Date.now()}`, 'browser.goto', {
-                        url: `${mock.baseUrl}/entity-rules/fixtures/order-list`,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`table-ready-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                return document.querySelectorAll('table tbody tr').length;
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 20_000 },
-            )
-            .toBeGreaterThan(0);
+        expect((await dispatch(
+            agent.endpoint,
+            action('entity_rules.save', workspaceName, {entityRules: artifact}),
+        )).type).toBe('entity_rules.save.result');
+        expect((await runStep(
+            agent.endpoint,
+            workspaceName,
+            step(`goto-orders-${Date.now()}`, 'browser.goto', {
+                url: `${mock.baseUrl}/entity-rules/fixtures/order-list`,
+            }),
+        )).ok).toBe(true);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelectorAll('table tbody tr').length;
+        `), {timeout: 20_000}).toBeGreaterThan(0);
 
-        const clickPanel = `
-            const host = document.querySelector('#rpa-floating-panel');
+        await openAnnotator(agent, workspaceName);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const host = document.querySelector('#rpa-entity-annotator-host');
             const root = host?.shadowRoot;
-            if (!root) return false;
-            if (!root.querySelector('.panel')?.classList.contains('open')) root.querySelector('.ball')?.click();
-            [...root.querySelectorAll('.tabs button')].find((button) => button.textContent?.trim() === 'Flow')?.click();
-            const enter = [...root.querySelectorAll('button')]
-                .find((button) => button.textContent?.trim() === '进入标注模式');
-            if (!(enter instanceof HTMLButtonElement)) return false;
-            enter.click();
-            return true;
-        `;
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`open-${Date.now()}`, 'browser.evaluate', { expression: clickPanel }),
-                )
-            ).data,
-        ).toBe(true);
-
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`labels-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                return [...(root?.querySelectorAll('.annotator-label') || [])]
-                    .map((label) => label.textContent?.replace(/\\s+/g, ' ').trim() || '');
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 20_000 },
-            )
-            .toEqual(
-                expect.arrayContaining([
-                    expect.stringContaining('订单编号'),
-                    expect.stringContaining('采购人'),
-                    expect.stringContaining('金额'),
-                    expect.stringContaining('状态'),
-                    expect.stringContaining('操作'),
-                    expect.stringContaining('编辑'),
-                    expect.stringContaining('删除'),
-                    expect.stringContaining('nextPage'),
-                ]),
-            );
-
-        const actionSummary = (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`action-summary-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const labels = [...(root?.querySelectorAll('.annotator-label') || [])]
-                    .map((label) => ({
-                        id: label.getAttribute('data-annotation-id') || '',
-                        text: label.textContent?.replace(/\\s+/g, ' ').trim() || '',
-                    }));
-                return {
-                    edit: labels.filter((label) => label.text.includes('编辑')),
-                    remove: labels.filter((label) => label.text.includes('删除')),
-                };
-            `,
-                }),
-            )
-        ).data as {
-            edit: Array<{ id: string; text: string }>;
-            remove: Array<{ id: string; text: string }>;
-        };
-        expect(actionSummary.edit).toHaveLength(1);
-        expect(actionSummary.remove).toHaveLength(1);
-        expect(actionSummary.edit[0].text).toMatch(/x\d+/);
-        expect(actionSummary.remove[0].text).toMatch(/x\d+/);
-
-        const editLabelPoint = (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`edit-label-point-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const label = [...(root?.querySelectorAll('.annotator-label') || [])]
-                    .find((item) => item.textContent?.includes('编辑'));
-                if (!(label instanceof HTMLElement)) return null;
-                const rect = label.getBoundingClientRect();
-                const x = rect.left + rect.width / 2;
-                const y = rect.top + rect.height / 2;
-                return {
-                    x,
-                    y,
-                    hitClass: root?.elementFromPoint?.(x, y)?.getAttribute('class') || '',
-                };
-            `,
-                }),
-            )
-        ).data as { x: number; y: number; hitClass: string } | null;
-        expect(editLabelPoint).not.toBeNull();
-        expect(editLabelPoint!.hitClass).toContain('annotator-label');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`select-edit-${Date.now()}`, 'browser.mouse', {
-                        action: 'click',
-                        ...editLabelPoint!,
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
-
-        const selectedDiagnostic = (
-            await runStep(
-                agent.endpoint,
-                workspaceName,
-                step(`selected-diagnostic-${Date.now()}`, 'browser.evaluate', {
-                    expression: `
-                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const hit = root?.elementFromPoint?.(${editLabelPoint!.x}, ${editLabelPoint!.y});
-                const label = root?.querySelector('[data-annotation-id="${
-                    actionSummary.edit[0].id
-                }"]');
-                return {
-                    hitClass: hit?.getAttribute('class') || '',
-                    selected: label?.classList.contains('selected') || false,
-                    card: Boolean(root?.querySelector('.annotator-edit-card')),
-                };
-            `,
-                }),
-            )
-        ).data;
-        expect(selectedDiagnostic).toEqual({
-            hitClass: expect.stringContaining('annotator-label'),
-            selected: true,
-            card: true,
+            const headers = [...document.querySelectorAll('th')];
+            const headerRow = document.querySelector('thead tr');
+            const actions = [...document.querySelectorAll('[data-rpa-annotation-kind="action"]')];
+            return {
+                stage: root?.querySelector('.annotator-shell')?.getAttribute('data-product-stage') || '',
+                hostPointer: host ? getComputedStyle(host).pointerEvents : '',
+                markers: {
+                    columns: document.querySelectorAll('[data-rpa-annotation-kind="column"]').length,
+                    actions: actions.length,
+                    pagination: document.querySelectorAll('[data-rpa-annotation-kind="pagination"]').length,
+                },
+                labels: root?.querySelectorAll('.annotator-label').length || 0,
+                headerOutline: headerRow ? getComputedStyle(headerRow).outlineStyle : '',
+                separators: headers.map((header) => getComputedStyle(header).boxShadow),
+                actionTexts: actions
+                    .map((item) => (item.textContent || '').replace(/\\s+/g, ''))
+                    .sort(),
+            };
+        `), {timeout: 20_000}).toEqual({
+            stage: 'edit',
+            hostPointer: 'none',
+            markers: {columns: 5, actions: 2, pagination: 2},
+            labels: 0,
+            headerOutline: 'dashed',
+            separators: [
+                expect.stringContaining('-1px 0px'),
+                expect.stringContaining('-1px 0px'),
+                expect.stringContaining('-1px 0px'),
+                expect.stringContaining('-1px 0px'),
+                'none',
+            ],
+            actionTexts: ['删除', '编辑'],
         });
 
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`open-advanced-${Date.now()}`, 'browser.evaluate', {
-                        expression: `
-                const details = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
-                    ?.querySelector('.advanced-settings');
-                if (!(details instanceof HTMLDetailsElement)) return false;
-                details.open = true;
-                return true;
-            `,
-                    }),
-                )
-            ).data,
-        ).toBe(true);
+        const buyerPoint = await pageElementPoint(agent, workspaceName, 'th', '采购人');
+        await click(agent, workspaceName, buyerPoint);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                ?.querySelector('.annotator-edit-card')?.textContent
+                ?.replace(/\\s+/g, ' ').trim() || '';
+        `), {timeout: 10_000}).toEqual(expect.stringContaining('表格列采购人'));
 
-        let businessKeyPoint: { x: number; y: number; value: string } | null = null;
-        await expect
-            .poll(
-                async () => {
-                    businessKeyPoint = (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`edit-card-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
-                    const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                    const input = root?.querySelector('.advanced-settings input');
-                    if (!(input instanceof HTMLInputElement)) return null;
-                    const rect = input.getBoundingClientRect();
-                    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, value: input.value};
-                `,
-                            }),
-                        )
-                    ).data as { x: number; y: number; value: string } | null;
-                    return businessKeyPoint;
-                },
-                { timeout: 10_000 },
-            )
-            .not.toBeNull();
-        expect(businessKeyPoint!.value).toBe('edit');
-        expect(
-            (
-                await runStep(
-                    agent.endpoint,
-                    workspaceName,
-                    step(`fill-key-${Date.now()}`, 'browser.fill', {
-                        selector: '#rpa-entity-annotator-host .advanced-settings input',
-                        value: 'EDITROW',
-                    }),
-                )
-            ).ok,
-        ).toBe(true);
-        await expect
-            .poll(
-                async () =>
-                    (
-                        await runStep(
-                            agent.endpoint,
-                            workspaceName,
-                            step(`edited-label-${Date.now()}`, 'browser.evaluate', {
-                                expression: `
+        let primaryKeyPoint: (Point & {pressed: string | null}) | null = null;
+        await expect.poll(async () => {
+            primaryKeyPoint = await evaluate(agent, workspaceName, `
                 const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-                const label = root?.querySelector('.annotator-label[data-annotation-id="${actionSummary.edit[0].id}"]');
-                const box = root?.querySelector('.annotator-box[data-annotation-id="${actionSummary.edit[0].id}"] rect');
+                const card = root?.querySelector('.annotator-edit-card');
+                const button = card?.querySelector('.primary-key-choice');
+                if (!(button instanceof HTMLButtonElement)) return null;
+                const rect = button.getBoundingClientRect();
                 return {
-                    text: label?.textContent?.replace(/\\s+/g, ' ').trim() || '',
-                    dash: box?.getAttribute('stroke-dasharray') || '',
+                    x: rect.left + rect.width / 2,
+                    y: rect.top + rect.height / 2,
+                    pressed: button.getAttribute('aria-pressed'),
                 };
-            `,
-                            }),
-                        )
-                    ).data,
-                { timeout: 10_000 },
-            )
-            .toEqual({ text: expect.stringContaining('EDITROW'), dash: '' });
+            `);
+            return primaryKeyPoint;
+        }, {timeout: 10_000}).not.toBeNull();
+        expect(primaryKeyPoint!.pressed).toBe('false');
+        await click(agent, workspaceName, primaryKeyPoint!);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                ?.querySelector('.primary-key-choice')?.getAttribute('aria-pressed') || '';
+        `), {timeout: 10_000}).toBe('true');
+        await closeEditCard(agent, workspaceName);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const headers = [...document.querySelectorAll('th')];
+            const byText = (text) => headers.find((item) => (item.textContent || '').includes(text));
+            return {
+                buyer: byText('采购人')?.getAttribute('data-rpa-primary-key') || '',
+                orderNo: byText('订单编号')?.getAttribute('data-rpa-primary-key') || '',
+            };
+        `), {timeout: 10_000}).toEqual({buyer: 'true', orderNo: ''});
+
+        const editPoint = await pageElementPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-annotation-kind="action"]',
+            '编辑',
+        );
+        await click(agent, workspaceName, editPoint);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            const inputs = root?.querySelectorAll('.annotator-edit-card .card-fields input');
+            return {
+                card: root?.querySelector('.annotator-edit-card')?.textContent
+                    ?.replace(/\\s+/g, ' ').trim() || '',
+                key: inputs?.[1] instanceof HTMLInputElement ? inputs[1].value : '',
+            };
+        `), {timeout: 10_000}).toEqual({
+            card: expect.stringContaining('编辑'),
+            key: 'edit',
+        });
+
+        expect(await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            const input = root?.querySelectorAll('.annotator-edit-card .card-fields input')?.[1];
+            if (!(input instanceof HTMLInputElement)) return false;
+            input.value = 'EDITROW';
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+            return true;
+        `)).toBe(true);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            const input = root?.querySelectorAll('.annotator-edit-card .card-fields input')?.[1];
+            const marker = [...document.querySelectorAll('[data-rpa-annotation-kind="action"]')]
+                .find((item) => (item.textContent || '').replace(/\\s+/g, '').includes('编辑'));
+            return {
+                value: input instanceof HTMLInputElement ? input.value : '',
+                state: marker?.getAttribute('data-rpa-annotation-state') || '',
+            };
+        `), {timeout: 10_000}).toEqual({value: 'EDITROW', state: 'selected'});
+        await closeEditCard(agent, workspaceName);
+
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const marker = [...document.querySelectorAll('[data-rpa-annotation-kind="action"]')]
+                .find((item) => (item.textContent || '').replace(/\\s+/g, '').includes('编辑'));
+            return marker?.getAttribute('data-rpa-annotation-state') || '';
+        `), {timeout: 10_000}).toBe('confirmed');
+
+        expect(await evaluate(agent, workspaceName, `
+            const actions = [...document.querySelectorAll('[data-rpa-annotation-kind="action"]')];
+            const counts = new Map();
+            for (const item of actions) {
+                const id = item.getAttribute('data-rpa-annotation-id') || '';
+                counts.set(id, (counts.get(id) || 0) + 1);
+            }
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return {
+                actionCount: actions.length,
+                oneRepresentativeEach: [...counts.values()].every((count) => count === 1),
+                labels: root?.querySelectorAll('.annotator-label').length || 0,
+            };
+        `)).toEqual({
+            actionCount: 2,
+            oneRepresentativeEach: true,
+            labels: 0,
+        });
     } finally {
         await agent.close();
         await mock.close();

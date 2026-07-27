@@ -68,11 +68,19 @@ export type PickSelection = {
     annotationId?: string | null;
 };
 
+const selectedValue = <T>(
+    selection: PickSelection,
+    key: keyof PickSelection,
+    current: T,
+): T => Object.prototype.hasOwnProperty.call(selection, key)
+    ? selection[key] as T
+    : current;
+
 export const pickReceived = (state: AnnotatorState, selection: PickSelection): AnnotatorState => ({
     ...state,
     mode: 'editing',
-    currentEntityId: selection.entityId ?? state.currentEntityId,
-    currentAnnotationId: selection.annotationId ?? state.currentAnnotationId,
+    currentEntityId: selectedValue(selection, 'entityId', state.currentEntityId),
+    currentAnnotationId: selectedValue(selection, 'annotationId', state.currentAnnotationId),
     error: null,
 });
 

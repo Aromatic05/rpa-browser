@@ -111,6 +111,7 @@ export const runRecognizeLoop = async (
             ...next,
             profileName,
             currentEntityId: next.currentEntityId ?? canvasDraft.entities[0]?.id ?? null,
+            visualBindings: reply.visualTargetRefs,
         };
     } catch (error) {
         return failed(state, `识别失败：${errorMessage(error)}`);

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    annotationVisualState,
+    deriveCanvasPresentation,
     checkIssueMessage,
     deriveProductStage,
     groupAnnotationBoxes,
@@ -49,6 +51,70 @@ test('deriveProductStage enforces scope -> recognize -> review -> edit', () => {
     assert.equal(deriveProductStage({hasDraft: true, hasObjects: true, hasArtifact: false, reviewPending: true}), 'review');
     assert.equal(deriveProductStage({hasDraft: true, hasObjects: true, hasArtifact: false, reviewPending: false}), 'edit');
     assert.equal(deriveProductStage({hasDraft: true, hasObjects: true, hasArtifact: true, reviewPending: true}), 'edit');
+});
+
+test('deriveCanvasPresentation keeps the confirmed entity focused throughout review and editing', () => {
+    assert.deepEqual(deriveCanvasPresentation('scope', false, false), {
+        dimOutsideEntity: false,
+        showEntity: false,
+        showObjects: false,
+        showLabels: false,
+        showEditor: false,
+    });
+    assert.deepEqual(deriveCanvasPresentation('recognize', false, true), {
+        dimOutsideEntity: true,
+        showEntity: true,
+        showObjects: false,
+        showLabels: false,
+        showEditor: false,
+    });
+    assert.deepEqual(deriveCanvasPresentation('review', false, true), {
+        dimOutsideEntity: true,
+        showEntity: true,
+        showObjects: true,
+        showLabels: true,
+        showEditor: true,
+    });
+    assert.deepEqual(deriveCanvasPresentation('edit', false, true), {
+        dimOutsideEntity: true,
+        showEntity: true,
+        showObjects: true,
+        showLabels: true,
+        showEditor: true,
+    });
+    assert.deepEqual(deriveCanvasPresentation('edit', true, true), {
+        dimOutsideEntity: true,
+        showEntity: true,
+        showObjects: false,
+        showLabels: false,
+        showEditor: false,
+    });
+});
+
+test('annotationVisualState maps inferred, confirmed and broken objects to canvas states', () => {
+    const inferred = box('field', 'field');
+    assert.deepEqual(annotationVisualState(inferred, null), {
+        status: 'inferred',
+        dashed: true,
+        color: '#16a34a',
+    });
+    assert.deepEqual(annotationVisualState({...inferred, origin: 'confirmed'}, null), {
+        status: 'confirmed',
+        dashed: false,
+        color: '#16a34a',
+    });
+    assert.deepEqual(annotationVisualState(inferred, {
+        canvasAnnotationId: 'field',
+        status: 'missing',
+        matchCount: 0,
+        expected: 'unique',
+        message: 'missing',
+        nodeIds: [],
+    }), {
+        status: 'error',
+        dashed: false,
+        color: '#dc2626',
+    });
 });
 
 test('summarizeEntityDraft reports user-facing object counts', () => {

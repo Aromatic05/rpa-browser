@@ -206,7 +206,6 @@ const inferUnclaimedScopeControls = (
     const controls = collectControlsInSubtree(snapshot, scopeNodeId);
     const annotations: CanvasAnnotationDraft[] = [];
     let fieldIndex = 0;
-    let actionIndex = 0;
     let pagination: NonNullable<CanvasEntityDraft['pagination']> | undefined;
 
     for (const control of controls) {
@@ -247,20 +246,8 @@ const inferUnclaimedScopeControls = (
             continue;
         }
 
-        const label = normalizeText(control.name || getNodeContent(control));
-        const actionIntent = inferActionIntentFromText(label);
-        if (!actionIntent) {continue;}
-        annotations.push({
-            id: `auto_scope_action_${actionIndex}`,
-            type: 'action',
-            businessKey: actionIntent,
-            ...(label ? {name: label} : {}),
-            target: buildNodeTarget(snapshot, control.id, {allowText: true}),
-            expect: 'unique',
-            origin: 'inferred',
-            disposition: 'active',
-        });
-        actionIndex += 1;
+        // Buttons are intentionally not part of the preset. Users add one
+        // representative button explicitly when the action matters.
     }
 
     return {annotations, ...(pagination ? {pagination} : {})};
@@ -572,13 +559,16 @@ const recognizeWithinSelectedEntity = (
     const annotations = mergeScopedAnnotations(
         selected.annotations,
         [
-            ...inferred.flatMap((entity) => entity.annotations),
+            ...inferred.flatMap((entity) => entity.annotations).filter((item) => item.type === 'field'),
             ...unclaimed.annotations,
         ],
     );
     const columns = mergeScopedColumns(
         selected.columns,
-        inferred.flatMap((entity) => entity.columns),
+        inferred.flatMap((entity) => entity.columns).map((column) => ({
+            ...column,
+            actions: [],
+        })),
     );
     const primaryKey = selected.primaryKey ?? inferred.find((entity) => entity.primaryKey)?.primaryKey;
     const pagination = selected.pagination ??

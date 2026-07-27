@@ -45,11 +45,22 @@ export const createAnnotatorHost = (doc: Document): AnnotatorHost => {
     host.setAttribute('data-rpa-panel', 'true');
     host.setAttribute('data-rpa-annotator-host', 'true');
     host.setAttribute('data-rpa-snapshot-ignore', 'true');
+    host.style.all = 'initial';
     host.style.position = 'fixed';
     host.style.top = '0';
     host.style.left = '0';
-    host.style.width = '100%';
-    host.style.height = '100%';
+    host.style.right = '0';
+    host.style.bottom = '0';
+    host.style.width = '100vw';
+    host.style.height = '100vh';
+    host.style.margin = '0';
+    host.style.padding = '0';
+    host.style.border = '0';
+    host.style.zoom = '1';
+    host.style.transform = 'none';
+    host.style.transformOrigin = '0 0';
+    host.style.contain = 'layout style size';
+    host.style.isolation = 'isolate';
     host.style.zIndex = '2147483646';
     host.style.display = 'none';
     host.style.pointerEvents = 'none';
@@ -79,7 +90,7 @@ export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => 
     const app = opts.mountApp(shadow, {
         ...opts.handlers,
         onPickModeChange: (picking) => {
-            host.style.pointerEvents = picking ? 'none' : 'auto';
+            host.style.pointerEvents = 'none';
             opts.handlers.onPickModeChange?.(picking);
         },
     });
@@ -91,7 +102,7 @@ export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => 
         },
         show: () => {
             host.style.display = 'block';
-            host.style.pointerEvents = 'auto';
+            host.style.pointerEvents = 'none';
         },
         hide: () => {
             host.style.display = 'none';

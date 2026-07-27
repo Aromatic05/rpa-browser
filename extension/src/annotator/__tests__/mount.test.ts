@@ -99,11 +99,11 @@ test('mountAnnotator appends host to documentElement and returns a handle that c
     assert.equal(host.style.display, 'none');
     handle.show();
     assert.equal(host.style.display, 'block');
-    assert.equal(host.style.pointerEvents, 'auto', 'editing mode must keep toolbar and labels interactive');
+    assert.equal(host.style.pointerEvents, 'none', 'the full-screen host must never intercept page clicks');
     mountedHandlers?.onPickModeChange?.(true);
     assert.equal(host.style.pointerEvents, 'none', 'pick mode must let pointer input reach the page');
     mountedHandlers?.onPickModeChange?.(false);
-    assert.equal(host.style.pointerEvents, 'auto', 'leaving pick mode restores canvas interaction');
+    assert.equal(host.style.pointerEvents, 'none', 'leaving pick mode must not turn the host into a click shield');
     handle.hide();
     assert.equal(host.style.display, 'none');
     handle.unmount();

@@ -195,6 +195,7 @@ test('buildFingerprintFromHitTest assembles fingerprint from primary element', (
         role: 'form',
         text: '登录',
         ariaLabel: '登录表单',
+        rect: ancestor.rect,
     });
     assert.ok(fingerprint.selectorCandidates.includes('button'));
     assert.ok(fingerprint.selectorCandidates.some((s) => s.startsWith('button.')));

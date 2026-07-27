@@ -19,10 +19,75 @@ const makeTarget = (
     y: number,
     width = 40,
     height = 20,
+    kind: LabelTarget['kind'] = 'field',
 ): LabelTarget => ({
     annotationId,
+    kind,
     targetCenter: {x: x + width / 2, y: y + height / 2},
     targetBox: {x, y, width, height},
+});
+
+test('table columns are labelled above the header with an upward connector', () => {
+    const placements = computeLabelPlacements([
+        makeTarget('orderNo', 300, 180, 140, 32, 'column'),
+    ], VIEWPORT, OPTIONS);
+    const placement = placements.orderNo;
+    assert.equal(placement.side, 'top');
+    assert.ok(placement.box.y + placement.box.height < 180);
+    assert.deepEqual(placement.polyline[0], {x: 370, y: 180});
+    assert.deepEqual(placement.polyline.at(-1), {
+        x: placement.box.x + placement.box.width / 2,
+        y: placement.box.y + placement.box.height,
+    });
+});
+
+test('pagination is labelled below the control with a downward connector', () => {
+    const placements = computeLabelPlacements([
+        makeTarget('next', 900, 500, 80, 32, 'pagination'),
+    ], VIEWPORT, OPTIONS);
+    const placement = placements.next;
+    assert.equal(placement.side, 'bottom');
+    assert.ok(placement.box.y > 532);
+    assert.deepEqual(placement.polyline[0], {x: 940, y: 532});
+});
+
+test('adjacent column labels use separate top lanes instead of overlapping', () => {
+    const placements = computeLabelPlacements([
+        makeTarget('a', 300, 180, 100, 32, 'column'),
+        makeTarget('b', 360, 180, 100, 32, 'column'),
+    ], VIEWPORT, OPTIONS);
+    assert.equal(placements.a.side, 'top');
+    assert.equal(placements.b.side, 'top');
+    assert.equal(rectsOverlap(placements.a.box, placements.b.box), false);
+});
+
+test('non-overlapping table columns stay in one compact top lane', () => {
+    const placements = computeLabelPlacements([
+        makeTarget('a', 300, 180, 120, 32, 'column'),
+        makeTarget('b', 420, 180, 120, 32, 'column'),
+        makeTarget('c', 540, 180, 120, 32, 'column'),
+    ], VIEWPORT, OPTIONS);
+    assert.equal(placements.a.side, 'top');
+    assert.equal(placements.b.side, 'top');
+    assert.equal(placements.c.side, 'top');
+    assert.equal(placements.a.box.y, placements.b.box.y);
+    assert.equal(placements.b.box.y, placements.c.box.y);
+    assert.equal(placements.a.box.width, 112);
+    assert.equal(placements.b.box.width, 112);
+    assert.equal(rectsOverlap(placements.a.box, placements.b.box), false);
+});
+
+test('table-header labels keep their lane when side labels share the same vertical area', () => {
+    const placements = computeLabelPlacements([
+        makeTarget('field', 1100, 170, 100, 32, 'field'),
+        makeTarget('a', 300, 180, 120, 32, 'column'),
+        makeTarget('b', 420, 180, 120, 32, 'column'),
+    ], VIEWPORT, OPTIONS);
+    assert.equal(placements.a.box.y, placements.b.box.y);
+    assert.equal(placements.a.side, 'top');
+    assert.equal(placements.b.side, 'top');
+    assert.equal(rectsOverlap(placements.a.box, placements.field.box), false);
+    assert.equal(rectsOverlap(placements.b.box, placements.field.box), false);
 });
 
 const boxesOverlap = (
@@ -71,7 +136,7 @@ test('polyline has exactly 3 points and ends at the label edge', () => {
     assert.equal(placement.polyline.length, 3);
     const first = placement.polyline[0];
     const last = placement.polyline[2];
-    assert.equal(first.x, 120);
+    assert.equal(first.x, 140);
     assert.equal(first.y, 110);
     assert.equal(last.x, placement.box.x);
     assert.equal(last.y, placement.box.y + OPTIONS.labelHeight / 2);

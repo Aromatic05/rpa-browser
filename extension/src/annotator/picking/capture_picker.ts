@@ -123,6 +123,7 @@ const toAncestorFingerprint = (
     role: source.role,
     text: source.text,
     ariaLabel: source.ariaLabel,
+    rect: source.rect,
 });
 
 export const buildFingerprintFromHitTest = (hit: HitTestInput): PickFingerprint => {

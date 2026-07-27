@@ -34,6 +34,7 @@ import { compileCanvasDraft } from '../../../../src/entity_rules/annotator/compi
 import { validateEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/validate';
 import { matchEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/matcher';
 import {
+    buildDraftVisualTargetRefs,
     buildOpenResult,
     runCheck,
     detectStale,
@@ -224,13 +225,16 @@ const createCompositeEntityFixture = (): {snapshot: SnapshotResult; finalEntityV
     const editButton = newTextNode('row_edit', 'button', '编辑');
     setNodeAttr(editButton, 'tag', 'button');
     setNodeAttr(editButton, 'class', 'row-action');
+    setNodeBbox(editButton, {x: 620, y: 160, width: 54, height: 28});
     const deleteButton = newTextNode('row_delete', 'button', '删除');
     setNodeAttr(deleteButton, 'tag', 'button');
     setNodeAttr(deleteButton, 'class', 'row-action danger');
+    setNodeBbox(deleteButton, {x: 682, y: 160, width: 54, height: 28});
     const actionCell: UnifiedNode = {id: 'action_cell', role: 'cell', children: [editButton, deleteButton]};
     const row: UnifiedNode = {id: 'order_row', role: 'row', children: [orderCell, actionCell]};
     setNodeBbox(row, {x: 16, y: 152, width: 760, height: 44});
     const header = newTextNode('order_header', 'columnheader', '订单编号');
+    setNodeBbox(header, {x: 24, y: 128, width: 180, height: 28});
     const headerRow: UnifiedNode = {id: 'order_header_row', role: 'row', children: [header]};
     const resultTable: UnifiedNode = {
         id: 'result_table',
@@ -342,6 +346,33 @@ test('resolveClickedNode falls back to tag+class+text when point misses every bb
     assert.equal(snapshot.nodeIndex[resolution.nodeId || '']?.role, 'button');
 });
 
+test('entity picking recovers from a coarse root bbox using the DOM ancestor fingerprint', () => {
+    const {snapshot, finalEntityView} = createCompositeEntityFixture();
+    snapshot.bboxIndex = {
+        root: {x: 0, y: 0, width: 800, height: 560},
+    };
+    const fingerprint: PickFingerprint = {
+        point: {x: 250, y: 50},
+        selectorCandidates: ['input', 'form input'],
+        tagName: 'input',
+        classTokens: [],
+        rect: {x: 24, y: 32, width: 220, height: 32},
+        ancestors: [
+            {tagName: 'div', classTokens: ['field'], text: '订单编号', rect: {x: 16, y: 24, width: 230, height: 48}},
+            {tagName: 'form', classTokens: ['orders-query-form'], text: '查询条件', rect: {x: 16, y: 16, width: 760, height: 80}},
+            {tagName: 'section', classTokens: ['orders-module'], text: '订单查询列表', rect: {x: 0, y: 0, width: 800, height: 560}},
+        ],
+    };
+
+    const resolution = resolveClickedNode(snapshot, fingerprint);
+    assert.equal(resolution.nodeId, 'query_form');
+    assert.equal(resolution.reason, 'fallback');
+
+    const picked = pickFromFingerprint(snapshot, finalEntityView, fingerprint, 'entity');
+    assert.ok(picked.candidateChain.length >= 2);
+    assert.equal(picked.candidateChain.at(-1)?.nodeId, 'orders_module');
+});
+
 test('resolveClickedNode returns none when nothing matches', () => {
     const { snapshot } = createTableFixture();
     const fingerprint: PickFingerprint = {
@@ -388,6 +419,7 @@ test('entity picking exposes the outer module but excludes cells, rows and contr
     assert.equal(candidateChain.at(-1)?.nodeId, 'orders_module');
     assert.equal(candidateChain.at(-1)?.entityRef?.type, 'node');
     assert.deepEqual(candidateChain.at(-1)?.proposedTargets?.[0], {classContains: 'orders-module'});
+    assert.deepEqual(candidateChain.at(-1)?.bbox, {x: 0, y: 0, width: 800, height: 560});
 });
 
 test('pick candidate matchCount for repeated row action is >1 and expect one_or_more', () => {
@@ -1144,13 +1176,17 @@ test('recognizeEntities keeps the confirmed outer entity and discovers only its 
     assert.equal(entity.origin, 'manual');
     assert.deepEqual(entity.target, {classContains: 'orders-module'});
     assert.ok(entity.annotations.some((item) => item.businessKey === 'orderNo'));
-    assert.ok(entity.annotations.some((item) => item.businessKey === 'search'));
+    assert.equal(
+        entity.annotations.some((item) => item.type === 'action'),
+        false,
+        'preset recognition must not add query buttons',
+    );
     assert.ok(entity.columns.some((item) => item.fieldKey === 'orderNo'));
     assert.equal(entity.pagination?.actionIntent, 'nextPage');
     assert.equal(recognized.length, 1);
 });
 
-test('recognizeEntities recovers query fields, query actions and pagination from the selected DOM scope', () => {
+test('recognizeEntities presets only query fields, table headers and pagination in the selected DOM scope', () => {
     const {snapshot, finalEntityView} = createCompositeEntityFixture();
     const incompleteView: FinalEntityView = {
         ...finalEntityView,
@@ -1196,15 +1232,12 @@ test('recognizeEntities recovers query fields, query actions and pagination from
         entity.annotations.find((item) => item.type === 'field' && item.businessKey === 'status')?.name,
         '状态',
     );
-    assert.ok(entity.annotations.some((item) => item.type === 'action' && item.businessKey === 'search'));
-    assert.ok(entity.annotations.some((item) => item.type === 'action' && item.businessKey === 'reset'));
-    const actionColumn = entity.columns.find((column) => column.kind === 'action_column');
-    assert.ok(actionColumn);
-    assert.deepEqual(actionColumn?.actions.map((action) => action.actionIntent).sort(), ['delete', 'edit']);
-    assert.deepEqual(actionColumn?.actions.find((action) => action.actionIntent === 'edit')?.target, {
-        classContains: 'row-action',
-        textContains: '编辑',
-    });
+    assert.equal(entity.annotations.some((item) => item.type === 'action'), false);
+    assert.equal(
+        entity.columns.some((column) => column.actions.length > 0),
+        false,
+        'preset recognition must not infer row actions',
+    );
     assert.equal(entity.pagination?.actionIntent, 'nextPage');
     assert.deepEqual(entity.pagination?.pageTarget, {classContains: 'pagination-next'});
     const check = runCheck(snapshot, canvasDraft, 'http://test/orders');
@@ -1216,6 +1249,28 @@ test('recognizeEntities recovers query fields, query actions and pagination from
     assert.equal(
         check.results.find((item) => item.canvasAnnotationId.endsWith('_pgpage'))?.status,
         'unique',
+    );
+    const visualTargetRefs = buildDraftVisualTargetRefs(snapshot, incompleteView, canvasDraft);
+    assert.ok(visualTargetRefs.some((ref) =>
+        ref.role === 'entity' && ref.entityId === 'e0' && ref.bbox,
+    ));
+    assert.ok(visualTargetRefs.some((ref) =>
+        ref.role === 'field' && ref.canvasAnnotationId === 'auto_scope_field_0' && ref.bbox,
+    ));
+    assert.equal(
+        visualTargetRefs.some((ref) => ref.role === 'action'),
+        false,
+        'preset recognition must not create button visual bindings',
+    );
+    assert.ok(visualTargetRefs.some((ref) =>
+        ref.role === 'column' && ref.fieldKey === 'orderNo' && ref.bbox,
+    ));
+    assert.ok(visualTargetRefs.some((ref) =>
+        ref.role === 'pagination' && ref.canvasAnnotationId?.endsWith('_pgpage') && ref.bbox,
+    ));
+    assert.ok(
+        entity.annotations.every((item) => item.origin === 'inferred'),
+        'binding unsaved objects must not silently confirm them',
     );
 });
 

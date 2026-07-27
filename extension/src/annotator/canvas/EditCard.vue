@@ -7,9 +7,11 @@ import type {
     PickCandidate,
 } from '../types.js';
 import type {RecommendedType} from '../recommend/recommend_types.js';
+import type {AnnotationBoxKind} from '../layout/annotation_boxes.js';
 
 const props = defineProps<{
     annotation: CanvasAnnotationDraft | null;
+    annotationKind: AnnotationBoxKind | null;
     entity: CanvasEntityDraft | null;
     candidate: PickCandidate | null;
     candidateIndex: number;
@@ -17,6 +19,8 @@ const props = defineProps<{
     canChangeType: boolean;
     canDelete: boolean;
     canIgnore: boolean;
+    canSetPrimaryKey: boolean;
+    isPrimaryKey: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +31,8 @@ const emit = defineEmits<{
     (e: 'delete'): void;
     (e: 'ignore'): void;
     (e: 'chooseType', type: RecommendedType): void;
+    (e: 'setPrimaryKey', selected: boolean): void;
+    (e: 'close'): void;
 }>();
 
 const ANNOTATION_TYPES: Array<{value: CanvasAnnotationType; label: string}> = [
@@ -52,214 +58,242 @@ const typeModel = computed({
 
 const canNavigateOuter = computed(() => props.candidateIndex < props.candidateChainLength - 1);
 const canNavigateInner = computed(() => props.candidateIndex > 0);
-const typeLabel = computed(() => ANNOTATION_TYPES.find((item) => item.value === typeModel.value)?.label ?? '对象');
+const typeLabel = computed(() => {
+    if (props.annotationKind === 'entity') {return '业务区域';}
+    if (props.annotationKind === 'column') {return '表格列';}
+    if (props.annotationKind === 'pagination') {return '翻页';}
+    return ANNOTATION_TYPES.find((item) => item.value === typeModel.value)?.label ?? '对象';
+});
 </script>
 
 <template>
-    <div class="object-inspector annotator-edit-card" data-rpa-snapshot-ignore="true">
-        <div class="object-inspector-heading">
+    <section class="canvas-edit-card annotator-edit-card" data-rpa-snapshot-ignore="true">
+        <header>
             <div>
                 <span>{{ typeLabel }}</span>
                 <strong>{{ annotation?.name || annotation?.businessKey || '未命名对象' }}</strong>
             </div>
-            <button type="button" class="location-action" @click="emit('reselect')">
-                重新选择位置
-            </button>
+            <button type="button" class="close-card" aria-label="关闭编辑卡片" @click="emit('close')">×</button>
+        </header>
+
+        <div class="card-fields">
+            <label>
+                <span>名称</span>
+                <input v-model="nameModel" type="text" placeholder="例如：采购人" />
+            </label>
+            <label>
+                <span>业务标识</span>
+                <input v-model="businessKeyModel" type="text" placeholder="buyer" />
+            </label>
         </div>
 
-        <label class="form-field annotator-edit-row">
-            <span>显示名称</span>
-            <input
-                v-model="nameModel"
-                class="product-input annotator-edit-input"
-                type="text"
-                placeholder="例如：订单编号"
-            />
-            <small>显示在标注标签和对象列表中。</small>
-        </label>
+        <div v-if="canChangeType" class="type-choice" aria-label="对象类型">
+            <button
+                v-for="item in ANNOTATION_TYPES"
+                :key="item.value"
+                type="button"
+                :class="{active: typeModel === item.value}"
+                @click="typeModel = item.value"
+            >{{ item.label }}</button>
+        </div>
 
-        <div v-if="candidateChainLength > 1" class="range-adjustment">
-            <span>当前选择范围不准确？</span>
+        <button
+            v-if="canSetPrimaryKey"
+            type="button"
+            class="primary-key-choice"
+            :class="{active: isPrimaryKey}"
+            :aria-pressed="isPrimaryKey"
+            @click="emit('setPrimaryKey', !isPrimaryKey)"
+        >
+            <span class="primary-key-icon">KEY</span>
+            <span class="primary-key-copy">
+                <strong>主键列</strong>
+                <small>用于唯一识别表格中的一行数据</small>
+            </span>
+            <span class="primary-key-switch" aria-hidden="true"><i></i></span>
+        </button>
+
+        <div v-if="candidateChainLength > 1" class="range-actions">
+            <button type="button" :disabled="!canNavigateInner" @click="emit('inner')">选择内部</button>
+            <button type="button" :disabled="!canNavigateOuter" @click="emit('outer')">选择外层</button>
+        </div>
+
+        <footer>
             <div>
-                <button type="button" :disabled="!canNavigateInner" @click="emit('inner')">缩小范围</button>
-                <button type="button" :disabled="!canNavigateOuter" @click="emit('outer')">扩大范围</button>
+                <button type="button" class="secondary" @click="emit('reselect')">重新选择</button>
+                <button v-if="canIgnore" type="button" class="secondary" @click="emit('ignore')">忽略</button>
             </div>
-        </div>
-
-        <details class="advanced-settings">
-            <summary>
-                <span>高级设置</span>
-                <small>标识与对象类型</small>
-            </summary>
-            <div class="advanced-settings-content">
-                <label class="form-field annotator-edit-row">
-                    <span>内部标识</span>
-                    <input
-                        v-model="businessKeyModel"
-                        class="product-input annotator-edit-input"
-                        type="text"
-                        placeholder="order_no"
-                    />
-                    <small>用于工作流引用。通常不需要修改。</small>
-                </label>
-                <label v-if="canChangeType" class="form-field">
-                    <span>对象类型</span>
-                    <select v-model="typeModel" class="product-input">
-                        <option v-for="item in ANNOTATION_TYPES" :key="item.value" :value="item.value">
-                            {{ item.label }}
-                        </option>
-                    </select>
-                </label>
-            </div>
-        </details>
-
-        <div v-if="canDelete || canIgnore" class="object-inspector-danger">
-            <button v-if="canIgnore" type="button" @click="emit('ignore')">忽略此对象</button>
-            <button v-if="canDelete" type="button" class="danger" @click="emit('delete')">删除标注</button>
-        </div>
-    </div>
+            <button v-if="canDelete" type="button" class="danger" @click="emit('delete')">删除</button>
+        </footer>
+    </section>
 </template>
 
 <style scoped>
-.object-inspector {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
+.canvas-edit-card {
+    display: grid;
+    gap: 11px;
     color: #0f172a;
+    font-size: 12px;
 }
-.object-inspector-heading {
+.canvas-edit-card header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 14px;
+    gap: 10px;
 }
-.object-inspector-heading > div { min-width: 0; }
-.object-inspector-heading span {
+.canvas-edit-card header > div { min-width: 0; }
+.canvas-edit-card header span {
     display: block;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
     color: #64748b;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
 }
-.object-inspector-heading strong {
+.canvas-edit-card header strong {
     display: block;
     overflow: hidden;
-    font-size: 16px;
-    line-height: 1.35;
+    font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.location-action {
-    flex: 0 0 auto;
-    min-height: 32px;
-    border: 1px solid #dbe3ee;
-    border-radius: 9px;
-    padding: 0 10px;
-    background: #fff;
-    color: #334155;
-    font-size: 11px;
-    font-weight: 650;
+.close-card {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #64748b;
     cursor: pointer;
 }
-.location-action:hover { background: #f8fafc; }
-.form-field {
+.close-card:hover { background: #f1f5f9; }
+.card-fields {
     display: grid;
-    gap: 7px;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
 }
-.form-field > span {
-    color: #334155;
-    font-size: 12px;
-    font-weight: 700;
-}
-.form-field small {
-    color: #94a3b8;
-    font-size: 10px;
-    line-height: 1.45;
-}
-.product-input {
+.card-fields label { display: grid; gap: 4px; min-width: 0; }
+.card-fields label > span { color: #475569; font-size: 10px; font-weight: 700; }
+.card-fields input {
     width: 100%;
-    min-height: 40px;
+    min-width: 0;
+    height: 34px;
     border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    padding: 0 11px;
+    border-radius: 8px;
+    padding: 0 9px;
     outline: none;
     background: #fff;
     color: #0f172a;
     font: inherit;
-    font-size: 12px;
-    transition: border-color .15s ease, box-shadow .15s ease;
 }
-.product-input:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, .12);
+.card-fields input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
 }
-.range-adjustment {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 11px 12px;
-    border-radius: 11px;
-    background: #f8fafc;
-    color: #64748b;
-    font-size: 11px;
+.type-choice,
+.range-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    padding: 4px;
+    border-radius: 9px;
+    background: #f1f5f9;
 }
-.range-adjustment > div { display: flex; gap: 5px; }
-.range-adjustment button {
-    min-height: 28px;
-    border: 1px solid #dbe3ee;
-    border-radius: 8px;
-    padding: 0 8px;
-    background: #fff;
-    color: #334155;
-    font-size: 10px;
-    cursor: pointer;
-}
-.range-adjustment button:disabled { opacity: .4; cursor: default; }
-.advanced-settings {
-    overflow: hidden;
-    border: 1px solid #e2e8f0;
-    border-radius: 11px;
-    background: #fff;
-}
-.advanced-settings summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px;
+.range-actions { grid-template-columns: 1fr 1fr; }
+.type-choice button,
+.range-actions button {
+    min-height: 30px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
     color: #475569;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     cursor: pointer;
-    list-style: none;
 }
-.advanced-settings summary::-webkit-details-marker { display: none; }
-.advanced-settings summary::after { content: '⌄'; color: #94a3b8; font-size: 14px; }
-.advanced-settings[open] summary::after { transform: rotate(180deg); }
-.advanced-settings summary small { margin-left: auto; color: #94a3b8; font-size: 10px; font-weight: 500; }
-.advanced-settings-content {
-    display: grid;
-    gap: 14px;
-    padding: 0 12px 12px;
-}
-.object-inspector-danger {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    padding-top: 4px;
-}
-.object-inspector-danger button {
-    min-height: 32px;
-    border: 1px solid #dbe3ee;
-    border-radius: 9px;
-    padding: 0 10px;
+.type-choice button.active {
     background: #fff;
-    color: #64748b;
-    font-size: 11px;
+    color: #1d4ed8;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, .12);
+}
+.primary-key-choice {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 9px;
+    align-items: center;
+    min-height: 48px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 8px 9px;
+    background: #fff;
+    color: #334155;
+    text-align: left;
     cursor: pointer;
 }
-.object-inspector-danger .danger { border-color: #fecdd3; color: #be123c; }
-.object-inspector-danger button:hover { background: #f8fafc; }
-.object-inspector-danger .danger:hover { background: #fff1f2; }
+.primary-key-choice.active {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+.primary-key-icon {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: .04em;
+}
+.primary-key-choice.active .primary-key-icon { background: #fef3c7; color: #92400e; }
+.primary-key-copy strong { display: block; font-size: 10px; }
+.primary-key-copy small { display: block; margin-top: 2px; color: #94a3b8; font-size: 8px; }
+.primary-key-switch {
+    position: relative;
+    width: 28px;
+    height: 16px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background .15s ease;
+}
+.primary-key-switch i {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .28);
+    transition: transform .15s ease;
+}
+.primary-key-choice.active .primary-key-switch { background: #f59e0b; }
+.primary-key-choice.active .primary-key-switch i { transform: translateX(12px); }
+.range-actions button:hover:not(:disabled),
+.type-choice button:hover { background: rgba(255, 255, 255, .75); }
+.range-actions button:disabled { opacity: .35; cursor: default; }
+.canvas-edit-card footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 1px;
+}
+.canvas-edit-card footer > div { display: flex; gap: 6px; }
+.canvas-edit-card footer button {
+    min-height: 30px;
+    border-radius: 8px;
+    padding: 0 9px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.secondary { border: 1px solid #cbd5e1; background: #fff; color: #334155; }
+.secondary:hover { background: #f8fafc; }
+.danger { border: 1px solid #fecdd3; background: #fff; color: #be123c; }
+.danger:hover { background: #fff1f2; }
+@media (max-width: 420px) {
+    .card-fields { grid-template-columns: 1fr; }
+}
 </style>

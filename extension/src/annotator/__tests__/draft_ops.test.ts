@@ -9,6 +9,7 @@ import {
     replaceAnnotationTarget,
     replaceVisualItemSelection,
     setAnnotationDisposition,
+    setColumnPrimaryKey,
     updateAnnotation,
     updateColumn,
     updateColumnAction,
@@ -83,6 +84,34 @@ test('updateAnnotation patches fields without mutating original draft', () => {
     assert.equal(next.entities[0].annotations[0].name, '姓名');
     assert.equal(next.entities[0].annotations[0].businessKey, 'ren');
     assert.equal(original.entities[0].annotations[0].name, undefined);
+});
+
+test('setColumnPrimaryKey selects one visible table column and can clear it', () => {
+    const draft = makeDraft();
+    draft.entities[0].kind = 'table';
+    draft.entities[0].columns = [
+        {id: 'c1', fieldKey: 'orderNo', name: '订单号', actions: [], origin: 'inferred', disposition: 'active'},
+        {id: 'c2', fieldKey: 'buyer', name: '采购人', actions: [], origin: 'inferred', disposition: 'active'},
+    ];
+    const selected = setColumnPrimaryKey(draft, 'e1', 'c1', true);
+    assert.deepEqual(selected.entities[0].primaryKey, {fieldKey: 'orderNo'});
+    const switched = setColumnPrimaryKey(selected, 'e1', 'c2', true);
+    assert.deepEqual(switched.entities[0].primaryKey, {fieldKey: 'buyer'});
+    const cleared = setColumnPrimaryKey(switched, 'e1', 'c2', false);
+    assert.equal(cleared.entities[0].primaryKey, undefined);
+});
+
+test('renaming or deleting the selected primary-key column keeps entity semantics valid', () => {
+    const draft = makeDraft();
+    draft.entities[0].kind = 'table';
+    draft.entities[0].columns = [
+        {id: 'c1', fieldKey: 'orderNo', name: '订单号', actions: [], origin: 'confirmed', disposition: 'active'},
+    ];
+    draft.entities[0].primaryKey = {fieldKey: 'orderNo'};
+    const renamed = updateColumn(draft, 'e1', 'c1', {fieldKey: 'orderId'});
+    assert.deepEqual(renamed.entities[0].primaryKey, {fieldKey: 'orderId'});
+    const deleted = deleteVisualItem(renamed, 'e1', 'c1');
+    assert.equal(deleted.entities[0].primaryKey, undefined);
 });
 
 test('updateAnnotation deeply clones the target object', () => {

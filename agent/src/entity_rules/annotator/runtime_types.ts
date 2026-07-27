@@ -14,6 +14,7 @@ export type PickAncestorFingerprint = {
     role?: string;
     text?: string;
     ariaLabel?: string;
+    rect?: PickRect;
 };
 
 export type PickFingerprint = {
@@ -42,6 +43,7 @@ export type PickCandidateLevel = 'control' | 'field' | 'row' | 'group' | 'region
 export type PickCandidate = {
     level: PickCandidateLevel;
     nodeId: string;
+    bbox?: BBox;
     kind?: EntityKind;
     role?: string;
     text?: string;
@@ -118,6 +120,11 @@ export type AnnotatorPickResult = {
 export type AnnotatorRecognizeResult = {
     canvasDraft: CanvasDraft;
     recognized: RecognizedItem[];
+    visualTargetRefs: VisualTargetRef[];
+};
+
+export type AnnotatorVisualizeResult = {
+    visualTargetRefs: VisualTargetRef[];
 };
 
 export type AnnotatorCheckResult = {
