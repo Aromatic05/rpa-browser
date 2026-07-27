@@ -138,6 +138,16 @@ const currentEntity = computed<CanvasEntityDraft | null>(() => {
     return entities.value.find((entity) => entity.id === props.state.currentEntityId) ?? null;
 });
 
+const profileNameModel = computed({
+    get: () => props.state.profileName ?? '',
+    set: (value: string) => {
+        if (!props.state.canvasDraft) {return;}
+        const profileName = value.trim();
+        const nextDraft = {...props.state.canvasDraft, profileName};
+        applyState({...draftEdited(props.state, nextDraft), profileName});
+    },
+});
+
 const selectedCandidate = computed<PickCandidate | null>(() =>
     chooseCandidate(pickCandidates.value, pickCandidateIndex.value),
 );
@@ -182,7 +192,7 @@ const runSave = async (): Promise<void> => {
 };
 
 const runRecognize = async (): Promise<void> => {
-    if (!props.state.canvasDraft || pickMode.value) {
+    if (pickMode.value) {
         return;
     }
     applyState({...props.state, error: null});
@@ -525,7 +535,7 @@ watch(
             <button
                 type="button"
                 class="annotator-btn"
-                :disabled="!state.canvasDraft || pickMode"
+                :disabled="pickMode"
                 @click="runRecognize"
             >重新识别</button>
             <button
@@ -560,7 +570,10 @@ watch(
             >exit</button>
         </div>
         <div class="annotator-summary">
-            <div class="annotator-line">profile: {{ state.profileName || '-' }}</div>
+            <label class="annotator-line">
+                规则名称
+                <input v-model="profileNameModel" class="annotator-profile-input" type="text" placeholder="先识别页面以生成名称" />
+            </label>
             <div class="annotator-line">
                 revision: {{ state.artifactRevision ? state.artifactRevision.slice(0, 8) : '-' }}
             </div>

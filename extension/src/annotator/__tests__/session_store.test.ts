@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     composeKey,
+    createChromeSessionStorage,
     createSessionStore,
     type SessionStorageLike,
 } from '../state/session_store.js';
@@ -69,6 +70,32 @@ test('saveDraft then loadDraft returns the draft when page identity matches', as
     await store.saveDraft(key, draft, pageA);
     const loaded = await store.loadDraft(key, pageA);
     assert.deepEqual(loaded, draft);
+});
+
+test('chrome session adapter persists through the extension storage area', async () => {
+    const values = new Map<string, unknown>();
+    const storage = createChromeSessionStorage({
+        get: async (key) => ({[key]: values.get(key)}),
+        set: async (items) => {
+            for (const [key, value] of Object.entries(items)) {
+                values.set(key, value);
+            }
+        },
+        remove: async (key) => {
+            values.delete(key);
+        },
+    });
+    const store = createSessionStore(storage);
+    const key = composeKey({
+        workspaceName: pageA.workspaceName,
+        tabName: pageA.tabName,
+        pageIdentity: pageA,
+        profileName: 'profile-a',
+    });
+    await store.saveDraft(key, draft, pageA);
+    assert.deepEqual(await store.loadDraft(key, pageA), draft);
+    await store.clearDraft(key);
+    assert.equal(await store.loadDraft(key, pageA), null);
 });
 
 test('loadDraft returns null when page identity mismatches', async () => {

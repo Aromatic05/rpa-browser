@@ -135,10 +135,22 @@ test('runRecognizeLoop applies protective-merged draft via draftEdited so it is 
     const merged = makeDraft('refreshed');
     const client = mockClient({ recognize: async () => ({ canvasDraft: merged, recognized: [] }) });
     const next = await runRecognizeLoop(s, client);
-    assert.equal(next.canvasDraft, merged);
+    assert.equal(next.canvasDraft?.profileName, 'profile-a');
+    assert.equal(next.canvasDraft?.page.urlPattern, '^http://test/page(?:[/?#]|$)');
     assert.equal(next.dirty, true);
     assert.equal(next.history.past[0], before, 'previous draft retained for undo');
     assert.equal(next.latestCheck, null);
+});
+
+test('runRecognizeLoop creates the first draft from an empty open result', async () => {
+    const empty = openLoaded(initialState(), makeOpenResult({canvasDraft: null, profileName: null}));
+    const recognized = makeDraft('');
+    const client = mockClient({recognize: async () => ({canvasDraft: recognized, recognized: []})});
+    const next = await runRecognizeLoop(empty, client);
+    assert.equal(next.profileName, 'page-test-page');
+    assert.equal(next.canvasDraft?.profileName, 'page-test-page');
+    assert.equal(next.canvasDraft?.page.urlPattern, '^http://test/page(?:[/?#]|$)');
+    assert.equal(next.dirty, true);
 });
 
 test('restoreSessionDraft restores an unsaved draft when page identity matches', async () => {

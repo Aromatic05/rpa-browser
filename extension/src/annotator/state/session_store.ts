@@ -8,6 +8,12 @@ export type SessionStorageLike = {
     remove: (key: string) => Promise<void>;
 };
 
+export type ChromeSessionStorageArea = {
+    get: (key: string) => Promise<Record<string, unknown>>;
+    set: (items: Record<string, unknown>) => Promise<void>;
+    remove: (key: string) => Promise<void>;
+};
+
 export type SessionStore = {
     saveDraft: (key: SessionDraftKey, draft: CanvasDraft, pageIdentity: PageIdentity) => Promise<void>;
     loadDraft: (key: SessionDraftKey, expectedPage: PageIdentity) => Promise<CanvasDraft | null>;
@@ -76,5 +82,17 @@ export const createSessionStore = (storage: SessionStorageLike): SessionStore =>
     },
     clearDraft: async (key) => {
         await storage.remove(key);
+    },
+});
+
+export const createChromeSessionStorage = (
+    area: ChromeSessionStorageArea,
+): SessionStorageLike => ({
+    get: async (key) => (await area.get(key))[key] ?? null,
+    set: async (key, value) => {
+        await area.set({[key]: value});
+    },
+    remove: async (key) => {
+        await area.remove(key);
     },
 });

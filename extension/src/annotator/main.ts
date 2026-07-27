@@ -16,6 +16,7 @@ import {
 } from './protocol/annotator_client.js';
 import {
     createSessionStore,
+    createChromeSessionStorage,
     type SessionStorageLike,
     type SessionStore,
 } from './state/session_store.js';
@@ -59,30 +60,12 @@ const compiledComponentCss = (): string => {
     return typeof css === 'string' ? css : '';
 };
 
-const createWebSessionStorage = (): SessionStorageLike => {
-    if (typeof window === 'undefined') {
+const createExtensionSessionStorage = (): SessionStorageLike => {
+    const area = typeof chrome === 'undefined' ? null : chrome.storage?.session;
+    if (!area) {
         return memoryStorage();
     }
-    try {
-        const storage = window.sessionStorage;
-        const probeKey = '__rpa_annotator_storage_probe__';
-        storage.setItem(probeKey, '1');
-        storage.removeItem(probeKey);
-        return {
-            get: async (key) => {
-                const raw = storage.getItem(key);
-                return raw ? (JSON.parse(raw) as unknown) : null;
-            },
-            set: async (key, value) => {
-                storage.setItem(key, JSON.stringify(value));
-            },
-            remove: async (key) => {
-                storage.removeItem(key);
-            },
-        };
-    } catch {
-        return memoryStorage();
-    }
+    return createChromeSessionStorage(area);
 };
 
 const mountVueApp: MountAppFn = (root, handlers) => {
@@ -92,7 +75,7 @@ const mountVueApp: MountAppFn = (root, handlers) => {
     root.appendChild(styleEl);
     const reactiveState = reactive(initialState()) as AnnotatorState;
     const client = buildClient(handlers.dispatch);
-    const sessionStore: SessionStore = createSessionStore(createWebSessionStorage());
+    const sessionStore: SessionStore = createSessionStore(createExtensionSessionStorage());
     const app: VueApp = createApp(RootApp, {
         state: reactiveState,
         client,

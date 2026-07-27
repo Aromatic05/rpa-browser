@@ -76,14 +76,42 @@ export const runRecognizeLoop = async (
     state: AnnotatorState,
     client: AnnotatorClient | null,
 ): Promise<AnnotatorState> => {
-    if (!state.canvasDraft) {
-        return state;
-    }
     try {
         const reply = await ensureClient(client).recognize({ canvasDraft: state.canvasDraft });
-        return draftEdited(state, reply.canvasDraft);
+        const profileName = state.profileName || defaultProfileName(state);
+        const canvasDraft = {
+            ...reply.canvasDraft,
+            profileName,
+            page: {
+                ...reply.canvasDraft.page,
+                ...(reply.canvasDraft.page.urlPattern ? {} : {urlPattern: pageUrlPattern(state)}),
+            },
+        };
+        return {...draftEdited(state, canvasDraft), profileName};
     } catch (error) {
         return failed(state, `recognize failed: ${errorMessage(error)}`);
+    }
+};
+
+const defaultProfileName = (state: AnnotatorState): string => {
+    const raw = state.pageIdentity?.url ?? 'page';
+    try {
+        const url = new URL(raw);
+        const suffix = `${url.hostname}${url.pathname}`.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+        return `page-${suffix || 'rule'}`;
+    } catch {
+        return 'page-rule';
+    }
+};
+
+const pageUrlPattern = (state: AnnotatorState): string | undefined => {
+    const raw = state.pageIdentity?.url;
+    if (!raw) {return undefined;}
+    try {
+        const url = new URL(raw);
+        return `^${`${url.origin}${url.pathname}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[/?#]|$)`;
+    } catch {
+        return undefined;
     }
 };
 
