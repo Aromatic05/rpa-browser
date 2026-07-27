@@ -179,9 +179,11 @@ const compileEntity = (
 
         if (fields.length > 0) {
             annotationRule.fields = fields.map((field) => {
+                const fieldRuleId = annotationRuleIdByCanvasId.get(field.id);
                 const compiledField = {
                     fieldKey: field.businessKey,
                     ...(field.name ? { name: field.name } : {}),
+                    ...(fieldRuleId ? { controlRuleId: fieldRuleId } : {}),
                 };
                 refTargetByCanvasId[field.id] = compiledField;
                 return compiledField;
