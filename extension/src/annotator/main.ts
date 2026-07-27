@@ -2,7 +2,6 @@ import {createApp, reactive, type App as VueApp} from 'vue';
 import RootApp from './App.vue';
 import {ANNOTATOR_CSS} from './styles.js';
 import {initialState, type AnnotatorState} from './state/annotator_state.js';
-import {runRecognizeLoop} from './state/annotator_loop.js';
 import {
     mountAnnotator,
     type AnnotatorAppHandle,
@@ -87,29 +86,11 @@ const mountVueApp: MountAppFn = (root, handlers) => {
         onExit: handlers.onExit,
     });
     app.mount(appRoot);
-    let recognizeRequest = 0;
     const handle: AnnotatorAppHandle = {
         setState: (next) => {
             Object.assign(reactiveState, next);
         },
         getState: () => reactiveState,
-        afterOpen: (state) => {
-            if (state.canvasDraft) {
-                return;
-            }
-            const request = ++recognizeRequest;
-            void runRecognizeLoop(state, client).then((next) => {
-                const currentPage = reactiveState.pageIdentity;
-                const openedPage = state.pageIdentity;
-                const samePage = currentPage?.workspaceName === openedPage?.workspaceName
-                    && currentPage?.tabName === openedPage?.tabName
-                    && currentPage?.url === openedPage?.url;
-                if (request !== recognizeRequest || !samePage || reactiveState.canvasDraft) {
-                    return;
-                }
-                Object.assign(reactiveState, next);
-            });
-        },
         unmount: () => {
             app.unmount();
         },
