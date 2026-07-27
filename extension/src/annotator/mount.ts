@@ -1,4 +1,9 @@
-import type {AnnotatorState} from './state/annotator_state.js';
+import type {AnnotatorOpenResult} from './types.js';
+import {
+    exitAnnotation,
+    openLoaded,
+    type AnnotatorState,
+} from './state/annotator_state.js';
 
 export const ANNOTATOR_HOST_ID = 'rpa-entity-annotator-host';
 
@@ -63,6 +68,8 @@ export type AnnotatorHandle = {
     hide: () => void;
     setState: (state: AnnotatorState) => void;
     getState: () => AnnotatorState;
+    open: (result: AnnotatorOpenResult) => void;
+    exit: () => void;
 };
 
 export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => {
@@ -87,5 +94,11 @@ export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => 
             app.setState(state);
         },
         getState: () => app.getState(),
+        open: (result) => {
+            app.setState(openLoaded(app.getState(), result));
+        },
+        exit: () => {
+            app.setState(exitAnnotation(app.getState()));
+        },
     };
 };

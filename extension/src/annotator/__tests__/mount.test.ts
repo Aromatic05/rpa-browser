@@ -9,6 +9,7 @@ import {
     type AnnotatorHandlers,
 } from '../mount.js';
 import { initialState } from '../state/annotator_state.js';
+import type { AnnotatorOpenResult } from '../types.js';
 
 const noopHandlers: AnnotatorHandlers = {
     onExit: () => undefined,
@@ -98,6 +99,34 @@ test('mountAnnotator appends host to documentElement and returns a handle that c
     assert.equal(host.style.display, 'none');
     handle.unmount();
     assert.equal(doc.getElementById(ANNOTATOR_HOST_ID), null);
+});
+
+test('mount handle opens through the formal state transition and exits without losing its draft', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    let state = initialState();
+    const handle = mountAnnotator({
+        document: dom.window.document,
+        handlers: noopHandlers,
+        mountApp: () => ({
+            setState: (next) => { state = next; },
+            getState: () => state,
+            unmount: () => undefined,
+        }),
+    });
+    const result: AnnotatorOpenResult = {
+        workspaceName: 'ws', tabName: 'tab', url: 'https://example.test/orders',
+        pageKind: 'table', profileName: 'orders', artifactRevision: 'rev-1',
+        canvasDraft: { version: 1, profileName: 'orders', page: {kind: 'table'}, entities: [], preserved: {} },
+        visualTargetRefs: [{entityId: 'orders', nodeId: 'table-1', role: 'entity'}],
+    };
+    handle.open(result);
+    assert.equal(state.mode, 'editing');
+    assert.deepEqual(state.pageIdentity, {workspaceName: 'ws', tabName: 'tab', url: 'https://example.test/orders'});
+    assert.deepEqual(state.visualBindings, result.visualTargetRefs);
+    handle.exit();
+    assert.equal(state.mode, 'idle');
+    assert.equal(state.canvasDraft, result.canvasDraft);
+    assert.equal(state.currentAnnotationId, null);
 });
 
 test('unmounting annotator leaves debug host intact', () => {

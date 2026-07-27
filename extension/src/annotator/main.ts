@@ -54,6 +54,11 @@ const memoryStorage = (): SessionStorageLike & {_store: Map<string, unknown>} =>
     };
 };
 
+const compiledComponentCss = (): string => {
+    const css = (globalThis as {__rpaAnnotatorComponentCss?: unknown}).__rpaAnnotatorComponentCss;
+    return typeof css === 'string' ? css : '';
+};
+
 const createWebSessionStorage = (): SessionStorageLike => {
     if (typeof window === 'undefined') {
         return memoryStorage();
@@ -83,7 +88,7 @@ const createWebSessionStorage = (): SessionStorageLike => {
 const mountVueApp: MountAppFn = (root, handlers) => {
     const styleEl = root.ownerDocument.createElement('style');
     styleEl.setAttribute('data-rpa-annotator-style', 'true');
-    styleEl.textContent = ANNOTATOR_CSS;
+    styleEl.textContent = `${ANNOTATOR_CSS}\n${compiledComponentCss()}`;
     root.appendChild(styleEl);
     const reactiveState = reactive(initialState()) as AnnotatorState;
     const client = buildClient(handlers.dispatch);

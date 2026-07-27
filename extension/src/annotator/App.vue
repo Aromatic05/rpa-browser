@@ -478,6 +478,15 @@ watch(
 );
 
 watch(
+    () => props.state.mode,
+    (mode) => {
+        if (mode === 'idle') {
+            exitPickMode();
+        }
+    },
+);
+
+watch(
     () => props.state.pageIdentity,
     (pageIdentity) => {
         if (!pageIdentity) {

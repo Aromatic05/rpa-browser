@@ -41,6 +41,8 @@ type AnnotatorHandle = {
     hide: () => void;
     setState: (state: unknown) => void;
     getState: () => unknown;
+    open: (result: unknown) => void;
+    exit: () => void;
 };
 
 type AnnotatorExports = {
@@ -329,7 +331,10 @@ const loadAnnotator = (() => {
                             const { startAnnotator } = await loadAnnotator();
                             annotatorHandle = startAnnotator(
                                 {
-                                    onExit: () => { annotatorHandle?.hide(); },
+                                    onExit: () => {
+                                        annotatorHandle?.exit();
+                                        annotatorHandle?.hide();
+                                    },
                                     onUndo: () => undefined,
                                     onRedo: () => undefined,
                                     onCheck: () => undefined,
@@ -350,11 +355,7 @@ const loadAnnotator = (() => {
                         url: location.href,
                     }) as ActionShape;
                     if (openReply && isRecord(openReply.payload)) {
-                        const currentState = annotatorHandle.getState() as Record<string, unknown>;
-                        annotatorHandle.setState({
-                            ...currentState,
-                            ...(openReply.payload as Record<string, unknown>),
-                        });
+                        annotatorHandle.open(openReply.payload);
                     }
                 })();
             },

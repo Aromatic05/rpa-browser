@@ -6,7 +6,7 @@
     "scripts": {
         "build": "tsc -p tsconfig.json && vite build && node build.mjs",
         "typecheck": "tsc -p tsconfig.json --noEmit && vue-tsc --noEmit -p tsconfig.annotator.json",
-        "test": "pnpm build && node src/__tests__/cmd_router.test.mjs && node src/__tests__/action_flow.test.mjs && node src/__tests__/action_resolution.test.mjs && node src/__tests__/import_boundary.test.mjs && node src/__tests__/content_workspace_address.test.mjs",
+        "test": "pnpm build && node src/__tests__/cmd_router.test.mjs && node src/__tests__/action_flow.test.mjs && node src/__tests__/action_resolution.test.mjs && node src/__tests__/import_boundary.test.mjs && node src/__tests__/content_workspace_address.test.mjs && node src/__tests__/annotator_bundle.test.mjs",
         "test:annotator": "node --import tsx --test \"src/annotator/__tests__/*.test.ts\""
     },
     "devDependencies": {

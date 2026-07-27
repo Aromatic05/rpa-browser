@@ -120,6 +120,10 @@ export const failed = (state: AnnotatorState, error: string): AnnotatorState => 
 export const exitAnnotation = (state: AnnotatorState): AnnotatorState => ({
     ...state,
     mode: 'idle',
+    currentEntityId: null,
+    currentAnnotationId: null,
+    latestCheck: null,
+    error: null,
 });
 
 export const undo = (state: AnnotatorState): AnnotatorState => {
