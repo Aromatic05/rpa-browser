@@ -188,6 +188,105 @@ const createTableFixture = (): TableFixture => {
     return { snapshot, finalEntityView, editButtonIds: editIds, deleteButtonIds: deleteIds };
 };
 
+const createCompositeEntityFixture = (): {snapshot: SnapshotResult; finalEntityView: FinalEntityView} => {
+    const queryInput = newTextNode('query_input', 'textbox', '订单编号');
+    setNodeAttr(queryInput, 'id', 'orderNoQuery');
+    setNodeBbox(queryInput, {x: 24, y: 32, width: 220, height: 32});
+    const searchButton = newTextNode('search_button', 'button', '查询');
+    setNodeAttr(searchButton, 'class', 'search-button');
+    setNodeBbox(searchButton, {x: 260, y: 32, width: 72, height: 32});
+    const queryForm: UnifiedNode = {
+        id: 'query_form',
+        role: 'form',
+        name: '查询条件',
+        children: [queryInput, searchButton],
+    };
+    setNodeAttr(queryForm, 'class', 'orders-query-form');
+    setNodeBbox(queryForm, {x: 16, y: 16, width: 760, height: 80});
+
+    const orderCell = newTextNode('order_cell', 'cell', 'ORD-001');
+    setNodeBbox(orderCell, {x: 24, y: 160, width: 180, height: 36});
+    const row: UnifiedNode = {id: 'order_row', role: 'row', children: [orderCell]};
+    setNodeBbox(row, {x: 16, y: 152, width: 760, height: 44});
+    const header = newTextNode('order_header', 'columnheader', '订单编号');
+    const headerRow: UnifiedNode = {id: 'order_header_row', role: 'row', children: [header]};
+    const resultTable: UnifiedNode = {
+        id: 'result_table',
+        role: 'table',
+        name: '订单列表',
+        children: [headerRow, row],
+    };
+    setNodeAttr(resultTable, 'class', 'orders-result-table');
+    setNodeBbox(resultTable, {x: 16, y: 120, width: 760, height: 360});
+
+    const nextButton = newTextNode('next_button', 'button', '下一页');
+    setNodeAttr(nextButton, 'class', 'pagination-next');
+    setNodeBbox(nextButton, {x: 704, y: 500, width: 72, height: 32});
+    const pagination: UnifiedNode = {id: 'pagination', role: 'navigation', name: '分页', children: [nextButton]};
+    setNodeBbox(pagination, {x: 16, y: 492, width: 760, height: 48});
+
+    const module: UnifiedNode = {
+        id: 'orders_module',
+        role: 'region',
+        name: '订单查询列表',
+        children: [queryForm, resultTable, pagination],
+    };
+    setNodeAttr(module, 'class', 'orders-module');
+    setNodeBbox(module, {x: 0, y: 0, width: 800, height: 560});
+    const root: UnifiedNode = {id: 'root', role: 'root', children: [module]};
+
+    const entityIndex: EntityIndex = {
+        entities: {
+            ent_query: {id: 'ent_query', type: 'region', kind: 'form', nodeId: 'query_form', name: '查询条件'},
+            ent_table: {id: 'ent_table', type: 'region', kind: 'table', nodeId: 'result_table', name: '订单列表'},
+        },
+        byNodeId: {
+            query_form: [{type: 'region', entityId: 'ent_query', role: 'container'}],
+            result_table: [{type: 'region', entityId: 'ent_table', role: 'container'}],
+            order_cell: [{type: 'region', entityId: 'ent_table', role: 'descendant'}],
+        },
+    };
+    const {nodeIndex, bboxIndex, attrIndex, contentStore} = buildExternalIndexes(root);
+    const snapshot = buildSnapshot({
+        root,
+        nodeIndex,
+        entityIndex,
+        locatorIndex: {},
+        bboxIndex,
+        attrIndex,
+        contentStore,
+    });
+    const finalEntityView: FinalEntityView = {
+        entities: [
+            {
+                id: 'ent_query',
+                nodeId: 'query_form',
+                kind: 'form',
+                type: 'region',
+                name: '查询条件',
+                businessTag: 'orders.query',
+                source: 'auto',
+                formFields: [{fieldKey: 'orderNo', name: '订单编号'}],
+                formActions: [{actionIntent: 'search', text: '查询'}],
+            },
+            {
+                id: 'ent_table',
+                nodeId: 'result_table',
+                kind: 'table',
+                type: 'region',
+                name: '订单列表',
+                businessTag: 'orders.table',
+                source: 'auto',
+                columns: [{fieldKey: 'orderNo', name: '订单编号'}],
+                pagination: {nextAction: {actionIntent: 'nextPage', nodeRuleId: 'orders_next', nodeId: 'next_button'}},
+            },
+        ],
+        byNodeId: {},
+        bindingIndex: {fieldsByEntity: {}, actionsByEntity: {}, columnsByEntity: {}},
+    };
+    return {snapshot, finalEntityView};
+};
+
 test('resolveClickedNode resolves by smallest-area bbox and cross-validates tag', () => {
     const { snapshot } = createTableFixture();
     const fingerprint: PickFingerprint = {
@@ -248,6 +347,25 @@ test('buildCandidateChain produces control/cell/row/region levels and filters no
     const region = chain.find((candidate) => candidate.level === 'region');
     assert.equal(region?.nodeId, 'table_main');
     assert.equal(region?.entityRef?.entityId, 'ent_table');
+});
+
+test('entity picking exposes the outer module but excludes cells, rows and controls', () => {
+    const {snapshot, finalEntityView} = createCompositeEntityFixture();
+    const {candidateChain} = pickFromFingerprint(snapshot, finalEntityView, {
+        point: {x: 40, y: 170},
+        selectorCandidates: [],
+        tagName: 'td',
+        classTokens: [],
+        text: 'ORD-001',
+        rect: {x: 24, y: 160, width: 180, height: 36},
+        ancestors: [],
+    }, 'entity');
+
+    assert.ok(candidateChain.length >= 2);
+    assert.ok(candidateChain.every((candidate) => candidate.level === 'region' || candidate.level === 'group'));
+    assert.equal(candidateChain.at(-1)?.nodeId, 'orders_module');
+    assert.equal(candidateChain.at(-1)?.entityRef?.type, 'node');
+    assert.deepEqual(candidateChain.at(-1)?.proposedTargets?.[0], {classContains: 'orders-module'});
 });
 
 test('pick candidate matchCount for repeated row action is >1 and expect one_or_more', () => {
@@ -967,6 +1085,47 @@ test('recognizeEntities adds a node-backed page entity when the inferred page ki
         const rootRule = (compiled.artifact.match as {entities: Array<{source: string}>}).entities[0];
         assert.equal(rootRule.source, 'node');
     }
+});
+
+test('recognizeEntities keeps the confirmed outer entity and discovers only its internal objects', () => {
+    const {snapshot, finalEntityView} = createCompositeEntityFixture();
+    const selected: CanvasDraft = {
+        version: 1,
+        profileName: '',
+        page: {kind: 'table'},
+        entities: [{
+            id: 'e0',
+            source: 'node',
+            kind: 'table',
+            name: '订单查询列表',
+            businessTag: 'orders.main',
+            target: {classContains: 'orders-module'},
+            expect: 'unique',
+            annotations: [],
+            columns: [],
+            origin: 'manual',
+        }],
+        preserved: {
+            matchRaw: {},
+            annotationRaw: {},
+            preservedByCanvasId: {},
+            ruleIdToCanvasId: {},
+            locatorRules: [],
+            ruleRefs: [],
+        },
+    };
+
+    const {canvasDraft, recognized} = recognizeEntities(snapshot, finalEntityView, selected);
+    assert.equal(canvasDraft.entities.length, 1, 'recognition must not create form/table sibling entities');
+    const entity = canvasDraft.entities[0];
+    assert.equal(entity.id, 'e0');
+    assert.equal(entity.origin, 'manual');
+    assert.deepEqual(entity.target, {classContains: 'orders-module'});
+    assert.ok(entity.annotations.some((item) => item.businessKey === 'orderNo'));
+    assert.ok(entity.annotations.some((item) => item.businessKey === 'search'));
+    assert.ok(entity.columns.some((item) => item.fieldKey === 'orderNo'));
+    assert.equal(entity.pagination?.actionIntent, 'nextPage');
+    assert.equal(recognized.length, 1);
 });
 
 test('full save round-trip: edit -> check (all unique) -> save -> reload -> semantic preserved', () => {

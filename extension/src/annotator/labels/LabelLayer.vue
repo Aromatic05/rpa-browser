@@ -16,6 +16,7 @@ const props = defineProps<{
     candidate: PickCandidate | null;
     candidateIndex: number;
     candidateChainLength: number;
+    showEditor?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -152,7 +153,7 @@ const onReselect = (): void => {
             >x{{ label.matchCount }}</span>
         </button>
         <div
-            v-if="editCardPlacement && selectedAnnotation"
+            v-if="showEditor !== false && editCardPlacement && selectedAnnotation"
             class="annotator-edit-anchor"
             :style="editCardStyle"
         >

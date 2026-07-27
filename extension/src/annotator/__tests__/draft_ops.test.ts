@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     addAnnotation,
+    createEntityScopeDraft,
     deleteAnnotation,
     deleteVisualItem,
     ignoreVisualItem,
@@ -14,7 +15,7 @@ import {
     updateEntity,
     updatePagination,
 } from '../state/draft_ops.js';
-import type {CanvasAnnotationDraft, CanvasDraft, CanvasEntityDraft} from '../types.js';
+import type {CanvasAnnotationDraft, CanvasDraft, CanvasEntityDraft, PickCandidate} from '../types.js';
 
 const makeAnnotation = (id: string, businessKey: string): CanvasAnnotationDraft => ({
     id,
@@ -43,6 +44,35 @@ const makeDraft = (): CanvasDraft => ({
     page: {kind: 'form'},
     entities: [makeEntity('e1')],
     preserved: {},
+});
+
+test('createEntityScopeDraft creates exactly one confirmed entity scope before recognition', () => {
+    const candidate: PickCandidate = {
+        level: 'region',
+        nodeId: 'orders-module',
+        text: '订单查询列表',
+        entityRef: {
+            entityId: 'container:orders-module',
+            nodeId: 'orders-module',
+            kind: 'table',
+            type: 'node',
+        },
+        score: 100,
+        proposedTargets: [{classContains: 'orders-module'}],
+        matchCount: 1,
+        matchedNodeIds: ['orders-module'],
+        stabilityHint: 'stable',
+        expect: 'unique',
+    };
+
+    const draft = createEntityScopeDraft(candidate);
+    assert.equal(draft.entities.length, 1);
+    assert.equal(draft.page.kind, 'table');
+    assert.equal(draft.entities[0].source, 'node');
+    assert.equal(draft.entities[0].origin, 'manual');
+    assert.deepEqual(draft.entities[0].target, {classContains: 'orders-module'});
+    assert.equal(draft.entities[0].annotations.length, 0);
+    assert.equal(draft.entities[0].columns.length, 0);
 });
 
 test('updateAnnotation patches fields without mutating original draft', () => {

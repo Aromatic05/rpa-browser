@@ -111,7 +111,7 @@ test('runCheckLoop transitions to failed state when check throws', async () => {
     const client = mockClient({ check: async () => { throw new Error('boom'); } });
     const next = await runCheckLoop(s, client);
     assert.equal(next.latestCheck, null);
-    assert.match(next.error || '', /check failed: boom/);
+    assert.match(next.error || '', /检查失败：boom/);
 });
 
 test('runCheckLoop with no client transitions to failed state', async () => {
@@ -120,6 +120,20 @@ test('runCheckLoop with no client transitions to failed state', async () => {
     assert.match(next.error || '', /client unavailable/);
 });
 
+
+
+test('runRecognizeLoop explains transport timeout in user-facing language', async () => {
+    const s = draftEdited(openState(), makeRecognizedDraft('profile-a'));
+    const client = mockClient({
+        recognize: async () => {
+            const error = new Error('request timeout') as Error & {code: string};
+            error.code = 'TIMEOUT';
+            throw error;
+        },
+    });
+    const next = await runRecognizeLoop(s, client);
+    assert.equal(next.error, '识别失败：本地 RPA 服务没有响应。请确认运行窗口仍然开启，然后重试。');
+});
 test('runSaveLoop clears session draft on save success', async () => {
     const storage = createMemoryStorage();
     const store: SessionStore = createSessionStore(storage);
@@ -161,28 +175,29 @@ test('runSaveLoop records failure message and keeps draft dirty when save reject
 });
 
 test('runRecognizeLoop applies protective-merged draft via draftEdited so it is undoable', async () => {
-    const s = openState();
+    const s = draftEdited(openState(), makeRecognizedDraft('profile-a'));
     const before = s.canvasDraft!;
-    const merged = makeDraft('refreshed');
+    const merged = makeRecognizedDraft('refreshed');
     const client = mockClient({ recognize: async () => ({ canvasDraft: merged, recognized: [] }) });
     const next = await runRecognizeLoop(s, client);
     assert.equal(next.canvasDraft?.profileName, 'profile-a');
     assert.equal(next.canvasDraft?.page.urlPattern, '^http://test/page(?:[/?#]|$)');
     assert.equal(next.dirty, true);
-    assert.equal(next.history.past[0], before, 'previous draft retained for undo');
+    assert.equal(next.history.past.at(-1), before, 'previous draft retained for undo');
     assert.equal(next.latestCheck, null);
 });
 
-test('runRecognizeLoop creates the first draft from an empty open result', async () => {
+test('runRecognizeLoop refuses to recognize before an entity scope is confirmed', async () => {
     const empty = openLoaded(initialState(), makeOpenResult({canvasDraft: null, profileName: null}));
-    const recognized = makeRecognizedDraft('');
-    const client = mockClient({recognize: async () => ({canvasDraft: recognized, recognized: []})});
+    let calls = 0;
+    const client = mockClient({recognize: async () => {
+        calls += 1;
+        return {canvasDraft: makeRecognizedDraft(''), recognized: []};
+    }});
     const next = await runRecognizeLoop(empty, client);
-    assert.equal(next.profileName, 'page-test-page');
-    assert.equal(next.canvasDraft?.profileName, 'page-test-page');
-    assert.equal(next.canvasDraft?.page.urlPattern, '^http://test/page(?:[/?#]|$)');
-    assert.equal(next.dirty, true);
-    assert.equal(next.currentEntityId, 'e0', 'first recognition must focus an entity so adding annotations is possible');
+    assert.equal(calls, 0);
+    assert.equal(next.canvasDraft, null);
+    assert.equal(next.error, '识别失败：请先选择并确认实体区域。');
 });
 
 test('restoreSessionDraft restores an unsaved draft when page identity matches', async () => {

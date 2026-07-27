@@ -71,7 +71,10 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     style.textContent = `
       :host { all: initial; }
       .wrap { display:flex; flex-direction:column; align-items:flex-end; gap:8px; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-      .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; }
+      .launchers { display:flex; align-items:center; gap:8px; }
+      .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.22); }
+      .annotate-launch { height:38px; padding:0 14px; border:none; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(37,99,235,.28); }
+      .annotate-launch:hover { background:#1d4ed8; }
       .panel { width:420px; border-radius:12px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 12px 28px rgba(15,23,42,.24); display:none; overflow:hidden; }
       .panel.open { display:block; }
       .tabs { display:flex; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
@@ -96,6 +99,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const wrap = document.createElement('div');
     wrap.className = 'wrap';
+    const launchers = document.createElement('div');
+    launchers.className = 'launchers';
+    const annotateLaunch = document.createElement('button');
+    annotateLaunch.className = 'annotate-launch';
+    annotateLaunch.textContent = '标注页面';
+    annotateLaunch.setAttribute('aria-label', '打开页面语义标注器');
     const ball = document.createElement('button');
     ball.className = 'ball';
     ball.textContent = 'RPA';
@@ -111,11 +120,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     footer.appendChild(out);
 
     panel.append(tabsBar, body, footer);
-    wrap.append(ball, panel);
+    launchers.append(annotateLaunch, ball);
+    wrap.append(launchers, panel);
     shadow.append(style, wrap);
     document.documentElement.appendChild(host);
 
     let isOpen = false;
+    annotateLaunch.addEventListener('click', () => {
+        opts.onEnterAnnotation?.();
+    });
     ball.addEventListener('click', () => {
         isOpen = !isOpen;
         panel.classList.toggle('open', isOpen);

@@ -1,4 +1,5 @@
 import {
+    getNodeAttr,
     getNodeContent,
     normalizeText,
 } from '../../runner/steps/executors/snapshot/core/runtime_store';
@@ -17,7 +18,7 @@ import type {
 } from './types';
 import { entityCanvasId } from './identifiers';
 import type { RecognizedItem } from './runtime_types';
-import { buildNodeIndex, buildParentById, isDescendantOrSelf } from './picking';
+import { buildNodeIndex, buildParentById, countMatches, isDescendantOrSelf } from './picking';
 import { protectiveMerge } from './merge';
 
 export const inferPageKind = (finalEntityView: FinalEntityView | undefined): EntityKind => {
@@ -52,6 +53,29 @@ const buildEntityTarget = (entity: FinalEntityRecord): CanvasEntityDraft['target
         target.nameContains = name;
     }
     return target;
+};
+
+const buildNodeTarget = (
+    snapshot: SnapshotResult,
+    nodeId: string | undefined,
+    options: {allowText?: boolean} = {},
+): CanvasEntityDraft['target'] => {
+    if (!nodeId) {return {};}
+    const node = snapshot.nodeIndex[nodeId];
+    if (!node) {return {};}
+    const id = normalizeText(getNodeAttr(node, 'id'));
+    if (id) {return {idEquals: id};}
+    const name = normalizeText(getNodeAttr(node, 'name'));
+    if (name) {return {nameEquals: name};}
+    const aria = normalizeText(getNodeAttr(node, 'aria-label') || getNodeAttr(node, 'title'));
+    if (aria) {return {ariaContains: aria};}
+    const className = normalizeText(getNodeAttr(node, 'class'));
+    const classToken = className?.split(/\s+/).find((token) => token.length >= 2 && !/[0-9a-f]{8,}/i.test(token));
+    if (classToken) {return {classContains: classToken};}
+    const text = normalizeText(node.name || getNodeContent(node));
+    if (options.allowText && text && text.length <= 24) {return {textContains: text};}
+    const role = normalizeText(node.role);
+    return role ? {roleEquals: role} : {};
 };
 
 const collectControlsInSubtree = (snapshot: SnapshotResult, rootNodeId: string): UnifiedNode[] => {
@@ -111,23 +135,6 @@ const inferFormFieldsFromControls = (
     return annotations;
 };
 
-const inferActionsFromControls = (entity: FinalEntityRecord): CanvasAnnotationDraft[] => {
-    const annotations: CanvasAnnotationDraft[] = [];
-    for (const action of entity.formActions || []) {
-        annotations.push({
-            id: `auto_${entity.id}_action_${action.actionIntent}`,
-            type: 'action',
-            businessKey: action.actionIntent,
-            ...(action.text ? { name: action.text } : {}),
-            target: {},
-            expect: 'one_or_more',
-            origin: 'inferred',
-            disposition: 'active',
-        });
-    }
-    return annotations;
-};
-
 const buildInferredEntity = (
     snapshot: SnapshotResult,
     entity: FinalEntityRecord,
@@ -135,7 +142,6 @@ const buildInferredEntity = (
 ): CanvasEntityDraft => {
     const id = entityCanvasId(index);
     const inferredFields = inferFormFieldsFromControls(snapshot, entity);
-    const inferredActions = inferActionsFromControls(entity);
     const annotations =
         (entity.formFields || []).length > 0 || (entity.formActions || []).length > 0
             ? [
@@ -144,12 +150,21 @@ const buildInferredEntity = (
                       type: 'field' as const,
                       businessKey: field.fieldKey,
                       ...(field.name ? { name: field.name } : {}),
-                      target: {},
+                      target: buildNodeTarget(snapshot, field.controlNodeId),
                       expect: 'unique' as const,
                       origin: 'inferred' as const,
                       disposition: 'active' as const,
                   })),
-                  ...inferredActions,
+                  ...(entity.formActions || []).map((action) => ({
+                      id: `auto_${id}_action_${action.actionIntent}`,
+                      type: 'action' as const,
+                      businessKey: action.actionIntent,
+                      ...(action.text ? {name: action.text} : {}),
+                      target: buildNodeTarget(snapshot, action.nodeId, {allowText: true}),
+                      expect: 'unique' as const,
+                      origin: 'inferred' as const,
+                      disposition: 'active' as const,
+                  })),
               ]
             : inferredFields;
 
@@ -194,7 +209,11 @@ const buildInferredEntity = (
             ? {
                   pagination: {
                       actionIntent: entity.pagination.nextAction.actionIntent,
-                      pageTarget: {},
+                      pageTarget: buildNodeTarget(
+                          snapshot,
+                          entity.pagination.nextAction.nodeId,
+                          {allowText: true},
+                      ),
                   },
               }
             : {}),
@@ -244,6 +263,112 @@ const buildFreshInferredEntities = (
     return entities;
 };
 
+const resolveSelectedRootNodeId = (
+    snapshot: SnapshotResult,
+    finalEntityView: FinalEntityView | undefined,
+    selected: CanvasEntityDraft,
+): string | null => {
+    if (selected.source === 'node') {
+        return countMatches(snapshot, selected.target)[0] ?? null;
+    }
+    const wantedName = normalizeText(selected.target.nameContains);
+    const record = (finalEntityView?.entities || []).find((entity) => {
+        if (entity.type !== selected.source || entity.kind !== selected.kind) {return false;}
+        if (!wantedName) {return true;}
+        return (normalizeText(entity.name) || '').includes(wantedName);
+    });
+    return record?.nodeId ?? null;
+};
+
+const mergeScopedAnnotations = (
+    selected: CanvasEntityDraft['annotations'],
+    inferred: CanvasEntityDraft['annotations'],
+): CanvasEntityDraft['annotations'] => {
+    const out = selected.map((item) => ({...item, target: {...item.target}}));
+    const byKey = new Map(out.map((item, index) => [item.businessKey, index]));
+    for (const item of inferred) {
+        const index = byKey.get(item.businessKey);
+        if (index === undefined) {
+            byKey.set(item.businessKey, out.length);
+            out.push({...item, target: {...item.target}});
+        } else if (out[index].origin === 'inferred') {
+            out[index] = {...out[index], ...item, id: out[index].id, target: {...item.target}};
+        }
+    }
+    return out;
+};
+
+const mergeScopedColumns = (
+    selected: CanvasEntityDraft['columns'],
+    inferred: CanvasEntityDraft['columns'],
+): CanvasEntityDraft['columns'] => {
+    const out = selected.map((column) => ({
+        ...column,
+        actions: column.actions.map((action) => ({...action, target: {...action.target}})),
+    }));
+    const byKey = new Map(out.map((column, index) => [column.fieldKey, index]));
+    for (const column of inferred) {
+        const index = byKey.get(column.fieldKey);
+        const cloned = {
+            ...column,
+            actions: column.actions.map((action) => ({...action, target: {...action.target}})),
+        };
+        if (index === undefined) {
+            byKey.set(column.fieldKey, out.length);
+            out.push(cloned);
+        } else if (out[index].origin === 'inferred') {
+            out[index] = {...out[index], ...cloned, id: out[index].id};
+        }
+    }
+    return out;
+};
+
+const recognizeWithinSelectedEntity = (
+    snapshot: SnapshotResult,
+    finalEntityView: FinalEntityView | undefined,
+    existingDraft: CanvasDraft,
+): {canvasDraft: CanvasDraft; recognized: RecognizedItem[]} => {
+    const selected = existingDraft.entities[0];
+    const rootNodeId = resolveSelectedRootNodeId(snapshot, finalEntityView, selected);
+    if (!rootNodeId) {
+        return {
+            canvasDraft: existingDraft,
+            recognized: [summarizeEntity(selected, 'existing')],
+        };
+    }
+    const parentById = buildParentById(snapshot.root);
+    const records = (finalEntityView?.entities || [])
+        .filter(isSignificantEntity)
+        .filter((record) => isDescendantOrSelf(record.nodeId, rootNodeId, parentById));
+    const inferred = records.map((record, index) => buildInferredEntity(snapshot, record, index));
+    const annotations = mergeScopedAnnotations(
+        selected.annotations,
+        inferred.flatMap((entity) => entity.annotations),
+    );
+    const columns = mergeScopedColumns(
+        selected.columns,
+        inferred.flatMap((entity) => entity.columns),
+    );
+    const primaryKey = selected.primaryKey ?? inferred.find((entity) => entity.primaryKey)?.primaryKey;
+    const pagination = selected.pagination ?? inferred.find((entity) => entity.pagination)?.pagination;
+    const entity: CanvasEntityDraft = {
+        ...selected,
+        target: {...selected.target},
+        annotations,
+        columns,
+        ...(primaryKey ? {primaryKey} : {}),
+        ...(pagination ? {pagination: {...pagination, pageTarget: {...pagination.pageTarget}}} : {}),
+    };
+    const canvasDraft: CanvasDraft = {
+        ...existingDraft,
+        entities: [entity],
+    };
+    return {
+        canvasDraft,
+        recognized: [summarizeEntity(entity, 'existing')],
+    };
+};
+
 const buildPageFallbackEntity = (
     snapshot: SnapshotResult,
     pageKind: EntityKind,
@@ -269,6 +394,9 @@ export const recognizeEntities = (
     finalEntityView: FinalEntityView | undefined,
     existingDraft?: CanvasDraft,
 ): { canvasDraft: CanvasDraft; recognized: RecognizedItem[] } => {
+    if (existingDraft?.entities.length === 1 && existingDraft.entities[0].origin === 'manual') {
+        return recognizeWithinSelectedEntity(snapshot, finalEntityView, existingDraft);
+    }
     const pageKind = existingDraft?.page.kind || inferPageKind(finalEntityView);
     const page: CanvasPageDraft = existingDraft?.page || { kind: pageKind };
 

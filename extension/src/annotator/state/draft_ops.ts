@@ -2,8 +2,46 @@ import type {
     CanvasAnnotationDraft,
     CanvasDraft,
     CanvasEntityDraft,
+    PickCandidate,
 } from '../types.js';
 import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
+
+export const createEntityScopeDraft = (candidate: PickCandidate): CanvasDraft => {
+    const entityRef = candidate.entityRef;
+    if (!entityRef || (candidate.level !== 'region' && candidate.level !== 'group')) {
+        throw new Error('entity scope candidate is required');
+    }
+    const target = candidate.proposedTargets?.[0];
+    if (!target || Object.keys(target).length === 0) {
+        throw new Error('entity scope candidate has no persistent target');
+    }
+    const name = candidate.text?.trim() || '已选实体区域';
+    return {
+        version: 1,
+        profileName: '',
+        page: {kind: entityRef.kind},
+        entities: [{
+            id: 'e0',
+            source: entityRef.type,
+            kind: entityRef.kind,
+            name,
+            businessTag: `${entityRef.kind}.main`,
+            target: {...target},
+            expect: 'unique',
+            annotations: [],
+            columns: [],
+            origin: 'manual',
+        }],
+        preserved: {
+            matchRaw: {version: 1, page: {kind: entityRef.kind}, entities: []},
+            annotationRaw: {version: 1, page: {kind: entityRef.kind}, annotations: []},
+            preservedByCanvasId: {},
+            ruleIdToCanvasId: {},
+            locatorRules: [],
+            ruleRefs: [],
+        },
+    };
+};
 
 const cloneDraft = (draft: CanvasDraft): CanvasDraft => ({
     ...draft,

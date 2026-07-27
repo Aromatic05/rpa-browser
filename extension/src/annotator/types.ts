@@ -151,8 +151,10 @@ export type PickCandidateEntityRef = {
     entityId: string;
     nodeId: string;
     kind: EntityKind;
-    type: 'region' | 'group';
+    type: 'region' | 'group' | 'node';
 };
+
+export type PickPurpose = 'entity' | 'annotation';
 
 export type PickCandidate = {
     level: PickCandidateLevel;

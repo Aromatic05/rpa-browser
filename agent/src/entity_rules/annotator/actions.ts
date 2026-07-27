@@ -85,12 +85,13 @@ const handleOpen = async (ctx: HandlerContext): Promise<Record<string, unknown>>
 const handlePick = async (ctx: HandlerContext): Promise<Record<string, unknown>> => {
     const { workspace, deps, payload } = ctx;
     const fingerprint = requireFingerprint(payload);
+    const purpose = payload.purpose === 'entity' ? 'entity' : 'annotation';
     const fresh = await ensureFreshEntityContext(
         deps.runStepsDeps,
         workspace.name,
         'annotator.pick',
     );
-    const result = pickFromFingerprint(fresh.snapshot, fresh.finalEntityView, fingerprint);
+    const result = pickFromFingerprint(fresh.snapshot, fresh.finalEntityView, fingerprint, purpose);
     return result as unknown as Record<string, unknown>;
 };
 

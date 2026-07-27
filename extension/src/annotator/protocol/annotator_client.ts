@@ -6,6 +6,7 @@ import type {
     AnnotatorSaveResult,
     CanvasDraft,
     PickFingerprint,
+    PickPurpose,
 } from '../types.js';
 
 export type AnnotatorReply = {
@@ -20,7 +21,7 @@ export type AnnotatorDispatch = (
 
 export type AnnotatorClient = {
     open: (payload: { workspaceName: string; tabName: string; url: string }) => Promise<AnnotatorOpenResult>;
-    pick: (payload: { fingerprint: PickFingerprint }) => Promise<AnnotatorPickResult>;
+    pick: (payload: { fingerprint: PickFingerprint; purpose: PickPurpose }) => Promise<AnnotatorPickResult>;
     recognize: (payload: { canvasDraft?: CanvasDraft | null }) => Promise<AnnotatorRecognizeResult>;
     check: (payload: { canvasDraft: CanvasDraft }) => Promise<AnnotatorCheckResult>;
     save: (payload: {

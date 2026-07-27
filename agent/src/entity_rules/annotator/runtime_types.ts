@@ -32,8 +32,10 @@ export type PickCandidateEntityRef = {
     entityId: string;
     nodeId: string;
     kind: EntityKind;
-    type: 'region' | 'group';
+    type: 'region' | 'group' | 'node';
 };
+
+export type PickPurpose = 'entity' | 'annotation';
 
 export type PickCandidateLevel = 'control' | 'field' | 'row' | 'group' | 'region' | 'unknown';
 

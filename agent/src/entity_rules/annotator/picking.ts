@@ -19,6 +19,7 @@ import type {
     PickCandidateEntityRef,
     PickCandidateLevel,
     PickFingerprint,
+    PickPurpose,
     PickResolution,
     PickPoint,
 } from './runtime_types';
@@ -269,6 +270,20 @@ const buildEntityRootIndex = (entityIndex: EntityIndex): Map<string, EntityRootE
         }
     }
     return map;
+};
+
+const listEntityRoots = (entityIndex: EntityIndex): EntityRootEntry[] => {
+    const roots: EntityRootEntry[] = [];
+    for (const entity of Object.values(entityIndex.entities)) {
+        roots.push({
+            entityId: entity.id,
+            nodeId: entity.type === 'region' ? entity.nodeId : entity.containerId,
+            kind: entity.kind,
+            type: entity.type,
+            name: entity.name,
+        });
+    }
+    return roots;
 };
 
 type FieldBindingMap = Map<
@@ -688,10 +703,90 @@ export const proposeRuleCandidates = (
     candidate: PickCandidate,
     enclosingEntityNodeId?: string,
 ): Proposal => {
-    if (candidate.level === 'region' || candidate.level === 'group') {
+    if (
+        (candidate.level === 'region' || candidate.level === 'group') &&
+        candidate.entityRef?.type !== 'node'
+    ) {
         return proposeForEntityCandidate(snapshot, candidate);
     }
     return proposeForNodeCandidate(snapshot, candidate, enclosingEntityNodeId);
+};
+
+const chooseCompositeKind = (roots: EntityRootEntry[]): EntityKind => {
+    if (roots.some((root) => root.kind === 'table')) {return 'table';}
+    if (roots.some((root) => root.kind === 'list')) {return 'list';}
+    if (roots.some((root) => root.kind === 'form')) {return 'form';}
+    return roots[0]?.kind ?? 'panel';
+};
+
+const buildEntityCandidateChain = (
+    snapshot: SnapshotResult,
+    clickedNodeId: string | null,
+): PickCandidate[] => {
+    if (!clickedNodeId) {return [];}
+    const parentById = buildParentById(snapshot.root);
+    const entityRootIndex = buildEntityRootIndex(snapshot.entityIndex);
+    const allRoots = listEntityRoots(snapshot.entityIndex);
+    const chain: PickCandidate[] = [];
+    let cursor: string | null = clickedNodeId;
+    while (cursor) {
+        const node = snapshot.nodeIndex[cursor];
+        if (!node) {break;}
+        const directRoot = entityRootIndex.get(cursor)?.[0];
+        if (directRoot) {
+            chain.push({
+                level: directRoot.type === 'region' ? 'region' : 'group',
+                nodeId: cursor,
+                kind: directRoot.kind,
+                role: normalizeText(node.role),
+                text: normalizeText(node.name || getNodeContent(node)),
+                entityRef: {
+                    entityId: directRoot.entityId,
+                    nodeId: directRoot.nodeId,
+                    kind: directRoot.kind,
+                    type: directRoot.type,
+                },
+                score: 0,
+            });
+        } else if (cursor !== snapshot.root.id && snapshot.bboxIndex[cursor]) {
+            const containedRoots = allRoots.filter((root) =>
+                isDescendantOrSelf(root.nodeId, cursor as string, parentById),
+            );
+            const hasQuery = containedRoots.some((root) => root.kind === 'form');
+            const hasResult = containedRoots.some((root) => root.kind === 'table' || root.kind === 'list');
+            if (hasQuery && hasResult) {
+                const kind = chooseCompositeKind(containedRoots);
+                chain.push({
+                    level: 'region',
+                    nodeId: cursor,
+                    kind,
+                    role: normalizeText(node.role),
+                    text: normalizeText(node.name || getNodeContent(node)),
+                    entityRef: {
+                        entityId: `container:${cursor}`,
+                        nodeId: cursor,
+                        kind,
+                        type: 'node',
+                    },
+                    score: 0,
+                });
+                break;
+            }
+        }
+        cursor = parentById.get(cursor) || null;
+    }
+
+    for (const candidate of chain) {
+        const proposal = proposeRuleCandidates(snapshot, candidate);
+        candidate.score = scoreCandidate(candidate, snapshot.nodeIndex[candidate.nodeId]);
+        candidate.matchCount = proposal.matchCount;
+        candidate.matchedNodeIds = proposal.matchedNodeIds;
+        candidate.proposedTargets = proposal.proposedTargets;
+        candidate.stabilityHint = proposal.stabilityHint;
+        candidate.expect = proposal.expect;
+        candidate.enclosingEntityNodeId = candidate.nodeId;
+    }
+    return chain;
 };
 
 export const buildCandidateChain = (
@@ -783,9 +878,12 @@ export const pickFromFingerprint = (
     snapshot: SnapshotResult,
     finalEntityView: FinalEntityView | undefined,
     fingerprint: PickFingerprint,
+    purpose: PickPurpose = 'annotation',
 ): { candidateChain: PickCandidate[]; matchedNodeIds: string[]; resolution: PickResolution } => {
     const resolution = resolveClickedNode(snapshot, fingerprint);
-    const candidateChain = buildCandidateChain(snapshot, finalEntityView, resolution.nodeId);
+    const candidateChain = purpose === 'entity'
+        ? buildEntityCandidateChain(snapshot, resolution.nodeId)
+        : buildCandidateChain(snapshot, finalEntityView, resolution.nodeId);
     return {
         candidateChain,
         matchedNodeIds: resolution.matchedNodeIds,

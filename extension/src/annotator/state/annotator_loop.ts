@@ -17,8 +17,19 @@ const ensureClient = (client: AnnotatorClient | null): AnnotatorClient => {
     return client;
 };
 
-const errorMessage = (error: unknown): string =>
-    error instanceof Error ? error.message : String(error);
+const errorMessage = (error: unknown): string => {
+    const code = error && typeof error === 'object' && 'code' in error
+        ? String((error as {code?: unknown}).code || '')
+        : '';
+    const message = error instanceof Error ? error.message : String(error);
+    if (code === 'ERR_TIMEOUT' || code === 'TIMEOUT' || /timeout/i.test(message)) {
+        return '本地 RPA 服务没有响应。请确认运行窗口仍然开启，然后重试。';
+    }
+    if (code === 'ERR_CONNECT' || /connect failed/i.test(message)) {
+        return '无法连接到本地 RPA 服务。';
+    }
+    return message;
+};
 
 export const runCheckLoop = async (
     state: AnnotatorState,
@@ -31,7 +42,7 @@ export const runCheckLoop = async (
         const reply = await ensureClient(client).check({ canvasDraft: state.canvasDraft });
         return checkCompleted(state, { results: reply.results, stale: reply.stale });
     } catch (error) {
-        return failed(state, `check failed: ${errorMessage(error)}`);
+        return failed(state, `检查失败：${errorMessage(error)}`);
     }
 };
 
@@ -73,7 +84,7 @@ export const runSaveLoop = async (
         }
         return next;
     } catch (error) {
-        return failed(state, `save failed: ${errorMessage(error)}`);
+        return failed(state, `保存失败：${errorMessage(error)}`);
     }
 };
 
@@ -81,6 +92,9 @@ export const runRecognizeLoop = async (
     state: AnnotatorState,
     client: AnnotatorClient | null,
 ): Promise<AnnotatorState> => {
+    if (!state.canvasDraft || state.canvasDraft.entities.length !== 1) {
+        return failed(state, '识别失败：请先选择并确认实体区域。');
+    }
     try {
         const reply = await ensureClient(client).recognize({ canvasDraft: state.canvasDraft });
         const profileName = state.profileName || defaultProfileName(state);
@@ -99,7 +113,7 @@ export const runRecognizeLoop = async (
             currentEntityId: next.currentEntityId ?? canvasDraft.entities[0]?.id ?? null,
         };
     } catch (error) {
-        return failed(state, `recognize failed: ${errorMessage(error)}`);
+        return failed(state, `识别失败：${errorMessage(error)}`);
     }
 };
 
