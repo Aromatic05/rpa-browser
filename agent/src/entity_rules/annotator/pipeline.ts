@@ -62,6 +62,38 @@ const collectAnnotationIds = (
     return out;
 };
 
+const confirmResolvedCanvasItems = (
+    draft: CanvasDraft,
+    ruleIdByAnnotationId: Record<string, string>,
+    ruleIdByEntityId: Record<string, string>,
+    bindings: Record<string, ResolvedRuleBinding>,
+): CanvasDraft => {
+    const isResolved = (ruleId: string | undefined): boolean =>
+        Boolean(ruleId && bindings[ruleId]?.matchedNodeIds.length);
+    return {
+        ...draft,
+        entities: draft.entities.map((entity) => {
+            const entityResolved = isResolved(ruleIdByEntityId[entity.id]);
+            return {
+                ...entity,
+                origin: entityResolved ? 'confirmed' : entity.origin,
+                annotations: entity.annotations.map((annotation) => ({
+                    ...annotation,
+                    origin: isResolved(ruleIdByAnnotationId[annotation.id]) ? 'confirmed' : annotation.origin,
+                })),
+                columns: entity.columns.map((column) => ({
+                    ...column,
+                    origin: entityResolved ? 'confirmed' : column.origin,
+                    actions: column.actions.map((action) => ({
+                        ...action,
+                        origin: isResolved(ruleIdByAnnotationId[action.id]) ? 'confirmed' : action.origin,
+                    })),
+                })),
+            };
+        }),
+    };
+};
+
 type VisualTargetContext = {
     snapshot: SnapshotResult;
     canvasDraft?: CanvasDraft | null;
@@ -289,7 +321,7 @@ export const buildOpenResult = (ctx: OpenContext): AnnotatorOpenResult => {
     const bundle = ctx.provider.resolveBundle({ pageUrl, pageKind });
     const profileName = bundle?.id || null;
     const currentArtifact = profileName ? ctx.getArtifact(profileName) : null;
-    const canvasDraft = currentArtifact ? importEntityRulesToCanvasDraft(currentArtifact) : null;
+    let canvasDraft = currentArtifact ? importEntityRulesToCanvasDraft(currentArtifact) : null;
     const artifactRevision = currentArtifact ? computeArtifactRevision(currentArtifact) : null;
 
     let ruleIdByAnnotationId: Record<string, string> | undefined;
@@ -311,6 +343,12 @@ export const buildOpenResult = (ctx: OpenContext): AnnotatorOpenResult => {
                 });
                 ruleIdByAnnotationId = compileResult.ruleIdByAnnotationId;
                 ruleIdByEntityId = compileResult.ruleIdByEntityId;
+                canvasDraft = confirmResolvedCanvasItems(
+                    canvasDraft,
+                    ruleIdByAnnotationId,
+                    ruleIdByEntityId,
+                    bindings,
+                );
             }
         }
     }

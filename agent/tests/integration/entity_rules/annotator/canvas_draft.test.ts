@@ -156,7 +156,7 @@ test('1. oa-ant-orders imports to CanvasDraft with table entity, columns, and pa
     assert.equal(entity.source, 'region');
     assert.equal(entity.businessTag, 'order.list.main');
     assert.equal(entity.name, '订单主列表');
-    assert.equal(entity.origin, 'confirmed');
+    assert.equal(entity.origin, 'inferred');
     assert.ok(entity.columns.length >= 5, 'should have at least 5 columns');
     assert.ok(entity.pagination, 'should have pagination');
     assert.equal(entity.pagination!.actionIntent, 'nextPage');
@@ -164,13 +164,13 @@ test('1. oa-ant-orders imports to CanvasDraft with table entity, columns, and pa
     const orderNoCol = entity.columns.find((c) => c.fieldKey === 'orderNo');
     assert.ok(orderNoCol);
     assert.equal(orderNoCol!.name, '订单编号');
-    assert.equal(orderNoCol!.origin, 'confirmed');
+    assert.equal(orderNoCol!.origin, 'inferred');
 
     const actionsCol = entity.columns.find((c) => c.fieldKey === 'actions');
     assert.ok(actionsCol);
     assert.equal(actionsCol!.kind, 'action_column');
     assert.ok(actionsCol!.actions.length >= 2);
-    assert.equal(actionsCol!.actions[0].origin, 'confirmed');
+    assert.equal(actionsCol!.actions[0].origin, 'inferred');
 });
 
 test('2. import→compile round-trip passes validateEntityRules and is semantically equivalent', async () => {

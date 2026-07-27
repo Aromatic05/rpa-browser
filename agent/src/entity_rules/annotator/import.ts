@@ -126,7 +126,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
                     actionIntent: action.actionIntent,
                     ...(action.text ? { text: action.text } : {}),
                     target: childRule ? toPersistentTarget(childRule.match) : {},
-                    origin: 'confirmed' as const,
+                    origin: 'inferred' as const,
                     disposition: 'active' as const,
                 };
             });
@@ -139,7 +139,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
                     ...(col.name ? { name: col.name } : {}),
                     target: {},
                     expect: 'unique',
-                    origin: 'confirmed' as const,
+                    origin: 'inferred' as const,
                     disposition: 'active' as const,
                 });
             } else if (isTableEntity) {
@@ -149,7 +149,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
                     ...(col.name ? { name: col.name } : {}),
                     ...(col.kind ? { kind: col.kind } : {}),
                     actions,
-                    origin: 'confirmed' as const,
+                    origin: 'inferred' as const,
                     disposition: 'active' as const,
                 });
             }
@@ -166,7 +166,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
                 ...(field.name ? { name: field.name } : {}),
                 target: {},
                 expect: 'unique',
-                origin: 'confirmed' as const,
+                origin: 'inferred' as const,
                 disposition: 'active' as const,
             });
         }
@@ -183,7 +183,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
                 ...(action.text ? { name: action.text } : {}),
                 target: {},
                 expect: 'unique',
-                origin: 'confirmed' as const,
+                origin: 'inferred' as const,
                 disposition: 'active' as const,
             });
         }
@@ -205,7 +205,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
             businessKey: childAnnotationRule.actionIntent,
             target: toPersistentTarget(child.match),
             expect: child.expect,
-            origin: 'confirmed' as const,
+            origin: 'inferred' as const,
             disposition: 'active' as const,
         });
     }
@@ -247,7 +247,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
         ...(primaryKey ? { primaryKey } : {}),
         columns,
         ...(pagination ? { pagination } : {}),
-        origin: 'confirmed',
+        origin: 'inferred',
     };
 };
 

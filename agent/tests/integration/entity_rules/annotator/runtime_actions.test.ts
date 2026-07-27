@@ -484,6 +484,7 @@ test('buildOpenResult populates bbox, matchedNodeBoxes, and canvasAnnotationId i
         assert.equal(typeof ref.bbox!.width, 'number', 'bbox.width should be number');
         assert.equal(typeof ref.bbox!.height, 'number', 'bbox.height should be number');
     }
+    assert.equal(open.canvasDraft?.entities[0].origin, 'confirmed');
 
     const editRefs = open.visualTargetRefs.filter((ref) => ref.actionIntent === 'edit');
     assert.ok(editRefs.length > 0, 'expected at least one edit action ref');
