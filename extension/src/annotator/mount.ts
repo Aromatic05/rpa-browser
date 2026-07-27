@@ -1,6 +1,11 @@
-import type { AnnotatorState } from './state/annotator_state.js';
+import type {AnnotatorState} from './state/annotator_state.js';
 
 export const ANNOTATOR_HOST_ID = 'rpa-entity-annotator-host';
+
+export type AnnotatorDispatch = (
+    type: string,
+    payload?: Record<string, unknown>,
+) => Promise<unknown>;
 
 export type AnnotatorHandlers = {
     onExit: () => void;
@@ -8,6 +13,7 @@ export type AnnotatorHandlers = {
     onRedo: () => void;
     onCheck: () => void;
     onSave: () => void;
+    dispatch?: AnnotatorDispatch;
 };
 
 export type AnnotatorAppHandle = {
@@ -31,6 +37,7 @@ export const createAnnotatorHost = (doc: Document): AnnotatorHost => {
     const host = doc.createElement('div');
     host.id = ANNOTATOR_HOST_ID;
     host.setAttribute('data-rpa-panel', 'true');
+    host.setAttribute('data-rpa-annotator-host', 'true');
     host.setAttribute('data-rpa-snapshot-ignore', 'true');
     host.style.position = 'fixed';
     host.style.top = '0';
@@ -40,8 +47,8 @@ export const createAnnotatorHost = (doc: Document): AnnotatorHost => {
     host.style.zIndex = '2147483646';
     host.style.display = 'none';
     host.style.pointerEvents = 'none';
-    const shadow = host.attachShadow({ mode: 'open' });
-    return { host, shadow };
+    const shadow = host.attachShadow({mode: 'open'});
+    return {host, shadow};
 };
 
 export type AnnotatorMountOptions = {
@@ -60,7 +67,7 @@ export type AnnotatorHandle = {
 
 export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => {
     const doc = opts.document ?? document;
-    const { host, shadow } = createAnnotatorHost(doc);
+    const {host, shadow} = createAnnotatorHost(doc);
     const app = opts.mountApp(shadow, opts.handlers);
     doc.documentElement.appendChild(host);
     return {

@@ -53,12 +53,14 @@ type TableFixture = {
     snapshot: SnapshotResult;
     finalEntityView: FinalEntityView;
     editButtonIds: string[];
+    deleteButtonIds: string[];
 };
 
 const createTableFixture = (): TableFixture => {
     const editButtons: UnifiedNode[] = [];
     const rows: UnifiedNode[] = [];
     const editIds: string[] = [];
+    const deleteIds: string[] = [];
     for (let i = 0; i < 3; i += 1) {
         const editId = `edit_btn_${i}`;
         editIds.push(editId);
@@ -67,11 +69,17 @@ const createTableFixture = (): TableFixture => {
         setNodeAttr(edit, 'tag', 'button');
         setNodeBbox(edit, { x: 10, y: 10 + i * 30, width: 40, height: 20 });
         editButtons.push(edit);
+        const delId = `del_btn_${i}`;
+        deleteIds.push(delId);
+        const del = newTextNode(delId, 'button', '删除');
+        setNodeAttr(del, 'class', 'ant-btn ant-btn-link');
+        setNodeAttr(del, 'tag', 'button');
+        setNodeBbox(del, { x: 60, y: 10 + i * 30, width: 40, height: 20 });
         const orderCell = newTextNode(`cell_order_${i}`, 'cell', `ORD-${i}`);
         setNodeBbox(orderCell, { x: 0, y: 0 + i * 30, width: 100, height: 25 });
-        const actionCell: UnifiedNode = { id: `cell_action_${i}`, role: 'cell', children: [edit] };
+        const actionCell: UnifiedNode = { id: `cell_action_${i}`, role: 'cell', children: [edit, del] };
         setNodeAttr(actionCell, 'tag', 'td');
-        setNodeBbox(actionCell, { x: 100, y: 0 + i * 30, width: 60, height: 25 });
+        setNodeBbox(actionCell, { x: 100, y: 0 + i * 30, width: 100, height: 25 });
         const row: UnifiedNode = { id: `row_${i}`, role: 'row', children: [orderCell, actionCell] };
         setNodeAttr(row, 'tag', 'tr');
         rows.push(row);
@@ -111,6 +119,9 @@ const createTableFixture = (): TableFixture => {
         { type: 'region', entityId: 'ent_table', role: 'container' },
     ];
     for (const id of editIds) {
+        entityIndex.byNodeId[id] = [{ type: 'region', entityId: 'ent_table', role: 'descendant' }];
+    }
+    for (const id of deleteIds) {
         entityIndex.byNodeId[id] = [{ type: 'region', entityId: 'ent_table', role: 'descendant' }];
     }
 
@@ -169,7 +180,7 @@ const createTableFixture = (): TableFixture => {
         addedEntities: [],
         deletedEntities: [],
     });
-    return { snapshot, finalEntityView, editButtonIds: editIds };
+    return { snapshot, finalEntityView, editButtonIds: editIds, deleteButtonIds: deleteIds };
 };
 
 test('resolveClickedNode resolves by smallest-area bbox and cross-validates tag', () => {
@@ -435,6 +446,67 @@ test('buildOpenResult reads workflow artifact, profile, revision and visual targ
     assert.equal(open.artifactRevision, computeArtifactRevision(artifact));
     assert.equal(open.pageKind, 'form');
     assert.equal(open.workspaceName, 'ws');
+});
+
+test('buildOpenResult populates bbox, matchedNodeBoxes, and canvasAnnotationId in visual target refs', async () => {
+    const artifact = await loadEntityRuleArtifact('oa-ant-orders');
+    const bundle = toEntityRuleBundle(artifact);
+    const { snapshot, finalEntityView } = createTableFixture();
+
+    const provider: WorkspaceEntityRulesProvider = {
+        listBundles: () => [bundle],
+        getBundle: (name) => (name === artifact.name ? bundle : null),
+        resolveBundle: () => bundle,
+    };
+    const getArtifact = (name: string) => (name === artifact.name ? artifact : null);
+    const pageIdentity: SnapshotPageIdentity = {
+        workspaceName: 'ws',
+        tabName: 'tab',
+        url: 'http://test/entity-rules/fixtures/order-list',
+    };
+
+    const open = buildOpenResult({
+        snapshot,
+        finalEntityView,
+        pageIdentity,
+        provider,
+        getArtifact,
+    });
+
+    const refsWithBbox = open.visualTargetRefs.filter((ref) => ref.bbox);
+    assert.ok(refsWithBbox.length > 0, 'expected at least one ref with bbox');
+    for (const ref of refsWithBbox) {
+        assert.equal(typeof ref.bbox!.x, 'number', 'bbox.x should be number');
+        assert.equal(typeof ref.bbox!.y, 'number', 'bbox.y should be number');
+        assert.equal(typeof ref.bbox!.width, 'number', 'bbox.width should be number');
+        assert.equal(typeof ref.bbox!.height, 'number', 'bbox.height should be number');
+    }
+
+    const editRefs = open.visualTargetRefs.filter((ref) => ref.actionIntent === 'edit');
+    assert.ok(editRefs.length > 0, 'expected at least one edit action ref');
+    const editWithBoxes = editRefs.find(
+        (ref) => ref.matchedNodeBoxes && ref.matchedNodeBoxes.length > 1,
+    );
+    assert.ok(editWithBoxes, 'expected edit ref with matchedNodeBoxes length > 1');
+    assert.equal(editWithBoxes!.matchedNodeBoxes!.length, 3);
+
+    const deleteRefs = open.visualTargetRefs.filter((ref) => ref.actionIntent === 'delete');
+    assert.ok(deleteRefs.length > 0, 'expected at least one delete action ref');
+    const deleteWithBoxes = deleteRefs.find(
+        (ref) => ref.matchedNodeBoxes && ref.matchedNodeBoxes.length > 1,
+    );
+    assert.ok(deleteWithBoxes, 'expected delete ref with matchedNodeBoxes length > 1');
+    assert.equal(deleteWithBoxes!.matchedNodeBoxes!.length, 3);
+
+    const refsWithCanvasId = open.visualTargetRefs.filter((ref) => ref.canvasAnnotationId);
+    assert.ok(
+        refsWithCanvasId.length > 0,
+        'expected refs with canvasAnnotationId set for canvas annotation correlation',
+    );
+    assert.ok(
+        refsWithCanvasId.some((ref) => ref.actionIntent === 'edit'),
+        'edit ref should carry canvasAnnotationId',
+    );
 });
 
 test('computeArtifactRevision is deterministic and order-independent', () => {

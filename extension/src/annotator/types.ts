@@ -103,6 +103,9 @@ export type VisualTargetRef = {
     role: VisualTargetRole;
     fieldKey?: string;
     actionIntent?: string;
+    canvasAnnotationId?: string;
+    bbox?: PickRect;
+    matchedNodeBoxes?: PickRect[];
 };
 
 export type CheckStatus = 'unique' | 'multiple' | 'missing' | 'invalid';

@@ -51,6 +51,7 @@ type AnnotatorExports = {
             onRedo: () => void;
             onCheck: () => void;
             onSave: () => void;
+            dispatch?: (type: string, payload?: Record<string, unknown>) => Promise<unknown>;
         },
         doc?: Document,
     ) => AnnotatorHandle;
@@ -333,6 +334,7 @@ const loadAnnotator = (() => {
                                     onRedo: () => undefined,
                                     onCheck: () => undefined,
                                     onSave: () => undefined,
+                                    dispatch: (type, payload) => dispatchAnnotator(type, payload),
                                 },
                                 document,
                             );
@@ -342,11 +344,18 @@ const loadAnnotator = (() => {
                         }
                     }
                     annotatorHandle.show();
-                    await dispatchAnnotator('entity_rules.annotator.open', {
+                    const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
                         workspaceName,
                         tabName,
                         url: location.href,
-                    });
+                    }) as ActionShape;
+                    if (openReply && isRecord(openReply.payload)) {
+                        const currentState = annotatorHandle.getState() as Record<string, unknown>;
+                        annotatorHandle.setState({
+                            ...currentState,
+                            ...(openReply.payload as Record<string, unknown>),
+                        });
+                    }
                 })();
             },
         });

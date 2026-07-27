@@ -1,7 +1,9 @@
 import { matchEntityRules } from '../../runner/steps/executors/snapshot/entity_rules/matcher';
 import { applyEntityRuleBindings } from '../../runner/steps/executors/snapshot/entity_rules/apply';
 import { validateEntityRules } from '../../runner/steps/executors/snapshot/entity_rules/validate';
+import type { ResolvedRuleBinding } from '../../runner/steps/executors/snapshot/entity_rules/types';
 import type {
+    BBox,
     EntityRuleDiagnostic,
     FinalEntityView,
     SnapshotPageIdentity,
@@ -20,6 +22,7 @@ import type {
     CheckResultByAnnotation,
     CheckStatus,
     VisualTargetRef,
+    VisualTargetRole,
 } from './runtime_types';
 import type { CanvasDraft } from './types';
 
@@ -56,11 +59,93 @@ const collectAnnotationIds = (
     return out;
 };
 
-const buildVisualTargetRefs = (finalEntityView: FinalEntityView | undefined): VisualTargetRef[] => {
+type VisualTargetContext = {
+    snapshot: SnapshotResult;
+    canvasDraft?: CanvasDraft | null;
+    ruleIdByAnnotationId?: Record<string, string>;
+    ruleIdByEntityId?: Record<string, string>;
+    bindings?: Record<string, ResolvedRuleBinding>;
+};
+
+const boxesForNodeIds = (nodeIds: string[], bboxIndex: Record<string, BBox>): BBox[] => {
+    const out: BBox[] = [];
+    for (const nodeId of nodeIds) {
+        const box = bboxIndex[nodeId];
+        if (box) {
+            out.push(box);
+        }
+    }
+    return out;
+};
+
+type NodeInfo = { matchedNodeIds: string[]; canvasId?: string };
+
+const buildNodeInfoLookup = (
+    ctx: VisualTargetContext,
+): Map<string, NodeInfo> => {
+    const lookup = new Map<string, NodeInfo>();
+    const { bindings, ruleIdByAnnotationId, ruleIdByEntityId } = ctx;
+    if (!bindings) {
+        return lookup;
+    }
+    const canvasIdByRuleId: Record<string, string> = {};
+    if (ruleIdByAnnotationId) {
+        for (const [annId, ruleId] of Object.entries(ruleIdByAnnotationId)) {
+            canvasIdByRuleId[ruleId] = annId;
+        }
+    }
+    if (ruleIdByEntityId) {
+        for (const [entId, ruleId] of Object.entries(ruleIdByEntityId)) {
+            if (!canvasIdByRuleId[ruleId]) {
+                canvasIdByRuleId[ruleId] = entId;
+            }
+        }
+    }
+    for (const [ruleId, binding] of Object.entries(bindings)) {
+        const canvasId = canvasIdByRuleId[ruleId];
+        for (const nodeId of binding.matchedNodeIds) {
+            lookup.set(nodeId, { matchedNodeIds: binding.matchedNodeIds, canvasId });
+        }
+    }
+    return lookup;
+};
+
+const enrichRef = (
+    nodeId: string,
+    ctx: VisualTargetContext,
+    nodeInfo: Map<string, NodeInfo>,
+): { bbox?: BBox; matchedNodeBoxes?: BBox[]; canvasAnnotationId?: string } => {
+    const result: { bbox?: BBox; matchedNodeBoxes?: BBox[]; canvasAnnotationId?: string } = {};
+    const bbox = ctx.snapshot.bboxIndex[nodeId];
+    if (bbox) {
+        result.bbox = bbox;
+    }
+    const info = nodeInfo.get(nodeId);
+    if (info) {
+        if (info.matchedNodeIds.length > 1) {
+            const boxes = boxesForNodeIds(info.matchedNodeIds, ctx.snapshot.bboxIndex);
+            if (boxes.length > 0) {
+                result.matchedNodeBoxes = boxes;
+            }
+        }
+        if (info.canvasId) {
+            result.canvasAnnotationId = info.canvasId;
+        }
+    }
+    return result;
+};
+
+const buildVisualTargetRefs = (
+    finalEntityView: FinalEntityView | undefined,
+    ctx: VisualTargetContext,
+): VisualTargetRef[] => {
     const refs: VisualTargetRef[] = [];
     if (!finalEntityView) {
         return refs;
     }
+
+    const nodeInfo = buildNodeInfoLookup(ctx);
+
     for (const entity of finalEntityView.entities) {
         if (!entity.businessTag && !entity.businessName) {
             continue;
@@ -70,6 +155,7 @@ const buildVisualTargetRefs = (finalEntityView: FinalEntityView | undefined): Vi
             nodeId: entity.nodeId,
             kind: entity.kind,
             role: 'entity',
+            ...enrichRef(entity.nodeId, ctx, nodeInfo),
         });
         for (const field of entity.formFields || []) {
             if (field.controlNodeId) {
@@ -79,6 +165,7 @@ const buildVisualTargetRefs = (finalEntityView: FinalEntityView | undefined): Vi
                     kind: entity.kind,
                     role: 'field',
                     fieldKey: field.fieldKey,
+                    ...enrichRef(field.controlNodeId, ctx, nodeInfo),
                 });
             }
             if (field.labelNodeId) {
@@ -88,6 +175,7 @@ const buildVisualTargetRefs = (finalEntityView: FinalEntityView | undefined): Vi
                     kind: entity.kind,
                     role: 'field',
                     fieldKey: field.fieldKey,
+                    ...enrichRef(field.labelNodeId, ctx, nodeInfo),
                 });
             }
         }
@@ -99,6 +187,7 @@ const buildVisualTargetRefs = (finalEntityView: FinalEntityView | undefined): Vi
                     kind: entity.kind,
                     role: 'action',
                     actionIntent: action.actionIntent,
+                    ...enrichRef(action.nodeId, ctx, nodeInfo),
                 });
             }
         }
@@ -110,10 +199,84 @@ const buildVisualTargetRefs = (finalEntityView: FinalEntityView | undefined): Vi
                     kind: entity.kind,
                     role: 'column',
                     fieldKey: column.fieldKey,
+                    ...enrichRef(column.headerNodeId, ctx, nodeInfo),
                 });
             }
         }
     }
+
+    if (ctx.canvasDraft && ctx.ruleIdByAnnotationId && ctx.ruleIdByEntityId && ctx.bindings) {
+        const covered = new Set<string>();
+        for (const ref of refs) {
+            if (ref.canvasAnnotationId) {
+                covered.add(ref.canvasAnnotationId);
+            }
+        }
+
+        const tryAddFromBinding = (
+            canvasId: string,
+            entityId: string,
+            role: VisualTargetRole,
+            fieldKey?: string,
+            actionIntent?: string,
+        ): void => {
+            if (covered.has(canvasId)) {
+                return;
+            }
+            const annotationRuleId = ctx.ruleIdByAnnotationId![canvasId];
+            const entityRuleId = ctx.ruleIdByEntityId![canvasId];
+            const ruleId = annotationRuleId ?? entityRuleId;
+            if (!ruleId) {
+                return;
+            }
+            const binding = ctx.bindings![ruleId];
+            if (!binding || binding.matchedNodeIds.length === 0) {
+                return;
+            }
+            const firstNodeId = binding.matchedNodeIds[0];
+            const enriched = enrichRef(firstNodeId, ctx, nodeInfo);
+            enriched.canvasAnnotationId = canvasId;
+            if (binding.matchedNodeIds.length > 1) {
+                const boxes = boxesForNodeIds(binding.matchedNodeIds, ctx.snapshot.bboxIndex);
+                if (boxes.length > 0) {
+                    enriched.matchedNodeBoxes = boxes;
+                }
+            }
+            const ref: VisualTargetRef = {
+                entityId,
+                nodeId: firstNodeId,
+                role,
+                ...(fieldKey ? { fieldKey } : {}),
+                ...(actionIntent ? { actionIntent } : {}),
+                ...enriched,
+            };
+            refs.push(ref);
+            covered.add(canvasId);
+        };
+
+        for (const entity of ctx.canvasDraft.entities) {
+            tryAddFromBinding(entity.id, entity.id, 'entity');
+            for (const annotation of entity.annotations) {
+                const role: VisualTargetRole =
+                    annotation.type === 'field' ? 'field'
+                    : annotation.type === 'action' ? 'action'
+                    : 'pagination';
+                tryAddFromBinding(
+                    annotation.id,
+                    entity.id,
+                    role,
+                    annotation.type === 'field' ? annotation.businessKey : undefined,
+                    annotation.type === 'action' ? annotation.businessKey : undefined,
+                );
+            }
+            for (const column of entity.columns) {
+                for (const action of column.actions) {
+                    tryAddFromBinding(action.id, entity.id, 'action', undefined, action.actionIntent);
+                }
+            }
+        }
+    }
+
     return refs;
 };
 
@@ -125,7 +288,37 @@ export const buildOpenResult = (ctx: OpenContext): AnnotatorOpenResult => {
     const currentArtifact = profileName ? ctx.getArtifact(profileName) : null;
     const canvasDraft = currentArtifact ? importEntityRulesToCanvasDraft(currentArtifact) : null;
     const artifactRevision = currentArtifact ? computeArtifactRevision(currentArtifact) : null;
-    const visualTargetRefs = buildVisualTargetRefs(ctx.finalEntityView);
+
+    let ruleIdByAnnotationId: Record<string, string> | undefined;
+    let ruleIdByEntityId: Record<string, string> | undefined;
+    let bindings: Record<string, ResolvedRuleBinding> | undefined;
+    if (canvasDraft) {
+        const compileResult = compileCanvasDraft(canvasDraft);
+        if (compileResult.ok) {
+            const validated = validateEntityRules(
+                compileResult.artifact.name,
+                compileResult.artifact.match,
+                compileResult.artifact.annotation,
+            );
+            if (validated.ok) {
+                bindings = matchEntityRules(validated.bundle, {
+                    root: ctx.snapshot.root,
+                    entityIndex: ctx.snapshot.entityIndex,
+                    nodeIndex: ctx.snapshot.nodeIndex,
+                });
+                ruleIdByAnnotationId = compileResult.ruleIdByAnnotationId;
+                ruleIdByEntityId = compileResult.ruleIdByEntityId;
+            }
+        }
+    }
+
+    const visualTargetRefs = buildVisualTargetRefs(ctx.finalEntityView, {
+        snapshot: ctx.snapshot,
+        canvasDraft,
+        ruleIdByAnnotationId,
+        ruleIdByEntityId,
+        bindings,
+    });
 
     return {
         workspaceName: ctx.pageIdentity.workspaceName,

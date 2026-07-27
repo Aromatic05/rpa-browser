@@ -1,0 +1,98 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+    addAnnotation,
+    deleteAnnotation,
+    replaceAnnotationTarget,
+    setAnnotationDisposition,
+    updateAnnotation,
+} from '../state/draft_ops.js';
+import type {CanvasAnnotationDraft, CanvasDraft, CanvasEntityDraft} from '../types.js';
+
+const makeAnnotation = (id: string, businessKey: string): CanvasAnnotationDraft => ({
+    id,
+    type: 'field',
+    businessKey,
+    target: {classContains: 'row'},
+    origin: 'manual',
+    disposition: 'active',
+});
+
+const makeEntity = (id: string): CanvasEntityDraft => ({
+    id,
+    source: 'region',
+    kind: 'form',
+    name: '表单',
+    businessTag: 'form_tag',
+    target: {},
+    annotations: [makeAnnotation('a1', 'name'), makeAnnotation('a2', 'submit')],
+    columns: [],
+    origin: 'manual',
+});
+
+const makeDraft = (): CanvasDraft => ({
+    version: 1,
+    profileName: 'p',
+    page: {kind: 'form'},
+    entities: [makeEntity('e1')],
+    preserved: {},
+});
+
+test('updateAnnotation patches fields without mutating original draft', () => {
+    const original = makeDraft();
+    const next = updateAnnotation(original, 'e1', 'a1', {name: '姓名', businessKey: 'ren'});
+    assert.notEqual(next, original);
+    assert.notEqual(next.entities[0].annotations[0], original.entities[0].annotations[0]);
+    assert.equal(next.entities[0].annotations[0].name, '姓名');
+    assert.equal(next.entities[0].annotations[0].businessKey, 'ren');
+    assert.equal(original.entities[0].annotations[0].name, undefined);
+});
+
+test('updateAnnotation deeply clones the target object', () => {
+    const original = makeDraft();
+    const next = updateAnnotation(original, 'e1', 'a1', {
+        target: {classContains: 'new-class'},
+    });
+    assert.notEqual(next.entities[0].annotations[0].target, original.entities[0].annotations[0].target);
+    assert.equal(next.entities[0].annotations[0].target.classContains, 'new-class');
+});
+
+test('deleteAnnotation removes the annotation by id', () => {
+    const original = makeDraft();
+    const next = deleteAnnotation(original, 'e1', 'a1');
+    assert.equal(next.entities[0].annotations.length, 1);
+    assert.equal(next.entities[0].annotations[0].id, 'a2');
+});
+
+test('setAnnotationDisposition toggles ignored', () => {
+    const original = makeDraft();
+    const next = setAnnotationDisposition(original, 'e1', 'a1', 'ignored');
+    assert.equal(next.entities[0].annotations[0].disposition, 'ignored');
+    assert.equal(original.entities[0].annotations[0].disposition, 'active');
+});
+
+test('addAnnotation appends a new annotation', () => {
+    const original = makeDraft();
+    const next = addAnnotation(original, 'e1', makeAnnotation('a3', 'cancel'));
+    assert.equal(next.entities[0].annotations.length, 3);
+    assert.equal(next.entities[0].annotations[2].id, 'a3');
+});
+
+test('replaceAnnotationTarget overwrites target with deep clone', () => {
+    const original = makeDraft();
+    const next = replaceAnnotationTarget(original, 'e1', 'a1', {ariaContains: 'email'});
+    assert.notEqual(next.entities[0].annotations[0].target, original.entities[0].annotations[0].target);
+    assert.deepEqual(next.entities[0].annotations[0].target, {ariaContains: 'email'});
+});
+
+test('updateAnnotation returns same-shape draft when entity is missing', () => {
+    const original = makeDraft();
+    const next = updateAnnotation(original, 'missing', 'a1', {name: 'x'});
+    assert.deepEqual(next.entities, original.entities);
+});
+
+test('updateAnnotation returns same-shape draft when annotation is missing', () => {
+    const original = makeDraft();
+    const next = updateAnnotation(original, 'e1', 'missing', {name: 'x'});
+    assert.deepEqual(next.entities[0].annotations, original.entities[0].annotations);
+});

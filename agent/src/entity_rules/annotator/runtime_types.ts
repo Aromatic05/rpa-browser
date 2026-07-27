@@ -1,8 +1,9 @@
-import type { EntityKind } from '../../runner/steps/executors/snapshot/core/types';
+import type { BBox, EntityKind } from '../../runner/steps/executors/snapshot/core/types';
 import type { EntityRuleExpect } from '../../runner/steps/executors/snapshot/entity_rules/types';
 import type { CanvasDraft, PersistentTargetDraft } from './types';
 
 export type { EntityKind };
+export type { BBox };
 
 export type PickPoint = { x: number; y: number };
 export type PickRect = { x: number; y: number; width: number; height: number };
@@ -69,6 +70,9 @@ export type VisualTargetRef = {
     role: VisualTargetRole;
     fieldKey?: string;
     actionIntent?: string;
+    bbox?: BBox;
+    matchedNodeBoxes?: BBox[];
+    canvasAnnotationId?: string;
 };
 
 export type RecognizedItem = {
