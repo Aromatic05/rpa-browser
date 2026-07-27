@@ -75,9 +75,10 @@ test('loads the built extension and opens the annotator through the Debug panel'
                     style: Boolean(root?.querySelector('style[data-rpa-annotator-style]')),
                     canvas: Boolean(root?.querySelector('svg.annotator-canvas')),
                     toolbar: Boolean(root?.querySelector('.annotator-toolbar')),
+                    mode: root?.querySelector('.annotator-root')?.getAttribute('data-annotator-mode'),
                 };
             `},
-        ))).data, {timeout: 20_000}).toEqual({style: true, canvas: true, toolbar: true});
+        ))).data, {timeout: 20_000}).toEqual({style: true, canvas: true, toolbar: true, mode: 'editing'});
     } finally {
         await agent.close();
         await fixture.close();

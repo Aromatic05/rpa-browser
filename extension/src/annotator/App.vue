@@ -556,7 +556,7 @@ watch(
 </script>
 
 <template>
-    <div class="annotator-root" data-rpa-snapshot-ignore="true" data-rpa-annotator-host="true">
+    <div class="annotator-root" data-rpa-snapshot-ignore="true" data-rpa-annotator-host="true" :data-annotator-mode="state.mode">
         <div class="annotator-toolbar">
             <span class="annotator-mode">{{ currentEntity?.name || '页面标注' }}</span>
             <span class="annotator-flag" v-if="state.dirty">未保存</span>
