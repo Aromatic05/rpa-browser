@@ -89,6 +89,20 @@ let mutationObserver: MutationObserver | null = null;
 
 const win = () => (typeof window !== 'undefined' ? window : null);
 
+let visualBindingRequest = 0;
+const refreshVisualBindings = async (): Promise<void> => {
+    const page = props.state.pageIdentity;
+    if (!props.client || !page || props.state.mode !== 'editing' || props.state.dirty) {return;}
+    const request = ++visualBindingRequest;
+    try {
+        const result = await props.client.open(page);
+        if (request !== visualBindingRequest || props.state.mode !== 'editing' || props.state.dirty) {return;}
+        applyState({...props.state, visualBindings: result.visualTargetRefs});
+    } catch {
+        // Rendering should remain responsive when a fresh snapshot is temporarily unavailable.
+    }
+};
+
 const refreshViewport = (): void => {
     const w = win();
     if (!w) {return;}
@@ -99,6 +113,7 @@ const refreshViewport = (): void => {
         scrollY: w.scrollY,
         zoom: 1,
     };
+    void refreshVisualBindings();
 };
 
 const scheduler = createViewportScheduler(refreshViewport);

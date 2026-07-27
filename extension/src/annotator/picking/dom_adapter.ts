@@ -35,14 +35,16 @@ const readText = (element: Element): string => {
     return '';
 };
 
+export const viewportRect = (rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>): PickRect => ({
+    x: rect.left,
+    y: rect.top,
+    width: rect.width,
+    height: rect.height,
+});
+
 const readRect = (element: Element): PickRect => {
     const rect = element.getBoundingClientRect();
-    return {
-        x: rect.left + (typeof window !== 'undefined' ? window.scrollX : 0),
-        y: rect.top + (typeof window !== 'undefined' ? window.scrollY : 0),
-        width: rect.width,
-        height: rect.height,
-    };
+    return viewportRect(rect);
 };
 
 const toFingerprint = (element: Element): DOMElFingerprint => ({
@@ -69,8 +71,8 @@ const collectAncestors = (element: Element, maxDepth = 8): DOMElFingerprint[] =>
 const buildHitTest = (event: PointerEvent | MouseEvent): HitTestInput => {
     const doc = (event.view?.document ?? (typeof document !== 'undefined' ? document : null)) as Document | null;
     const point = {
-        x: event.clientX + (doc?.defaultView?.scrollX ?? 0),
-        y: event.clientY + (doc?.defaultView?.scrollY ?? 0),
+        x: event.clientX,
+        y: event.clientY,
     };
     const elementsFromPoint = doc?.elementFromPoint
         ? Array.from(doc.elementsFromPoint(event.clientX, event.clientY))
@@ -96,16 +98,11 @@ export const attachPickerListeners = (
         if (isPickerHost(event.target)) {return;}
         const rect = event.target.getBoundingClientRect();
         const pointer = {
-            x: event.clientX + (doc.defaultView?.scrollX ?? 0),
-            y: event.clientY + (doc.defaultView?.scrollY ?? 0),
+            x: event.clientX,
+            y: event.clientY,
         };
         handlers.onHover?.(
-            {
-                x: rect.left + (doc.defaultView?.scrollX ?? 0),
-                y: rect.top + (doc.defaultView?.scrollY ?? 0),
-                width: rect.width,
-                height: rect.height,
-            },
+            viewportRect(rect),
             pointer,
         );
     };
