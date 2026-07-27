@@ -79,6 +79,23 @@ test('loads the built extension and opens the annotator through the Debug panel'
                 };
             `},
         ))).data, {timeout: 20_000}).toEqual({style: true, canvas: true, toolbar: true, mode: 'editing'});
+
+        const recognizeTarget = (await runStep(agent.endpoint, workspaceName, step(
+            `recognize-target-${Date.now()}`, 'browser.evaluate', {expression: `
+                const button = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                    ?.querySelector('[data-annotator-action="recognize"]');
+                if (!(button instanceof HTMLButtonElement) || button.disabled) return null;
+                const rect = button.getBoundingClientRect();
+                return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+            `},
+        ))).data as {x: number; y: number} | null;
+        expect(recognizeTarget).not.toBeNull();
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `recognize-hit-${Date.now()}`, 'browser.evaluate', {expression: `
+                const hit = document.elementFromPoint(${recognizeTarget!.x}, ${recognizeTarget!.y});
+                return {id: hit?.id || '', annotator: hit?.getAttribute('data-rpa-annotator-host') || ''};
+            `},
+        ))).data).toEqual({id: 'rpa-entity-annotator-host', annotator: 'true'});
     } finally {
         await agent.close();
         await fixture.close();
