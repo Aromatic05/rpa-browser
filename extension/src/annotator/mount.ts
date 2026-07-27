@@ -24,6 +24,7 @@ export type AnnotatorHandlers = {
 export type AnnotatorAppHandle = {
     setState: (state: AnnotatorState) => void;
     getState: () => AnnotatorState;
+    afterOpen?: (state: AnnotatorState) => void;
     unmount: () => void;
 };
 
@@ -95,7 +96,9 @@ export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => 
         },
         getState: () => app.getState(),
         open: (result) => {
-            app.setState(openLoaded(app.getState(), result));
+            const state = openLoaded(app.getState(), result);
+            app.setState(state);
+            app.afterOpen?.(state);
         },
         exit: () => {
             app.setState(exitAnnotation(app.getState()));
