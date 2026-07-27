@@ -92,7 +92,7 @@ const win = () => (typeof window !== 'undefined' ? window : null);
 let visualBindingRequest = 0;
 const refreshVisualBindings = async (): Promise<void> => {
     const page = props.state.pageIdentity;
-    if (!props.client || !page || props.state.mode !== 'editing' || props.state.dirty) {return;}
+    if (!props.client || !page || !props.state.canvasDraft || props.state.mode !== 'editing' || props.state.dirty) {return;}
     const request = ++visualBindingRequest;
     try {
         const result = await props.client.open(page);
@@ -556,7 +556,14 @@ watch(
 </script>
 
 <template>
-    <div class="annotator-root" data-rpa-snapshot-ignore="true" data-rpa-annotator-host="true" :data-annotator-mode="state.mode">
+    <div
+        class="annotator-root"
+        data-rpa-snapshot-ignore="true"
+        data-rpa-annotator-host="true"
+        :data-annotator-mode="state.mode"
+        :data-annotator-draft="state.canvasDraft ? 'present' : 'empty'"
+        :data-annotator-profile="state.profileName || ''"
+    >
         <div class="annotator-toolbar">
             <span class="annotator-mode">{{ currentEntity?.name || '页面标注' }}</span>
             <span class="annotator-flag" v-if="state.dirty">未保存</span>
@@ -576,6 +583,7 @@ watch(
                 class="annotator-btn"
                 :disabled="pickMode"
                 @click="runRecognize"
+                data-annotator-action="recognize"
             >重新识别</button>
             <button
                 type="button"
