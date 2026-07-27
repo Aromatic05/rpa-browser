@@ -47,8 +47,8 @@ export const createAnnotatorHost = (doc: Document): AnnotatorHost => {
     host.style.position = 'fixed';
     host.style.top = '0';
     host.style.left = '0';
-    host.style.width = '0';
-    host.style.height = '0';
+    host.style.width = '100%';
+    host.style.height = '100%';
     host.style.zIndex = '2147483646';
     host.style.display = 'none';
     host.style.pointerEvents = 'none';
