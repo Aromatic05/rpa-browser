@@ -73,6 +73,9 @@ const mountVueApp: MountAppFn = (root, handlers) => {
     styleEl.setAttribute('data-rpa-annotator-style', 'true');
     styleEl.textContent = `${ANNOTATOR_CSS}\n${compiledComponentCss()}`;
     root.appendChild(styleEl);
+    const appRoot = root.ownerDocument.createElement('div');
+    appRoot.setAttribute('data-rpa-annotator-app', 'true');
+    root.appendChild(appRoot);
     const reactiveState = reactive(initialState()) as AnnotatorState;
     const client = buildClient(handlers.dispatch);
     const sessionStore: SessionStore = createSessionStore(createExtensionSessionStorage());
@@ -82,7 +85,7 @@ const mountVueApp: MountAppFn = (root, handlers) => {
         sessionStore,
         onExit: handlers.onExit,
     });
-    app.mount(root);
+    app.mount(appRoot);
     const handle: AnnotatorAppHandle = {
         setState: (next) => {
             Object.assign(reactiveState, next);

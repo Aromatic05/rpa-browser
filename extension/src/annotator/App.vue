@@ -152,6 +152,13 @@ const entities = computed<CanvasEntityDraft[]>(() =>
     props.state.canvasDraft ? props.state.canvasDraft.entities : [],
 );
 
+const visualItemCount = computed(() => entities.value.reduce(
+    (count, entity) => count + entity.annotations.length + entity.columns.length +
+        entity.columns.reduce((sum, column) => sum + column.actions.length, 0) +
+        (entity.pagination ? 1 : 0),
+    entities.value.length,
+));
+
 const currentEntity = computed<CanvasEntityDraft | null>(() => {
     if (!props.state.currentEntityId) {return null;}
     return entities.value.find((entity) => entity.id === props.state.currentEntityId) ?? null;
@@ -551,12 +558,12 @@ watch(
 <template>
     <div class="annotator-root" data-rpa-snapshot-ignore="true" data-rpa-annotator-host="true">
         <div class="annotator-toolbar">
-            <span class="annotator-mode">mode: {{ state.mode }}</span>
-            <span class="annotator-flag" v-if="state.dirty">dirty</span>
+            <span class="annotator-mode">{{ currentEntity?.name || '页面标注' }}</span>
+            <span class="annotator-flag" v-if="state.dirty">未保存</span>
             <span class="annotator-flag annotator-flag-saved" v-if="!state.dirty && state.artifactRevision">已保存</span>
-            <span class="annotator-flag" v-if="state.stale">stale</span>
+            <span class="annotator-flag" v-if="state.stale">页面已变化</span>
             <span class="annotator-flag annotator-flag-error" v-if="state.error">{{ state.error }}</span>
-            <span class="annotator-flag annotator-flag-pick" v-if="pickMode">pick</span>
+            <span class="annotator-flag annotator-flag-pick" v-if="pickMode">选择目标</span>
             <div class="annotator-spacer"></div>
             <button
                 type="button"
@@ -575,42 +582,41 @@ watch(
                 class="annotator-btn"
                 :disabled="state.history.past.length === 0"
                 @click="applyUndo"
-            >undo</button>
+            aria-label="撤销"
+            >↶</button>
             <button
                 type="button"
                 class="annotator-btn"
                 :disabled="state.history.future.length === 0"
                 @click="applyRedo"
-            >redo</button>
+            aria-label="重做"
+            >↷</button>
             <button
                 type="button"
                 class="annotator-btn"
                 :disabled="!state.canvasDraft || pickMode"
                 @click="runCheck"
-            >check</button>
+            >检查</button>
             <button
                 type="button"
                 class="annotator-btn annotator-primary"
                 :disabled="!state.dirty || !state.canvasDraft || pickMode"
                 @click="runSave"
-            >save</button>
+            >保存</button>
             <button
                 type="button"
                 class="annotator-btn"
                 :disabled="pickMode"
                 @click="emit('exit')"
-            >exit</button>
+            >退出</button>
         </div>
         <div class="annotator-summary">
             <label class="annotator-line">
                 规则名称
                 <input v-model="profileNameModel" class="annotator-profile-input" type="text" placeholder="先识别页面以生成名称" />
             </label>
-            <div class="annotator-line">
-                revision: {{ state.artifactRevision ? state.artifactRevision.slice(0, 8) : '-' }}
-            </div>
-            <div class="annotator-line">entities: {{ state.canvasDraft ? state.canvasDraft.entities.length : 0 }}</div>
-            <div class="annotator-line" v-if="currentEntity">current: {{ currentEntity.name }}</div>
+            <div class="annotator-line">标注数量：{{ visualItemCount }}</div>
+            <div class="annotator-line" v-if="currentEntity">当前实体：{{ currentEntity.name }}</div>
             <div class="annotator-line annotator-hint" v-if="pickMode">
                 点击页面元素以构建指纹；选择外层/内部调整候选；确认写入草稿。
             </div>

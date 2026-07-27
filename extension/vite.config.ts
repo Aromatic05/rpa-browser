@@ -3,6 +3,9 @@ import vue from '@vitejs/plugin-vue';
 import { resolve } from 'node:path';
 
 export default defineConfig({
+    define: {
+        'process.env.NODE_ENV': JSON.stringify('production'),
+    },
     plugins: [vue()],
     build: {
         cssCodeSplit: false,
