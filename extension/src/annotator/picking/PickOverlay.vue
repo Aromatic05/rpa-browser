@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import {computed} from 'vue';
-import type {PickCandidate} from '../types.js';
-import {recommendAnnotationTypes, type RecommendedType} from '../recommend/recommend_types.js';
-import type {EntityKind} from '../types.js';
+import type {EntityKind, PickCandidate, PickPurpose} from '../types.js';
+import {candidateDisplayName} from '../state/product_ui.js';
 
 const props = defineProps<{
     candidate: PickCandidate | null;
@@ -10,6 +9,7 @@ const props = defineProps<{
     candidateChainLength: number;
     currentEntityKind: EntityKind | undefined;
     pointer: {x: number; y: number} | null;
+    purpose: PickPurpose;
 }>();
 
 const emit = defineEmits<{
@@ -18,173 +18,189 @@ const emit = defineEmits<{
     (e: 'cancel'): void;
 }>();
 
-const recommendations = computed((): RecommendedType[] => {
-    if (!props.candidate) {return [];}
-    return recommendAnnotationTypes(props.candidate, props.currentEntityKind);
-});
-
-const cardStyle = computed((): Record<string, string> => {
-    if (!props.pointer) {return {display: 'none'};}
-    const x = Math.min(props.pointer.x + 12, (typeof window !== 'undefined' ? window.innerWidth : 1024) - 260);
-    const y = Math.min(props.pointer.y + 12, (typeof window !== 'undefined' ? window.innerHeight : 768) - 200);
-    return {
-        left: `${Math.max(8, x)}px`,
-        top: `${Math.max(8, y)}px`,
-    };
-});
-
 const canOuter = computed(() => props.candidateIndex < props.candidateChainLength - 1);
 const canInner = computed(() => props.candidateIndex > 0);
+const displayName = computed(() => candidateDisplayName(props.candidate, props.purpose));
+const candidatePosition = computed(() => {
+    if (props.candidateChainLength <= 0 || props.candidateIndex < 0) {return ''}
+    return `${props.candidateIndex + 1} / ${props.candidateChainLength}`;
+});
+const objectType = computed(() => {
+    if (props.purpose === 'entity') {return '业务区域';}
+    switch (props.candidate?.level) {
+        case 'field': return '字段';
+        case 'control': return '操作';
+        case 'row': return '数据行';
+        case 'group':
+        case 'region': return '区域';
+        default: return '页面对象';
+    }
+});
 </script>
 
 <template>
-    <div
-        v-if="candidate && pointer"
-        class="annotator-pick-overlay"
-        :style="cardStyle"
+    <section
+        v-if="candidate"
+        class="scope-confirmation annotator-pick-overlay"
         data-rpa-snapshot-ignore="true"
         data-rpa-annotator-host="true"
+        aria-live="polite"
     >
-        <div class="annotator-pick-header">
-            <span class="annotator-pick-level">{{ candidate.level }}</span>
-            <span class="annotator-pick-role" v-if="candidate.role">{{ candidate.role }}</span>
-            <span class="annotator-pick-stability" v-if="candidate.stabilityHint">{{ candidate.stabilityHint }}</span>
+        <div class="scope-confirmation-copy">
+            <span class="scope-confirmation-kicker">
+                {{ purpose === 'entity' ? '确认实体范围' : '确认页面对象' }}
+            </span>
+            <div class="scope-confirmation-title-row">
+                <strong>{{ displayName }}</strong>
+                <span>{{ objectType }}</span>
+            </div>
+            <p v-if="purpose === 'entity'">
+                蓝色边框应完整覆盖查询条件、结果区域和翻页控件。
+            </p>
+            <p v-else>
+                蓝色边框应只覆盖要标注的字段、按钮或表格对象。
+            </p>
         </div>
-        <div class="annotator-pick-text" v-if="candidate.text">{{ candidate.text }}</div>
-        <div class="annotator-pick-meta">
-            <span v-if="candidate.matchCount !== undefined">匹配 {{ candidate.matchCount }}</span>
-            <span v-if="candidate.expect">期望 {{ candidate.expect }}</span>
-        </div>
-        <div class="annotator-pick-recommend" v-if="recommendations.length > 0">
-            <button
-                v-for="rec in recommendations"
-                :key="rec"
-                type="button"
-                class="annotator-pick-rec"
-                @click.stop="emit('confirm')"
-            >{{ rec }}</button>
-        </div>
-        <div class="annotator-pick-actions">
+
+        <div class="scope-confirmation-range" v-if="candidateChainLength > 1">
             <button
                 type="button"
-                class="annotator-pick-btn"
-                :disabled="!canOuter"
-                @click.stop="emit('navigate', 'outer')"
-            >选择外层</button>
-            <button
-                type="button"
-                class="annotator-pick-btn"
                 :disabled="!canInner"
+                aria-label="缩小选择范围"
                 @click.stop="emit('navigate', 'inner')"
-            >选择内部</button>
+            >
+                <span aria-hidden="true">−</span>
+                缩小范围
+            </button>
+            <span>{{ candidatePosition }}</span>
             <button
                 type="button"
-                class="annotator-pick-btn annotator-pick-confirm"
-                @click.stop="emit('confirm')"
-            >确认</button>
-            <button
-                type="button"
-                class="annotator-pick-btn annotator-pick-cancel"
-                @click.stop="emit('cancel')"
-            >取消</button>
+                :disabled="!canOuter"
+                aria-label="扩大选择范围"
+                @click.stop="emit('navigate', 'outer')"
+            >
+                扩大范围
+                <span aria-hidden="true">＋</span>
+            </button>
         </div>
-    </div>
+
+        <div class="scope-confirmation-actions">
+            <button type="button" class="scope-cancel" @click.stop="emit('cancel')">取消</button>
+            <button type="button" class="scope-confirm annotator-pick-confirm" @click.stop="emit('confirm')">
+                {{ purpose === 'entity' ? '确认这个区域' : '确认这个对象' }}
+            </button>
+        </div>
+    </section>
 </template>
 
 <style scoped>
-.annotator-pick-overlay {
+.scope-confirmation {
     position: fixed;
-    width: 240px;
-    padding: 10px;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.24);
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    width: min(680px, calc(100vw - 40px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px 24px;
+    align-items: center;
+    padding: 18px 20px;
+    border: 1px solid rgba(148, 163, 184, .42);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 24px 64px rgba(15, 23, 42, .24), 0 4px 16px rgba(15, 23, 42, .10);
+    backdrop-filter: blur(18px);
     color: #0f172a;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     pointer-events: auto;
-    z-index: 3;
+    z-index: 4;
 }
-.annotator-pick-header {
+.scope-confirmation-copy { min-width: 0; }
+.scope-confirmation-kicker {
+    display: block;
+    margin-bottom: 5px;
+    color: #2563eb;
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: .08em;
+}
+.scope-confirmation-title-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
+    gap: 10px;
+    min-width: 0;
 }
-.annotator-pick-level {
-    background: #1d4ed8;
-    color: #fff;
-    border-radius: 6px;
-    padding: 2px 6px;
+.scope-confirmation-title-row strong {
+    overflow: hidden;
+    color: #0f172a;
+    font-size: 17px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.scope-confirmation-title-row span {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
     font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
+    font-weight: 650;
 }
-.annotator-pick-role {
+.scope-confirmation-copy p {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.5;
+}
+.scope-confirmation-range {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+.scope-confirmation-range > span {
+    min-width: 48px;
+    color: #64748b;
     font-size: 11px;
-    color: #475569;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
 }
-.annotator-pick-stability {
-    font-size: 10px;
-    color: #b91c1c;
-    background: #fee2e2;
-    padding: 1px 5px;
-    border-radius: 4px;
+.scope-confirmation-range button {
+    min-height: 34px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
 }
-.annotator-pick-text {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 4px;
-    word-break: break-word;
-}
-.annotator-pick-meta {
-    font-size: 11px;
-    color: #475569;
-    margin-bottom: 6px;
+.scope-confirmation-range button:hover:not(:disabled) { background: #e2e8f0; }
+.scope-confirmation-range button:disabled { opacity: .35; cursor: default; }
+.scope-confirmation-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
 }
-.annotator-pick-recommend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-bottom: 6px;
-}
-.annotator-pick-rec {
-    border: 1px solid #94a3b8;
-    background: #f1f5f9;
-    color: #0f172a;
-    border-radius: 999px;
-    padding: 2px 8px;
-    font-size: 11px;
+.scope-confirmation-actions button {
+    height: 40px;
+    border-radius: 11px;
+    padding: 0 16px;
+    font-size: 12px;
+    font-weight: 700;
     cursor: pointer;
 }
-.annotator-pick-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 4px;
-}
-.annotator-pick-btn {
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    color: #0f172a;
-    border-radius: 6px;
-    padding: 4px 6px;
-    font-size: 11px;
-    cursor: pointer;
-}
-.annotator-pick-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-.annotator-pick-confirm {
-    background: #2563eb;
-    border-color: #2563eb;
-    color: #fff;
-}
-.annotator-pick-cancel {
-    background: #111827;
-    border-color: #111827;
-    color: #f9fafb;
+.scope-cancel { border: 1px solid #dbe3ee; background: #fff; color: #475569; }
+.scope-confirm { border: 1px solid #2563eb; background: #2563eb; color: #fff; box-shadow: 0 8px 18px rgba(37, 99, 235, .24); }
+.scope-cancel:hover { background: #f8fafc; }
+.scope-confirm:hover { background: #1d4ed8; }
+@media (max-width: 640px) {
+    .scope-confirmation { grid-template-columns: 1fr; bottom: 14px; }
+    .scope-confirmation-actions { justify-content: flex-end; }
 }
 </style>

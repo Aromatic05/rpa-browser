@@ -50,6 +50,8 @@ export const openLoaded = (state: AnnotatorState, result: AnnotatorOpenResult): 
     ...state,
     mode: 'editing',
     canvasDraft: result.canvasDraft,
+    currentEntityId: result.canvasDraft?.entities[0]?.id ?? null,
+    currentAnnotationId: null,
     artifactRevision: result.artifactRevision,
     pageIdentity: { workspaceName: result.workspaceName, tabName: result.tabName, url: result.url },
     profileName: result.profileName,

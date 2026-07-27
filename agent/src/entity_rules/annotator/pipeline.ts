@@ -57,7 +57,9 @@ const collectAnnotationIds = (
             }
         }
         if (entity.pagination) {
-            out.push({ id: paginationItemCanvasId(entity.id), expect: 'unique' });
+            if (entity.pagination.itemTarget) {
+                out.push({ id: paginationItemCanvasId(entity.id), expect: 'unique' });
+            }
             out.push({ id: paginationPageCanvasId(entity.id), expect: 'unique' });
         }
     }

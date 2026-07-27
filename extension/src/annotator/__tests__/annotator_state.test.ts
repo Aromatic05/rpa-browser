@@ -61,6 +61,8 @@ test('openLoaded sets draft, revision, pageIdentity, profileName and editing mod
     assert.equal(s.canvasDraft, result.canvasDraft);
     assert.equal(s.artifactRevision, 'rev-9');
     assert.equal(s.profileName, 'profile-a');
+    assert.equal(s.currentEntityId, result.canvasDraft?.entities[0]?.id ?? null);
+    assert.equal(s.currentAnnotationId, null);
     assert.deepEqual(s.pageIdentity, { workspaceName: 'ws-1', tabName: 'tab-1', url: 'http://test/page' });
     assert.equal(s.dirty, false);
     assert.deepEqual(s.history, { past: [], future: [] });

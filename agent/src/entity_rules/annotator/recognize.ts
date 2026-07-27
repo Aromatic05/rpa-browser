@@ -90,16 +90,180 @@ const collectControlsInSubtree = (snapshot: SnapshotResult, rootNodeId: string):
         'radio',
         'searchbox',
     ]);
+    const interactiveTags = new Set(['input', 'select', 'textarea', 'button', 'a']);
     for (const node of Object.values(snapshot.nodeIndex)) {
         if (!isDescendantOrSelf(node.id, rootNodeId, parentById)) {
             continue;
         }
         const role = (normalizeText(node.role) || '').toLowerCase();
-        if (node.control || interactiveRoles.has(role)) {
+        const tag = (normalizeText(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName')) || '').toLowerCase();
+        if (node.control || interactiveRoles.has(role) || interactiveTags.has(tag)) {
             out.push(node);
         }
     }
     return out;
+};
+
+const inferActionIntentFromText = (value: string | undefined): string | null => {
+    const text = (normalizeText(value) || '').toLowerCase().replace(/\s+/g, '');
+    if (!text) {return null;}
+    if (text.includes('查询') || text.includes('搜索') || text.includes('search')) {return 'search';}
+    if (text.includes('重置') || text.includes('清空') || text.includes('reset')) {return 'reset';}
+    if (text.includes('提交') || text.includes('submit')) {return 'submit';}
+    if (text.includes('保存') || text.includes('save')) {return 'save';}
+    if (text.includes('新增') || text.includes('创建') || text.includes('add') || text.includes('create')) {return 'create';}
+    if (text.includes('编辑') || text.includes('修改') || text.includes('edit')) {return 'edit';}
+    if (text.includes('删除') || text.includes('移除') || text.includes('delete') || text.includes('remove')) {return 'delete';}
+    if (text.includes('查看') || text.includes('详情') || text.includes('view') || text.includes('detail')) {return 'view';}
+    return null;
+};
+
+const isNextPageControl = (
+    snapshot: SnapshotResult,
+    node: UnifiedNode,
+    parentById: Map<string, string | null>,
+    scopeNodeId: string,
+): boolean => {
+    const text = (normalizeText(node.name || getNodeContent(node)) || '').toLowerCase().replace(/\s+/g, '');
+    const className = (normalizeText(getNodeAttr(node, 'class')) || '').toLowerCase();
+    const id = (normalizeText(getNodeAttr(node, 'id')) || '').toLowerCase();
+    if (
+        text.includes('下一页') ||
+        text === 'next' ||
+        text.includes('nextpage') ||
+        className.includes('pagination-next') ||
+        id.includes('nextpage')
+    ) {
+        return true;
+    }
+    let cursor = parentById.get(node.id) || null;
+    while (cursor && cursor !== scopeNodeId) {
+        const ancestor = snapshot.nodeIndex[cursor];
+        if (!ancestor) {break;}
+        const role = (normalizeText(ancestor.role) || '').toLowerCase();
+        const ancestorClass = (normalizeText(getNodeAttr(ancestor, 'class')) || '').toLowerCase();
+        const ancestorName = (normalizeText(ancestor.name) || '').toLowerCase();
+        if (
+            (role === 'navigation' || ancestorClass.includes('pagination') || ancestorName.includes('分页')) &&
+            (text.includes('下') || text.includes('next') || className.includes('next') || id.includes('next'))
+        ) {
+            return true;
+        }
+        cursor = parentById.get(cursor) || null;
+    }
+    return false;
+};
+
+const inferControlLabel = (
+    snapshot: SnapshotResult,
+    control: UnifiedNode,
+    scopeNodeId: string,
+    parentById: Map<string, string | null>,
+): string | undefined => {
+    const controlId = normalizeText(getNodeAttr(control, 'id'));
+    if (controlId) {
+        for (const node of Object.values(snapshot.nodeIndex)) {
+            if (!isDescendantOrSelf(node.id, scopeNodeId, parentById)) {continue;}
+            const tag = (normalizeText(getNodeAttr(node, 'tag') || getNodeAttr(node, 'tagName')) || '').toLowerCase();
+            if (tag !== 'label' && (normalizeText(node.role) || '').toLowerCase() !== 'label') {continue;}
+            if (normalizeText(getNodeAttr(node, 'for')) !== controlId) {continue;}
+            const label = normalizeText(node.name || getNodeContent(node));
+            if (label) {return label;}
+        }
+    }
+
+    const aria = normalizeText(
+        getNodeAttr(control, 'aria-label') ||
+        getNodeAttr(control, 'title') ||
+        getNodeAttr(control, 'placeholder'),
+    );
+    if (aria) {return aria;}
+
+    let cursor = parentById.get(control.id) || null;
+    while (cursor && cursor !== scopeNodeId) {
+        const ancestor = snapshot.nodeIndex[cursor];
+        if (!ancestor) {break;}
+        const tag = (normalizeText(getNodeAttr(ancestor, 'tag') || getNodeAttr(ancestor, 'tagName')) || '').toLowerCase();
+        const role = (normalizeText(ancestor.role) || '').toLowerCase();
+        if (tag === 'label' || role === 'label') {
+            const label = normalizeText(ancestor.name || getNodeContent(ancestor));
+            if (label) {return label;}
+        }
+        cursor = parentById.get(cursor) || null;
+    }
+    return undefined;
+};
+
+const inferUnclaimedScopeControls = (
+    snapshot: SnapshotResult,
+    scopeNodeId: string,
+    claimedRootIds: string[],
+): {
+    annotations: CanvasAnnotationDraft[];
+    pagination?: NonNullable<CanvasEntityDraft['pagination']>;
+} => {
+    const parentById = buildParentById(snapshot.root);
+    const controls = collectControlsInSubtree(snapshot, scopeNodeId);
+    const annotations: CanvasAnnotationDraft[] = [];
+    let fieldIndex = 0;
+    let actionIndex = 0;
+    let pagination: NonNullable<CanvasEntityDraft['pagination']> | undefined;
+
+    for (const control of controls) {
+        const claimed = claimedRootIds.some((rootId) =>
+            isDescendantOrSelf(control.id, rootId, parentById),
+        );
+        if (claimed) {continue;}
+
+        if (!pagination && isNextPageControl(snapshot, control, parentById, scopeNodeId)) {
+            pagination = {
+                actionIntent: 'nextPage',
+                pageTarget: buildNodeTarget(snapshot, control.id, {allowText: true}),
+            };
+            continue;
+        }
+
+        const role = (normalizeText(control.role) || '').toLowerCase();
+        if (role !== 'button' && role !== 'link') {
+            const key = normalizeText(
+                getNodeAttr(control, 'name') ||
+                getNodeAttr(control, 'id') ||
+                control.name,
+            ) || `field_${fieldIndex}`;
+            const label = inferControlLabel(snapshot, control, scopeNodeId, parentById) ||
+                normalizeText(control.name || getNodeContent(control)) ||
+                key;
+            annotations.push({
+                id: `auto_scope_field_${fieldIndex}`,
+                type: 'field',
+                businessKey: key,
+                name: label,
+                target: buildNodeTarget(snapshot, control.id),
+                expect: 'unique',
+                origin: 'inferred',
+                disposition: 'active',
+            });
+            fieldIndex += 1;
+            continue;
+        }
+
+        const label = normalizeText(control.name || getNodeContent(control));
+        const actionIntent = inferActionIntentFromText(label);
+        if (!actionIntent) {continue;}
+        annotations.push({
+            id: `auto_scope_action_${actionIndex}`,
+            type: 'action',
+            businessKey: actionIntent,
+            ...(label ? {name: label} : {}),
+            target: buildNodeTarget(snapshot, control.id, {allowText: true}),
+            expect: 'unique',
+            origin: 'inferred',
+            disposition: 'active',
+        });
+        actionIndex += 1;
+    }
+
+    return {annotations, ...(pagination ? {pagination} : {})};
 };
 
 const inferFormFieldsFromControls = (
@@ -135,6 +299,37 @@ const inferFormFieldsFromControls = (
     return annotations;
 };
 
+const inferRowActionsFromControls = (
+    snapshot: SnapshotResult,
+    entity: FinalEntityRecord,
+): CanvasEntityDraft['columns'][number]['actions'] => {
+    if (entity.kind !== 'table' && entity.kind !== 'list') {return [];}
+    const actions: CanvasEntityDraft['columns'][number]['actions'] = [];
+    const seen = new Set<string>();
+    for (const control of collectControlsInSubtree(snapshot, entity.nodeId)) {
+        const role = (normalizeText(control.role) || '').toLowerCase();
+        const tag = (normalizeText(getNodeAttr(control, 'tag') || getNodeAttr(control, 'tagName')) || '').toLowerCase();
+        if (role !== 'button' && role !== 'link' && tag !== 'button' && tag !== 'a') {continue;}
+        const text = normalizeText(control.name || getNodeContent(control));
+        const actionIntent = inferActionIntentFromText(text);
+        if (!actionIntent || !['edit', 'delete', 'view'].includes(actionIntent) || seen.has(actionIntent)) {continue;}
+        seen.add(actionIntent);
+        const target = buildNodeTarget(snapshot, control.id, {allowText: true});
+        if (text && target.classContains) {
+            target.textContains = text;
+        }
+        actions.push({
+            id: `auto_${entity.id}_row_action_${actionIntent}`,
+            actionIntent,
+            ...(text ? {text} : {}),
+            target,
+            origin: 'inferred',
+            disposition: 'active',
+        });
+    }
+    return actions;
+};
+
 const buildInferredEntity = (
     snapshot: SnapshotResult,
     entity: FinalEntityRecord,
@@ -168,6 +363,49 @@ const buildInferredEntity = (
               ]
             : inferredFields;
 
+    const columns: CanvasEntityDraft['columns'] =
+        entity.columns?.map((column, colIndex) => ({
+            id: `${id}_col${colIndex}`,
+            fieldKey: column.fieldKey,
+            ...(column.name ? { name: column.name } : {}),
+            ...(column.kind ? { kind: column.kind } : {}),
+            actions:
+                column.actions?.map((action, actionIndex) => ({
+                    id: `${id}_col${colIndex}_act${actionIndex}`,
+                    actionIntent: action.actionIntent,
+                    ...(action.text ? { text: action.text } : {}),
+                    target: {},
+                    origin: 'inferred',
+                    disposition: 'active',
+                })) || [],
+            origin: 'inferred',
+            disposition: 'active',
+        })) || [];
+    const inferredRowActions = inferRowActionsFromControls(snapshot, entity);
+    if (inferredRowActions.length > 0) {
+        let actionColumn = columns.find((column) =>
+            column.kind === 'action_column' ||
+            column.fieldKey.toLowerCase() === 'actions' ||
+            column.fieldKey.includes('操作') ||
+            column.name?.includes('操作'),
+        );
+        if (!actionColumn) {
+            actionColumn = {
+                id: `${id}_col_actions`,
+                fieldKey: 'actions',
+                name: '操作',
+                kind: 'action_column',
+                actions: [],
+                origin: 'inferred',
+                disposition: 'active',
+            };
+            columns.push(actionColumn);
+        }
+        const existingIntents = new Set(actionColumn.actions.map((action) => action.actionIntent));
+        actionColumn.actions.push(...inferredRowActions.filter((action) => !existingIntents.has(action.actionIntent)));
+        actionColumn.kind = 'action_column';
+    }
+
     return {
         id,
         source: entity.type === 'group' ? 'group' : 'region',
@@ -177,24 +415,7 @@ const buildInferredEntity = (
         target: buildEntityTarget(entity),
         expect: 'unique',
         annotations,
-        columns:
-            entity.columns?.map((column, colIndex) => ({
-                id: `${id}_col${colIndex}`,
-                fieldKey: column.fieldKey,
-                ...(column.name ? { name: column.name } : {}),
-                ...(column.kind ? { kind: column.kind } : {}),
-                actions:
-                    column.actions?.map((action, actionIndex) => ({
-                        id: `${id}_col${colIndex}_act${actionIndex}`,
-                        actionIntent: action.actionIntent,
-                        ...(action.text ? { text: action.text } : {}),
-                        target: {},
-                        origin: 'inferred',
-                        disposition: 'active',
-                    })) || [],
-                origin: 'inferred',
-                disposition: 'active',
-            })) || [],
+        columns,
         ...(entity.primaryKey
             ? {
                   primaryKey: {
@@ -341,16 +562,28 @@ const recognizeWithinSelectedEntity = (
         .filter(isSignificantEntity)
         .filter((record) => isDescendantOrSelf(record.nodeId, rootNodeId, parentById));
     const inferred = records.map((record, index) => buildInferredEntity(snapshot, record, index));
+    const unclaimed = inferUnclaimedScopeControls(
+        snapshot,
+        rootNodeId,
+        records
+            .filter((record) => record.kind === 'table' || record.kind === 'list')
+            .map((record) => record.nodeId),
+    );
     const annotations = mergeScopedAnnotations(
         selected.annotations,
-        inferred.flatMap((entity) => entity.annotations),
+        [
+            ...inferred.flatMap((entity) => entity.annotations),
+            ...unclaimed.annotations,
+        ],
     );
     const columns = mergeScopedColumns(
         selected.columns,
         inferred.flatMap((entity) => entity.columns),
     );
     const primaryKey = selected.primaryKey ?? inferred.find((entity) => entity.primaryKey)?.primaryKey;
-    const pagination = selected.pagination ?? inferred.find((entity) => entity.pagination)?.pagination;
+    const pagination = selected.pagination ??
+        inferred.find((entity) => entity.pagination)?.pagination ??
+        unclaimed.pagination;
     const entity: CanvasEntityDraft = {
         ...selected,
         target: {...selected.target},

@@ -189,24 +189,46 @@ const createTableFixture = (): TableFixture => {
 };
 
 const createCompositeEntityFixture = (): {snapshot: SnapshotResult; finalEntityView: FinalEntityView} => {
-    const queryInput = newTextNode('query_input', 'textbox', '订单编号');
+    const queryLabel = newTextNode('query_label', 'label', '订单编号');
+    setNodeAttr(queryLabel, 'tag', 'label');
+    setNodeAttr(queryLabel, 'for', 'orderNoQuery');
+    const queryInput = newTextNode('query_input', 'generic', '订单编号');
     setNodeAttr(queryInput, 'id', 'orderNoQuery');
+    setNodeAttr(queryInput, 'tag', 'input');
     setNodeBbox(queryInput, {x: 24, y: 32, width: 220, height: 32});
+    const statusLabel = newTextNode('status_label', 'label', '状态');
+    setNodeAttr(statusLabel, 'tag', 'label');
+    setNodeAttr(statusLabel, 'for', 'statusQuery');
+    const statusSelect = newTextNode('status_select', 'generic', '全部');
+    setNodeAttr(statusSelect, 'id', 'statusQuery');
+    setNodeAttr(statusSelect, 'name', 'status');
+    setNodeAttr(statusSelect, 'tag', 'select');
+    setNodeBbox(statusSelect, {x: 250, y: 32, width: 160, height: 32});
     const searchButton = newTextNode('search_button', 'button', '查询');
     setNodeAttr(searchButton, 'class', 'search-button');
-    setNodeBbox(searchButton, {x: 260, y: 32, width: 72, height: 32});
+    setNodeBbox(searchButton, {x: 430, y: 32, width: 72, height: 32});
+    const resetButton = newTextNode('reset_button', 'button', '重置');
+    setNodeAttr(resetButton, 'class', 'reset-button');
+    setNodeBbox(resetButton, {x: 514, y: 32, width: 72, height: 32});
     const queryForm: UnifiedNode = {
         id: 'query_form',
         role: 'form',
         name: '查询条件',
-        children: [queryInput, searchButton],
+        children: [queryLabel, queryInput, statusLabel, statusSelect, searchButton, resetButton],
     };
     setNodeAttr(queryForm, 'class', 'orders-query-form');
     setNodeBbox(queryForm, {x: 16, y: 16, width: 760, height: 80});
 
     const orderCell = newTextNode('order_cell', 'cell', 'ORD-001');
     setNodeBbox(orderCell, {x: 24, y: 160, width: 180, height: 36});
-    const row: UnifiedNode = {id: 'order_row', role: 'row', children: [orderCell]};
+    const editButton = newTextNode('row_edit', 'button', '编辑');
+    setNodeAttr(editButton, 'tag', 'button');
+    setNodeAttr(editButton, 'class', 'row-action');
+    const deleteButton = newTextNode('row_delete', 'button', '删除');
+    setNodeAttr(deleteButton, 'tag', 'button');
+    setNodeAttr(deleteButton, 'class', 'row-action danger');
+    const actionCell: UnifiedNode = {id: 'action_cell', role: 'cell', children: [editButton, deleteButton]};
+    const row: UnifiedNode = {id: 'order_row', role: 'row', children: [orderCell, actionCell]};
     setNodeBbox(row, {x: 16, y: 152, width: 760, height: 44});
     const header = newTextNode('order_header', 'columnheader', '订单编号');
     const headerRow: UnifiedNode = {id: 'order_header_row', role: 'row', children: [header]};
@@ -1126,6 +1148,75 @@ test('recognizeEntities keeps the confirmed outer entity and discovers only its 
     assert.ok(entity.columns.some((item) => item.fieldKey === 'orderNo'));
     assert.equal(entity.pagination?.actionIntent, 'nextPage');
     assert.equal(recognized.length, 1);
+});
+
+test('recognizeEntities recovers query fields, query actions and pagination from the selected DOM scope', () => {
+    const {snapshot, finalEntityView} = createCompositeEntityFixture();
+    const incompleteView: FinalEntityView = {
+        ...finalEntityView,
+        entities: finalEntityView.entities
+            .map((record) => record.kind === 'form'
+                ? {...record, formFields: undefined, formActions: undefined}
+                : {...record, pagination: undefined}),
+    };
+    const selected: CanvasDraft = {
+        version: 1,
+        profileName: '',
+        page: {kind: 'table'},
+        entities: [{
+            id: 'e0',
+            source: 'node',
+            kind: 'table',
+            name: '订单查询列表',
+            businessTag: 'orders.main',
+            target: {classContains: 'orders-module'},
+            expect: 'unique',
+            annotations: [],
+            columns: [],
+            origin: 'manual',
+        }],
+        preserved: {
+            matchRaw: {},
+            annotationRaw: {},
+            preservedByCanvasId: {},
+            ruleIdToCanvasId: {},
+            locatorRules: [],
+            ruleRefs: [],
+        },
+    };
+
+    const {canvasDraft} = recognizeEntities(snapshot, incompleteView, selected);
+    const entity = canvasDraft.entities[0];
+    assert.ok(entity.annotations.some((item) => item.type === 'field' && item.businessKey === 'orderNoQuery'));
+    assert.equal(
+        entity.annotations.find((item) => item.type === 'field' && item.businessKey === 'orderNoQuery')?.name,
+        '订单编号',
+    );
+    assert.equal(
+        entity.annotations.find((item) => item.type === 'field' && item.businessKey === 'status')?.name,
+        '状态',
+    );
+    assert.ok(entity.annotations.some((item) => item.type === 'action' && item.businessKey === 'search'));
+    assert.ok(entity.annotations.some((item) => item.type === 'action' && item.businessKey === 'reset'));
+    const actionColumn = entity.columns.find((column) => column.kind === 'action_column');
+    assert.ok(actionColumn);
+    assert.deepEqual(actionColumn?.actions.map((action) => action.actionIntent).sort(), ['delete', 'edit']);
+    assert.deepEqual(actionColumn?.actions.find((action) => action.actionIntent === 'edit')?.target, {
+        classContains: 'row-action',
+        textContains: '编辑',
+    });
+    assert.equal(entity.pagination?.actionIntent, 'nextPage');
+    assert.deepEqual(entity.pagination?.pageTarget, {classContains: 'pagination-next'});
+    const check = runCheck(snapshot, canvasDraft, 'http://test/orders');
+    assert.equal(
+        check.results.some((item) => item.canvasAnnotationId.endsWith('_pgitem')),
+        false,
+        'pagination item must not be checked when itemTarget is absent',
+    );
+    assert.equal(
+        check.results.find((item) => item.canvasAnnotationId.endsWith('_pgpage'))?.status,
+        'unique',
+    );
 });
 
 test('full save round-trip: edit -> check (all unique) -> save -> reload -> semantic preserved', () => {

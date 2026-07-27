@@ -62,6 +62,14 @@ import type {
     PickRect,
 } from './types.js';
 import {entityVisualId, paginationPageVisualId} from './visual_ids.js';
+import {
+    checkIssueMessage,
+    deriveProductStage,
+    groupAnnotationBoxes,
+    summarizeEntityDraft,
+    type AnnotatorProductStage,
+} from './state/product_ui.js';
+import {enrichInferredFieldNamesFromDom} from './state/dom_labels.js';
 
 const props = defineProps<{
     state: AnnotatorState;
@@ -87,6 +95,7 @@ const pickMode = ref(false);
 const pickPurpose = ref<PickPurpose>('annotation');
 const operation = ref<'recognize' | 'check' | 'save' | 'pick' | null>(null);
 const panelCollapsed = ref(false);
+const reviewPending = ref(false);
 const pickTargetEntityId = ref<string | null>(null);
 const pickTargetAnnotationId = ref<string | null>(null);
 const pickCandidates = ref<PickCandidate[]>([]);
@@ -183,6 +192,21 @@ const hasInternalObjects = computed(() => {
     return entity.annotations.length > 0 || entity.columns.length > 0 || Boolean(entity.pagination);
 });
 
+const productStage = computed<AnnotatorProductStage>(() => deriveProductStage({
+    hasDraft: Boolean(props.state.canvasDraft),
+    hasObjects: hasInternalObjects.value,
+    hasArtifact: Boolean(props.state.artifactRevision),
+    reviewPending: reviewPending.value,
+}));
+
+const productStep = computed(() => {
+    if (productStage.value === 'scope') {return 1;}
+    if (productStage.value === 'recognize' || productStage.value === 'review') {return 2;}
+    return 3;
+});
+
+const objectSummary = computed(() => summarizeEntityDraft(currentEntity.value));
+
 const isBusy = computed(() => operation.value !== null || props.state.mode === 'checking' || props.state.mode === 'saving');
 const busyLabel = computed(() => {
     if (operation.value === 'recognize') {return '正在分析当前页面…';}
@@ -264,8 +288,58 @@ const selectedIsNativeAnnotation = computed(() => {
 });
 
 const currentVisualItems = computed(() => annotationBoxes.value.filter((box) =>
-    !currentEntity.value || box.entityId === currentEntity.value.id,
+    box.kind !== 'entity' && (!currentEntity.value || box.entityId === currentEntity.value.id),
 ));
+
+const groupedVisualItems = computed(() => groupAnnotationBoxes(currentVisualItems.value));
+
+const directActionIds = computed(() => new Set(
+    currentEntity.value?.annotations
+        .filter((item) => item.type === 'action')
+        .map((item) => item.id) ?? [],
+));
+
+const rowActionIds = computed(() => new Set(
+    currentEntity.value?.columns.flatMap((column) => column.actions.map((action) => action.id)) ?? [],
+));
+
+const objectSections = computed(() => [
+    {
+        key: 'fields',
+        title: '查询条件',
+        description: '用于筛选或输入查询内容',
+        icon: '⌕',
+        items: groupedVisualItems.value.fields,
+    },
+    {
+        key: 'page-actions',
+        title: '查询操作',
+        description: '查询、重置等页面操作',
+        icon: '↗',
+        items: groupedVisualItems.value.actions.filter((item) => directActionIds.value.has(item.annotationId)),
+    },
+    {
+        key: 'columns',
+        title: '表格列',
+        description: '结果列表中可引用的数据列',
+        icon: '▦',
+        items: groupedVisualItems.value.columns,
+    },
+    {
+        key: 'row-actions',
+        title: '行操作',
+        description: '编辑、删除等单条数据操作',
+        icon: '⋯',
+        items: groupedVisualItems.value.actions.filter((item) => rowActionIds.value.has(item.annotationId)),
+    },
+    {
+        key: 'pagination',
+        title: '翻页',
+        description: '用于切换结果页',
+        icon: '→',
+        items: groupedVisualItems.value.pagination,
+    },
+].filter((section) => section.items.length > 0));
 
 const kindLabel = (kind: AnnotationBox['kind']): string => ({
     entity: '实体',
@@ -284,6 +358,15 @@ const itemStatus = (box: AnnotationBox): string => {
     return '有问题';
 };
 
+const itemStatusTone = (box: AnnotationBox): 'success' | 'warning' | 'danger' | 'neutral' => {
+    const result = props.state.latestCheck?.find((item) => item.canvasAnnotationId === box.annotationId);
+    if (!result) {return box.origin === 'inferred' ? 'warning' : 'neutral';}
+    if (result.status === 'unique' || (result.expected === 'one_or_more' && result.status === 'multiple')) {
+        return 'success';
+    }
+    return result.status === 'missing' || result.status === 'invalid' ? 'danger' : 'warning';
+};
+
 const statusText = computed(() => {
     if (isBusy.value) {return busyLabel.value;}
     if (props.state.stale) {return '页面内容已变化';}
@@ -292,6 +375,20 @@ const statusText = computed(() => {
     if (props.state.canvasDraft) {return '尚未保存';}
     return '等待识别';
 });
+
+const hasBlockingCheckIssue = (state: AnnotatorState): boolean => Boolean(
+    state.stale || state.latestCheck?.some((item) =>
+        item.status === 'missing' ||
+        item.status === 'invalid' ||
+        (item.expected === 'unique' && item.status === 'multiple'),
+    ),
+);
+
+const firstBlockingCheckIssue = (state: AnnotatorState) => state.latestCheck?.find((item) =>
+    item.status === 'missing' ||
+    item.status === 'invalid' ||
+    (item.expected === 'unique' && item.status === 'multiple'),
+);
 
 const selectEntity = (entityId: string): void => {
     applyState(pickReceived(props.state, {
@@ -312,6 +409,19 @@ const profileNameModel = computed({
         const profileName = value.trim();
         const nextDraft = {...props.state.canvasDraft, profileName};
         applyState({...draftEdited(props.state, nextDraft), profileName});
+    },
+});
+
+const entityNameModel = computed({
+    get: () => currentEntity.value?.name ?? '',
+    set: (value: string) => {
+        if (!props.state.canvasDraft || !currentEntity.value) {return;}
+        const nextDraft = updateEntity(
+            props.state.canvasDraft,
+            currentEntity.value.id,
+            {name: value.trim() || '业务区域'},
+        );
+        applyState(draftEdited(props.state, nextDraft));
     },
 });
 
@@ -347,13 +457,34 @@ const runCheck = async (): Promise<void> => {
     }
 };
 
-const runSave = async (): Promise<void> => {
+const runCheckAndSave = async (): Promise<void> => {
     if (!props.state.canvasDraft || !props.state.dirty || pickMode.value || isBusy.value) {return;}
-    operation.value = 'save';
-    applyState({...props.state, mode: 'saving', error: null});
+    operation.value = 'check';
+    applyState({...props.state, mode: 'checking', error: null});
     try {
-        const next = await runSaveLoop(props.state, props.client, props.sessionStore);
-        applyState(next);
+        const checked = await runCheckLoop(props.state, props.client);
+        if (checked.error) {
+            applyState(checked);
+            return;
+        }
+        if (hasBlockingCheckIssue(checked)) {
+            const issue = firstBlockingCheckIssue(checked) ?? null;
+            const label = issue
+                ? annotationBoxes.value.find((item) => item.annotationId === issue.canvasAnnotationId)?.labelName ?? null
+                : null;
+            const entityId = issue ? entityIdForAnnotation(issue.canvasAnnotationId) : null;
+            const focused = issue
+                ? pickReceived(checked, {annotationId: issue.canvasAnnotationId, entityId})
+                : checked;
+            const message = checkIssueMessage(checked.stale, issue, label);
+            applyState(message ? failed(focused, message) : focused);
+            return;
+        }
+        applyState(checked);
+        operation.value = 'save';
+        applyState({...checked, mode: 'saving', error: null});
+        const saved = await runSaveLoop(checked, props.client, props.sessionStore);
+        applyState(saved);
     } finally {
         operation.value = null;
     }
@@ -364,8 +495,20 @@ const runRecognize = async (): Promise<void> => {
     operation.value = 'recognize';
     applyState({...props.state, error: null});
     try {
+        const wasFirstRecognition = !hasInternalObjects.value && !props.state.artifactRevision;
         const next = await runRecognizeLoop(props.state, props.client);
-        applyState(next);
+        const documentRef = win()?.document;
+        const enriched = next.canvasDraft && documentRef
+            ? {...next, canvasDraft: enrichInferredFieldNamesFromDom(next.canvasDraft, documentRef)}
+            : next;
+        applyState(enriched);
+        if (!enriched.error && wasFirstRecognition && enriched.canvasDraft?.entities[0]) {
+            reviewPending.value = true;
+            applyState(pickReceived(enriched, {
+                entityId: enriched.canvasDraft.entities[0].id,
+                annotationId: null,
+            }));
+        }
     } finally {
         operation.value = null;
     }
@@ -422,6 +565,7 @@ const enterEntityPickMode = (): void => {
     pickCandidateIndex.value = 0;
     pickPointer.value = null;
     pickMode.value = true;
+    reviewPending.value = false;
     applyState({...props.state, error: null});
 };
 
@@ -476,8 +620,9 @@ const onPickConfirm = (): void => {
             applyState(draftEdited(props.state, nextDraft));
             applyState(pickReceived(props.state, {
                 entityId: nextDraft.entities[0].id,
-                annotationId: entityVisualId(nextDraft.entities[0].id),
+                annotationId: null,
             }));
+            reviewPending.value = false;
             exitPickMode();
         } catch (error) {
             applyState(failed(props.state, error instanceof Error ? error.message : String(error)));
@@ -627,7 +772,7 @@ const onKeyDown = (event: KeyboardEvent): void => {
             break;
         case 'save':
             event.preventDefault();
-            void runSave();
+            void runCheckAndSave();
             break;
         case 'undo':
             event.preventDefault();
@@ -749,235 +894,296 @@ watch(
 
 <template>
     <div
-        class="annotator-shell"
+        class="annotator-shell annotator-root"
         data-rpa-snapshot-ignore="true"
         data-rpa-annotator-host="true"
         :data-annotator-mode="state.mode"
         :data-annotator-draft="state.canvasDraft ? 'present' : 'empty'"
         :data-annotator-profile="state.profileName || ''"
+        :data-product-stage="productStage"
+        :data-pick-mode="pickMode ? 'active' : 'inactive'"
         :class="{picking: pickMode}"
     >
         <button
             v-if="panelCollapsed && !pickMode"
             type="button"
             class="annotator-restore"
+            aria-label="展开页面标注"
             @click="panelCollapsed = false"
         >
-            <span class="annotator-restore-dot"></span>
-            页面标注
-            <span v-if="state.dirty" class="annotator-restore-badge">未保存</span>
+            <span class="annotator-restore-icon">✦</span>
+            <span>页面标注</span>
+            <span v-if="state.dirty" class="annotator-restore-badge"></span>
         </button>
 
-        <aside v-if="!panelCollapsed && !pickMode" class="annotator-workspace">
-            <header class="annotator-workspace-header">
-                <div class="annotator-title-block">
-                    <span class="annotator-eyebrow">页面语义</span>
-                    <strong>{{ currentEntity?.name || '当前页面' }}</strong>
-                    <span class="annotator-status" :class="{error: state.error, busy: isBusy}">
-                        {{ state.error ? '操作失败' : statusText }}
-                    </span>
+        <aside v-if="!panelCollapsed && !pickMode" class="product-panel">
+            <header class="product-header">
+                <div class="product-brand">
+                    <span class="product-logo">✦</span>
+                    <div>
+                        <strong>页面标注</strong>
+                        <span class="annotator-status" :class="{error: state.error}">{{ statusText }}</span>
+                    </div>
                 </div>
-                <div class="annotator-window-actions">
-                    <button type="button" aria-label="收起" title="收起" @click="panelCollapsed = true">−</button>
-                    <button type="button" aria-label="退出标注" title="退出标注" @click="emit('exit')">×</button>
+                <div class="product-window-actions">
+                    <button type="button" aria-label="收起标注面板" title="收起" @click="panelCollapsed = true">−</button>
+                    <button type="button" aria-label="退出页面标注" title="退出" @click="emit('exit')">×</button>
                 </div>
             </header>
 
-            <div v-if="state.error" class="annotator-error-banner">
+            <nav class="product-stepper" aria-label="标注进度">
+                <div :class="{active: productStep === 1, complete: productStep > 1}">
+                    <span>{{ productStep > 1 ? '✓' : '1' }}</span>
+                    <small>选择区域</small>
+                </div>
+                <i :class="{complete: productStep > 1}"></i>
+                <div :class="{active: productStep === 2, complete: productStep > 2}">
+                    <span>{{ productStep > 2 ? '✓' : '2' }}</span>
+                    <small>确认内容</small>
+                </div>
+                <i :class="{complete: productStep > 2}"></i>
+                <div :class="{active: productStep === 3}">
+                    <span>3</span>
+                    <small>完成标注</small>
+                </div>
+            </nav>
+
+            <div v-if="state.error" class="product-error annotator-error-banner" role="alert">
+                <span class="product-error-icon">!</span>
                 <div>
-                    <strong>没有完成操作</strong>
+                    <strong>没有完成这一步</strong>
                     <p>{{ state.error }}</p>
                 </div>
                 <button
                     type="button"
                     :disabled="isBusy"
-                    @click="state.canvasDraft ? runRecognize() : enterEntityPickMode()"
+                    @click="productStage === 'scope' ? enterEntityPickMode() : (productStage === 'recognize' ? runRecognize() : runCheck())"
                 >重试</button>
             </div>
 
-            <div v-if="isBusy" class="annotator-progress" role="status" aria-live="polite">
-                <span class="annotator-spinner"></span>
+            <div v-if="isBusy" class="product-progress" role="status" aria-live="polite">
+                <span class="product-progress-bar"></span>
                 <span>{{ busyLabel }}</span>
             </div>
 
-            <div v-if="!state.canvasDraft" class="annotator-empty-state">
-                <div class="annotator-empty-icon">⌁</div>
-                <h2>先选择实体区域</h2>
-                <p>请框定同时包含查询条件、结果列表和分页的大块业务区域。选择实体前不会识别内部字段或按钮。</p>
-                <button
-                    type="button"
-                    class="annotator-main-action"
-                    data-annotator-action="select-entity"
-                    :disabled="isBusy"
-                    @click="enterEntityPickMode"
-                >选择实体区域</button>
-            </div>
-
-            <template v-else>
-                <section class="annotator-section annotator-entity-section">
-                    <div class="annotator-section-heading">
-                        <span>实体</span>
-                        <span>{{ entities.length }}</span>
+            <main class="product-body">
+                <section v-if="productStage === 'scope'" class="stage-screen scope-stage">
+                    <div class="scope-illustration" aria-hidden="true">
+                        <div class="scope-window">
+                            <span class="scope-query"></span>
+                            <span class="scope-table"></span>
+                            <span class="scope-pagination"></span>
+                        </div>
+                        <span class="scope-cursor">↖</span>
                     </div>
-                    <div class="annotator-entity-list">
-                        <button
-                            v-for="entity in entities"
-                            :key="entity.id"
-                            type="button"
-                            class="annotator-entity-item"
-                            :class="{active: entity.id === state.currentEntityId}"
-                            @click="selectEntity(entity.id)"
-                        >
-                            <span class="annotator-entity-kind">{{ entity.kind }}</span>
-                            <span class="annotator-entity-name">{{ entity.name || entity.businessTag }}</span>
-                        </button>
+                    <span class="stage-kicker">第一步</span>
+                    <h1>选择要标注的业务区域</h1>
+                    <p class="stage-description">
+                        点击订单、客户或其他业务模块中的任意位置，再确认完整区域。
+                    </p>
+                    <div class="scope-criteria">
+                        <div><span>⌕</span><strong>查询条件</strong><small>输入和筛选控件</small></div>
+                        <div><span>▦</span><strong>结果列表</strong><small>表格或卡片数据</small></div>
+                        <div><span>→</span><strong>翻页控件</strong><small>上一页和下一页</small></div>
                     </div>
-                </section>
-
-                <section
-                    v-if="!hasInternalObjects && !state.artifactRevision"
-                    class="annotator-scope-ready"
-                >
-                    <span class="annotator-scope-step">实体范围已确认</span>
-                    <h2>{{ currentEntity?.name || '当前实体' }}</h2>
-                    <p>下一步只分析该区域内部的查询字段、操作、表格列、行操作和分页。</p>
                     <button
                         type="button"
-                        class="annotator-main-action"
+                        class="primary-action"
+                        data-annotator-action="select-entity"
+                        :disabled="isBusy"
+                        @click="enterEntityPickMode"
+                    >
+                        <span>在页面中选择区域</span>
+                        <span aria-hidden="true">→</span>
+                    </button>
+                    <small class="stage-footnote">不会点击页面按钮，也不会修改页面数据。</small>
+                </section>
+
+                <section v-else-if="productStage === 'recognize'" class="stage-screen recognize-stage">
+                    <div class="selected-scope-card annotator-entity-item">
+                        <span class="selected-scope-icon">▣</span>
+                        <div>
+                            <small>已选择区域</small>
+                            <strong>{{ currentEntity?.name || '业务区域' }}</strong>
+                        </div>
+                        <button type="button" @click="enterEntityPickMode">重新选择</button>
+                    </div>
+                    <span class="stage-kicker">第二步</span>
+                    <h1>识别区域内的页面对象</h1>
+                    <p class="stage-description">
+                        系统只分析刚才确认的区域，并整理成可直接用于自动化的对象。
+                    </p>
+                    <div class="recognize-preview">
+                        <div><span>01</span><p><strong>查询条件</strong><small>输入框、下拉框和筛选项</small></p></div>
+                        <div><span>02</span><p><strong>结果与操作</strong><small>表格列、编辑和删除等操作</small></p></div>
+                        <div><span>03</span><p><strong>翻页</strong><small>下一页和分页导航</small></p></div>
+                    </div>
+                    <button
+                        type="button"
+                        class="primary-action"
                         data-annotator-action="recognize"
                         :disabled="isBusy"
                         @click="runRecognize"
-                    >{{ operation === 'recognize' ? '正在识别…' : '识别内部对象' }}</button>
-                    <button
-                        type="button"
-                        class="annotator-secondary-action"
-                        :disabled="isBusy"
-                        @click="enterEntityPickMode"
-                    >重新选择实体范围</button>
+                    >
+                        <span>{{ operation === 'recognize' ? '正在识别…' : '开始识别' }}</span>
+                        <span aria-hidden="true">→</span>
+                    </button>
                 </section>
 
-                <template v-else>
-                <section class="annotator-section annotator-object-section">
-                    <div class="annotator-section-heading">
-                        <span>页面对象</span>
-                        <button
-                            type="button"
-                            class="annotator-text-action"
-                            :disabled="!currentEntity || isBusy"
-                            @click="enterPickMode(null)"
-                        >＋ 添加</button>
+                <section v-else-if="productStage === 'review'" class="stage-screen review-stage">
+                    <div class="review-success">✓</div>
+                    <span class="stage-kicker">识别完成</span>
+                    <h1>确认识别结果</h1>
+                    <p class="stage-description">
+                        已从“{{ currentEntity?.name || '当前区域' }}”中整理出以下对象。
+                    </p>
+                    <div class="review-summary">
+                        <div><span>⌕</span><strong>{{ objectSummary.fields }}</strong><small>查询条件</small></div>
+                        <div><span>↗</span><strong>{{ objectSummary.queryActions }}</strong><small>查询操作</small></div>
+                        <div><span>▦</span><strong>{{ objectSummary.columns }}</strong><small>表格列</small></div>
+                        <div><span>⋯</span><strong>{{ objectSummary.rowActions }}</strong><small>行操作</small></div>
+                        <div><span>→</span><strong>{{ objectSummary.pagination }}</strong><small>翻页</small></div>
                     </div>
-                    <div class="annotator-object-list">
-                        <button
-                            v-for="item in currentVisualItems"
-                            :key="item.annotationId"
-                            type="button"
-                            class="annotator-object-item"
-                            :class="{
-                                active: item.annotationId === state.currentAnnotationId,
-                                inferred: item.origin === 'inferred',
-                                missing: itemStatus(item) === '未找到',
-                            }"
-                            @click="onSelectAnnotation(item.annotationId)"
-                        >
-                            <span class="annotator-object-icon" :data-kind="item.kind"></span>
-                            <span class="annotator-object-copy">
-                                <strong>{{ item.labelName }}</strong>
-                                <small>{{ kindLabel(item.kind) }} · {{ item.businessKey }}</small>
-                            </span>
-                            <span class="annotator-object-status">{{ itemStatus(item) }}</span>
-                        </button>
+                    <div class="review-note">
+                        <span>i</span>
+                        <p>识别结果尚未保存。进入编辑后可以改名、重新选择或删除对象。</p>
                     </div>
-                </section>
-
-                <section v-if="selectedAnnotation" class="annotator-section annotator-inspector-section">
-                    <div class="annotator-section-heading">
-                        <span>属性</span>
-                        <button
-                            type="button"
-                            class="annotator-text-action"
-                            @click="applyState(pickReceived(state, {annotationId: null}))"
-                        >关闭</button>
-                    </div>
-                    <EditCard
-                        :annotation="selectedAnnotation"
-                        :entity="selectedEntity"
-                        :candidate="selectedCandidate"
-                        :candidate-index="pickCandidateIndex"
-                        :candidate-chain-length="pickCandidates.length"
-                        :can-change-type="selectedIsNativeAnnotation"
-                        :can-delete="selectedBox?.kind !== 'entity'"
-                        :can-ignore="selectedBox?.kind !== 'entity' && selectedBox?.kind !== 'pagination'"
-                        @update="updateSelectedAnnotation"
-                        @reselect="enterPickMode(selectedAnnotation.id)"
-                        @outer="onNavigate('outer')"
-                        @inner="onNavigate('inner')"
-                        @delete="onDeleteAnnotation(selectedAnnotation.id)"
-                        @ignore="onIgnoreAnnotation(selectedAnnotation.id)"
-                        @choose-type="onChooseType"
-                    />
-                </section>
-
-                <section v-else class="annotator-selection-hint">
-                    点击网页上的框或右侧对象列表，查看并修改它的名称和业务标识。
-                </section>
-
-                <section class="annotator-rule-name">
-                    <label for="rpa-profile-name">规则名称</label>
-                    <input
-                        id="rpa-profile-name"
-                        v-model="profileNameModel"
-                        type="text"
-                        placeholder="例如：订单列表"
-                    />
-                </section>
-
-                <footer class="annotator-footer">
-                    <div class="annotator-history-actions">
-                        <button
-                            type="button"
-                            aria-label="撤销"
-                            title="撤销"
-                            :disabled="state.history.past.length === 0 || isBusy"
-                            @click="applyUndo"
-                        >↶</button>
-                        <button
-                            type="button"
-                            aria-label="重做"
-                            title="重做"
-                            :disabled="state.history.future.length === 0 || isBusy"
-                            @click="applyRedo"
-                        >↷</button>
+                    <button type="button" class="primary-action" @click="reviewPending = false">
+                        <span>查看并调整对象</span>
+                        <span aria-hidden="true">→</span>
+                    </button>
+                    <div class="review-secondary-actions">
                         <button type="button" :disabled="isBusy" @click="runRecognize">重新识别</button>
+                        <button type="button" :disabled="isBusy" @click="enterEntityPickMode">重新选择区域</button>
                     </div>
-                    <div class="annotator-primary-actions">
-                        <button type="button" :disabled="isBusy" @click="runCheck">检查</button>
-                        <button
-                            type="button"
-                            class="annotator-save-action"
-                            :disabled="!state.dirty || isBusy || !state.profileName"
-                            @click="runSave"
-                        >保存</button>
-                    </div>
-                </footer>
-                </template>
-            </template>
+                </section>
+
+                <section v-else class="editor-stage">
+                    <template v-if="selectedAnnotation && selectedBox?.kind !== 'entity'">
+                        <div class="editor-toolbar">
+                            <button
+                                type="button"
+                                class="back-action"
+                                @click="applyState(pickReceived(state, {annotationId: null, entityId: currentEntity?.id || null}))"
+                            >
+                                <span aria-hidden="true">←</span>
+                                返回对象列表
+                            </button>
+                        </div>
+                        <div class="inspector-container">
+                            <EditCard
+                                :annotation="selectedAnnotation"
+                                :entity="selectedEntity"
+                                :candidate="selectedCandidate"
+                                :candidate-index="pickCandidateIndex"
+                                :candidate-chain-length="pickCandidates.length"
+                                :can-change-type="selectedIsNativeAnnotation"
+                                :can-delete="true"
+                                :can-ignore="selectedBox?.kind !== 'pagination'"
+                                @update="updateSelectedAnnotation"
+                                @reselect="enterPickMode(selectedAnnotation.id)"
+                                @outer="onNavigate('outer')"
+                                @inner="onNavigate('inner')"
+                                @delete="onDeleteAnnotation(selectedAnnotation.id)"
+                                @ignore="onIgnoreAnnotation(selectedAnnotation.id)"
+                                @choose-type="onChooseType"
+                            />
+                        </div>
+                    </template>
+
+                    <template v-else>
+                        <div class="entity-overview annotator-entity-item">
+                            <div class="entity-overview-copy">
+                                <span>当前业务区域</span>
+                                <strong>{{ currentEntity?.name || '业务区域' }}</strong>
+                                <small>共 {{ objectSummary.total }} 个可用对象</small>
+                            </div>
+                            <button type="button" @click="enterEntityPickMode">调整范围</button>
+                        </div>
+
+                        <div class="object-section-list annotator-object-list">
+                            <section v-for="section in objectSections" :key="section.key" class="object-group">
+                                <header>
+                                    <span class="object-group-icon">{{ section.icon }}</span>
+                                    <div>
+                                        <strong>{{ section.title }}</strong>
+                                        <small>{{ section.description }}</small>
+                                    </div>
+                                    <span class="object-group-count">{{ section.items.length }}</span>
+                                </header>
+                                <div class="object-group-items">
+                                    <button
+                                        v-for="item in section.items"
+                                        :key="item.annotationId"
+                                        type="button"
+                                        class="product-object-row annotator-object-item"
+                                        :class="{active: item.annotationId === state.currentAnnotationId}"
+                                        @click="onSelectAnnotation(item.annotationId)"
+                                    >
+                                        <span class="object-row-dot" :data-tone="itemStatusTone(item)"></span>
+                                        <span class="object-row-copy">
+                                            <strong>{{ item.labelName }}</strong>
+                                            <small>{{ itemStatus(item) }}</small>
+                                        </span>
+                                        <span class="object-row-arrow" aria-hidden="true">›</span>
+                                    </button>
+                                </div>
+                            </section>
+                        </div>
+
+                        <button type="button" class="add-object-action" :disabled="isBusy" @click="enterPickMode(null)">
+                            <span>＋</span>
+                            添加页面对象
+                        </button>
+
+                        <details class="rule-settings">
+                            <summary>
+                                <span>标注设置</span>
+                                <small>名称与保存标识</small>
+                            </summary>
+                            <div class="rule-settings-content">
+                                <label>
+                                    <span>业务区域名称</span>
+                                    <input v-model="entityNameModel" type="text" placeholder="例如：订单查询列表" />
+                                </label>
+                                <label>
+                                    <span>规则名称</span>
+                                    <input v-model="profileNameModel" type="text" placeholder="自动生成" />
+                                </label>
+                            </div>
+                        </details>
+                    </template>
+                </section>
+            </main>
+
+            <footer v-if="productStage === 'edit'" class="product-footer">
+                <div class="history-actions">
+                    <button type="button" aria-label="撤销" title="撤销" :disabled="state.history.past.length === 0 || isBusy" @click="applyUndo">↶</button>
+                    <button type="button" aria-label="重做" title="重做" :disabled="state.history.future.length === 0 || isBusy" @click="applyRedo">↷</button>
+                    <button type="button" :disabled="isBusy" @click="runRecognize">重新识别</button>
+                </div>
+                <button
+                    type="button"
+                    class="save-product-action annotator-save-action"
+                    :class="{saved: !state.dirty && Boolean(state.artifactRevision)}"
+                    :disabled="!state.dirty || isBusy || !state.profileName"
+                    @click="runCheckAndSave"
+                >
+                    <span v-if="operation === 'check'">正在检查…</span>
+                    <span v-else-if="operation === 'save'">正在保存…</span>
+                    <span v-else-if="!state.dirty && state.artifactRevision">✓ 已保存</span>
+                    <span v-else>检查并保存</span>
+                </button>
+            </footer>
         </aside>
 
-        <div v-if="pickMode" class="annotator-pick-bar">
+        <div v-if="pickMode" class="pick-guide">
+            <span class="pick-guide-icon">⌖</span>
             <div>
-                <strong>
-                    {{ operation === 'pick'
-                        ? '正在识别所选范围…'
-                        : (pickPurpose === 'entity' ? '点击实体区域内任意位置' : '点击网页中的对象') }}
-                </strong>
-                <span>
-                    {{ pickPurpose === 'entity'
-                        ? '只会提供实体大区域候选；使用外层/内部切换后确认范围。'
-                        : '移动鼠标查看范围，点击后选择最合适的业务层级。' }}
-                </span>
+                <strong>{{ pickPurpose === 'entity' ? '点击业务区域内任意位置' : '点击要标注的页面对象' }}</strong>
+                <small>{{ pickPurpose === 'entity' ? '随后可以扩大或缩小范围，再确认整个区域。' : '随后确认字段、按钮或表格对象的范围。' }}</small>
             </div>
-            <button type="button" @click="onPickCancel">取消</button>
+            <button type="button" @click="onPickCancel">退出选择</button>
         </div>
     </div>
 
@@ -993,7 +1199,7 @@ watch(
         @select="onSelectAnnotation"
     />
     <LabelLayer
-        v-if="!pickMode"
+        v-if="productStage === 'edit' && !pickMode"
         :boxes="annotationBoxes"
         :placements="placements"
         :selected-annotation-id="state.currentAnnotationId"
@@ -1011,6 +1217,7 @@ watch(
         :candidate-chain-length="pickCandidates.length"
         :current-entity-kind="currentEntity?.kind as EntityKind | undefined"
         :pointer="pickPointer"
+        :purpose="pickPurpose"
         @navigate="onNavigate"
         @confirm="onPickConfirm"
         @cancel="onPickCancel"
@@ -1018,273 +1225,263 @@ watch(
 </template>
 
 <style scoped>
+:global(*) { box-sizing: border-box; }
 .annotator-shell {
     position: fixed;
     inset: 0;
-    z-index: 4;
+    z-index: 2147483644;
     pointer-events: none;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: #172033;
+    color: #0f172a;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
 }
-.annotator-workspace {
+.annotator-shell button,
+.annotator-shell input,
+.annotator-shell select,
+.annotator-shell summary { font: inherit; }
+.product-panel {
     position: fixed;
     top: 16px;
     right: 16px;
-    bottom: 16px;
-    width: 340px;
+    width: 420px;
+    height: calc(100vh - 32px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, .34);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, .98);
+    box-shadow: 0 30px 80px rgba(15, 23, 42, .22), 0 4px 18px rgba(15, 23, 42, .08);
+    backdrop-filter: blur(22px);
     pointer-events: auto;
-    background: rgba(255, 255, 255, 0.98);
-    border: 1px solid rgba(148, 163, 184, 0.4);
-    border-radius: 16px;
-    box-shadow: 0 22px 60px rgba(15, 23, 42, 0.24), 0 4px 14px rgba(15, 23, 42, 0.12);
-    backdrop-filter: blur(18px);
 }
-.annotator-workspace-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 16px;
-    border-bottom: 1px solid #e7ebf2;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-}
-.annotator-title-block { min-width: 0; display: grid; gap: 3px; }
-.annotator-title-block strong { font-size: 15px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.annotator-eyebrow { color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.annotator-status { color: #64748b; font-size: 11px; }
-.annotator-status.busy { color: #1d4ed8; }
-.annotator-status.error { color: #b42318; }
-.annotator-window-actions { display: flex; gap: 4px; }
-.annotator-window-actions button,
-.annotator-history-actions button,
-.annotator-primary-actions button {
-    border: 1px solid #d8dee9;
-    background: #fff;
-    color: #334155;
-    border-radius: 8px;
-    cursor: pointer;
-}
-.annotator-window-actions button { width: 28px; height: 28px; font-size: 17px; line-height: 1; }
-.annotator-window-actions button:hover { background: #f1f5f9; }
-.annotator-error-banner {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-    margin: 12px 12px 0;
-    padding: 10px 12px;
-    border: 1px solid #fecaca;
-    border-radius: 10px;
-    background: #fff7f7;
-    color: #991b1b;
-}
-.annotator-error-banner strong { font-size: 12px; }
-.annotator-error-banner p { margin: 3px 0 0; font-size: 11px; line-height: 1.4; }
-.annotator-error-banner button { border: 1px solid #fca5a5; border-radius: 7px; background: #fff; color: #991b1b; padding: 5px 8px; cursor: pointer; }
-.annotator-progress {
+.product-header {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin: 12px 12px 0;
-    padding: 9px 11px;
-    border-radius: 10px;
-    background: #eff6ff;
-    color: #1d4ed8;
-    font-size: 12px;
+    justify-content: space-between;
+    min-height: 68px;
+    padding: 13px 15px 12px 16px;
+    border-bottom: 1px solid #edf1f6;
 }
-.annotator-spinner {
-    width: 13px;
-    height: 13px;
-    border: 2px solid #bfdbfe;
-    border-top-color: #2563eb;
-    border-radius: 999px;
-    animation: annotator-spin .8s linear infinite;
-}
-@keyframes annotator-spin { to { transform: rotate(360deg); } }
-.annotator-empty-state {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 32px 28px;
-    text-align: center;
-}
-.annotator-empty-icon {
-    width: 52px;
-    height: 52px;
+.product-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.product-logo {
+    width: 36px;
+    height: 36px;
     display: grid;
     place-items: center;
-    margin-bottom: 12px;
-    border-radius: 14px;
-    background: #eaf2ff;
-    color: #2563eb;
-    font-size: 30px;
+    border-radius: 11px;
+    background: linear-gradient(145deg, #2563eb, #4f46e5);
+    box-shadow: 0 9px 20px rgba(37, 99, 235, .25);
+    color: #fff;
+    font-size: 17px;
 }
-.annotator-empty-state h2 { margin: 0 0 8px; font-size: 18px; }
-.annotator-empty-state p { margin: 0 0 20px; color: #64748b; font-size: 12px; line-height: 1.55; }
-.annotator-scope-ready {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 24px;
-    text-align: center;
-}
-.annotator-scope-ready h2 { margin: 8px 0; font-size: 17px; }
-.annotator-scope-ready p { margin: 0 0 18px; color: #64748b; font-size: 12px; line-height: 1.55; }
-.annotator-scope-step { color: #2563eb; font-size: 11px; font-weight: 800; letter-spacing: .04em; }
-.annotator-main-action,
-.annotator-secondary-action {
-    width: 100%;
-    height: 38px;
-    border-radius: 9px;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-}
-.annotator-main-action { border: 1px solid #2563eb; background: #2563eb; color: #fff; }
-.annotator-secondary-action { margin-top: 8px; border: 1px solid #d8dee9; background: #fff; color: #334155; }
-.annotator-section { border-bottom: 1px solid #eef1f5; }
-.annotator-section-heading {
-    min-height: 36px;
-    padding: 0 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    color: #64748b;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: .02em;
-}
-.annotator-text-action { border: none; background: transparent; color: #2563eb; font-size: 11px; font-weight: 700; cursor: pointer; }
-.annotator-entity-list { display: flex; gap: 6px; padding: 0 12px 12px; overflow-x: auto; }
-.annotator-entity-item {
-    flex: 0 0 auto;
-    min-width: 108px;
-    max-width: 180px;
-    display: grid;
-    gap: 2px;
-    padding: 8px 10px;
-    text-align: left;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #fff;
-    cursor: pointer;
-}
-.annotator-entity-item.active { border-color: #93b4ff; background: #eff6ff; box-shadow: inset 0 0 0 1px #bfdbfe; }
-.annotator-entity-kind { color: #64748b; font-size: 9px; text-transform: uppercase; }
-.annotator-entity-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; }
-.annotator-object-section { min-height: 140px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.annotator-object-list { flex: 1; overflow: auto; padding: 0 8px 10px; }
-.annotator-object-item {
-    width: 100%;
-    min-height: 48px;
-    display: grid;
-    grid-template-columns: 10px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 9px;
-    padding: 7px 8px;
-    border: 1px solid transparent;
+.product-brand > div { min-width: 0; }
+.product-brand strong { display: block; font-size: 14px; line-height: 1.35; }
+.product-brand span:not(.product-logo) { display: block; margin-top: 2px; color: #64748b; font-size: 10px; }
+.product-brand span.error { color: #dc2626; }
+.product-window-actions { display: flex; gap: 5px; }
+.product-window-actions button {
+    width: 30px;
+    height: 30px;
+    border: 0;
     border-radius: 9px;
     background: transparent;
-    color: #172033;
-    text-align: left;
+    color: #64748b;
+    font-size: 16px;
     cursor: pointer;
 }
-.annotator-object-item:hover { background: #f8fafc; }
-.annotator-object-item.active { background: #eef5ff; border-color: #c8dcff; }
-.annotator-object-item.missing { background: #fff7f7; }
-.annotator-object-icon { width: 8px; height: 8px; border-radius: 3px; background: #3b82f6; }
-.annotator-object-icon[data-kind="field"] { background: #22a06b; }
-.annotator-object-icon[data-kind="action"] { background: #f59e0b; }
-.annotator-object-icon[data-kind="column"],
-.annotator-object-icon[data-kind="pagination"] { background: #8b5cf6; }
-.annotator-object-copy { min-width: 0; display: grid; gap: 2px; }
-.annotator-object-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.annotator-object-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: 10px; }
-.annotator-object-status { color: #64748b; font-size: 10px; white-space: nowrap; }
-.annotator-object-item.inferred .annotator-object-status { color: #b7791f; }
-.annotator-inspector-section { max-height: 310px; overflow: auto; padding-bottom: 12px; }
-.annotator-inspector-section :deep(.annotator-edit-card) {
-    width: auto;
-    margin: 0 12px;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    box-shadow: none;
-}
-.annotator-inspector-section :deep(.annotator-edit-row) { gap: 5px; }
-.annotator-inspector-section :deep(.annotator-edit-input),
-.annotator-inspector-section :deep(.annotator-edit-select) { min-height: 32px; padding: 6px 8px; }
-.annotator-inspector-section :deep(.annotator-edit-actions) { margin-top: 4px; }
-.annotator-selection-hint { margin: 10px 12px; padding: 10px; border-radius: 9px; background: #f8fafc; color: #64748b; font-size: 11px; line-height: 1.45; }
-.annotator-rule-name { display: grid; gap: 5px; padding: 10px 12px; border-top: 1px solid #eef1f5; }
-.annotator-rule-name label { color: #64748b; font-size: 10px; font-weight: 700; }
-.annotator-rule-name input { height: 32px; box-sizing: border-box; border: 1px solid #d8dee9; border-radius: 8px; padding: 0 9px; color: #172033; background: #fff; }
-.annotator-footer {
-    display: flex;
-    justify-content: space-between;
+.product-window-actions button:hover { background: #f1f5f9; color: #0f172a; }
+.product-stepper {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr auto;
+    align-items: start;
     gap: 8px;
-    padding: 10px 12px 12px;
-    border-top: 1px solid #e7ebf2;
-    background: #f8fafc;
+    padding: 13px 20px 12px;
+    border-bottom: 1px solid #edf1f6;
+    background: #fbfcfe;
 }
-.annotator-history-actions,
-.annotator-primary-actions { display: flex; gap: 6px; }
-.annotator-history-actions button,
-.annotator-primary-actions button { min-height: 32px; padding: 0 10px; font-size: 11px; cursor: pointer; }
-.annotator-primary-actions .annotator-save-action { border-color: #2563eb; background: #2563eb; color: #fff; font-weight: 700; }
-button:disabled { opacity: .45; cursor: not-allowed !important; }
-.annotator-restore {
-    position: fixed;
-    top: 16px;
-    right: 16px;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    height: 38px;
-    padding: 0 12px;
-    pointer-events: auto;
-    border: 1px solid #d8dee9;
-    border-radius: 999px;
+.product-stepper > div { display: grid; justify-items: center; gap: 5px; min-width: 64px; color: #94a3b8; }
+.product-stepper > div > span {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #dbe3ee;
+    border-radius: 50%;
     background: #fff;
-    color: #172033;
-    font-size: 12px;
-    font-weight: 700;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, .2);
-    cursor: pointer;
+    font-size: 10px;
+    font-weight: 750;
 }
-.annotator-restore-dot { width: 8px; height: 8px; border-radius: 999px; background: #2563eb; }
-.annotator-restore-badge { color: #b45309; font-size: 10px; font-weight: 600; }
-.annotator-pick-bar {
-    position: fixed;
-    left: 50%;
-    bottom: 22px;
-    transform: translateX(-50%);
-    min-width: 360px;
-    max-width: min(560px, calc(100vw - 32px));
-    display: flex;
+.product-stepper small { font-size: 10px; font-weight: 650; white-space: nowrap; }
+.product-stepper i { height: 1px; margin-top: 12px; background: #dbe3ee; }
+.product-stepper > div.active { color: #2563eb; }
+.product-stepper > div.active > span { border-color: #2563eb; background: #2563eb; color: #fff; box-shadow: 0 0 0 4px rgba(37, 99, 235, .10); }
+.product-stepper > div.complete { color: #059669; }
+.product-stepper > div.complete > span { border-color: #a7f3d0; background: #ecfdf5; color: #059669; }
+.product-stepper i.complete { background: #6ee7b7; }
+.product-error {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
     align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    padding: 11px 12px 11px 15px;
-    pointer-events: auto;
-    border: 1px solid rgba(255,255,255,.18);
-    border-radius: 14px;
-    background: rgba(15, 23, 42, .94);
-    color: #fff;
-    box-shadow: 0 18px 48px rgba(15,23,42,.34);
-    backdrop-filter: blur(16px);
+    margin: 12px 14px 0;
+    padding: 11px 12px;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    background: #fff7f7;
 }
-.annotator-pick-bar div { display: grid; gap: 2px; }
-.annotator-pick-bar strong { font-size: 12px; }
-.annotator-pick-bar span { color: #cbd5e1; font-size: 10px; }
-.annotator-pick-bar button { border: 1px solid #475569; border-radius: 8px; background: #1e293b; color: #fff; padding: 7px 10px; cursor: pointer; }
+.product-error-icon { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #fee2e2; color: #dc2626; font-size: 12px; font-weight: 800; }
+.product-error strong { display: block; color: #991b1b; font-size: 11px; }
+.product-error p { margin: 2px 0 0; color: #b91c1c; font-size: 10px; line-height: 1.45; }
+.product-error button { border: 0; background: transparent; color: #dc2626; font-size: 10px; font-weight: 700; cursor: pointer; }
+.product-progress { flex: 0 0 auto; position: relative; padding: 9px 16px 8px; overflow: hidden; color: #475569; font-size: 10px; text-align: center; }
+.product-progress-bar { position: absolute; top: 0; left: 0; width: 38%; height: 2px; background: #2563eb; animation: progress-slide 1.25s ease-in-out infinite; }
+@keyframes progress-slide { from { transform: translateX(-100%); } to { transform: translateX(365%); } }
+.product-body { flex: 1 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.stage-screen { min-height: 100%; display: flex; flex-direction: column; align-items: center; padding: 32px 30px 26px; text-align: center; }
+.stage-kicker { margin-bottom: 8px; color: #2563eb; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.stage-screen h1 { margin: 0; color: #0f172a; font-size: 21px; line-height: 1.32; letter-spacing: -.02em; }
+.stage-description { max-width: 330px; margin: 10px auto 22px; color: #64748b; font-size: 12px; line-height: 1.65; }
+.scope-illustration { position: relative; width: 188px; height: 126px; margin: 5px auto 24px; }
+.scope-window { position: absolute; inset: 0 8px 10px 0; display: grid; grid-template-rows: 28px 1fr 20px; gap: 8px; padding: 13px; border: 1px solid #cbd5e1; border-radius: 15px; background: #fff; box-shadow: 0 16px 34px rgba(15, 23, 42, .10); }
+.scope-window::before { content: ''; position: absolute; inset: 5px; border: 2px solid #3b82f6; border-radius: 11px; box-shadow: 0 0 0 4px rgba(59, 130, 246, .08); }
+.scope-query, .scope-table, .scope-pagination { position: relative; z-index: 1; display: block; border-radius: 6px; background: #eff6ff; }
+.scope-query { width: 72%; }
+.scope-table { background: repeating-linear-gradient(to bottom, #e2e8f0 0, #e2e8f0 1px, #f8fafc 1px, #f8fafc 15px); }
+.scope-pagination { width: 42%; justify-self: end; }
+.scope-cursor { position: absolute; right: 0; bottom: 0; color: #1d4ed8; font-size: 28px; filter: drop-shadow(0 4px 8px rgba(37, 99, 235, .3)); }
+.scope-criteria { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 22px; }
+.scope-criteria > div { display: grid; justify-items: center; gap: 4px; padding: 12px 7px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.scope-criteria > div > span { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; background: #eff6ff; color: #2563eb; font-size: 14px; }
+.scope-criteria strong { font-size: 10px; }
+.scope-criteria small { color: #94a3b8; font-size: 8px; }
+.primary-action { width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #2563eb; border-radius: 12px; padding: 0 16px; background: linear-gradient(135deg, #2563eb, #4f46e5); box-shadow: 0 12px 24px rgba(37, 99, 235, .22); color: #fff; font-size: 12px; font-weight: 750; cursor: pointer; }
+.primary-action:hover:not(:disabled) { filter: brightness(.96); transform: translateY(-1px); }
+.primary-action:disabled { opacity: .55; cursor: default; box-shadow: none; }
+.stage-footnote { margin-top: 12px; color: #94a3b8; font-size: 9px; }
+.selected-scope-card { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: center; margin-bottom: 28px; padding: 13px; border: 1px solid #dbeafe; border-radius: 14px; background: #f7fbff; text-align: left; }
+.selected-scope-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: #dbeafe; color: #2563eb; }
+.selected-scope-card small { display: block; color: #64748b; font-size: 9px; }
+.selected-scope-card strong { display: block; overflow: hidden; margin-top: 2px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.selected-scope-card button { border: 0; background: transparent; color: #2563eb; font-size: 10px; font-weight: 700; cursor: pointer; }
+.recognize-preview { width: 100%; display: grid; gap: 8px; margin-bottom: 22px; text-align: left; }
+.recognize-preview > div { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; }
+.recognize-preview > div > span { color: #cbd5e1; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.recognize-preview p { margin: 0; }
+.recognize-preview strong { display: block; font-size: 11px; }
+.recognize-preview small { display: block; margin-top: 2px; color: #94a3b8; font-size: 9px; }
+.review-success { width: 58px; height: 58px; display: grid; place-items: center; margin: 8px auto 18px; border-radius: 50%; background: #ecfdf5; box-shadow: 0 0 0 8px rgba(16, 185, 129, .08); color: #059669; font-size: 24px; font-weight: 800; }
+.review-summary { width: 100%; display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin-bottom: 16px; }
+.review-summary > div { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; gap: 0 10px; align-items: center; padding: 13px; border: 1px solid #e2e8f0; border-radius: 12px; text-align: left; }
+.review-summary > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.review-summary > div > span { grid-row: 1 / 3; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; background: #f1f5f9; color: #475569; }
+.review-summary strong { font-size: 18px; line-height: 1; }
+.review-summary small { margin-top: 3px; color: #64748b; font-size: 9px; }
+.review-note { width: 100%; display: flex; gap: 9px; align-items: flex-start; margin-bottom: 20px; padding: 11px; border-radius: 11px; background: #f8fafc; text-align: left; }
+.review-note > span { flex: 0 0 auto; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: #e2e8f0; color: #64748b; font-size: 10px; font-weight: 800; }
+.review-note p { margin: 1px 0 0; color: #64748b; font-size: 10px; line-height: 1.5; }
+.review-secondary-actions { display: flex; gap: 14px; margin-top: 13px; }
+.review-secondary-actions button { border: 0; background: transparent; color: #64748b; font-size: 10px; cursor: pointer; }
+.editor-stage { min-height: 100%; padding: 16px 14px 22px; }
+.editor-toolbar { margin-bottom: 12px; }
+.back-action { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #475569; font-size: 11px; font-weight: 650; cursor: pointer; }
+.back-action:hover { color: #2563eb; }
+.inspector-container { padding: 4px 2px; }
+.entity-overview { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 14px; border: 1px solid #dbeafe; border-radius: 14px; background: linear-gradient(135deg, #f8fbff, #f5f7ff); }
+.entity-overview-copy { min-width: 0; }
+.entity-overview-copy > span { display: block; color: #2563eb; font-size: 9px; font-weight: 750; letter-spacing: .06em; }
+.entity-overview-copy strong { display: block; overflow: hidden; margin-top: 3px; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.entity-overview-copy small { display: block; margin-top: 3px; color: #64748b; font-size: 9px; }
+.entity-overview button { flex: 0 0 auto; min-height: 30px; border: 1px solid #bfdbfe; border-radius: 9px; padding: 0 9px; background: #fff; color: #2563eb; font-size: 9px; font-weight: 700; cursor: pointer; }
+.object-section-list { display: grid; gap: 11px; }
+.object-group { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
+.object-group > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 12px 9px; }
+.object-group-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: #f1f5f9; color: #475569; font-size: 13px; }
+.object-group header strong { display: block; font-size: 11px; }
+.object-group header small { display: block; margin-top: 2px; color: #94a3b8; font-size: 8px; }
+.object-group-count { min-width: 22px; height: 22px; display: grid; place-items: center; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 9px; font-weight: 700; }
+.object-group-items { padding: 0 7px 7px; }
+.product-object-row { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 9px; align-items: center; min-height: 48px; border: 0; border-radius: 9px; padding: 7px 8px; background: transparent; text-align: left; cursor: pointer; }
+.product-object-row:hover { background: #f8fafc; }
+.product-object-row.active { background: #eff6ff; }
+.object-row-dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; box-shadow: 0 0 0 4px rgba(148, 163, 184, .10); }
+.object-row-dot[data-tone="success"] { background: #10b981; box-shadow: 0 0 0 4px rgba(16, 185, 129, .10); }
+.object-row-dot[data-tone="warning"] { background: #f59e0b; box-shadow: 0 0 0 4px rgba(245, 158, 11, .10); }
+.object-row-dot[data-tone="danger"] { background: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, .10); }
+.object-row-copy { min-width: 0; }
+.object-row-copy strong { display: block; overflow: hidden; color: #1e293b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.object-row-copy small { display: block; margin-top: 2px; color: #94a3b8; font-size: 8px; }
+.object-row-arrow { color: #cbd5e1; font-size: 18px; }
+.add-object-action { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 12px; border: 1px dashed #cbd5e1; border-radius: 11px; background: #fbfcfe; color: #475569; font-size: 10px; font-weight: 700; cursor: pointer; }
+.add-object-action:hover { border-color: #93c5fd; background: #f5f9ff; color: #2563eb; }
+.rule-settings { margin-top: 12px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.rule-settings summary { display: flex; align-items: center; gap: 8px; padding: 12px; color: #475569; font-size: 10px; font-weight: 700; cursor: pointer; list-style: none; }
+.rule-settings summary::-webkit-details-marker { display: none; }
+.rule-settings summary small { margin-left: auto; color: #94a3b8; font-size: 8px; font-weight: 500; }
+.rule-settings summary::after { content: '⌄'; color: #94a3b8; }
+.rule-settings[open] summary::after { transform: rotate(180deg); }
+.rule-settings-content { display: grid; gap: 12px; padding: 0 12px 12px; }
+.rule-settings-content label { display: grid; gap: 6px; }
+.rule-settings-content label span { color: #475569; font-size: 9px; font-weight: 700; }
+.rule-settings-content input { width: 100%; min-height: 38px; border: 1px solid #cbd5e1; border-radius: 9px; padding: 0 10px; outline: none; color: #0f172a; font-size: 10px; }
+.rule-settings-content input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, .1); }
+.product-footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 64px; padding: 10px 14px; border-top: 1px solid #e2e8f0; background: rgba(255, 255, 255, .98); }
+.history-actions { display: flex; align-items: center; gap: 5px; }
+.history-actions button { min-width: 30px; height: 32px; border: 1px solid #e2e8f0; border-radius: 9px; padding: 0 8px; background: #fff; color: #64748b; font-size: 10px; cursor: pointer; }
+.history-actions button:disabled { opacity: .35; cursor: default; }
+.history-actions button:hover:not(:disabled) { background: #f8fafc; color: #0f172a; }
+.save-product-action { min-width: 126px; height: 40px; border: 1px solid #2563eb; border-radius: 11px; padding: 0 15px; background: #2563eb; box-shadow: 0 8px 18px rgba(37, 99, 235, .20); color: #fff; font-size: 10px; font-weight: 750; cursor: pointer; }
+.save-product-action:hover:not(:disabled) { background: #1d4ed8; }
+.save-product-action:disabled { opacity: .45; cursor: default; box-shadow: none; }
+.save-product-action.saved { border-color: #a7f3d0; background: #ecfdf5; color: #059669; opacity: 1; }
+.annotator-restore { position: fixed; right: 18px; bottom: 18px; display: flex; align-items: center; gap: 8px; min-height: 42px; border: 1px solid rgba(148, 163, 184, .38); border-radius: 999px; padding: 0 15px 0 8px; background: rgba(255, 255, 255, .96); box-shadow: 0 15px 36px rgba(15, 23, 42, .18); color: #0f172a; font-size: 11px; font-weight: 700; cursor: pointer; pointer-events: auto; }
+.annotator-restore-icon { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: #2563eb; color: #fff; }
+.annotator-restore-badge { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; }
+.pick-guide { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 11px; width: min(520px, calc(100vw - 40px)); padding: 11px 12px; border: 1px solid rgba(148, 163, 184, .42); border-radius: 14px; background: rgba(255, 255, 255, .96); box-shadow: 0 14px 38px rgba(15, 23, 42, .18); backdrop-filter: blur(16px); pointer-events: auto; }
+.pick-guide-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; background: #eff6ff; color: #2563eb; font-size: 15px; }
+.pick-guide > div { flex: 1; min-width: 0; }
+.pick-guide strong { display: block; font-size: 11px; }
+.pick-guide small { display: block; margin-top: 2px; color: #64748b; font-size: 9px; }
+.pick-guide button { border: 0; background: transparent; color: #64748b; font-size: 9px; font-weight: 700; cursor: pointer; }
 @media (max-width: 720px) {
-    .annotator-workspace { top: 8px; right: 8px; bottom: 8px; width: min(340px, calc(100vw - 16px)); }
-    .annotator-pick-bar { min-width: 0; width: calc(100vw - 32px); }
+    .product-panel { top: 8px; right: 8px; width: min(420px, calc(100vw - 16px)); height: calc(100vh - 16px); }
+}
+@media (max-height: 640px) {
+    .product-panel { top: 8px; height: calc(100vh - 16px); }
+    .product-header { min-height: 54px; padding: 9px 12px; }
+    .product-logo { width: 32px; height: 32px; border-radius: 9px; }
+    .product-stepper { padding: 8px 16px 7px; }
+    .product-stepper > div { gap: 2px; }
+    .product-stepper > div > span { width: 20px; height: 20px; }
+    .product-stepper i { margin-top: 10px; }
+    .stage-screen { padding: 12px 24px 13px; }
+    .scope-illustration { width: 132px; height: 76px; margin: 0 auto 8px; }
+    .scope-window { inset: 0 6px 7px 0; grid-template-rows: 17px 1fr 12px; gap: 5px; padding: 8px; border-radius: 11px; }
+    .scope-window::before { inset: 3px; border-radius: 8px; }
+    .scope-cursor { font-size: 20px; }
+    .stage-kicker { margin-bottom: 3px; font-size: 8px; }
+    .stage-screen h1 { font-size: 17px; }
+    .stage-description { margin: 5px auto 9px; font-size: 10px; line-height: 1.42; }
+    .scope-criteria { gap: 5px; margin-bottom: 9px; }
+    .scope-criteria > div { gap: 2px; padding: 6px 3px; border-radius: 9px; }
+    .scope-criteria > div > span { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
+    .scope-criteria strong { font-size: 8px; }
+    .scope-criteria small, .stage-footnote { display: none; }
+    .primary-action { min-height: 40px; border-radius: 10px; font-size: 10px; }
+    .selected-scope-card { margin-bottom: 10px; padding: 9px; }
+    .selected-scope-icon { width: 28px; height: 28px; }
+    .recognize-preview { gap: 5px; margin-bottom: 9px; }
+    .recognize-preview > div { gap: 9px; padding: 7px 9px; border-radius: 9px; }
+    .recognize-preview > div > span { font-size: 11px; }
+    .recognize-preview small { display: none; }
+    .review-success { width: 40px; height: 40px; margin: 0 auto 8px; box-shadow: 0 0 0 5px rgba(16, 185, 129, .08); font-size: 17px; }
+    .review-summary { gap: 5px; margin-bottom: 8px; }
+    .review-summary > div { gap: 0 7px; padding: 8px; border-radius: 9px; }
+    .review-summary > div > span { width: 25px; height: 25px; border-radius: 7px; }
+    .review-summary strong { font-size: 14px; }
+    .review-note { margin-bottom: 9px; padding: 7px 9px; }
+    .review-secondary-actions { margin-top: 6px; }
 }
 </style>
