@@ -39,6 +39,9 @@ export type PageRegistry = {
     claimPendingBinding: (bindingName: string) => Promise<boolean>;
 };
 
+const isContentHeartbeatExemptUrl = (url: string): boolean =>
+    url.startsWith('chrome://') || url.startsWith('chrome-extension://');
+
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
     const confirmedKey = options.tabNameConfirmedKey ?? '__rpa_tab_name_confirmed';
     const tabNameWinNamePrefix = '__RPA_TAB_NAME__:';
@@ -287,6 +290,8 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         listStaleBindings: (timeoutMs: number, now = Date.now()) => {
             const stale: Array<{ bindingName: string; lastSeenAt: number }> = [];
             for (const [bindingName, lastSeenAt] of bindingUpdatedAt.entries()) {
+                const page = resolveKnownPage(bindingName);
+                if (page && isContentHeartbeatExemptUrl(page.url())) {continue;}
                 if (now - lastSeenAt > timeoutMs) {
                     stale.push({ bindingName, lastSeenAt });
                 }
