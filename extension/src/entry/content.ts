@@ -334,6 +334,10 @@ const loadAnnotator = (() => {
                                     onExit: () => {
                                         annotatorHandle?.exit();
                                         annotatorHandle?.hide();
+                                        const panel = document.getElementById('rpa-floating-panel');
+                                        if (panel) {
+                                            panel.style.display = '';
+                                        }
                                     },
                                     onUndo: () => undefined,
                                     onRedo: () => undefined,
@@ -347,6 +351,10 @@ const loadAnnotator = (() => {
                             console.error('[rpa] annotator mount failed:', error);
                             return;
                         }
+                    }
+                    const panel = document.getElementById('rpa-floating-panel');
+                    if (panel) {
+                        panel.style.display = 'none';
                     }
                     annotatorHandle.show();
                     const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
