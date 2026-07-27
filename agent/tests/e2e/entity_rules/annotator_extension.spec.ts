@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
 import { dispatch, runStep, startAgent } from '../../helpers/e2e_multitab_helper';
 import { startFixtureServer } from '../../helpers/server';
+import { startMockApp } from '../../integration/entity_rules/verify/helper';
+import { loadEntityRuleArtifact } from '../../integration/entity_rules/profile_fixture';
 import type { Action } from '../../../src/actions/action_protocol';
 import type { StepUnion } from '../../../src/runner/steps/types';
 
@@ -282,5 +284,183 @@ test('loads the built extension and opens the annotator through the Debug panel'
     } finally {
         await agent.close();
         await fixture.close();
+    }
+});
+
+test('renders table columns, repeated row actions and pagination from saved rules', async ({}, testInfo) => {
+    testInfo.setTimeout(150_000);
+    const mock = await startMockApp('ant');
+    const agent = await startAgent();
+    const workspaceName = `annotator-table-${Date.now()}`;
+    try {
+        expect((await dispatch(agent.endpoint, controlAction('workspace.create', {workspaceName}))).type)
+            .toBe('workspace.create.result');
+        const before = await dispatch(agent.endpoint, action('tab.list', workspaceName));
+        const previousNames = new Set(
+            (((before.payload as {tabs?: Array<{tabName?: string}>})?.tabs) || [])
+                .map((tab) => tab.tabName)
+                .filter((name): name is string => Boolean(name)),
+        );
+        expect((await dispatch(agent.endpoint, action('tab.open', workspaceName))).type)
+            .toBe('tab.open.result');
+        let tabName = '';
+        await expect.poll(async () => {
+            const listed = await dispatch(agent.endpoint, action('tab.list', workspaceName));
+            const tabs = ((listed.payload as {tabs?: Array<{tabName?: string}>})?.tabs) || [];
+            tabName = tabs.find((tab) => tab.tabName && !previousNames.has(tab.tabName))?.tabName || '';
+            return tabName;
+        }, {timeout: 20_000}).not.toBe('');
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `switch-${Date.now()}`, 'browser.switch_tab', {tabName},
+        ))).ok).toBe(true);
+
+        const artifact = await loadEntityRuleArtifact('oa-ant-orders');
+        expect((await dispatch(agent.endpoint, action(
+            'entity_rules.save', workspaceName, {entityRules: artifact},
+        ))).type).toBe('entity_rules.save.result');
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `goto-${Date.now()}`, 'browser.goto', {url: `${mock.baseUrl}/entity-rules/fixtures/order-list`},
+        ))).ok).toBe(true);
+        await expect.poll(async () => (await runStep(agent.endpoint, workspaceName, step(
+            `table-ready-${Date.now()}`, 'browser.evaluate', {expression: `
+                return document.querySelectorAll('table tbody tr').length;
+            `},
+        ))).data, {timeout: 20_000}).toBeGreaterThan(0);
+
+        const clickPanel = `
+            const host = document.querySelector('#rpa-floating-panel');
+            const root = host?.shadowRoot;
+            if (!root) return false;
+            if (!root.querySelector('.panel')?.classList.contains('open')) root.querySelector('.ball')?.click();
+            [...root.querySelectorAll('.tabs button')].find((button) => button.textContent?.trim() === 'Flow')?.click();
+            const enter = [...root.querySelectorAll('button')]
+                .find((button) => button.textContent?.trim() === '进入标注模式');
+            if (!(enter instanceof HTMLButtonElement)) return false;
+            enter.click();
+            return true;
+        `;
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `open-${Date.now()}`, 'browser.evaluate', {expression: clickPanel},
+        ))).data).toBe(true);
+
+        await expect.poll(async () => (await runStep(agent.endpoint, workspaceName, step(
+            `labels-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                return [...(root?.querySelectorAll('.annotator-label') || [])]
+                    .map((label) => label.textContent?.replace(/\\s+/g, ' ').trim() || '');
+            `},
+        ))).data, {timeout: 20_000}).toEqual(expect.arrayContaining([
+            expect.stringContaining('订单编号'),
+            expect.stringContaining('采购人'),
+            expect.stringContaining('金额'),
+            expect.stringContaining('状态'),
+            expect.stringContaining('操作'),
+            expect.stringContaining('编辑'),
+            expect.stringContaining('删除'),
+            expect.stringContaining('nextPage'),
+        ]));
+
+        const actionSummary = (await runStep(agent.endpoint, workspaceName, step(
+            `action-summary-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                const labels = [...(root?.querySelectorAll('.annotator-label') || [])]
+                    .map((label) => ({
+                        id: label.getAttribute('data-annotation-id') || '',
+                        text: label.textContent?.replace(/\\s+/g, ' ').trim() || '',
+                    }));
+                return {
+                    edit: labels.filter((label) => label.text.includes('编辑')),
+                    remove: labels.filter((label) => label.text.includes('删除')),
+                };
+            `},
+        ))).data as {edit: Array<{id: string; text: string}>; remove: Array<{id: string; text: string}>};
+        expect(actionSummary.edit).toHaveLength(1);
+        expect(actionSummary.remove).toHaveLength(1);
+        expect(actionSummary.edit[0].text).toMatch(/x\d+/);
+        expect(actionSummary.remove[0].text).toMatch(/x\d+/);
+
+        const editLabelPoint = (await runStep(agent.endpoint, workspaceName, step(
+            `edit-label-point-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                const label = [...(root?.querySelectorAll('.annotator-label') || [])]
+                    .find((item) => item.textContent?.includes('编辑'));
+                if (!(label instanceof HTMLElement)) return null;
+                const rect = label.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                return {
+                    x,
+                    y,
+                    hitClass: root?.elementFromPoint?.(x, y)?.getAttribute('class') || '',
+                };
+            `},
+        ))).data as {x: number; y: number; hitClass: string} | null;
+        expect(editLabelPoint).not.toBeNull();
+        expect(editLabelPoint!.hitClass).toContain('annotator-label');
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `select-edit-${Date.now()}`, 'browser.mouse', {action: 'click', ...editLabelPoint!},
+        ))).ok).toBe(true);
+
+        const selectedDiagnostic = (await runStep(agent.endpoint, workspaceName, step(
+            `selected-diagnostic-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                const hit = root?.elementFromPoint?.(${editLabelPoint!.x}, ${editLabelPoint!.y});
+                const label = root?.querySelector('[data-annotation-id="${actionSummary.edit[0].id}"]');
+                return {
+                    hitClass: hit?.getAttribute('class') || '',
+                    selected: label?.classList.contains('selected') || false,
+                    card: Boolean(root?.querySelector('.annotator-edit-card')),
+                };
+            `},
+        ))).data;
+        expect(selectedDiagnostic).toEqual({
+            hitClass: expect.stringContaining('annotator-label'),
+            selected: true,
+            card: true,
+        });
+
+        let businessKeyPoint: {x: number; y: number; value: string} | null = null;
+        await expect.poll(async () => {
+            businessKeyPoint = (await runStep(
+                agent.endpoint,
+                workspaceName,
+                step(`edit-card-${Date.now()}`, 'browser.evaluate', {expression: `
+                    const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                    const inputs = root?.querySelectorAll('.annotator-edit-card input');
+                    const input = inputs?.[1];
+                    if (!(input instanceof HTMLInputElement)) return null;
+                    const rect = input.getBoundingClientRect();
+                    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, value: input.value};
+                `}),
+            )).data as {x: number; y: number; value: string} | null;
+            return businessKeyPoint;
+        }, {timeout: 10_000}).not.toBeNull();
+        expect(businessKeyPoint!.value).toBe('edit');
+        expect((await runStep(agent.endpoint, workspaceName, step(
+            `focus-key-${Date.now()}`, 'browser.mouse', {
+                action: 'click',
+                x: businessKeyPoint!.x,
+                y: businessKeyPoint!.y,
+            },
+        ))).ok).toBe(true);
+        for (const key of ['Control+A', 'E', 'D', 'I', 'T', 'R', 'O', 'W']) {
+            expect((await runStep(agent.endpoint, workspaceName, step(
+                `key-${key}-${Date.now()}`, 'browser.press_key', {key},
+            ))).ok).toBe(true);
+        }
+        await expect.poll(async () => (await runStep(agent.endpoint, workspaceName, step(
+            `edited-label-${Date.now()}`, 'browser.evaluate', {expression: `
+                const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+                const label = root?.querySelector('.annotator-label[data-annotation-id="${actionSummary.edit[0].id}"]');
+                const box = root?.querySelector('.annotator-box[data-annotation-id="${actionSummary.edit[0].id}"] rect');
+                return {
+                    text: label?.textContent?.replace(/\\s+/g, ' ').trim() || '',
+                    dash: box?.getAttribute('stroke-dasharray') || '',
+                };
+            `},
+        ))).data, {timeout: 10_000}).toEqual({text: expect.stringContaining('EDITROW'), dash: ''});
+    } finally {
+        await agent.close();
+        await mock.close();
     }
 });

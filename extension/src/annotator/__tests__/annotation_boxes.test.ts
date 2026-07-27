@@ -104,10 +104,10 @@ test('deriveAnnotationBoxes projects columns, column actions and pagination as c
         {entityId: 'e1', nodeId: 'next', role: 'pagination', actionIntent: 'next', bbox: {x: 0, y: 100, width: 60, height: 20}},
     ];
     const boxes = deriveAnnotationBoxes(draft, bindings, 'e1', null);
-    assert.deepEqual(boxes.map((box) => box.annotationId), ['a1', 'a2', 'col-status', 'row-edit', 'pagination:e1']);
+    assert.deepEqual(boxes.map((box) => box.annotationId), ['a1', 'a2', 'col-status', 'row-edit', 'e1_pgpage']);
     assert.equal(boxes.find((box) => box.annotationId === 'col-status')?.kind, 'column');
     assert.equal(boxes.find((box) => box.annotationId === 'row-edit')?.boxes.length, 2);
-    assert.equal(boxes.find((box) => box.annotationId === 'pagination:e1')?.kind, 'pagination');
+    assert.equal(boxes.find((box) => box.annotationId === 'e1_pgpage')?.kind, 'pagination');
 });
 
 test('deriveAnnotationBoxes prefers matchedNodeBoxes for multi-row matches', () => {

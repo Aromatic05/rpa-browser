@@ -23,6 +23,7 @@ import {
     paginationPageCanvasId,
 } from './identifiers';
 import { captureLocatorRulesAndRefs, capturePreservedByCanvasId } from './preserved';
+import { hasTargetConditions } from './validate';
 
 const toPersistentTarget = (match: EntityMatchRule['match']): PersistentTargetDraft => {
     const target: PersistentTargetDraft = {};
@@ -134,6 +135,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
             const actions: CanvasColumnActionDraft[] = (col.actions || []).map((action, actionIndex) => {
                 const childRule = findActionChildRule(childRules, annotationByRuleId, action.actionIntent, action.text);
                 const actionCanvasId = columnActionCanvasId(entityId, colIndex, actionIndex);
+                const actionTarget = childRule ? toPersistentTarget(childRule.match) : {};
                 if (childRule) {
                     ruleIdToCanvasId[childRule.ruleId] = actionCanvasId;
                 }
@@ -141,8 +143,8 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
                     id: actionCanvasId,
                     actionIntent: action.actionIntent,
                     ...(action.text ? { text: action.text } : {}),
-                    target: childRule ? toPersistentTarget(childRule.match) : {},
-                    origin: 'inferred' as const,
+                    target: actionTarget,
+                    origin: hasTargetConditions(actionTarget) ? 'confirmed' as const : 'inferred' as const,
                     disposition: 'active' as const,
                 };
             });
@@ -165,7 +167,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
                     ...(col.name ? { name: col.name } : {}),
                     ...(col.kind ? { kind: col.kind } : {}),
                     actions,
-                    origin: 'inferred' as const,
+                    origin: 'confirmed' as const,
                     disposition: 'active' as const,
                 });
             }
@@ -175,14 +177,22 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
     if (rootAnnotation?.fields) {
         for (let fieldIndex = 0; fieldIndex < rootAnnotation.fields.length; fieldIndex++) {
             const field = rootAnnotation.fields[fieldIndex];
+            const childRule = field.controlRuleId
+                ? childRules.find((rule) => rule.ruleId === field.controlRuleId)
+                : undefined;
+            const fieldTarget = childRule ? toPersistentTarget(childRule.match) : {};
+            const annotationId = annotationCanvasId(entityId, 'field', fieldIndex);
+            if (childRule) {
+                ruleIdToCanvasId[childRule.ruleId] = annotationId;
+            }
             annotations.push({
-                id: annotationCanvasId(entityId, 'field', fieldIndex),
+                id: annotationId,
                 type: 'field',
                 businessKey: field.fieldKey,
                 ...(field.name ? { name: field.name } : {}),
-                target: {},
+                target: fieldTarget,
                 expect: 'unique',
-                origin: 'inferred' as const,
+                origin: hasTargetConditions(fieldTarget) ? 'confirmed' as const : 'inferred' as const,
                 disposition: 'active' as const,
             });
         }
@@ -192,14 +202,21 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
     if (rootAnnotation?.actions) {
         for (const action of rootAnnotation.actions) {
             const annotationId = annotationCanvasId(entityId, 'action', actionAnnotationIndex++);
+            const childRule = action.nodeRuleId
+                ? childRules.find((rule) => rule.ruleId === action.nodeRuleId)
+                : findActionChildRule(childRules, annotationByRuleId, action.actionIntent, action.text);
+            const actionTarget = childRule ? toPersistentTarget(childRule.match) : {};
+            if (childRule) {
+                ruleIdToCanvasId[childRule.ruleId] = annotationId;
+            }
             annotations.push({
                 id: annotationId,
                 type: 'action',
                 businessKey: action.actionIntent,
                 ...(action.text ? { name: action.text } : {}),
-                target: {},
-                expect: 'unique',
-                origin: 'inferred' as const,
+                target: actionTarget,
+                expect: childRule?.expect ?? 'unique',
+                origin: hasTargetConditions(actionTarget) ? 'confirmed' as const : 'inferred' as const,
                 disposition: 'active' as const,
             });
         }
@@ -221,7 +238,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
             businessKey: childAnnotationRule.actionIntent,
             target: toPersistentTarget(child.match),
             expect: child.expect,
-            origin: 'inferred' as const,
+            origin: 'confirmed' as const,
             disposition: 'active' as const,
         });
     }
@@ -263,7 +280,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
         ...(primaryKey ? { primaryKey } : {}),
         columns,
         ...(pagination ? { pagination } : {}),
-        origin: 'inferred',
+        origin: 'confirmed',
     };
 };
 

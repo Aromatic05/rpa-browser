@@ -160,8 +160,8 @@ const matchesRule = (
     }
 
     if (match.textContains) {
-        const text = normalizeLower(node.name || getNodeContent(node));
-        if (!text.includes(normalizeLower(match.textContains))) {return false;}
+        const text = normalizeCompactLower(node.name || getNodeContent(node));
+        if (!text.includes(normalizeCompactLower(match.textContains))) {return false;}
     }
 
     if (match.ariaContains) {
@@ -303,3 +303,4 @@ const isDescendantOrSelf = (nodeId: string, ancestorId: string, parentById: Map<
 };
 
 const normalizeLower = (value: string | undefined): string => normalizeText(value)?.toLowerCase() || '';
+const normalizeCompactLower = (value: string | undefined): string => normalizeLower(value).replace(/\s+/g, '');

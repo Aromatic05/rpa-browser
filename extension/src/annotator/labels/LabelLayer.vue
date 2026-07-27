@@ -6,6 +6,7 @@ import type {CanvasAnnotationDraft, CanvasEntityDraft} from '../types.js';
 import type {PickCandidate} from '../types.js';
 import EditCard from '../canvas/EditCard.vue';
 import type {RecommendedType} from '../recommend/recommend_types.js';
+import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 
 const props = defineProps<{
     boxes: AnnotationBox[];
@@ -65,7 +66,7 @@ const selectedAnnotation = computed((): CanvasAnnotationDraft | null => {
     for (const entity of props.canvasDraft) {
         const annotation = entity.annotations.find((a) => a.id === props.selectedAnnotationId);
         if (annotation) {return annotation;}
-        if (props.selectedAnnotationId === `entity:${entity.id}`) {
+        if (props.selectedAnnotationId === entityVisualId(entity.id)) {
             return {id: props.selectedAnnotationId, type: 'field', name: entity.name, businessKey: entity.businessTag, target: entity.target, origin: entity.origin, disposition: 'active'};
         }
         const column = entity.columns.find((item) => item.id === props.selectedAnnotationId);
@@ -77,7 +78,7 @@ const selectedAnnotation = computed((): CanvasAnnotationDraft | null => {
                 return {id: columnAction.id, type: 'action', name: columnAction.text, businessKey: columnAction.actionIntent, target: columnAction.target, origin: columnAction.origin, disposition: columnAction.disposition};
             }
         }
-        if (props.selectedAnnotationId === `pagination:${entity.id}` && entity.pagination) {
+        if (props.selectedAnnotationId === paginationPageVisualId(entity.id) && entity.pagination) {
             return {id: props.selectedAnnotationId, type: 'pagination', name: entity.pagination.actionIntent, businessKey: entity.pagination.actionIntent, target: entity.pagination.pageTarget, origin: entity.origin, disposition: 'active'};
         }
     }
@@ -88,6 +89,11 @@ const selectedEntity = computed((): CanvasEntityDraft | null => {
     if (!selectedBox.value) {return null;}
     if (!props.canvasDraft) {return null;}
     return props.canvasDraft.find((entity) => entity.id === selectedBox.value!.entityId) ?? null;
+});
+
+const selectedIsNativeAnnotation = computed((): boolean => {
+    if (!props.selectedAnnotationId || !selectedEntity.value) {return false;}
+    return selectedEntity.value.annotations.some((annotation) => annotation.id === props.selectedAnnotationId);
 });
 
 const editCardPlacement = computed((): LabelPlacement | null => {
@@ -132,6 +138,7 @@ const onReselect = (): void => {
             :key="`label-${label.annotationId}`"
             type="button"
             class="annotator-label"
+            :data-annotation-id="label.annotationId"
             :class="{selected: label.selected, ignored: label.ignored}"
             :style="labelStyle(label.placement)"
             @click.stop="onSelect(label.annotationId)"
@@ -155,6 +162,9 @@ const onReselect = (): void => {
                 :candidate="candidate"
                 :candidate-index="candidateIndex"
                 :candidate-chain-length="candidateChainLength"
+                :can-change-type="selectedIsNativeAnnotation"
+                :can-delete="selectedBox?.kind !== 'entity'"
+                :can-ignore="selectedBox?.kind !== 'entity' && selectedBox?.kind !== 'pagination'"
                 @update="onUpdate"
                 @reselect="onReselect"
                 @outer="emit('navigate', 'outer')"

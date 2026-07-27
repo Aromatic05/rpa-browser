@@ -54,6 +54,32 @@ const findNonOverlappingY = (
     return y;
 };
 
+const findNonOverlappingYUpward = (
+    stack: Placed[],
+    idealY: number,
+    labelHeight: number,
+    gap: number,
+    viewportHeight: number,
+): number | null => {
+    const maxY = Math.max(0, viewportHeight - labelHeight);
+    const sorted = [...stack].sort((a, b) => b.y - a.y);
+    let y = Math.min(maxY, Math.max(0, idealY));
+    for (const placed of sorted) {
+        if (y >= placed.y + placed.height + gap) {
+            break;
+        }
+        if (y + labelHeight + gap <= placed.y) {
+            continue;
+        }
+        y = placed.y - gap - labelHeight;
+    }
+    if (y < 0) {return null;}
+    const overlaps = stack.some((placed) =>
+        y < placed.y + placed.height + gap && y + labelHeight + gap > placed.y,
+    );
+    return overlaps ? null : y;
+};
+
 const buildPolyline = (
     targetCenter: Point,
     labelBox: Rect,
@@ -78,9 +104,24 @@ const attemptSide = (
     gap: number,
     viewportHeight: number,
 ): {box: Rect; fits: boolean} => {
-    const y = findNonOverlappingY(stack, idealY, labelHeight, gap);
-    const fits = viewportHeight <= 0 || y + labelHeight <= viewportHeight;
-    return {box: {x, y, width: labelWidth, height: labelHeight}, fits};
+    const maxY = viewportHeight > 0 ? Math.max(0, viewportHeight - labelHeight) : Number.POSITIVE_INFINITY;
+    const clampedIdeal = Math.min(maxY, Math.max(0, idealY));
+    const downwardY = findNonOverlappingY(stack, clampedIdeal, labelHeight, gap);
+    if (viewportHeight <= 0 || downwardY + labelHeight <= viewportHeight) {
+        return {box: {x, y: downwardY, width: labelWidth, height: labelHeight}, fits: true};
+    }
+    const upwardY = findNonOverlappingYUpward(
+        stack,
+        clampedIdeal,
+        labelHeight,
+        gap,
+        viewportHeight,
+    );
+    const y = upwardY ?? downwardY;
+    return {
+        box: {x, y, width: labelWidth, height: labelHeight},
+        fits: upwardY !== null,
+    };
 };
 
 export const computeLabelPlacements = (

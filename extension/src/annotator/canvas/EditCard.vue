@@ -14,6 +14,9 @@ const props = defineProps<{
     candidate: PickCandidate | null;
     candidateIndex: number;
     candidateChainLength: number;
+    canChangeType: boolean;
+    canDelete: boolean;
+    canIgnore: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -72,7 +75,7 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
                 placeholder="business_key"
             />
         </div>
-        <div class="annotator-edit-row">
+        <div class="annotator-edit-row" v-if="canChangeType">
             <label class="annotator-edit-label">类型</label>
             <select v-model="typeModel" class="annotator-edit-select">
                 <option v-for="t in ANNOTATION_TYPES" :key="t" :value="t">{{ t }}</option>
@@ -107,11 +110,13 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
                 @click="emit('inner')"
             >选择内部</button>
             <button
+                v-if="canDelete"
                 type="button"
                 class="annotator-edit-btn annotator-edit-danger"
                 @click="emit('delete')"
             >删除</button>
             <button
+                v-if="canIgnore"
                 type="button"
                 class="annotator-edit-btn"
                 @click="emit('ignore')"

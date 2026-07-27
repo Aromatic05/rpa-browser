@@ -25,6 +25,8 @@ import type {
     VisualTargetRole,
 } from './runtime_types';
 import type { CanvasDraft } from './types';
+import { getNodeContent, normalizeText } from '../../runner/steps/executors/snapshot/core/runtime_store';
+import { buildParentById, isDescendantOrSelf } from './picking';
 type OpenContext = {
     snapshot: SnapshotResult;
     finalEntityView: FinalEntityView;
@@ -180,13 +182,47 @@ const buildVisualTargetRefs = (
     }
 
     const nodeInfo = buildNodeInfoLookup(ctx);
+    const parentById = buildParentById(ctx.snapshot.root);
+    const canvasEntityIdByRootNodeId = new Map<string, string>();
+    const canvasEntityByBusinessTag = new Map(
+        (ctx.canvasDraft?.entities || []).map((entity) => [entity.businessTag, entity.id]),
+    );
+    if (ctx.canvasDraft && ctx.ruleIdByEntityId && ctx.bindings) {
+        for (const entity of ctx.canvasDraft.entities) {
+            const ruleId = ctx.ruleIdByEntityId[entity.id];
+            const binding = ruleId ? ctx.bindings[ruleId] : undefined;
+            for (const nodeId of binding?.matchedNodeIds || []) {
+                canvasEntityIdByRootNodeId.set(nodeId, entity.id);
+            }
+            for (const ref of binding?.matchedEntityRefs || []) {
+                canvasEntityIdByRootNodeId.set(ref.nodeId, entity.id);
+            }
+        }
+    }
+
+    const findHeaderNodeId = (entityNodeId: string, columnName: string | undefined): string | undefined => {
+        const expected = (normalizeText(columnName) || '').replace(/\s+/g, '').toLowerCase();
+        if (!expected) {return undefined;}
+        for (const node of Object.values(ctx.snapshot.nodeIndex)) {
+            if ((node.role || '').toLowerCase() !== 'columnheader') {continue;}
+            if (!isDescendantOrSelf(node.id, entityNodeId, parentById)) {continue;}
+            const actual = (normalizeText(node.name || getNodeContent(node)) || '').replace(/\s+/g, '').toLowerCase();
+            if (actual === expected) {return node.id;}
+        }
+        return undefined;
+    };
 
     for (const entity of finalEntityView.entities) {
         if (!entity.businessTag && !entity.businessName) {
             continue;
         }
+        const canvasEntityId =
+            canvasEntityIdByRootNodeId.get(entity.nodeId) ||
+            (entity.businessTag ? canvasEntityByBusinessTag.get(entity.businessTag) : undefined) ||
+            entity.id;
+        const canvasEntity = ctx.canvasDraft?.entities.find((item) => item.id === canvasEntityId);
         refs.push({
-            entityId: entity.id,
+            entityId: canvasEntityId,
             nodeId: entity.nodeId,
             kind: entity.kind,
             role: 'entity',
@@ -195,7 +231,7 @@ const buildVisualTargetRefs = (
         for (const field of entity.formFields || []) {
             if (field.controlNodeId) {
                 refs.push({
-                    entityId: entity.id,
+                    entityId: canvasEntityId,
                     nodeId: field.controlNodeId,
                     kind: entity.kind,
                     role: 'field',
@@ -205,7 +241,7 @@ const buildVisualTargetRefs = (
             }
             if (field.labelNodeId) {
                 refs.push({
-                    entityId: entity.id,
+                    entityId: canvasEntityId,
                     nodeId: field.labelNodeId,
                     kind: entity.kind,
                     role: 'field',
@@ -217,7 +253,7 @@ const buildVisualTargetRefs = (
         for (const action of entity.formActions || []) {
             if (action.nodeId) {
                 refs.push({
-                    entityId: entity.id,
+                    entityId: canvasEntityId,
                     nodeId: action.nodeId,
                     kind: entity.kind,
                     role: 'action',
@@ -227,14 +263,17 @@ const buildVisualTargetRefs = (
             }
         }
         for (const column of entity.columns || []) {
-            if (column.headerNodeId) {
+            const headerNodeId = column.headerNodeId || findHeaderNodeId(entity.nodeId, column.name);
+            if (headerNodeId) {
+                const canvasColumn = canvasEntity?.columns.find((item) => item.fieldKey === column.fieldKey);
                 refs.push({
-                    entityId: entity.id,
-                    nodeId: column.headerNodeId,
+                    entityId: canvasEntityId,
+                    nodeId: headerNodeId,
                     kind: entity.kind,
                     role: 'column',
                     fieldKey: column.fieldKey,
-                    ...enrichRef(column.headerNodeId, ctx, nodeInfo),
+                    ...enrichRef(headerNodeId, ctx, nodeInfo),
+                    ...(canvasColumn ? {canvasAnnotationId: canvasColumn.id} : {}),
                 });
             }
         }
@@ -308,6 +347,15 @@ const buildVisualTargetRefs = (
                 for (const action of column.actions) {
                     tryAddFromBinding(action.id, entity.id, 'action', undefined, action.actionIntent);
                 }
+            }
+            if (entity.pagination) {
+                tryAddFromBinding(
+                    paginationPageCanvasId(entity.id),
+                    entity.id,
+                    'pagination',
+                    undefined,
+                    entity.pagination.actionIntent,
+                );
             }
         }
     }

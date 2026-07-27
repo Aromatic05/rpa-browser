@@ -24,6 +24,7 @@ import type { WorkflowCatalogItem } from '../../../../src/workflow/workflow';
 import {
     resolveClickedNode,
     buildCandidateChain,
+    countMatches,
     isStableClassToken,
     pickFromFingerprint,
 } from '../../../../src/entity_rules/annotator/picking';
@@ -385,6 +386,46 @@ test('within a logical group includes its itemIds even when items are not DOM de
     assert.equal(matched.group_root.ok, true);
     assert.equal(matched.customer_name.ok, true);
     assert.deepEqual(matched.customer_name.matchedNodeIds, ['customer_input']);
+});
+
+test('textContains ignores presentation whitespace inserted into button labels', () => {
+    const edit = newTextNode('edit_button', 'button', '编 辑');
+    setNodeAttr(edit, 'class', 'ant-btn');
+    const root: UnifiedNode = {id: 'root', role: 'root', children: [edit]};
+    const bundle: NormalizedEntityRuleBundle = {
+        id: 'compact-text-match',
+        page: {kind: 'table'},
+        matchRules: [
+            {
+                ruleId: 'edit',
+                source: 'node',
+                expect: 'unique',
+                order: 0,
+                match: {classContains: 'ant-btn', textContains: '编辑'},
+            },
+        ],
+        annotationByRuleId: {},
+    };
+    const matched = matchEntityRules(bundle, {
+        root,
+        entityIndex: {entities: {}, byNodeId: {}},
+    });
+    assert.equal(matched.edit.ok, true);
+    assert.deepEqual(matched.edit.matchedNodeIds, ['edit_button']);
+
+    const snapshot = buildSnapshot({
+        root,
+        nodeIndex: {root, edit_button: edit},
+        entityIndex: {entities: {}, byNodeId: {}},
+        locatorIndex: {},
+        bboxIndex: {},
+        attrIndex: {},
+        contentStore: {},
+    });
+    assert.deepEqual(
+        countMatches(snapshot, {classContains: 'ant-btn', textContains: '编辑'}),
+        ['edit_button'],
+    );
 });
 
 test('runCheck maps unique / multiple / missing for node annotations', () => {

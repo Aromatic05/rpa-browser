@@ -161,6 +161,7 @@ const onSelect = (annotationId: string): void => {
             <g
                 v-for="box in screenBoxes"
                 :key="`box-${box.annotationId}-${box.rect.x}-${box.rect.y}`"
+                :data-annotation-id="box.annotationId"
                 :class="['annotator-box', {selected: box.annotationId === selectedAnnotationId}]"
                 @click.stop="onSelect(box.annotationId)"
             >

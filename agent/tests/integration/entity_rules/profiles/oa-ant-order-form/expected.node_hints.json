@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "fieldKey": "submit",
+    "actionIntent": "submit",
+    "name": "提 交"
+  }
+]

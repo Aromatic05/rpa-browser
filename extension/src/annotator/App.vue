@@ -24,9 +24,9 @@ import {
 import {resolveKeyboardAction} from './keyboard.js';
 import {
     addAnnotation,
-    deleteAnnotation,
-    replaceAnnotationTarget,
-    setAnnotationDisposition,
+    deleteVisualItem,
+    ignoreVisualItem,
+    replaceVisualItemSelection,
     updateAnnotation,
     updateColumn,
     updateColumnAction,
@@ -58,6 +58,7 @@ import type {
     PickFingerprint,
     PickRect,
 } from './types.js';
+import {entityVisualId, paginationPageVisualId} from './visual_ids.js';
 
 const props = defineProps<{
     state: AnnotatorState;
@@ -181,12 +182,7 @@ const selectedCandidate = computed<PickCandidate | null>(() =>
 
 const selectedAnnotationEntityId = computed<string | null>(() => {
     if (!props.state.currentAnnotationId) {return null;}
-    for (const entity of entities.value) {
-        if (entity.annotations.some((a) => a.id === props.state.currentAnnotationId)) {
-            return entity.id;
-        }
-    }
-    return null;
+    return entityIdForAnnotation(props.state.currentAnnotationId);
 });
 
 const onSelectAnnotation = (annotationId: string): void => {
@@ -232,9 +228,17 @@ const entityIdForAnnotation = (annotationId: string): string | null => {
         if (entity.annotations.some((a) => a.id === annotationId)) {
             return entity.id;
         }
-    }
-    if (annotationId.startsWith('entity:')) {
-        return annotationId.slice('entity:'.length);
+        if (entity.columns.some((column) =>
+            column.id === annotationId || column.actions.some((action) => action.id === annotationId),
+        )) {
+            return entity.id;
+        }
+        if (annotationId === paginationPageVisualId(entity.id)) {
+            return entity.id;
+        }
+        if (annotationId === entityVisualId(entity.id)) {
+            return entity.id;
+        }
     }
     return null;
 };
@@ -309,11 +313,11 @@ const onPickConfirm = (): void => {
     if (!props.state.canvasDraft) {return;}
     let nextDraft: CanvasDraft;
     if (pickTargetAnnotationId.value) {
-        nextDraft = replaceAnnotationTarget(
+        nextDraft = replaceVisualItemSelection(
             props.state.canvasDraft,
             entityId,
             pickTargetAnnotationId.value,
-            plan.annotation.target,
+            {target: plan.annotation.target, name: candidate.text},
         );
     } else {
         nextDraft = addAnnotation(props.state.canvasDraft, entityId, plan.annotation);
@@ -344,11 +348,11 @@ const onNavigate = (direction: 'outer' | 'inner'): void => {
                 candidate,
                 entities.value.find((e) => e.id === entityId)!,
             );
-            const nextDraft = replaceAnnotationTarget(
+            const nextDraft = replaceVisualItemSelection(
                 props.state.canvasDraft,
                 entityId,
                 pickTargetAnnotationId.value,
-                plan.annotation.target,
+                {target: plan.annotation.target, name: candidate.text},
             );
             applyState(draftEdited(props.state, nextDraft));
         }
@@ -364,13 +368,13 @@ const onUpdateAnnotation = (
     const entity = entities.value.find((item) => item.id === entityId);
     if (!entity) {return;}
     let nextDraft: CanvasDraft;
-    if (annotationId === `entity:${entityId}`) {
+    if (annotationId === entityVisualId(entityId)) {
         nextDraft = updateEntity(props.state.canvasDraft, entityId, {name: patch.name, businessTag: patch.businessKey});
     } else if (entity.columns.some((column) => column.id === annotationId)) {
         nextDraft = updateColumn(props.state.canvasDraft, entityId, annotationId, {name: patch.name, fieldKey: patch.businessKey});
     } else if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
         nextDraft = updateColumnAction(props.state.canvasDraft, entityId, annotationId, {text: patch.name, actionIntent: patch.businessKey});
-    } else if (annotationId === `pagination:${entityId}`) {
+    } else if (annotationId === paginationPageVisualId(entityId)) {
         nextDraft = updatePagination(props.state.canvasDraft, entityId, {actionIntent: patch.businessKey || patch.name || ''});
     } else {
         nextDraft = updateAnnotation(props.state.canvasDraft, entityId, annotationId, patch);
@@ -382,7 +386,7 @@ const onDeleteAnnotation = (annotationId: string): void => {
     if (!props.state.canvasDraft) {return;}
     const entityId = entityIdForAnnotation(annotationId);
     if (!entityId) {return;}
-    const nextDraft = deleteAnnotation(props.state.canvasDraft, entityId, annotationId);
+    const nextDraft = deleteVisualItem(props.state.canvasDraft, entityId, annotationId);
     applyState(draftEdited(props.state, nextDraft));
     applyState(pickReceived(props.state, {annotationId: null, entityId}));
 };
@@ -391,12 +395,7 @@ const onIgnoreAnnotation = (annotationId: string): void => {
     if (!props.state.canvasDraft) {return;}
     const entityId = entityIdForAnnotation(annotationId);
     if (!entityId) {return;}
-    const nextDraft = setAnnotationDisposition(
-        props.state.canvasDraft,
-        entityId,
-        annotationId,
-        'ignored',
-    );
+    const nextDraft = ignoreVisualItem(props.state.canvasDraft, entityId, annotationId);
     applyState(draftEdited(props.state, nextDraft));
 };
 

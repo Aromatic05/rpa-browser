@@ -3,6 +3,7 @@ import type {
     CanvasDraft,
     CanvasEntityDraft,
 } from '../types.js';
+import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 
 const cloneDraft = (draft: CanvasDraft): CanvasDraft => ({
     ...draft,
@@ -158,4 +159,83 @@ export const updatePagination = (
     entity.pagination = {...entity.pagination, ...patch, pageTarget: patch.pageTarget ? {...patch.pageTarget} : entity.pagination.pageTarget};
     entity.origin = 'confirmed';
     return next;
+};
+
+export const replaceVisualItemSelection = (
+    draft: CanvasDraft,
+    entityId: string,
+    visualItemId: string,
+    selection: {target: CanvasAnnotationDraft['target']; name?: string},
+): CanvasDraft => {
+    const entity = draft.entities.find((item) => item.id === entityId);
+    if (!entity) {return cloneDraft(draft);}
+    if (visualItemId === entityVisualId(entityId)) {
+        return updateEntity(draft, entityId, {target: selection.target});
+    }
+    const column = entity.columns.find((item) => item.id === visualItemId);
+    if (column) {
+        return updateColumn(draft, entityId, visualItemId, {
+            ...(selection.name ? {name: selection.name} : {}),
+        });
+    }
+    if (entity.columns.some((item) => item.actions.some((action) => action.id === visualItemId))) {
+        return updateColumnAction(draft, entityId, visualItemId, {
+            target: selection.target,
+            ...(selection.name ? {text: selection.name} : {}),
+        });
+    }
+    if (visualItemId === paginationPageVisualId(entityId)) {
+        return updatePagination(draft, entityId, {pageTarget: selection.target});
+    }
+    return replaceAnnotationTarget(draft, entityId, visualItemId, selection.target);
+};
+
+export const deleteVisualItem = (
+    draft: CanvasDraft,
+    entityId: string,
+    visualItemId: string,
+): CanvasDraft => {
+    const next = cloneDraft(draft);
+    const entityIndex = findEntityIndex(next, entityId);
+    if (entityIndex === -1) {return next;}
+    if (visualItemId === entityVisualId(entityId)) {
+        next.entities.splice(entityIndex, 1);
+        return next;
+    }
+    const entity = next.entities[entityIndex];
+    const columnIndex = entity.columns.findIndex((column) => column.id === visualItemId);
+    if (columnIndex !== -1) {
+        entity.columns.splice(columnIndex, 1);
+        return next;
+    }
+    for (const column of entity.columns) {
+        const actionIndex = column.actions.findIndex((action) => action.id === visualItemId);
+        if (actionIndex !== -1) {
+            column.actions.splice(actionIndex, 1);
+            return next;
+        }
+    }
+    if (visualItemId === paginationPageVisualId(entityId)) {
+        delete entity.pagination;
+        return next;
+    }
+    entity.annotations = entity.annotations.filter((annotation) => annotation.id !== visualItemId);
+    return next;
+};
+
+export const ignoreVisualItem = (
+    draft: CanvasDraft,
+    entityId: string,
+    visualItemId: string,
+): CanvasDraft => {
+    const entity = draft.entities.find((item) => item.id === entityId);
+    if (!entity) {return cloneDraft(draft);}
+    const column = entity.columns.find((item) => item.id === visualItemId);
+    if (column) {
+        return updateColumn(draft, entityId, visualItemId, {disposition: 'ignored'});
+    }
+    if (entity.columns.some((item) => item.actions.some((action) => action.id === visualItemId))) {
+        return updateColumnAction(draft, entityId, visualItemId, {disposition: 'ignored'});
+    }
+    return setAnnotationDisposition(draft, entityId, visualItemId, 'ignored');
 };

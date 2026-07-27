@@ -117,8 +117,8 @@ test('left fallback is used when right column cannot fit', () => {
 });
 
 test('label box is clamped to viewport bounds when overflowing', () => {
-    const targets = Array.from({length: 80}, (_, i) =>
-        makeTarget(`a${i}`, 100, 10 + i * 3),
+    const targets = Array.from({length: 18}, (_, i) =>
+        makeTarget(`a${i}`, 100, i < 8 ? 10 + i * 36 : 900 + i * 20),
     );
     const placements = computeLabelPlacements(targets, VIEWPORT, OPTIONS);
     for (const [id, placement] of Object.entries(placements)) {
@@ -133,6 +133,10 @@ test('label box is clamped to viewport bounds when overflowing', () => {
         assert.ok(
             placement.box.x + placement.box.width <= VIEWPORT.width,
             `label ${id} ends right of viewport`,
+        );
+        assert.ok(
+            placement.box.y + placement.box.height <= VIEWPORT.height,
+            `label ${id} ends below viewport`,
         );
     }
 });

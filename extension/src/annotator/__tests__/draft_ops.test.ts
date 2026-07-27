@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {
     addAnnotation,
     deleteAnnotation,
+    deleteVisualItem,
+    ignoreVisualItem,
     replaceAnnotationTarget,
+    replaceVisualItemSelection,
     setAnnotationDisposition,
     updateAnnotation,
     updateColumn,
@@ -124,4 +127,39 @@ test('updateAnnotation returns same-shape draft when annotation is missing', () 
     const original = makeDraft();
     const next = updateAnnotation(original, 'e1', 'missing', {name: 'x'});
     assert.deepEqual(next.entities[0].annotations, original.entities[0].annotations);
+});
+
+test('replaceVisualItemSelection updates entity, column action and pagination targets', () => {
+    const original = makeDraft();
+    original.entities[0].columns = [{
+        id: 'col', fieldKey: 'actions', origin: 'inferred', disposition: 'active',
+        actions: [{id: 'edit', actionIntent: 'edit', text: '编辑', target: {}, origin: 'inferred', disposition: 'active'}],
+    }];
+    original.entities[0].pagination = {actionIntent: 'next', pageTarget: {classContains: 'old'}};
+    const entity = replaceVisualItemSelection(original, 'e1', 'entity:e1', {target: {roleEquals: 'form'}});
+    const action = replaceVisualItemSelection(entity, 'e1', 'edit', {target: {textContains: '修改'}, name: '修改'});
+    const pagination = replaceVisualItemSelection(action, 'e1', 'e1_pgpage', {target: {classContains: 'next'}});
+    assert.deepEqual(pagination.entities[0].target, {roleEquals: 'form'});
+    assert.deepEqual(pagination.entities[0].columns[0].actions[0].target, {textContains: '修改'});
+    assert.equal(pagination.entities[0].columns[0].actions[0].text, '修改');
+    assert.deepEqual(pagination.entities[0].pagination?.pageTarget, {classContains: 'next'});
+});
+
+test('deleteVisualItem and ignoreVisualItem operate on columns, actions and pagination', () => {
+    const original = makeDraft();
+    original.entities[0].columns = [{
+        id: 'col', fieldKey: 'actions', origin: 'inferred', disposition: 'active',
+        actions: [{id: 'edit', actionIntent: 'edit', target: {}, origin: 'inferred', disposition: 'active'}],
+    }];
+    original.entities[0].pagination = {actionIntent: 'next', pageTarget: {classContains: 'next'}};
+    const ignoredColumn = ignoreVisualItem(original, 'e1', 'col');
+    assert.equal(ignoredColumn.entities[0].columns[0].disposition, 'ignored');
+    const ignoredAction = ignoreVisualItem(original, 'e1', 'edit');
+    assert.equal(ignoredAction.entities[0].columns[0].actions[0].disposition, 'ignored');
+    const withoutAction = deleteVisualItem(original, 'e1', 'edit');
+    assert.equal(withoutAction.entities[0].columns[0].actions.length, 0);
+    const withoutPagination = deleteVisualItem(original, 'e1', 'e1_pgpage');
+    assert.equal(withoutPagination.entities[0].pagination, undefined);
+    const withoutColumn = deleteVisualItem(original, 'e1', 'col');
+    assert.equal(withoutColumn.entities[0].columns.length, 0);
 });

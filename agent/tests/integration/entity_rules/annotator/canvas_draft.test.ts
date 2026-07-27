@@ -156,7 +156,7 @@ test('1. oa-ant-orders imports to CanvasDraft with table entity, columns, and pa
     assert.equal(entity.source, 'region');
     assert.equal(entity.businessTag, 'order.list.main');
     assert.equal(entity.name, '订单主列表');
-    assert.equal(entity.origin, 'inferred');
+    assert.equal(entity.origin, 'confirmed');
     assert.ok(entity.columns.length >= 5, 'should have at least 5 columns');
     assert.ok(entity.pagination, 'should have pagination');
     assert.equal(entity.pagination!.actionIntent, 'nextPage');
@@ -164,13 +164,13 @@ test('1. oa-ant-orders imports to CanvasDraft with table entity, columns, and pa
     const orderNoCol = entity.columns.find((c) => c.fieldKey === 'orderNo');
     assert.ok(orderNoCol);
     assert.equal(orderNoCol!.name, '订单编号');
-    assert.equal(orderNoCol!.origin, 'inferred');
+    assert.equal(orderNoCol!.origin, 'confirmed');
 
     const actionsCol = entity.columns.find((c) => c.fieldKey === 'actions');
     assert.ok(actionsCol);
     assert.equal(actionsCol!.kind, 'action_column');
     assert.ok(actionsCol!.actions.length >= 2);
-    assert.equal(actionsCol!.actions[0].origin, 'inferred');
+    assert.equal(actionsCol!.actions[0].origin, 'confirmed');
 });
 
 test('2. import→compile round-trip passes validateEntityRules and is semantically equivalent', async () => {
@@ -659,8 +659,12 @@ test('BUG2: field controlRuleId/labelRuleId locator rules are preserved and rewr
     assert.equal(validatedOriginal.ok, true);
 
     const draft = importEntityRulesToCanvasDraft(formArtifact);
-    assert.ok(draft.preserved.locatorRules.length === 2, 'two locator rules should be captured');
-    assert.ok(draft.preserved.ruleRefs.length === 2, 'two rule refs should be captured');
+    assert.equal(
+        draft.preserved.locatorRules.length,
+        1,
+        'control locator is represented by the editable field target; label locator remains opaque',
+    );
+    assert.equal(draft.preserved.ruleRefs.length, 1, 'only the opaque label rule ref should be preserved');
 
     const result = compileExpectOk(draft);
     const validated = validateEntityRules(result.artifact.name, result.artifact.match, result.artifact.annotation);
@@ -668,19 +672,21 @@ test('BUG2: field controlRuleId/labelRuleId locator rules are preserved and rewr
 
     const matchSet = result.artifact.match as EntityRuleSet;
     const matchRuleIds = new Set(matchSet.entities.map((e) => e.ruleId));
-    assert.ok(matchRuleIds.has('loc_ctrl_node'), 'compiled match must contain loc_ctrl_node');
     assert.ok(matchRuleIds.has('loc_label_node'), 'compiled match must contain loc_label_node');
 
-    const ctrlRule = matchSet.entities.find((e) => e.ruleId === 'loc_ctrl_node');
-    assert.ok(ctrlRule?.within, 'locator rule should have within pointing to entity');
-    assert.equal(ctrlRule!.within, 'entity_0', 'locator within must be rewritten to compiled entity ruleId');
+    const editableControlRuleId = result.ruleIdByAnnotationId[draft.entities[0].annotations[0].id];
+    assert.ok(editableControlRuleId, 'field target should compile to an editable control rule');
+    const ctrlRule = matchSet.entities.find((e) => e.ruleId === editableControlRuleId);
+    assert.ok(ctrlRule?.within, 'editable control rule should have within pointing to entity');
+    assert.equal(ctrlRule!.within, 'entity_0');
+    assert.deepEqual(ctrlRule!.match, {classContains: 'input-control'});
 
     const compiledAnn = result.artifact.annotation as EntityAnnotationSet;
     const formAnn = compiledAnn.annotations[0];
     assert.ok(formAnn.fields);
     const usernameField = formAnn.fields!.find((f) => f.fieldKey === 'username');
     assert.ok(usernameField);
-    assert.equal(usernameField!.controlRuleId, 'loc_ctrl_node');
+    assert.equal(usernameField!.controlRuleId, editableControlRuleId);
     assert.equal(usernameField!.labelRuleId, 'loc_label_node');
     assert.ok(matchRuleIds.has(usernameField!.controlRuleId!), 'controlRuleId must reference an existing match rule');
     assert.ok(matchRuleIds.has(usernameField!.labelRuleId!), 'labelRuleId must reference an existing match rule');

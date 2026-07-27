@@ -48,6 +48,7 @@ const CELL_ROLES = new Set(['cell', 'gridcell', 'columnheader']);
 
 const normalizeLower = (value: string | undefined): string =>
     (normalizeText(value) || '').toLowerCase();
+const normalizeCompactLower = (value: string | undefined): string => normalizeLower(value).replace(/\s+/g, '');
 
 export const buildNodeIndex = (root: UnifiedNode): Map<string, UnifiedNode> => {
     const map = new Map<string, UnifiedNode>();
@@ -521,8 +522,8 @@ const nodeMatchesTarget = (node: UnifiedNode, target: PersistentTargetDraft): bo
         }
     }
     if (target.textContains) {
-        const text = normalizeLower(node.name || getNodeContent(node));
-        if (!text.includes(normalizeLower(target.textContains))) {
+        const text = normalizeCompactLower(node.name || getNodeContent(node));
+        if (!text.includes(normalizeCompactLower(target.textContains))) {
             return false;
         }
     }

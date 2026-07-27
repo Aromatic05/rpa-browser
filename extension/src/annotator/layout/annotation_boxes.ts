@@ -10,6 +10,7 @@ import type {
 } from '../types.js';
 import type {LabelTarget} from '../layout/label_layout.js';
 import type {Point, Rect} from './box_geometry.js';
+import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 
 export type AnnotationBoxKind =
     | 'entity'
@@ -88,7 +89,7 @@ const collectEntityBox = (
     const boxes = entityBinding ? boxesFromTarget(entityBinding) : [];
     if (boxes.length === 0) {return null;}
     return {
-        annotationId: `entity:${entity.id}`,
+        annotationId: entityVisualId(entity.id),
         entityId: entity.id,
         kind: 'entity',
         boxes,
@@ -186,8 +187,6 @@ const collectColumnActionBox = (
     bindings, 'action', (binding) => binding.actionIntent === action.actionIntent,
 );
 
-const paginationId = (entityId: string): string => `pagination:${entityId}`;
-
 const collectPaginationBox = (
     entity: CanvasEntityDraft,
     bindings: VisualTargetRef[],
@@ -195,7 +194,7 @@ const collectPaginationBox = (
     if (!entity.pagination) {return null;}
     return collectTargetBox(
         entity,
-        {id: paginationId(entity.id), origin: entity.origin, disposition: 'active'},
+        {id: paginationPageVisualId(entity.id), origin: entity.origin, disposition: 'active'},
         'pagination', entity.pagination.actionIntent, entity.pagination.actionIntent,
         bindings, 'pagination', (binding) => binding.actionIntent === entity.pagination!.actionIntent,
     );
