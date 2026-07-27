@@ -6,6 +6,10 @@ import {
     replaceAnnotationTarget,
     setAnnotationDisposition,
     updateAnnotation,
+    updateColumn,
+    updateColumnAction,
+    updateEntity,
+    updatePagination,
 } from '../state/draft_ops.js';
 import type {CanvasAnnotationDraft, CanvasDraft, CanvasEntityDraft} from '../types.js';
 
@@ -55,6 +59,31 @@ test('updateAnnotation deeply clones the target object', () => {
     });
     assert.notEqual(next.entities[0].annotations[0].target, original.entities[0].annotations[0].target);
     assert.equal(next.entities[0].annotations[0].target.classContains, 'new-class');
+});
+
+test('editing an inferred annotation confirms it while preserving manual origin', () => {
+    const original = makeDraft();
+    original.entities[0].annotations[0].origin = 'inferred';
+    const inferred = updateAnnotation(original, 'e1', 'a1', {name: '姓名'});
+    assert.equal(inferred.entities[0].annotations[0].origin, 'confirmed');
+    const manual = updateAnnotation(makeDraft(), 'e1', 'a1', {name: '姓名'});
+    assert.equal(manual.entities[0].annotations[0].origin, 'manual');
+});
+
+test('entity, column, action and pagination edits confirm their visual item', () => {
+    const original = makeDraft();
+    const entity = original.entities[0];
+    entity.origin = 'inferred';
+    entity.columns = [{id: 'col', fieldKey: 'status', origin: 'inferred', disposition: 'active', actions: [{id: 'edit', actionIntent: 'edit', target: {}, origin: 'inferred', disposition: 'active'}]}];
+    entity.pagination = {actionIntent: 'next', pageTarget: {relation: 'pagination'}};
+    const named = updateEntity(original, 'e1', {name: '订单'});
+    const column = updateColumn(named, 'e1', 'col', {fieldKey: 'state'});
+    const action = updateColumnAction(column, 'e1', 'edit', {actionIntent: 'modify'});
+    const pagination = updatePagination(action, 'e1', {actionIntent: 'more'});
+    assert.equal(pagination.entities[0].origin, 'confirmed');
+    assert.equal(pagination.entities[0].columns[0].origin, 'confirmed');
+    assert.equal(pagination.entities[0].columns[0].actions[0].origin, 'confirmed');
+    assert.equal(pagination.entities[0].pagination?.actionIntent, 'more');
 });
 
 test('deleteAnnotation removes the annotation by id', () => {

@@ -65,6 +65,21 @@ const selectedAnnotation = computed((): CanvasAnnotationDraft | null => {
     for (const entity of props.canvasDraft) {
         const annotation = entity.annotations.find((a) => a.id === props.selectedAnnotationId);
         if (annotation) {return annotation;}
+        if (props.selectedAnnotationId === `entity:${entity.id}`) {
+            return {id: props.selectedAnnotationId, type: 'field', name: entity.name, businessKey: entity.businessTag, target: entity.target, origin: entity.origin, disposition: 'active'};
+        }
+        const column = entity.columns.find((item) => item.id === props.selectedAnnotationId);
+        if (column) {
+            return {id: column.id, type: 'field', name: column.name, businessKey: column.fieldKey, target: {}, origin: column.origin, disposition: column.disposition};
+        }
+        for (const columnAction of entity.columns.flatMap((column) => column.actions)) {
+            if (columnAction.id === props.selectedAnnotationId) {
+                return {id: columnAction.id, type: 'action', name: columnAction.text, businessKey: columnAction.actionIntent, target: columnAction.target, origin: columnAction.origin, disposition: columnAction.disposition};
+            }
+        }
+        if (props.selectedAnnotationId === `pagination:${entity.id}` && entity.pagination) {
+            return {id: props.selectedAnnotationId, type: 'pagination', name: entity.pagination.actionIntent, businessKey: entity.pagination.actionIntent, target: entity.pagination.pageTarget, origin: entity.origin, disposition: 'active'};
+        }
     }
     return null;
 });

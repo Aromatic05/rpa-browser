@@ -89,6 +89,27 @@ test('deriveAnnotationBoxes includes all entities when currentEntityId is null',
     assert.ok(entityIds.has('e2'));
 });
 
+test('deriveAnnotationBoxes projects columns, column actions and pagination as canvas items', () => {
+    const draft = makeDraft();
+    const entity = draft.entities[0];
+    entity.kind = 'table';
+    entity.columns = [{
+        id: 'col-status', fieldKey: 'status', name: '状态', origin: 'inferred', disposition: 'active',
+        actions: [{id: 'row-edit', actionIntent: 'edit', text: '编辑', target: {}, origin: 'inferred', disposition: 'active'}],
+    }];
+    entity.pagination = {actionIntent: 'next', pageTarget: {relation: 'pagination'}};
+    const bindings: VisualTargetRef[] = [
+        {entityId: 'e1', nodeId: 'header-status', role: 'column', fieldKey: 'status', bbox: {x: 0, y: 0, width: 80, height: 20}},
+        {entityId: 'e1', nodeId: 'edit-1', role: 'action', actionIntent: 'edit', matchedNodeBoxes: [{x: 0, y: 30, width: 40, height: 20}, {x: 0, y: 60, width: 40, height: 20}]},
+        {entityId: 'e1', nodeId: 'next', role: 'pagination', actionIntent: 'next', bbox: {x: 0, y: 100, width: 60, height: 20}},
+    ];
+    const boxes = deriveAnnotationBoxes(draft, bindings, 'e1', null);
+    assert.deepEqual(boxes.map((box) => box.annotationId), ['a1', 'a2', 'col-status', 'row-edit', 'pagination:e1']);
+    assert.equal(boxes.find((box) => box.annotationId === 'col-status')?.kind, 'column');
+    assert.equal(boxes.find((box) => box.annotationId === 'row-edit')?.boxes.length, 2);
+    assert.equal(boxes.find((box) => box.annotationId === 'pagination:e1')?.kind, 'pagination');
+});
+
 test('deriveAnnotationBoxes prefers matchedNodeBoxes for multi-row matches', () => {
     const bindings: VisualTargetRef[] = [{
         entityId: 'e1',

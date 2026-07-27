@@ -1,5 +1,7 @@
 import type {
     CanvasAnnotationDraft,
+    CanvasColumnActionDraft,
+    CanvasColumnDraft,
     CanvasDraft,
     CanvasEntityDraft,
     CheckResultByAnnotation,
@@ -138,6 +140,67 @@ const collectAnnotationBox = (
     };
 };
 
+const collectTargetBox = (
+    entity: CanvasEntityDraft,
+    item: {id: string; origin: CanvasAnnotationDraft['origin']; disposition: CanvasAnnotationDraft['disposition']},
+    kind: AnnotationBoxKind,
+    labelName: string,
+    businessKey: string,
+    bindings: VisualTargetRef[],
+    role: VisualTargetRef['role'],
+    match: (binding: VisualTargetRef) => boolean,
+): AnnotationBox => {
+    const source = bindings.find((binding) =>
+        binding.entityId === entity.id && binding.role === role &&
+        (binding.canvasAnnotationId === item.id || match(binding)),
+    );
+    const boxes = source ? boxesFromTarget(source) : [];
+    return {
+        annotationId: item.id,
+        entityId: entity.id,
+        kind,
+        boxes,
+        origin: item.origin,
+        disposition: item.disposition,
+        matchCount: boxes.length,
+        labelName,
+        businessKey,
+    };
+};
+
+const collectColumnBox = (
+    entity: CanvasEntityDraft,
+    column: CanvasColumnDraft,
+    bindings: VisualTargetRef[],
+): AnnotationBox => collectTargetBox(
+    entity, column, 'column', column.name?.trim() || column.fieldKey, column.fieldKey,
+    bindings, 'column', (binding) => binding.fieldKey === column.fieldKey,
+);
+
+const collectColumnActionBox = (
+    entity: CanvasEntityDraft,
+    action: CanvasColumnActionDraft,
+    bindings: VisualTargetRef[],
+): AnnotationBox => collectTargetBox(
+    entity, action, 'action', action.text?.trim() || action.actionIntent, action.actionIntent,
+    bindings, 'action', (binding) => binding.actionIntent === action.actionIntent,
+);
+
+const paginationId = (entityId: string): string => `pagination:${entityId}`;
+
+const collectPaginationBox = (
+    entity: CanvasEntityDraft,
+    bindings: VisualTargetRef[],
+): AnnotationBox | null => {
+    if (!entity.pagination) {return null;}
+    return collectTargetBox(
+        entity,
+        {id: paginationId(entity.id), origin: entity.origin, disposition: 'active'},
+        'pagination', entity.pagination.actionIntent, entity.pagination.actionIntent,
+        bindings, 'pagination', (binding) => binding.actionIntent === entity.pagination!.actionIntent,
+    );
+};
+
 export const deriveAnnotationBoxes = (
     draft: CanvasDraft | null,
     bindings: VisualTargetRef[],
@@ -155,6 +218,14 @@ export const deriveAnnotationBoxes = (
         for (const annotation of entity.annotations) {
             out.push(collectAnnotationBox(entity, annotation, bindings, results));
         }
+        for (const column of entity.columns) {
+            out.push(collectColumnBox(entity, column, bindings));
+            for (const action of column.actions) {
+                out.push(collectColumnActionBox(entity, action, bindings));
+            }
+        }
+        const pagination = collectPaginationBox(entity, bindings);
+        if (pagination) {out.push(pagination);}
     }
     return out;
 };

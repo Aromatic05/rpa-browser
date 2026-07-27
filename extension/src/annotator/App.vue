@@ -28,6 +28,10 @@ import {
     replaceAnnotationTarget,
     setAnnotationDisposition,
     updateAnnotation,
+    updateColumn,
+    updateColumnAction,
+    updateEntity,
+    updatePagination,
 } from './state/draft_ops.js';
 import {
     annotationLabelTarget,
@@ -334,7 +338,20 @@ const onUpdateAnnotation = (
     patch: Partial<CanvasAnnotationDraft>,
 ): void => {
     if (!props.state.canvasDraft) {return;}
-    const nextDraft = updateAnnotation(props.state.canvasDraft, entityId, annotationId, patch);
+    const entity = entities.value.find((item) => item.id === entityId);
+    if (!entity) {return;}
+    let nextDraft: CanvasDraft;
+    if (annotationId === `entity:${entityId}`) {
+        nextDraft = updateEntity(props.state.canvasDraft, entityId, {name: patch.name, businessTag: patch.businessKey});
+    } else if (entity.columns.some((column) => column.id === annotationId)) {
+        nextDraft = updateColumn(props.state.canvasDraft, entityId, annotationId, {name: patch.name, fieldKey: patch.businessKey});
+    } else if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
+        nextDraft = updateColumnAction(props.state.canvasDraft, entityId, annotationId, {text: patch.name, actionIntent: patch.businessKey});
+    } else if (annotationId === `pagination:${entityId}`) {
+        nextDraft = updatePagination(props.state.canvasDraft, entityId, {actionIntent: patch.businessKey || patch.name || ''});
+    } else {
+        nextDraft = updateAnnotation(props.state.canvasDraft, entityId, annotationId, patch);
+    }
     applyState(draftEdited(props.state, nextDraft));
 };
 

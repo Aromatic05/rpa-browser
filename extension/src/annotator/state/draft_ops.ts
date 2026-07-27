@@ -56,6 +56,7 @@ export const updateAnnotation = (
         ...found.annotation,
         ...patch,
         target: patch.target ? {...patch.target} : found.annotation.target,
+        origin: found.annotation.origin === 'manual' ? 'manual' : 'confirmed',
     };
     return next;
 };
@@ -98,3 +99,63 @@ export const replaceAnnotationTarget = (
     annotationId: string,
     target: CanvasAnnotationDraft['target'],
 ): CanvasDraft => updateAnnotation(draft, entityId, annotationId, {target: {...target}});
+
+export const updateEntity = (
+    draft: CanvasDraft,
+    entityId: string,
+    patch: Partial<CanvasEntityDraft>,
+): CanvasDraft => {
+    const next = cloneDraft(draft);
+    const index = findEntityIndex(next, entityId);
+    if (index === -1) {return next;}
+    const entity = next.entities[index];
+    next.entities[index] = {...entity, ...patch, target: patch.target ? {...patch.target} : entity.target, origin: 'confirmed'};
+    return next;
+};
+
+export const updateColumn = (
+    draft: CanvasDraft,
+    entityId: string,
+    columnId: string,
+    patch: Partial<CanvasEntityDraft['columns'][number]>,
+): CanvasDraft => {
+    const next = cloneDraft(draft);
+    const entity = next.entities[findEntityIndex(next, entityId)];
+    if (!entity) {return next;}
+    const index = entity.columns.findIndex((column) => column.id === columnId);
+    if (index === -1) {return next;}
+    entity.columns[index] = {...entity.columns[index], ...patch, origin: 'confirmed'};
+    return next;
+};
+
+export const updateColumnAction = (
+    draft: CanvasDraft,
+    entityId: string,
+    actionId: string,
+    patch: Partial<CanvasEntityDraft['columns'][number]['actions'][number]>,
+): CanvasDraft => {
+    const next = cloneDraft(draft);
+    const entity = next.entities[findEntityIndex(next, entityId)];
+    if (!entity) {return next;}
+    for (const column of entity.columns) {
+        const index = column.actions.findIndex((action) => action.id === actionId);
+        if (index !== -1) {
+            column.actions[index] = {...column.actions[index], ...patch, target: patch.target ? {...patch.target} : column.actions[index].target, origin: 'confirmed'};
+            break;
+        }
+    }
+    return next;
+};
+
+export const updatePagination = (
+    draft: CanvasDraft,
+    entityId: string,
+    patch: Partial<NonNullable<CanvasEntityDraft['pagination']>>,
+): CanvasDraft => {
+    const next = cloneDraft(draft);
+    const entity = next.entities[findEntityIndex(next, entityId)];
+    if (!entity?.pagination) {return next;}
+    entity.pagination = {...entity.pagination, ...patch, pageTarget: patch.pageTarget ? {...patch.pageTarget} : entity.pagination.pageTarget};
+    entity.origin = 'confirmed';
+    return next;
+};
