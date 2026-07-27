@@ -99,7 +99,12 @@ const mountVueApp: MountAppFn = (root, handlers) => {
             }
             const request = ++recognizeRequest;
             void runRecognizeLoop(state, client).then((next) => {
-                if (request !== recognizeRequest || reactiveState.pageIdentity !== state.pageIdentity || reactiveState.canvasDraft) {
+                const currentPage = reactiveState.pageIdentity;
+                const openedPage = state.pageIdentity;
+                const samePage = currentPage?.workspaceName === openedPage?.workspaceName
+                    && currentPage?.tabName === openedPage?.tabName
+                    && currentPage?.url === openedPage?.url;
+                if (request !== recognizeRequest || !samePage || reactiveState.canvasDraft) {
                     return;
                 }
                 Object.assign(reactiveState, next);
