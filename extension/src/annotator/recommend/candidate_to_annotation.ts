@@ -56,7 +56,7 @@ const targetFromCandidate = (
         return {...candidate.proposedTargets[0]};
     }
     const target: PersistentTargetDraft = {};
-    if (candidate.role) {target.ariaContains = candidate.role;}
+    if (candidate.role) {target.roleEquals = candidate.role;}
     return target;
 };
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     composeKey,
     createChromeSessionStorage,
+    createRuntimeSessionStorage,
     createSessionStore,
     type SessionStorageLike,
 } from '../state/session_store.js';
@@ -96,6 +97,39 @@ test('chrome session adapter persists through the extension storage area', async
     assert.deepEqual(await store.loadDraft(key, pageA), draft);
     await store.clearDraft(key);
     assert.equal(await store.loadDraft(key, pageA), null);
+});
+
+test('runtime session adapter proxies get/set/remove through the service worker message bridge', async () => {
+    const values = new Map<string, unknown>();
+    const messages: Record<string, unknown>[] = [];
+    const storage = createRuntimeSessionStorage(async (message) => {
+        messages.push(message);
+        const key = String(message.key || '');
+        if (message.operation === 'get') {
+            return {ok: true, value: values.get(key) ?? null};
+        }
+        if (message.operation === 'set') {
+            values.set(key, message.value);
+            return {ok: true};
+        }
+        if (message.operation === 'remove') {
+            values.delete(key);
+            return {ok: true};
+        }
+        return {ok: false, error: 'unsupported'};
+    });
+    const store = createSessionStore(storage);
+    const key = composeKey({
+        workspaceName: pageA.workspaceName,
+        tabName: pageA.tabName,
+        pageIdentity: pageA,
+        profileName: 'profile-a',
+    });
+    await store.saveDraft(key, draft, pageA);
+    assert.deepEqual(await store.loadDraft(key, pageA), draft);
+    await store.clearDraft(key);
+    assert.equal(await store.loadDraft(key, pageA), null);
+    assert.deepEqual(messages.map((message) => message.operation), ['set', 'get', 'remove', 'get']);
 });
 
 test('loadDraft returns null when page identity mismatches', async () => {

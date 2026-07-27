@@ -5,6 +5,9 @@ export const hasTargetConditions = (target: PersistentTargetDraft | undefined): 
     return Boolean(
         target.kind ||
             target.nameContains ||
+            target.idEquals ||
+            target.nameEquals ||
+            target.roleEquals ||
             target.classContains ||
             target.textContains ||
             target.ariaContains ||

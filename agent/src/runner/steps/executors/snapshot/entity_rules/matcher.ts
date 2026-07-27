@@ -27,7 +27,7 @@ export const matchEntityRules = (
     });
 
     for (const rule of bundle.matchRules) {
-        const scopeNodeIds = resolveScopeNodeIds(rule, ruleResults);
+        const scopeNodeIds = resolveScopeNodeIds(rule, ruleResults, context.entityIndex);
         const candidates = collectCandidates(rule, context.entityIndex, nodes);
         const matched = candidates.filter((candidate) => matchesRule(rule, candidate, nodes, scopeNodeIds, parentById));
         const matchedEntityRefs = matched
@@ -142,6 +142,18 @@ const matchesRule = (
         if (!hasPaginationRelation(node)) {return false;}
     }
 
+    if (match.idEquals && normalizeText(getNodeAttr(node, 'id')) !== normalizeText(match.idEquals)) {
+        return false;
+    }
+
+    if (match.nameEquals && normalizeText(getNodeAttr(node, 'name')) !== normalizeText(match.nameEquals)) {
+        return false;
+    }
+
+    if (match.roleEquals && normalizeLower(node.role) !== normalizeLower(match.roleEquals)) {
+        return false;
+    }
+
     if (match.classContains) {
         const classText = normalizeLower(getNodeAttr(node, 'class'));
         if (!classText.includes(normalizeLower(match.classContains))) {return false;}
@@ -199,6 +211,7 @@ const hasPaginationRelation = (node: UnifiedNode): boolean => {
 const resolveScopeNodeIds = (
     rule: EntityMatchRule,
     results: Record<string, ResolvedRuleBinding>,
+    entityIndex: EntityMatchContext['entityIndex'],
 ): Set<string> | null => {
     if (!rule.within) {return null;}
     const within = results[rule.within];
@@ -207,6 +220,13 @@ const resolveScopeNodeIds = (
     const nodeIds = new Set<string>(within.matchedNodeIds);
     for (const ref of within.matchedEntityRefs) {
         nodeIds.add(ref.nodeId);
+        const entity = entityIndex.entities[ref.entityId];
+        if (entity?.type === 'group') {
+            nodeIds.add(entity.containerId);
+            for (const itemId of entity.itemIds) {
+                nodeIds.add(itemId);
+            }
+        }
     }
 
     return nodeIds;

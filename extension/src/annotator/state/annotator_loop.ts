@@ -64,7 +64,12 @@ export const runSaveLoop = async (
         const next = saveCompleted(state, reply.artifactRevision);
         const key = buildSessionKey(state);
         if (key && sessionStore) {
-            await sessionStore.clearDraft(key);
+            try {
+                await sessionStore.clearDraft(key);
+            } catch {
+                // The artifact has already been persisted. Session cleanup is best-effort
+                // and must not turn a successful save into a user-visible failure.
+            }
         }
         return next;
     } catch (error) {

@@ -31,6 +31,9 @@ const fromPersistentTarget = (target: PersistentTargetDraft): EntityRuleMatch =>
     const match: EntityRuleMatch = {};
     if (target.kind) {match.kind = target.kind;}
     if (target.nameContains) {match.nameContains = target.nameContains;}
+    if (target.idEquals) {match.idEquals = target.idEquals;}
+    if (target.nameEquals) {match.nameEquals = target.nameEquals;}
+    if (target.roleEquals) {match.roleEquals = target.roleEquals;}
     if (target.classContains) {match.classContains = target.classContains;}
     if (target.textContains) {match.textContains = target.textContains;}
     if (target.ariaContains) {match.ariaContains = target.ariaContains;}

@@ -24,6 +24,9 @@ const ruleMatchSchema = z
         nameContains: nonEmptyString.optional(),
         keyHint: keyHintMatchSchema.optional(),
         relation: z.enum(['pagination']).optional(),
+        idEquals: nonEmptyString.optional(),
+        nameEquals: nonEmptyString.optional(),
+        roleEquals: nonEmptyString.optional(),
         classContains: nonEmptyString.optional(),
         textContains: nonEmptyString.optional(),
         ariaContains: nonEmptyString.optional(),
@@ -36,6 +39,9 @@ const ruleMatchSchema = z
                     value.nameContains ||
                     value.keyHint ||
                     value.relation ||
+                    value.idEquals ||
+                    value.nameEquals ||
+                    value.roleEquals ||
                     value.classContains ||
                     value.textContains ||
                     value.ariaContains,

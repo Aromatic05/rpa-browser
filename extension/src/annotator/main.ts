@@ -16,7 +16,7 @@ import {
 } from './protocol/annotator_client.js';
 import {
     createSessionStore,
-    createChromeSessionStorage,
+    createRuntimeSessionStorage,
     type SessionStorageLike,
     type SessionStore,
 } from './state/session_store.js';
@@ -61,11 +61,16 @@ const compiledComponentCss = (): string => {
 };
 
 const createExtensionSessionStorage = (): SessionStorageLike => {
-    const area = typeof chrome === 'undefined' ? null : chrome.storage?.session;
-    if (!area) {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
         return memoryStorage();
     }
-    return createChromeSessionStorage(area);
+    return createRuntimeSessionStorage(async (message) =>
+        await chrome.runtime.sendMessage(message) as {
+            ok: boolean;
+            value?: unknown;
+            error?: string;
+        },
+    );
 };
 
 const mountVueApp: MountAppFn = (root, handlers) => {

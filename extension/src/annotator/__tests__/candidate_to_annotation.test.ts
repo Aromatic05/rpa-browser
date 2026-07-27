@@ -86,5 +86,5 @@ test('planAnnotationFromCandidate falls back when proposedTargets is empty', () 
     const entity = makeEntity();
     const candidate = makeCandidate({proposedTargets: undefined, role: 'button'});
     const plan = planAnnotationFromCandidate(candidate, entity);
-    assert.deepEqual(plan.annotation.target, {ariaContains: 'button'});
+    assert.deepEqual(plan.annotation.target, {roleEquals: 'button'});
 });

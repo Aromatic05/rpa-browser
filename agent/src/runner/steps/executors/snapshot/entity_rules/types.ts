@@ -33,6 +33,9 @@ export type EntityRuleMatch = {
     nameContains?: string;
     keyHint?: EntityRuleKeyHintMatch;
     relation?: EntityRuleRelation;
+    idEquals?: string;
+    nameEquals?: string;
+    roleEquals?: string;
     classContains?: string;
     textContains?: string;
     ariaContains?: string;

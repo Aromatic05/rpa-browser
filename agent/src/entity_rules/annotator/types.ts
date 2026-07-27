@@ -14,6 +14,9 @@ export type AnnotationDisposition = 'active' | 'ignored';
 export type PersistentTargetDraft = {
     kind?: EntityKind;
     nameContains?: string;
+    idEquals?: string;
+    nameEquals?: string;
+    roleEquals?: string;
     classContains?: string;
     textContains?: string;
     ariaContains?: string;
@@ -72,7 +75,7 @@ export type CanvasPaginationDraft = {
     itemTarget?: PersistentTargetDraft;
 };
 
-export type CanvasEntitySource = 'region' | 'group';
+export type CanvasEntitySource = 'region' | 'group' | 'node';
 
 export type CanvasEntityDraft = {
     id: string;

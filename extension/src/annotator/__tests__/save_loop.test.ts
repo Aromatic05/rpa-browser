@@ -137,6 +137,20 @@ test('runSaveLoop clears session draft on save success', async () => {
     assert.equal(await store.loadDraft(key, page), null, 'session draft cleared after save');
 });
 
+test('runSaveLoop keeps a successful save successful when session cleanup fails', async () => {
+    let s = openState();
+    s = draftEdited(s, makeDraft('edited'));
+    const store: SessionStore = {
+        saveDraft: async () => undefined,
+        loadDraft: async () => null,
+        clearDraft: async () => { throw new Error('storage unavailable'); },
+    };
+    const next = await runSaveLoop(s, mockClient(), store);
+    assert.equal(next.dirty, false);
+    assert.equal(next.artifactRevision, 'rev-002');
+    assert.equal(next.error, null);
+});
+
 test('runSaveLoop records failure message and keeps draft dirty when save rejects', async () => {
     const s = openState();
     const edited = draftEdited(s, makeDraft('edited'));

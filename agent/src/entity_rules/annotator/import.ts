@@ -28,6 +28,9 @@ const toPersistentTarget = (match: EntityMatchRule['match']): PersistentTargetDr
     const target: PersistentTargetDraft = {};
     if (match.kind) {target.kind = match.kind;}
     if (match.nameContains) {target.nameContains = match.nameContains;}
+    if (match.idEquals) {target.idEquals = match.idEquals;}
+    if (match.nameEquals) {target.nameEquals = match.nameEquals;}
+    if (match.roleEquals) {target.roleEquals = match.roleEquals;}
     if (match.classContains) {target.classContains = match.classContains;}
     if (match.textContains) {target.textContains = match.textContains;}
     if (match.ariaContains) {target.ariaContains = match.ariaContains;}
@@ -36,7 +39,19 @@ const toPersistentTarget = (match: EntityMatchRule['match']): PersistentTargetDr
     return target;
 };
 
-const isEntityRoot = (rule: EntityMatchRule): boolean => rule.source === 'region' || rule.source === 'group';
+const annotationHasBusinessSemantics = (annotation: EntityAnnotationRule | undefined): boolean =>
+    Boolean(
+        annotation?.businessTag || annotation?.businessName || annotation?.primaryKey ||
+        annotation?.columns || annotation?.fields || annotation?.actions || annotation?.pagination ||
+        annotation?.fieldKey || annotation?.actionIntent,
+    );
+
+const isEntityRoot = (
+    rule: EntityMatchRule,
+    annotationByRuleId: Map<string, EntityAnnotationRule | undefined>,
+): boolean =>
+    rule.source === 'region' || rule.source === 'group' ||
+    (rule.source === 'node' && !rule.within && annotationHasBusinessSemantics(annotationByRuleId.get(rule.ruleId)));
 
 type PaginationChain = {
     itemRule?: EntityMatchRule;
@@ -96,11 +111,12 @@ type EntityBuildContext = {
     annotationByRuleId: Map<string, EntityAnnotationRule | undefined>;
     paginationChain?: PaginationChain;
     ruleIdToCanvasId: Record<string, string>;
+    pageKind: CanvasDraft['page']['kind'];
 };
 
 const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
     const { entityId, rootRule, rootAnnotation, childRules, annotationByRuleId, paginationChain, ruleIdToCanvasId } = ctx;
-    const kind = rootRule.match.kind || 'table';
+    const kind = rootRule.match.kind || ctx.pageKind;
 
     const target = toPersistentTarget(rootRule.match);
     ruleIdToCanvasId[rootRule.ruleId] = entityId;
@@ -237,7 +253,7 @@ const buildEntity = (ctx: EntityBuildContext): CanvasEntityDraft => {
 
     return {
         id: entityId,
-        source: rootRule.source === 'group' ? 'group' : 'region',
+        source: rootRule.source,
         kind,
         name: rootAnnotation?.businessName || rootRule.ruleId,
         businessTag: rootAnnotation?.businessTag || rootRule.ruleId,
@@ -272,7 +288,7 @@ export const importEntityRulesToCanvasDraft = (artifact: {
         if (chain.pageRule) {paginationConsumedRuleIds.add(chain.pageRule.ruleId);}
     }
 
-    const roots = matchSet.entities.filter((rule) => isEntityRoot(rule));
+    const roots = matchSet.entities.filter((rule) => isEntityRoot(rule, annotationByRuleId));
 
     const ruleIdToCanvasId: Record<string, string> = {};
     const entities: CanvasEntityDraft[] = [];
@@ -293,6 +309,7 @@ export const importEntityRulesToCanvasDraft = (artifact: {
             annotationByRuleId,
             paginationChain: paginationChains.get(root.ruleId),
             ruleIdToCanvasId,
+            pageKind: matchSet.page.kind,
         }));
     });
 

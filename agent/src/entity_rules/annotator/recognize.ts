@@ -244,6 +244,26 @@ const buildFreshInferredEntities = (
     return entities;
 };
 
+const buildPageFallbackEntity = (
+    snapshot: SnapshotResult,
+    pageKind: EntityKind,
+): CanvasEntityDraft => {
+    const rootRole = normalizeText(snapshot.root.role) || 'root';
+    const pageName = normalizeText(snapshot.root.name) || `页面${pageKind === 'form' ? '表单' : '实体'}`;
+    return {
+        id: entityCanvasId(0),
+        source: 'node',
+        kind: pageKind,
+        name: pageName,
+        businessTag: `${pageKind}.page`,
+        target: {roleEquals: rootRole},
+        expect: 'unique',
+        annotations: [],
+        columns: [],
+        origin: 'inferred',
+    };
+};
+
 export const recognizeEntities = (
     snapshot: SnapshotResult,
     finalEntityView: FinalEntityView | undefined,
@@ -252,7 +272,14 @@ export const recognizeEntities = (
     const pageKind = existingDraft?.page.kind || inferPageKind(finalEntityView);
     const page: CanvasPageDraft = existingDraft?.page || { kind: pageKind };
 
-    const freshEntities = buildFreshInferredEntities(snapshot, finalEntityView);
+    const inferredEntities = buildFreshInferredEntities(snapshot, finalEntityView);
+    const hasPageKindEntity = inferredEntities.some((entity) => entity.kind === pageKind);
+    const freshEntities = hasPageKindEntity
+        ? inferredEntities
+        : [
+              buildPageFallbackEntity(snapshot, pageKind),
+              ...inferredEntities.map((entity, index) => ({...entity, id: entityCanvasId(index + 1)})),
+          ];
     const { draft: canvasDraft } = protectiveMerge(existingDraft, freshEntities, page);
 
     const existingTags = new Set(

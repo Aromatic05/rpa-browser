@@ -31,6 +31,7 @@ import { recognizeEntities } from '../../../../src/entity_rules/annotator/recogn
 import { importEntityRulesToCanvasDraft } from '../../../../src/entity_rules/annotator/import';
 import { compileCanvasDraft } from '../../../../src/entity_rules/annotator/compile';
 import { validateEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/validate';
+import { matchEntityRules } from '../../../../src/runner/steps/executors/snapshot/entity_rules/matcher';
 import {
     buildOpenResult,
     runCheck,
@@ -278,6 +279,112 @@ test('proposeRuleCandidates prefers stable class tokens over hash-like tokens', 
     assert.equal(target.classContains, 'ant-btn');
     assert.equal(isStableClassToken('ant-btn'), true);
     assert.equal(isStableClassToken('css-1a2b3d4e5f6'), false);
+});
+
+test('plain controls use a stable DOM id when class, aria and text cannot identify the target', () => {
+    const { snapshot, finalEntityView, editButtonIds } = createTableFixture();
+    const node = snapshot.nodeIndex[editButtonIds[0]];
+    node.name = undefined;
+    setNodeAttr(node, 'class', '');
+    setNodeAttr(node, 'id', 'primaryEditButton');
+    const chain = buildCandidateChain(snapshot, finalEntityView, editButtonIds[0]);
+    const control = chain.find((candidate) => candidate.level === 'control');
+    assert.deepEqual(control?.proposedTargets?.[0], {idEquals: 'primaryEditButton'});
+    assert.equal(control?.matchCount, 1);
+    assert.equal(control?.expect, 'unique');
+    assert.equal(control?.stabilityHint, 'stable');
+
+    const draft: CanvasDraft = {
+        version: 1,
+        profileName: 'id-target-profile',
+        page: {kind: 'table'},
+        entities: [
+            {
+                id: 'e0',
+                source: 'region',
+                kind: 'table',
+                name: '订单列表',
+                businessTag: 'order.list.main',
+                target: {kind: 'table', nameContains: '订单列表'},
+                annotations: [
+                    {
+                        id: 'a0',
+                        type: 'action',
+                        name: '编辑',
+                        businessKey: 'editPrimary',
+                        target: {idEquals: 'primaryEditButton'},
+                        expect: 'unique',
+                        origin: 'manual',
+                        disposition: 'active',
+                    },
+                ],
+                columns: [],
+                origin: 'manual',
+            },
+        ],
+        preserved: {
+            matchRaw: {version: 1, page: {kind: 'table'}, entities: []},
+            annotationRaw: {version: 1, page: {kind: 'table'}, annotations: []},
+            preservedByCanvasId: {},
+            ruleIdToCanvasId: {},
+            locatorRules: [],
+            ruleRefs: [],
+        },
+    };
+    const checked = runCheck(snapshot, draft, 'https://example.test/orders');
+    const result = checked.results.find((item) => item.canvasAnnotationId === 'a0');
+    assert.equal(result?.status, 'unique');
+    assert.equal(result?.matchCount, 1);
+});
+
+test('within a logical group includes its itemIds even when items are not DOM descendants of the container', () => {
+    const groupContainer = newTextNode('group_container', 'group', '字段集合');
+    const input = newTextNode('customer_input', 'textbox', '');
+    setNodeAttr(input, 'id', 'customerName');
+    const root: UnifiedNode = {id: 'root', role: 'root', children: [groupContainer, input]};
+    const entityIndex: EntityIndex = {
+        entities: {
+            group_fields: {
+                id: 'group_fields',
+                type: 'group',
+                kind: 'list',
+                containerId: 'group_container',
+                name: '字段集合',
+                itemIds: ['customer_input'],
+                keySlot: 0,
+            },
+        },
+        byNodeId: {
+            group_container: [{type: 'group', entityId: 'group_fields', role: 'container'}],
+            customer_input: [{type: 'group', entityId: 'group_fields', role: 'item', itemId: 'customer_input'}],
+        },
+    };
+    const bundle: NormalizedEntityRuleBundle = {
+        id: 'logical-group-scope',
+        page: {kind: 'form'},
+        matchRules: [
+            {
+                ruleId: 'group_root',
+                source: 'group',
+                expect: 'unique',
+                order: 0,
+                match: {kind: 'list'},
+            },
+            {
+                ruleId: 'customer_name',
+                source: 'node',
+                expect: 'unique',
+                order: 1,
+                within: 'group_root',
+                match: {idEquals: 'customerName'},
+            },
+        ],
+        annotationByRuleId: {},
+    };
+    const matched = matchEntityRules(bundle, {root, entityIndex});
+    assert.equal(matched.group_root.ok, true);
+    assert.equal(matched.customer_name.ok, true);
+    assert.deepEqual(matched.customer_name.matchedNodeIds, ['customer_input']);
 });
 
 test('runCheck maps unique / multiple / missing for node annotations', () => {
@@ -776,6 +883,49 @@ test('recognizeEntities produces an inferred entity from finalEntityView without
     assert.ok(form, 'inferred form entity missing');
     assert.equal(form?.origin, 'inferred');
     assert.ok(recognized.some((item) => item.fieldCount > 0));
+});
+
+test('recognizeEntities adds a node-backed page entity when the inferred page kind has no matching entity', () => {
+    const input = newTextNode('customer_input', 'textbox', '');
+    setNodeAttr(input, 'id', 'customerName');
+    const root: UnifiedNode = {id: 'root', role: 'root', name: '客户线索录入', children: [input]};
+    const snapshot = buildSnapshot({
+        root,
+        nodeIndex: {root, customer_input: input},
+        entityIndex: {entities: {}, byNodeId: {}},
+        locatorIndex: {},
+        bboxIndex: {},
+        attrIndex: {},
+        contentStore: {},
+    });
+    const finalEntityView: FinalEntityView = {
+        entities: [
+            {
+                id: 'unrelated_list',
+                nodeId: 'list_container',
+                kind: 'list',
+                type: 'group',
+                name: '控件列表',
+                source: 'auto',
+                itemIds: [],
+                keySlot: 0,
+            },
+        ],
+        byNodeId: {},
+        bindingIndex: {fieldsByEntity: {}, actionsByEntity: {}, columnsByEntity: {}},
+    };
+    const {canvasDraft} = recognizeEntities(snapshot, finalEntityView);
+    const pageEntity = canvasDraft.entities[0];
+    assert.equal(canvasDraft.page.kind, 'form');
+    assert.equal(pageEntity.kind, 'form');
+    assert.equal(pageEntity.source, 'node');
+    assert.deepEqual(pageEntity.target, {roleEquals: 'root'});
+    const compiled = compileCanvasDraft(canvasDraft);
+    assert.equal(compiled.ok, true);
+    if (compiled.ok) {
+        const rootRule = (compiled.artifact.match as {entities: Array<{source: string}>}).entities[0];
+        assert.equal(rootRule.source, 'node');
+    }
 });
 
 test('full save round-trip: edit -> check (all unique) -> save -> reload -> semantic preserved', () => {

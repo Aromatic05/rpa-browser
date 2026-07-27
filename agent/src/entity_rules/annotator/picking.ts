@@ -13,6 +13,7 @@ import type {
 } from '../../runner/steps/executors/snapshot/core/types';
 import type { EntityRuleExpect } from '../../runner/steps/executors/snapshot/entity_rules/types';
 import type { PersistentTargetDraft } from './types';
+import { hasTargetConditions } from './validate';
 import type {
     PickCandidate,
     PickCandidateEntityRef,
@@ -352,6 +353,16 @@ export const isStableClassToken = (token: string): boolean => {
     return true;
 };
 
+const isStableDomIdentifier = (value: string | undefined): value is string => {
+    const normalized = normalizeText(value);
+    if (!normalized || normalized.length > 80) {return false;}
+    if (/^\d+$/.test(normalized)) {return false;}
+    if (/^[:_]?r\d+[:_]?$/i.test(normalized)) {return false;}
+    if (/^[0-9a-f]{8,}$/i.test(normalized)) {return false;}
+    if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(normalized)) {return false;}
+    return true;
+};
+
 const pickStableClass = (tokens: string[]): string | undefined => {
     const stable = tokens.filter(isStableClassToken);
     if (stable.length === 0) {
@@ -488,6 +499,21 @@ export const scoreCandidate = (candidate: PickCandidate, node: UnifiedNode): num
 };
 
 const nodeMatchesTarget = (node: UnifiedNode, target: PersistentTargetDraft): boolean => {
+    if (target.idEquals) {
+        if (normalizeText(getNodeAttr(node, 'id')) !== normalizeText(target.idEquals)) {
+            return false;
+        }
+    }
+    if (target.nameEquals) {
+        if (normalizeText(getNodeAttr(node, 'name')) !== normalizeText(target.nameEquals)) {
+            return false;
+        }
+    }
+    if (target.roleEquals) {
+        if (normalizeLower(node.role) !== normalizeLower(target.roleEquals)) {
+            return false;
+        }
+    }
     if (target.classContains) {
         const cls = normalizeLower(getNodeAttr(node, 'class'));
         if (!cls.includes(normalizeLower(target.classContains))) {
@@ -590,31 +616,43 @@ const proposeForNodeCandidate = (
     const target: PersistentTargetDraft = {};
     let stable = false;
     if (node) {
-        const stableClass = pickStableClass(classTokensOf(node));
-        if (stableClass) {
-            target.classContains = stableClass;
+        const domId = normalizeText(getNodeAttr(node, 'id'));
+        const domName = normalizeText(getNodeAttr(node, 'name'));
+        if (isStableDomIdentifier(domId)) {
+            target.idEquals = domId;
             stable = true;
-        }
-        const aria = normalizeText(getNodeAttr(node, 'aria-label') || getNodeAttr(node, 'title'));
-        if (aria && aria.length <= 32) {
-            target.ariaContains = aria;
+        } else if (isStableDomIdentifier(domName)) {
+            target.nameEquals = domName;
             stable = true;
-        }
-        const text = normalizeText(node.name || getNodeContent(node));
-        if (
-            text &&
-            text.length <= 16 &&
-            (candidate.level === 'control' || candidate.actionIntent)
-        ) {
-            target.textContains = text;
+        } else {
+            const stableClass = pickStableClass(classTokensOf(node));
+            if (stableClass) {
+                target.classContains = stableClass;
+                stable = true;
+            }
+            const aria = normalizeText(getNodeAttr(node, 'aria-label') || getNodeAttr(node, 'title'));
+            if (aria && aria.length <= 32) {
+                target.ariaContains = aria;
+                stable = true;
+            }
+            const text = normalizeText(node.name || getNodeContent(node));
+            if (
+                text &&
+                text.length <= 16 &&
+                (candidate.level === 'control' || candidate.actionIntent)
+            ) {
+                target.textContains = text;
+            }
+            if (!hasTargetConditions(target) && normalizeText(node.role)) {
+                target.roleEquals = normalizeText(node.role);
+            }
         }
     }
     const scope = enclosingEntityNodeId ? new Set([enclosingEntityNodeId]) : undefined;
     const matched = countMatches(snapshot, target, scope);
     const matchCount = matched.length;
     const expect: EntityRuleExpect = matchCount > 1 ? 'one_or_more' : 'unique';
-    const stabilityHint: 'stable' | 'fragile' =
-        stable || Boolean(target.classContains) ? 'stable' : 'fragile';
+    const stabilityHint: 'stable' | 'fragile' = stable ? 'stable' : 'fragile';
     return {
         proposedTargets: [target],
         matchCount,
