@@ -114,3 +114,79 @@ test('DOM geometry resolves imported semantic table targets to the outer table r
     assert.equal(resolved, documentRef.querySelector('[role="table"]'));
     assert.ok(resolved?.querySelector('nav[aria-label="分页"]'));
 });
+
+test('DOM geometry tolerates snapshot-lowercased class tokens and replaces field geometry from the live DOM', () => {
+    const dom = new JSDOM(`
+        <main class="ant-layout-content ant-pro-basicLayout-content">
+            <input class="ant-input" placeholder="订单编号" />
+            <input class="ant-input" placeholder="商品名称" />
+            <table><thead><tr><th>订单编号</th><th>商品名称</th></tr></thead></table>
+        </main>
+    `);
+    const documentRef = dom.window.document;
+    const entityElement = documentRef.querySelector('main')!;
+    const inputs = Array.from(documentRef.querySelectorAll('input'));
+    setRect(entityElement, {x: 280, y: 88, width: 808, height: 873});
+    setRect(inputs[0], {x: 382, y: 201, width: 143, height: 32});
+    setRect(inputs[1], {x: 651, y: 201, width: 143, height: 32});
+    const draft: CanvasDraft = {
+        version: 1,
+        profileName: 'yingdao-orders',
+        page: {kind: 'table'},
+        entities: [{
+            id: 'e0',
+            source: 'node',
+            kind: 'table',
+            name: '订单管理',
+            businessTag: 'table.main',
+            target: {classContains: 'ant-pro-basiclayout-content'},
+            expect: 'unique',
+            annotations: [
+                {
+                    id: 'f0',
+                    type: 'field',
+                    name: '订单编号',
+                    businessKey: '订单编号',
+                    target: {classContains: 'ant-input', nameContains: '订单编号'},
+                    expect: 'unique',
+                    origin: 'inferred',
+                    disposition: 'active',
+                },
+                {
+                    id: 'f1',
+                    type: 'field',
+                    name: '商品名称',
+                    businessKey: '商品名称',
+                    target: {classContains: 'ant-input', nameContains: '商品名称'},
+                    expect: 'unique',
+                    origin: 'inferred',
+                    disposition: 'active',
+                },
+            ],
+            columns: [],
+            origin: 'manual',
+        }],
+        preserved: {},
+    };
+    const stale: VisualTargetRef[] = [
+        {entityId: 'e0', nodeId: 'snapshot-entity', role: 'entity', bbox: {x: 420, y: 132, width: 1212, height: 1310}},
+        {entityId: 'e0', nodeId: 'snapshot-field', role: 'field', fieldKey: '订单编号', canvasAnnotationId: 'f0', bbox: {x: 573, y: 302, width: 215, height: 48}},
+    ];
+
+    const enriched = enrichVisualBindingsFromDom(draft, stale, documentRef);
+    assert.deepEqual(enriched.find((binding) => binding.role === 'entity')?.bbox, {
+        x: 280,
+        y: 88,
+        width: 808,
+        height: 873,
+    });
+    assert.deepEqual(
+        enriched
+            .filter((binding) => binding.role === 'field')
+            .map((binding) => [binding.canvasAnnotationId, binding.bbox]),
+        [
+            ['f0', {x: 382, y: 201, width: 143, height: 32}],
+            ['f1', {x: 651, y: 201, width: 143, height: 32}],
+        ],
+    );
+});

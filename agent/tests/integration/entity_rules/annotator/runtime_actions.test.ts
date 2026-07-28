@@ -313,6 +313,132 @@ const createCompositeEntityFixture = (): {snapshot: SnapshotResult; finalEntityV
     return {snapshot, finalEntityView};
 };
 
+const createYingdaoLikeFixture = (): {snapshot: SnapshotResult; finalEntityView: FinalEntityView} => {
+    const orderInput = newTextNode('order_input', 'textbox', '');
+    setNodeAttr(orderInput, 'tag', 'input');
+    setNodeAttr(orderInput, 'class', 'ant-input');
+    setNodeAttr(orderInput, 'placeholder', '订单编号');
+    setNodeBbox(orderInput, {x: 382, y: 201, width: 143, height: 32});
+    const productInput = newTextNode('product_input', 'textbox', '');
+    setNodeAttr(productInput, 'tag', 'input');
+    setNodeAttr(productInput, 'class', 'ant-input');
+    setNodeAttr(productInput, 'placeholder', '商品名称');
+    setNodeBbox(productInput, {x: 651, y: 201, width: 143, height: 32});
+    const searchButton = newTextNode('search_button', 'button', '查询');
+    setNodeAttr(searchButton, 'tag', 'button');
+    setNodeAttr(searchButton, 'class', 'ant-btn ant-btn-primary');
+    const downloadButton = newTextNode('download_button', 'button', '下载');
+    setNodeAttr(downloadButton, 'tag', 'button');
+    setNodeAttr(downloadButton, 'class', 'ant-btn ant-btn-primary');
+    const queryForm: UnifiedNode = {
+        id: 'query_form',
+        role: 'form',
+        name: '订单查询',
+        children: [orderInput, productInput, searchButton, downloadButton],
+    };
+    setNodeAttr(queryForm, 'class', 'ant-form ant-form-inline');
+
+    const headerNames = ['订单编号', '商品名称', '金额', '日期', '状态', '操作'];
+    const headerNodes = headerNames.map((name, index) => {
+        const header = newTextNode(`header_${index}`, 'columnheader', name);
+        setNodeAttr(header, 'tag', 'th');
+        return header;
+    });
+    const headerRow: UnifiedNode = {id: 'header_row', role: 'row', children: headerNodes};
+    const resultTable: UnifiedNode = {
+        id: 'result_table',
+        role: 'table',
+        name: '订单列表',
+        children: [headerRow],
+    };
+    setNodeAttr(resultTable, 'tag', 'table');
+
+    const previousLink = newTextNode('previous_link', 'link', '');
+    setNodeAttr(previousLink, 'tag', 'a');
+    setNodeAttr(previousLink, 'class', 'ant-pagination-item-link');
+    const previousItem: UnifiedNode = {id: 'previous_item', role: 'generic', children: [previousLink]};
+    setNodeAttr(previousItem, 'tag', 'li');
+    setNodeAttr(previousItem, 'class', 'ant-pagination-disabled ant-pagination-prev');
+    setNodeAttr(previousItem, 'title', '上一页');
+    const nextLink = newTextNode('next_link', 'link', '');
+    setNodeAttr(nextLink, 'tag', 'a');
+    setNodeAttr(nextLink, 'class', 'ant-pagination-item-link');
+    const nextItem: UnifiedNode = {id: 'next_item', role: 'generic', children: [nextLink]};
+    setNodeAttr(nextItem, 'tag', 'li');
+    setNodeAttr(nextItem, 'class', 'ant-pagination-next');
+    setNodeAttr(nextItem, 'title', '下一页');
+    const quickJumpInput = newTextNode('quick_jump_input', 'textbox', '跳至页');
+    setNodeAttr(quickJumpInput, 'tag', 'input');
+    const quickJump: UnifiedNode = {id: 'quick_jump', role: 'generic', children: [quickJumpInput]};
+    setNodeAttr(quickJump, 'class', 'ant-pagination-options-quick-jumper');
+    const pagination: UnifiedNode = {
+        id: 'pagination',
+        role: 'generic',
+        name: '分页',
+        children: [previousItem, nextItem, quickJump],
+    };
+    setNodeAttr(pagination, 'tag', 'ul');
+    setNodeAttr(pagination, 'class', 'ant-pagination ant-table-pagination');
+
+    const main: UnifiedNode = {
+        id: 'main',
+        role: 'main',
+        name: '订单管理',
+        children: [queryForm, resultTable, pagination],
+    };
+    setNodeAttr(main, 'tag', 'main');
+    setNodeAttr(main, 'class', 'ant-layout-content ant-pro-basiclayout-content');
+    setNodeBbox(main, {x: 420, y: 132, width: 1213, height: 1310});
+    const root: UnifiedNode = {id: 'root', role: 'root', children: [main]};
+    const entityIndex: EntityIndex = {
+        entities: {
+            ent_query: {id: 'ent_query', type: 'region', kind: 'form', nodeId: 'query_form', name: '订单查询'},
+            ent_table: {id: 'ent_table', type: 'region', kind: 'table', nodeId: 'result_table', name: '订单列表'},
+        },
+        byNodeId: {
+            query_form: [{type: 'region', entityId: 'ent_query', role: 'container'}],
+            result_table: [{type: 'region', entityId: 'ent_table', role: 'container'}],
+        },
+    };
+    const {nodeIndex, bboxIndex, attrIndex, contentStore} = buildExternalIndexes(root);
+    const snapshot = buildSnapshot({
+        root,
+        nodeIndex,
+        entityIndex,
+        locatorIndex: {},
+        bboxIndex,
+        attrIndex,
+        contentStore,
+    });
+    const finalEntityView: FinalEntityView = {
+        entities: [
+            {
+                id: 'ent_query',
+                nodeId: 'query_form',
+                kind: 'form',
+                type: 'region',
+                name: '订单查询',
+                businessTag: 'orders.query',
+                source: 'auto',
+                formFields: [{fieldKey: '订单编号', name: '订单编号'}],
+            },
+            {
+                id: 'ent_table',
+                nodeId: 'result_table',
+                kind: 'table',
+                type: 'region',
+                name: '订单列表',
+                businessTag: 'orders.table',
+                source: 'auto',
+                columns: headerNames.map((name) => ({fieldKey: name, name})),
+            },
+        ],
+        byNodeId: {},
+        bindingIndex: {fieldsByEntity: {}, actionsByEntity: {}, columnsByEntity: {}},
+    };
+    return {snapshot, finalEntityView};
+};
+
 test('resolveClickedNode resolves by smallest-area bbox and cross-validates tag', () => {
     const { snapshot } = createTableFixture();
     const fingerprint: PickFingerprint = {
@@ -1272,6 +1398,76 @@ test('recognizeEntities presets only query fields, table headers and pagination 
         entity.annotations.every((item) => item.origin === 'inferred'),
         'binding unsaved objects must not silently confirm them',
     );
+});
+
+test('recognizeEntities handles Ant inputs and nested pagination without duplicate or empty fields', () => {
+    const {snapshot, finalEntityView} = createYingdaoLikeFixture();
+    const selected: CanvasDraft = {
+        version: 1,
+        profileName: 'yingdao-orders',
+        page: {kind: 'table'},
+        entities: [{
+            id: 'e0',
+            source: 'node',
+            kind: 'table',
+            name: '订单管理',
+            businessTag: 'table.main',
+            target: {classContains: 'ant-pro-basiclayout-content'},
+            expect: 'unique',
+            annotations: [{
+                id: 'stale-empty-field',
+                type: 'field',
+                businessKey: '订单编号',
+                name: '订单编号',
+                target: {},
+                expect: 'unique',
+                origin: 'inferred',
+                disposition: 'active',
+            }],
+            columns: [],
+            origin: 'manual',
+        }],
+        preserved: {
+            matchRaw: {},
+            annotationRaw: {},
+            preservedByCanvasId: {},
+            ruleIdToCanvasId: {},
+            locatorRules: [],
+            ruleRefs: [],
+        },
+    };
+
+    const {canvasDraft} = recognizeEntities(snapshot, finalEntityView, selected);
+    const entity = canvasDraft.entities[0];
+    assert.deepEqual(
+        entity.annotations.map((item) => item.businessKey).sort(),
+        ['商品名称', '订单编号'],
+    );
+    assert.deepEqual(
+        entity.annotations.map((item) => item.target),
+        [
+            {classContains: 'ant-input', nameContains: '订单编号'},
+            {classContains: 'ant-input', nameContains: '商品名称'},
+        ],
+    );
+    assert.equal(entity.annotations.some((item) => Object.keys(item.target).length === 0), false);
+    assert.equal(entity.annotations.some((item) => item.name?.includes('跳至页')), false);
+    assert.equal(new Set(entity.annotations.map((item) => item.id)).size, 2);
+    assert.equal(entity.columns.length, 6);
+    assert.deepEqual(entity.pagination, {
+        actionIntent: 'nextPage',
+        pageTarget: {classContains: 'ant-pagination-item-link'},
+        itemTarget: {ariaContains: '下一页'},
+    });
+
+    const check = runCheck(snapshot, canvasDraft, 'https://shop.yingdao.com/list/table-list');
+    const fieldChecks = check.results.filter((item) =>
+        entity.annotations.some((annotation) => annotation.id === item.canvasAnnotationId),
+    );
+    assert.equal(fieldChecks.length, 2);
+    assert.ok(fieldChecks.every((item) => item.status === 'unique'));
+    assert.equal(check.results.find((item) => item.canvasAnnotationId.endsWith('_pgitem'))?.status, 'unique');
+    assert.equal(check.results.find((item) => item.canvasAnnotationId.endsWith('_pgpage'))?.status, 'unique');
 });
 
 test('full save round-trip: edit -> check (all unique) -> save -> reload -> semantic preserved', () => {

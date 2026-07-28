@@ -3,13 +3,14 @@ import {computed} from 'vue';
 import type {AnnotationBox, AnnotationBoxKind} from '../layout/annotation_boxes.js';
 import type {LabelPlacement} from '../layout/label_layout.js';
 import type {CheckResultByAnnotation, CheckStatus} from '../types.js';
-import type {Rect} from '../layout/box_geometry.js';
+import {insetRect, type Rect} from '../layout/box_geometry.js';
 import {annotationVisualState} from '../state/product_ui.js';
 
 type ScreenBox = {
     annotationId: string;
     kind: AnnotationBoxKind;
     rect: Rect;
+    renderRect: Rect;
     origin: 'inferred' | 'confirmed' | 'manual';
     disposition: 'active' | 'ignored';
     status?: CheckStatus;
@@ -71,10 +72,12 @@ const screenBoxes = computed((): ScreenBox[] => {
         const check = checkLookup.value[annotationBox.annotationId];
         const visual = annotationVisualState(annotationBox, check ?? null);
         annotationBox.boxes.forEach((box, index) => {
+            const rect = {x: box.x, y: box.y, width: box.width, height: box.height};
             out.push({
                 annotationId: annotationBox.annotationId,
                 kind: annotationBox.kind,
-                rect: {x: box.x, y: box.y, width: box.width, height: box.height},
+                rect,
+                renderRect: annotationBox.kind === 'entity' ? insetRect(rect, 1.5) : rect,
                 origin: annotationBox.origin,
                 disposition: annotationBox.disposition,
                 status: check?.status,
@@ -131,6 +134,10 @@ const entityMaskTargets = computed((): ScreenBox[] =>
     screenBoxes.value.filter((box) => box.kind === 'entity'),
 );
 
+const hoverStrokeRect = computed((): Rect | null =>
+    props.hoverBox ? insetRect(props.hoverBox, 1) : null,
+);
+
 const maskId = 'rpa-annotator-entity-mask';
 
 const onSelect = (annotationId: string): void => {
@@ -169,10 +176,10 @@ const onSelect = (annotationId: string): void => {
                 <rect
                     v-for="box in entityMaskTargets"
                     :key="`mask-${box.annotationId}-${box.rect.x}-${box.rect.y}`"
-                    :x="box.rect.x + 2"
-                    :y="box.rect.y + 2"
-                    :width="Math.max(0, box.rect.width - 4)"
-                    :height="Math.max(0, box.rect.height - 4)"
+                    :x="box.rect.x"
+                    :y="box.rect.y"
+                    :width="box.rect.width"
+                    :height="box.rect.height"
                     rx="6"
                     fill="black"
                 />
@@ -221,10 +228,10 @@ const onSelect = (annotationId: string): void => {
                 @click.stop="box.kind !== 'entity' && onSelect(box.annotationId)"
             >
                 <rect
-                    :x="box.rect.x"
-                    :y="box.rect.y"
-                    :width="box.rect.width"
-                    :height="box.rect.height"
+                    :x="box.renderRect.x"
+                    :y="box.renderRect.y"
+                    :width="box.renderRect.width"
+                    :height="box.renderRect.height"
                     :stroke="box.annotationId === selectedAnnotationId ? '#0f172a' : box.color"
                     :stroke-width="box.kind === 'entity' ? 3 : (box.annotationId === selectedAnnotationId ? 3 : 1.75)"
                     :stroke-dasharray="box.dashed ? '7 5' : ''"
@@ -234,8 +241,8 @@ const onSelect = (annotationId: string): void => {
                 />
                 <text
                     v-if="box.isFirstOfGroup && box.status"
-                    :x="box.rect.x + box.rect.width - 8"
-                    :y="box.rect.y + 14"
+                    :x="box.renderRect.x + box.renderRect.width - 8"
+                    :y="box.renderRect.y + 14"
                     :fill="STATUS_COLOR[box.status]"
                     font-size="14"
                     font-weight="700"
@@ -244,8 +251,8 @@ const onSelect = (annotationId: string): void => {
                 >{{ STATUS_GLYPH[box.status] }}</text>
                 <text
                     v-if="box.isFirstOfGroup && box.matchCount > 1"
-                    :x="box.rect.x + 4"
-                    :y="box.rect.y + 14"
+                    :x="box.renderRect.x + 4"
+                    :y="box.renderRect.y + 14"
                     fill="#0f172a"
                     font-size="12"
                     font-weight="600"
@@ -253,12 +260,12 @@ const onSelect = (annotationId: string): void => {
                 >x{{ box.matchCount }}</text>
             </g>
         </g>
-        <g v-if="hoverBox" class="annotator-hover">
+        <g v-if="hoverStrokeRect" class="annotator-hover">
             <rect
-                :x="hoverBox.x"
-                :y="hoverBox.y"
-                :width="hoverBox.width"
-                :height="hoverBox.height"
+                :x="hoverStrokeRect.x"
+                :y="hoverStrokeRect.y"
+                :width="hoverStrokeRect.width"
+                :height="hoverStrokeRect.height"
                 stroke="#0ea5e9"
                 stroke-width="2"
                 fill="rgba(14, 165, 233, 0.10)"

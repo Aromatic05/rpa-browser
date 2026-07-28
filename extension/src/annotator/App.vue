@@ -529,13 +529,24 @@ const runCheckAndSave = async (): Promise<void> => {
     }
 };
 
-const runRecognize = async (): Promise<void> => {
+const stateHasInternalObjects = (state: AnnotatorState): boolean => {
+    const entity = state.canvasDraft?.entities[0];
+    return Boolean(
+        entity && (
+            entity.annotations.length > 0 ||
+            entity.columns.length > 0 ||
+            entity.pagination
+        ),
+    );
+};
+
+const runRecognizeFromState = async (sourceState: AnnotatorState): Promise<void> => {
     if (pickMode.value || isBusy.value) {return;}
     operation.value = 'recognize';
-    applyState({...props.state, error: null});
+    applyState({...sourceState, error: null});
     try {
-        const wasFirstRecognition = !hasInternalObjects.value && !props.state.artifactRevision;
-        const next = await runRecognizeLoop(props.state, props.client);
+        const wasFirstRecognition = !stateHasInternalObjects(sourceState) && !sourceState.artifactRevision;
+        const next = await runRecognizeLoop(sourceState, props.client);
         const documentRef = win()?.document;
         const enriched = next.canvasDraft && documentRef
             ? {...next, canvasDraft: enrichInferredFieldNamesFromDom(next.canvasDraft, documentRef)}
@@ -562,6 +573,10 @@ const runRecognize = async (): Promise<void> => {
     } finally {
         operation.value = null;
     }
+};
+
+const runRecognize = async (): Promise<void> => {
+    await runRecognizeFromState(props.state);
 };
 
 const entityIdForAnnotation = (annotationId: string): string | null => {
@@ -682,14 +697,15 @@ const onPickConfirm = async (): Promise<void> => {
                     : edited.visualBindings,
             };
             markVisualBindingCapture();
-            applyState(pickReceived(withEntityBinding, {
+            const scopedState = pickReceived(withEntityBinding, {
                 entityId,
                 annotationId: null,
-            }));
+            });
+            applyState(scopedState);
             reviewPending.value = false;
             exitPickMode();
             await nextTick();
-            await runRecognize();
+            await runRecognizeFromState(scopedState);
         } catch (error) {
             applyState(failed(props.state, error instanceof Error ? error.message : String(error)));
         }

@@ -248,7 +248,17 @@ const resolveCandidateName = (candidate: EntityCandidate, node: UnifiedNode): st
     if (candidate.source !== 'node') {
         return normalizeText(candidate.entity.name || node.name || getNodeContent(node));
     }
-    return normalizeText(candidate.name || node.name || getNodeContent(node));
+    return normalizeText([
+        candidate.name,
+        node.name,
+        getNodeAttr(node, 'aria-label'),
+        getNodeAttr(node, 'placeholder'),
+        getNodeAttr(node, 'title'),
+        getNodeAttr(node, 'name'),
+        getNodeContent(node),
+    ]
+        .filter(Boolean)
+        .join(' '));
 };
 
 const resolveKeyHintText = (candidate: EntityCandidate): string => {

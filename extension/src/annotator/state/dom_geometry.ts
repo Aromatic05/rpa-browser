@@ -15,21 +15,50 @@ const rectOf = (element: Element): PickRect | null => {
     return {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
 };
 
-const elementText = (element: Element): string =>
-    normalize(element.getAttribute('aria-label') || element.textContent);
+const elementText = (element: Element): string => normalize([
+    element.getAttribute('aria-label'),
+    element.getAttribute('title'),
+    element.getAttribute('placeholder'),
+    element.getAttribute('name'),
+    element.textContent,
+]
+    .filter(Boolean)
+    .join(' '));
+
+const classCandidates = (root: ParentNode, classContains: string): Element[] => {
+    const scope = root as Document | Element;
+    const firstClass = classContains.split(/\s+/).find(Boolean);
+    const candidates = new Set<Element>();
+    if (firstClass && 'getElementsByClassName' in scope) {
+        for (const element of Array.from(scope.getElementsByClassName(firstClass))) {
+            candidates.add(element);
+        }
+    }
+    const expected = normalize(classContains);
+    for (const element of Array.from(root.querySelectorAll('[class]'))) {
+        if (normalize(element.getAttribute('class')).includes(expected)) {
+            candidates.add(element);
+        }
+    }
+    return [...candidates];
+};
 
 export const matchesDomTarget = (element: Element, target: PersistentTargetDraft): boolean => {
     if (target.idEquals && element.id !== target.idEquals) {return false;}
     if (target.classContains) {
-        const expected = target.classContains.split(/\s+/).filter(Boolean);
-        if (!expected.every((token) => element.classList.contains(token))) {return false;}
+        if (!normalize(element.getAttribute('class')).includes(normalize(target.classContains))) {return false;}
     }
-    if (target.roleEquals && element.getAttribute('role') !== target.roleEquals) {return false;}
+    if (target.roleEquals && normalize(element.getAttribute('role')) !== normalize(target.roleEquals)) {return false;}
     const text = elementText(element);
     if (target.nameEquals && text !== normalize(target.nameEquals)) {return false;}
     if (target.nameContains && !text.includes(normalize(target.nameContains))) {return false;}
     if (target.textContains && !normalize(element.textContent).includes(normalize(target.textContains))) {return false;}
-    if (target.ariaContains && !normalize(element.getAttribute('aria-label')).includes(normalize(target.ariaContains))) {
+    if (target.ariaContains && !normalize([
+        element.getAttribute('aria-label'),
+        element.getAttribute('aria-labelledby'),
+        element.getAttribute('aria-describedby'),
+        element.getAttribute('title'),
+    ].filter(Boolean).join(' ')).includes(normalize(target.ariaContains))) {
         return false;
     }
     return true;
@@ -45,8 +74,7 @@ export const resolveEntityElement = (
         const element = documentRef.getElementById(target.idEquals);
         if (element) {candidates.push(element);}
     } else if (target.classContains) {
-        const firstClass = target.classContains.split(/\s+/).find(Boolean);
-        if (firstClass) {candidates.push(...Array.from(documentRef.getElementsByClassName(firstClass)));}
+        candidates.push(...classCandidates(documentRef, target.classContains));
     } else if (target.roleEquals) {
         candidates.push(...Array.from(documentRef.querySelectorAll(`[role="${target.roleEquals}"]`)));
     } else if (target.kind === 'table') {
@@ -89,15 +117,13 @@ export const resolveTargetElements = (
         const element = ownerDocument.getElementById(target.idEquals);
         if (element && (isDocument || root.contains(element))) {candidates.push(element);}
     } else if (target.classContains) {
-        const firstClass = target.classContains.split(/\s+/).find(Boolean);
-        if (firstClass) {
-            const scope = root as Document | Element;
-            candidates.push(...Array.from(scope.getElementsByClassName(firstClass)));
-        }
+        candidates.push(...classCandidates(root, target.classContains));
     } else if (target.roleEquals) {
         candidates.push(...Array.from(root.querySelectorAll(`[role="${target.roleEquals}"]`)));
     } else {
-        candidates.push(...Array.from(root.querySelectorAll('input, select, textarea, button, a, th, [role]')));
+        candidates.push(...Array.from(root.querySelectorAll(
+            'input, select, textarea, button, a, th, [role], [aria-label], [title]',
+        )));
     }
     return candidates.filter((element) => matchesDomTarget(element, target));
 };
@@ -109,7 +135,32 @@ export const enrichVisualBindingsFromDom = (
 ): VisualTargetRef[] => {
     const replacedEntityIds = new Set<string>();
     const replacedColumnIds = new Set<string>();
+    const replacedAnnotationIds = new Set<string>();
     const additions: VisualTargetRef[] = [];
+
+    const addResolvedBinding = (
+        entity: CanvasEntityDraft,
+        annotationId: string,
+        role: VisualTargetRef['role'],
+        elements: Element[],
+        extras: Pick<VisualTargetRef, 'fieldKey' | 'actionIntent'> = {},
+    ): void => {
+        const boxes = elements
+            .map(rectOf)
+            .filter((box): box is PickRect => box !== null);
+        if (boxes.length === 0) {return;}
+        replacedAnnotationIds.add(annotationId);
+        additions.push({
+            entityId: entity.id,
+            nodeId: `dom:${role}:${annotationId}`,
+            kind: entity.kind,
+            role,
+            ...extras,
+            canvasAnnotationId: annotationId,
+            bbox: boxes[0],
+            ...(boxes.length > 1 ? {matchedNodeBoxes: boxes} : {}),
+        });
+    };
 
     for (const entity of draft.entities) {
         const entityElement = resolveEntityElement(entity, documentRef);
@@ -124,6 +175,18 @@ export const enrichVisualBindingsFromDom = (
                 role: 'entity',
                 bbox: entityRect,
             });
+        }
+
+        for (const annotation of entity.annotations) {
+            addResolvedBinding(
+                entity,
+                annotation.id,
+                annotation.type,
+                resolveTargetElements(annotation.target, entityElement),
+                annotation.type === 'action'
+                    ? {actionIntent: annotation.businessKey}
+                    : {fieldKey: annotation.businessKey},
+            );
         }
 
         for (const column of entity.columns) {
@@ -141,11 +204,37 @@ export const enrichVisualBindingsFromDom = (
                 canvasAnnotationId: column.id,
                 bbox: headerRect,
             });
+            for (const action of column.actions) {
+                addResolvedBinding(
+                    entity,
+                    action.id,
+                    'action',
+                    resolveTargetElements(action.target, entityElement),
+                    {actionIntent: action.actionIntent},
+                );
+            }
+        }
+
+        if (entity.pagination) {
+            const itemElements = entity.pagination.itemTarget
+                ? resolveTargetElements(entity.pagination.itemTarget, entityElement)
+                : [entityElement];
+            const pageElements = itemElements.flatMap((item) =>
+                resolveTargetElements(entity.pagination!.pageTarget, item),
+            );
+            addResolvedBinding(
+                entity,
+                `${entity.id}_pgpage`,
+                'pagination',
+                pageElements,
+                {actionIntent: entity.pagination.actionIntent},
+            );
         }
     }
 
     const retained = bindings.filter((binding) => {
         if (binding.role === 'entity' && replacedEntityIds.has(binding.entityId)) {return false;}
+        if (binding.canvasAnnotationId && replacedAnnotationIds.has(binding.canvasAnnotationId)) {return false;}
         if (binding.role === 'column') {
             if (binding.canvasAnnotationId && replacedColumnIds.has(binding.canvasAnnotationId)) {return false;}
             if (draft.entities.some((entity) =>

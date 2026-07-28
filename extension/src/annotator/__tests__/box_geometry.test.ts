@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     computeCenter,
+    insetRect,
     projectViewportRect,
     unionRect,
 } from '../layout/box_geometry.js';
@@ -27,6 +28,16 @@ test('projectViewportRect shifts stale viewport boxes by scroll delta only', () 
 test('computeCenter returns midpoint of rect', () => {
     const center = computeCenter({x: 10, y: 20, width: 100, height: 40});
     assert.deepEqual(center, {x: 60, y: 40});
+});
+
+test('insetRect keeps a centered SVG stroke inside the target bounds', () => {
+    const rect = insetRect({x: 10, y: 20, width: 100, height: 40}, 1.5);
+    assert.deepEqual(rect, {x: 11.5, y: 21.5, width: 97, height: 37});
+});
+
+test('insetRect never produces negative dimensions', () => {
+    const rect = insetRect({x: 1, y: 2, width: 2, height: 1}, 3);
+    assert.deepEqual(rect, {x: 4, y: 5, width: 0, height: 0});
 });
 
 test('unionRect returns null on empty input', () => {

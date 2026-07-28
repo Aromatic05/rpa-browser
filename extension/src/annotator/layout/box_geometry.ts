@@ -25,6 +25,13 @@ export const computeCenter = (rect: Rect): Point => ({
     y: rect.y + rect.height / 2,
 });
 
+export const insetRect = (rect: Rect, inset: number): Rect => ({
+    x: rect.x + inset,
+    y: rect.y + inset,
+    width: Math.max(0, rect.width - inset * 2),
+    height: Math.max(0, rect.height - inset * 2),
+});
+
 export const unionRect = (boxes: PickRect[]): Rect | null => {
     if (boxes.length === 0) {
         return null;

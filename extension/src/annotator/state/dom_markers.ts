@@ -20,13 +20,13 @@ const STYLE_TEXT = `
 [${MARKER_ATTR}] {
     --rpa-marker-color: #16a34a;
     outline: 2px dashed var(--rpa-marker-color) !important;
-    outline-offset: 2px !important;
+    outline-offset: -2px !important;
     transition: outline-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease !important;
 }
 [${MARKER_ATTR}][${KIND_ATTR}="action"] { --rpa-marker-color: #ea580c; }
 [${COLUMN_GROUP_ATTR}] {
     outline: 2px dashed #7c3aed !important;
-    outline-offset: 2px !important;
+    outline-offset: -2px !important;
 }
 [${MARKER_ATTR}][${KIND_ATTR}="column"] {
     --rpa-marker-color: #7c3aed;
@@ -53,6 +53,7 @@ const STYLE_TEXT = `
 }
 [${MARKER_ATTR}][${STATE_ATTR}="selected"] {
     outline-width: 3px !important;
+    outline-offset: -3px !important;
     outline-style: solid !important;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--rpa-marker-color) 18%, transparent) !important;
 }
