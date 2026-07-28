@@ -9,7 +9,7 @@ const repoRoot = process.cwd();
 const read = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 const stepTypesSource = read('src/runner/steps/types.ts');
-const resolveTargetSource = read('src/runner/steps/helpers/resolve_target.ts');
+const legacyResolveTargetPath = path.join(repoRoot, 'src/runner/steps/helpers/resolve_target.ts');
 const serializationSource = read('src/runner/serialization/types.ts');
 const runStepsTypesSource = read('src/runner/run_steps_types.ts');
 const runStepsSource = read('src/runner/run_steps.ts');
@@ -61,11 +61,12 @@ test('step model source keeps normalized action target shape', () => {
     }
 });
 
-test('resolve target source and serialization source keep resolve sidecar boundary', () => {
-    assert.equal(resolveTargetSource.includes(`source: 'nodeId' | 'selector' | 'resolve'`), true);
-    assert.equal(resolveTargetSource.includes(`source: 'selector' | 'id' | 'hint'`), false);
-    assert.equal(resolveTargetSource.includes(`source: 'id'`), false);
-    assert.equal(resolveTargetSource.includes(`source: 'hint'`), false);
+test('V2 capture resolver and serialization keep the resolve sidecar boundary', () => {
+    assert.equal(fs.existsSync(legacyResolveTargetPath), false);
+    for (const forbidden of ['ruleEntityOverlay', 'businessEntityOverlay', 'executors/snapshot/core']) {
+        assert.equal(captureResolveExecutorSource.includes(forbidden), false, `capture_resolve must not use ${forbidden}`);
+    }
+    assert.equal(captureResolveExecutorSource.includes('semanticBindingsByProfile'), true);
 
     assert.equal(serializationSource.includes('StepResolveFile'), true);
     assert.equal(serializationSource.includes('SerializedStep'), true);

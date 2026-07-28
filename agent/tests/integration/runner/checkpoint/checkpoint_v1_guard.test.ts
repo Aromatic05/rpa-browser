@@ -80,10 +80,10 @@ test('artifacts guard', async () => {
 });
 
 test('query naming guard', async () => {
-    const resolverSource = await readAgentFile('src/runner/steps/executors/snapshot/core/business_entity_resolver.ts');
     const stepTypesSource = await readAgentFile('src/runner/steps/types.ts');
+    const mcpSchemaSource = await readAgentFile('src/mcp/schemas.ts');
 
-    for (const source of [resolverSource, stepTypesSource]) {
+    for (const source of [stepTypesSource, mcpSchemaSource]) {
         assert.equal(source.includes('table.hasNextPage'), true);
         assert.equal(source.includes('table.nextPageTarget'), true);
         assert.equal(source.includes('table.has_next_page'), false);
@@ -93,7 +93,7 @@ test('query naming guard', async () => {
 
 test('serialization guard', async () => {
     const stepTypesSource = await readAgentFile('src/runner/steps/types.ts');
-    const resolveTargetSource = await readAgentFile('src/runner/steps/helpers/resolve_target.ts');
+    const captureResolveSource = await readAgentFile('src/runner/steps/executors/capture_resolve.ts');
     const serializationSource = await readAgentFile('src/runner/serialization/types.ts');
     const serializationTestSource = await readAgentFile('tests/integration/runner/serialization/serialization_yaml.test.ts');
 
@@ -125,8 +125,11 @@ test('serialization guard', async () => {
         assert.equal(dragBlock.includes(required), true, `drag_and_drop missing ${required}`);
     }
 
-    assert.equal(resolveTargetSource.includes(`source: 'nodeId' | 'selector' | 'resolve'`), true);
-    assert.equal(resolveTargetSource.includes(`source: 'selector' | 'id' | 'hint'`), false);
+    await assert.rejects(fs.access(path.join(agentRoot, 'src/runner/steps/helpers/resolve_target.ts')));
+    for (const forbidden of ['ruleEntityOverlay', 'businessEntityOverlay', 'executors/snapshot/core']) {
+        assert.equal(captureResolveSource.includes(forbidden), false, `capture_resolve must not use ${forbidden}`);
+    }
+    assert.equal(captureResolveSource.includes('semanticBindingsByProfile'), true);
 
     for (const required of ['assertNoCoreHintFields', 'assertNoLegacyActionTargetFields', 'resolve', 'rawContext', 'locatorCandidates', 'replayHints', 'StepResolveFile', 'SerializedStep']) {
         assert.equal(serializationSource.includes(required), true, `serialization types missing ${required}`);
