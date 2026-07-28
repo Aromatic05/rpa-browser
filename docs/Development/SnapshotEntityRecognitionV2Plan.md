@@ -4,7 +4,7 @@
 
 本文是 Snapshot、实体识别、entity_rules、annotator 与 runtime query 的实施计划，不是概念草案。
 
-当前状态：**阶段 1 核心实现已修复并通过独立验收，但原生产切换退出门槛尚未满足，状态为 blocked；不得开始阶段 2。**
+当前状态：**阶段 1、阶段 2 已验收；阶段 3 可以开始。生产结构消费者切换和 V1 删除分别由后续阶段门槛约束。**
 
 归档基线：
 
@@ -17,8 +17,8 @@
 
 | 阶段 | 名称 | 状态 | 主要退出产物 |
 | --- | --- | --- | --- |
-| 1 | Canonical Observation 与 Relation 基础层 | blocked（生产切换未完成） | 不可变事实层、scope、identity、relations、quotient、实验报告 |
-| 2 | Atomic Control 与可执行 Locator | pending | 唯一 ControlIndex、control 状态机、canonical locator |
+| 1 | Canonical Observation 与 Relation 基础层 | accepted | 不可变事实层、scope、identity、relations、quotient、实验报告 |
+| 2 | Atomic Control 与可执行 Locator | accepted | 唯一 ControlIndex、control 状态机、canonical locator |
 | 3 | FormComponent 组装与表单规则迁移 | pending | 强类型 FormComponent、表单 ownership、表单规则新路径 |
 | 4 | TableComponent 组装与表格规则迁移 | pending | 多 part TableComponent、列行模型、pagination ownership |
 | 5 | SemanticBindings、Projection 与消费方切换 | pending | 新 snapshot/query/annotator/session/diff 全链路 |
@@ -1143,8 +1143,8 @@ session refresh -> remap/stale/diff
 
 - 核心实现、25 项 Snapshot 测试和 10 个固定/浏览器 fixture 已通过。
 - 仓库整体类型检查仍因未迁移调用方引用已删除 V1 模块而失败；这是当前迁移状态的显式诊断，不通过恢复 V1 实现消除。
-- “生产 capture/fusion 只有一个入口”和“旧 runtime 已删除”两个退出门槛尚未满足。
-- 因此阶段 1 状态保持 blocked，不得以“独立模块通过”为由开始阶段 2。
+- “生产 capture/fusion 只有一个入口”属于 Stage 5 消费方切换门槛。
+- “旧 runtime 已删除”属于 Stage 6 清理门槛，不阻塞 Stage 2。
 
 ### 8.8 交接重点
 
@@ -1171,7 +1171,7 @@ Observation query helpers
 
 - 阶段 1 已验收。
 - observation、relations、quotient contracts 冻结。
-- production capture 只走 V2 facts。
+- Stage 2 实现直接消费 V2 facts；不要求未迁移的其他生产消费者已经切换。
 
 ### 9.3 范围
 
@@ -1246,6 +1246,18 @@ Observation query helpers
 - control InvariantValidator 无 executable-target/locator conflict。
 - post-action verification 覆盖 native select、radio、checkbox 和 custom select。
 - 旧 trigger-only executable custom-select 路径已删除。
+
+当前验收结果：
+
+- Snapshot 独立类型检查通过。
+- 46 项 Snapshot/Control/Locator/production-adapter 测试全部通过。
+- Element Plus 与 Ant Design Select 真实组件验收通过。
+- 10 个固定/浏览器 fixture 的 control/locator 基线通过，control invariant failure 为 0。
+- 28 个 controls 中 24 个可执行，executable-without-resolved-locator 为 0。
+- 唯一 unresolved locator 位于显式 unavailable scope，不存在全局 fallback。
+- click、fill、type、select_option、hover、target scroll、target press-key、drag-and-drop 和 element screenshot 已切到 V2 canonical locator。
+- `capture_resolve` 仍属于 Stage 5 消费方切换，不构成第二套 ControlIndex。
+- 因此阶段 2 状态为 accepted，阶段 3 可以开始。
 
 ### 9.8 交接重点
 
@@ -1330,6 +1342,7 @@ Observation query helpers
 - form rule 的结构目标解析只使用新组件路径，matcher 语义仍由现有唯一实现承担。
 - V1 form recognition 和 form LCA ownership 已删除，没有第二套 form matcher。
 - extension 尚未切换，但 agent 输出已包含完整 form visual binding input。
+
 
 ### 10.8 交接重点
 

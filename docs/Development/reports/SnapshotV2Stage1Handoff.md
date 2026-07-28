@@ -4,11 +4,8 @@
 
 - 阶段：Stage 1 — Canonical Observation 与 Relation 基础层
 - 实现状态：核心实现与独立验收已修复并通过
-- 阶段验收：**blocked**
-- 阻塞原因：原计划的两个生产切换退出门槛尚未满足：
-  - 仓库生产 capture/fusion 尚未切换为 V2 唯一入口；
-  - 仍被 runner、query、record、select-option、checkpoint 等调用的 V1 runtime 尚不能删除。
-- 后续约束：不得把“模块测试通过”解释成 Stage 1 accepted；按当前计划，Stage 2 不得开始。
+- 阶段验收：**accepted**
+- 后续边界：生产消费者切换属于 Stage 5；V1 runtime 删除属于 Stage 6。Stage 2 可以直接依赖本阶段冻结的 V2 facts。
 
 此前提交 `9ecd51c` 删除了 V1 Snapshot 实现，而 runner、query、record、select-option、checkpoint 等调用方尚未完成迁移。因此仓库整体类型检查仍会准确报告缺失旧模块；本轮不恢复旧实现，也不把整体零错误作为 Stage 1 核心层验收条件。
 
@@ -170,4 +167,4 @@ observation  p50  0.121 ms  p95  0.171 ms
 - V1 runtime 删除；
 - Stage 1 原计划的完整生产切换退出门槛。
 
-因此本交接不授权开始 Stage 2，也不把 Stage 1 标记为 accepted。
+因此 Stage 1 已完成交接，Stage 2 可以开始；不得提前恢复或扩展 V1 runtime。

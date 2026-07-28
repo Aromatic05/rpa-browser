@@ -41,6 +41,15 @@ export const resolveLocatorScopePath = (
                 evidence: [scopeEvidence('locator.scope.missing', [nodeId], { scopeId })],
             };
         }
+        if (scope.status === 'unavailable') {
+            return {
+                status: 'missing',
+                evidence: [scopeEvidence('locator.scope.unavailable', [nodeId], {
+                    scopeId,
+                    reason: scope.unavailableReason,
+                })],
+            };
+        }
         if (!scope.parentScopeId) {break;}
         if (!scope.hostNodeId || !observation.nodes[scope.hostNodeId]) {
             return {

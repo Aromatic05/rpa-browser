@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { RunStepsDeps } from '../../run_steps';
+import type { RunStepsDeps } from '../../run_steps_types';
 import type { ExecutionBinding } from '../../../runtime/execution/bindings';
 import type { RuntimeWorkspace } from '../../../runtime/workspace/workspace';
 

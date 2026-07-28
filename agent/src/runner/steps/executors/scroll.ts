@@ -1,29 +1,8 @@
 import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
+import type { RunStepsDeps } from '../../run_steps_types';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
-import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { resolveTarget, type ResolveAuditAttempt, type TargetCandidate } from '../helpers/resolve_target';
-import { isValidStepResolve } from '../resolve_utils';
-
-const pushAttempt = (
-    attempts: ResolveAuditAttempt[],
-    candidate: TargetCandidate,
-    stage: ResolveAuditAttempt['stage'],
-    ok: boolean,
-    error?: { code?: string; message?: string },
-) => {
-    attempts.push({
-        path: candidate.path,
-        selector: candidate.selector,
-        source: candidate.source,
-        confidence: candidate.confidence,
-        ok,
-        stage,
-        errorCode: error?.code,
-        errorMessage: error?.message,
-    });
-};
+import { resolveAtomicActionTarget } from '../../../snapshot';
 
 export const executeBrowserScroll = async (
     step: Step<'browser.scroll'>,
@@ -31,120 +10,68 @@ export const executeBrowserScroll = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || isValidStepResolve(step.resolve));
-    if (hasTarget) {
-        const resolved = await resolveTarget(binding, {
-            nodeId: step.args.nodeId,
-            selector: step.args.selector,
-            resolve: step.resolve,
-        }, {
-            deps,
-            workspaceName,
-            reason: 'browser.scroll',
-            stepId: step.id,
-            stepName: step.name,
-        });
-        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
-
-        const highlightBeforeActionMs = deps.config.waitPolicy.highlightBeforeActionMs;
-        const attempts: ResolveAuditAttempt[] = [];
-        let lastError: StepResult['error'] | undefined;
-        for (let candidateIndex = 0; candidateIndex < resolved.target.candidates.length; candidateIndex += 1) {
-            const candidate = resolved.target.candidates[candidateIndex];
-            const highlight = await binding.traceTools['trace.locator.highlight']({
-                selector: candidate.selector,
-                highlightMs: highlightBeforeActionMs,
-                candidateIndex,
-                stepId: step.id,
-                stepName: step.name,
-            });
-            if (!highlight.ok) {
-                const error = mapTraceError(highlight.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
-                lastError = error;
-                pushAttempt(attempts, candidate, 'highlight', false, { code: error.code, message: error.message });
-                continue;
-            }
-            pushAttempt(attempts, candidate, 'highlight', true);
-            const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: candidate.selector });
-            if (!scroll.ok) {
-                const error = mapTraceError(scroll.error) || { code: 'ERR_INTERNAL', message: 'trace error' };
-                lastError = error;
-                pushAttempt(attempts, candidate, 'scrollIntoView', false, { code: error.code, message: error.message });
-                continue;
-            }
-            pushAttempt(attempts, candidate, 'scrollIntoView', true);
-            if (deps.config.humanPolicy.enabled) {
-                const delayMs = pickDelayMs(
-                    deps.config.humanPolicy.scrollDelayMsRange.min,
-                    deps.config.humanPolicy.scrollDelayMsRange.max,
-                );
-                if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
-            }
-            return {
-                stepId: step.id,
-                ok: true,
-                data: {
-                    audit: {
-                        confidence: resolved.target.resolution.audit.confidence,
-                        warnings: resolved.target.resolution.audit.warnings,
-                        chosenPath: candidate.path,
-                        finalSelector: candidate.selector,
-                        snapshotRequired: resolved.target.resolution.audit.snapshotRequired,
-                        snapshotRefreshed: resolved.target.resolution.audit.snapshotRefreshed,
-                        snapshotRefreshReason: resolved.target.resolution.audit.snapshotRefreshReason,
-                        snapshotId: resolved.target.resolution.audit.snapshotId,
-                        snapshotUrl: resolved.target.resolution.audit.snapshotUrl,
-                        attempts,
-                    },
-                },
-            };
+    const target = {
+        nodeId: step.args.nodeId ?? step.resolve?.hint?.target?.nodeId,
+        selector: step.args.selector ?? step.resolve?.hint?.locator?.direct?.query,
+    };
+    if (target.nodeId || target.selector) {
+        const resolved = await resolveAtomicActionTarget(binding.page, target);
+        if (!resolved.ok) {
+            return { stepId: step.id, ok: false, error: {
+                code: resolved.error.code,
+                message: resolved.error.message,
+                details: resolved.error.details,
+            } };
         }
-
+        try {
+            await resolved.target.locator.scrollIntoViewIfNeeded({
+                timeout: deps.config.waitPolicy.visibleTimeoutMs,
+            });
+        } catch (error) {
+            return { stepId: step.id, ok: false, error: {
+                code: /timeout/i.test(String(error)) ? 'ERR_TIMEOUT' : 'ERR_INTERNAL',
+                message: error instanceof Error ? error.message : String(error),
+            } };
+        }
+        await humanDelay(binding.page, deps);
         return {
             stepId: step.id,
-            ok: false,
-            error: {
-                ...(lastError || { code: 'ERR_NOT_FOUND', message: 'no scroll target candidate matched' }),
-                details: {
-                    ...((lastError?.details as Record<string, unknown>) || {}),
-                    confidence: resolved.target.resolution.audit.confidence,
-                    warnings: resolved.target.resolution.audit.warnings,
-                    snapshotRequired: resolved.target.resolution.audit.snapshotRequired,
-                    snapshotRefreshed: resolved.target.resolution.audit.snapshotRefreshed,
-                    snapshotRefreshReason: resolved.target.resolution.audit.snapshotRefreshReason,
-                    snapshotId: resolved.target.resolution.audit.snapshotId,
-                    snapshotUrl: resolved.target.resolution.audit.snapshotUrl,
-                    chosenPath: resolved.target.resolution.path,
-                    finalSelector: resolved.target.selector,
-                    failedPath: attempts.length > 0 ? attempts[attempts.length - 1].path : undefined,
-                    failedReason: lastError?.message,
-                    attempts,
-                },
+            ok: true,
+            data: {
+                nodeId: resolved.target.nodeId,
+                controlRef: resolved.target.control?.ref,
+                captureRevision: resolved.target.snapshot.observation.identity.captureRevision,
+                resolver: 'snapshot-v2-canonical-locator',
             },
         };
     }
 
-    const amount = step.args.amount ?? 600;
+    const amount = Math.max(0, Math.abs(step.args.amount ?? 600));
     const direction = step.args.direction ?? 'down';
-    const total = Math.max(0, Math.abs(amount));
-    const steps = Math.min(14, Math.max(6, Math.ceil(total / 250)));
-    const perStep = steps > 0 ? Math.floor(total / steps) : total;
-    let remaining = total;
-    for (let i = 0; i < steps; i += 1) {
-        const delta = i === steps - 1 ? remaining : perStep;
+    const sign = direction === 'up' ? -1 : 1;
+    const steps = Math.min(14, Math.max(1, Math.ceil(amount / 250)));
+    let remaining = amount;
+    for (let index = 0; index < steps; index += 1) {
+        const delta = index === steps - 1 ? remaining : Math.floor(amount / steps);
         remaining -= delta;
         if (delta <= 0) {continue;}
-        const scrolled = await binding.traceTools['trace.page.scrollBy']({ direction, amount: delta });
-        if (!scrolled.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(scrolled.error) };
-        }
+        await binding.page.evaluate((value) => window.scrollBy(0, value), sign * delta);
         const delayMs = deps.config.humanPolicy.enabled
             ? pickDelayMs(
-                  deps.config.humanPolicy.scrollDelayMsRange.min,
-                  deps.config.humanPolicy.scrollDelayMsRange.max,
-              )
+                deps.config.humanPolicy.scrollDelayMsRange.min,
+                deps.config.humanPolicy.scrollDelayMsRange.max,
+            )
             : 16;
         if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
-    return { stepId: step.id, ok: true };
+    return { stepId: step.id, ok: true, data: { resolver: 'page-scroll' } };
+};
+
+const humanDelay = async (page: import('playwright').Page, deps: RunStepsDeps) => {
+    if (!deps.config.humanPolicy.enabled) {return;}
+    const delayMs = pickDelayMs(
+        deps.config.humanPolicy.scrollDelayMsRange.min,
+        deps.config.humanPolicy.scrollDelayMsRange.max,
+    );
+    if (delayMs > 0) {await waitForHumanDelay(page, delayMs);}
 };

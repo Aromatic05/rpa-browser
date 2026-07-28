@@ -1,9 +1,8 @@
 import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
+import type { RunStepsDeps } from '../../run_steps_types';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
-import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { resolveTarget } from '../helpers/resolve_target';
+import { executeAtomicPressKey } from '../../../snapshot';
 
 export const executeBrowserPressKey = async (
     step: Step<'browser.press_key'>,
@@ -11,42 +10,19 @@ export const executeBrowserPressKey = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const hasTarget = Boolean(step.args.nodeId || step.args.selector || step.args.resolveId || step.resolve);
-    if (hasTarget) {
-        const resolved = await resolveTarget(binding, {
-            nodeId: step.args.nodeId,
-            selector: step.args.selector,
-            resolve: step.resolve,
-        }, {
-            deps,
-            workspaceName,
-            reason: 'browser.press_key',
-            stepId: step.id,
-            stepName: step.name,
-        });
-        if (!resolved.ok) {return { stepId: step.id, ok: false, error: resolved.error };}
-
-        const timeout = deps.config.waitPolicy.visibleTimeoutMs;
-        const scroll = await binding.traceTools['trace.locator.scrollIntoView']({ selector: resolved.target.selector });
-        if (!scroll.ok) {return { stepId: step.id, ok: false, error: mapTraceError(scroll.error) };}
-        const visible = await binding.traceTools['trace.locator.waitForVisible']({
-            selector: resolved.target.selector,
-            timeout,
-        });
-        if (!visible.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(visible.error) };
-        }
-        const focus = await binding.traceTools['trace.locator.focus']({ selector: resolved.target.selector });
-        if (!focus.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(focus.error) };
-        }
-    }
-
-    const pressed = await binding.traceTools['trace.keyboard.press']({
-        key: normalizeBrowserPressKey(step.args.key),
-    });
-    if (!pressed.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(pressed.error) };
+    const target = {
+        nodeId: step.args.nodeId ?? step.resolve?.hint?.target?.nodeId,
+        selector: step.args.selector ?? step.resolve?.hint?.locator?.direct?.query,
+    };
+    const hasTarget = Boolean(target.nodeId || target.selector);
+    const result = await executeAtomicPressKey(
+        binding.page,
+        hasTarget ? target : undefined,
+        normalizeBrowserPressKey(step.args.key),
+        { timeoutMs: deps.config.waitPolicy.visibleTimeoutMs },
+    );
+    if (!result.ok) {
+        return { stepId: step.id, ok: false, error: { code: result.code, message: result.message, details: result.details } };
     }
     if (deps.config.humanPolicy.enabled) {
         const delayMs = pickDelayMs(
@@ -55,13 +31,21 @@ export const executeBrowserPressKey = async (
         );
         if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
-    return { stepId: step.id, ok: true };
+    return {
+        stepId: step.id,
+        ok: true,
+        data: {
+            nodeId: result.nodeId || undefined,
+            controlRef: result.controlRef,
+            captureRevision: result.captureRevision || undefined,
+            resolver: hasTarget ? 'snapshot-v2-canonical-locator' : 'page-keyboard',
+        },
+    };
 };
 
 export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platform = process.platform): string => {
     const key = String(rawKey || '').trim();
     if (!key) {return key;}
-
     const normalized = key
         .split('+')
         .map((part) => part.trim())
@@ -74,7 +58,6 @@ export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platfo
             if (lower === 'esc') {return 'Escape';}
             return part.length === 1 ? part.toUpperCase() : part;
         });
-
     if (platform === 'darwin') {
         const hasMeta = normalized.some((part) => part.toLowerCase() === 'meta');
         const hasControl = normalized.some((part) => part.toLowerCase() === 'control');

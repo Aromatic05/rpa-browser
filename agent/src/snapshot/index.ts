@@ -18,3 +18,5 @@ export * from './laboratory/replay';
 export * from './capture/browser';
 
 export * from './entity_rule/index';
+export * from './locator/index';
+export * from './control/index';

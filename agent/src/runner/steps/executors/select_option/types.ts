@@ -1,40 +1,10 @@
-import type { BaseControlComponent } from '../snapshot/control/types';
+import type { SelectOptionControlKind } from '../../../../snapshot';
 
-export type SelectOptionKind = 'native_select' | 'radio_group' | 'checkbox_group' | 'custom_select';
+export type SelectOptionKind = SelectOptionControlKind;
 
-export const SELECT_OPTION_KINDS: ReadonlySet<string> = new Set([
+export const SELECT_OPTION_KINDS: ReadonlySet<SelectOptionKind> = new Set([
     'native_select',
     'radio_group',
     'checkbox_group',
     'custom_select',
 ]);
-
-export type SelectOptionControl = {
-    kind: SelectOptionKind;
-    ref: string;
-    component: BaseControlComponent;
-};
-
-export type SelectOptionOption = {
-    value: string;
-    label: string;
-    text?: string;
-    ariaLabel?: string;
-    title?: string;
-    dataValue?: string;
-    dataKey?: string;
-    selected: boolean;
-    nodeId: string;
-};
-
-export type SelectOptionState = {
-    selectedValues: string[];
-    selectedLabels: string[];
-    expanded: boolean;
-    multiple: boolean;
-};
-
-export type SelectOptionMatchResult = {
-    option: SelectOptionOption;
-    index: number;
-};

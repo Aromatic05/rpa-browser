@@ -44,7 +44,8 @@
         "test:e2e:run": "pnpm test:runner:bundle && pnpm -C .. build:extension && playwright test tests/e2e --workers=1",
         "test:e2e:headed": "RPA_E2E_HEADED=1 pnpm test:e2e:run --headed",
         "typecheck:snapshot": "tsc -p tsconfig.snapshot.json",
-        "test:snapshot": "node --import tsx --test --test-concurrency=1 \"tests/integration/snapshot/**/*.test.ts\""
+        "test:snapshot": "node --import tsx --test --test-concurrency=1 \"tests/integration/snapshot/**/*.test.ts\"",
+        "snapshot:v2:stage2-baseline": "tsx scripts/snapshot_v2_stage2_baseline.ts"
     },
     "dependencies": {
         "@axe-core/playwright": "^4.10.2",
