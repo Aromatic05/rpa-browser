@@ -1,9 +1,11 @@
-import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
-import { awaitPageBoundBinding } from '../helpers/runtime_binding';
-import { ensureFreshSnapshot } from './snapshot/core/session_store';
-import { generateSemanticSnapshot } from './snapshot/pipeline/snapshot';
-import { filterFinalEntities } from './snapshot/core/entity_query';
+import type {RunStepsDeps} from '../../run_steps';
+import {
+    buildPageSessionEntityView,
+    ensureFreshPageSession,
+    filterPageSessionEntities,
+} from '../../session';
+import {awaitPageBoundBinding} from '../helpers/runtime_binding';
+import type {Step, StepResult} from '../types';
 
 const assertError = (stepId: string, message: string, details?: unknown): StepResult => ({
     stepId,
@@ -20,7 +22,7 @@ export const executeBrowserAssert = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const { urlIncludes, textVisible, entityExists } = step.args;
+    const {urlIncludes, textVisible, entityExists} = step.args;
     if (!urlIncludes && !textVisible && !entityExists) {
         return {
             stepId: step.id,
@@ -42,8 +44,8 @@ export const executeBrowserAssert = async (
                 ok: false,
                 error: {
                     code: 'ERR_INTERNAL',
-                    message: info.error?.message || 'failed to get page info',
-                    details: info.error?.details,
+                    message: info.error.message || 'failed to get page info',
+                    details: info.error.details,
                 },
             };
         }
@@ -71,7 +73,7 @@ export const executeBrowserAssert = async (
                 const elements = Array.from(document.querySelectorAll('body *'));
                 return elements.some((el) => isVisible(el) && (el.textContent || '').includes(text));
             }`,
-            arg: { needle: textVisible },
+            arg: {needle: textVisible},
         });
         if (!evalResult.ok) {
             return {
@@ -79,37 +81,24 @@ export const executeBrowserAssert = async (
                 ok: false,
                 error: {
                     code: 'ERR_INTERNAL',
-                    message: evalResult.error?.message || 'failed to evaluate text visibility',
-                    details: evalResult.error?.details,
+                    message: evalResult.error.message || 'failed to evaluate text visibility',
+                    details: evalResult.error.details,
                 },
             };
         }
         if (evalResult.data !== true) {
-            return assertError(step.id, 'assert textVisible failed', {
-                textVisible,
-            });
+            return assertError(step.id, 'assert textVisible failed', {textVisible});
         }
     }
 
     if (entityExists) {
-        const ensured = await ensureFreshSnapshot(binding, {
-            refreshReason: 'browser.assert.entityExists',
-            collectBaseSnapshot: async (context) =>
-                await generateSemanticSnapshot(binding.page, {
-                captureRuntimeState: context.fromDirty,
-            }),
-        });
-
-        const finalEntities = ensured.entry.finalEntityView?.entities || [];
-        const filtered = filterFinalEntities(finalEntities, {
-            kind: entityExists.kind,
-            businessTag: entityExists.businessTag,
-            query: entityExists.query,
-        });
-        if (filtered.length === 0) {
-            return assertError(step.id, 'assert entityExists failed', {
-                entityExists,
-            });
+        const {entry} = await ensureFreshPageSession(deps, workspaceName);
+        const entities = filterPageSessionEntities(
+            buildPageSessionEntityView(entry).entities,
+            entityExists,
+        );
+        if (entities.length === 0) {
+            return assertError(step.id, 'assert entityExists failed', {entityExists});
         }
     }
 

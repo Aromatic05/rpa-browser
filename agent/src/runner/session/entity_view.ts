@@ -102,6 +102,35 @@ export const buildPageSessionEntityView = (
     return {entities, byNodeId};
 };
 
+export const filterPageSessionEntities = (
+    entities: readonly PageSessionEntityRecord[],
+    filter: {
+        kind?: RuntimeEntityKind | readonly RuntimeEntityKind[];
+        businessTag?: string | readonly string[];
+        query?: string;
+    },
+): PageSessionEntityRecord[] => {
+    const kinds = normalizeFilterValues(filter.kind);
+    const businessTags = normalizeFilterValues(filter.businessTag);
+    const queryTokens = normalizeSearchTokens(filter.query);
+    return entities.filter((entity) => {
+        if (kinds.length > 0 && !kinds.includes(entity.kind)) {return false;}
+        if (businessTags.length > 0 && (!entity.businessTag || !businessTags.includes(entity.businessTag))) {
+            return false;
+        }
+        if (queryTokens.length > 0) {
+            const haystackTokens = new Set(normalizeSearchTokens([
+                entity.id,
+                entity.kind,
+                entity.name,
+                entity.businessTag,
+            ].filter(Boolean).join(' ')));
+            if (!queryTokens.every((token) => haystackTokens.has(token))) {return false;}
+        }
+        return true;
+    });
+};
+
 export const queryPageSessionBusinessEntity = (
     entry: PageSnapshotSessionEntry,
     businessTag: string,
@@ -487,6 +516,10 @@ const readEntityKind = (value: unknown): RuntimeEntityKind | undefined =>
         ? value as RuntimeEntityKind
         : undefined;
 
+const normalizeFilterValues = (value: string | readonly string[] | undefined): string[] => {
+    if (typeof value === 'string') {return [value];}
+    return value ? Array.from(value) : [];
+};
 const arrayRecords = (value: unknown): Array<Record<string, unknown>> =>
     Array.isArray(value) ? value.filter(isRecord) : [];
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -497,6 +530,8 @@ const normalizeText = (value: string | undefined): string | undefined => {
     return normalized || undefined;
 };
 const normalizeLower = (value: string | undefined): string => normalizeText(value)?.toLowerCase() ?? '';
+const normalizeSearchTokens = (value: string | undefined): string[] =>
+    normalizeLower(value).split(/[^\p{L}\p{N}]+/gu).filter(Boolean);
 const cloneUnknown = <T>(value: T): T => structuredClone(value);
 const notFound = (message: string): {ok: false; error: EntityOperationError} => ({
     ok: false,
