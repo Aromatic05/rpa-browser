@@ -7,6 +7,7 @@ import type {
     Evidence,
     ObservationAnchor,
     ObservationNodeId,
+    PageObservation,
 } from '../observation/model/contracts';
 import {mergeSemanticBindings} from '../rules/semantic/merge';
 import type {
@@ -17,6 +18,8 @@ import type {
     EnsureFreshPageSessionInput,
     PageSessionFreshness,
     PageSessionRefreshReason,
+    PageSessionSelection,
+    PageSessionSelectionConfirmation,
     PageSnapshotCapture,
     PageSnapshotSessionEntry,
     PageSnapshotSessionPort,
@@ -27,6 +30,7 @@ type MutablePageSessionState = {
     dirtyRevision: number;
     appliedDirtyRevision: number;
     inFlight?: Promise<PageSnapshotSessionEntry>;
+    selectionAnchor?: ObservationAnchor;
 };
 
 export class PageSnapshotSessionStore<Key extends object = object>
@@ -90,6 +94,63 @@ implements PageSnapshotSessionPort<Key> {
         return observation
             ? resolveObservationAnchor(anchor, observation)
             : {status: 'stale', evidence: [missingSessionEvidence(anchor.nodeId)]};
+    }
+
+    public confirmSelection(
+        pageKey: Key,
+        nodeId: ObservationNodeId,
+    ): PageSessionSelectionConfirmation {
+        const state = this.states.get(pageKey);
+        const observation = state?.entry?.capture.control.observation;
+        if (!state || !observation) {return {ok: false, reason: 'missing-session'};}
+        const anchor = createObservationAnchor(observation, nodeId);
+        if (!anchor) {return {ok: false, reason: 'unanchorable-node'};}
+        const resolution = resolveObservationAnchor(anchor, observation);
+        if (resolution.status !== 'resolved') {
+            return {ok: false, reason: 'non-unique-identity', resolution};
+        }
+        state.selectionAnchor = cloneAnchor(anchor);
+        return {
+            ok: true,
+            selection: {
+                status: 'resolved',
+                anchor: cloneAnchor(anchor),
+                nodeId: resolution.nodeId,
+                evidence: cloneEvidence(resolution.evidence),
+            },
+        };
+    }
+
+    public clearSelection(pageKey: Key): void {
+        const state = this.states.get(pageKey);
+        if (state) {state.selectionAnchor = undefined;}
+    }
+
+    public readSelection(pageKey: Key): PageSessionSelection {
+        const state = this.states.get(pageKey);
+        if (!state?.selectionAnchor) {return {status: 'none'};}
+        const observation = state.entry?.capture.control.observation;
+        if (!observation) {
+            return {
+                status: 'stale',
+                anchor: cloneAnchor(state.selectionAnchor),
+                evidence: [missingSessionEvidence(state.selectionAnchor.nodeId)],
+            };
+        }
+        return selectionFromResolution(
+            state.selectionAnchor,
+            resolveObservationAnchor(state.selectionAnchor, observation),
+        );
+    }
+
+    public resolveSelectionForObservation(
+        pageKey: Key,
+        observation: PageObservation,
+    ): PageSessionSelection {
+        const anchor = this.states.get(pageKey)?.selectionAnchor;
+        return anchor
+            ? selectionFromResolution(anchor, resolveObservationAnchor(anchor, observation))
+            : {status: 'none'};
     }
 
     private stateFor(pageKey: Key): MutablePageSessionState {
@@ -168,3 +229,33 @@ const missingSessionEvidence = (nodeId: ObservationNodeId): Evidence => ({
     source: 'platform',
     nodeIds: [nodeId],
 });
+const cloneAnchor = (anchor: ObservationAnchor): ObservationAnchor => ({...anchor});
+
+const selectionFromResolution = (
+    anchor: ObservationAnchor,
+    resolution: AnchorResolution,
+): Exclude<PageSessionSelection, {status: 'none'}> => {
+    if (resolution.status === 'resolved') {
+        return {
+            status: 'resolved',
+            anchor: cloneAnchor(anchor),
+            nodeId: resolution.nodeId,
+            evidence: cloneEvidence(resolution.evidence),
+        };
+    }
+    if (resolution.status === 'ambiguous') {
+        return {
+            status: 'ambiguous',
+            anchor: cloneAnchor(anchor),
+            candidateNodeIds: [...resolution.candidateNodeIds],
+            evidence: cloneEvidence(resolution.evidence),
+        };
+    }
+    return {
+        status: 'stale',
+        anchor: cloneAnchor(anchor),
+        evidence: cloneEvidence(resolution.evidence),
+    };
+};
+const cloneEvidence = (evidence: readonly Evidence[]): Evidence[] =>
+    evidence.map((item) => ({...item, nodeIds: [...item.nodeIds], detail: item.detail ? {...item.detail} : undefined}));

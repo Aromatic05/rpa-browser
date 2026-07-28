@@ -9,11 +9,13 @@ test('runner page session captures one V2 component bundle and refreshes it afte
     try {
         const page = await browser.newPage();
         await page.setContent(`
-          <form id="Orders">
-            <label for="Buyer">Buyer</label>
-            <input id="Buyer" name="buyer">
-            <button id="Save" type="submit">Save</button>
-          </form>
+          <section id="Card">
+            <form id="Orders">
+              <label for="Buyer">Buyer</label>
+              <input id="Buyer" name="buyer">
+              <button id="Save" type="submit">Save</button>
+            </form>
+          </section>
         `);
         const deps = completeRunStepsDeps({pluginHost: {} as never}, {page});
 
@@ -21,6 +23,13 @@ test('runner page session captures one V2 component bundle and refreshes it afte
         assert.equal(Object.values(first.entry.capture.control.controls.controls).some((control) => control.kind === 'input'), true);
         assert.equal(Object.keys(first.entry.capture.form.forms.forms).length, 1);
         assert.equal(first.entry.capture.entityRules?.status, 'disabled');
+        const cardNodeId = Object.keys(first.entry.capture.control.observation.nodes)
+            .find((nodeId) => first.entry.capture.control.observation.attributes[nodeId]?.id === 'Card');
+        assert.ok(cardNodeId);
+        const confirmation = deps.pageSession.confirmSelection(page, cardNodeId);
+        assert.equal(confirmation.ok, true);
+        if (!confirmation.ok) {throw new Error('selection confirmation failed');}
+        const confirmedAnchor = structuredClone(confirmation.selection.anchor);
 
         const reused = await ensureFreshPageSession(deps, 'ws-1');
         assert.equal(reused.entry, first.entry);
@@ -40,6 +49,13 @@ test('runner page session captures one V2 component bundle and refreshes it afte
         assert.equal(Object.values(refreshed.entry.capture.control.controls.controls)
             .some((control) => control.controlNodeId
                 && refreshed.entry.capture.control.observation.attributes[control.controlNodeId]?.id === 'Cancel'), true);
+        const selection = deps.pageSession.readSelection(page);
+        assert.equal(selection.status, 'resolved');
+        if (selection.status !== 'resolved') {throw new Error('selection did not resolve');}
+        assert.deepEqual(selection.anchor, confirmedAnchor);
+        const form = Object.values(refreshed.entry.capture.form.forms.forms)[0];
+        assert.equal(form.location.selectionScopeNodeId, selection.nodeId);
+        assert.notEqual(form.rootNodeId, selection.nodeId);
     } finally {
         await browser.close();
     }

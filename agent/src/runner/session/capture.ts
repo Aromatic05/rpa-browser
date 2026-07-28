@@ -24,7 +24,14 @@ export const ensureFreshPageSession = async (
         reason: options.explicit ? 'explicit' : undefined,
         capture: async () => {
             const control = await captureControlSnapshot(binding.page);
-            const components = buildEntityRuleComponentSnapshots(control);
+            const selection = deps.pageSession.resolveSelectionForObservation(
+                binding.page,
+                control.observation,
+            );
+            const components = buildEntityRuleComponentSnapshots(
+                control,
+                selection.status === 'resolved' ? selection.nodeId : undefined,
+            );
             return {
                 control,
                 form: components.form,

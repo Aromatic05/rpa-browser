@@ -3,9 +3,11 @@ import type {FormSnapshot} from '../components/form/model/contracts';
 import type {TableSnapshot} from '../components/table/model/contracts';
 import type {
     AnchorResolution,
+    Evidence,
     ObservationAnchor,
     ObservationIdentity,
     ObservationNodeId,
+    PageObservation,
 } from '../observation/model/contracts';
 import type {EntityRulesExecutionResult} from '../rules/runtime/matcher';
 import type {SemanticBindings, SemanticSuggestions} from '../rules/semantic/contracts';
@@ -21,6 +23,16 @@ export type PageSessionFreshness =
     | {status: 'dirty'; refreshReason: 'dirty-interaction'}
     | {status: 'navigation'; refreshReason: 'navigation'}
     | {status: 'fresh'};
+
+export type PageSessionSelection =
+    | {status: 'none'}
+    | {status: 'resolved'; anchor: ObservationAnchor; nodeId: ObservationNodeId; evidence: Evidence[]}
+    | {status: 'ambiguous'; anchor: ObservationAnchor; candidateNodeIds: ObservationNodeId[]; evidence: Evidence[]}
+    | {status: 'stale'; anchor: ObservationAnchor; evidence: Evidence[]};
+
+export type PageSessionSelectionConfirmation =
+    | {ok: true; selection: Extract<PageSessionSelection, {status: 'resolved'}>}
+    | {ok: false; reason: 'missing-session' | 'unanchorable-node' | 'non-unique-identity'; resolution?: AnchorResolution};
 
 export type PageSnapshotCapture = {
     control: ControlSnapshot;
@@ -52,4 +64,8 @@ export type PageSnapshotSessionPort<Key extends object> = {
     ensureFresh: (input: EnsureFreshPageSessionInput<Key>) => Promise<PageSnapshotSessionEntry>;
     createAnchor: (pageKey: Key, nodeId: ObservationNodeId) => ObservationAnchor | undefined;
     resolveAnchor: (pageKey: Key, anchor: ObservationAnchor) => AnchorResolution;
+    confirmSelection: (pageKey: Key, nodeId: ObservationNodeId) => PageSessionSelectionConfirmation;
+    clearSelection: (pageKey: Key) => void;
+    readSelection: (pageKey: Key) => PageSessionSelection;
+    resolveSelectionForObservation: (pageKey: Key, observation: PageObservation) => PageSessionSelection;
 };

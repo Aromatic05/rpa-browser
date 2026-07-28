@@ -376,3 +376,80 @@ test('page session protects confirmed semantic targets and refreshes inferred ta
     assert.equal(bindings.byId['lifecycle:inferred'].status, 'active');
     assert.deepEqual(bindings.byId['lifecycle:inferred'].target.nodeIds, [inferredNew]);
 });
+
+test('page session preserves a confirmed selection anchor across revisions and reports it stale after navigation', async () => {
+    const store = new PageSnapshotSessionStore<object>();
+    const pageKey = {};
+    const captures = [
+        snapshotBundle({pageEpoch: 'selection-a', captureRevision: 1}, [
+            {captureId: 'selected-a1', backendNodeId: 'selected'},
+        ]),
+        snapshotBundle({pageEpoch: 'selection-a', captureRevision: 2}, [
+            {captureId: 'prefix', backendNodeId: 'prefix'},
+            {captureId: 'selected-a2', backendNodeId: 'selected'},
+        ]),
+        snapshotBundle({pageEpoch: 'selection-b', captureRevision: 1}, [
+            {captureId: 'selected-b1', backendNodeId: 'selected'},
+        ]),
+    ];
+    let captureIndex = 0;
+    const capture = async () => captures[captureIndex++];
+
+    const first = await store.ensureFresh({pageKey, pageUrl: '/orders', capture});
+    const firstNodeId = first.capture.control.observation.captureIdToNodeId['selected-a1'];
+    const confirmation = store.confirmSelection(pageKey, firstNodeId);
+    assert.equal(confirmation.ok, true);
+    if (!confirmation.ok) {throw new Error('selection confirmation failed');}
+    const confirmedAnchor = structuredClone(confirmation.selection.anchor);
+
+    store.markDirty(pageKey, 'interaction');
+    const second = await store.ensureFresh({pageKey, pageUrl: '/orders', capture});
+    const secondNodeId = second.capture.control.observation.captureIdToNodeId['selected-a2'];
+    const remapped = store.readSelection(pageKey);
+    assert.equal(remapped.status, 'resolved');
+    if (remapped.status !== 'resolved') {throw new Error('selection did not resolve');}
+    assert.equal(remapped.nodeId, secondNodeId);
+    assert.deepEqual(remapped.anchor, confirmedAnchor);
+
+    await store.ensureFresh({pageKey, pageUrl: '/orders/2', capture});
+    const stale = store.readSelection(pageKey);
+    assert.equal(stale.status, 'stale');
+    if (stale.status !== 'stale') {throw new Error('selection did not become stale');}
+    assert.deepEqual(stale.anchor, confirmedAnchor);
+
+    store.clearSelection(pageKey);
+    assert.deepEqual(store.readSelection(pageKey), {status: 'none'});
+});
+
+test('page session rejects ambiguous selection confirmation without replacing the existing confirmed scope', async () => {
+    const store = new PageSnapshotSessionStore<object>();
+    const pageKey = {};
+    const first = snapshotBundle({pageEpoch: 'selection-ambiguous', captureRevision: 1}, [
+        {captureId: 'stable', backendNodeId: 'stable'},
+    ]);
+    await store.ensureFresh({pageKey, pageUrl: '/orders', capture: async () => first});
+    const stableNodeId = first.control.observation.captureIdToNodeId.stable;
+    const stable = store.confirmSelection(pageKey, stableNodeId);
+    assert.equal(stable.ok, true);
+    if (!stable.ok) {throw new Error('stable selection confirmation failed');}
+
+    const ambiguous = snapshotBundle({pageEpoch: 'selection-ambiguous', captureRevision: 2}, [
+        {captureId: 'stable-next', backendNodeId: 'stable'},
+        {captureId: 'copy-a', backendNodeId: 'duplicate'},
+        {captureId: 'copy-b', backendNodeId: 'duplicate'},
+    ]);
+    store.markDirty(pageKey, 'interaction');
+    await store.ensureFresh({pageKey, pageUrl: '/orders', capture: async () => ambiguous});
+    const ambiguousNodeId = ambiguous.control.observation.captureIdToNodeId['copy-a'];
+    const rejected = store.confirmSelection(pageKey, ambiguousNodeId);
+    assert.equal(rejected.ok, false);
+    if (rejected.ok) {throw new Error('ambiguous selection was accepted');}
+    assert.equal(rejected.reason, 'non-unique-identity');
+    assert.equal(rejected.resolution?.status, 'ambiguous');
+
+    const retained = store.readSelection(pageKey);
+    assert.equal(retained.status, 'resolved');
+    if (retained.status !== 'resolved') {throw new Error('stable selection was not retained');}
+    assert.equal(retained.anchor.backendNodeId, 'stable');
+    assert.equal(retained.nodeId, ambiguous.control.observation.captureIdToNodeId['stable-next']);
+});
