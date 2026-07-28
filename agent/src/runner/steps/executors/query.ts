@@ -1,282 +1,245 @@
-import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
-import { awaitPageBoundBinding } from '../helpers/runtime_binding';
-import type { SnapshotResult, UnifiedNode } from './snapshot/core/types';
-import { normalizeText } from './snapshot/core/runtime_store';
-import { ensureFreshEntityContext } from './entity_context';
-import { queryBusinessEntity, resolveBusinessEntityTarget } from './snapshot/core/business_entity_resolver';
+import {
+    resolveSemanticRole,
+    type ObservationNodeId,
+    type PageObservation,
+} from '../../../snapshot';
+import type {RunStepsDeps} from '../../run_steps';
+import {
+    ensureFreshPageSession,
+    queryPageSessionBusinessEntity,
+    resolvePageSessionBusinessTarget,
+} from '../../session';
+import type {Step, StepResult} from '../types';
 
 const MAX_LIMIT = 500;
 const ROOT_FROM_REFS = new Set(['snapshot', 'snapshot.latest']);
+
+type StructuralQueryArgs = Extract<Step<'browser.query'>['args'], {from: unknown}>;
 
 export const executeBrowserQuery = async (
     step: Step<'browser.query'>,
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
+    const {entry} = await ensureFreshPageSession(deps, workspaceName);
+
     if ('op' in step.args) {
-        if (step.args.op === 'entity') {
-            const context = await ensureFreshEntityContext(deps, workspaceName, 'browser.query.entity');
-            const queried = queryBusinessEntity(
-                context.snapshot,
-                context.finalEntityView,
+        const result = step.args.op === 'entity'
+            ? queryPageSessionBusinessEntity(
+                entry,
                 step.args.businessTag,
                 step.args.query,
-            );
-            if (!queried.ok) {
-                return {
-                    stepId: step.id,
-                    ok: false,
-                    error: queried.error,
-                };
-            }
-            return {
-                stepId: step.id,
-                ok: true,
-                data: queried.data,
-            };
-        }
-
-        if (step.args.op === 'entity.target') {
-            const context = await ensureFreshEntityContext(deps, workspaceName, 'browser.query.entity.target');
-            const resolved = resolveBusinessEntityTarget(
-                context.snapshot,
-                context.finalEntityView,
+            )
+            : resolvePageSessionBusinessTarget(
+                entry,
                 step.args.businessTag,
                 step.args.target,
             );
-            if (!resolved.ok) {
-                return {
-                    stepId: step.id,
-                    ok: false,
-                    error: resolved.error,
-                };
-            }
-            return {
-                stepId: step.id,
-                ok: true,
-                data: resolved.data,
-            };
-        }
-
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: 'unsupported browser.query op',
-            },
-        };
+        return result.ok
+            ? {stepId: step.id, ok: true, data: result.data}
+            : {stepId: step.id, ok: false, error: result.error};
     }
 
-    const args = step.args as Extract<Step<'browser.query'>['args'], { from: unknown }>;
-    const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const snapshot = readLatestSnapshot(binding.traceCtx.cache);
-    if (!snapshot) {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_NOT_FOUND',
-                message: 'snapshot is required before browser.query',
-            },
-        };
+    const args = step.args;
+    const relationResult = normalizeRelation(args.relation);
+    if (!relationResult.ok) {
+        return stepError(step.id, 'ERR_BAD_ARGS', relationResult.message);
+    }
+    const relation = relationResult.value;
+    if (args.limit !== undefined
+        && (!Number.isInteger(args.limit) || args.limit <= 0 || args.limit > MAX_LIMIT)) {
+        return stepError(step.id, 'ERR_BAD_ARGS', `limit must be an integer between 1 and ${MAX_LIMIT}`);
     }
 
-    const relation = args.relation || 'descendant';
-    if (relation !== 'child' && relation !== 'descendant') {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: 'relation must be child or descendant',
-            },
-        };
-    }
+    const observation = entry.capture.control.observation;
+    const sources = resolveSourceNodeIds(observation, args.from);
+    if (!sources.ok) {return {stepId: step.id, ok: false, error: sources.error};}
 
-    if (
-        args.limit !== undefined &&
-        (!Number.isInteger(args.limit) || args.limit <= 0 || args.limit > MAX_LIMIT)
-    ) {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `limit must be an integer between 1 and ${MAX_LIMIT}`,
-            },
-        };
-    }
-
-    const sourceNodes = resolveSourceNodes(snapshot, args.from);
-    if (!sourceNodes.ok) {
-        return {
-            stepId: step.id,
-            ok: false,
-            error: sourceNodes.error,
-        };
-    }
-
-    const limit = args.limit || MAX_LIMIT;
-    const nodes = collectCandidates(sourceNodes.data, relation)
-        .filter((node) => matchesWhere(node, snapshot, args.where))
-        .slice(0, limit)
-        .map((node) => toNodeLike(node, snapshot));
+    const limit = args.limit ?? MAX_LIMIT;
+    const nodeIds = collectCandidates(observation, sources.nodeIds, relation)
+        .filter((nodeId) => isActive(observation, nodeId))
+        .filter((nodeId) => matchesWhere(observation, nodeId, args.where))
+        .slice(0, limit);
 
     return {
         stepId: step.id,
         ok: true,
         data: {
             kind: 'nodeIds',
-            nodeIds: nodes.map((node) => node.id),
-            count: nodes.length,
+            nodeIds,
+            count: nodeIds.length,
             meta: {
-                nodes,
+                nodes: nodeIds.map((nodeId) => toNodeLike(observation, nodeId)),
+                pageEpoch: observation.identity.pageEpoch,
+                captureRevision: observation.identity.captureRevision,
             },
         },
     };
 };
 
-const readLatestSnapshot = (cache: unknown): SnapshotResult | null => {
-    if (!cache || typeof cache !== 'object') {return null;}
-    const snapshot = (cache as { latestSnapshot?: unknown }).latestSnapshot;
-    if (!snapshot || typeof snapshot !== 'object') {return null;}
-    const typed = snapshot as Partial<SnapshotResult>;
-    if (!typed.root || !typed.nodeIndex || !typed.attrIndex || !typed.contentStore) {
-        return null;
-    }
-    return typed as SnapshotResult;
-};
-
-const resolveSourceNodes = (
-    snapshot: SnapshotResult,
-    from: Extract<Step<'browser.query'>['args'], { from: unknown }>['from'],
-): { ok: true; data: UnifiedNode[] } | { ok: false; error: StepResult['error'] } => {
+const resolveSourceNodeIds = (
+    observation: PageObservation,
+    from: StructuralQueryArgs['from'],
+): {ok: true; nodeIds: ObservationNodeId[]} | {ok: false; error: StepResult['error']} => {
     if (typeof from === 'string') {
         const normalized = normalizeText(from);
-        if (!normalized) {
-            return badArgs('from is required');
+        if (!normalized) {return queryError('from is required');}
+        if (!ROOT_FROM_REFS.has(normalized)) {
+            return queryError('from must be snapshot or snapshot.latest');
         }
-        if (ROOT_FROM_REFS.has(normalized)) {
-            return { ok: true, data: [snapshot.root] };
-        }
-        return badArgs('from must be snapshot or snapshot.latest');
+        return {
+            ok: true,
+            nodeIds: observation.scopes.rootScopeIds
+                .map((scopeId) => observation.scopes.scopes[scopeId].rootNodeId),
+        };
     }
 
     if ('nodeIds' in from) {
         if (!Array.isArray(from.nodeIds) || from.nodeIds.length === 0) {
-            return badArgs('from.nodeIds must be a non-empty array');
+            return queryError('from.nodeIds must be a non-empty array');
         }
-        const nodes = from.nodeIds.map((id) => snapshot.nodeIndex[id]).filter(Boolean);
-        return { ok: true, data: nodes };
+        const nodes = new Map(Object.entries(observation.nodes));
+        return {
+            ok: true,
+            nodeIds: unique(from.nodeIds.filter((nodeId) => nodes.has(nodeId))),
+        };
     }
 
     if ('nodes' in from) {
         if (!Array.isArray(from.nodes) || from.nodes.length === 0) {
-            return badArgs('from.nodes must be a non-empty array');
+            return queryError('from.nodes must be a non-empty array');
         }
-        const ids = from.nodes.map((item) => {
-            if (typeof item === 'object') {
+        const nodes = new Map(Object.entries(observation.nodes));
+        const nodeIds = from.nodes
+            .map((item) => {
+                if (typeof item !== 'object') {return undefined;}
                 if ('id' in item && typeof item.id === 'string') {return item.id;}
-                if ('handle' in item && typeof item.handle === 'object' && 'nodeId' in item.handle) {
-                    const nodeId = (item.handle as { nodeId?: unknown }).nodeId;
-                    if (typeof nodeId === 'string') {return nodeId;}
+                if ('handle' in item && typeof item.handle === 'object'
+                    && 'nodeId' in item.handle && typeof item.handle.nodeId === 'string') {
+                    return item.handle.nodeId;
                 }
-            }
-            return '';
-        });
-        const nodes = ids.map((id) => snapshot.nodeIndex[id]).filter(Boolean);
-        return { ok: true, data: nodes };
+                return undefined;
+            })
+            .filter((nodeId): nodeId is string => typeof nodeId === 'string' && nodes.has(nodeId));
+        return {ok: true, nodeIds: unique(nodeIds)};
     }
 
-    return badArgs('unsupported from type');
+    return queryError('unsupported from type');
 };
 
-const badArgs = (message: string) => ({
-    ok: false as const,
-    error: {
-        code: 'ERR_BAD_ARGS',
-        message,
-    },
-});
-
-const collectCandidates = (sources: UnifiedNode[], relation: 'child' | 'descendant'): UnifiedNode[] => {
-    const seen = new Set<string>();
-    const out: UnifiedNode[] = [];
+const collectCandidates = (
+    observation: PageObservation,
+    sources: readonly ObservationNodeId[],
+    relation: 'child' | 'descendant',
+): ObservationNodeId[] => {
+    const seen = new Set<ObservationNodeId>();
+    const out: ObservationNodeId[] = [];
     for (const source of sources) {
-        const items = relation === 'child' ? source.children : getDescendants(source);
-        for (const item of items) {
-            if (seen.has(item.id)) {continue;}
-            seen.add(item.id);
-            out.push(item);
+        const candidates = relation === 'child'
+            ? observation.children[source]
+            : descendants(observation, source);
+        for (const nodeId of candidates) {
+            if (seen.has(nodeId)) {continue;}
+            seen.add(nodeId);
+            out.push(nodeId);
         }
     }
-    return out;
+    return out.sort((left, right) =>
+        observation.documentOrder[left] - observation.documentOrder[right]);
 };
 
-const getDescendants = (source: UnifiedNode): UnifiedNode[] => {
-    const out: UnifiedNode[] = [];
-    const stack = [...source.children];
+const descendants = (
+    observation: PageObservation,
+    rootNodeId: ObservationNodeId,
+): ObservationNodeId[] => {
+    const out: ObservationNodeId[] = [];
+    const stack = [...observation.children[rootNodeId]];
     while (stack.length > 0) {
-        const node = stack.shift()!;
-        out.push(node);
-        if (node.children.length > 0) {
-            stack.unshift(...node.children);
-        }
+        const nodeId = stack.shift()!;
+        out.push(nodeId);
+        stack.unshift(...observation.children[nodeId]);
     }
     return out;
 };
 
 const matchesWhere = (
-    node: UnifiedNode,
-    snapshot: SnapshotResult,
-    where: Extract<Step<'browser.query'>['args'], { from: unknown }>['where'],
+    observation: PageObservation,
+    nodeId: ObservationNodeId,
+    where: StructuralQueryArgs['where'],
 ): boolean => {
     if (!where) {return true;}
-    if (where.role && normalizeLower(node.role) !== normalizeLower(where.role)) {return false;}
-
-    const attrs = snapshot.attrIndex[node.id];
-    const tag = attrs.tag || attrs.tagName;
-    if (where.tag && normalizeLower(tag) !== normalizeLower(where.tag)) {return false;}
-
-    if (where.text?.contains) {
-        const text = normalizeLower(readNodeText(node, snapshot));
-        if (!text.includes(normalizeLower(where.text.contains))) {return false;}
+    if (where.role && normalizeLower(resolveSemanticRole(observation, nodeId).value) !== normalizeLower(where.role)) {
+        return false;
     }
-
+    if (where.tag && normalizeLower(observation.nodes[nodeId].tag) !== normalizeLower(where.tag)) {
+        return false;
+    }
+    if (where.text?.contains
+        && !normalizeLower(readNodeText(observation, nodeId)).includes(normalizeLower(where.text.contains))) {
+        return false;
+    }
     if (where.attrs) {
+        const attrs = observation.attributes[nodeId];
         for (const [key, value] of Object.entries(where.attrs)) {
-            if ((attrs[key] || '') !== value) {return false;}
+            if ((attrs[key] ?? '') !== value) {return false;}
         }
     }
     return true;
 };
 
-const toNodeLike = (node: UnifiedNode, snapshot: SnapshotResult) => {
-    const attrs = snapshot.attrIndex[node.id];
-    const tag = attrs.tag || attrs.tagName;
+const toNodeLike = (observation: PageObservation, nodeId: ObservationNodeId) => {
+    const attrs = observation.attributes[nodeId];
+    const children = observation.children[nodeId];
     return {
-        id: node.id,
-        role: node.role || undefined,
-        tag,
-        text: readNodeText(node, snapshot),
-        attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
-        children: node.children.length > 0 ? node.children.map((child) => child.id) : undefined,
-        handle: {
-            nodeId: node.id,
-        },
+        id: nodeId,
+        role: resolveSemanticRole(observation, nodeId).value || undefined,
+        tag: observation.nodes[nodeId].tag,
+        text: readNodeText(observation, nodeId),
+        attrs: Object.keys(attrs).length > 0 ? {...attrs} : undefined,
+        children: children.length > 0 ? [...children] : undefined,
+        handle: {nodeId},
     };
 };
 
-const readNodeText = (node: UnifiedNode, snapshot: SnapshotResult) => {
-    const name = normalizeText(node.name);
-    if (name) {return name;}
-    if (typeof node.content === 'string') {return normalizeText(node.content);}
-    if (node.content?.ref) {
-        return normalizeText(snapshot.contentStore[node.content.ref]);
+const readNodeText = (observation: PageObservation, nodeId: ObservationNodeId): string | undefined => {
+    const values: string[] = [];
+    const stack = [nodeId];
+    while (stack.length > 0) {
+        const current = stack.shift()!;
+        const text = normalizeText(observation.accessibility[current]?.name)
+            ?? normalizeText(observation.text[current]);
+        if (text && !values.includes(text)) {values.push(text);}
+        stack.unshift(...observation.children[current]);
     }
-    return undefined;
+    return normalizeText(values.join(' '));
 };
 
-const normalizeLower = (value: string | undefined) => normalizeText(value)?.toLowerCase() || '';
+const isActive = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
+    const activity = observation.activity[nodeId];
+    return activity.rendered && activity.subtreeActive && !activity.hiddenByStyle && !activity.inert
+        && activity.ariaExposed !== false;
+};
+
+const normalizeRelation = (value: unknown):
+    | {ok: true; value: 'child' | 'descendant'}
+    | {ok: false; message: string} => {
+    if (value === undefined || value === 'descendant') {return {ok: true, value: 'descendant'};}
+    if (value === 'child') {return {ok: true, value: 'child'};}
+    return {ok: false, message: 'relation must be child or descendant'};
+};
+
+const stepError = (
+    stepId: string,
+    code: 'ERR_BAD_ARGS' | 'ERR_NOT_FOUND',
+    message: string,
+): StepResult => ({stepId, ok: false, error: {code, message}});
+const queryError = (message: string): {ok: false; error: StepResult['error']} => ({
+    ok: false,
+    error: {code: 'ERR_BAD_ARGS', message},
+});
+const normalizeText = (value: string | undefined): string | undefined => {
+    const normalized = value?.replace(/\s+/g, ' ').trim();
+    return normalized || undefined;
+};
+const normalizeLower = (value: string | undefined): string => normalizeText(value)?.toLowerCase() ?? '';
+const unique = <T>(values: readonly T[]): T[] => [...new Set(values)];
