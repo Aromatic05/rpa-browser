@@ -16,7 +16,7 @@ export type GeometryFragment = {
 };
 
 export type SemanticSuggestion = {
-    kind: 'action-intent' | 'component-kind';
+    kind: 'action-intent' | 'component-kind' | 'primary-key-candidate';
     value: string;
     source: 'inferred';
     evidence: Evidence[];

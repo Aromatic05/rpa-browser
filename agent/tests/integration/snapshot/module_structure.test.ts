@@ -11,10 +11,11 @@ const expectedBranches: Record<string, readonly string[]> = {
     '.': ['components', 'indexes', 'observation', 'rules'],
     observation: ['analysis', 'capture', 'model', 'replay'],
     indexes: ['locator', 'ownership', 'relation'],
-    components: ['control', 'form', 'shared'],
+    components: ['control', 'form', 'shared', 'table'],
     rules: ['matching', 'model', 'runtime'],
     'components/control': ['action', 'assembly', 'capture', 'model'],
     'components/form': ['assembly', 'capture', 'model', 'replay'],
+    'components/table': ['assembly', 'model'],
 };
 
 const moduleRanks: Record<string, number> = {
@@ -34,9 +35,11 @@ const moduleRanks: Record<string, number> = {
     'components/form/assembly': 10,
     'components/form/capture': 11,
     'components/form/replay': 11,
-    'rules/model': 12,
-    'rules/matching': 13,
-    'rules/runtime': 14,
+    'components/table/model': 12,
+    'components/table/assembly': 13,
+    'rules/model': 14,
+    'rules/matching': 15,
+    'rules/runtime': 16,
 };
 
 const legacyDirectoryNames = new Set([
@@ -78,7 +81,9 @@ const moduleOf = (filePath: string): string | null => {
     if (relative[0] === 'indexes' && relative.length >= 3) {return relative.slice(0, 2).join('/');}
     if (relative[0] === 'rules' && relative.length >= 3) {return relative.slice(0, 2).join('/');}
     if (relative[0] === 'components' && relative[1] === 'shared') {return 'components/shared';}
-    if (relative[0] === 'components' && (relative[1] === 'control' || relative[1] === 'form') && relative.length >= 4) {
+    if (relative[0] === 'components'
+        && (relative[1] === 'control' || relative[1] === 'form' || relative[1] === 'table')
+        && relative.length >= 4) {
         return relative.slice(0, 3).join('/');
     }
     return null;

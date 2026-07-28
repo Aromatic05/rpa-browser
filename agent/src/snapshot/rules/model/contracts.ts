@@ -40,3 +40,40 @@ export type FormComponentRuleMatchResult = {
     byRuleId: Readonly<Record<string, FormComponentRuleBinding>>;
     diagnostics: readonly AnalysisDiagnostic[];
 };
+
+export type TableComponentRuleSource = 'region' | 'group' | 'node';
+
+export type TableComponentRuleMatch = {
+    kind?: 'table';
+    nameContains?: string;
+    idEquals?: string;
+    nameEquals?: string;
+    roleEquals?: string;
+    classContains?: string;
+    textContains?: string;
+    ariaContains?: string;
+};
+
+export type TableComponentMatchRule = {
+    ruleId: string;
+    source: TableComponentRuleSource;
+    expect: RuleExpectedCardinality;
+    within?: string;
+    match: TableComponentRuleMatch;
+};
+
+export type TableComponentRuleBinding = {
+    ruleId: string;
+    source: TableComponentRuleSource;
+    expect: RuleExpectedCardinality;
+    matchedComponentIds: string[];
+    matchedRowIds: string[];
+    matchedColumnIds: string[];
+    matchedNodeIds: ObservationNodeId[];
+    ok: boolean;
+};
+
+export type TableComponentRuleMatchResult = {
+    byRuleId: Readonly<Record<string, TableComponentRuleBinding>>;
+    diagnostics: readonly AnalysisDiagnostic[];
+};
