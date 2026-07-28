@@ -16,6 +16,7 @@ export type PageSessionEntityRecord = {
     businessTag?: string;
     source: 'structural' | 'inferred' | 'confirmed' | 'manual';
     bindingId?: string;
+    bindingIds?: string[];
     annotation?: Readonly<Record<string, unknown>>;
 };
 
@@ -58,29 +59,38 @@ export const buildPageSessionEntityView = (
 ): PageSessionEntityView => {
     const bindings = activeBindings(entry);
     const entities: PageSessionEntityRecord[] = [];
+    const suppressedEntityIds = new Set(bindings
+        .map((binding) => readString(binding.annotation.suppressesEntityId))
+        .filter((entityId): entityId is string => Boolean(entityId)));
 
     for (const form of Object.values(entry.capture.form.forms.forms)) {
-        const binding = preferredComponentBinding(bindings, form.id, 'form');
+        const nodeId = form.location.structuralRootNodeId;
         entities.push(componentEntity(entry, {
             id: `form:${form.id}`,
-            nodeId: form.location.structuralRootNodeId,
+            nodeId,
             componentId: form.id,
             kind: 'form',
-            binding,
+            bindings: compactBindings(
+                preferredComponentBinding(bindings, form.id, 'form'),
+                preferredNodeDecorationBinding(bindings, nodeId),
+            ),
         }));
     }
     for (const table of Object.values(entry.capture.table.tables.tables)) {
-        const binding = preferredComponentBinding(bindings, table.id, 'table');
+        const nodeId = table.location.structuralRootNodeId;
         entities.push(componentEntity(entry, {
             id: `table:${table.id}`,
-            nodeId: table.location.structuralRootNodeId,
+            nodeId,
             componentId: table.id,
             kind: 'table',
-            binding,
+            bindings: compactBindings(
+                preferredComponentBinding(bindings, table.id, 'table'),
+                preferredNodeDecorationBinding(bindings, nodeId),
+            ),
         }));
     }
 
-    const representedBindingIds = new Set(entities.map((entity) => entity.bindingId).filter(Boolean));
+    const representedBindingIds = new Set(entities.flatMap((entity) => entity.bindingIds ?? []));
     for (const binding of bindings) {
         if (representedBindingIds.has(binding.id)) {continue;}
         const entityKind = readEntityKind(binding.annotation.entityKind ?? binding.annotation.kind);
@@ -90,16 +100,17 @@ export const buildPageSessionEntityView = (
             id: `binding:${binding.id}`,
             nodeId,
             kind: entityKind,
-            binding,
+            bindings: compactBindings(binding, preferredNodeDecorationBinding(bindings, nodeId)),
         }));
     }
 
-    entities.sort((left, right) => compareEntityOrder(entry, left, right));
+    const visibleEntities = entities.filter((entity) => !suppressedEntityIds.has(entity.id));
+    visibleEntities.sort((left, right) => compareEntityOrder(entry, left, right));
     const byNodeId: Record<ObservationNodeId, PageSessionEntityRecord[]> = {};
-    for (const entity of entities) {
+    for (const entity of visibleEntities) {
         byNodeId[entity.nodeId] = [...(byNodeId[entity.nodeId] ?? []), entity];
     }
-    return {entities, byNodeId};
+    return {entities: visibleEntities, byNodeId};
 };
 
 export const filterPageSessionEntities = (
@@ -313,22 +324,29 @@ const componentEntity = (
         nodeId: ObservationNodeId;
         componentId?: string;
         kind: RuntimeEntityKind;
-        binding?: SemanticBusinessBinding;
+        bindings?: SemanticBusinessBinding[];
     },
 ): PageSessionEntityRecord => {
-    const annotation = input.binding?.annotation;
+    const bindings = [...(input.bindings ?? [])]
+        .sort((left, right) => bindingPriority(left) - bindingPriority(right) || left.id.localeCompare(right.id));
+    const annotation = bindings.reduce<Record<string, unknown>>(
+        (merged, binding) => ({...merged, ...binding.annotation}),
+        {},
+    );
+    const preferred = bindings.at(-1);
     return {
         id: input.id,
         nodeId: input.nodeId,
         componentId: input.componentId,
         kind: input.kind,
-        name: readString(annotation?.displayName)
-            ?? readString(annotation?.name)
+        name: readString(annotation.displayName)
+            ?? readString(annotation.name)
             ?? readNodeName(entry, input.nodeId),
-        businessTag: readString(annotation?.businessTag),
-        source: input.binding?.origin ?? 'structural',
-        bindingId: input.binding?.id,
-        annotation,
+        businessTag: readString(annotation.businessTag),
+        source: preferred?.origin ?? 'structural',
+        bindingId: preferred?.id,
+        bindingIds: bindings.map((binding) => binding.id),
+        annotation: Object.keys(annotation).length > 0 ? annotation : undefined,
     };
 };
 
@@ -344,6 +362,20 @@ const preferredComponentBinding = (
 ): SemanticBusinessBinding | undefined => bindings
     .filter((binding) => binding.domain === domain && binding.target.componentIds.includes(componentId))
     .sort((left, right) => bindingPriority(right) - bindingPriority(left) || left.id.localeCompare(right.id))[0];
+
+const preferredNodeDecorationBinding = (
+    bindings: readonly SemanticBusinessBinding[],
+    nodeId: ObservationNodeId,
+): SemanticBusinessBinding | undefined => bindings
+    .filter((binding) => binding.target.nodeIds.includes(nodeId)
+        && (readString(binding.annotation.displayName) || readString(binding.annotation.name))
+        && !readEntityKind(binding.annotation.entityKind ?? binding.annotation.kind)
+        && !readString(binding.annotation.suppressesEntityId))
+    .sort((left, right) => bindingPriority(right) - bindingPriority(left) || left.id.localeCompare(right.id))[0];
+
+const compactBindings = (
+    ...bindings: Array<SemanticBusinessBinding | undefined>
+): SemanticBusinessBinding[] => bindings.filter((binding): binding is SemanticBusinessBinding => Boolean(binding));
 
 const bindingPriority = (binding: SemanticBusinessBinding): number => {
     if (binding.origin === 'manual') {return 3;}

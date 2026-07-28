@@ -11,6 +11,7 @@ import type {
     QueryPlanTargetKind,
 } from '../query/contracts';
 
+export type SemanticBindingDomain = EntityRuleQueryDomain | 'node';
 export type SemanticBindingOrigin = 'inferred' | 'confirmed' | 'manual';
 export type SemanticBindingDisposition = 'active' | 'ignored';
 export type SemanticBindingStatus = 'active' | 'invalidated';
@@ -36,7 +37,7 @@ export type SemanticBusinessBinding = {
     profileName: string;
     ruleId: string;
     planStepId: string;
-    domain: EntityRuleQueryDomain;
+    domain: SemanticBindingDomain;
     targetKind: Exclude<QueryPlanTargetKind, 'query-plan'>;
     origin: SemanticBindingOrigin;
     disposition: SemanticBindingDisposition;

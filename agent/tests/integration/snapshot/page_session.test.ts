@@ -453,3 +453,53 @@ test('page session rejects ambiguous selection confirmation without replacing th
     assert.equal(retained.anchor.backendNodeId, 'stable');
     assert.equal(retained.nodeId, ambiguous.control.observation.captureIdToNodeId['stable-next']);
 });
+
+test('page session persists manual semantic bindings through exact remap and ignored lifecycle', async () => {
+    const store = new PageSnapshotSessionStore<object>();
+    const pageKey = {};
+    const captures = [
+        snapshotBundle({pageEpoch: 'manual-a', captureRevision: 1}, [
+            {captureId: 'panel-a1', backendNodeId: 'panel'},
+        ]),
+        snapshotBundle({pageEpoch: 'manual-a', captureRevision: 2}, [
+            {captureId: 'prefix', backendNodeId: 'prefix'},
+            {captureId: 'panel-a2', backendNodeId: 'panel'},
+        ]),
+    ];
+    let captureIndex = 0;
+    const capture = async () => captures[captureIndex++];
+
+    const first = await store.ensureFresh({pageKey, pageUrl: '/orders', capture});
+    const firstNodeId = first.capture.control.observation.captureIdToNodeId['panel-a1'];
+    const written = store.upsertManualSemanticBinding(pageKey, {
+        id: 'manual-panel',
+        nodeId: firstNodeId,
+        annotation: {
+            entityKind: 'panel',
+            displayName: '人工面板',
+            businessTag: 'manual.panel',
+        },
+    });
+    assert.equal(written.ok, true);
+    if (!written.ok) {throw new Error('manual binding write failed');}
+    assert.equal(written.binding.origin, 'manual');
+    assert.deepEqual(written.binding.target.nodeIds, [firstNodeId]);
+    assert.equal(written.entry.semanticBindingsByProfile['@manual'].nodes[firstNodeId]?.length, 1);
+
+    store.markDirty(pageKey, 'interaction');
+    const refreshed = await store.ensureFresh({pageKey, pageUrl: '/orders', capture});
+    const secondNodeId = refreshed.capture.control.observation.captureIdToNodeId['panel-a2'];
+    const remapped = refreshed.semanticBindingsByProfile['@manual'].byId['@manual:manual-panel'];
+    assert.equal(remapped.status, 'active');
+    assert.deepEqual(remapped.target.nodeIds, [secondNodeId]);
+
+    const ignored = store.ignoreManualSemanticBindings(pageKey, ['@manual:manual-panel']);
+    assert.equal(ignored.ok, true);
+    if (!ignored.ok) {throw new Error('manual binding ignore failed');}
+    assert.equal(ignored.bindings[0]?.disposition, 'ignored');
+    assert.equal(ignored.entry.semanticBindingsByProfile['@manual'].nodes[secondNodeId], undefined);
+    assert.equal(
+        ignored.entry.semanticBindingsByProfile['@manual'].byId['@manual:manual-panel'].disposition,
+        'ignored',
+    );
+});

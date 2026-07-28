@@ -77,7 +77,8 @@ export const buildSemanticBindingIndexes = (
         byId[binding.id] = binding;
         if (binding.status !== 'active' || binding.disposition === 'ignored') {continue;}
         for (const componentId of binding.target.componentIds) {
-            indexComponent(binding.domain === 'form' ? forms : tables, componentId, binding, nextDiagnostics);
+            if (binding.domain === 'form') {indexComponent(forms, componentId, binding, nextDiagnostics);}
+            if (binding.domain === 'table') {indexComponent(tables, componentId, binding, nextDiagnostics);}
         }
         for (const nodeId of binding.target.nodeIds) {append(nodes, nodeId, binding);}
         for (const fieldId of binding.target.fieldIds) {append(fields, fieldId, binding);}

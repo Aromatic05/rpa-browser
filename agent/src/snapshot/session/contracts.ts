@@ -10,7 +10,13 @@ import type {
     PageObservation,
 } from '../observation/model/contracts';
 import type {EntityRulesExecutionResult} from '../rules/runtime/matcher';
-import type {SemanticBindings, SemanticSuggestions} from '../rules/semantic/contracts';
+import type {
+    SemanticAnnotationRecord,
+    SemanticBindingDomain,
+    SemanticBindings,
+    SemanticBusinessBinding,
+    SemanticSuggestions,
+} from '../rules/semantic/contracts';
 
 export type PageSessionRefreshReason =
     | 'missing-snapshot'
@@ -33,6 +39,21 @@ export type PageSessionSelection =
 export type PageSessionSelectionConfirmation =
     | {ok: true; selection: Extract<PageSessionSelection, {status: 'resolved'}>}
     | {ok: false; reason: 'missing-session' | 'unanchorable-node' | 'non-unique-identity'; resolution?: AnchorResolution};
+
+export type ManualSemanticBindingDraft = {
+    id: string;
+    nodeId: ObservationNodeId;
+    domain?: SemanticBindingDomain;
+    annotation: Omit<SemanticAnnotationRecord, 'ruleId' | 'origin' | 'disposition'>;
+};
+
+export type ManualSemanticBindingWriteResult =
+    | {ok: true; entry: PageSnapshotSessionEntry; binding: SemanticBusinessBinding}
+    | {ok: false; reason: 'missing-session' | 'unknown-node' | 'unanchorable-node' | 'non-unique-identity'};
+
+export type ManualSemanticBindingIgnoreResult =
+    | {ok: true; entry: PageSnapshotSessionEntry; bindings: SemanticBusinessBinding[]}
+    | {ok: false; reason: 'missing-session' | 'unknown-binding'};
 
 export type PageSnapshotCapture = {
     control: ControlSnapshot;
@@ -68,4 +89,12 @@ export type PageSnapshotSessionPort<Key extends object> = {
     clearSelection: (pageKey: Key) => void;
     readSelection: (pageKey: Key) => PageSessionSelection;
     resolveSelectionForObservation: (pageKey: Key, observation: PageObservation) => PageSessionSelection;
+    upsertManualSemanticBinding: (
+        pageKey: Key,
+        draft: ManualSemanticBindingDraft,
+    ) => ManualSemanticBindingWriteResult;
+    ignoreManualSemanticBindings: (
+        pageKey: Key,
+        bindingIds: readonly string[],
+    ) => ManualSemanticBindingIgnoreResult;
 };
