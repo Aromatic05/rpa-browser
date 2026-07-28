@@ -123,7 +123,7 @@ registry 拒绝重复 collector ID。所有 collector 读取同一份 immutable 
 - checkbox group
 - custom select
 
-验证失败返回 `ERR_ASSERTION_FAILED`，不会把动作已发出等同于成功。
+验证失败返回 `ERR_ASSERTION_FAILED`，不会把动作已发出等同于成功。custom select 只接受显式 selected/aria-selected/checked 事实，不接受 trigger 文本或 focused option 的隐式 A11y selected。checkbox group 任一后续动作失败时恢复原始 checked 状态。
 
 ## 真实浏览器验收
 
@@ -153,7 +153,7 @@ pnpm -C agent snapshot:v2:stage2-baseline
 
 ```text
 snapshot typecheck: pass
-snapshot tests:     46 pass / 0 fail
+snapshot tests:     60 pass / 0 fail
 stage2 baseline:    pass
 ```
 

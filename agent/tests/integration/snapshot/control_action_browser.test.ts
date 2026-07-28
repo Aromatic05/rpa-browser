@@ -135,3 +135,63 @@ test('disabled options are rejected before action and state remains unchanged', 
         await browser.close();
     }
 });
+
+test('custom select verification rejects trigger text without selected option state', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <button id="trigger-no-state" role="combobox" aria-controls="popup-no-state" aria-expanded="true">Choose</button>
+          <div id="popup-no-state" role="listbox">
+            <button role="option" data-value="Travel">差旅</button>
+          </div>
+          <script>
+            const trigger = document.querySelector('#trigger-no-state');
+            document.querySelector('#popup-no-state').addEventListener('click', (event) => {
+              const option = event.target.closest('[role=option]');
+              if (!option) return;
+              trigger.textContent = option.textContent;
+            });
+          </script>
+        `);
+        const initial = await findControlByDomId(page, 'trigger-no-state');
+        assert.equal(initial.control.capabilities.includes('select_option'), true);
+
+        const result = await executeSelectOptionOnPage(page, {
+            kind: 'custom_select', nodeId: initial.nodeId, values: ['Travel'],
+        });
+        assert.equal(result.ok, false);
+        assert.equal(result.ok ? undefined : result.code, 'ERR_ASSERTION_FAILED');
+        assert.equal(await page.locator('#trigger-no-state').textContent(), '差旅');
+        assert.notEqual(await page.locator('[role=option]').getAttribute('aria-selected'), 'true');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('checkbox group restores original state when a later option action fails', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <fieldset id="transactional-checkboxes">
+            <input id="tx-a" type="checkbox" value="A">
+            <input id="tx-b" type="checkbox" value="B">
+          </fieldset>
+          <script>
+            document.querySelector('#tx-a').addEventListener('change', () => {
+              document.querySelector('#tx-b')?.remove();
+            }, { once: true });
+          </script>
+        `);
+        const initial = await findControlByDomId(page, 'tx-a');
+        const result = await executeSelectOptionOnPage(page, {
+            kind: 'checkbox_group', nodeId: initial.nodeId, values: ['A', 'B'],
+        }, { timeoutMs: 300 });
+
+        assert.equal(result.ok, false);
+        assert.equal(await page.locator('#tx-a').isChecked(), false);
+    } finally {
+        await browser.close();
+    }
+});

@@ -181,15 +181,62 @@ const executeCheckboxGroup = async (
     const matched = matchOptions(control.options, values);
     if (!matched.ok) {return matched.error;}
     const selectedNodeIds = new Set(matched.options.map((option) => option.nodeId));
+    const targets: Array<{ option: ControlOption; locator: Locator; initialChecked: boolean }> = [];
+
     for (const option of control.options) {
         const target = await executableNode(page, snapshot, option.nodeId);
         if (!target.ok) {return target.error;}
-        if (selectedNodeIds.has(option.nodeId)) {
-            await target.locator.check({ timeout: timeoutMs });
-        } else {
-            await target.locator.uncheck({ timeout: timeoutMs });
+        try {
+            targets.push({
+                option,
+                locator: target.locator,
+                initialChecked: await target.locator.isChecked({ timeout: timeoutMs }),
+            });
+        } catch (error) {
+            return checkboxActionFailure('checkbox group preflight failed', error, {
+                controlRef: control.ref,
+                nodeId: option.nodeId,
+                phase: 'preflight',
+            });
         }
     }
+
+    try {
+        for (const target of targets) {
+            const shouldBeChecked = selectedNodeIds.has(target.option.nodeId);
+            if (shouldBeChecked === target.initialChecked) {continue;}
+            if (shouldBeChecked) {
+                await target.locator.check({ timeout: timeoutMs });
+            } else {
+                await target.locator.uncheck({ timeout: timeoutMs });
+            }
+        }
+    } catch (error) {
+        const rollbackFailures: Array<{ nodeId: string; message: string }> = [];
+        for (const target of targets) {
+            try {
+                const checked = await target.locator.isChecked({ timeout: timeoutMs });
+                if (checked === target.initialChecked) {continue;}
+                if (target.initialChecked) {
+                    await target.locator.check({ timeout: timeoutMs });
+                } else {
+                    await target.locator.uncheck({ timeout: timeoutMs });
+                }
+            } catch (rollbackError) {
+                rollbackFailures.push({
+                    nodeId: target.option.nodeId,
+                    message: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+                });
+            }
+        }
+        return checkboxActionFailure('checkbox group action failed and was rolled back', error, {
+            controlRef: control.ref,
+            phase: 'apply',
+            rollbackComplete: rollbackFailures.length === 0,
+            rollbackFailures,
+        });
+    }
+
     return provisional(control);
 };
 
@@ -244,11 +291,7 @@ const verifySelection = async (
     const exact = kind === 'checkbox_group'
         ? setsEqual(selectedNodeIds, expectedNodeIds)
         : [...expectedNodeIds].every((nodeId) => selectedNodeIds.has(nodeId));
-    const visibleFallback = kind === 'custom_select'
-        && values.length === 1
-        && control.triggerNodeId
-        && sameVisibleText(finalSnapshot.observation.text[control.triggerNodeId], matched.options[0]);
-    if (!exact && !visibleFallback) {
+    if (!exact) {
         return failure('ERR_ASSERTION_FAILED', 'selected state does not match requested values after recapture', {
             controlRef,
             expectedValues: values,
@@ -419,16 +462,24 @@ const optionMatches = (option: ControlOption, target: string): boolean => {
     return fields.some((field) => typeof field === 'string' && (field === target || field.trim() === target.trim()));
 };
 
-const sameVisibleText = (text: string | undefined, option: ControlOption): boolean => {
-    if (!text) {return false;}
-    return [option.label, option.text, option.value, option.dataValue]
-        .some((value) => typeof value === 'string' && value.trim() === text.trim());
-};
-
 const validateValues = (values: string[]): string[] | undefined => {
     if (!Array.isArray(values) || values.length === 0) {return undefined;}
     if (values.some((value) => typeof value !== 'string' || value.trim().length === 0)) {return undefined;}
     return [...values];
+};
+
+
+const checkboxActionFailure = (
+    message: string,
+    error: unknown,
+    details: Record<string, unknown>,
+): SelectOptionActionResult => {
+    const cause = error instanceof Error ? error.message : String(error);
+    return failure(
+        /detached|not attached|resolved to 0 elements/i.test(cause) ? 'ERR_STALE' : 'ERR_UNRESOLVED',
+        message,
+        { ...details, cause },
+    );
 };
 
 const provisional = (control: ControlComponent): SelectOptionActionResult => ({

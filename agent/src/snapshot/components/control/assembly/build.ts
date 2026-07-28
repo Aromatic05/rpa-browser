@@ -488,6 +488,7 @@ const readOption = (
     observation: PageObservation,
     semanticNodeId: ObservationNodeId,
     executionNodeId: ObservationNodeId = semanticNodeId,
+    allowImplicitAccessibilitySelection = true,
 ): ControlOption => {
     const nodeId = semanticNodeId;
     const attrs = observation.attributes[nodeId] ?? {};
@@ -506,7 +507,8 @@ const readOption = (
         title: attrs.title,
         dataValue: attrs['data-value'],
         dataKey: attrs['data-key'],
-        selected: truthy(runtime?.selected) || truthy(runtime?.ariaSelected) || truthy(a11y?.selected)
+        selected: truthy(runtime?.selected) || truthy(runtime?.ariaSelected)
+            || (allowImplicitAccessibilitySelection && truthy(a11y?.selected))
             || hasBooleanAttribute(attrs, 'selected') || lower(attrs['aria-selected']) === 'true'
             || truthy(runtime?.checked) || truthy(runtime?.ariaChecked) || hasBooleanAttribute(attrs, 'checked'),
         disabled: truthy(runtime?.disabled) || hasBooleanAttribute(attrs, 'disabled'),
@@ -602,10 +604,10 @@ const resolveCustomSelectOptions = (
             .filter((candidateId) => isNodeInteractable(observation, candidateId));
         if (visualNodeIds.length === semanticNodeIds.length && visualNodeIds.length > 0) {
             return semanticNodeIds.map((semanticNodeId, index) =>
-                readOption(observation, semanticNodeId, visualNodeIds[index]));
+                readOption(observation, semanticNodeId, visualNodeIds[index], false));
         }
     }
-    return semanticNodeIds.map((semanticNodeId) => readOption(observation, semanticNodeId));
+    return semanticNodeIds.map((semanticNodeId) => readOption(observation, semanticNodeId, semanticNodeId, false));
 };
 
 const nearestAncestorWithClass = (
