@@ -4,7 +4,7 @@
 
 本文是 Snapshot、实体识别、entity_rules、annotator 与 runtime query 的实施计划，不是概念草案。
 
-当前状态：**阶段 1 至阶段 4 已验收；阶段 5 尚未开始生产消费方切换。Control/Form/Table 与 entity_rules profile runtime 已形成 V2 生产入口，但旧 runner snapshot/query/session 调用方仍引用已删除的 V1 模块，因此仓库整体类型检查尚未通过。该迁移缺口归属阶段 5，不通过恢复 V1 消除。**
+当前状态：**阶段 1 至阶段 4 已验收；阶段 5 已进入 Checkpoint 5A。QueryPlan、SemanticBindings、SemanticSuggestions、protective merge 与旧 artifact importer 已进入生产 runtime，但 5A 尚未通过退出门槛：旧 runner `resolve_target` 仍读取 `ruleEntityOverlay/businessEntityOverlay`，其他 snapshot/query/session 消费方也仍引用已删除的 V1 模块。该迁移缺口必须通过 V2 消费方切换解决，不恢复 V1。**
 
 归档基线：
 
@@ -21,7 +21,7 @@
 | 2 | Atomic Control 与可执行 Locator | accepted | 唯一 ControlIndex、control 状态机、canonical locator |
 | 3 | FormComponent 组装与表单规则迁移 | accepted | FormComponent、ownership、artifact/profile selection 与真实页面 runtime matcher |
 | 4 | TableComponent 组装与表格规则迁移 | accepted | logical table、canonical row/cell、mirror/editor、table rule runtime |
-| 5 | SemanticBindings、Projection 与消费方切换 | pending | 新 snapshot/query/annotator/session/diff 全链路 |
+| 5 | SemanticBindings、Projection 与消费方切换 | in progress（5A） | 新 snapshot/query/annotator/session/diff 全链路 |
 | 6 | V1 删除与发行级验收 | pending | 无 V1 runtime、完整真实页面验收、文档一致 |
 
 只有当前阶段通过退出门槛后，下一阶段才允许开始。某个阶段可以跨多次会话实施，但不得同时开始后续阶段。
@@ -29,8 +29,8 @@
 当前工程边界：
 
 - `pnpm --filter ./agent test:snapshot`：101/101 通过。
-- `pnpm --filter ./agent test:entity-rules`：11/11 通过。
-- `pnpm --filter ./agent typecheck:snapshot`：仍有 87 项诊断，均位于尚未迁移的旧 runner/record/checkpoint snapshot 消费方及其连锁 unknown 类型；当前 Stage 3/4 新增模块无 TypeScript 诊断。
+- `pnpm --filter ./agent test:entity-rules`：22/22 通过。
+- `pnpm --filter ./agent typecheck:snapshot`：仍有 87 项诊断，均位于尚未迁移的旧 runner/record/checkpoint snapshot 消费方及其连锁 unknown 类型；当前 Stage 3/4 与 Checkpoint 5A 新增模块无 TypeScript 诊断。
 - 不允许通过恢复 `runner/steps/executors/snapshot/*` V1 实现来消除这些诊断；应在阶段 5 完成调用方切换。
 
 ## 2. 从 V1 与实验中冻结的结论
@@ -1530,6 +1530,15 @@ Checkpoint 退出：
 - agent 只有一套规则 matcher。
 - `ruleEntityOverlay/businessEntityOverlay` 不再作为生产事实源。
 - 阶段 3/4 的 form/table component-target bridge 已删除，QueryPlan 直接消费 components 和 canonical nodes。
+
+当前实施状态：
+
+- 已完成：统一 QueryPlan compiler/executor，check/save/runtime 共享同一语义。
+- 已完成：SemanticBindings、SemanticSuggestions、inferred/confirmed/manual/ignored/invalidated 生命周期与 protective merge。
+- 已完成：V1 entity_rules artifact importer；V2 publication validation 仍保持严格。
+- 已完成：阶段 3/4 component-target bridge 与旧 matcher 目录删除。
+- 未通过退出门槛：`agent/src/runner/steps/helpers/resolve_target.ts` 仍读取 `ruleEntityOverlay/businessEntityOverlay`。
+- Checkpoint 5A 状态：implemented，pending exit acceptance。
 
 ### 12.4 Checkpoint 5B：Page session 与 selection
 
