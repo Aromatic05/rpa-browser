@@ -4,7 +4,7 @@
 
 本文是 Snapshot、实体识别、entity_rules、annotator 与 runtime query 的实施计划，不是概念草案。
 
-当前状态：**阶段 1、阶段 2 已验收；阶段 3 的结构组装完成，但 entity_rules 生产接入尚未实现，因此阶段 3 blocked，阶段 4 不得开始。仓库整体不可构建是当前迁移的预期状态，不通过恢复 V1 消除。**
+当前状态：**阶段 1 至阶段 4 已验收；阶段 5 尚未开始生产消费方切换。Control/Form/Table 与 entity_rules profile runtime 已形成 V2 生产入口，但旧 runner snapshot/query/session 调用方仍引用已删除的 V1 模块，因此仓库整体类型检查尚未通过。该迁移缺口归属阶段 5，不通过恢复 V1 消除。**
 
 归档基线：
 
@@ -19,12 +19,19 @@
 | --- | --- | --- | --- |
 | 1 | Canonical Observation 与 Relation 基础层 | accepted | 不可变事实层、scope、identity、relations、quotient、实验报告 |
 | 2 | Atomic Control 与可执行 Locator | accepted | 唯一 ControlIndex、control 状态机、canonical locator |
-| 3 | FormComponent 组装与表单规则迁移 | blocked | FormComponent 与 ownership 已完成；entity_rules runtime/真实 artifact 链未完成 |
-| 4 | TableComponent 组装与表格规则迁移 | blocked | 等待阶段 3 的 entity_rules 生产接入通过 |
+| 3 | FormComponent 组装与表单规则迁移 | accepted | FormComponent、ownership、artifact/profile selection 与真实页面 runtime matcher |
+| 4 | TableComponent 组装与表格规则迁移 | accepted | logical table、canonical row/cell、mirror/editor、table rule runtime |
 | 5 | SemanticBindings、Projection 与消费方切换 | pending | 新 snapshot/query/annotator/session/diff 全链路 |
 | 6 | V1 删除与发行级验收 | pending | 无 V1 runtime、完整真实页面验收、文档一致 |
 
 只有当前阶段通过退出门槛后，下一阶段才允许开始。某个阶段可以跨多次会话实施，但不得同时开始后续阶段。
+
+当前工程边界：
+
+- `pnpm --filter ./agent test:snapshot`：101/101 通过。
+- `pnpm --filter ./agent test:entity-rules`：11/11 通过。
+- `pnpm --filter ./agent typecheck:snapshot`：仍有 87 项诊断，均位于尚未迁移的旧 runner/record/checkpoint snapshot 消费方及其连锁 unknown 类型；当前 Stage 3/4 新增模块无 TypeScript 诊断。
+- 不允许通过恢复 `runner/steps/executors/snapshot/*` V1 实现来消除这些诊断；应在阶段 5 完成调用方切换。
 
 ## 2. 从 V1 与实验中冻结的结论
 
@@ -1249,7 +1256,7 @@ Observation query helpers
 
 当前验收结果：
 
-- Snapshot 测试 84 项全部通过。
+- 当前全量 Snapshot V2 测试 101 项全部通过。
 - Element Plus 与 Ant Design Select 真实组件验收通过。
 - custom select post-action verification 只接受显式 selected/aria-selected/checked 事实，不再接受 trigger 文本或焦点造成的隐式 A11y selected。
 - checkbox group 在执行前解析全部 canonical locator，并在中途失败时恢复原始 checked 状态。
@@ -1351,7 +1358,7 @@ Observation query helpers
 
 当前验收结果：
 
-- Snapshot 测试 84 项全部通过。
+- 当前全量 Snapshot V2 测试 101 项全部通过；entity_rules 集成测试 11 项全部通过。
 - Element Plus 与 Ant Design 的 list、create、dialog、Form.List 和 date-range 页面通过精确浏览器验收；字段、composite、required、actions、residual 均使用固定预期，不再只检查下限。
 - Stage 3 baseline 使用 4 个被 Git 跟踪的代码生成紧凑语料，不依赖 `agent/tests/fixtures/form-v2/` 的本地大型 capture。
 - 紧凑语料 × 50 iterations：47 nodes、4 forms、8 fields、1 composite field、2 residual fields、5 owned actions、1 residual action、22 ownership edges，exact truth error 为 0。
@@ -1361,10 +1368,11 @@ Observation query helpers
 - fieldset 以 label/for、wrapping label、aria-label 和 aria-labelledby 区分独立字段；仅在没有独立字段证据时使用 legend 组装 composite field。
 - active dialog 可以消费单字段表单；无效或 unresolved `form` owner 产生 Form 层 diagnostic。
 - form bridge 在匹配前拒绝 duplicate ruleId、unknown/cyclic within 和空 match，并按依赖拓扑执行前向 within。
-- bridge 保留旧 matcher 的 name/placeholder/subtree text 语义；ambiguous/partial FormComponent 不得产生成功 binding。
-- form bridge 当前没有生产调用方；workspace provider、profile selection、artifact save/load、check/save/reopen/runtime query 尚未实现。
-- entity_rules 验收当前 4 项、0 通过，均明确失败于 `not-implemented`。
-- 因此阶段 3 状态为 blocked，阶段 4 不得开始。
+- form bridge 保留既有 matcher 的 name/placeholder/subtree text 与 `unique`/`one_or_more` 语义；ambiguous/partial FormComponent 不得产生成功 binding。
+- workspace entity_rules 已完成 artifact save/load、profile list/get、explicit/auto/inherit selection 与 strict missing-profile failure。
+- `EntityRulesRuntime.executePage` 从同一次 ControlSnapshot 构建 Form/Table snapshots，并在真实浏览器页面执行选中的 form/table profiles；disabled 路径不触发页面采集。
+- runtime matcher 保留 profile、rule binding、annotation 和 diagnostics；mixed domain、未知条件、missing snapshot 均显式失败，不回退 V1 recognizer。
+- 阶段 3 状态为 accepted。runner/snapshot/query/session 等最终消费方切换归属阶段 5，不属于阶段 3 退出条件。
 
 ### 10.8 交接重点
 
@@ -1465,6 +1473,21 @@ Observation query helpers
 - table rule 的结构目标解析只使用新 TableComponent，matcher 语义仍由现有唯一实现承担。
 - `SAME_KIND_NEST_DROP`、`TABLE_PER_FAMILY_LIMIT`、row-level promotion、pagination-list suppression 等 V1 补丁不再参与生产路径。
 - table locator 和 action target 来自 canonical nodes。
+
+当前验收结果：
+
+- 当前全量 Snapshot V2 测试 101 项全部通过；entity_rules 集成测试 11 项全部通过。
+- 真实 Element Plus 页面包含 23 个 `.el-table`，组装结果严格为 23 个 TableComponent；DOM physical `<table>` 数量高于逻辑表数量，但不会重复产生 entity。
+- 真实 Ant Design sticky/fixed/summary/pagination 页面组装为一个 TableComponent，top/bottom pagination 归属同一逻辑表。
+- native、Element、Ant、多级 header、nested table、treegrid、virtualized row window、footer、pagination ambiguity、FeatureCover 与 CellControlSlot 均有确定性验收。
+- canonical RowIndex 保存全部当前可见行，FeatureCover 只保存有界代表行；二者不混用。
+- 旧版 Element clone-based fixed fixture 将 fixed-left row/cell 映射到 canonical row/cell，fixed-right 独有 action 只形成一个 canonical action column 和一个重复 control slot。
+- mirror mapper 优先使用 exact row key；重复 row key 明确返回 ambiguous，不按位置选择第一个。只有双方无 key 且行数相等时才允许带 weak evidence 的序号映射。
+- editable cell 只通过 exact `aria-controls`/`aria-owns` IDREF 建立 portal editor ownership；不根据 class、文本或邻近关系猜测。
+- 真实浏览器 closed/open editor revision 验证同一 page epoch 下 capture revision 递增，table 从 partial/unresolved 转为 complete/resolved，并将 editor control 归属 canonical cell。
+- custom-select 的外置 listbox 保持 control-owned，不会误分类为 cell editor；重复 portal ID 返回 ambiguous，两个 control 均不会附着到 canonical cell。
+- table component-target bridge 与 entity_rules runtime matcher 已贯通；table `relation=pagination` 和 keyHint 只消费 typed TableComponent facts。
+- 阶段 4 状态为 accepted。SemanticBindings、最终 Projection、runner/query/annotator/session/diff 消费方切换仍属于阶段 5。
 
 ### 11.8 交接重点
 
