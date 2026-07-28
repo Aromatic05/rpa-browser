@@ -1,8 +1,7 @@
 import { getLogger } from '../../logging/logger';
-import { ensureFreshSnapshot } from '../steps/executors/snapshot/core/session_store';
-import { generateSemanticSnapshot } from '../steps/executors/snapshot/pipeline/snapshot';
-import { filterFinalEntities } from '../steps/executors/snapshot/core/entity_query';
-import type { EntityKind } from '../steps/executors/snapshot/core/types';
+import { ensureFreshPageSession } from '../session/capture';
+import { buildPageSessionEntityView, filterPageSessionEntities } from '../session/entity_view';
+import type { EntityKind } from '../steps/types';
 import { getCheckpointMatchRules, type Checkpoint, type CheckpointCtx, type MatchRule } from './types';
 
 const log = getLogger('step');
@@ -26,11 +25,12 @@ const FATAL_ERROR_CODES = new Set(['ERR_BAD_ARGS', 'ERR_INTERNAL']);
 
 let checkpointStore: Checkpoint[] = [];
 
-export const setCheckpoints = (checkpoints: Checkpoint[]) => {
+export const setCheckpoints = (checkpoints: Checkpoint[]): void => {
     checkpointStore = [...checkpoints];
 };
 
-export const listCheckpoints = (injected?: Checkpoint[]) => (injected ? [...injected] : [...checkpointStore]);
+export const listCheckpoints = (injected?: Checkpoint[]): Checkpoint[] =>
+    injected ? [...injected] : [...checkpointStore];
 
 const firstRuleStepName = (checkpoint: Checkpoint) => {
     const matched = getCheckpointMatchRules(checkpoint).find((rule) => 'stepName' in rule);
@@ -128,22 +128,13 @@ const evalEntityExistsRule = async (
     args: { query: string; kind?: EntityKind | EntityKind[]; businessTag?: string | string[] },
     ctx: CheckpointCtx,
 ): Promise<boolean> => {
-    const binding = await getCheckpointBinding(ctx);
-    const ensured = await ensureFreshSnapshot(binding, {
-        refreshReason: 'checkpoint.match.entityExists',
-        collectBaseSnapshot: async (context) =>
-            await generateSemanticSnapshot(binding.page, {
-                captureRuntimeState: context.fromDirty,
-            }),
-    });
-
-    const finalEntities = ensured.entry.finalEntityView?.entities || [];
-    const filtered = filterFinalEntities(finalEntities, {
+    const { entry } = await ensureFreshPageSession(ctx.failedCtx.deps, ctx.failedCtx.workspaceName);
+    const entities = buildPageSessionEntityView(entry).entities;
+    return filterPageSessionEntities(entities, {
         kind: args.kind,
         businessTag: args.businessTag,
         query: args.query,
-    });
-    return filtered.length > 0;
+    }).length > 0;
 };
 
 export const evalMatchRule = async (rule: MatchRule, ctx: CheckpointCtx): Promise<boolean> => {

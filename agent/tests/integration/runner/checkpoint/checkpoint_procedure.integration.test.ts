@@ -13,55 +13,84 @@ import type { CheckpointAction } from '../../../../src/runner/checkpoint/types';
 import { executeBrowserCheckpoint } from '../../../../src/runner/steps/executors/checkpoint';
 import { executeBrowserCompute } from '../../../../src/runner/steps/executors/compute';
 import { executeBrowserQuery } from '../../../../src/runner/steps/executors/query';
-import type { SnapshotResult, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
 import type { StepUnion } from '../../../../src/runner/steps/types';
+import {
+    buildControlSnapshot,
+    buildFormSnapshot,
+    buildLocatorIndex,
+    buildPageObservation,
+    buildRelationIndex,
+    buildTableSnapshot,
+    type PageSnapshotCapture,
+    type RawCapturedNode,
+    type RawPageCapture,
+} from '../../../../src/snapshot';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
-const createNode = (id: string, role: string, name?: string): UnifiedNode => ({
-    id,
-    role,
-    name,
-    children: [],
+const active = () => ({hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true});
+
+const rawNode = (
+    captureId: string,
+    tag: string,
+    parentCaptureId: string | undefined,
+    childCaptureIds: string[],
+    attributes: Record<string, string> = {},
+    ownText?: string,
+): RawCapturedNode => ({
+    captureId,
+    scopeId: 'main',
+    parentCaptureId,
+    childCaptureIds,
+    tag,
+    attributes,
+    ownText,
+    backendNodeId: captureId,
+    activity: active(),
 });
 
-const createTableFixtureSnapshot = (): SnapshotResult => {
-    const root = createNode('root', 'root');
-    const table = createNode('table_1', 'table');
-    const row1 = createNode('row_1', 'row', 'Row A');
-    const row2 = createNode('row_2', 'row', 'Row B');
-    const nextPage = createNode('next_page', 'button', 'Next page');
-    root.children.push(table, nextPage);
-    table.children.push(row1, row2);
+const createTableFixtureCapture = (): {capture: PageSnapshotCapture; nodeIds: Record<string, string>} => {
+    const completeness = {dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete'} as const;
+    const raw: RawPageCapture = {
+        identity: {pageEpoch: 'checkpoint-table', captureRevision: 1},
+        metadata: {schemaVersion: 1, source: 'fixed-fixture', capturedAt: '2026-07-29T00:00:00.000Z'},
+        completeness,
+        scopes: [{id: 'main', kind: 'document', rootCaptureId: 'html', status: 'captured', completeness}],
+        nodes: [
+            rawNode('html', 'html', undefined, ['body']),
+            rawNode('body', 'body', 'html', ['table', 'next_page']),
+            rawNode('table', 'table', 'body', ['tbody'], {id: 'Table'}),
+            rawNode('tbody', 'tbody', 'table', ['row_1', 'row_2']),
+            rawNode('row_1', 'tr', 'tbody', ['cell_1'], {role: 'row'}),
+            rawNode('cell_1', 'td', 'row_1', [], {}, 'Row A'),
+            rawNode('row_2', 'tr', 'tbody', ['cell_2'], {role: 'row'}),
+            rawNode('cell_2', 'td', 'row_2', [], {}, 'Row B'),
+            rawNode('next_page', 'button', 'body', [], {id: 'NextPage'}, 'Next page'),
+        ],
+        accessibility: [],
+        runtimeState: {},
+        diagnostics: [],
+    };
+    const observation = buildPageObservation(raw);
+    const relations = buildRelationIndex(observation);
+    const locators = buildLocatorIndex(observation);
+    const control = buildControlSnapshot({observation, relations, locators});
     return {
-        root,
-        nodeIndex: {
-            root,
-            table_1: table,
-            row_1: row1,
-            row_2: row2,
-            next_page: nextPage,
+        capture: {
+            control,
+            form: buildFormSnapshot({observation, relations, locators, controls: control.controls}),
+            table: buildTableSnapshot({observation, relations, locators, controls: control.controls}),
         },
-        entityIndex: { entities: {}, byNodeId: {} },
-        locatorIndex: {},
-        bboxIndex: {},
-        attrIndex: {
-            table_1: { tag: 'table' },
-            row_1: { tag: 'tr' },
-            row_2: { tag: 'tr' },
-            next_page: { tag: 'button' },
-        },
-        controlIndex: {},
-        contentStore: {},
+        nodeIds: Object.fromEntries(Object.entries(observation.captureIdToNodeId)),
     };
 };
 
-const createDeps = () => {
-    const binding = {
-        workspaceName: 'ws-1',
-        tabName: 'tk-1',
-        traceCtx: { cache: {} as Record<string, unknown> },
-    };
-    return completeRunStepsDeps({
+const createDeps = async () => {
+    const workspaceName = 'ws-1';
+    const tabName = 'tk-1';
+    const url = 'https://example.test/table';
+    const page = {url: () => url};
+    const {capture, nodeIds} = createTableFixtureCapture();
+    const deps = completeRunStepsDeps({
         config: {} as any,
         pluginHost: {
             getExecutors: () =>
@@ -69,31 +98,41 @@ const createDeps = () => {
                     'browser.checkpoint': executeBrowserCheckpoint,
                     'browser.query': executeBrowserQuery,
                     'browser.compute': executeBrowserCompute,
-                    'browser.snapshot': async (step: StepUnion) => {
-                        const snapshot = createTableFixtureSnapshot();
-                        binding.traceCtx.cache.latestSnapshot = snapshot;
-                        return {
-                            stepId: step.id,
-                            ok: true,
-                            data: snapshot.root,
-                        };
-                    },
+                    'browser.snapshot': async (step: StepUnion) => ({
+                        stepId: step.id,
+                        ok: true,
+                        data: {
+                            pageEpoch: capture.control.observation.identity.pageEpoch,
+                            captureRevision: capture.control.observation.identity.captureRevision,
+                        },
+                    }),
                     'browser.get_page_info': async (step: StepUnion) => ({
                         stepId: step.id,
                         ok: true,
-                        data: { url: 'https://example.test/table' },
+                        data: {url},
                     }),
                     'browser.click': async (step: StepUnion) => ({
                         stepId: step.id,
                         ok: true,
-                        data: { clickedId: (step.args as { nodeId?: unknown }).nodeId },
+                        data: {clickedId: (step.args as {nodeId?: unknown}).nodeId},
                     }),
                 }) as any,
         } as any,
-    }, binding);
+    }, {workspaceName, tabName, page});
+    await deps.pageSession.ensureFresh({
+        pageKey: page,
+        pageUrl: url,
+        capture: async () => capture,
+    });
+    return {deps, nodeIds};
 };
 
-const runWithCheckpoints = async (step: StepUnion, checkpoints: Checkpoint[], deps = createDeps() as any) => {
+const runWithCheckpoints = async (
+    step: StepUnion,
+    checkpoints: Checkpoint[],
+) => {
+    const fixture = await createDeps();
+    const resolvedDeps = fixture.deps;
     const queue = createStepsQueue([step]);
     closeStepsQueue(queue);
     const pipe = createResultPipe();
@@ -108,11 +147,12 @@ const runWithCheckpoints = async (step: StepUnion, checkpoints: Checkpoint[], de
             checkpoints,
             stopOnError: true,
         },
-        deps,
+        resolvedDeps,
     );
     return {
         checkpoint,
         results: readResultPipe(pipe).items,
+        nodeIds: fixture.nodeIds,
     };
 };
 
@@ -235,11 +275,11 @@ test('browser.checkpoint supports query compute act and local/output data flow',
         },
     ];
 
-    const { checkpoint, results } = await runWithCheckpoints(step, checkpoints);
+    const { checkpoint, results, nodeIds } = await runWithCheckpoints(step, checkpoints);
     assert.equal(checkpoint.status, 'completed');
     assert.equal(results[0].ok, true);
     assert.equal((results[0].data as any).output.rowCount, 2);
-    assert.equal((results[0].data as any).output.clickedId, 'next_page');
+    assert.equal((results[0].data as any).output.clickedId, nodeIds.next_page);
 });
 
 test('browser.checkpoint fails on invalid compute ref in content action', async () => {

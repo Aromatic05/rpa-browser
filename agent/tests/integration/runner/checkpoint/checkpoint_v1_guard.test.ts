@@ -91,6 +91,15 @@ test('query naming guard', async () => {
     }
 });
 
+test('checkpoint matching consumes V2 PageSession entities', async () => {
+    const source = await readAgentFile('src/runner/checkpoint/match.ts');
+    for (const forbidden of ['executors/snapshot/core', 'executors/snapshot/pipeline', 'finalEntityView']) {
+        assert.equal(source.includes(forbidden), false, `checkpoint match must not use ${forbidden}`);
+    }
+    assert.equal(source.includes('ensureFreshPageSession'), true);
+    assert.equal(source.includes('buildPageSessionEntityView'), true);
+});
+
 test('serialization guard', async () => {
     const stepTypesSource = await readAgentFile('src/runner/steps/types.ts');
     const captureResolveSource = await readAgentFile('src/runner/steps/executors/capture_resolve.ts');
