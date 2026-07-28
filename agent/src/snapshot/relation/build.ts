@@ -14,7 +14,9 @@ import { resolveSemanticRole } from '../observation/semantic';
 
 const IDREF_RELATIONS: ReadonlyArray<{ attribute: string; kind: RelationKind }> = [
     { attribute: 'aria-labelledby', kind: 'labelled-by' },
+    { attribute: 'for', kind: 'label-for' },
     { attribute: 'aria-describedby', kind: 'described-by' },
+    { attribute: 'aria-errormessage', kind: 'error-message' },
     { attribute: 'aria-controls', kind: 'controls-target' },
     { attribute: 'aria-owns', kind: 'owns' },
     { attribute: 'form', kind: 'form-owner' },
@@ -36,6 +38,7 @@ export const buildRelationIndex = (
         const sourceNode = observation.nodes[sourceNodeId];
         if (!sourceNode) {continue;}
         for (const definition of IDREF_RELATIONS) {
+            if (definition.kind === 'label-for' && sourceNode.tag !== 'label') {continue;}
             const rawValue = normalize(attributes[definition.attribute]);
             if (!rawValue) {continue;}
             const requestedIds = splitIdRefs(rawValue);

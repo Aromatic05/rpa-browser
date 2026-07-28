@@ -568,5 +568,5 @@ const errorDiagnostic = (
 });
 
 const SCOPE_LOCAL_RELATIONS = new Set([
-    'labelled-by', 'described-by', 'controls-target', 'popup-owner', 'owns', 'form-owner',
+    'labelled-by', 'label-for', 'described-by', 'error-message', 'controls-target', 'popup-owner', 'owns', 'form-owner',
 ]);

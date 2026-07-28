@@ -203,7 +203,9 @@ export type PageObservation = {
 
 export type RelationKind =
     | 'labelled-by'
+    | 'label-for'
     | 'described-by'
+    | 'error-message'
     | 'controls-target'
     | 'popup-owner'
     | 'owns'

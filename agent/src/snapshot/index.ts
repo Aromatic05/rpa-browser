@@ -20,3 +20,7 @@ export * from './capture/browser';
 export * from './entity_rule/index';
 export * from './locator/index';
 export * from './control/index';
+
+export * from './component/index';
+export * from './ownership/index';
+export * from './form/index';

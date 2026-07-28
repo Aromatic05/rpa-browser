@@ -1,7 +1,9 @@
 /**
- * Snapshot-scoped entity rule boundary.
+ * Snapshot-scoped entity-rule contracts and component target bridges.
  *
- * Stage 1 intentionally exports no business implementation. Later stages may
- * add confirmed/manual binding contracts without depending on archived V1 code.
+ * Match cardinality is preserved independently from archived V1 region/group
+ * entities. Form rules receive only FormComponent or canonical-node targets.
  */
-export {};
+export * from './contracts';
+export * from './cardinality';
+export * from './form_bridge';

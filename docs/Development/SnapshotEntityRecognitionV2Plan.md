@@ -4,7 +4,7 @@
 
 本文是 Snapshot、实体识别、entity_rules、annotator 与 runtime query 的实施计划，不是概念草案。
 
-当前状态：**阶段 1、阶段 2 已验收；阶段 3 可以开始。生产结构消费者切换和 V1 删除分别由后续阶段门槛约束。**
+当前状态：**阶段 1、阶段 2、阶段 3 已验收；阶段 4 可以开始。生产结构消费者切换和 V1 删除分别由后续阶段门槛约束。**
 
 归档基线：
 
@@ -19,7 +19,7 @@
 | --- | --- | --- | --- |
 | 1 | Canonical Observation 与 Relation 基础层 | accepted | 不可变事实层、scope、identity、relations、quotient、实验报告 |
 | 2 | Atomic Control 与可执行 Locator | accepted | 唯一 ControlIndex、control 状态机、canonical locator |
-| 3 | FormComponent 组装与表单规则迁移 | pending | 强类型 FormComponent、表单 ownership、表单规则新路径 |
+| 3 | FormComponent 组装与表单规则迁移 | accepted | 强类型 FormComponent、表单 ownership、表单规则新路径 |
 | 4 | TableComponent 组装与表格规则迁移 | pending | 多 part TableComponent、列行模型、pagination ownership |
 | 5 | SemanticBindings、Projection 与消费方切换 | pending | 新 snapshot/query/annotator/session/diff 全链路 |
 | 6 | V1 删除与发行级验收 | pending | 无 V1 runtime、完整真实页面验收、文档一致 |
@@ -1257,7 +1257,7 @@ Observation query helpers
 - 唯一 unresolved locator 位于显式 unavailable scope，不存在全局 fallback。
 - click、fill、type、select_option、hover、target scroll、target press-key、drag-and-drop 和 element screenshot 已切到 V2 canonical locator。
 - `capture_resolve` 仍属于 Stage 5 消费方切换，不构成第二套 ControlIndex。
-- 因此阶段 2 状态为 accepted，阶段 3 可以开始。
+- 因此阶段 2 状态为 accepted；阶段 3 已完成并通过自身退出门槛。
 
 ### 9.8 交接重点
 
@@ -1343,6 +1343,17 @@ Observation query helpers
 - V1 form recognition 和 form LCA ownership 已删除，没有第二套 form matcher。
 - extension 尚未切换，但 agent 输出已包含完整 form visual binding input。
 
+当前验收结果：
+
+- Snapshot 独立类型检查通过，56 项 Snapshot/Control/Locator/Form 测试全部通过。
+- Element Plus 与 Ant Design 的 list、create、dialog、Form.List 和 date-range 页面通过真实浏览器验收。
+- DataTables 3.0.0 官方 zero-configuration 页面已固定为离线 fixture；search/page-size fields 保持 residual。
+- 6 个 Stage 3 fixtures × 50 iterations 基线通过：1,334 nodes、6 forms、15 fields、2 composite fields、5 residual fields。
+- 33 条 ownership edges 无 invariant conflict，fixture truth error 为 0。
+- `FormProposal`、`BottomUpReducer<FormReductionState>`、reduction trace、ComponentLocation、structural action 与 SemanticSuggestion contracts 已冻结。
+- form bridge 只接收 FormComponent/canonical node，保留 `unique`/`one_or_more`，不构造 V1 region/group entity，也不生成业务 binding。
+- 活动源码中只有一个 FormComponentIndex assembler 和一个 form matcher；V1 form recognition、groups/LCA ownership 未恢复。
+- 因此阶段 3 状态为 accepted，阶段 4 可以开始。
 
 ### 10.8 交接重点
 

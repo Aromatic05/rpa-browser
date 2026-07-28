@@ -7,7 +7,9 @@
         "src/snapshot/**/*.ts",
         "tests/integration/snapshot/**/*.ts",
         "scripts/snapshot_v2_stage1_baseline.ts",
-        "scripts/snapshot_v2_stage2_baseline.ts"
+        "scripts/snapshot_v2_stage2_baseline.ts",
+        "scripts/snapshot_v2_capture_form_fixtures.ts",
+        "scripts/snapshot_v2_stage3_baseline.ts"
     ],
     "exclude": []
 }

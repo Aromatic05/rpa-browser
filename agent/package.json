@@ -45,7 +45,9 @@
         "test:e2e:headed": "RPA_E2E_HEADED=1 pnpm test:e2e:run --headed",
         "typecheck:snapshot": "tsc -p tsconfig.snapshot.json",
         "test:snapshot": "node --import tsx --test --test-concurrency=1 \"tests/integration/snapshot/**/*.test.ts\"",
-        "snapshot:v2:stage2-baseline": "tsx scripts/snapshot_v2_stage2_baseline.ts"
+        "snapshot:v2:stage2-baseline": "tsx scripts/snapshot_v2_stage2_baseline.ts",
+        "snapshot:v2:capture-form-fixtures": "tsx scripts/snapshot_v2_capture_form_fixtures.ts",
+        "snapshot:v2:stage3-baseline": "tsx scripts/snapshot_v2_stage3_baseline.ts"
     },
     "dependencies": {
         "@axe-core/playwright": "^4.10.2",
