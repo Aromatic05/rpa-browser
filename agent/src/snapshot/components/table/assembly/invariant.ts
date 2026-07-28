@@ -46,6 +46,32 @@ export const validateTableComponentIndex = (
                 }
             }
         }
+        for (const editor of table.editors) {
+            const cell = index.cells[editor.cellId];
+            if (!cell) {
+                add('table.editor.cell-missing', `editor references unknown cell: ${editor.cellId}`, editor.sourceNodeIds);
+                continue;
+            }
+            if (editor.status === 'resolved' && editor.controlIds.length === 0) {
+                add('table.editor.control-empty', `resolved editor has no controls: ${editor.cellId}`, editor.portalNodeIds);
+            }
+            for (const controlId of editor.controlIds) {
+                if (!controls.controls[controlId]) {
+                    add('table.editor.control-missing', `editor references unknown control: ${controlId}`, editor.portalNodeIds);
+                }
+            }
+        }
+        for (const mirror of table.mirrors) {
+            if (mirror.status !== 'resolved' || !mirror.canonicalId) {continue;}
+            const exists = mirror.kind === 'row'
+                ? Boolean(index.rows[mirror.canonicalId])
+                : mirror.kind === 'cell'
+                    ? Boolean(index.cells[mirror.canonicalId])
+                    : Boolean(index.columns[mirror.canonicalId]);
+            if (!exists) {
+                add('table.mirror.canonical-missing', `mirror references unknown canonical ${mirror.kind}: ${mirror.canonicalId}`, [mirror.mirrorNodeId]);
+            }
+        }
         for (const slot of table.controlSlots) {
             if (slot.occurrenceCount < 2) {
                 add('table.slot.under-repeated', `slot must repeat across rows: ${slot.id}`);

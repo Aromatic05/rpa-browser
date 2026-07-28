@@ -19,6 +19,7 @@ import type {
     TableSnapshot,
 } from '../model/contracts';
 import { buildControlSlots } from './control_slots';
+import { buildCellEditors } from './editors';
 import {
     buildTableParts,
     canonicalBodyPartIds,
@@ -33,6 +34,7 @@ import {
 import { buildFeatureCover } from './feature_cover';
 import { buildHeader } from './header';
 import { buildRowHierarchy } from './hierarchy';
+import { buildTableMirrors } from './mirrors';
 import { validateTableComponentIndex } from './invariant';
 import { buildRows, mergeFixedRows } from './rows';
 
@@ -138,11 +140,25 @@ const assembleTable = (
         parts.nodeIdsByKind['fixed-right-body'] ?? [],
         canonicalColumnCount,
     );
+    const editorModel = buildCellEditors(observation, input.relations, controls, canonicalRows.cells);
+    const mirrorModel = buildTableMirrors(
+        observation,
+        root.rootNodeId,
+        allRootIds,
+        parts,
+        canonicalRows.rows,
+        canonicalRows.cells,
+        resolvedColumns,
+    );
     const featureCover = buildFeatureCover(canonicalRows.rows, canonicalRows.cells, controls);
     const controlModel = buildControlSlots(tableId, canonicalRows.rows, canonicalRows.cells, controls);
     const hierarchy = buildRowHierarchy(observation, canonicalRows.rows);
     const paginationNodes = findPaginationNodes(observation, root, logicalRoots);
-    const localDiagnostics = [...hierarchy.diagnostics];
+    const localDiagnostics = [
+        ...hierarchy.diagnostics,
+        ...editorModel.diagnostics,
+        ...mirrorModel.diagnostics,
+    ];
     if (paginationNodes.ambiguous) {
         localDiagnostics.push({
             code: 'table.pagination.ambiguous-owner',
@@ -185,6 +201,8 @@ const assembleTable = (
             featureCover,
             controlSlots: controlModel.slots,
             rowExceptions: controlModel.rowExceptions,
+            editors: editorModel.editors,
+            mirrors: mirrorModel.mirrors,
             hierarchy: hierarchy.hierarchy,
             footer,
             pagination: paginationNodes.nodeIds.length > 0 ? {
@@ -282,17 +300,48 @@ const buildTableOwnership = (
             if (!cell) {return;}
             edges.push({
                 owner: { kind: 'table-row', id: row.id },
+                member: { kind: 'table-cell', id: cell.id },
+                role: `cell:${cell.columnId}`,
+                evidence: cell.evidence,
+            });
+            edges.push({
+                owner: { kind: 'table-row', id: row.id },
                 member: { kind: 'node', id: cell.nodeId },
                 role: `cell:${cell.columnId}`,
                 evidence: cell.evidence,
             });
-            cell.controlIds.forEach((controlId) => edges.push({
-                owner: { kind: 'table-row', id: row.id },
-                member: { kind: 'control', id: controlId },
-                role: `cell-control:${cell.columnId}`,
+            edges.push({
+                owner: { kind: 'table-cell', id: cell.id },
+                member: { kind: 'node', id: cell.nodeId },
+                role: 'node',
                 evidence: cell.evidence,
-            }));
+            });
+            cell.controlIds.forEach((controlId) => {
+                edges.push({
+                    owner: { kind: 'table-row', id: row.id },
+                    member: { kind: 'control', id: controlId },
+                    role: `cell-control:${cell.columnId}`,
+                    evidence: cell.evidence,
+                });
+                edges.push({
+                    owner: { kind: 'table-cell', id: cell.id },
+                    member: { kind: 'control', id: controlId },
+                    role: 'control',
+                    evidence: cell.evidence,
+                });
+            });
         });
+    }
+    for (const table of Object.values(tables)) {
+        for (const editor of table.editors) {
+            if (editor.status !== 'resolved') {continue;}
+            editor.controlIds.forEach((controlId) => edges.push({
+                owner: { kind: 'table-cell', id: editor.cellId },
+                member: { kind: 'control', id: controlId },
+                role: 'editor',
+                evidence: editor.evidence,
+            }));
+        }
     }
     for (const column of Object.values(columns)) {
         column.sourceNodeIds.forEach((nodeId) => edges.push({
@@ -321,6 +370,11 @@ const buildNodeIndex = (
         add(table.location.hostNodeId, table.id);
         table.parts.physicalTableNodeIds.forEach((nodeId) => add(nodeId, table.id));
         table.pagination?.nodeIds.forEach((nodeId) => add(nodeId, table.id));
+        table.editors.forEach((editor) => {
+            editor.sourceNodeIds.forEach((nodeId) => add(nodeId, editor.cellId));
+            editor.portalNodeIds.forEach((nodeId) => add(nodeId, editor.cellId));
+        });
+        table.mirrors.forEach((mirror) => add(mirror.mirrorNodeId, mirror.canonicalId ?? table.id));
     });
     Object.values(rows).forEach((row) => add(row.nodeId, row.id));
     Object.values(cells).forEach((cell) => add(cell.nodeId, cell.id));

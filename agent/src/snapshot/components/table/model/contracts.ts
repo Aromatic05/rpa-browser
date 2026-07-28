@@ -109,6 +109,24 @@ export type TableRowException = {
     evidence: Evidence[];
 };
 
+export type TableCellEditorRelation = {
+    cellId: string;
+    status: 'resolved' | 'ambiguous' | 'unresolved';
+    sourceNodeIds: ObservationNodeId[];
+    portalNodeIds: ObservationNodeId[];
+    controlIds: string[];
+    evidence: Evidence[];
+};
+
+export type TableMirrorRelation = {
+    kind: 'row' | 'cell' | 'column';
+    partKind: 'fixed-left-header' | 'fixed-left-body' | 'fixed-right-header' | 'fixed-right-body';
+    mirrorNodeId: ObservationNodeId;
+    canonicalId?: string;
+    status: 'resolved' | 'ambiguous' | 'unresolved';
+    evidence: Evidence[];
+};
+
 export type TableRowHierarchy = {
     parentRowIdByRowId: Readonly<Record<string, string | undefined>>;
     levelByRowId: Readonly<Record<string, number | undefined>>;
@@ -148,6 +166,8 @@ export type TableComponent = {
     featureCover: FeatureCoverResult;
     controlSlots: CellControlSlot[];
     rowExceptions: TableRowException[];
+    editors: TableCellEditorRelation[];
+    mirrors: TableMirrorRelation[];
     hierarchy?: TableRowHierarchy;
     footer?: TableFooterModel;
     pagination?: PaginationRelation;

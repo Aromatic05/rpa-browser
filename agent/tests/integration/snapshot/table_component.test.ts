@@ -376,3 +376,184 @@ test('table component rules bind only complete table components and canonical de
     assert.deepEqual(result.byRuleId.customer.matchedNodeIds, [snapshot.observation.captureIdToNodeId.cell]);
     assert.deepEqual(result.diagnostics, []);
 });
+
+test('portal cell editor binds through exact IDREF ownership and unresolved closed state stays partial', () => {
+    const open = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table', 'editor']),
+        node('table', 'table', 'body', ['thead', 'tbody'], { id: 'editable-table' }),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('tbody', 'tbody', 'table', ['row']),
+        node('row', 'tr', 'tbody', ['cell'], { 'data-row-key': 'user-1' }),
+        node('cell', 'td', 'row', ['edit-trigger'], { 'aria-controls': 'cell-editor' }, 'Alice'),
+        node('edit-trigger', 'button', 'cell', [], {}, 'Edit'),
+        node('editor', 'div', 'body', ['editor-input'], { id: 'cell-editor', role: 'dialog' }),
+        node('editor-input', 'input', 'editor', [], { id: 'editor-name', type: 'text' }),
+    ]);
+    const openTable = onlyTable(open);
+    const openCell = Object.values(open.tables.cells)[0];
+    const editorControl = Object.values(open.controls.controls)
+        .find((control) => control.controlNodeId === open.observation.captureIdToNodeId['editor-input']);
+    assert.ok(editorControl);
+    assert.equal(openTable.editors.length, 1);
+    assert.equal(openTable.editors[0].status, 'resolved');
+    assert.equal(openTable.editors[0].cellId, openCell.id);
+    assert.deepEqual(openTable.editors[0].controlIds, [editorControl.id]);
+    assert.equal(openCell.controlIds.includes(editorControl.id), true);
+    const cellOwnership = open.tables.ownership.byOwner[`table-cell:${openCell.id}`] ?? [];
+    assert.equal(cellOwnership.some((index) => open.tables.ownership.edges[index]?.role === 'editor'), true);
+    assert.equal(openTable.status, 'complete');
+
+    const closed = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table']),
+        node('table', 'table', 'body', ['thead', 'tbody'], { id: 'editable-table' }),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('tbody', 'tbody', 'table', ['row']),
+        node('row', 'tr', 'tbody', ['cell'], { 'data-row-key': 'user-1' }),
+        node('cell', 'td', 'row', [], { 'aria-controls': 'cell-editor' }, 'Alice'),
+    ]);
+    const closedTable = onlyTable(closed);
+    assert.equal(closedTable.editors.length, 1);
+    assert.equal(closedTable.editors[0].status, 'unresolved');
+    assert.equal(closedTable.status, 'partial');
+    assert.equal(closedTable.diagnostics.some((item) => item.code === 'table.editor.target.unresolved'), true);
+});
+
+test('fixed-left clone maps to canonical rows and cells while fixed-right contributes one action column', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table-root']),
+        node('table-root', 'div', 'body', ['header-wrap', 'body-wrap', 'fixed-left', 'fixed-right'], { class: 'el-table' }),
+        node('header-wrap', 'div', 'table-root', ['header-table'], { class: 'el-table__header-wrapper' }),
+        node('header-table', 'table', 'header-wrap', ['header-row']),
+        node('header-row', 'tr', 'header-table', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('body-wrap', 'div', 'table-root', ['body-table'], { class: 'el-table__body-wrapper' }),
+        node('body-table', 'table', 'body-wrap', ['body-a', 'body-b']),
+        node('body-a', 'tr', 'body-table', ['name-a'], { 'data-row-key': 'u1' }),
+        node('name-a', 'td', 'body-a', [], {}, 'Alice'),
+        node('body-b', 'tr', 'body-table', ['name-b'], { 'data-row-key': 'u2' }),
+        node('name-b', 'td', 'body-b', [], {}, 'Bob'),
+        node('fixed-left', 'div', 'table-root', ['left-header-wrap', 'left-body-wrap'], { class: 'el-table__fixed' }),
+        node('left-header-wrap', 'div', 'fixed-left', ['left-header-table'], { class: 'el-table__fixed-header-wrapper' }),
+        node('left-header-table', 'table', 'left-header-wrap', ['left-header-row']),
+        node('left-header-row', 'tr', 'left-header-table', ['left-name-header']),
+        node('left-name-header', 'th', 'left-header-row', [], {}, 'Name'),
+        node('left-body-wrap', 'div', 'fixed-left', ['left-body-table'], { class: 'el-table__fixed-body-wrapper' }),
+        node('left-body-table', 'table', 'left-body-wrap', ['left-a', 'left-b']),
+        node('left-a', 'tr', 'left-body-table', ['left-name-a'], { 'data-row-key': 'u1' }),
+        node('left-name-a', 'td', 'left-a', [], {}, 'Alice'),
+        node('left-b', 'tr', 'left-body-table', ['left-name-b'], { 'data-row-key': 'u2' }),
+        node('left-name-b', 'td', 'left-b', [], {}, 'Bob'),
+        node('fixed-right', 'div', 'table-root', ['right-header-wrap', 'right-body-wrap'], { class: 'el-table__fixed-right' }),
+        node('right-header-wrap', 'div', 'fixed-right', ['right-header-table'], { class: 'el-table__fixed-right-header-wrapper' }),
+        node('right-header-table', 'table', 'right-header-wrap', ['right-header-row']),
+        node('right-header-row', 'tr', 'right-header-table', ['action-header']),
+        node('action-header', 'th', 'right-header-row', [], {}, 'Actions'),
+        node('right-body-wrap', 'div', 'fixed-right', ['right-body-table'], { class: 'el-table__fixed-right-body-wrapper' }),
+        node('right-body-table', 'table', 'right-body-wrap', ['right-a', 'right-b']),
+        node('right-a', 'tr', 'right-body-table', ['action-a'], { 'data-row-key': 'u1' }),
+        node('action-a', 'td', 'right-a', ['edit-a']),
+        node('edit-a', 'button', 'action-a', [], {}, 'Edit'),
+        node('right-b', 'tr', 'right-body-table', ['action-b'], { 'data-row-key': 'u2' }),
+        node('action-b', 'td', 'right-b', ['edit-b']),
+        node('edit-b', 'button', 'action-b', [], {}, 'Edit'),
+    ]);
+
+    const table = onlyTable(snapshot);
+    assert.deepEqual(table.columns.map((column) => column.name), ['Name', 'Actions']);
+    assert.equal(table.body.visibleRows.length, 2);
+    assert.equal(table.controlSlots.length, 1);
+    assert.equal(table.mirrors.filter((item) => item.partKind === 'fixed-left-body' && item.kind === 'row').length, 2);
+    assert.equal(table.mirrors.filter((item) => item.partKind === 'fixed-left-body' && item.kind === 'cell').length, 2);
+    assert.equal(table.mirrors.every((item) => item.status === 'resolved'), true);
+    assert.equal(snapshot.tables.validation.ok, true, JSON.stringify(snapshot.tables.validation.diagnostics, null, 2));
+});
+
+test('cell custom-select popup remains control-owned and is not classified as a portal editor', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table', 'popup']),
+        node('table', 'table', 'body', ['thead', 'tbody']),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['status-header']),
+        node('status-header', 'th', 'header-row', [], {}, 'Status'),
+        node('tbody', 'tbody', 'table', ['row']),
+        node('row', 'tr', 'tbody', ['cell']),
+        node('cell', 'td', 'row', ['select-trigger']),
+        node('select-trigger', 'div', 'cell', [], {
+            role: 'combobox',
+            'aria-controls': 'status-popup',
+            'aria-expanded': 'true',
+        }),
+        node('popup', 'div', 'body', ['option-a'], { id: 'status-popup', role: 'listbox' }),
+        node('option-a', 'div', 'popup', [], { role: 'option', 'aria-selected': 'true' }, 'Active'),
+    ]);
+
+    const table = onlyTable(snapshot);
+    const cell = Object.values(snapshot.tables.cells)[0];
+    assert.equal(table.editors.length, 0);
+    assert.equal(cell.controlIds.some((controlId) => snapshot.controls.controls[controlId]?.kind === 'custom_select'), true);
+});
+
+test('duplicate canonical row keys make fixed mirror ownership ambiguous instead of falling back by position', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table-root']),
+        node('table-root', 'div', 'body', ['header-wrap', 'body-wrap', 'fixed-left'], { class: 'el-table' }),
+        node('header-wrap', 'div', 'table-root', ['header-table'], { class: 'el-table__header-wrapper' }),
+        node('header-table', 'table', 'header-wrap', ['header-row']),
+        node('header-row', 'tr', 'header-table', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('body-wrap', 'div', 'table-root', ['body-table'], { class: 'el-table__body-wrapper' }),
+        node('body-table', 'table', 'body-wrap', ['body-a', 'body-b']),
+        node('body-a', 'tr', 'body-table', ['name-a'], { 'data-row-key': 'duplicate' }),
+        node('name-a', 'td', 'body-a', [], {}, 'Alice'),
+        node('body-b', 'tr', 'body-table', ['name-b'], { 'data-row-key': 'duplicate' }),
+        node('name-b', 'td', 'body-b', [], {}, 'Bob'),
+        node('fixed-left', 'div', 'table-root', ['left-body-wrap'], { class: 'el-table__fixed' }),
+        node('left-body-wrap', 'div', 'fixed-left', ['left-body-table'], { class: 'el-table__fixed-body-wrapper' }),
+        node('left-body-table', 'table', 'left-body-wrap', ['left-a']),
+        node('left-a', 'tr', 'left-body-table', ['left-name-a'], { 'data-row-key': 'duplicate' }),
+        node('left-name-a', 'td', 'left-a', [], {}, 'Alice'),
+    ]);
+
+    const table = onlyTable(snapshot);
+    const rowMirror = table.mirrors.find((item) => item.partKind === 'fixed-left-body' && item.kind === 'row');
+    assert.equal(rowMirror?.status, 'ambiguous');
+    assert.equal(rowMirror?.canonicalId, undefined);
+    assert.equal(table.status, 'ambiguous');
+    assert.equal(table.diagnostics.some((item) => item.code === 'table.mirror.ambiguous'), true);
+});
+
+test('duplicate portal editor ids stay ambiguous and never attach either control to the cell', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table', 'editor-a', 'editor-b']),
+        node('table', 'table', 'body', ['thead', 'tbody']),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('tbody', 'tbody', 'table', ['row']),
+        node('row', 'tr', 'tbody', ['cell']),
+        node('cell', 'td', 'row', [], { 'aria-controls': 'cell-editor' }, 'Alice'),
+        node('editor-a', 'div', 'body', ['input-a'], { id: 'cell-editor', role: 'dialog' }),
+        node('input-a', 'input', 'editor-a', [], { type: 'text' }),
+        node('editor-b', 'div', 'body', ['input-b'], { id: 'cell-editor', role: 'dialog' }),
+        node('input-b', 'input', 'editor-b', [], { type: 'text' }),
+    ]);
+
+    const table = onlyTable(snapshot);
+    const cell = Object.values(snapshot.tables.cells)[0];
+    assert.equal(table.editors.length, 1);
+    assert.equal(table.editors[0].status, 'ambiguous');
+    assert.equal(table.editors[0].controlIds.length, 2);
+    assert.equal(cell.controlIds.length, 0);
+    assert.equal(table.status, 'ambiguous');
+    assert.equal(table.diagnostics.some((item) => item.code === 'table.editor.target.ambiguous'), true);
+});

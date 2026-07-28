@@ -10,6 +10,7 @@ export type OwnershipEndpoint =
     | { kind: 'form-group'; id: string }
     | { kind: 'form-action'; id: string }
     | { kind: 'form'; id: string }
+    | { kind: 'table-cell'; id: string }
     | { kind: 'table-row'; id: string }
     | { kind: 'table-column'; id: string }
     | { kind: 'table'; id: string };

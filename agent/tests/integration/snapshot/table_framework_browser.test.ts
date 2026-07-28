@@ -57,7 +57,8 @@ const mount = async (page: Page, app: BuiltApp, readySelector: string) => {
     if (app.style) {await page.addStyleTag({ content: app.style });}
     await page.addScriptTag({ content: app.script });
     await page.locator(readySelector).first().waitFor({ state: 'visible', timeout: 10000 });
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate(() => new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 };
 
 const buildElementApp = async (root: string): Promise<BuiltApp> => {
@@ -74,7 +75,7 @@ const buildElementApp = async (root: string): Promise<BuiltApp> => {
           h('section', { key: index, style: 'margin-bottom:20px' }, [
             h(ElTable, { data: rows, rowKey: 'id', showSummary: true, border: true }, {
               default: () => [
-                h(ElTableColumn, { prop: 'name', label: 'Name' }),
+                h(ElTableColumn, { prop: 'name', label: 'Name', fixed: 'left', width: 180 }),
                 h(ElTableColumn, { label: 'Actions', fixed: 'right', width: 120 }, {
                   default: () => h(ElButton, { size: 'small' }, { default: () => 'Edit' }),
                 }),
