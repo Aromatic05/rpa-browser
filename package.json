@@ -22,6 +22,7 @@
         "test:agent:headed": "pnpm --filter ./agent test:headed",
         "test:agent:smoke:mcp": "pnpm --filter ./agent test:smoke:mcp",
         "test:extension": "pnpm --filter ./extension test",
+        "test:dev-cdp": "node --test scripts/__tests__/dev_cdp_runtime.test.mjs",
         "typecheck:agent": "pnpm --filter ./agent typecheck",
         "typecheck:extension": "pnpm --filter ./extension exec tsc --noEmit",
         "typecheck": "pnpm typecheck:agent && pnpm typecheck:extension",
