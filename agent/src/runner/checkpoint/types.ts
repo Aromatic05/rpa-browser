@@ -1,7 +1,6 @@
 import type { RunStatus, RunStepsDeps } from '../run_steps_types';
 import type { FailedCtx } from '../failed_ctx';
-import type { StepArgsMap, StepName, StepResult, StepUnion } from '../steps/types';
-import type { EntityKind } from '../steps/executors/snapshot/core/types';
+import type { EntityKind, StepArgsMap, StepName, StepResult, StepUnion } from '../steps/types';
 import type { SerializedStepUnion } from '../serialization/types';
 import type { StepEntityRulesControl } from '../../snapshot/rules/model';
 

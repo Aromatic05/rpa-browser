@@ -28,6 +28,7 @@ test('step model source keeps normalized action target shape', () => {
     assert.equal(stepTypesSource.includes('target?: Target'), false);
     assert.equal(stepTypesSource.includes('@deprecated'), false);
     assert.equal(stepTypesSource.includes('StepHintFile'), false);
+    assert.equal(stepTypesSource.includes('executors/snapshot/core/types'), false);
 
     const actionSteps = [
         'browser.take_screenshot',

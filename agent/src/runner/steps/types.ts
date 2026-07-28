@@ -7,9 +7,19 @@
  * - 通过强类型映射约束 name 与 args 的对应关系
  */
 
-import type { BBox, EntityKind, SnapshotFilter } from './executors/snapshot/core/types';
+import type { Rect } from '../../snapshot/observation/model/contracts';
 import type { SelectOptionKind } from './executors/select_option/types';
 import type { StepEntityRulesControl } from '../../snapshot/rules/model';
+
+export type BBox = Rect;
+
+export type EntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+
+export type SnapshotFilter = {
+    role?: string | string[];
+    text?: string;
+    interactive?: boolean;
+};
 
 export type StepName =
     | 'browser.goto'
