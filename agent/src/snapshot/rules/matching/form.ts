@@ -5,7 +5,7 @@ import type {
 } from '../../observation/model/contracts';
 import { deepFreeze } from '../../observation/model/freeze';
 import { resolveSemanticRole } from '../../observation/model/semantic';
-import type { FormComponent, FormField, FormSnapshot } from '../../components/form/model/contracts';
+import type { FormComponent, FormSnapshot } from '../../components/form/model/contracts';
 import { cardinalitySatisfied } from './cardinality';
 import type {
     FormComponentMatchRule,
@@ -18,13 +18,20 @@ export const matchFormComponentRules = (
     rules: readonly FormComponentMatchRule[],
 ): FormComponentRuleMatchResult => {
     const byRuleId: Record<string, FormComponentRuleBinding> = {};
-    const diagnostics: AnalysisDiagnostic[] = [];
+    const diagnostics = validateRuleGraph(rules);
+    if (diagnostics.length > 0) {
+        for (const rule of rules) {
+            byRuleId[rule.ruleId] ??= emptyBinding(rule);
+        }
+        return deepFreeze({ byRuleId, diagnostics });
+    }
 
-    for (const rule of rules) {
+    for (const rule of orderRules(rules)) {
         const within = rule.within ? byRuleId[rule.within] : undefined;
         const allowedNodeIds = rule.within ? buildWithinNodeSet(snapshot, within) : undefined;
         const matchedComponentIds: string[] = [];
         const matchedNodeIds: ObservationNodeId[] = [];
+        const structuralDiagnostics: AnalysisDiagnostic[] = [];
 
         if (rule.source === 'node') {
             for (const nodeId of orderedNodeIds(snapshot.observation)) {
@@ -40,6 +47,9 @@ export const matchFormComponentRules = (
                 if (!matchesForm(snapshot, form, rule)) {continue;}
                 matchedComponentIds.push(form.id);
                 matchedNodeIds.push(rootNodeId);
+                if (form.status !== 'complete') {
+                    structuralDiagnostics.push(structureDiagnostic(rule, form));
+                }
             }
         }
 
@@ -52,7 +62,7 @@ export const matchFormComponentRules = (
             : unique(matchedComponentIds.flatMap((componentId) =>
                 snapshot.forms.forms[componentId]?.actions.map((action) => action.id) ?? []));
         const count = rule.source === 'node' ? matchedNodeIds.length : matchedComponentIds.length;
-        const ok = cardinalitySatisfied(rule.expect, count);
+        const cardinalityOk = cardinalitySatisfied(rule.expect, count);
         const binding: FormComponentRuleBinding = {
             ruleId: rule.ruleId,
             source: rule.source,
@@ -61,14 +71,101 @@ export const matchFormComponentRules = (
             matchedFieldIds,
             matchedActionIds,
             matchedNodeIds: unique(matchedNodeIds),
-            ok,
+            ok: cardinalityOk && structuralDiagnostics.length === 0,
         };
         byRuleId[rule.ruleId] = binding;
-        if (!ok) {diagnostics.push(cardinalityDiagnostic(rule, binding));}
+        diagnostics.push(...structuralDiagnostics);
+        if (!cardinalityOk) {diagnostics.push(cardinalityDiagnostic(rule, binding));}
     }
 
     return deepFreeze({ byRuleId, diagnostics });
 };
+
+const validateRuleGraph = (rules: readonly FormComponentMatchRule[]): AnalysisDiagnostic[] => {
+    const diagnostics: AnalysisDiagnostic[] = [];
+    const byId = new Map<string, FormComponentMatchRule>();
+    for (const rule of rules) {
+        if (byId.has(rule.ruleId)) {
+            diagnostics.push(ruleDiagnostic(
+                'form.bridge.rule.duplicate', rule,
+                `duplicate form bridge ruleId: ${rule.ruleId}`,
+            ));
+        } else {
+            byId.set(rule.ruleId, rule);
+        }
+        if (!hasMatchCondition(rule)) {
+            diagnostics.push(ruleDiagnostic(
+                'form.bridge.match.empty', rule,
+                `form bridge rule has no match condition: ${rule.ruleId}`,
+            ));
+        }
+    }
+    for (const rule of rules) {
+        if (rule.within && !byId.has(rule.within)) {
+            diagnostics.push(ruleDiagnostic(
+                'form.bridge.within.missing', rule,
+                `form bridge within target does not exist: ${rule.ruleId} -> ${rule.within}`,
+            ));
+        }
+    }
+    const cycle = findWithinCycle(byId);
+    if (cycle.length > 0) {
+        const rule = byId.get(cycle[0]);
+        if (rule) {
+            diagnostics.push(ruleDiagnostic(
+                'form.bridge.within.cycle', rule,
+                `form bridge within cycle: ${cycle.join(' -> ')}`,
+            ));
+        }
+    }
+    return diagnostics;
+};
+
+const orderRules = (rules: readonly FormComponentMatchRule[]): FormComponentMatchRule[] => {
+    const byId = new Map(rules.map((rule) => [rule.ruleId, rule]));
+    const ordered: FormComponentMatchRule[] = [];
+    const visited = new Set<string>();
+    const visit = (rule: FormComponentMatchRule) => {
+        if (visited.has(rule.ruleId)) {return;}
+        if (rule.within) {
+            const parent = byId.get(rule.within);
+            if (parent) {visit(parent);}
+        }
+        visited.add(rule.ruleId);
+        ordered.push(rule);
+    };
+    for (const rule of rules) {visit(rule);}
+    return ordered;
+};
+
+const findWithinCycle = (byId: ReadonlyMap<string, FormComponentMatchRule>): string[] => {
+    const visited = new Set<string>();
+    const visiting = new Set<string>();
+    const path: string[] = [];
+    const visit = (id: string): string[] => {
+        if (visiting.has(id)) {
+            const start = path.indexOf(id);
+            return [...path.slice(Math.max(0, start)), id];
+        }
+        if (visited.has(id)) {return [];}
+        visiting.add(id);
+        path.push(id);
+        const target = byId.get(id)?.within;
+        const cycle = target && byId.has(target) ? visit(target) : [];
+        path.pop();
+        visiting.delete(id);
+        visited.add(id);
+        return cycle;
+    };
+    for (const id of byId.keys()) {
+        const cycle = visit(id);
+        if (cycle.length > 0) {return cycle;}
+    }
+    return [];
+};
+
+const hasMatchCondition = (rule: FormComponentMatchRule): boolean => Object.values(rule.match)
+    .some((value) => typeof value === 'string' ? value.trim().length > 0 : Boolean(value));
 
 const matchesForm = (
     snapshot: FormSnapshot,
@@ -78,10 +175,10 @@ const matchesForm = (
     if (rule.match.kind && rule.match.kind !== 'form') {return false;}
     const rootNodeId = form.location.structuralRootNodeId;
     const attrs = snapshot.observation.attributes[rootNodeId] ?? {};
-    if (!matchCommonNodeAttributes(snapshot.observation, rootNodeId, rule)) {return false;}
-    if (rule.match.nameContains) {
-        const name = normalizeLower(formName(snapshot, form));
-        if (!name.includes(normalizeLower(rule.match.nameContains))) {return false;}
+    if (!matchCommonNodeAttributes(snapshot.observation, rootNodeId, rule, false)) {return false;}
+    if (rule.match.nameContains
+        && !normalizeLower(formName(snapshot, form)).includes(normalizeLower(rule.match.nameContains))) {
+        return false;
     }
     if (rule.match.idEquals && normalize(attrs.id) !== normalize(rule.match.idEquals)) {return false;}
     return true;
@@ -93,13 +190,14 @@ const matchesNode = (
     rule: FormComponentMatchRule,
 ): boolean => {
     if (rule.match.kind) {return false;}
-    return matchCommonNodeAttributes(observation, nodeId, rule);
+    return matchCommonNodeAttributes(observation, nodeId, rule, true);
 };
 
 const matchCommonNodeAttributes = (
     observation: PageObservation,
     nodeId: ObservationNodeId,
     rule: FormComponentMatchRule,
+    includeNameContains: boolean,
 ): boolean => {
     const attrs = observation.attributes[nodeId] ?? {};
     if (rule.match.idEquals && normalize(attrs.id) !== normalize(rule.match.idEquals)) {return false;}
@@ -113,21 +211,17 @@ const matchCommonNodeAttributes = (
         return false;
     }
     if (rule.match.textContains
-        && !normalizeCompactLower(nodeName(observation, nodeId)).includes(normalizeCompactLower(rule.match.textContains))) {
+        && !normalizeCompactLower(nodeSearchText(observation, nodeId, true)).includes(normalizeCompactLower(rule.match.textContains))) {
         return false;
     }
     if (rule.match.ariaContains) {
         const aria = normalizeLower([
-            attrs['aria-label'],
-            attrs['aria-labelledby'],
-            attrs['aria-describedby'],
-            attrs['aria-errormessage'],
-            attrs.title,
+            attrs['aria-label'], attrs['aria-labelledby'], attrs['aria-describedby'], attrs['aria-errormessage'], attrs.title,
         ].filter(Boolean).join(' '));
         if (!aria.includes(normalizeLower(rule.match.ariaContains))) {return false;}
     }
-    if (rule.match.nameContains
-        && !normalizeLower(nodeName(observation, nodeId)).includes(normalizeLower(rule.match.nameContains))) {
+    if (includeNameContains && rule.match.nameContains
+        && !normalizeLower(nodeSearchText(observation, nodeId, false)).includes(normalizeLower(rule.match.nameContains))) {
         return false;
     }
     return true;
@@ -176,13 +270,49 @@ const isActiveNode = (observation: PageObservation, nodeId: ObservationNodeId): 
         && activity.subtreeActive && activity.ariaExposed !== false);
 };
 
+const emptyBinding = (rule: FormComponentMatchRule): FormComponentRuleBinding => ({
+    ruleId: rule.ruleId,
+    source: rule.source,
+    expect: rule.expect,
+    matchedComponentIds: [],
+    matchedFieldIds: [],
+    matchedActionIds: [],
+    matchedNodeIds: [],
+    ok: false,
+});
+
+const ruleDiagnostic = (
+    code: string,
+    rule: FormComponentMatchRule,
+    message: string,
+): AnalysisDiagnostic => ({
+    code,
+    severity: 'error',
+    stage: 'form-bridge',
+    status: 'rejected',
+    nodeIds: [],
+    evidence: [],
+    message,
+});
+
+const structureDiagnostic = (
+    rule: FormComponentMatchRule,
+    form: FormComponent,
+): AnalysisDiagnostic => ({
+    code: 'form.bridge.structure.ambiguous',
+    severity: 'error',
+    stage: 'form-bridge',
+    status: form.status,
+    nodeIds: [form.location.structuralRootNodeId],
+    evidence: form.evidence,
+    message: `form bridge rule matched a non-complete structural target: ${rule.ruleId} (${form.status})`,
+});
+
 const cardinalityDiagnostic = (
     rule: FormComponentMatchRule,
     binding: FormComponentRuleBinding,
 ): AnalysisDiagnostic => {
-    const count = rule.source === 'node'
-        ? binding.matchedNodeIds.length
-        : binding.matchedComponentIds.length;
+    const count = rule.source === 'node' ? binding.matchedNodeIds.length : binding.matchedComponentIds.length;
     const multiple = rule.expect === 'unique' && count > 1;
     return {
         code: multiple ? 'form.bridge.cardinality.multiple' : 'form.bridge.cardinality.missing',
@@ -199,20 +329,32 @@ const cardinalityDiagnostic = (
 
 const formName = (snapshot: FormSnapshot, form: FormComponent): string => {
     const rootNodeId = form.location.structuralRootNodeId;
-    const direct = nodeName(snapshot.observation, rootNodeId);
+    const direct = nodeSearchText(snapshot.observation, rootNodeId, false);
     if (direct) {return direct;}
     return form.fields.flatMap((field) => field.labelNodeIds)
-        .map((nodeId) => nodeName(snapshot.observation, nodeId))
+        .map((nodeId) => nodeSearchText(snapshot.observation, nodeId, false))
         .filter(Boolean)
         .join(' ');
 };
 
-const nodeName = (observation: PageObservation, nodeId: ObservationNodeId): string =>
-    observation.accessibility[nodeId]?.name
-    ?? observation.attributes[nodeId]?.['aria-label']
-    ?? observation.attributes[nodeId]?.title
-    ?? observation.text[nodeId]
-    ?? '';
+const nodeSearchText = (
+    observation: PageObservation,
+    nodeId: ObservationNodeId,
+    includeDescendants: boolean,
+): string => {
+    const ids = includeDescendants ? [nodeId, ...descendants(observation, nodeId)] : [nodeId];
+    return ids.flatMap((id) => {
+        const attrs = observation.attributes[id] ?? {};
+        return [
+            observation.accessibility[id]?.name,
+            attrs['aria-label'],
+            attrs.placeholder,
+            attrs.title,
+            attrs.name,
+            observation.text[id],
+        ];
+    }).filter(Boolean).join(' ');
+};
 
 const orderedForms = (snapshot: FormSnapshot): FormComponent[] =>
     Object.values(snapshot.forms.forms).sort((left, right) =>

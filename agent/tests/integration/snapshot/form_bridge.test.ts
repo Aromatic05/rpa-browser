@@ -152,3 +152,95 @@ test('form bridge excludes hidden canonical nodes from cardinality', () => {
     assert.equal(result.byRuleId['visible-copy'].ok, true);
     assert.deepEqual(result.byRuleId['visible-copy'].matchedNodeIds, [observation.captureIdToNodeId.visible]);
 });
+
+test('form bridge preserves legacy node name and subtree text matching', () => {
+    const completeness = { dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete' } as const;
+    const raw: RawPageCapture = {
+        identity: { pageEpoch: 'bridge-text', captureRevision: 1 },
+        metadata: { schemaVersion: 1, source: 'fixed-fixture', capturedAt: '2026-07-28T00:00:00.000Z' },
+        completeness,
+        scopes: [{ id: 'main', kind: 'document', rootCaptureId: 'html', status: 'captured', completeness }],
+        nodes: [
+            node('html', 'html', undefined, ['body']),
+            node('body', 'body', 'html', ['input', 'panel']),
+            node('input', 'input', 'body', [], { type: 'text', name: 'buyerCode', placeholder: 'Buyer code' }),
+            node('panel', 'div', 'body', ['text'], { class: 'search-panel' }),
+            node('text', 'span', 'panel', [], {}, 'Nested content'),
+        ],
+        accessibility: [], runtimeState: {}, diagnostics: [],
+    };
+    const observation = buildPageObservation(raw);
+    const relations = buildRelationIndex(observation);
+    const locators = buildLocatorIndex(observation);
+    const controls = buildControlSnapshot({ observation, relations, locators }).controls;
+    const snapshot = buildFormSnapshot({ observation, relations, locators, controls });
+    const result = matchFormComponentRules(snapshot, [
+        { ruleId: 'placeholder', source: 'node', expect: 'unique', match: { nameContains: 'Buyer code' } },
+        { ruleId: 'name', source: 'node', expect: 'unique', match: { nameContains: 'buyerCode' } },
+        { ruleId: 'subtree', source: 'node', expect: 'unique', match: { classContains: 'search-panel', textContains: 'Nested content' } },
+    ]);
+    assert.equal(result.byRuleId.placeholder.ok, true);
+    assert.equal(result.byRuleId.name.ok, true);
+    assert.deepEqual(result.byRuleId.subtree.matchedNodeIds, [observation.captureIdToNodeId.panel]);
+});
+
+test('form bridge validates rule graph before matching', () => {
+    const snapshot = build();
+    const result = matchFormComponentRules(snapshot, [
+        { ruleId: 'duplicate', source: 'node', expect: 'unique', match: { idEquals: 'Buyer' } },
+        { ruleId: 'duplicate', source: 'node', expect: 'unique', match: { idEquals: 'Seller' } },
+        { ruleId: 'missing-parent', source: 'node', expect: 'unique', within: 'unknown', match: { idEquals: 'Buyer' } },
+        { ruleId: 'cycle-a', source: 'node', expect: 'unique', within: 'cycle-b', match: { idEquals: 'Buyer' } },
+        { ruleId: 'cycle-b', source: 'node', expect: 'unique', within: 'cycle-a', match: { idEquals: 'Seller' } },
+        { ruleId: 'empty', source: 'node', expect: 'unique', match: {} },
+    ]);
+    const codes = new Set(result.diagnostics.map((item) => item.code));
+    assert.equal(codes.has('form.bridge.rule.duplicate'), true);
+    assert.equal(codes.has('form.bridge.within.missing'), true);
+    assert.equal(codes.has('form.bridge.within.cycle'), true);
+    assert.equal(codes.has('form.bridge.match.empty'), true);
+    assert.equal(Object.values(result.byRuleId).every((binding) => binding.ok === false), true);
+});
+
+test('form bridge resolves forward within dependencies in graph order', () => {
+    const snapshot = build();
+    const result = matchFormComponentRules(snapshot, [
+        { ruleId: 'child', source: 'node', expect: 'unique', within: 'parent', match: { idEquals: 'Buyer' } },
+        { ruleId: 'parent', source: 'node', expect: 'unique', match: { idEquals: 'FormA' } },
+    ]);
+    assert.equal(result.byRuleId.parent.ok, true);
+    assert.equal(result.byRuleId.child.ok, true);
+});
+
+test('form bridge rejects structurally ambiguous form bindings', () => {
+    const completeness = { dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete' } as const;
+    const raw: RawPageCapture = {
+        identity: { pageEpoch: 'bridge-ambiguous', captureRevision: 1 },
+        metadata: { schemaVersion: 1, source: 'fixed-fixture', capturedAt: '2026-07-28T00:00:00.000Z' },
+        completeness,
+        scopes: [{ id: 'main', kind: 'document', rootCaptureId: 'html', status: 'captured', completeness }],
+        nodes: [
+            node('html', 'html', undefined, ['body']),
+            node('body', 'body', 'html', ['form']),
+            node('form', 'form', 'body', ['label-a', 'a', 'label-b', 'b', 'save'], { id: 'AmbiguousForm' }),
+            node('label-a', 'label', 'form', [], { for: 'A' }, 'A'),
+            node('a', 'input', 'form', [], { id: 'A', type: 'text', 'data-rpa-control-ref': 'duplicate' }),
+            node('label-b', 'label', 'form', [], { for: 'B' }, 'B'),
+            node('b', 'input', 'form', [], { id: 'B', type: 'text', 'data-rpa-control-ref': 'duplicate' }),
+            node('save', 'button', 'form', [], { type: 'submit' }, 'Save'),
+        ],
+        accessibility: [], runtimeState: {}, diagnostics: [],
+    };
+    const observation = buildPageObservation(raw);
+    const relations = buildRelationIndex(observation);
+    const locators = buildLocatorIndex(observation);
+    const controls = buildControlSnapshot({ observation, relations, locators }).controls;
+    const snapshot = buildFormSnapshot({ observation, relations, locators, controls });
+    const form = Object.values(snapshot.forms.forms)[0];
+    assert.equal(form.status, 'ambiguous');
+    const result = matchFormComponentRules(snapshot, [{
+        ruleId: 'form', source: 'region', expect: 'unique', match: { kind: 'form', idEquals: 'AmbiguousForm' },
+    }]);
+    assert.equal(result.byRuleId.form.ok, false);
+    assert.equal(result.diagnostics.some((item) => item.code === 'form.bridge.structure.ambiguous'), true);
+});

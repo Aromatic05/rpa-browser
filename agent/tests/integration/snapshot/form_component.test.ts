@@ -308,3 +308,77 @@ test('ambiguous form attributes surface a form-level ownership diagnostic', () =
     assert.equal(snapshot.forms.diagnostics.some((item) => item.code === 'form.owner.ambiguous'), true);
     assert.equal(snapshot.forms.residualFieldIds.length, 1);
 });
+
+test('fieldset preserves wrapping-label and accessible-name fields as independent group members', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['form']),
+        node('form', 'form', 'body', ['fieldset']),
+        node('fieldset', 'fieldset', 'form', ['legend', 'name-label', 'email'],
+            { 'aria-label': 'Identity fields' }),
+        node('legend', 'legend', 'fieldset', [], {}, 'Identity'),
+        node('name-label', 'label', 'fieldset', ['name'], {}, 'Name'),
+        node('name', 'input', 'name-label', [], { type: 'text' }),
+        node('email', 'input', 'fieldset', [], { type: 'email', 'aria-label': 'Email' }),
+    ]);
+    const form = onlyForm(snapshot);
+    assert.equal(form.fields.length, 2);
+    assert.deepEqual(form.fields.map((field) => field.controlIds.length), [1, 1]);
+    assert.equal(form.groups.length, 1);
+    assert.equal(form.groups[0].fieldIds.length, 2);
+    assert.deepEqual(form.fields[0].labelNodeIds, [snapshot.observation.captureIdToNodeId['name-label']]);
+});
+
+test('ordinary class names containing range do not create composite fields', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['form']),
+        node('form', 'form', 'body', ['orange']),
+        node('orange', 'div', 'form', ['first', 'second'], { class: 'orange-panel' }),
+        node('first', 'input', 'orange', [], { type: 'text', 'aria-label': 'First' }),
+        node('second', 'input', 'orange', [], { type: 'text', 'aria-label': 'Second' }),
+    ]);
+    const form = onlyForm(snapshot);
+    assert.equal(form.fields.length, 2);
+    assert.deepEqual(form.fields.map((field) => field.controlIds.length), [1, 1]);
+});
+
+test('active single-field dialog is a form boundary', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['dialog']),
+        node('dialog', 'div', 'body', ['input', 'save'], { role: 'dialog', 'aria-label': 'Rename' }),
+        node('input', 'input', 'dialog', [], { type: 'text', 'aria-label': 'Name' }),
+        node('save', 'button', 'dialog', [], { type: 'submit' }, 'Save'),
+    ]);
+    const form = onlyForm(snapshot);
+    assert.equal(form.boundaryKind, 'dialog');
+    assert.equal(form.fields.length, 1);
+    assert.equal(form.actions.length, 1);
+    assert.equal(snapshot.forms.residualFieldIds.length, 0);
+});
+
+test('unresolved and non-form form attributes surface ownership diagnostics', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['not-form', 'missing-owner', 'wrong-owner']),
+        node('not-form', 'div', 'body', [], { id: 'NotAForm' }),
+        node('missing-owner', 'input', 'body', [], { type: 'text', form: 'MissingForm', 'aria-label': 'Missing' }),
+        node('wrong-owner', 'input', 'body', [], { type: 'text', form: 'NotAForm', 'aria-label': 'Wrong' }),
+    ]);
+    assert.equal(snapshot.forms.diagnostics.filter((item) => item.code === 'form.owner.unresolved').length, 2);
+    assert.equal(snapshot.forms.residualFieldIds.length, 2);
+});
+
+test('image input is a submit action', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['form']),
+        node('form', 'form', 'body', ['input', 'image']),
+        node('input', 'input', 'form', [], { type: 'text', 'aria-label': 'Query' }),
+        node('image', 'input', 'form', [], { type: 'image', alt: 'Submit search' }),
+    ]);
+    const form = onlyForm(snapshot);
+    assert.equal(form.actions.length, 1);
+    assert.equal(form.actions[0].structuralRole, 'submit');
+});

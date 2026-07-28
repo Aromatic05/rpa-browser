@@ -45,6 +45,8 @@ const FIELD_CONTROL_KINDS = new Set([
     'date_like',
 ]);
 const ACTION_CONTROL_KINDS = new Set(['button', 'link']);
+const FORM_CONTROL_TAGS = new Set(['input', 'select', 'textarea']);
+const COMPOSITE_CLASS_PATTERN = /(^|[-_])(range|input-group|input-wrapper)([-_]|$)/;
 const ELEMENT_FORM_ITEM = 'el-form-item';
 const ANT_FORM_ITEM = 'ant-form-item';
 const UTILITY_CLASSES = new Set([
@@ -97,8 +99,8 @@ export const buildFormComponentIndex = (input: BuildFormSnapshotInput): FormComp
         }
         diagnostics.push(...field.diagnostics);
         const owner = resolveFormOwner(observation, relations, anchorControls);
-        if (owner.status === 'ambiguous') {
-            diagnostics.push(formOwnerDiagnostic(anchorControls, owner.candidateNodeIds));
+        if (owner.status === 'ambiguous' || owner.status === 'invalid') {
+            diagnostics.push(formOwnerDiagnostic(anchorControls, owner.candidateNodeIds, owner.status));
         }
         if (owner.status === 'resolved') {
             const bucket = forcedFieldIdsByBoundary.get(owner.ownerNodeId) ?? [];
@@ -117,8 +119,8 @@ export const buildFormComponentIndex = (input: BuildFormSnapshotInput): FormComp
         const action = buildAction(observation, control);
         actions[action.id] = action;
         const owner = resolveFormOwner(observation, relations, [control]);
-        if (owner.status === 'ambiguous') {
-            diagnostics.push(formOwnerDiagnostic([control], owner.candidateNodeIds));
+        if (owner.status === 'ambiguous' || owner.status === 'invalid') {
+            diagnostics.push(formOwnerDiagnostic([control], owner.candidateNodeIds, owner.status));
         }
         if (owner.status === 'resolved') {
             const bucket = forcedActionIdsByBoundary.get(owner.ownerNodeId) ?? [];
@@ -160,11 +162,6 @@ export const buildFormComponentIndex = (input: BuildFormSnapshotInput): FormComp
             reductionTrace.push({ nodeId, outcome: 'skipped', reason: 'boundary-without-fields', fieldIds: [], actionIds: unique(state.localActionIds) });
             return state;
         }
-        if (boundaryKind === 'dialog' && state.unclaimedFieldIds.length < 2) {
-            reductionTrace.push({ nodeId, outcome: 'propagated', reason: 'dialog-requires-multiple-fields', fieldIds: unique(state.unclaimedFieldIds), actionIds: unique(state.localActionIds) });
-            return state;
-        }
-
         const consumedFieldIds = boundaryKind === 'local-island'
             ? unique(state.unclaimedFieldIds).filter((fieldId) => !standaloneFieldIds.has(fieldId))
             : unique(state.unclaimedFieldIds);
@@ -405,7 +402,7 @@ const buildAction = (observation: PageObservation, control: ControlComponent): F
         ? 'link'
         : type === 'reset'
             ? 'reset'
-            : type === 'submit' || (node?.tag === 'button' && !type)
+            : type === 'submit' || type === 'image' || (node?.tag === 'button' && !type)
                 ? 'submit'
                 : 'button';
     const actionText = nodeText(observation, nodeId);
@@ -556,7 +553,7 @@ const findFieldAnchor = (
     const adapterItem = nearestAncestorOrSelf(observation, startNodeId, (nodeId) => isAdapterFormItem(observation, nodeId));
     if (adapterItem) {return adapterItem;}
     const fieldset = nearestAncestorOrSelf(observation, startNodeId, (nodeId) => observation.nodes[nodeId]?.tag === 'fieldset');
-    if (fieldset && !hasIndividualFieldLabels(observation, fieldset)) {return fieldset;}
+    if (fieldset && !hasIndividualFieldEvidence(observation, fieldset)) {return fieldset;}
     const wrappingLabel = nearestAncestorOrSelf(observation, startNodeId, (nodeId) => observation.nodes[nodeId]?.tag === 'label');
     if (wrappingLabel) {return wrappingLabel;}
     if (control.kind === 'radio_group' || control.kind === 'checkbox_group') {return control.rootNodeId;}
@@ -653,7 +650,7 @@ const shouldReduceLocalIsland = (
 type FormOwnerResolution =
     | { status: 'none' }
     | { status: 'resolved'; ownerNodeId: ObservationNodeId }
-    | { status: 'ambiguous'; candidateNodeIds: ObservationNodeId[] };
+    | { status: 'ambiguous' | 'invalid'; candidateNodeIds: ObservationNodeId[] };
 
 const resolveFormOwner = (
     observation: PageObservation,
@@ -663,27 +660,32 @@ const resolveFormOwner = (
     const edges = controls.flatMap((control) => control.memberNodeIds.flatMap((nodeId) =>
         (relations.bySourceNodeId[nodeId] ?? []).map((edgeIndex) => relations.edges[edgeIndex]).filter(Boolean)))
         .filter((edge) => edge.kind === 'form-owner');
-    const candidates = unique(edges.flatMap((edge) => edge.targetNodeIds))
-        .filter((nodeId) => observation.nodes[nodeId]?.tag === 'form');
-    if (edges.some((edge) => edge.status === 'ambiguous') || candidates.length > 1) {
-        return { status: 'ambiguous', candidateNodeIds: candidates };
+    if (edges.length === 0) {return { status: 'none' };}
+    const targets = unique(edges.flatMap((edge) => edge.targetNodeIds));
+    const forms = targets.filter((nodeId) => observation.nodes[nodeId]?.tag === 'form');
+    if (edges.some((edge) => edge.status === 'ambiguous') || forms.length > 1) {
+        return { status: 'ambiguous', candidateNodeIds: targets };
     }
-    return candidates.length === 1
-        ? { status: 'resolved', ownerNodeId: candidates[0] }
-        : { status: 'none' };
+    if (edges.some((edge) => edge.status === 'unresolved') || targets.length !== 1 || forms.length !== 1) {
+        return { status: 'invalid', candidateNodeIds: targets };
+    }
+    return { status: 'resolved', ownerNodeId: forms[0] };
 };
 
 const formOwnerDiagnostic = (
     controls: readonly ControlComponent[],
     candidateNodeIds: readonly ObservationNodeId[],
+    status: 'ambiguous' | 'invalid',
 ): AnalysisDiagnostic => ({
-    code: 'form.owner.ambiguous',
+    code: status === 'ambiguous' ? 'form.owner.ambiguous' : 'form.owner.unresolved',
     severity: 'error',
     stage: 'form',
-    status: 'ambiguous',
+    status: status === 'ambiguous' ? 'ambiguous' : 'rejected',
     nodeIds: unique([...controls.flatMap((control) => control.memberNodeIds), ...candidateNodeIds]),
     evidence: controls.flatMap((control) => control.evidence),
-    message: 'form attribute does not resolve to one form owner',
+    message: status === 'ambiguous'
+        ? 'form attribute resolves to multiple form owners'
+        : 'form attribute does not resolve to a form owner',
 });
 
 const relationTargets = (
@@ -819,12 +821,19 @@ const hasAccessibleName = (observation: PageObservation, field: FormField): bool
         || observation.attributes[nodeId]?.placeholder,
     )));
 
-const hasIndividualFieldLabels = (
+const hasIndividualFieldEvidence = (
     observation: PageObservation,
     fieldsetNodeId: ObservationNodeId,
-): boolean => descendants(observation, fieldsetNodeId).some((nodeId) =>
-    observation.nodes[nodeId]?.tag === 'label'
-    && Boolean(observation.attributes[nodeId]?.for));
+): boolean => descendants(observation, fieldsetNodeId).some((nodeId) => {
+    const node = observation.nodes[nodeId];
+    const attrs = observation.attributes[nodeId] ?? {};
+    if (node?.tag === 'label') {
+        return Boolean(attrs.for)
+            || descendants(observation, nodeId).some((childId) => FORM_CONTROL_TAGS.has(observation.nodes[childId]?.tag ?? ''));
+    }
+    return FORM_CONTROL_TAGS.has(node?.tag ?? '')
+        && Boolean(attrs['aria-label'] || attrs['aria-labelledby']);
+});
 
 const isAdapterFormItem = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
     const tokens = classTokens(observation.attributes[nodeId]?.class);
@@ -836,7 +845,7 @@ const isSafeCompositeContainer = (observation: PageObservation, nodeId: Observat
     if (!tag || tag === 'form' || tag === 'body' || tag === 'html') {return false;}
     if (isUtilityContainer(observation, nodeId) || isTableContainer(observation, nodeId)) {return false;}
     const tokens = classTokens(observation.attributes[nodeId]?.class);
-    return tokens.some((token) => token.includes('range') || token.includes('input-group') || token.includes('input-wrapper'));
+    return tokens.some((token) => COMPOSITE_CLASS_PATTERN.test(token));
 };
 
 const isUtilityContainer = (observation: PageObservation, nodeId: ObservationNodeId): boolean =>
