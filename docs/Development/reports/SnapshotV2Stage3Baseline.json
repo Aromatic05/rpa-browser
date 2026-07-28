@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-28T13:00:45.517Z",
+  "generatedAt": "2026-07-28T15:26:01.356Z",
   "corpusVersion": "snapshot-v2-stage3-compact-v2",
   "corpusPolicy": {
     "tracked": true,
@@ -53,9 +53,9 @@
     "truthErrorCount": 0,
     "timing": {
       "samples": 200,
-      "p50Ms": 0.095,
-      "p95Ms": 0.182,
-      "maxMs": 1.596
+      "p50Ms": 0.087,
+      "p95Ms": 0.264,
+      "maxMs": 1.52
     }
   },
   "fixtures": [
@@ -105,9 +105,9 @@
       "truthErrors": [],
       "timing": {
         "samples": 50,
-        "p50Ms": 0.069,
-        "p95Ms": 0.17,
-        "maxMs": 1.596
+        "p50Ms": 0.067,
+        "p95Ms": 0.175,
+        "maxMs": 1.52
       }
     },
     {
@@ -152,9 +152,9 @@
       "truthErrors": [],
       "timing": {
         "samples": 50,
-        "p50Ms": 0.085,
-        "p95Ms": 0.135,
-        "maxMs": 0.288
+        "p50Ms": 0.075,
+        "p95Ms": 0.207,
+        "maxMs": 0.279
       }
     },
     {
@@ -208,8 +208,8 @@
       "timing": {
         "samples": 50,
         "p50Ms": 0.087,
-        "p95Ms": 0.116,
-        "maxMs": 0.32
+        "p95Ms": 0.117,
+        "maxMs": 0.312
       }
     },
     {
@@ -261,9 +261,9 @@
       "truthErrors": [],
       "timing": {
         "samples": 50,
-        "p50Ms": 0.117,
-        "p95Ms": 0.157,
-        "maxMs": 0.39
+        "p50Ms": 0.127,
+        "p95Ms": 0.272,
+        "maxMs": 0.479
       }
     }
   ]

@@ -1249,14 +1249,19 @@ Observation query helpers
 
 当前验收结果：
 
-- Snapshot 测试 60 项全部通过。
+- Snapshot 测试 84 项全部通过。
 - Element Plus 与 Ant Design Select 真实组件验收通过。
 - custom select post-action verification 只接受显式 selected/aria-selected/checked 事实，不再接受 trigger 文本或焦点造成的隐式 A11y selected。
 - checkbox group 在执行前解析全部 canonical locator，并在中途失败时恢复原始 checked 状态。
 - 10 个固定/浏览器 fixture 的 control/locator 基线通过，control invariant failure 为 0。
-- 28 个 controls 中 24 个可执行，executable-without-resolved-locator 为 0。
+- 28 个 controls 中 23 个可执行；其余 control 因 partial/ambiguous facts 明确不可执行，executable-without-resolved-locator 为 0。
 - 唯一 unresolved locator 位于显式 unavailable scope，不存在全局 fallback。
 - click、fill、type、select_option、hover、target scroll、target press-key、drag-and-drop 和 element screenshot 已切到 V2 canonical locator。
+- structural locator 和 frame/shadow scope path 在执行前通过 backend/runtime identity 精确重映射；节点被替换时返回 stale，不按相同外观或旧 scope 序号重新绑定。
+- Control ref 优先使用 page-epoch + backend/runtime identity，iframe/shadow 顺序变化不会把旧 ref 绑定到其他 control。
+- native select 支持 optgroup 与 multiple；select 不再同时被收集为 popup。
+- radio 按非空 name、form owner 和安全边界分组；checkbox 只在显式 group boundary 内组装。
+- runtime 或 A11y facts 为 partial/unavailable 时，atomic control 继承 partial diagnostic 且不暴露 capability。
 - `capture_resolve` 仍属于 Stage 5 消费方切换，不构成第二套 ControlIndex。
 - 因此阶段 2 状态为 accepted；这不代表阶段 3 的 entity_rules 生产链已经完成。
 
@@ -1346,13 +1351,17 @@ Observation query helpers
 
 当前验收结果：
 
-- Snapshot 测试 60 项全部通过。
+- Snapshot 测试 84 项全部通过。
 - Element Plus 与 Ant Design 的 list、create、dialog、Form.List 和 date-range 页面通过精确浏览器验收；字段、composite、required、actions、residual 均使用固定预期，不再只检查下限。
 - Stage 3 baseline 使用 4 个被 Git 跟踪的代码生成紧凑语料，不依赖 `agent/tests/fixtures/form-v2/` 的本地大型 capture。
 - 紧凑语料 × 50 iterations：47 nodes、4 forms、8 fields、1 composite field、2 residual fields、5 owned actions、1 residual action、22 ownership edges，exact truth error 为 0。
 - DataTables search/page-size residual 行为由紧凑确定性 toolbar signature 保护；完整官方页面 capture 仅作为本地探索材料，不参与 CI/baseline。
 - `FormProposal`、`BottomUpReducer<FormReductionState>`、reduction trace、ComponentLocation、structural action 与 SemanticSuggestion contracts 已冻结。
 - form bridge 只接收 FormComponent/canonical node，保留 `unique`/`one_or_more`，不构造 V1 region/group entity，也不生成业务 binding。
+- fieldset 以 label/for、wrapping label、aria-label 和 aria-labelledby 区分独立字段；仅在没有独立字段证据时使用 legend 组装 composite field。
+- active dialog 可以消费单字段表单；无效或 unresolved `form` owner 产生 Form 层 diagnostic。
+- form bridge 在匹配前拒绝 duplicate ruleId、unknown/cyclic within 和空 match，并按依赖拓扑执行前向 within。
+- bridge 保留旧 matcher 的 name/placeholder/subtree text 语义；ambiguous/partial FormComponent 不得产生成功 binding。
 - form bridge 当前没有生产调用方；workspace provider、profile selection、artifact save/load、check/save/reopen/runtime query 尚未实现。
 - entity_rules 验收当前 4 项、0 通过，均明确失败于 `not-implemented`。
 - 因此阶段 3 状态为 blocked，阶段 4 不得开始。

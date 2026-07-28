@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-28T11:20:36.719Z",
+  "generatedAt": "2026-07-28T15:26:00.726Z",
   "corpusVersion": "snapshot-v2-stage2-v1",
   "iterations": 50,
   "fixtureCount": 10,
   "inputNodeCount": 267,
   "aggregate": {
     "controlCount": 28,
-    "executableControlCount": 24,
+    "executableControlCount": 23,
     "executableWithoutResolvedLocator": 0,
     "duplicateRefCount": 1,
     "controlKinds": {
@@ -18,14 +18,14 @@
       "custom_select": 1
     },
     "controlStatus": {
-      "complete": 25,
-      "ambiguous": 2,
-      "partial": 1
+      "complete": 24,
+      "partial": 2,
+      "ambiguous": 2
     },
     "capabilities": {
-      "focus": 22,
-      "click": 23,
-      "fill": 7,
+      "focus": 21,
+      "click": 22,
+      "fill": 6,
       "open_popup": 1
     },
     "locatorCount": 265,
@@ -43,15 +43,15 @@
     "timing": {
       "locator": {
         "samples": 500,
-        "p50Ms": 0.027,
-        "p95Ms": 0.536,
-        "maxMs": 1.374
+        "p50Ms": 0.035,
+        "p95Ms": 0.571,
+        "maxMs": 1.162
       },
       "control": {
         "samples": 500,
-        "p50Ms": 0.024,
-        "p95Ms": 0.125,
-        "maxMs": 0.8
+        "p50Ms": 0.025,
+        "p95Ms": 0.133,
+        "maxMs": 1.357
       }
     }
   },
@@ -105,15 +105,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.034,
-          "p95Ms": 0.061,
-          "maxMs": 0.536
+          "p50Ms": 0.037,
+          "p95Ms": 0.059,
+          "maxMs": 0.436
         },
         "control": {
           "samples": 50,
           "p50Ms": 0.036,
-          "p95Ms": 0.132,
-          "maxMs": 0.8
+          "p95Ms": 0.095,
+          "maxMs": 1.195
         }
       }
     },
@@ -156,15 +156,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.042,
-          "p95Ms": 0.102,
-          "maxMs": 0.2
+          "p50Ms": 0.044,
+          "p95Ms": 0.091,
+          "maxMs": 0.149
         },
         "control": {
           "samples": 50,
-          "p50Ms": 0.013,
-          "p95Ms": 0.03,
-          "maxMs": 0.046
+          "p50Ms": 0.012,
+          "p95Ms": 0.033,
+          "maxMs": 0.166
         }
       }
     },
@@ -217,15 +217,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.018,
-          "p95Ms": 0.028,
-          "maxMs": 0.037
+          "p50Ms": 0.022,
+          "p95Ms": 0.037,
+          "maxMs": 0.151
         },
         "control": {
           "samples": 50,
-          "p50Ms": 0.024,
-          "p95Ms": 0.047,
-          "maxMs": 0.217
+          "p50Ms": 0.025,
+          "p95Ms": 0.05,
+          "maxMs": 0.22
         }
       }
     },
@@ -276,15 +276,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.023,
-          "p95Ms": 0.054,
-          "maxMs": 0.172
+          "p50Ms": 0.028,
+          "p95Ms": 0.042,
+          "maxMs": 0.085
         },
         "control": {
           "samples": 50,
-          "p50Ms": 0.021,
-          "p95Ms": 0.038,
-          "maxMs": 0.076
+          "p50Ms": 0.022,
+          "p95Ms": 0.031,
+          "maxMs": 0.08
         }
       }
     },
@@ -304,14 +304,10 @@
         "input": 1
       },
       "controlStatus": {
-        "complete": 1
+        "partial": 1
       },
-      "capabilities": {
-        "focus": 1,
-        "click": 1,
-        "fill": 1
-      },
-      "executableControlCount": 1,
+      "capabilities": {},
+      "executableControlCount": 0,
       "executableWithoutResolvedLocator": 0,
       "duplicateRefCount": 0,
       "customSelect": {
@@ -339,15 +335,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.016,
-          "p95Ms": 0.022,
-          "maxMs": 0.062
+          "p50Ms": 0.019,
+          "p95Ms": 0.026,
+          "maxMs": 0.064
         },
         "control": {
           "samples": 50,
           "p50Ms": 0.013,
-          "p95Ms": 0.019,
-          "maxMs": 0.03
+          "p95Ms": 0.023,
+          "maxMs": 0.045
         }
       }
     },
@@ -390,15 +386,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.017,
-          "p95Ms": 0.022,
-          "maxMs": 0.028
+          "p50Ms": 0.021,
+          "p95Ms": 0.028,
+          "maxMs": 0.043
         },
         "control": {
           "samples": 50,
           "p50Ms": 0.008,
-          "p95Ms": 0.025,
-          "maxMs": 0.048
+          "p95Ms": 0.012,
+          "maxMs": 0.021
         }
       }
     },
@@ -448,15 +444,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.018,
-          "p95Ms": 0.024,
-          "maxMs": 0.037
+          "p50Ms": 0.022,
+          "p95Ms": 0.031,
+          "maxMs": 0.127
         },
         "control": {
           "samples": 50,
           "p50Ms": 0.012,
-          "p95Ms": 0.024,
-          "maxMs": 0.136
+          "p95Ms": 0.023,
+          "maxMs": 0.043
         }
       }
     },
@@ -511,15 +507,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.028,
-          "p95Ms": 0.034,
-          "maxMs": 0.048
+          "p50Ms": 0.035,
+          "p95Ms": 0.043,
+          "maxMs": 0.067
         },
         "control": {
           "samples": 50,
-          "p50Ms": 0.036,
-          "p95Ms": 0.063,
-          "maxMs": 0.152
+          "p50Ms": 0.043,
+          "p95Ms": 0.066,
+          "maxMs": 0.182
         }
       }
     },
@@ -572,15 +568,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.424,
-          "p95Ms": 0.749,
-          "maxMs": 0.974
+          "p50Ms": 0.489,
+          "p95Ms": 0.924,
+          "maxMs": 1.162
         },
         "control": {
           "samples": 50,
           "p50Ms": 0.083,
-          "p95Ms": 0.121,
-          "maxMs": 0.197
+          "p95Ms": 0.123,
+          "maxMs": 0.174
         }
       }
     },
@@ -636,15 +632,15 @@
       "timing": {
         "locator": {
           "samples": 50,
-          "p50Ms": 0.409,
-          "p95Ms": 0.732,
-          "maxMs": 1.374
+          "p50Ms": 0.495,
+          "p95Ms": 0.877,
+          "maxMs": 0.959
         },
         "control": {
           "samples": 50,
-          "p50Ms": 0.103,
-          "p95Ms": 0.186,
-          "maxMs": 0.446
+          "p50Ms": 0.116,
+          "p95Ms": 0.2,
+          "maxMs": 1.357
         }
       }
     }
