@@ -522,7 +522,7 @@ const readOption = (
     const attrs = observation.attributes[nodeId] ?? {};
     const runtime = observation.runtimeState[nodeId];
     const a11y = observation.accessibility[nodeId];
-    const text = observation.text[nodeId];
+    const text = readOptionText(observation, nodeId);
     const value = attrs.value ?? attrs['data-value'] ?? attrs['data-key'] ?? text ?? '';
     const label = attrs.label ?? a11y?.name ?? text ?? value;
     return {
@@ -542,6 +542,13 @@ const readOption = (
         disabled: truthy(runtime?.disabled) || truthy(a11y?.disabled)
             || lower(attrs['aria-disabled']) === 'true' || hasBooleanAttribute(attrs, 'disabled'),
     };
+};
+
+const readOptionText = (observation: PageObservation, nodeId: ObservationNodeId): string | undefined => {
+    const values = unique([nodeId, ...descendantIds(observation, nodeId)]
+        .map((candidateId) => observation.text[candidateId]?.replace(/\s+/g, ' ').trim())
+        .filter((value): value is string => Boolean(value)));
+    return values.length > 0 ? values.join(' ') : undefined;
 };
 
 const controlRef = (

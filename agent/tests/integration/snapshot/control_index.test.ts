@@ -200,6 +200,26 @@ test('custom select is partial while closed and complete only with exact popup o
     assert.deepEqual(openControl.options.map((item) => item.dataValue), ['Office', 'Travel']);
 });
 
+test('custom select option derives label from its unique descendant text', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['combo', 'popup']),
+        node('combo', 'input', 'body', [], {
+            id: 'ExpenseType', role: 'combobox', 'aria-controls': 'ExpensePopup', 'aria-expanded': 'true',
+        }),
+        node('popup', 'div', 'body', ['option'], {id: 'ExpensePopup', role: 'listbox'}),
+        node('option', 'li', 'popup', ['label'], {id: 'TravelOption', role: 'option'}),
+        node('label', 'span', 'option', [], {}, '差旅'),
+    ]);
+
+    const control = Object.values(snapshot.controls.controls).find((item) => item.kind === 'custom_select');
+    assert.ok(control);
+    assert.equal(control.status, 'complete');
+    assert.deepEqual(control.options.map((option) => ({value: option.value, label: option.label})), [
+        {value: '差旅', label: '差旅'},
+    ]);
+});
+
 test('ambiguous popup ownership and incomplete facts suppress executable capability', () => {
     const ambiguous = build([
         node('html', 'html', undefined, ['body']),
