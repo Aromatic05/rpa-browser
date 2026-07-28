@@ -200,3 +200,24 @@ test('target scroll screenshot and drag-and-drop use V2 canonical locators', asy
         await browser.close();
     }
 });
+
+
+test('selector mapping keeps the live top-level node when another frame reuses the same id', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <button id="same">Top</button>
+          <iframe srcdoc="<button id='same'>Frame</button>"></iframe>
+          <script>document.querySelector('#same').addEventListener('click', event => event.currentTarget.dataset.clicked = 'true')</script>
+        `);
+        await page.locator('iframe').contentFrame().locator('#same').waitFor();
+        const { click } = await importExecutors();
+        const result = await click({ id: 'scope-click', name: 'browser.click', args: { selector: '#same' } } as never, createDeps(page) as never, 'workspace');
+        assert.equal(result.ok, true);
+        assert.equal(await page.locator('#same').getAttribute('data-clicked'), 'true');
+        assert.equal(await page.locator('iframe').contentFrame().locator('#same').getAttribute('data-clicked'), null);
+    } finally {
+        await browser.close();
+    }
+});

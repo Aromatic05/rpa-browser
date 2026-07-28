@@ -5,6 +5,7 @@ import type {
     PageObservation,
 } from '../../observation/model/contracts';
 import type { ExecutableLocatorResolution, LocatorIndex } from './contracts';
+import { liveLocatorFingerprint } from './fingerprint';
 
 type LocatorContext = Page | FrameLocator | Locator;
 
@@ -64,6 +65,13 @@ export const resolveExecutableLocator = async (
                 evidence: [locatorEvidence('locator.execution.scope-host-ambiguous', [step.hostNodeId])],
             };
         }
+        if (hostCanonical.fingerprint && await liveLocatorFingerprint(host) !== hostCanonical.fingerprint) {
+            return {
+                status: 'stale',
+                message: 'scope host canonical identity changed',
+                evidence: [locatorEvidence('locator.execution.scope-host-identity-stale', [step.hostNodeId])],
+            };
+        }
         context = step.kind === 'frame' ? host.contentFrame() : host;
     }
 
@@ -82,6 +90,13 @@ export const resolveExecutableLocator = async (
             message: 'canonical locator matched multiple nodes',
             count,
             evidence: [locatorEvidence('locator.execution.target-ambiguous', [canonical.targetNodeId])],
+        };
+    }
+    if (canonical.fingerprint && await liveLocatorFingerprint(locator) !== canonical.fingerprint) {
+        return {
+            status: 'stale',
+            message: 'canonical locator matched a different node identity',
+            evidence: [locatorEvidence('locator.execution.target-identity-stale', [canonical.targetNodeId])],
         };
     }
     return {

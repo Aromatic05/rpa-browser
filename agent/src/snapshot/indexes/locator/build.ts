@@ -8,6 +8,7 @@ import type {
 import { deepFreeze } from '../../observation/model/freeze';
 import { resolveLocatorScopePath } from '../../observation/model/locator_scope';
 import type { CanonicalLocator, CanonicalLocatorStrategy, LocatorIndex } from './contracts';
+import { observationLocatorFingerprint } from './fingerprint';
 
 export const buildLocatorIndex = (observation: PageObservation): LocatorIndex => {
     const locators: Record<string, CanonicalLocator> = {};
@@ -49,6 +50,7 @@ export const buildLocatorIndex = (observation: PageObservation): LocatorIndex =>
                     status: 'resolved',
                     strategy: selector.strategy,
                     selector: selector.selector,
+                    fingerprint: selector.fingerprint,
                     evidence: [...base.evidence, selector.evidence],
                 }
                 : {
@@ -99,23 +101,25 @@ const chooseSelector = (
     observation: PageObservation,
     nodeId: ObservationNodeId,
     uniqueness: UniqueIndex,
-): { selector: string; strategy: CanonicalLocatorStrategy; evidence: Evidence } | undefined => {
+): { selector: string; strategy: CanonicalLocatorStrategy; fingerprint?: string; evidence: Evidence } | undefined => {
     const node = observation.nodes[nodeId];
     if (!node) {return undefined;}
     const attrs = observation.attributes[nodeId] ?? {};
+    const fingerprint = observationLocatorFingerprint(observation, nodeId);
     const unique = (name: string, value: string | undefined) =>
         typeof value === 'string'
         && value.length > 0
         && (uniqueness.get(node.scopeId)?.get(name)?.get(value)?.length ?? 0) === 1;
 
     if (unique('id', attrs.id)) {
-        return selectorResult('id', `[id=${quoteCss(attrs.id)}]`, nodeId, 'locator.selector.id');
+        return selectorResult('id', `[id=${quoteCss(attrs.id)}]`, nodeId, undefined, 'locator.selector.id');
     }
     if (unique('data-testid', attrs['data-testid'])) {
         return selectorResult(
             'test-id',
             `[data-testid=${quoteCss(attrs['data-testid'])}]`,
             nodeId,
+            undefined,
             'locator.selector.test-id',
         );
     }
@@ -124,22 +128,25 @@ const chooseSelector = (
             'name',
             `${normalizeTag(node.tag)}[name=${quoteCss(attrs.name)}]`,
             nodeId,
+            undefined,
             'locator.selector.name',
         );
     }
     const structural = buildStructuralPath(observation, nodeId);
     if (!structural) {return undefined;}
-    return selectorResult('structural', structural, nodeId, 'locator.selector.structural');
+    return selectorResult('structural', structural, nodeId, fingerprint, 'locator.selector.structural');
 };
 
 const selectorResult = (
     strategy: CanonicalLocatorStrategy,
     selector: string,
     nodeId: ObservationNodeId,
+    fingerprint: string | undefined,
     code: string,
 ) => ({
     strategy,
     selector,
+    fingerprint,
     evidence: {
         code,
         strength: strategy === 'structural' ? 'strong' as const : 'exact' as const,

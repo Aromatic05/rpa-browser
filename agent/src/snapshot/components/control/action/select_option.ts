@@ -2,6 +2,7 @@ import type { Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import type { LocatorIndex } from '../../../indexes/locator/contracts';
 import { captureControlSnapshot } from '../capture/browser';
+import { captureSelectorTarget } from './selector_capture';
 import { resolveControlRef } from '../assembly/build';
 import type {
     ControlComponent,
@@ -25,8 +26,12 @@ export const executeSelectOptionOnPage = async (
         return failure('ERR_BAD_ARGS', 'values must contain non-empty strings', { values: request.values });
     }
 
-    const initial = await captureControlSnapshot(page);
-    const target = await resolveRequestedControl(page, initial, request);
+    const selectorCapture = request.selector ? await captureSelectorTarget(page, request.selector) : undefined;
+    if (selectorCapture && !selectorCapture.ok) {
+        return failure(selectorCapture.code as Extract<SelectOptionActionResult, { ok: false }>['code'], selectorCapture.message, selectorCapture.details);
+    }
+    const initial = selectorCapture?.snapshot ?? await captureControlSnapshot(page);
+    const target = await resolveRequestedControl(initial, request, selectorCapture?.nodeId);
     if (!target.ok) {return target.error;}
     let control = target.control;
 
@@ -309,9 +314,9 @@ const verifySelection = async (
 };
 
 const resolveRequestedControl = async (
-    page: Page,
     snapshot: ControlSnapshot,
     request: SelectOptionRequest,
+    selectorNodeId?: string,
 ): Promise<{ ok: true; control: ControlComponent } | { ok: false; error: SelectOptionActionResult }> => {
     if (request.controlRef) {
         const resolution = resolveControlRef(snapshot.controls, request.controlRef);
@@ -326,34 +331,7 @@ const resolveRequestedControl = async (
         };
     }
 
-    let nodeId = request.nodeId;
-    if (request.selector) {
-        let locator: Locator;
-        try {
-            locator = page.locator(request.selector);
-            const count = await locator.count();
-            if (count === 0) {
-                return { ok: false, error: failure('ERR_NOT_FOUND', 'selector did not match a control', { selector: request.selector }) };
-            }
-            if (count > 1) {
-                return { ok: false, error: failure('ERR_AMBIGUOUS', 'selector matched multiple controls', {
-                    selector: request.selector,
-                    count,
-                }) };
-            }
-        } catch (error) {
-            return { ok: false, error: failure('ERR_BAD_ARGS', 'selector is invalid', {
-                selector: request.selector,
-                error: error instanceof Error ? error.message : String(error),
-            }) };
-        }
-        nodeId = await resolveSelectorNodeId(locator!, snapshot);
-        if (!nodeId) {
-            return { ok: false, error: failure('ERR_UNRESOLVED', 'selector is not a canonical control locator', {
-                selector: request.selector,
-            }) };
-        }
-    }
+    const nodeId = request.nodeId ?? selectorNodeId;
 
     if (!nodeId) {
         return { ok: false, error: failure('ERR_BAD_ARGS', 'nodeId, selector, or controlRef is required') };
@@ -375,24 +353,6 @@ const resolveRequestedControl = async (
         }) };
     }
     return { ok: true, control: candidates[0] };
-};
-
-const resolveSelectorNodeId = async (locator: Locator, snapshot: ControlSnapshot): Promise<string | undefined> => {
-    const identity = await locator.evaluate((node) => ({
-        id: node instanceof Element ? node.getAttribute('id') : null,
-        testId: node instanceof Element ? node.getAttribute('data-testid') : null,
-        tag: node instanceof Element ? node.tagName.toLowerCase() : null,
-        name: node instanceof Element ? node.getAttribute('name') : null,
-    }));
-    const matches = Object.keys(snapshot.observation.nodes).filter((nodeId) => {
-        const node = snapshot.observation.nodes[nodeId];
-        const attrs = snapshot.observation.attributes[nodeId] ?? {};
-        if (identity.id !== null) {return attrs.id === identity.id;}
-        if (identity.testId !== null) {return attrs['data-testid'] === identity.testId;}
-        if (identity.name !== null) {return node.tag === identity.tag && attrs.name === identity.name;}
-        return false;
-    });
-    return matches.length === 1 ? matches[0] : undefined;
 };
 
 const executableNode = async (

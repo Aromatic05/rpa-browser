@@ -16,6 +16,7 @@ export type CanonicalLocator = {
     status: CanonicalLocatorStatus;
     strategy?: CanonicalLocatorStrategy;
     selector?: string;
+    fingerprint?: string;
     scopePath: LocatorScopePath;
     evidence: Evidence[];
 };

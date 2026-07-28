@@ -177,7 +177,7 @@ const collectNativeSelects = (
             options,
             status: options.length > 0 ? 'complete' : 'partial',
         });
-        if (component.status === 'complete' && canExecute(component, locators)) {
+        if (component.status === 'complete' && canExecute(component, locators, observation)) {
             component.capabilities.push('focus', 'click', 'select_option');
         }
         add(controls, component);
@@ -231,7 +231,7 @@ const collectChoiceGroups = (
             options,
             status: 'complete',
         });
-        if (canExecute(component, locators)) {component.capabilities.push('select_option');}
+        if (canExecute(component, locators, observation)) {component.capabilities.push('select_option');}
         add(controls, component);
         for (const option of options) {
             const optionComponent = baseComponent(observation, locators, {
@@ -244,7 +244,7 @@ const collectChoiceGroups = (
                 options: [option],
                 status: option.disabled ? 'partial' : 'complete',
             });
-            if (optionComponent.status === 'complete' && canExecute(optionComponent, locators)) {
+            if (optionComponent.status === 'complete' && canExecute(optionComponent, locators, observation)) {
                 optionComponent.capabilities.push('focus', 'click');
             }
             add(controls, optionComponent);
@@ -276,7 +276,7 @@ const collectCustomSelects = (
         const options = popupNodeId ? resolveCustomSelectOptions(observation, popupNodeId) : [];
         const expanded = readExpanded(observation, nodeId);
         const completeness = scopeCompleteness(observation, nodeId);
-        const factsComplete = completeness.a11y !== 'unavailable' && completeness.runtime !== 'unavailable';
+        const factsComplete = completeness.a11y === 'complete' && completeness.runtime === 'complete';
         const optionsExecutable = options.length > 0
             && options.every((option) => isNodeInteractable(observation, option.nodeId));
         let status: ControlComponent['status'] = 'partial';
@@ -325,7 +325,7 @@ const collectCustomSelects = (
             status,
             diagnostics,
         });
-        if (canExecute(component, locators)) {component.capabilities.push('open_popup');}
+        if (canExecute(component, locators, observation)) {component.capabilities.push('open_popup');}
         if (status === 'complete' && options.every((option) => hasResolvedLocator(locators, option.nodeId))) {
             component.capabilities.push('select_option');
         }
@@ -343,7 +343,7 @@ const collectCustomSelects = (
                 options: [option],
                 status: isNodeInteractable(observation, option.nodeId) ? 'complete' : 'partial',
             });
-            if (optionComponent.status === 'complete' && canExecute(optionComponent, locators)) {
+            if (optionComponent.status === 'complete' && canExecute(optionComponent, locators, observation)) {
                 optionComponent.capabilities.push('click');
             }
             add(controls, optionComponent);
@@ -376,7 +376,7 @@ const collectPopupAndOptions = (
                 optionNodeIds: [nodeId], memberNodeIds: [nodeId], options: [readOption(observation, nodeId)],
                 status: isNodeInteractable(observation, nodeId) ? 'complete' : 'partial',
             });
-            if (component.status === 'complete' && canExecute(component, locators)) {component.capabilities.push('click');}
+            if (component.status === 'complete' && canExecute(component, locators, observation)) {component.capabilities.push('click');}
             add(controls, component);
         }
     }
@@ -396,18 +396,23 @@ const collectAtomicControls = (
         const type = lower(observation.attributes[nodeId]?.type);
         let kind: ControlKind | undefined;
         if (node.tag === 'textarea') {kind = 'textarea';}
+        else if (node.tag === 'input' && (type === 'hidden' || type === 'file')) {continue;}
+        else if (node.tag === 'input' && ACTION_INPUT_TYPES.has(type)) {kind = 'button';}
         else if (node.tag === 'input' && DATE_TYPES.has(type)) {kind = 'date_like';}
         else if (node.tag === 'input') {kind = 'input';}
         else if (node.tag === 'button' || role === 'button') {kind = 'button';}
-        else if (node.tag === 'a' && typeof observation.attributes[nodeId]?.href === 'string' || role === 'link') {kind = 'link';}
+        else if ((node.tag === 'a' && typeof observation.attributes[nodeId]?.href === 'string') || role === 'link') {kind = 'link';}
         if (!kind) {continue;}
         const component = baseComponent(observation, locators, {
             kind, rootNodeId: nodeId, controlNodeId: nodeId,
             optionNodeIds: [], memberNodeIds: [nodeId], options: [], status: 'complete',
         });
-        if (canExecute(component, locators)) {
+        if (canExecute(component, locators, observation)) {
             component.capabilities.push('focus', 'click');
-            if ((kind === 'input' || kind === 'textarea' || kind === 'date_like') && !component.state.readonly) {
+            if (kind === 'input' && (type === 'checkbox' || type === 'radio')) {
+                component.capabilities.push('toggle');
+            } else if ((kind === 'textarea' || kind === 'date_like' || (kind === 'input' && FILLABLE_INPUT_TYPES.has(type)))
+                && !component.state.readonly) {
                 component.capabilities.push('fill');
             }
         }
@@ -471,14 +476,20 @@ const readControlState = (
     kind: ControlKind,
 ): ControlState => {
     const runtime = observation.runtimeState[nodeId];
+    const a11y = observation.accessibility[nodeId];
     const attrs = observation.attributes[nodeId] ?? {};
+    const grouped = kind === 'radio_group' || kind === 'checkbox_group';
     return {
         expanded: readExpanded(observation, nodeId),
         multiple: kind === 'checkbox_group' || hasBooleanAttribute(attrs, 'multiple'),
-        disabled: truthy(runtime?.disabled) || hasBooleanAttribute(attrs, 'disabled'),
-        readonly: truthy(runtime?.readonly) || hasBooleanAttribute(attrs, 'readonly'),
+        disabled: grouped
+            ? options.length > 0 && options.every((option) => option.disabled)
+            : truthy(runtime?.disabled) || truthy(a11y?.disabled) || lower(attrs['aria-disabled']) === 'true' || hasBooleanAttribute(attrs, 'disabled'),
+        readonly: truthy(runtime?.readonly) || truthy(a11y?.readonly) || lower(attrs['aria-readonly']) === 'true' || hasBooleanAttribute(attrs, 'readonly'),
         focused: truthy(runtime?.focused),
-        checked: truthy(runtime?.checked) || truthy(runtime?.ariaChecked) || hasBooleanAttribute(attrs, 'checked'),
+        checked: grouped
+            ? options.some((option) => option.selected)
+            : truthy(runtime?.checked) || truthy(runtime?.ariaChecked) || hasBooleanAttribute(attrs, 'checked'),
         selectedValues: options.filter((option) => option.selected).map((option) => option.value),
         selectedLabels: options.filter((option) => option.selected).map((option) => option.label),
     };
@@ -511,7 +522,8 @@ const readOption = (
             || (allowImplicitAccessibilitySelection && truthy(a11y?.selected))
             || hasBooleanAttribute(attrs, 'selected') || lower(attrs['aria-selected']) === 'true'
             || truthy(runtime?.checked) || truthy(runtime?.ariaChecked) || hasBooleanAttribute(attrs, 'checked'),
-        disabled: truthy(runtime?.disabled) || hasBooleanAttribute(attrs, 'disabled'),
+        disabled: truthy(runtime?.disabled) || truthy(a11y?.disabled)
+            || lower(attrs['aria-disabled']) === 'true' || hasBooleanAttribute(attrs, 'disabled'),
     };
 };
 
@@ -521,17 +533,24 @@ const controlRef = (
     rootNodeId: ObservationNodeId,
     controlNodeId?: ObservationNodeId,
 ): string => {
-    const attrs = observation.attributes[controlNodeId ?? rootNodeId] ?? {};
-    if (typeof attrs['data-rpa-control-ref'] === 'string' && attrs['data-rpa-control-ref'].length > 0) {
-        return attrs['data-rpa-control-ref'];
-    }
+    const scopeId = observation.nodes[rootNodeId]?.scopeId ?? '';
     const rootAttrs = observation.attributes[rootNodeId] ?? {};
-    if (typeof rootAttrs.id === 'string' && rootAttrs.id.length > 0) {return `dom-id:${rootAttrs.id}`;}
-    if (typeof attrs.id === 'string' && attrs.id.length > 0) {return `dom-id:${attrs.id}`;}
-    const identity = observation.domIdentity[controlNodeId ?? rootNodeId];
+    const controlAttrs = observation.attributes[controlNodeId ?? rootNodeId] ?? {};
+    if (typeof controlAttrs['data-rpa-control-ref'] === 'string' && controlAttrs['data-rpa-control-ref'].length > 0) {
+        return controlAttrs['data-rpa-control-ref'];
+    }
+    if (typeof rootAttrs.id === 'string' && rootAttrs.id.length > 0) {return `scope:${scopeId}:dom-id:${rootAttrs.id}`;}
+    if (kind !== 'radio_group' && kind !== 'checkbox_group'
+        && typeof controlAttrs.id === 'string' && controlAttrs.id.length > 0) {
+        return `scope:${scopeId}:dom-id:${controlAttrs.id}`;
+    }
+    const identityNodeId = kind === 'radio_group' || kind === 'checkbox_group'
+        ? rootNodeId
+        : controlNodeId ?? rootNodeId;
+    const identity = observation.domIdentity[identityNodeId];
     if (identity?.backendNodeId) {return `backend:${identity.backendNodeId}`;}
     if (identity?.runtimeIdentityToken) {return `runtime:${identity.runtimeIdentityToken}`;}
-    return `${kind}:${rootNodeId}`;
+    return `scope:${scopeId}:${kind}:${rootNodeId}`;
 };
 
 export const validateControlIndex = (
@@ -577,10 +596,19 @@ export const validateControlIndex = (
     return deepFreeze({ ok: diagnostics.length === 0, diagnostics });
 };
 
-const canExecute = (component: ControlComponent, locators: LocatorIndex): boolean =>
-    component.status !== 'ambiguous'
-    && !component.state.disabled
-    && component.locatorIds.some((locatorId) => locators.locators[locatorId]?.status === 'resolved');
+const canExecute = (component: ControlComponent, locators: LocatorIndex, observation: PageObservation): boolean => {
+    if (component.status === 'ambiguous' || component.state.disabled
+        || component.inheritedCompleteness.runtime !== 'complete') {return false;}
+    const candidateNodeIds = component.kind === 'radio_group' || component.kind === 'checkbox_group'
+        ? component.options.filter((option) => !option.disabled).map((option) => option.nodeId)
+        : [component.triggerNodeId ?? component.controlNodeId ?? component.rootNodeId];
+    return candidateNodeIds.some((nodeId) => {
+        const activity = observation.activity[nodeId];
+        return Boolean(activity && activity.rendered && !activity.hiddenByStyle && !activity.inert
+            && activity.selfHasBox && activity.subtreeActive && activity.ariaExposed !== false
+            && (locators.byNodeId[nodeId] ?? []).some((locatorId) => locators.locators[locatorId]?.status === 'resolved'));
+    });
+};
 
 const hasResolvedLocator = (locators: LocatorIndex, nodeId: ObservationNodeId): boolean =>
     (locators.byNodeId[nodeId] ?? []).some((id) => locators.locators[id]?.status === 'resolved');
@@ -740,6 +768,8 @@ const orderedNodeIds = (observation: PageObservation): ObservationNodeId[] =>
         (observation.documentOrder[a] ?? Number.MAX_SAFE_INTEGER)
         - (observation.documentOrder[b] ?? Number.MAX_SAFE_INTEGER));
 const DATE_TYPES = new Set(['date', 'datetime-local', 'month', 'time', 'week']);
+const ACTION_INPUT_TYPES = new Set(['button', 'image', 'reset', 'submit']);
+const FILLABLE_INPUT_TYPES = new Set(['', 'email', 'number', 'password', 'search', 'tel', 'text', 'url']);
 const POPUP_ROLES = new Set(['listbox', 'menu', 'tree', 'grid']);
 const CUSTOM_SELECT_TRIGGER_CLASSES = new Set(['el-select__wrapper', 'ant-select-selector']);
 const CUSTOM_SELECT_ROOT_CLASSES = new Set(['el-select', 'ant-select']);

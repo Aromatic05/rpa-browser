@@ -122,3 +122,23 @@ test('locator execution reports stale and ambiguous matches instead of clicking 
         await browser.close();
     }
 });
+
+
+test('structural locator becomes stale when its identity drifts to a different sibling', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<button>A</button><button>B</button><button>C</button>');
+        const snapshot = await captureControlSnapshot(page);
+        const targetNodeId = Object.keys(snapshot.observation.nodes).find((nodeId) => snapshot.observation.text[nodeId] === 'B');
+        assert.ok(targetNodeId);
+        const locatorId = snapshot.locators.byNodeId[targetNodeId][0];
+        assert.equal(snapshot.locators.locators[locatorId].strategy, 'structural');
+
+        await page.locator('body').evaluate((body) => body.insertAdjacentHTML('afterbegin', '<button>NEW</button>'));
+        const result = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId);
+        assert.equal(result.status, 'stale');
+    } finally {
+        await browser.close();
+    }
+});

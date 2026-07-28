@@ -1,6 +1,7 @@
 import type { Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import { captureControlSnapshot } from '../capture/browser';
+import { captureSelectorTarget } from './selector_capture';
 import type {
     AtomicActionFailure,
     AtomicActionTargetRequest,
@@ -29,13 +30,12 @@ export const resolveAtomicActionTarget = async (
         return failed('ERR_BAD_ARGS', 'nodeId or selector is required');
     }
 
-    const snapshot = await captureControlSnapshot(page);
-    const selectorNode = request.selector
-        ? await resolveUniqueSelectorNode(page, snapshot, request.selector)
-        : undefined;
-    if (selectorNode && !selectorNode.ok) {return selectorNode;}
-
-    const nodeId = request.nodeId ?? selectorNode?.nodeId;
+    const selectorCapture = request.selector ? await captureSelectorTarget(page, request.selector) : undefined;
+    if (selectorCapture && !selectorCapture.ok) {
+        return failed(selectorCapture.code, selectorCapture.message, selectorCapture.details);
+    }
+    const snapshot = selectorCapture?.snapshot ?? await captureControlSnapshot(page);
+    const nodeId = request.nodeId ?? selectorCapture?.nodeId;
     if (!nodeId || !snapshot.observation.nodes[nodeId]) {
         return failed(
             request.nodeId ? 'ERR_STALE' : 'ERR_UNRESOLVED',
@@ -43,11 +43,11 @@ export const resolveAtomicActionTarget = async (
             { nodeId: request.nodeId, selector: request.selector },
         );
     }
-    if (request.nodeId && selectorNode?.nodeId && selectorNode.nodeId !== request.nodeId) {
+    if (request.nodeId && selectorCapture?.nodeId && selectorCapture.nodeId !== request.nodeId) {
         return failed('ERR_AMBIGUOUS', 'nodeId and selector refer to different canonical nodes', {
             nodeId: request.nodeId,
             selector: request.selector,
-            selectorNodeId: selectorNode.nodeId,
+            selectorNodeId: selectorCapture.nodeId,
         });
     }
 
@@ -111,62 +111,6 @@ export const resolveAtomicActionTarget = async (
             control,
         },
     };
-};
-
-const resolveUniqueSelectorNode = async (
-    page: Page,
-    snapshot: ControlSnapshot,
-    selector: string,
-): Promise<{ ok: true; nodeId: string } | { ok: false; error: AtomicActionFailure }> => {
-    let locator: Locator;
-    try {
-        locator = page.locator(selector);
-        const count = await locator.count();
-        if (count === 0) {
-            return failed('ERR_NOT_FOUND', 'selector did not match a node', { selector });
-        }
-        if (count > 1) {
-            return failed('ERR_AMBIGUOUS', 'selector matched multiple nodes', { selector, count });
-        }
-    } catch (error) {
-        return failed('ERR_BAD_ARGS', 'selector is invalid', {
-            selector,
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }
-
-    const identity = await locator.evaluate((node) => {
-        if (!(node instanceof Element)) {return {};}
-        return {
-            id: node.getAttribute('id'),
-            testId: node.getAttribute('data-testid'),
-            name: node.getAttribute('name'),
-            tag: node.tagName.toLowerCase(),
-        };
-    });
-    const matches = Object.keys(snapshot.observation.nodes).filter((nodeId) => {
-        const node = snapshot.observation.nodes[nodeId];
-        const attrs = snapshot.observation.attributes[nodeId] ?? {};
-        if (identity.id !== null && identity.id !== undefined) {return attrs.id === identity.id;}
-        if (identity.testId !== null && identity.testId !== undefined) {
-            return attrs['data-testid'] === identity.testId;
-        }
-        if (identity.name !== null && identity.name !== undefined) {
-            return node.tag === identity.tag && attrs.name === identity.name;
-        }
-        return (snapshot.locators.byNodeId[nodeId] ?? []).some((locatorId) =>
-            snapshot.locators.locators[locatorId]?.selector === selector);
-    });
-    if (matches.length === 0) {
-        return failed('ERR_UNRESOLVED', 'unique selector has no exact canonical identity', { selector });
-    }
-    if (matches.length > 1) {
-        return failed('ERR_AMBIGUOUS', 'selector identity maps to multiple canonical nodes', {
-            selector,
-            nodeIds: matches,
-        });
-    }
-    return { ok: true, nodeId: matches[0] };
 };
 
 const controlsForNode = (

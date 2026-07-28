@@ -248,3 +248,85 @@ test('control collector registry has deterministic order and rejects duplicate c
         /duplicate control collector/,
     );
 });
+
+
+test('control refs are scope-local and anonymous choice groups do not collide with their first option', () => {
+    const completeness = { dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete' } as const;
+    const raw: RawPageCapture = {
+        identity: { pageEpoch: 'scope-control', captureRevision: 1 },
+        metadata: { schemaVersion: 1, source: 'fixed-fixture', capturedAt: '2026-07-28T00:00:00.000Z' },
+        completeness,
+        scopes: [
+            { id: 'main', kind: 'document', rootCaptureId: 'html', status: 'captured', completeness },
+            { id: 'frame', kind: 'iframe', parentScopeId: 'main', hostCaptureId: 'frame-host', rootCaptureId: 'frame-html', status: 'captured', completeness },
+        ],
+        nodes: [
+            { ...node('html', 'html', undefined, ['body']), scopeId: 'main' },
+            { ...node('body', 'body', 'html', ['same-main', 'group', 'frame-host']), scopeId: 'main' },
+            { ...node('same-main', 'button', 'body', [], { id: 'same' }, 'Main'), scopeId: 'main' },
+            { ...node('group', 'div', 'body', ['r1', 'r2'], { role: 'radiogroup' }), scopeId: 'main' },
+            { ...node('r1', 'input', 'group', [], { id: 'R1', type: 'radio', name: 'choice', value: 'A' }), scopeId: 'main' },
+            { ...node('r2', 'input', 'group', [], { id: 'R2', type: 'radio', name: 'choice', value: 'B' }), scopeId: 'main' },
+            { ...node('frame-host', 'iframe', 'body', [], { id: 'Frame' }), scopeId: 'main' },
+            { ...node('frame-html', 'html', undefined, ['frame-body']), scopeId: 'frame' },
+            { ...node('frame-body', 'body', 'frame-html', ['same-frame']), scopeId: 'frame' },
+            { ...node('same-frame', 'button', 'frame-body', [], { id: 'same' }, 'Frame'), scopeId: 'frame' },
+        ],
+        accessibility: [], runtimeState: {}, diagnostics: [],
+    };
+    const observation = buildPageObservation(raw);
+    const relations = buildRelationIndex(observation);
+    const locators = buildLocatorIndex(observation);
+    const snapshot = buildControlSnapshot({ observation, relations, locators });
+    const sameButtons = Object.values(snapshot.controls.controls).filter((control) => control.kind === 'button');
+    assert.equal(sameButtons.length, 2);
+    assert.notEqual(sameButtons[0].ref, sameButtons[1].ref);
+    assert.equal(sameButtons.every((control) => control.status === 'complete'), true);
+    const group = Object.values(snapshot.controls.controls).find((control) => control.kind === 'radio_group');
+    assert.ok(group);
+    assert.equal(group.status, 'complete');
+    assert.equal(group.capabilities.includes('select_option'), true);
+    assert.notEqual(group.ref, Object.values(snapshot.controls.controls).find((control) => control.kind === 'option')?.ref);
+});
+
+test('control capabilities respect activity, completeness, input type, aria disabled state and group option state', () => {
+    const nodes = [
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['hidden', 'submit', 'file', 'single-check', 'aria-button', 'group', 'combo', 'popup']),
+        { ...node('hidden', 'input', 'body', [], { id: 'Hidden', type: 'hidden' }), activity: { hiddenByStyle: true, inert: false, selfHasBox: false, rendered: false } },
+        node('submit', 'input', 'body', [], { id: 'Submit', type: 'submit', value: 'Save' }),
+        node('file', 'input', 'body', [], { id: 'File', type: 'file' }),
+        node('single-check', 'input', 'body', [], { id: 'SingleCheck', type: 'checkbox' }),
+        node('aria-button', 'div', 'body', [], { id: 'AriaButton', role: 'button', 'aria-disabled': 'true' }, 'Disabled'),
+        node('group', 'div', 'body', ['r1', 'r2'], { id: 'Group', role: 'radiogroup' }),
+        node('r1', 'input', 'group', [], { id: 'R1', type: 'radio', name: 'choice', value: 'A', disabled: '' }),
+        node('r2', 'input', 'group', [], { id: 'R2', type: 'radio', name: 'choice', value: 'B' }),
+        node('combo', 'button', 'body', [], { id: 'Combo', role: 'combobox', 'aria-controls': 'Popup', 'aria-expanded': 'true' }, 'Choose'),
+        node('popup', 'div', 'body', ['option'], { id: 'Popup', role: 'listbox' }),
+        node('option', 'button', 'popup', [], { role: 'option', 'data-value': 'X', 'aria-disabled': 'true' }, 'X'),
+    ];
+    const snapshot = build(nodes);
+    const controls = Object.values(snapshot.controls.controls);
+    assert.equal(controls.some((control) => control.controlNodeId === snapshot.observation.captureIdToNodeId.hidden), false);
+    const submit = controls.find((control) => control.controlNodeId === snapshot.observation.captureIdToNodeId.submit);
+    assert.equal(submit?.kind, 'button');
+    assert.deepEqual([...(submit?.capabilities ?? [])].sort(), ['click', 'focus']);
+    assert.equal(controls.some((control) => control.controlNodeId === snapshot.observation.captureIdToNodeId.file), false);
+    const singleCheck = controls.find((control) => control.controlNodeId === snapshot.observation.captureIdToNodeId['single-check']);
+    assert.deepEqual([...(singleCheck?.capabilities ?? [])].sort(), ['click', 'focus', 'toggle']);
+    const ariaButton = controls.find((control) => control.controlNodeId === snapshot.observation.captureIdToNodeId['aria-button']);
+    assert.deepEqual(ariaButton?.capabilities, []);
+    const group = controls.find((control) => control.kind === 'radio_group');
+    assert.equal(group?.state.disabled, false);
+    assert.equal(group?.capabilities.includes('select_option'), true);
+    const combo = controls.find((control) => control.kind === 'custom_select');
+    assert.equal(combo?.options[0]?.disabled, true);
+
+    const partial = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['input']),
+        node('input', 'input', 'body', [], { id: 'Partial', type: 'text' }),
+    ], { dom: 'complete', a11y: 'partial', runtime: 'partial', geometry: 'complete' });
+    const partialInput = Object.values(partial.controls.controls).find((control) => control.kind === 'input');
+    assert.deepEqual(partialInput?.capabilities, []);
+});
