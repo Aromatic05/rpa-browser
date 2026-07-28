@@ -1065,7 +1065,7 @@ session refresh -> remap/stale/diff
 - candidate-local `StructuralQuotientView`。
 - `InvariantValidator` 基础设施。
 - observation/relation/candidate/quotient diagnostics。
-- recognition laboratory 和 baseline report。
+- recognition replay benchmark 和 baseline report。
 
 本阶段不完成：
 
@@ -1104,15 +1104,15 @@ session refresh -> remap/stale/diff
 2. 改造 capture 和 canonical indexes，完成采集顺序、partial failure、cleanup、document order 与 source precedence join。
 3. 建立 scope-local IDREF、typed relations、activity consistency、frame transform 和 locator scope path。
 4. 建立 CandidateEvidence、candidate-local quotient 与 InvariantValidator，验证 endpoint、orphan、环和 canonical 完整性。
-5. 建立 observation laboratory 和 baseline report，记录 decision、local work set、timing 与固定/live 输入来源。
+5. 建立 observation replay benchmark 和 baseline report，记录 decision、local work set、timing 与固定/live 输入来源。
 6. 发布 `agent/src/snapshot/` 内部唯一 V2 事实层 API；不建立 V1-compatible tree bridge。该项不等于仓库生产入口切换，生产切换门槛仍必须单独满足。
 
 ### 8.6 交付物
 
-- `agent/src/snapshot/capture/`。
-- `agent/src/snapshot/observation/`。
-- `agent/src/snapshot/relation/`。
-- `agent/src/snapshot/entity_rule/` 归属边界；阶段 1 不实现规则业务逻辑。
+- `agent/src/snapshot/observation/`：model、analysis、capture、replay 四个同层次模块。
+- `agent/src/snapshot/indexes/`：relation、locator、ownership 三个索引模块。
+- `agent/src/snapshot/components/`：shared、control、form 组件模块。
+- `agent/src/snapshot/rules/`：model、matching、runtime 规则模块；阶段 1 不实现规则业务逻辑。
 - CandidateEvidence、StructuralQuotient 和 InvariantValidator 基础模块。
 - raw capture fixtures 与固定版本元数据。
 - observation replay helper。
@@ -1817,7 +1817,7 @@ Adapter 禁止：
 2. 提取带版本元数据的 raw fixtures，并增加 shadow、captured-without-candidate iframe、zero-box、activity mismatch、typed IDREF 和 scope geometry browser fixtures。
 3. 实现 PageEpoch/CaptureRevision、ScopeForest、immutable indexes、partial observation、exact joins 和 activity facts。
 4. 实现 scope-local relations、frame transforms、locator scope path、CandidateEvidence、candidate-local quotient 和 InvariantValidator。
-5. 建立 observation laboratory、decision report、局部工作集和性能基线。
+5. 建立 observation replay benchmark、decision report、局部工作集和性能基线。
 6. 切换唯一 capture/fusion 入口并通过全部退出门槛，不开始 Control/Form/Table 实现。
 
 阶段 1 明确不做：

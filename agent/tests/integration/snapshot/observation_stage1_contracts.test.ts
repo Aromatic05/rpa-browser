@@ -10,7 +10,7 @@ import {
     replayObservationFixture,
     resolveLocatorScopePath,
     resolveObservationAnchor,
-    runObservationLaboratory,
+    runObservationReplayBenchmark,
     type CandidateClassification,
     type ObservationFixture,
     type RawPageCapture,
@@ -31,7 +31,7 @@ test('versioned stage 1 corpus replays with frozen truth and invariant success',
     const observedClassifications = new Set<CandidateClassification>();
     for (const fixture of fixtures) {
         const analysis = replayObservationFixture(fixture);
-        const report = runObservationLaboratory([fixture], {
+        const report = runObservationReplayBenchmark([fixture], {
             iterations: 2,
             generatedAt: '2026-07-28T00:00:00.000Z',
         });

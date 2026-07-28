@@ -6,7 +6,7 @@ import {
     buildPageObservation,
     captureRawPage,
     loadObservationFixtures,
-    runObservationLaboratory,
+    runObservationReplayBenchmark,
 } from '../src/snapshot';
 
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,7 +22,7 @@ const outputPath = process.argv[2]
 const iterations = parsePositiveInteger(process.env.SNAPSHOT_V2_BASELINE_ITERATIONS, 50);
 
 const fixtures = await loadObservationFixtures(fixtureDirectory);
-const laboratory = runObservationLaboratory(fixtures, {
+const benchmark = runObservationReplayBenchmark(fixtures, {
     iterations,
     corpusVersion: 'snapshot-v2-stage1-v2',
 });
@@ -30,8 +30,8 @@ const liveCapture = await measureLiveCapture(Math.max(10, Math.min(iterations, 3
 const report = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    corpusVersion: laboratory.corpusVersion,
-    fixedCorpus: laboratory,
+    corpusVersion: benchmark.corpusVersion,
+    fixedCorpus: benchmark,
     liveCapture,
 };
 
