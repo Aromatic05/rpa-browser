@@ -4,10 +4,7 @@ import { resolveStepArgsRefs } from './step_refs';
 import { runCheckpoint, setCheckpoints } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
-import {
-    markSnapshotSessionDirty,
-    shouldMarkSnapshotDirtyByStep,
-} from './steps/executors/snapshot/core/session_store';
+import {shouldMarkPageSessionDirtyByStep} from './session';
 import type {
     Checkpoint,
     ResultPipe,
@@ -437,7 +434,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             });
 
             const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
-            if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
+            if (result.ok && shouldMarkPageSessionDirtyByStep(step.name, step.args)) {
                 try {
                     const workspace = resolvedDeps.resolveWorkspace(req.workspaceName);
                     const tabName = workspace.tabs.getActiveTab()?.name;
@@ -450,7 +447,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                         tabName,
                         timeoutMs: resolvedDeps.config.waitPolicy.pageReadyTimeoutMs,
                     });
-                    markSnapshotSessionDirty(binding, `step:${step.name}`);
+                    resolvedDeps.pageSession.markDirty(binding.page, 'interaction');
                 } catch (error) {
                     stepLogger('[runner] snapshot dirty mark failed', {
                         step: step.name,

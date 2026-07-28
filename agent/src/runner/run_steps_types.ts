@@ -5,7 +5,9 @@ import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../config';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { Action } from '../actions/action_protocol';
+import type { Page } from 'playwright';
 import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';
+import type { PageSnapshotSessionPort } from '../snapshot/session';
 
 export type StepEvent =
     | {
@@ -70,6 +72,7 @@ export type Checkpoint = {
 
 export type RunStepsDeps = {
     runtime: ExecutionBindings;
+    pageSession: PageSnapshotSessionPort<Page>;
     resolveWorkspace: (workspaceName: string) => RuntimeWorkspace;
     dispatchAction: (action: Action) => Promise<Action>;
     resolveEntityRulesProvider?: (workspaceName: string) => WorkspaceEntityRulesProvider | null;

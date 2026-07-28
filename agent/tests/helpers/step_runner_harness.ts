@@ -10,6 +10,7 @@ import { runStepList } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
 import type { StepArgsMap, StepName, StepUnion } from '../../src/runner/steps/types';
 import { RunnerPluginHost } from '../../src/runner/hotreload/plugin_host';
+import {PageSnapshotSessionStore} from '../../src/snapshot/session';
 
 export const createStep = <TName extends StepName>(name: TName, args: StepArgsMap[TName]): StepUnion => ({
     id: crypto.randomUUID(),
@@ -50,6 +51,7 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
 
     const deps = {
         runtime,
+        pageSession: new PageSnapshotSessionStore(),
         config: getRunnerConfig(),
         pluginHost,
         resolveWorkspace: (name: string) => {

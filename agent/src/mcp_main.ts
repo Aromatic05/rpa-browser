@@ -14,6 +14,7 @@ import { createControlServer, registerControlShutdown } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 import { createPortAllocator } from './runtime/service/ports';
 import type { RunStepsDeps } from './runner/run_steps_types';
+import {PageSnapshotSessionStore} from './snapshot/session';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -53,6 +54,7 @@ const runtimeRegistry = createExecutionBindings({
 
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
+    pageSession: new PageSnapshotSessionStore(),
     resolveWorkspace: (workspaceName: string) => {
         const workspace = workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {
