@@ -10,14 +10,20 @@ import type {
 } from '../../../workflow';
 import type { WorkspaceEntityRulesProvider } from './contracts';
 import { createWorkspaceEntityRulesProvider } from './provider';
+import { executeEntityRules, type ExecuteEntityRulesInput, type EntityRulesExecutionResult } from './matcher';
+import { executeEntityRulesOnPage } from './capture';
 
 export type EntityRulesRuntime = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
     getProvider: (workflow: Workflow) => WorkspaceEntityRulesProvider;
+    execute: (input: ExecuteEntityRulesInput) => EntityRulesExecutionResult;
+    executePage: typeof executeEntityRulesOnPage;
 };
 
 export const createEntityRulesRuntime = (): EntityRulesRuntime => ({
     getProvider: (workflow) => createWorkspaceEntityRulesProvider(workflow),
+    execute: executeEntityRules,
+    executePage: executeEntityRulesOnPage,
     handle: async ({ action, workspace }) => {
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         switch (action.type) {

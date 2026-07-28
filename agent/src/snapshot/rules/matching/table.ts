@@ -24,6 +24,7 @@ export const matchTableComponentRules = (
         return deepFreeze({ byRuleId, diagnostics });
     }
 
+    const resolvedPaginationNodeIds = buildResolvedPaginationNodeSet(snapshot);
     for (const rule of orderRules(rules)) {
         const within = rule.within ? byRuleId[rule.within] : undefined;
         const allowedNodeIds = rule.within ? buildWithinNodeSet(snapshot, within) : undefined;
@@ -35,7 +36,7 @@ export const matchTableComponentRules = (
             for (const nodeId of orderedNodeIds(snapshot.observation)) {
                 if (!isActiveNode(snapshot.observation, nodeId)) {continue;}
                 if (allowedNodeIds && !allowedNodeIds.has(nodeId)) {continue;}
-                if (matchesNode(snapshot.observation, nodeId, rule)) {matchedNodeIds.push(nodeId);}
+                if (matchesNode(snapshot, nodeId, rule, resolvedPaginationNodeIds)) {matchedNodeIds.push(nodeId);}
             }
         } else {
             for (const table of orderedTables(snapshot)) {
@@ -91,16 +92,20 @@ const matchesTable = (
     if (rule.match.nameContains && !normalizeLower(tableName(snapshot, table)).includes(normalizeLower(rule.match.nameContains))) {
         return false;
     }
+    if (rule.match.relation === 'pagination' && table.pagination?.status !== 'resolved') {return false;}
+    if (rule.match.keyHint && !matchesKeyHint(table, rule.match.keyHint)) {return false;}
     return true;
 };
 
 const matchesNode = (
-    observation: PageObservation,
+    snapshot: TableSnapshot,
     nodeId: ObservationNodeId,
     rule: TableComponentMatchRule,
+    resolvedPaginationNodeIds: ReadonlySet<ObservationNodeId>,
 ): boolean => {
-    if (rule.match.kind) {return false;}
-    return matchCommonNodeAttributes(observation, nodeId, rule, true);
+    if (rule.match.kind || rule.match.keyHint) {return false;}
+    if (rule.match.relation === 'pagination' && !resolvedPaginationNodeIds.has(nodeId)) {return false;}
+    return matchCommonNodeAttributes(snapshot.observation, nodeId, rule, true);
 };
 
 const matchCommonNodeAttributes = (
@@ -140,6 +145,36 @@ const matchCommonNodeAttributes = (
     return true;
 };
 
+const matchesKeyHint = (
+    table: TableComponent,
+    keyHint: NonNullable<TableComponentMatchRule['match']['keyHint']>,
+): boolean => {
+    const headerText = normalizeLower(table.columns.map((column) => column.name).join(' '));
+    const headerNeedles = (keyHint.headerContainsAll ?? []).map(normalizeLower).filter(Boolean);
+    if (!headerNeedles.every((needle) => headerText.includes(needle))) {return false;}
+
+    const candidateColumns = table.suggestions
+        .filter((suggestion) => suggestion.kind === 'primary-key-candidate')
+        .flatMap((suggestion) => table.columns
+            .filter((column) => column.id === suggestion.value)
+            .flatMap((column) => [column.id, column.name]));
+    const candidateText = normalizeLower(candidateColumns.join(' '));
+    const candidateNeedles = (keyHint.primaryKeyCandidatesContains ?? []).map(normalizeLower).filter(Boolean);
+    return candidateNeedles.every((needle) => candidateText.includes(needle));
+};
+
+const buildResolvedPaginationNodeSet = (snapshot: TableSnapshot): ReadonlySet<ObservationNodeId> => {
+    const output = new Set<ObservationNodeId>();
+    for (const table of Object.values(snapshot.tables.tables)) {
+        if (table.pagination?.status !== 'resolved') {continue;}
+        for (const nodeId of table.pagination.nodeIds) {
+            output.add(nodeId);
+            descendants(snapshot.observation, nodeId).forEach((descendantId) => output.add(descendantId));
+        }
+    }
+    return output;
+};
+
 const tableName = (snapshot: TableSnapshot, table: TableComponent): string => {
     const rootNodeId = table.location.structuralRootNodeId;
     const attributes = snapshot.observation.attributes[rootNodeId] ?? {};
@@ -168,6 +203,12 @@ const buildWithinNodeSet = (
         descendants(snapshot.observation, table.location.structuralRootNodeId)
             .forEach((nodeId) => output.add(nodeId));
         table.body.visibleRows.forEach((row) => output.add(row.nodeId));
+        if (table.pagination?.status === 'resolved') {
+            table.pagination.nodeIds.forEach((nodeId) => {
+                output.add(nodeId);
+                descendants(snapshot.observation, nodeId).forEach((descendantId) => output.add(descendantId));
+            });
+        }
     });
     return output;
 };

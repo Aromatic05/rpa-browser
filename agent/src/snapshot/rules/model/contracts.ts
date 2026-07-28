@@ -43,6 +43,11 @@ export type FormComponentRuleMatchResult = {
 
 export type TableComponentRuleSource = 'region' | 'group' | 'node';
 
+export type TableComponentRuleKeyHintMatch = {
+    headerContainsAll?: string[];
+    primaryKeyCandidatesContains?: string[];
+};
+
 export type TableComponentRuleMatch = {
     kind?: 'table';
     nameContains?: string;
@@ -52,6 +57,8 @@ export type TableComponentRuleMatch = {
     classContains?: string;
     textContains?: string;
     ariaContains?: string;
+    relation?: 'pagination';
+    keyHint?: TableComponentRuleKeyHintMatch;
 };
 
 export type TableComponentMatchRule = {
