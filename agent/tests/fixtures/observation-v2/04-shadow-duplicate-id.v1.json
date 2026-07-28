@@ -1,0 +1,310 @@
+{
+  "fixtureVersion": 1,
+  "id": "shadow-duplicate-id",
+  "category": "scope-local-idref",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "platform",
+    "frameworkVersion": "chromium-2026",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://shadow-duplicate-id"
+  },
+  "truth": {
+    "minimumScopeCount": 3,
+    "expectedScopeStatuses": [
+      {
+        "kind": "open-shadow-root",
+        "status": "captured"
+      }
+    ],
+    "expectedCandidateMinimums": {
+      "structural": 2
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:shadow-duplicate-id",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://shadow-duplicate-id",
+      "framework": "platform",
+      "frameworkVersion": "chromium-2026"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "complete"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      },
+      {
+        "id": "shadow-a",
+        "kind": "open-shadow-root",
+        "parentScopeId": "main",
+        "hostCaptureId": "host-a",
+        "rootCaptureId": "shadow-root-a",
+        "status": "captured",
+        "transformToParent": {
+          "scaleX": 1,
+          "scaleY": 1,
+          "translateX": 0,
+          "translateY": 0
+        }
+      },
+      {
+        "id": "shadow-b",
+        "kind": "open-shadow-root",
+        "parentScopeId": "main",
+        "hostCaptureId": "host-b",
+        "rootCaptureId": "shadow-root-b",
+        "status": "captured",
+        "transformToParent": {
+          "scaleX": 1,
+          "scaleY": 1,
+          "translateX": 0,
+          "translateY": 0
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 900,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "host-a",
+          "host-b"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 900,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "host-a",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "id": "host-a"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 20,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "host-b",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "id": "host-b"
+        },
+        "geometry": {
+          "x": 360,
+          "y": 20,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "shadow-root-a",
+        "scopeId": "shadow-a",
+        "childCaptureIds": [
+          "controller-a",
+          "target-a"
+        ],
+        "tag": "#shadow-root",
+        "attributes": {},
+        "geometry": {
+          "x": 20,
+          "y": 20,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": false,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "controller-a",
+        "scopeId": "shadow-a",
+        "parentCaptureId": "shadow-root-a",
+        "childCaptureIds": [],
+        "tag": "button",
+        "attributes": {
+          "aria-controls": "shared"
+        },
+        "ownText": "A",
+        "geometry": {
+          "x": 30,
+          "y": 30,
+          "width": 50,
+          "height": 28
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "target-a",
+        "scopeId": "shadow-a",
+        "parentCaptureId": "shadow-root-a",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "id": "shared",
+          "role": "dialog"
+        },
+        "geometry": {
+          "x": 30,
+          "y": 70,
+          "width": 180,
+          "height": 100
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "shadow-root-b",
+        "scopeId": "shadow-b",
+        "childCaptureIds": [
+          "controller-b",
+          "target-b"
+        ],
+        "tag": "#shadow-root",
+        "attributes": {},
+        "geometry": {
+          "x": 360,
+          "y": 20,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": false,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "controller-b",
+        "scopeId": "shadow-b",
+        "parentCaptureId": "shadow-root-b",
+        "childCaptureIds": [],
+        "tag": "button",
+        "attributes": {
+          "aria-controls": "shared"
+        },
+        "ownText": "B",
+        "geometry": {
+          "x": 370,
+          "y": 30,
+          "width": 50,
+          "height": 28
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "target-b",
+        "scopeId": "shadow-b",
+        "parentCaptureId": "shadow-root-b",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "id": "shared",
+          "role": "table"
+        },
+        "geometry": {
+          "x": 370,
+          "y": 70,
+          "width": 180,
+          "height": 100
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      }
+    ],
+    "accessibility": [],
+    "runtimeState": {},
+    "diagnostics": []
+  }
+}

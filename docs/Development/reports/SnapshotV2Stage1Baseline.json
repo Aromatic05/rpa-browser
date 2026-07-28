@@ -1,0 +1,941 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-28T08:28:57.059Z",
+  "corpusVersion": "snapshot-v2-stage1-v2",
+  "fixedCorpus": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-07-28T08:28:55.896Z",
+    "corpusVersion": "snapshot-v2-stage1-v2",
+    "iterations": 50,
+    "fixtureCount": 10,
+    "fixtures": [
+      {
+        "id": "native-form",
+        "category": "native-form",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "native",
+          "frameworkVersion": "html-2026",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://native-form"
+        },
+        "input": {
+          "nodeCount": 6,
+          "scopeCount": 1,
+          "accessibilityRecordCount": 4,
+          "runtimeRecordCount": 1
+        },
+        "decision": {
+          "diagnosticCodes": {},
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 1,
+            "host": 0,
+            "part": 0,
+            "latent": 0,
+            "rejected": 5,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 1,
+          "maxSize": 4,
+          "p50Size": 4,
+          "p95Size": 4,
+          "maxCollapsedDepth": 0,
+          "maxProjectionParentFanOut": 3,
+          "orphanCount": 0,
+          "unionRatio": 0.6666666666666666,
+          "peakRetainedIndexEntries": 78
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.048,
+            "p95Ms": 0.152,
+            "maxMs": 0.673
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.006,
+            "p95Ms": 0.018,
+            "maxMs": 0.126
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.017,
+            "p95Ms": 0.145,
+            "maxMs": 1.843
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.006,
+            "p95Ms": 0.034,
+            "maxMs": 0.201
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0.002,
+            "maxMs": 0.049
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.018,
+            "p95Ms": 0.052,
+            "maxMs": 0.471
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "element-table",
+        "category": "framework-host-and-parts",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "element-plus",
+          "frameworkVersion": "2.11.0",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://element-table"
+        },
+        "input": {
+          "nodeCount": 11,
+          "scopeCount": 1,
+          "accessibilityRecordCount": 1,
+          "runtimeRecordCount": 0
+        },
+        "decision": {
+          "diagnosticCodes": {},
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 0,
+            "host": 2,
+            "part": 7,
+            "latent": 0,
+            "rejected": 2,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 2,
+          "maxSize": 8,
+          "p50Size": 7,
+          "p95Size": 8,
+          "maxCollapsedDepth": 1,
+          "maxProjectionParentFanOut": 2,
+          "orphanCount": 0,
+          "unionRatio": 0.7272727272727273,
+          "peakRetainedIndexEntries": 143
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.037,
+            "p95Ms": 0.066,
+            "maxMs": 0.119
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.004,
+            "p95Ms": 0.013,
+            "maxMs": 0.018
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.017,
+            "p95Ms": 0.038,
+            "maxMs": 0.095
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.009,
+            "p95Ms": 0.022,
+            "maxMs": 0.033
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0,
+            "maxMs": 0
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.022,
+            "p95Ms": 0.062,
+            "maxMs": 0.091
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "ant-select-activity",
+        "category": "typed-idref-and-activity-mismatch",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "ant-design",
+          "frameworkVersion": "5.27.0",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://ant-select-activity"
+        },
+        "input": {
+          "nodeCount": 7,
+          "scopeCount": 1,
+          "accessibilityRecordCount": 1,
+          "runtimeRecordCount": 0
+        },
+        "decision": {
+          "diagnosticCodes": {
+            "activity.controller-state-mismatch": 1
+          },
+          "relationStatus": {
+            "resolved": 2,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 0,
+            "host": 1,
+            "part": 0,
+            "latent": 0,
+            "rejected": 6,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 1,
+          "maxSize": 3,
+          "p50Size": 3,
+          "p95Size": 3,
+          "maxCollapsedDepth": 1,
+          "maxProjectionParentFanOut": 2,
+          "orphanCount": 0,
+          "unionRatio": 0.42857142857142855,
+          "peakRetainedIndexEntries": 91
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.023,
+            "p95Ms": 0.051,
+            "maxMs": 0.059
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.008,
+            "p95Ms": 0.028,
+            "maxMs": 0.33
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.007,
+            "p95Ms": 0.038,
+            "maxMs": 0.71
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.004,
+            "p95Ms": 0.01,
+            "maxMs": 0.058
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0.001,
+            "p95Ms": 0.005,
+            "maxMs": 0.046
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.011,
+            "p95Ms": 0.034,
+            "maxMs": 0.151
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "shadow-duplicate-id",
+        "category": "scope-local-idref",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "platform",
+          "frameworkVersion": "chromium-2026",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://shadow-duplicate-id"
+        },
+        "input": {
+          "nodeCount": 10,
+          "scopeCount": 3,
+          "accessibilityRecordCount": 0,
+          "runtimeRecordCount": 0
+        },
+        "decision": {
+          "diagnosticCodes": {},
+          "relationStatus": {
+            "resolved": 3,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 2,
+            "host": 0,
+            "part": 0,
+            "latent": 0,
+            "rejected": 8,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 2,
+          "maxSize": 2,
+          "p50Size": 2,
+          "p95Size": 2,
+          "maxCollapsedDepth": 0,
+          "maxProjectionParentFanOut": 1,
+          "orphanCount": 0,
+          "unionRatio": 0.4,
+          "peakRetainedIndexEntries": 130
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.033,
+            "p95Ms": 0.054,
+            "maxMs": 0.188
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.01,
+            "p95Ms": 0.018,
+            "maxMs": 0.039
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.009,
+            "p95Ms": 0.015,
+            "maxMs": 0.016
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.005,
+            "p95Ms": 0.007,
+            "maxMs": 0.01
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0.001,
+            "p95Ms": 0.002,
+            "maxMs": 0.003
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.013,
+            "p95Ms": 0.034,
+            "maxMs": 0.04
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "partial-unavailable",
+        "category": "partial-observation",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "platform",
+          "frameworkVersion": "chromium-2026",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://partial-unavailable"
+        },
+        "input": {
+          "nodeCount": 6,
+          "scopeCount": 2,
+          "accessibilityRecordCount": 0,
+          "runtimeRecordCount": 0
+        },
+        "decision": {
+          "diagnosticCodes": {
+            "capture.accessibility.failed": 1
+          },
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 0,
+            "host": 0,
+            "part": 0,
+            "latent": 1,
+            "rejected": 5,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 1,
+          "maxSize": 2,
+          "p50Size": 2,
+          "p95Size": 2,
+          "maxCollapsedDepth": 0,
+          "maxProjectionParentFanOut": 1,
+          "orphanCount": 0,
+          "unionRatio": 0.3333333333333333,
+          "peakRetainedIndexEntries": 78
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.017,
+            "p95Ms": 0.034,
+            "maxMs": 0.082
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.002,
+            "p95Ms": 0.003,
+            "maxMs": 0.005
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.007,
+            "p95Ms": 0.019,
+            "maxMs": 0.037
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.002,
+            "p95Ms": 0.005,
+            "maxMs": 0.007
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0,
+            "maxMs": 0.001
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.005,
+            "p95Ms": 0.012,
+            "maxMs": 0.013
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "frame-geometry",
+        "category": "scope-geometry",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "platform",
+          "frameworkVersion": "chromium-2026",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://frame-geometry"
+        },
+        "input": {
+          "nodeCount": 6,
+          "scopeCount": 2,
+          "accessibilityRecordCount": 0,
+          "runtimeRecordCount": 0
+        },
+        "decision": {
+          "diagnosticCodes": {},
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 1,
+            "host": 0,
+            "part": 0,
+            "latent": 0,
+            "rejected": 5,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 1,
+          "maxSize": 1,
+          "p50Size": 1,
+          "p95Size": 1,
+          "maxCollapsedDepth": 0,
+          "maxProjectionParentFanOut": 0,
+          "orphanCount": 0,
+          "unionRatio": 0.16666666666666666,
+          "peakRetainedIndexEntries": 78
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.019,
+            "p95Ms": 0.043,
+            "maxMs": 0.261
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.002,
+            "p95Ms": 0.003,
+            "maxMs": 0.007
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.006,
+            "p95Ms": 0.011,
+            "maxMs": 0.022
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.002,
+            "p95Ms": 0.004,
+            "maxMs": 0.005
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0.001,
+            "maxMs": 0.001
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.005,
+            "p95Ms": 0.008,
+            "maxMs": 0.016
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "captured-without-candidate-zero-box",
+        "category": "captured-without-candidate-and-zero-box",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "platform",
+          "frameworkVersion": "chromium-2026",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://captured-without-candidate-zero-box"
+        },
+        "input": {
+          "nodeCount": 7,
+          "scopeCount": 2,
+          "accessibilityRecordCount": 0,
+          "runtimeRecordCount": 0
+        },
+        "decision": {
+          "diagnosticCodes": {},
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 0,
+            "host": 0,
+            "part": 0,
+            "latent": 0,
+            "rejected": 7,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 0,
+          "maxSize": 0,
+          "p50Size": 0,
+          "p95Size": 0,
+          "maxCollapsedDepth": 0,
+          "maxProjectionParentFanOut": 0,
+          "orphanCount": 0,
+          "unionRatio": 0,
+          "peakRetainedIndexEntries": 91
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.021,
+            "p95Ms": 0.031,
+            "maxMs": 0.051
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.002,
+            "p95Ms": 0.003,
+            "maxMs": 0.003
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.005,
+            "p95Ms": 0.007,
+            "maxMs": 0.008
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.001,
+            "p95Ms": 0.001,
+            "maxMs": 0.01
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0,
+            "maxMs": 0
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.007,
+            "p95Ms": 0.013,
+            "maxMs": 0.04
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "join-resolution",
+        "category": "join-and-relation-resolution",
+        "source": {
+          "kind": "fixed-raw-capture",
+          "framework": "platform",
+          "frameworkVersion": "snapshot-v2-stage1-v1",
+          "capturedAt": "2026-07-28T00:00:00.000Z",
+          "origin": "fixture://join-resolution"
+        },
+        "input": {
+          "nodeCount": 11,
+          "scopeCount": 1,
+          "accessibilityRecordCount": 3,
+          "runtimeRecordCount": 1
+        },
+        "decision": {
+          "diagnosticCodes": {
+            "observation.join.a11y.ambiguous": 1,
+            "observation.join.runtime.ambiguous": 1,
+            "relation.idref.ambiguous": 1,
+            "relation.idref.unresolved": 1
+          },
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 1,
+            "ambiguous": 1
+          },
+          "candidateCounts": {
+            "structural": 1,
+            "host": 0,
+            "part": 0,
+            "latent": 0,
+            "rejected": 9,
+            "ambiguous": 1
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 2,
+          "maxSize": 3,
+          "p50Size": 3,
+          "p95Size": 3,
+          "maxCollapsedDepth": 0,
+          "maxProjectionParentFanOut": 2,
+          "orphanCount": 0,
+          "unionRatio": 0.2727272727272727,
+          "peakRetainedIndexEntries": 143
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.029,
+            "p95Ms": 0.061,
+            "maxMs": 0.117
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.012,
+            "p95Ms": 0.032,
+            "maxMs": 0.099
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.011,
+            "p95Ms": 0.025,
+            "maxMs": 0.039
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.006,
+            "p95Ms": 0.017,
+            "maxMs": 0.026
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0.001,
+            "maxMs": 0.006
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.018,
+            "p95Ms": 0.036,
+            "maxMs": 0.041
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "element-plus-browser",
+        "category": "real-framework-browser-capture",
+        "source": {
+          "kind": "browser-capture",
+          "framework": "element-plus",
+          "frameworkVersion": "2.13.7",
+          "capturedAt": "2026-07-28T08:00:00.000Z",
+          "origin": "package://element-plus@2.13.7"
+        },
+        "input": {
+          "nodeCount": 100,
+          "scopeCount": 1,
+          "accessibilityRecordCount": 121,
+          "runtimeRecordCount": 5
+        },
+        "decision": {
+          "diagnosticCodes": {},
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 0,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 2,
+            "host": 2,
+            "part": 30,
+            "latent": 0,
+            "rejected": 66,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 2,
+          "maxSize": 62,
+          "p50Size": 11,
+          "p95Size": 62,
+          "maxCollapsedDepth": 1,
+          "maxProjectionParentFanOut": 5,
+          "orphanCount": 0,
+          "unionRatio": 0.73,
+          "peakRetainedIndexEntries": 1300
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.51,
+            "p95Ms": 0.719,
+            "maxMs": 0.79
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.029,
+            "p95Ms": 0.054,
+            "maxMs": 0.056
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.102,
+            "p95Ms": 0.192,
+            "maxMs": 0.632
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.042,
+            "p95Ms": 0.06,
+            "maxMs": 0.074
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0,
+            "maxMs": 0.005
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.127,
+            "p95Ms": 0.166,
+            "maxMs": 0.194
+          }
+        },
+        "truthErrors": []
+      },
+      {
+        "id": "ant-design-browser",
+        "category": "real-framework-browser-capture",
+        "source": {
+          "kind": "browser-capture",
+          "framework": "ant-design",
+          "frameworkVersion": "5.29.3",
+          "capturedAt": "2026-07-28T08:00:00.000Z",
+          "origin": "package://antd@5.29.3"
+        },
+        "input": {
+          "nodeCount": 103,
+          "scopeCount": 1,
+          "accessibilityRecordCount": 130,
+          "runtimeRecordCount": 7
+        },
+        "decision": {
+          "diagnosticCodes": {
+            "relation.idref.unresolved": 2
+          },
+          "relationStatus": {
+            "resolved": 0,
+            "unresolved": 2,
+            "ambiguous": 0
+          },
+          "candidateCounts": {
+            "structural": 3,
+            "host": 2,
+            "part": 24,
+            "latent": 6,
+            "rejected": 68,
+            "ambiguous": 0
+          },
+          "invariantOk": true
+        },
+        "workSet": {
+          "quotientCount": 3,
+          "maxSize": 65,
+          "p50Size": 19,
+          "p95Size": 65,
+          "maxCollapsedDepth": 1,
+          "maxProjectionParentFanOut": 5,
+          "orphanCount": 0,
+          "unionRatio": 0.7864077669902912,
+          "peakRetainedIndexEntries": 1339
+        },
+        "timing": {
+          "observation": {
+            "samples": 50,
+            "p50Ms": 0.47,
+            "p95Ms": 0.767,
+            "maxMs": 1.168
+          },
+          "relation": {
+            "samples": 50,
+            "p50Ms": 0.034,
+            "p95Ms": 0.068,
+            "maxMs": 0.095
+          },
+          "candidate": {
+            "samples": 50,
+            "p50Ms": 0.081,
+            "p95Ms": 0.218,
+            "maxMs": 0.472
+          },
+          "quotient": {
+            "samples": 50,
+            "p50Ms": 0.047,
+            "p95Ms": 0.1,
+            "maxMs": 0.487
+          },
+          "activity-consistency": {
+            "samples": 50,
+            "p50Ms": 0,
+            "p95Ms": 0,
+            "maxMs": 0.002
+          },
+          "invariant": {
+            "samples": 50,
+            "p50Ms": 0.122,
+            "p95Ms": 0.209,
+            "maxMs": 0.225
+          }
+        },
+        "truthErrors": []
+      }
+    ],
+    "aggregate": {
+      "inputNodeCount": 267,
+      "relationEdgeCount": 9,
+      "candidateCounts": {
+        "structural": 10,
+        "host": 7,
+        "part": 61,
+        "latent": 7,
+        "rejected": 181,
+        "ambiguous": 1
+      },
+      "workSet": {
+        "maxSize": 65,
+        "p50Size": 4,
+        "p95Size": 65,
+        "orphanCount": 0,
+        "maximumUnionRatio": 0.7864077669902912,
+        "peakRetainedIndexEntries": 1339
+      },
+      "timing": {
+        "observation": {
+          "samples": 500,
+          "p50Ms": 0.031,
+          "p95Ms": 0.637,
+          "maxMs": 1.168
+        },
+        "relation": {
+          "samples": 500,
+          "p50Ms": 0.008,
+          "p95Ms": 0.041,
+          "maxMs": 0.33
+        },
+        "candidate": {
+          "samples": 500,
+          "p50Ms": 0.01,
+          "p95Ms": 0.178,
+          "maxMs": 1.843
+        },
+        "quotient": {
+          "samples": 500,
+          "p50Ms": 0.005,
+          "p95Ms": 0.057,
+          "maxMs": 0.487
+        },
+        "activity-consistency": {
+          "samples": 500,
+          "p50Ms": 0,
+          "p95Ms": 0.002,
+          "maxMs": 0.049
+        },
+        "invariant": {
+          "samples": 500,
+          "p50Ms": 0.015,
+          "p95Ms": 0.153,
+          "maxMs": 0.471
+        }
+      }
+    }
+  },
+  "liveCapture": {
+    "source": "browser-live",
+    "sampleCount": 30,
+    "maximumNodeCount": 16,
+    "maximumScopeCount": 1,
+    "capture": {
+      "samples": 30,
+      "p50Ms": 32.034,
+      "p95Ms": 42.361,
+      "maxMs": 106.112
+    },
+    "observation": {
+      "samples": 30,
+      "p50Ms": 0.121,
+      "p95Ms": 0.171,
+      "maxMs": 0.193
+    }
+  }
+}

@@ -1,0 +1,198 @@
+{
+  "fixtureVersion": 1,
+  "id": "frame-geometry",
+  "category": "scope-geometry",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "platform",
+    "frameworkVersion": "chromium-2026",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://frame-geometry"
+  },
+  "truth": {
+    "minimumScopeCount": 2,
+    "expectedScopeStatuses": [
+      {
+        "kind": "iframe",
+        "status": "captured"
+      }
+    ],
+    "expectedCandidateMinimums": {
+      "structural": 1
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:frame-geometry",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://frame-geometry",
+      "framework": "platform",
+      "frameworkVersion": "chromium-2026"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "complete"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      },
+      {
+        "id": "frame",
+        "kind": "iframe",
+        "parentScopeId": "main",
+        "hostCaptureId": "frame-host",
+        "rootCaptureId": "frame-html",
+        "status": "captured",
+        "transformToParent": {
+          "scaleX": 1.25,
+          "scaleY": 1.25,
+          "translateX": 200,
+          "translateY": 150
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1200,
+          "height": 800
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "frame-host"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1200,
+          "height": 800
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-host",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "iframe",
+        "attributes": {},
+        "geometry": {
+          "x": 200,
+          "y": 150,
+          "width": 500,
+          "height": 300
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-html",
+        "scopeId": "frame",
+        "childCaptureIds": [
+          "frame-body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 400,
+          "height": 240
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-body",
+        "scopeId": "frame",
+        "parentCaptureId": "frame-html",
+        "childCaptureIds": [
+          "frame-form"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 400,
+          "height": 240
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-form",
+        "scopeId": "frame",
+        "parentCaptureId": "frame-body",
+        "childCaptureIds": [],
+        "tag": "form",
+        "attributes": {},
+        "geometry": {
+          "x": 20,
+          "y": 30,
+          "width": 200,
+          "height": 100
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      }
+    ],
+    "accessibility": [],
+    "runtimeState": {},
+    "diagnostics": []
+  }
+}

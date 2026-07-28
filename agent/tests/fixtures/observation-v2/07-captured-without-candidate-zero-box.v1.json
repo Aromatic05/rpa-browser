@@ -1,0 +1,220 @@
+{
+  "fixtureVersion": 1,
+  "id": "captured-without-candidate-zero-box",
+  "category": "captured-without-candidate-and-zero-box",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "platform",
+    "frameworkVersion": "chromium-2026",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://captured-without-candidate-zero-box"
+  },
+  "truth": {
+    "minimumScopeCount": 2,
+    "expectedScopeStatuses": [
+      {
+        "kind": "iframe",
+        "status": "captured"
+      }
+    ],
+    "expectedCandidateMinimums": {
+      "rejected": 1
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:captured-empty-zero-box",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://captured-without-candidate-zero-box",
+      "framework": "platform",
+      "frameworkVersion": "chromium-2026"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "complete"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      },
+      {
+        "id": "empty-frame",
+        "kind": "iframe",
+        "parentScopeId": "main",
+        "hostCaptureId": "frame-host",
+        "rootCaptureId": "frame-html",
+        "status": "captured",
+        "transformToParent": {
+          "scaleX": 1,
+          "scaleY": 1,
+          "translateX": 200,
+          "translateY": 150
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 900,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "zero",
+          "frame-host"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 900,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "zero",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [
+          "zero-button"
+        ],
+        "tag": "div",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": false,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "zero-button",
+        "scopeId": "main",
+        "parentCaptureId": "zero",
+        "childCaptureIds": [],
+        "tag": "button",
+        "attributes": {},
+        "ownText": "Visible child",
+        "geometry": {
+          "x": 20,
+          "y": 20,
+          "width": 100,
+          "height": 30
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-host",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "iframe",
+        "attributes": {},
+        "geometry": {
+          "x": 200,
+          "y": 150,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-html",
+        "scopeId": "empty-frame",
+        "childCaptureIds": [
+          "frame-body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-body",
+        "scopeId": "empty-frame",
+        "parentCaptureId": "frame-html",
+        "childCaptureIds": [],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      }
+    ],
+    "accessibility": [],
+    "runtimeState": {},
+    "diagnostics": []
+  }
+}

@@ -1,0 +1,307 @@
+{
+  "fixtureVersion": 1,
+  "id": "element-table",
+  "category": "framework-host-and-parts",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "element-plus",
+    "frameworkVersion": "2.11.0",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://element-table"
+  },
+  "truth": {
+    "minimumScopeCount": 1,
+    "expectedCandidateMinimums": {
+      "host": 1,
+      "part": 3
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:element-table",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://element-table",
+      "framework": "element-plus",
+      "frameworkVersion": "2.11.0"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "complete"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1000,
+          "height": 700
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "host"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1000,
+          "height": 700
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "host",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [
+          "wrapper"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "el-table"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 20,
+          "width": 800,
+          "height": 400
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "wrapper",
+        "scopeId": "main",
+        "parentCaptureId": "host",
+        "childCaptureIds": [
+          "table"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "el-table__body-wrapper"
+        },
+        "geometry": {
+          "x": 20,
+          "y": 60,
+          "width": 800,
+          "height": 320
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "table",
+        "scopeId": "main",
+        "parentCaptureId": "wrapper",
+        "childCaptureIds": [
+          "thead",
+          "tbody"
+        ],
+        "tag": "table",
+        "attributes": {
+          "class": "el-table"
+        },
+        "backendNodeId": "205",
+        "geometry": {
+          "x": 20,
+          "y": 60,
+          "width": 800,
+          "height": 320
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "thead",
+        "scopeId": "main",
+        "parentCaptureId": "table",
+        "childCaptureIds": [
+          "header-row"
+        ],
+        "tag": "thead",
+        "attributes": {},
+        "geometry": {
+          "x": 20,
+          "y": 60,
+          "width": 800,
+          "height": 40
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "header-row",
+        "scopeId": "main",
+        "parentCaptureId": "thead",
+        "childCaptureIds": [
+          "th"
+        ],
+        "tag": "tr",
+        "attributes": {},
+        "geometry": {
+          "x": 20,
+          "y": 60,
+          "width": 800,
+          "height": 40
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "th",
+        "scopeId": "main",
+        "parentCaptureId": "header-row",
+        "childCaptureIds": [],
+        "tag": "th",
+        "attributes": {},
+        "ownText": "Name",
+        "geometry": {
+          "x": 20,
+          "y": 60,
+          "width": 300,
+          "height": 40
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "tbody",
+        "scopeId": "main",
+        "parentCaptureId": "table",
+        "childCaptureIds": [
+          "row"
+        ],
+        "tag": "tbody",
+        "attributes": {},
+        "geometry": {
+          "x": 20,
+          "y": 100,
+          "width": 800,
+          "height": 280
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "row",
+        "scopeId": "main",
+        "parentCaptureId": "tbody",
+        "childCaptureIds": [
+          "cell"
+        ],
+        "tag": "tr",
+        "attributes": {},
+        "geometry": {
+          "x": 20,
+          "y": 100,
+          "width": 800,
+          "height": 40
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "cell",
+        "scopeId": "main",
+        "parentCaptureId": "row",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {},
+        "ownText": "Alice",
+        "geometry": {
+          "x": 20,
+          "y": 100,
+          "width": 300,
+          "height": 40
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      }
+    ],
+    "accessibility": [
+      {
+        "axNodeId": "ax-table",
+        "backendNodeId": "205",
+        "role": "table",
+        "name": "Users"
+      }
+    ],
+    "runtimeState": {},
+    "diagnostics": []
+  }
+}

@@ -1,0 +1,277 @@
+{
+  "fixtureVersion": 1,
+  "id": "join-resolution",
+  "category": "join-and-relation-resolution",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "platform",
+    "frameworkVersion": "snapshot-v2-stage1-v1",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://join-resolution"
+  },
+  "truth": {
+    "minimumScopeCount": 1,
+    "expectedDiagnosticCodes": [
+      "observation.join.a11y.ambiguous",
+      "observation.join.runtime.ambiguous",
+      "relation.idref.ambiguous",
+      "relation.idref.unresolved"
+    ],
+    "expectedJoinCounts": {
+      "a11yResolved": 1,
+      "a11yMissing": 1,
+      "a11yAmbiguous": 1,
+      "runtimeResolved": 0,
+      "runtimeMissing": 1,
+      "runtimeAmbiguous": 1
+    },
+    "expectedRelationCounts": {
+      "edgeCount": 2,
+      "resolvedCount": 0,
+      "unresolvedCount": 1,
+      "ambiguousCount": 1
+    },
+    "expectedOrphanCount": 0,
+    "expectedCandidateMinimums": {
+      "ambiguous": 1
+    }
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:join-resolution",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://join-resolution",
+      "framework": "platform",
+      "frameworkVersion": "snapshot-v2-stage1-v1"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "partial"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "ambiguous-controller",
+          "missing-controller",
+          "target-a",
+          "target-b",
+          "a11y-ambiguous",
+          "a11y-missing",
+          "runtime-duplicate-a",
+          "runtime-duplicate-b",
+          "runtime-missing"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "ambiguous-controller",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "button",
+        "attributes": {
+          "aria-controls": "duplicate-target"
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "missing-controller",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "button",
+        "attributes": {
+          "aria-controls": "missing-target"
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "target-a",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "id": "duplicate-target",
+          "role": "dialog"
+        },
+        "backendNodeId": "101",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "target-b",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "table",
+        "attributes": {
+          "id": "duplicate-target",
+          "role": "dialog"
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "a11y-ambiguous",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {},
+        "backendNodeId": "102",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "a11y-missing",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {},
+        "backendNodeId": "103",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "runtime-duplicate-a",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {},
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "runtimeStateToken": "shared-state"
+      },
+      {
+        "captureId": "runtime-duplicate-b",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {},
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "runtimeStateToken": "shared-state"
+      },
+      {
+        "captureId": "runtime-missing",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {},
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "runtimeStateToken": "missing-state"
+      }
+    ],
+    "accessibility": [
+      {
+        "axNodeId": "ax-resolved",
+        "backendNodeId": "101",
+        "role": "dialog",
+        "name": "Resolved"
+      },
+      {
+        "axNodeId": "ax-ambiguous-a",
+        "backendNodeId": "102",
+        "role": "textbox",
+        "name": "A"
+      },
+      {
+        "axNodeId": "ax-ambiguous-b",
+        "backendNodeId": "102",
+        "role": "combobox",
+        "name": "B"
+      }
+    ],
+    "runtimeState": {
+      "shared-state": {
+        "stateId": "shared-state",
+        "value": "duplicate"
+      }
+    },
+    "diagnostics": []
+  }
+}
