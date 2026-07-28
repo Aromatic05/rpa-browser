@@ -12,7 +12,7 @@ const expectedBranches: Record<string, readonly string[]> = {
     observation: ['analysis', 'capture', 'model', 'replay'],
     indexes: ['locator', 'ownership', 'relation'],
     components: ['control', 'form', 'shared', 'table'],
-    rules: ['model', 'query', 'runtime'],
+    rules: ['model', 'query', 'semantic', 'runtime'],
     'components/control': ['action', 'assembly', 'capture', 'model'],
     'components/form': ['assembly', 'capture', 'model', 'replay'],
     'components/table': ['assembly', 'capture', 'model'],
@@ -40,7 +40,8 @@ const moduleRanks: Record<string, number> = {
     'components/table/capture': 14,
     'rules/model': 15,
     'rules/query': 16,
-    'rules/runtime': 17,
+    'rules/semantic': 17,
+    'rules/runtime': 18,
 };
 
 const legacyDirectoryNames = new Set([

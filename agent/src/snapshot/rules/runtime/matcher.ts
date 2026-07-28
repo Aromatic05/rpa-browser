@@ -14,6 +14,13 @@ import {
     type EntityRuleQueryDomain,
 } from '../query';
 import type { StepEntityRulesControl } from '../model/selection';
+import {
+    buildSemanticLayer,
+    createEmptySemanticLayer,
+    type SemanticAnnotationRecord,
+    type SemanticBindings,
+    type SemanticSuggestions,
+} from '../semantic';
 import type { WorkspaceEntityRulesProvider } from './contracts';
 import { resolveStepEntityRulesExecution } from './step_control';
 
@@ -32,6 +39,8 @@ export type EntityRuleProfileMatchResult = {
     profileName: string;
     domain: EntityRuleProfileDomain;
     bindings: Readonly<Record<string, EntityRuleRuntimeBinding>>;
+    semanticBindings: SemanticBindings;
+    semanticSuggestions: SemanticSuggestions;
     diagnostics: readonly AnalysisDiagnostic[];
     ok: boolean;
 };
@@ -131,12 +140,15 @@ const executeEntityRuleProfile = (
         rules: profile.match.rules,
     });
     if (!compiled.ok) {
+        const semanticLayer = createEmptySemanticLayer();
         return {
             invalid: true,
             result: {
                 profileName: profile.name,
                 domain: inferProfileDomain(profile),
                 bindings: {},
+                semanticBindings: semanticLayer.bindings,
+                semanticSuggestions: semanticLayer.suggestions,
                 diagnostics: compiled.diagnostics,
                 ok: false,
             },
@@ -149,21 +161,39 @@ const executeEntityRuleProfile = (
         ...structuredClone(binding),
         annotation: cloneAnnotation(annotationByRuleId.get(ruleId)),
     }]));
+    const semanticLayer = buildSemanticLayer({
+        execution,
+        annotations: profile.annotation.bindings.map(toSemanticAnnotation),
+        snapshots: compiled.plan.domain === 'form'
+            ? {form: snapshots.form}
+            : {table: snapshots.table},
+    });
     const snapshotMissing = execution.diagnostics.some((diagnostic) => diagnostic.code === 'query-plan.snapshot.missing');
+    const semanticInvalid = Object.values(semanticLayer.bindings.byId).some((binding) =>
+        binding.disposition === 'active' && binding.status === 'invalidated');
+    const diagnostics = [
+        ...semanticLayer.bindings.diagnostics,
+        ...semanticLayer.suggestions.diagnostics,
+    ];
     return {
-        invalid: snapshotMissing,
+        invalid: snapshotMissing || semanticInvalid,
         result: {
             profileName: profile.name,
             domain: compiled.plan.domain,
             bindings,
-            diagnostics: execution.diagnostics,
-            ok: execution.ok,
+            semanticBindings: semanticLayer.bindings,
+            semanticSuggestions: semanticLayer.suggestions,
+            diagnostics,
+            ok: execution.ok && !semanticInvalid,
         },
     };
 };
 
 const inferProfileDomain = (profile: WorkflowEntityRules): EntityRuleProfileDomain =>
     profile.match.rules.some((rule) => rule.match.kind === 'table') ? 'table' : 'form';
+
+const toSemanticAnnotation = (annotation: EntityRuleAnnotationBinding): SemanticAnnotationRecord =>
+    structuredClone(annotation);
 
 const cloneAnnotation = (
     annotation: EntityRuleAnnotationBinding | undefined,

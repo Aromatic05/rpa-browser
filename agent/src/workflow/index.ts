@@ -11,4 +11,4 @@ export type {
     EntityRuleMatchRecord,
     WorkflowEntityRules,
 } from './entity_rules';
-export { toEntityRuleBundle, validateWorkflowEntityRules } from './entity_rules';
+export { importWorkflowEntityRules, toEntityRuleBundle, validateWorkflowEntityRules } from './entity_rules';

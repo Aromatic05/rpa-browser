@@ -65,6 +65,32 @@ export const validateWorkflowEntityRules = (value: unknown): WorkflowEntityRules
     };
 };
 
+
+export const importWorkflowEntityRules = (value: unknown): WorkflowEntityRules => {
+    if (!isRecord(value) || value.kind !== 'entity_rules') {
+        throw invalidArtifact('artifact kind must be entity_rules');
+    }
+    if (isRecord(value.match) && value.match.version === 2) {
+        return validateWorkflowEntityRules(value);
+    }
+    if (!isLegacyMatchArtifact(value.match) || !isLegacyAnnotationArtifact(value.annotation)) {
+        throw invalidArtifact('legacy artifacts must contain match.version=1 entities[] and annotation.version=1 annotations[]');
+    }
+    const matchPageKind = requireLegacyPageKind(value.match.page, 'match.page');
+    const annotationPageKind = requireLegacyPageKind(value.annotation.page, 'annotation.page');
+    if (matchPageKind !== annotationPageKind) {
+        throw invalidArtifact(`legacy page kind mismatch: ${matchPageKind} != ${annotationPageKind}`);
+    }
+    const name = requireProfileName(value.name);
+    const match = validateMatchArtifact({version: 2, rules: value.match.entities});
+    assertLegacyPageKindPreserved(match.rules, matchPageKind);
+    const annotation = validateAnnotationArtifact(
+        {version: 2, bindings: value.annotation.annotations},
+        new Set(match.rules.map((rule) => rule.ruleId)),
+    );
+    return {kind: 'entity_rules', name, match, annotation};
+};
+
 export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<WorkflowEntityRules> => ({
     kind: 'entity_rules',
     is: (value: unknown): value is WorkflowEntityRules => {
@@ -79,7 +105,7 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
         const profileName = requireProfileName(name);
         const directory = entityRuleDirectory(workflowName, profileName);
         try {
-            return validateWorkflowEntityRules({
+            return importWorkflowEntityRules({
                 kind: 'entity_rules',
                 name: profileName,
                 match: readYamlFile<unknown>(path.join(directory, 'match.yaml')),
@@ -186,6 +212,37 @@ const validateAnnotationArtifact = (
     return { version: 2, bindings };
 };
 
+const isLegacyMatchArtifact = (value: unknown): value is {
+    version: 1;
+    page: unknown;
+    entities: unknown[];
+} => isRecord(value) && value.version === 1 && Array.isArray(value.entities);
+
+const isLegacyAnnotationArtifact = (value: unknown): value is {
+    version: 1;
+    page: unknown;
+    annotations: unknown[];
+} => isRecord(value) && value.version === 1 && Array.isArray(value.annotations);
+
+const requireLegacyPageKind = (value: unknown, field: string): 'form' | 'table' => {
+    if (!isRecord(value) || (value.kind !== 'form' && value.kind !== 'table')) {
+        throw invalidArtifact(`${field}.kind must be form or table`);
+    }
+    return value.kind;
+};
+
+const assertLegacyPageKindPreserved = (
+    rules: readonly EntityRuleMatchRecord[],
+    pageKind: 'form' | 'table',
+): void => {
+    const explicitDomains = new Set(rules
+        .map((rule) => rule.match.kind)
+        .filter((kind): kind is 'form' | 'table' => kind === 'form' || kind === 'table'));
+    if (explicitDomains.size !== 1 || !explicitDomains.has(pageKind)) {
+        throw invalidArtifact(`legacy import cannot preserve ${pageKind} page kind without a matching V2 root rule`);
+    }
+};
+
 const assertAcyclicWithin = (rules: readonly EntityRuleMatchRecord[]): void => {
     const parentByRuleId = new Map(rules.filter((rule) => rule.within).map((rule) => [rule.ruleId, rule.within!]));
     const visited = new Set<string>();
@@ -220,7 +277,7 @@ const requireNonEmptyString = (value: unknown, field: string): string => {
     return value.trim();
 };
 
-const isRecord = (value: unknown): value is Record<string, any> =>
+const isRecord = (value: unknown): value is Record<string, unknown> =>
     Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const invalidArtifact = (message: string): DslRuntimeError => new DslRuntimeError(

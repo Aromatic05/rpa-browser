@@ -168,6 +168,19 @@ test('runtime executes a selected form profile and keeps annotations attached to
         [snapshot.observation.captureIdToNodeId.submit],
     );
     assert.equal(result.profiles['order-form'].bindings.submit.annotation?.actionIntent, 'submit');
+    const formId = result.profiles['order-form'].bindings['form-root'].matchedComponentIds[0];
+    const submitNodeId = snapshot.observation.captureIdToNodeId.submit;
+    assert.equal(result.profiles['order-form'].semanticBindings.forms[formId]?.annotation.businessTag, 'order-form');
+    assert.equal(
+        result.profiles['order-form'].semanticBindings.nodes[submitNodeId]
+            ?.some((binding) => binding.annotation.actionIntent === 'submit'),
+        true,
+    );
+    assert.equal(
+        result.profiles['order-form'].semanticSuggestions.items
+            .some((suggestion) => suggestion.kind === 'action-intent' && suggestion.source === 'inferred'),
+        true,
+    );
     assert.equal(Object.isFrozen(rules.annotation.bindings[1]), false);
 });
 
@@ -207,6 +220,32 @@ test('runtime executes table profiles through TableComponent and typed paginatio
         [snapshot.observation.captureIdToNodeId.next],
     );
     assert.equal(result.profiles.orders.bindings['next-page'].annotation?.actionIntent, 'next-page');
+    const tableId = result.profiles.orders.bindings['table-root'].matchedComponentIds[0];
+    assert.equal(result.profiles.orders.semanticBindings.tables[tableId]?.annotation.businessTag, 'orders');
+});
+
+
+test('runtime invalidates inferred annotations that claim protected business semantics', () => {
+    const rules = profile('unsafe-inferred', [
+        { ruleId: 'form-root', source: 'region', expect: 'unique', match: { kind: 'form', idEquals: 'OrderForm' } },
+    ], [
+        { ruleId: 'form-root', origin: 'inferred', fieldKey: 'order' },
+    ]);
+    const provider = createWorkspaceEntityRulesProvider(workflowWithProfiles(rules));
+    const result = executeEntityRules({
+        control: explicit(['unsafe-inferred']),
+        config,
+        provider,
+        snapshots: {form: formSnapshot()},
+    });
+
+    assert.equal(result.status, 'invalid');
+    assert.equal(result.ok, false);
+    assert.equal(result.profiles['unsafe-inferred'].semanticBindings.byId['unsafe-inferred:form-root'].status, 'invalidated');
+    assert.equal(
+        result.diagnostics.some((diagnostic) => diagnostic.code === 'semantic-binding.inferred.protected-key'),
+        true,
+    );
 });
 
 test('runtime rejects mixed-domain and unsupported profile conditions instead of silently ignoring them', () => {
