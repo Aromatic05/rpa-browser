@@ -1,147 +1,93 @@
 {
-  "schemaVersion": 1,
-  "generatedAt": "2026-07-28T11:20:38.550Z",
-  "corpusVersion": "snapshot-v2-stage3-v1",
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T13:00:45.517Z",
+  "corpusVersion": "snapshot-v2-stage3-compact-v2",
+  "corpusPolicy": {
+    "tracked": true,
+    "deterministic": true,
+    "largeLocalCapturesRequired": false,
+    "truthMode": "exact"
+  },
   "iterations": 50,
-  "fixtureCount": 6,
-  "inputNodeCount": 1334,
+  "fixtureCount": 4,
+  "inputNodeCount": 47,
   "aggregate": {
-    "formCount": 6,
-    "fieldCount": 15,
-    "compositeFieldCount": 2,
-    "actionCount": 231,
-    "ownedActionCount": 6,
-    "residualActionCount": 225,
-    "groupCount": 0,
-    "residualFieldCount": 5,
-    "ownershipEdgeCount": 33,
+    "formCount": 4,
+    "fieldCount": 8,
+    "compositeFieldCount": 1,
+    "actionCount": 6,
+    "ownedActionCount": 5,
+    "residualActionCount": 1,
+    "groupCount": 1,
+    "residualFieldCount": 2,
+    "ownershipEdgeCount": 22,
     "reductionOutcomes": {
-      "formed": 6,
-      "residual": 11,
-      "skipped": 1
+      "formed": 4,
+      "skipped": 1,
+      "residual": 3
     },
     "reductionReasons": {
-      "consumed-by-explicit-form": 6,
-      "actions-without-form-boundary": 6,
+      "consumed-by-explicit-form": 3,
+      "consumed-by-local-island": 1,
       "boundary-without-fields": 1,
-      "utility-or-table-standalone": 5
+      "utility-or-table-standalone": 2,
+      "actions-without-form-boundary": 1
     },
     "componentSuggestions": {
       "data-entry-form": 3,
-      "dialog-form": 1,
-      "filter-form": 2
+      "dialog-form": 1
     },
     "actionSuggestions": {
-      "save": 4,
-      "cancel": 2,
-      "search": 9
+      "save": 3,
+      "cancel": 1
     },
     "boundaryKinds": {
-      "explicit-form": 6
+      "explicit-form": 3,
+      "local-island": 1
     },
     "formStatus": {
-      "partial": 1,
-      "complete": 5
+      "complete": 4
     },
     "validationFailureCount": 0,
     "validationDiagnosticCodes": {},
     "truthErrorCount": 0,
     "timing": {
-      "samples": 300,
-      "p50Ms": 0.486,
-      "p95Ms": 4.082,
-      "maxMs": 8.761
+      "samples": 200,
+      "p50Ms": 0.095,
+      "p95Ms": 0.182,
+      "maxMs": 1.596
     }
   },
   "fixtures": [
     {
-      "id": "element-plus-create-form",
-      "category": "real-framework-create-form-composite",
+      "id": "native-explicit-form",
+      "category": "native-explicit-form",
       "source": {
-        "kind": "browser-capture",
-        "framework": "element-plus",
-        "frameworkVersion": "2.13.7",
-        "capturedAt": "2026-07-28T10:00:00.000Z",
-        "origin": "package://element-plus@2.13.7"
+        "kind": "generated-corpus",
+        "framework": "native",
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/native-explicit-form"
       },
-      "inputNodeCount": 345,
+      "inputNodeCount": 6,
       "formCount": 1,
-      "fieldCount": 2,
-      "compositeFieldCount": 1,
-      "actionCount": 9,
+      "fieldCount": 1,
+      "compositeFieldCount": 0,
+      "actionCount": 1,
       "ownedActionCount": 1,
-      "residualActionCount": 8,
+      "residualActionCount": 0,
       "groupCount": 0,
       "residualFieldCount": 0,
       "reductionOutcomes": {
-        "formed": 1,
-        "residual": 1
+        "formed": 1
       },
       "reductionReasons": {
-        "consumed-by-explicit-form": 1,
-        "actions-without-form-boundary": 1
+        "consumed-by-explicit-form": 1
       },
       "componentSuggestions": {
         "data-entry-form": 1
       },
       "actionSuggestions": {
-        "save": 1
-      },
-      "boundaryKinds": {
-        "explicit-form": 1
-      },
-      "formStatus": {
-        "partial": 1
-      },
-      "ownershipEdgeCount": 6,
-      "validation": {
-        "ok": true,
-        "diagnosticCodes": {}
-      },
-      "diagnosticCodes": {},
-      "truthErrors": [],
-      "timing": {
-        "samples": 50,
-        "p50Ms": 1.723,
-        "p95Ms": 3.269,
-        "maxMs": 6.637
-      }
-    },
-    {
-      "id": "ant-design-dialog-form-list",
-      "category": "real-framework-dialog-form-list-composite",
-      "source": {
-        "kind": "browser-capture",
-        "framework": "ant-design",
-        "frameworkVersion": "5.29.3",
-        "capturedAt": "2026-07-28T10:00:00.000Z",
-        "origin": "package://antd@5.29.3"
-      },
-      "inputNodeCount": 79,
-      "formCount": 1,
-      "fieldCount": 4,
-      "compositeFieldCount": 1,
-      "actionCount": 3,
-      "ownedActionCount": 2,
-      "residualActionCount": 1,
-      "groupCount": 0,
-      "residualFieldCount": 0,
-      "reductionOutcomes": {
-        "formed": 1,
-        "skipped": 1,
-        "residual": 1
-      },
-      "reductionReasons": {
-        "consumed-by-explicit-form": 1,
-        "boundary-without-fields": 1,
-        "actions-without-form-boundary": 1
-      },
-      "componentSuggestions": {
-        "dialog-form": 1,
-        "data-entry-form": 1
-      },
-      "actionSuggestions": {
-        "cancel": 2,
         "save": 1
       },
       "boundaryKinds": {
@@ -150,7 +96,7 @@
       "formStatus": {
         "complete": 1
       },
-      "ownershipEdgeCount": 11,
+      "ownershipEdgeCount": 3,
       "validation": {
         "ok": true,
         "diagnosticCodes": {}
@@ -159,22 +105,124 @@
       "truthErrors": [],
       "timing": {
         "samples": 50,
-        "p50Ms": 0.253,
-        "p95Ms": 0.32,
-        "maxMs": 1.161
+        "p50Ms": 0.069,
+        "p95Ms": 0.17,
+        "maxMs": 1.596
       }
     },
     {
-      "id": "native-utility-controls",
-      "category": "browser-native-datatables-signature-and-document-utility",
+      "id": "local-filter-island",
+      "category": "native-local-island",
       "source": {
-        "kind": "browser-capture",
+        "kind": "generated-corpus",
         "framework": "native",
-        "frameworkVersion": "html-2026",
-        "capturedAt": "2026-07-28T10:00:00.000Z",
-        "origin": "inline://native-datatables-dom-signature"
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/local-filter-island"
       },
-      "inputNodeCount": 26,
+      "inputNodeCount": 8,
+      "formCount": 1,
+      "fieldCount": 2,
+      "compositeFieldCount": 0,
+      "actionCount": 1,
+      "ownedActionCount": 1,
+      "residualActionCount": 0,
+      "groupCount": 0,
+      "residualFieldCount": 0,
+      "reductionOutcomes": {
+        "formed": 1
+      },
+      "reductionReasons": {
+        "consumed-by-local-island": 1
+      },
+      "componentSuggestions": {},
+      "actionSuggestions": {},
+      "boundaryKinds": {
+        "local-island": 1
+      },
+      "formStatus": {
+        "complete": 1
+      },
+      "ownershipEdgeCount": 5,
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "truthErrors": [],
+      "timing": {
+        "samples": 50,
+        "p50Ms": 0.085,
+        "p95Ms": 0.135,
+        "maxMs": 0.288
+      }
+    },
+    {
+      "id": "dialog-composite-form",
+      "category": "native-dialog-composite",
+      "source": {
+        "kind": "generated-corpus",
+        "framework": "ant-design",
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/dialog-composite-form"
+      },
+      "inputNodeCount": 12,
+      "formCount": 1,
+      "fieldCount": 2,
+      "compositeFieldCount": 1,
+      "actionCount": 2,
+      "ownedActionCount": 2,
+      "residualActionCount": 0,
+      "groupCount": 1,
+      "residualFieldCount": 0,
+      "reductionOutcomes": {
+        "formed": 1,
+        "skipped": 1
+      },
+      "reductionReasons": {
+        "consumed-by-explicit-form": 1,
+        "boundary-without-fields": 1
+      },
+      "componentSuggestions": {
+        "dialog-form": 1,
+        "data-entry-form": 1
+      },
+      "actionSuggestions": {
+        "save": 1,
+        "cancel": 1
+      },
+      "boundaryKinds": {
+        "explicit-form": 1
+      },
+      "formStatus": {
+        "complete": 1
+      },
+      "ownershipEdgeCount": 9,
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "truthErrors": [],
+      "timing": {
+        "samples": 50,
+        "p50Ms": 0.087,
+        "p95Ms": 0.116,
+        "maxMs": 0.32
+      }
+    },
+    {
+      "id": "datatables-toolbar-utilities",
+      "category": "datatables-toolbar-utilities",
+      "source": {
+        "kind": "generated-corpus",
+        "framework": "datatables",
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/datatables-toolbar-utilities"
+      },
+      "inputNodeCount": 21,
       "formCount": 1,
       "fieldCount": 3,
       "compositeFieldCount": 0,
@@ -213,169 +261,9 @@
       "truthErrors": [],
       "timing": {
         "samples": 50,
-        "p50Ms": 0.118,
-        "p95Ms": 0.149,
-        "maxMs": 0.278
-      }
-    },
-    {
-      "id": "datatables-official-zero-configuration",
-      "category": "real-datatables-toolbar-utility-controls",
-      "source": {
-        "kind": "browser-capture",
-        "framework": "datatables",
-        "frameworkVersion": "3.0.0",
-        "capturedAt": "2026-07-28T10:00:00.000Z",
-        "origin": "https://datatables.net/examples/core/basic_init/zero_configuration.html"
-      },
-      "inputNodeCount": 681,
-      "formCount": 1,
-      "fieldCount": 3,
-      "compositeFieldCount": 0,
-      "actionCount": 208,
-      "ownedActionCount": 0,
-      "residualActionCount": 208,
-      "groupCount": 0,
-      "residualFieldCount": 2,
-      "reductionOutcomes": {
-        "formed": 1,
-        "residual": 3
-      },
-      "reductionReasons": {
-        "consumed-by-explicit-form": 1,
-        "utility-or-table-standalone": 2,
-        "actions-without-form-boundary": 1
-      },
-      "componentSuggestions": {},
-      "actionSuggestions": {
-        "search": 7,
-        "save": 1
-      },
-      "boundaryKinds": {
-        "explicit-form": 1
-      },
-      "formStatus": {
-        "complete": 1
-      },
-      "ownershipEdgeCount": 4,
-      "validation": {
-        "ok": true,
-        "diagnosticCodes": {}
-      },
-      "diagnosticCodes": {},
-      "truthErrors": [],
-      "timing": {
-        "samples": 50,
-        "p50Ms": 3.504,
-        "p95Ms": 6.708,
-        "maxMs": 8.761
-      }
-    },
-    {
-      "id": "element-plus-browser-form-stage3",
-      "category": "real-framework-browser-capture-form-stage3",
-      "source": {
-        "kind": "browser-capture",
-        "framework": "element-plus",
-        "frameworkVersion": "2.13.7",
-        "capturedAt": "2026-07-28T08:00:00.000Z",
-        "origin": "package://element-plus@2.13.7"
-      },
-      "inputNodeCount": 100,
-      "formCount": 1,
-      "fieldCount": 1,
-      "compositeFieldCount": 0,
-      "actionCount": 4,
-      "ownedActionCount": 1,
-      "residualActionCount": 3,
-      "groupCount": 0,
-      "residualFieldCount": 0,
-      "reductionOutcomes": {
-        "formed": 1,
-        "residual": 1
-      },
-      "reductionReasons": {
-        "consumed-by-explicit-form": 1,
-        "actions-without-form-boundary": 1
-      },
-      "componentSuggestions": {
-        "filter-form": 1
-      },
-      "actionSuggestions": {
-        "search": 1
-      },
-      "boundaryKinds": {
-        "explicit-form": 1
-      },
-      "formStatus": {
-        "complete": 1
-      },
-      "ownershipEdgeCount": 3,
-      "validation": {
-        "ok": true,
-        "diagnosticCodes": {}
-      },
-      "diagnosticCodes": {},
-      "truthErrors": [],
-      "timing": {
-        "samples": 50,
-        "p50Ms": 0.433,
-        "p95Ms": 0.562,
-        "maxMs": 2.261
-      }
-    },
-    {
-      "id": "ant-design-browser-form-stage3",
-      "category": "real-framework-browser-capture-form-stage3",
-      "source": {
-        "kind": "browser-capture",
-        "framework": "ant-design",
-        "frameworkVersion": "5.29.3",
-        "capturedAt": "2026-07-28T08:00:00.000Z",
-        "origin": "package://antd@5.29.3"
-      },
-      "inputNodeCount": 103,
-      "formCount": 1,
-      "fieldCount": 2,
-      "compositeFieldCount": 0,
-      "actionCount": 5,
-      "ownedActionCount": 1,
-      "residualActionCount": 4,
-      "groupCount": 0,
-      "residualFieldCount": 1,
-      "reductionOutcomes": {
-        "formed": 1,
-        "residual": 2
-      },
-      "reductionReasons": {
-        "consumed-by-explicit-form": 1,
-        "utility-or-table-standalone": 1,
-        "actions-without-form-boundary": 1
-      },
-      "componentSuggestions": {
-        "filter-form": 1
-      },
-      "actionSuggestions": {
-        "search": 1
-      },
-      "boundaryKinds": {
-        "explicit-form": 1
-      },
-      "formStatus": {
-        "complete": 1
-      },
-      "ownershipEdgeCount": 4,
-      "validation": {
-        "ok": true,
-        "diagnosticCodes": {}
-      },
-      "diagnosticCodes": {},
-      "truthErrors": [],
-      "timing": {
-        "samples": 50,
-        "p50Ms": 0.499,
-        "p95Ms": 0.556,
-        "maxMs": 0.672
+        "p50Ms": 0.117,
+        "p95Ms": 0.157,
+        "maxMs": 0.39
       }
     }
   ]

@@ -3,200 +3,80 @@
 ## 状态
 
 - 阶段：Stage 3 — FormComponent 组装与表单规则迁移
-- 结果：**accepted**
-- Stage 1 基线提交：`dc903b5 feat(snapshot): establish v2 stage1 observation foundation`
-- Stage 2、Stage 3 当前实现：尚未提交，保留在既有迁移工作区中
-- 下一阶段：Stage 4 可以依赖本阶段冻结的 component、ownership、form contracts
+- 结果：**blocked**
+- 已完成：FormComponent、FormField、FormGroup、FormAction、BottomUpReducer、OwnershipIndex、结构 bridge
+- 未完成：entity_rules artifact/runtime/profile selection/生产 matcher 链
+- Stage 4：不得开始
 
-Stage 3 不恢复 `agent/src/runner/steps/executors/snapshot/`，不依赖 V1 region/group/entityIndex，也不建立第二套 control collector。旧 form recognition、groups/LCA ownership 和 entity-rule matcher 均未恢复。
+仓库整体不可构建是当前迁移状态的预期结果。该状态不通过恢复 V1 Snapshot 或旧 entity_rules 实现消除。
 
-## 冻结 contracts
+## 已冻结结构合同
 
-### Component core
-
-- `ComponentLocation`
-- `GeometryFragment`
-- `SemanticSuggestion`
-
-用户 selection scope、逻辑 host 与 structural root 分离。Form recognize 可以在 selection scope 内选择更准确的 `<form>`，但不会覆盖 selection scope。
-
-### Form
-
-- `FormProposal`
+- `ComponentLocation`：selection scope、host、structural root 分离
+- `FormComponentIndex`
 - `FormComponent`
-- `FormField`
+- `FormField.controlIds[]`
 - `FormGroup`
 - `FormAction`
+- `FormProposal`
 - `FormReductionState`
-- `FormReductionTraceRecord`
-- `FormComponentIndex`
 - `BottomUpReducer<T>`
-- `FormInvariantValidation`
-
-`FormProposal` 只包含结构候选、field/action IDs 和 evidence，不包含 `businessTag`、`fieldKey` 或 `actionIntent` binding。
-
-### Ownership
-
-- `OwnershipEndpoint`
-- `OwnershipEdge`
 - `OwnershipIndex`
-- `OwnershipValidation`
-
-ownership 唯一性按同一 member、同一 owner kind、同一 role 检查。`form-group -> field` 与 `form -> field` 属于不同层级，可以同时存在；同一层的多个 owner 会产生 `ownership.role.duplicate`。
-
-### Entity-rule bridge
-
-- `RuleExpectedCardinality`
+- `FormInvariantValidation`
 - `FormComponentMatchRule`
 - `FormComponentRuleBinding`
-- `FormComponentRuleMatchResult`
-- `matchFormComponentRules`
 
-归档 matcher 的 `unique` / `one_or_more` cardinality 语义被抽成独立 core。bridge 的候选只有：
+字段只从唯一 `ControlIndex` 产生。popup/option 不成为 field；平台 label relation 优先于 Element/Ant adapter evidence；结构 action 与 semantic suggestion 分离。
 
-- `FormComponent`
-- `FormField` / `FormAction` 的 canonical member node
-- canonical observation node
+## 已完成行为
 
-bridge 不构造 V1 region/group entity，不生成业务语义，不吞掉 missing/multiple diagnostics。
-
-## Field assembly
-
-字段只从唯一 `ControlIndex` 产生，popup/option control 永远不能成为 field control。
-
-label evidence 顺序：
-
-1. `label@for` typed relation
-2. `aria-labelledby`
-3. `fieldset/legend`
-4. Element Plus / Ant Design Form.Item adapter evidence
-5. wrapping label
-
-同时保留：
-
-- `aria-describedby`
-- `aria-errormessage`
-- framework error node
-- required state
-- `controlIds[]` composite field
-- `primaryControlId`
-
-Element Plus 与 Ant Design adapter 只提供 strong structural evidence，不覆盖平台 relation，也不生成业务 field key。
-
-## Bottom-up reduction
-
-reducer 按 canonical document order 自底向上汇总 fields 和 actions。
-
-消费边界：
-
-- explicit `<form>`
-- role/framework form
-- active dialog
-- 满足多字段、label 和 local action 条件的 local island
-
-停止规则：
-
-- 显式 form 内不提前形成局部 island
-- active dialog 不向 body 泄漏未消费 fields
+- `label@for`、`aria-labelledby`、fieldset/legend、description、error、required
+- composite field
+- explicit form、adapter form、active dialog、local island
+- residual/standalone fields 和 actions
+- portal popup 保持 control ownership
 - button-only 容器不升级为 form
-- DataTables/table utility fields 不参与 local-island reduction
-- geometry proximity 不参与 field/form 合并
-- popup/listbox 不成为 field anchor
+- DataTables toolbar utility 不被伪造为 form
+- form ownership invariant 和 reduction trace
+- component/canonical-node 结构 bridge
 
-未消费对象明确保留：
+## Stage 2 相关修复
 
-- `residualFieldIds`
-- `residualActionIds`
-- reduction trace 中的停止原因
+本轮修复了两个会使 Stage 2 假通过的问题：
 
-主要 trace reason：
+1. custom select verification 不再用 trigger 可见文本兜底。
+2. Chromium 对 focused `role=option` 可能报告隐式 A11y selected；custom-select option 现在只接受显式 runtime/DOM `selected`、`aria-selected` 或 checked 事实。
+3. checkbox group 在修改前解析全部 canonical locators 并记录原始 checked 状态；任一后续动作失败时回滚已修改项并报告 rollback 状态。
 
-- `consumed-by-explicit-form`
-- `dialog-requires-multiple-fields`
-- `boundary-without-fields`
-- `utility-or-table-standalone`
-- `no-valid-form-boundary`
-- `actions-without-form-boundary`
+## 可复现语料
 
-## Structural actions 与 suggestions
-
-结构事实：
-
-- submit
-- reset
-- button
-- link
-
-inferred suggestions 与结构事实分离：
-
-- action：search、save、save-draft、cancel
-- component：filter-form、data-entry-form、dialog-form
-
-suggestion 只作为 inferred evidence，不写入 confirmed/manual business binding。
-
-## 真实浏览器与固定语料
-
-覆盖：
-
-- Element Plus list/filter form
-- Ant Design list/filter form 与 page-size residual control
-- Element Plus create form、required field、DatePicker range composite
-- Ant Design active Modal、Form.List、RangePicker composite
-- native form、fieldset/legend、descriptions/errors
-- native DataTables-compatible utility signature
-- DataTables 3.0.0 官方 zero-configuration 页面
-- document utility controls
-
-DataTables 官方 fixture 来源：
+CI 和 baseline 不再读取被忽略的：
 
 ```text
-https://datatables.net/examples/core/basic_init/zero_configuration.html
+agent/tests/fixtures/form-v2/
 ```
 
-官方页面中的 `.dt-length select` 与 `.dt-search input` 均映射为 field，但保持 residual，没有被页面其他 form 或 document actions 消费。
+四个完整浏览器 capture 仍可由 `snapshot:v2:capture-form-fixtures` 生成并保留在本地，但不进入 Git，也不作为测试前置条件。
 
-## 生产边界
+仓库内新增 4 个代码生成的紧凑冻结语料：
 
-Stage 3 的 agent-side form 入口：
+- native explicit form
+- local filter island
+- dialog composite form
+- DataTables toolbar utility signature
 
-- `buildFormComponentIndex`
-- `buildFormSnapshot`
-- `captureFormSnapshot`
-- `matchFormComponentRules`
+truth 使用精确值，而不是 `actual >= minimum`：
 
-当前活动源码中：
+- form/field/composite/residual 数量
+- action/owned action/residual action 数量
+- group、required、dialog host 数量
+- boundary kinds
+- structural root capture IDs
+- residual field anchor capture IDs
 
-- 只有一个 `FormComponentIndex` assembler
-- 只有一个 form component-target matcher
-- 没有 V1 form region/group/LCA 实现
-- 没有 raw DOM control rescanning
-- 没有 common-ancestor 或 geometry clustering form path
+Element Plus 和 Ant Design 的真实浏览器测试也使用精确字段、标签、required、action ownership 和 residual 预期。
 
-extension、query、session、annotator 与最终 snapshot projection 尚未切换；这些属于 Stage 5。Stage 3 输出已经包含后续 visual binding 所需的 location、geometry、field/control membership、ownership、evidence 和 diagnostics。
-
-## 测试
-
-执行：
-
-```text
-pnpm -C agent typecheck:snapshot
-pnpm -C agent test:snapshot
-pnpm -C agent snapshot:v2:stage1-baseline
-pnpm -C agent snapshot:v2:stage2-baseline
-pnpm -C agent snapshot:v2:stage3-baseline
-```
-
-当前结果：
-
-```text
-snapshot typecheck: pass
-snapshot tests:     56 pass / 0 fail
-stage1 baseline:    pass
-stage2 baseline:    pass
-stage3 baseline:    pass
-```
-
-## Stage 3 基线
+## 当前基线
 
 文件：
 
@@ -204,48 +84,65 @@ stage3 baseline:    pass
 docs/Development/reports/SnapshotV2Stage3Baseline.json
 ```
 
-6 fixtures × 50 iterations：
+4 fixtures × 50 iterations：
 
 ```text
-input nodes:               1334
-forms:                        6
-fields:                      15
-composite fields:             2
-residual fields:              5
-owned actions:                6
-residual actions:           225
-ownership edges:             33
-form invariant failures:      0
-fixture truth errors:         0
+input nodes:            47
+forms:                   4
+fields:                  8
+composite fields:        1
+residual fields:         2
+owned actions:           5
+residual actions:        1
+ownership edges:        22
+invariant failures:      0
+exact truth errors:      0
 ```
 
-225 个 residual actions 主要来自完整 DataTables 官方文档页面的导航、示例和文档按钮；它们被显式保留，但不属于任何识别出的 form。
+完整 DataTables 官方页面不再被错误描述为仓库内离线 fixture。它只是本地探索 capture；确定性的 toolbar 行为由紧凑语料保护。
+
+## 验收
 
 ```text
-form build: p50 0.486 ms, p95 4.082 ms
+pnpm -C agent test:snapshot
+  60 passed / 0 failed
+
+pnpm -C agent snapshot:v2:stage3-baseline
+  passed
+
+pnpm -C agent test:entity-rules
+  0 passed / 4 failed
 ```
 
-具体 timing 以 JSON 基线文件为准，重新运行时会随环境更新。
+entity_rules 四项失败均来自尚未实现的 V2 能力：
 
-## Stage 4 输入边界
+- explicit per-step profile selection
+- auto workflow profile selection
+- inherited workspace selection
+- workflow artifact save/load
 
-Stage 4 可以复用：
+## 阻塞项
+
+`matchFormComponentRules` 目前只有测试调用方。以下生产链尚未实现：
 
 ```text
-PageObservation
-RelationIndex
-ControlIndex
-LocatorIndex
-ComponentLocation
-OwnershipIndex
-Evidence / diagnostics
-SemanticSuggestion
+workflow entity_rules artifact
+→ profile selection
+→ provider
+→ FormComponent capture
+→ structural matching
+→ annotation/binding
+→ check/save/reopen/runtime query
 ```
 
-Stage 4 不允许：
+不得通过旧 matcher、旧 annotator、V1 region/group 或兼容 fallback 把测试变绿。
 
-- 把 generic repeated group 当作 table model
-- 从 FormField 或 FormGroup 推导 table rows/columns
-- 复用 form local-island reducer 代替 table part assembly
-- 恢复 V1 table region/group/candidate/key/model
-- 根据 geometry proximity 或第一个 `<table>` 选择逻辑表格
+## Stage 4 入口
+
+Stage 4 只有在以下条件满足后才能开始：
+
+- entity_rules artifact 可保存、读取和校验
+- per-step explicit/auto/inherit selection 可用
+- form bridge 有唯一生产调用方
+- check/save/reopen/runtime query 使用同一 V2 规则语义
+- entity_rules 失败测试逐项转绿

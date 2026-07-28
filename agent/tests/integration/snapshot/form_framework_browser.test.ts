@@ -22,15 +22,31 @@ test('Element Plus and Ant Design real forms assemble composite fields, list fie
 
         const element = await captureFormSnapshot(elementPage);
         const elementForms = Object.values(element.forms.forms);
+        const elementFields = Object.values(element.forms.fields);
         assert.equal(elementForms.length, 1);
-        assert.equal(elementForms[0].fields.some((field) => field.controlIds.length >= 2), true, 'Element date range should be composite');
+        assert.equal(elementFields.length, 2);
+        assert.equal(elementFields.filter((field) => field.controlIds.length > 1).length, 1);
+        assert.equal(elementFields.filter((field) => field.required).length, 1);
+        assert.deepEqual(elementFields.map((field) => field.labelNodeIds.map((id) => element.observation.text[id])), [['Name'], ['Period']]);
+        assert.equal(Object.keys(element.forms.actions).length, 9);
+        assert.deepEqual(elementForms[0].actions.map((action) => action.structuralRole), ['submit']);
+        assert.equal(element.forms.residualActionIds.length, 8);
+        assert.equal(element.forms.residualFieldIds.length, 0);
         assert.equal(elementForms[0].evidence.some((item) => item.code === 'form.boundary.adapter.element-form'), true);
         assert.equal(element.forms.validation.ok, true);
 
         const ant = await captureFormSnapshot(antPage);
         const antForms = Object.values(ant.forms.forms);
+        const antFields = Object.values(ant.forms.fields);
         assert.equal(antForms.length, 1);
-        assert.equal(antForms[0].fields.length >= 3, true, 'Ant form list and date range fields should be retained');
+        assert.equal(antFields.length, 4);
+        assert.equal(antFields.filter((field) => field.controlIds.length > 1).length, 1);
+        assert.equal(antFields.filter((field) => field.required).length, 1);
+        assert.deepEqual(antFields.map((field) => field.labelNodeIds.map((id) => ant.observation.text[id])), [['Buyer'], ['Period'], ['Contact'], ['Contact']]);
+        assert.equal(Object.keys(ant.forms.actions).length, 3);
+        assert.deepEqual(antForms[0].actions.map((action) => action.structuralRole), ['submit', 'button']);
+        assert.equal(ant.forms.residualActionIds.length, 1);
+        assert.equal(ant.forms.residualFieldIds.length, 0);
         assert.equal(antForms[0].location.hostNodeId !== undefined, true, 'active dialog should be retained as host boundary');
         assert.equal(antForms[0].evidence.some((item) => item.code === 'form.boundary.adapter.ant-form'), true);
         assert.equal(ant.forms.validation.ok, true);

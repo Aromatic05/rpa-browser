@@ -8,25 +8,28 @@ import {
     buildLocatorIndex,
     buildPageObservation,
     buildRelationIndex,
-    loadFormFixtures,
-    type ObservationFixture,
+    createCompactFormFixtures,
+    validateFormFixtureTruth,
     type FormFixture,
     type FormSnapshot,
 } from '../src/snapshot';
 
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryDirectory = path.resolve(agentDirectory, '..');
-const fixtureDirectory = path.join(agentDirectory, 'tests/fixtures/form-v2');
 const outputPath = path.join(repositoryDirectory, 'docs/Development/reports/SnapshotV2Stage3Baseline.json');
 const iterations = parsePositiveInteger(process.env.SNAPSHOT_STAGE3_ITERATIONS, 50);
-const fixtures = await loadFormFixtures(fixtureDirectory);
-const observationFixtureDirectory = path.join(agentDirectory, 'tests/fixtures/observation-v2');
-const listFixtures = await loadListFormFixtures(observationFixtureDirectory);
-const measured = [...fixtures, ...listFixtures].map((fixture) => measureFixture(fixture, iterations));
+const fixtures = createCompactFormFixtures();
+const measured = fixtures.map((fixture) => measureFixture(fixture, iterations));
 const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
-    corpusVersion: 'snapshot-v2-stage3-v1',
+    corpusVersion: 'snapshot-v2-stage3-compact-v2',
+    corpusPolicy: {
+        tracked: true,
+        deterministic: true,
+        largeLocalCapturesRequired: false,
+        truthMode: 'exact',
+    },
     iterations,
     fixtureCount: measured.length,
     inputNodeCount: measured.reduce((sum, item) => sum + item.inputNodeCount, 0),
@@ -56,48 +59,9 @@ console.log(JSON.stringify({
     residualActions: report.aggregate.residualActionCount,
     ownershipEdges: report.aggregate.ownershipEdgeCount,
     invariantFailures: report.aggregate.validationFailureCount,
+    truthErrors: report.aggregate.truthErrorCount,
     timing: report.aggregate.timing,
 }, null, 2));
-
-
-async function loadListFormFixtures(directory: string): Promise<FormFixture[]> {
-    const definitions = [
-        {
-            file: '09-element-plus-browser.v1.json',
-            truth: { minimumFormCount: 1, minimumFieldCount: 1, expectedBoundaryKinds: ['explicit-form'] as const },
-        },
-        {
-            file: '10-ant-design-browser.v1.json',
-            truth: { minimumFormCount: 1, minimumFieldCount: 1, minimumResidualFieldCount: 1, expectedBoundaryKinds: ['explicit-form'] as const },
-        },
-    ];
-    const output: FormFixture[] = [];
-    for (const definition of definitions) {
-        const source = JSON.parse(await fs.readFile(path.join(directory, definition.file), 'utf8')) as ObservationFixture;
-        output.push({
-            fixtureVersion: 1,
-            id: `${source.id}-form-stage3`,
-            category: `${source.category}-form-stage3`,
-            source: {
-                kind: 'browser-capture',
-                framework: source.source.framework === 'platform' ? 'native' : source.source.framework,
-                frameworkVersion: source.source.frameworkVersion,
-                capturedAt: source.source.capturedAt,
-                origin: source.source.origin,
-            },
-            truth: {
-                minimumFormCount: definition.truth.minimumFormCount,
-                minimumFieldCount: definition.truth.minimumFieldCount,
-                minimumResidualFieldCount: 'minimumResidualFieldCount' in definition.truth
-                    ? definition.truth.minimumResidualFieldCount
-                    : undefined,
-                expectedBoundaryKinds: [...definition.truth.expectedBoundaryKinds],
-            },
-            capture: source.capture,
-        });
-    }
-    return output;
-}
 
 type Measured = ReturnType<typeof measureFixture>;
 
@@ -113,10 +77,10 @@ function measureFixture(fixture: FormFixture, sampleCount: number) {
         finalSnapshot = buildFormSnapshot({ observation, relations, locators, controls });
         samples.push(performance.now() - startedAt);
     }
-    if (!finalSnapshot) throw new Error(`form fixture produced no samples: ${fixture.id}`);
+    if (!finalSnapshot) {throw new Error(`form fixture produced no samples: ${fixture.id}`);}
     const forms = Object.values(finalSnapshot.forms.forms);
     const fields = Object.values(finalSnapshot.forms.fields);
-    const truthErrors = validateTruth(fixture, finalSnapshot);
+    const truthErrors = validateFormFixtureTruth(fixture, finalSnapshot);
     return {
         id: fixture.id,
         category: fixture.category,
@@ -146,26 +110,6 @@ function measureFixture(fixture: FormFixture, sampleCount: number) {
         timing: distribution(samples),
         samples,
     };
-}
-
-function validateTruth(fixture: FormFixture, snapshot: FormSnapshot): string[] {
-    const errors: string[] = [];
-    const forms = Object.values(snapshot.forms.forms);
-    const fields = Object.values(snapshot.forms.fields);
-    if (forms.length < fixture.truth.minimumFormCount) errors.push(`formCount:${forms.length}`);
-    if (fields.length < fixture.truth.minimumFieldCount) errors.push(`fieldCount:${fields.length}`);
-    const composite = fields.filter((field) => field.controlIds.length > 1).length;
-    if (composite < (fixture.truth.minimumCompositeFieldCount ?? 0)) errors.push(`compositeFieldCount:${composite}`);
-    if (snapshot.forms.residualFieldIds.length < (fixture.truth.minimumResidualFieldCount ?? 0)) {
-        errors.push(`residualFieldCount:${snapshot.forms.residualFieldIds.length}`);
-    }
-    for (const kind of fixture.truth.expectedBoundaryKinds ?? []) {
-        if (!forms.some((form) => form.boundaryKind === kind)) errors.push(`boundaryKind:${kind}`);
-    }
-    if (fixture.truth.requireDialogHost && !forms.some((form) => Boolean(form.location.hostNodeId))) {
-        errors.push('dialogHost:missing');
-    }
-    return errors;
 }
 
 function aggregate(fixtures: Measured[]) {
@@ -199,14 +143,14 @@ function sum<T>(items: T[], read: (item: T) => number): number {
 
 function countBy(values: readonly string[]): Record<string, number> {
     const counts: Record<string, number> = {};
-    for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
+    for (const value of values) {counts[value] = (counts[value] ?? 0) + 1;}
     return counts;
 }
 
 function mergeCounts(records: readonly Record<string, number>[]): Record<string, number> {
     const counts: Record<string, number> = {};
     for (const record of records) {
-        for (const [key, value] of Object.entries(record)) counts[key] = (counts[key] ?? 0) + value;
+        for (const [key, value] of Object.entries(record)) {counts[key] = (counts[key] ?? 0) + value;}
     }
     return counts;
 }
@@ -222,7 +166,7 @@ function distribution(samples: readonly number[]) {
 }
 
 function percentile(sorted: readonly number[], ratio: number): number {
-    if (sorted.length === 0) return 0;
+    if (sorted.length === 0) {return 0;}
     return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio))] ?? 0;
 }
 
