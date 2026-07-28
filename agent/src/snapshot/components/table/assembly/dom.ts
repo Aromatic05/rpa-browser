@@ -61,7 +61,8 @@ export const buildTableParts = (
 
 export const canonicalHeaderPartIds = (root: LogicalTableRoot, parts: TableParts): ObservationNodeId[] => {
     if (root.framework === 'native' || root.framework === 'aria') {return [root.rootNodeId];}
-    return [...(parts.nodeIdsByKind.header ?? [])];
+    const header = [...(parts.nodeIdsByKind.header ?? [])];
+    return header.length > 0 ? header : [root.rootNodeId];
 };
 
 export const canonicalBodyPartIds = (root: LogicalTableRoot, parts: TableParts): ObservationNodeId[] => {
@@ -188,8 +189,11 @@ export const compareNodeOrder = (
 export const classTokens = (observation: PageObservation, nodeId: ObservationNodeId): string[] =>
     (observation.attributes[nodeId]?.class ?? '').split(/\s+/).filter(Boolean);
 
-export const nodeText = (observation: PageObservation, nodeId: ObservationNodeId): string =>
-    (observation.text[nodeId] ?? '').replace(/\s+/g, ' ').trim();
+export const nodeText = (observation: PageObservation, nodeId: ObservationNodeId): string => unique(
+    descendantsOrSelf(observation, nodeId)
+        .map((candidateId) => observation.text[candidateId]?.replace(/\s+/g, ' ').trim())
+        .filter((value): value is string => Boolean(value)),
+).join(' ');
 
 export const evidence = (
     code: string,
@@ -207,12 +211,11 @@ const classifyPhysicalTable = (
     if (root.framework === 'native') {return 'body';}
     const ancestorTokens = ancestorIds(observation, tableNodeId, root.rootNodeId)
         .flatMap((nodeId) => classTokens(observation, nodeId));
-    const joined = ancestorTokens.join(' ');
-    const isHeader = /header/.test(joined);
-    const isBody = /body/.test(joined);
-    if (/fixed-right/.test(joined)) {return isHeader ? 'fixed-right-header' : 'fixed-right-body';}
-    if (/fixed(?!-right)|fixed-left/.test(joined)) {return isHeader ? 'fixed-left-header' : 'fixed-left-body';}
-    if (/footer|summary/.test(joined)) {return 'footer';}
+    const isHeader = ancestorTokens.some(isHeaderPartToken);
+    const isBody = ancestorTokens.some(isBodyPartToken);
+    if (ancestorTokens.some(isFooterPartToken)) {return 'footer';}
+    if (ancestorTokens.some(isFixedRightPartToken)) {return isHeader ? 'fixed-right-header' : 'fixed-right-body';}
+    if (ancestorTokens.some(isFixedLeftPartToken)) {return isHeader ? 'fixed-left-header' : 'fixed-left-body';}
     if (isHeader) {return 'header';}
     if (isBody) {return 'body';}
     return 'unknown';
@@ -286,11 +289,48 @@ const isFooterRow = (observation: PageObservation, rowNodeId: ObservationNodeId)
     while (current) {
         const tag = observation.nodes[current]?.tag;
         if (tag === 'tfoot') {return true;}
-        if (classTokens(observation, current).some((token) => /footer|summary/.test(token))) {return true;}
+        if (classTokens(observation, current).some(isFooterPartToken)) {return true;}
         current = observation.parents[current];
     }
     return false;
 };
+
+const isHeaderPartToken = (token: string): boolean => [
+    'el-table__header',
+    'el-table__header-wrapper',
+    'el-table__fixed-header-wrapper',
+    'el-table__fixed-right-header-wrapper',
+    'ant-table-header',
+    'ant-table-thead',
+].includes(token);
+
+const isBodyPartToken = (token: string): boolean => [
+    'el-table__body',
+    'el-table__body-wrapper',
+    'el-table__fixed-body-wrapper',
+    'el-table__fixed-right-body-wrapper',
+    'ant-table-body',
+    'ant-table-content',
+    'ant-table-tbody',
+].includes(token);
+
+const isFooterPartToken = (token: string): boolean => [
+    'el-table__footer',
+    'el-table__footer-wrapper',
+    'ant-table-summary',
+    'ant-table-tfoot',
+].includes(token);
+
+const isFixedRightPartToken = (token: string): boolean => [
+    'el-table__fixed-right',
+    'el-table__fixed-right-patch',
+    'ant-table-fixed-right',
+].includes(token);
+
+const isFixedLeftPartToken = (token: string): boolean => [
+    'el-table__fixed',
+    'ant-table-fixed-left',
+].includes(token);
 
 const isPaginationNode = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
     const tokens = classTokens(observation, nodeId);

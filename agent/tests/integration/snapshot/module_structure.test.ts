@@ -15,7 +15,7 @@ const expectedBranches: Record<string, readonly string[]> = {
     rules: ['matching', 'model', 'runtime'],
     'components/control': ['action', 'assembly', 'capture', 'model'],
     'components/form': ['assembly', 'capture', 'model', 'replay'],
-    'components/table': ['assembly', 'model'],
+    'components/table': ['assembly', 'capture', 'model'],
 };
 
 const moduleRanks: Record<string, number> = {
@@ -37,9 +37,10 @@ const moduleRanks: Record<string, number> = {
     'components/form/replay': 11,
     'components/table/model': 12,
     'components/table/assembly': 13,
-    'rules/model': 14,
-    'rules/matching': 15,
-    'rules/runtime': 16,
+    'components/table/capture': 14,
+    'rules/model': 15,
+    'rules/matching': 16,
+    'rules/runtime': 17,
 };
 
 const legacyDirectoryNames = new Set([
