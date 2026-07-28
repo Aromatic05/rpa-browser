@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -15,14 +15,3 @@ await writeFile(
     `${JSON.stringify({buildId, builtAt: new Date().toISOString()}, null, 2)}\n`,
     'utf8',
 );
-
-const annotatorDir = path.join(distDir, 'annotator');
-const annotatorCssPath = path.join(annotatorDir, 'annotator.css');
-const annotatorJsPath = path.join(annotatorDir, 'annotator.js');
-const componentCss = await readFile(annotatorCssPath, 'utf8');
-const annotatorJs = await readFile(annotatorJsPath, 'utf8');
-await writeFile(
-    annotatorJsPath,
-    `globalThis.__rpaAnnotatorComponentCss = ${JSON.stringify(componentCss)};\n${annotatorJs}`,
-);
-await unlink(annotatorCssPath);

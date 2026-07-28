@@ -97,7 +97,6 @@ export const executeBrowserAssert = async (
             collectBaseSnapshot: async (context) =>
                 await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
-                entityRulesProvider: deps.resolveEntityRulesProvider?.(workspaceName) || undefined,
             }),
         });
 

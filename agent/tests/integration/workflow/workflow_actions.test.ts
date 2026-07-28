@@ -182,7 +182,7 @@ test('workflow.open creates a blank page instead of navigating to a placeholder 
     }
 });
 
-test('workflow.saveAs copies DSL, checkpoint and entity rules without sharing later mutations', async () => {
+test('workflow.saveAs copies DSL and checkpoint without sharing later mutations', async () => {
     const { registry } = createWorkspaceHarness();
     const source = uniqueName('wf-save-as-source');
     const target = uniqueName('wf-save-as-target');
@@ -198,12 +198,6 @@ test('workflow.saveAs copies DSL, checkpoint and entity rules without sharing la
             stepResolves: {},
             hints: {},
         } as any);
-        sourceWorkflow.save({
-            kind: 'entity_rules',
-            name: 'shared',
-            match: { version: 1, page: { kind: 'form' }, entities: [{ ruleId: 'form', source: 'region', expect: 'unique', match: { kind: 'form' } }] },
-            annotation: { version: 1, page: { kind: 'form' }, annotations: [{ ruleId: 'form', businessTag: 'source.original' }] },
-        } as any);
         registry.createWorkspace(source, sourceWorkflow);
 
         const savedAs = await handleRuntimeControlAction({
@@ -215,7 +209,6 @@ test('workflow.saveAs copies DSL, checkpoint and entity rules without sharing la
         assert.ok(targetWorkspace);
         assert.equal(targetWorkspace.workflow.get('main', { kind: 'dsl' })?.kind, 'dsl');
         assert.equal(targetWorkspace.workflow.get('shared', { kind: 'checkpoint' })?.kind, 'checkpoint');
-        assert.equal(targetWorkspace.workflow.get('shared', { kind: 'entity_rules' })?.kind, 'entity_rules');
 
         sourceWorkflow.save({ kind: 'dsl', name: 'main', content: 'wait 999' } as any);
         const copiedDsl = targetWorkspace.workflow.get('main', { kind: 'dsl' });
@@ -290,7 +283,6 @@ test('workflow.resetDefault discards persisted artifacts and creates a fresh def
         assert.equal(mcpStops, 1);
         assert.deepEqual(current.workflow.list({ kind: 'dsl' }), []);
         assert.deepEqual(current.workflow.list({ kind: 'checkpoint' }), []);
-        assert.deepEqual(current.workflow.list({ kind: 'entity_rules' }), []);
     } finally {
         cleanup('default');
     }

@@ -20,5 +20,3 @@ export const resolveRunnerConfig = (overrides?: Partial<RunnerConfig>) => {
 };
 
 export type { RunnerConfig, McpToolGroup, McpPolicy } from './config_schema';
-export type { EntityRuleConfig } from './entity_rules';
-export { defaultEntityRuleConfig, defaultEntityRuleRootDir, selectEntityRuleProfiles } from './entity_rules';

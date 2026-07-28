@@ -4,14 +4,13 @@ import { DslRuntimeError } from '../dsl/diagnostics/errors';
 import { createCheckpointCodec, type WorkflowCheckpoint } from './checkpoint';
 import { createDslCodec, type WorkflowDsl } from './dsl';
 import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
-import { createEntityRulesCodec, type WorkflowEntityRules } from './entity_rules';
 import { createRecordingCodec, type WorkflowRecording } from './recording';
 import { createNamedStore, type NamedStore, type WorkflowCodec } from './store';
 
-export type WorkflowArtifactKind = 'recording' | 'checkpoint' | 'dsl' | 'entity_rules';
+export type WorkflowArtifactKind = 'recording' | 'checkpoint' | 'dsl';
 export type WorkflowDummy = { kind: WorkflowArtifactKind };
 
-export type WorkflowArtifact = WorkflowRecording | WorkflowCheckpoint | WorkflowDsl | WorkflowEntityRules;
+export type WorkflowArtifact = WorkflowRecording | WorkflowCheckpoint | WorkflowDsl;
 
 export type WorkflowCatalogItemBase = {
     kind: WorkflowArtifactKind;
@@ -28,16 +27,10 @@ export type WorkflowCheckpointCatalogItem = WorkflowCatalogItemBase & {
     priority?: number;
 };
 
-export type WorkflowEntityRulesCatalogItem = WorkflowCatalogItemBase & {
-    kind: 'entity_rules';
-    enabled?: boolean;
-};
-
 export type WorkflowCatalogItem =
     | (WorkflowCatalogItemBase & { kind: 'recording' })
     | WorkflowCheckpointCatalogItem
-    | (WorkflowCatalogItemBase & { kind: 'dsl' })
-    | WorkflowEntityRulesCatalogItem;
+    | (WorkflowCatalogItemBase & { kind: 'dsl' });
 
 export type WorkflowManifest = {
     version: 1;
@@ -60,7 +53,6 @@ type WorkflowInternal = {
     recordingStore: NamedStore<WorkflowRecording>;
     checkpointStore: NamedStore<WorkflowCheckpoint>;
     dslStore: NamedStore<WorkflowDsl>;
-    entityRuleStore: NamedStore<WorkflowEntityRules>;
     codecs: WorkflowCodec<WorkflowArtifact>[];
 };
 
@@ -97,14 +89,12 @@ const createInternal = (workflowName: string): WorkflowInternal => {
     const recordingStore = createNamedStore(createRecordingCodec(workflowName));
     const checkpointStore = createNamedStore(createCheckpointCodec(workflowName));
     const dslStore = createNamedStore(createDslCodec(workflowName));
-    const entityRuleStore = createNamedStore(createEntityRulesCodec(workflowName));
     const codecs: WorkflowCodec<WorkflowArtifact>[] = [
         createRecordingCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
         createCheckpointCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
         createDslCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
-        createEntityRulesCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
     ];
-    return { recordingStore, checkpointStore, dslStore, entityRuleStore, codecs };
+    return { recordingStore, checkpointStore, dslStore, codecs };
 };
 
 const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogItem): WorkflowCatalogItem => {
@@ -125,13 +115,6 @@ const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogIte
             priority: artifact.checkpoint.priority,
         };
     }
-    if (artifact.kind === 'entity_rules') {
-        return {
-            ...base,
-            kind: 'entity_rules',
-            enabled: true,
-        };
-    }
     if (artifact.kind === 'recording') {
         return { ...base, kind: 'recording', summary: `steps=${artifact.steps.length}` };
     }
@@ -145,10 +128,7 @@ const resolveStore = (internal: WorkflowInternal, kind: WorkflowArtifactKind): N
     if (kind === 'checkpoint') {
         return internal.checkpointStore as NamedStore<WorkflowArtifact>;
     }
-    if (kind === 'dsl') {
-        return internal.dslStore as NamedStore<WorkflowArtifact>;
-    }
-    return internal.entityRuleStore as NamedStore<WorkflowArtifact>;
+    return internal.dslStore as NamedStore<WorkflowArtifact>;
 };
 
 const hasCatalog = (manifest: WorkflowManifest, kind: WorkflowArtifactKind, name: string): boolean =>
@@ -206,7 +186,6 @@ export const createWorkflowOnFs = (workflowName: string): Workflow => {
     ensureDir(path.join(rootDir, 'recordings'));
     ensureDir(path.join(rootDir, 'checkpoints'));
     ensureDir(path.join(rootDir, 'dsls'));
-    ensureDir(path.join(rootDir, 'entity_rules'));
     const manifest = defaultManifest(workflowName);
     writeYamlFile(workflowManifestPath(workflowName), manifest);
     return loadWorkflowFromFs(workflowName);

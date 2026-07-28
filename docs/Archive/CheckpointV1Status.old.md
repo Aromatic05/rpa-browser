@@ -17,10 +17,6 @@
 - checkpoint 支持 `retryOriginal: false`。
 - checkpoint 支持 `policy.maxAttempts`。
 - Step / Checkpoint YAML hint 外置。
-- entity-rules 支持 `finalEntityView / bindingIndex`。
-- entity-rules 支持 diagnostics。
-- entity-rules 支持 `table.hasNextPage`。
-- entity-rules 支持 `table.nextPageTarget`。
 - order-form `query -> fill/click` 集成测试已覆盖。
 - order-list `rowCount/currentRows/row_action -> click` 集成测试已覆盖。
 - order-list pagination `query -> clickNext` 集成测试已覆盖。
@@ -54,15 +50,11 @@
 - [agent/src/runner/steps/executors/snapshot/core/business_entity_resolver.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/core/business_entity_resolver.ts)：解析实体 query 与 target。
 - [agent/src/runner/steps/executors/snapshot/core/diagnostics.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/core/diagnostics.ts)：诊断收集、去重、汇总、过滤。
 - [agent/src/runner/steps/executors/snapshot/core/pagination.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/core/pagination.ts)：分页状态与下一页目标解析。
-- [agent/src/runner/steps/executors/snapshot/entity_rules/apply.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/entity_rules/apply.ts)：应用 annotation，生成 overlay、节点 hint、diagnostics。
-- [agent/src/runner/steps/executors/snapshot/entity_rules/validate.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/entity_rules/validate.ts)：校验规则与 annotation 引用关系。
 
 ## 4.4 测试覆盖
 
 - [agent/tests/runner/serialization/serialization_yaml.test.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/runner/serialization/serialization_yaml.test.ts)
 - [agent/tests/runner/entity_query_action.integration.test.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/runner/entity_query_action.integration.test.ts)
-- [agent/tests/runner/entity_rules/diagnostics.test.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/runner/entity_rules/diagnostics.test.ts)
-- [agent/tests/runner/entity_rules/pagination.test.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/runner/entity_rules/pagination.test.ts)
 - [agent/tests/runner/checkpoint/checkpoint.test.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/runner/checkpoint/checkpoint.test.ts)
 - [agent/tests/runner/checkpoint/checkpoint_runtime.test.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/runner/checkpoint/checkpoint_runtime.test.ts)
 - [agent/tests/runner/checkpoint/checkpoint_flow.integration.test.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/runner/checkpoint/checkpoint_flow.integration.test.ts)

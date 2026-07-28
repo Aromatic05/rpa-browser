@@ -33,7 +33,6 @@
 - `Runtime/Dsl.md`
 - `Runtime/Checkpoint.md`
 - `Runtime/Snapshot.md`
-- `Runtime/EntityRules.md`
 - `Runtime/TargetResolve.md`
 - `Runtime/Config.md`
 - `Runtime/Logging.md`
@@ -54,6 +53,7 @@
 - `Development/TestGuide.md`
 - `Development/TestGovernance.md`
 - `Development/TaskBoard.md`
+- `Development/SnapshotEntityRecognitionV2Plan.md`
 
 ## 使用建议
 

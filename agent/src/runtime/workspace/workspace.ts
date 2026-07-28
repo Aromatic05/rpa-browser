@@ -3,7 +3,6 @@ import { createWorkspaceTabs, createTabsControl, type WorkspaceTabs } from './ta
 import { createRecordControl, type RecordControl } from '../../record/control';
 import { createDslControl, type DslControl } from '../../dsl/control';
 import { createCheckpointControl, type CheckpointControl } from '../../checkpoint/control';
-import { createEntityRulesControl, type EntityRulesControl } from '../../entity_rules/control';
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
 import { createMcpControl, type McpControl } from '../../mcp/control';
 import { createWorkspaceRouter, type WorkspaceRouter } from './router';
@@ -29,7 +28,6 @@ export type RuntimeWorkspace = {
     record: RecordControl;
     dsl: DslControl;
     checkpoint: CheckpointControl;
-    entityRules: EntityRulesControl;
     runner: RunnerControl;
     mcp: McpControl;
     router: WorkspaceRouter;
@@ -107,7 +105,6 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
-    const entityRules = createEntityRulesControl({ runStepsDeps: deps.runStepsDeps });
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const tabsControl = createTabsControl({
         recordingState: deps.recordingState,
@@ -127,7 +124,6 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         recordControl: record,
         dslControl: dsl,
         checkpointControl: checkpoint,
-        entityRulesControl: entityRules,
         runnerControl: runner,
         mcpControl: mcp,
     });
@@ -140,7 +136,6 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         record,
         dsl,
         checkpoint,
-        entityRules,
         runner,
         mcp,
         router,

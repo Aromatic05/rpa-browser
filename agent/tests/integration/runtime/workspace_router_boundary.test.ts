@@ -52,7 +52,6 @@ const createMinimalWorkspace = (name: string): RuntimeWorkspace =>
         state: 'idle',
         dsl: {} as any,
         checkpoint: {} as any,
-        entityRules: {} as any,
         runner: {} as any,
         mcp: {
             start: async () => ({ workspaceName: name, serviceName: 'mcp', port: 0, status: 'running' }),
@@ -76,7 +75,6 @@ const createRouterWithStubs = () => {
     const recordControl = createStubControl();
     const dslControl = createStubControl();
     const checkpointControl = createStubControl();
-    const entityRulesControl = createStubControl();
     const runnerControl = createStubControl();
     const mcpControl = createStubControl();
 
@@ -85,7 +83,6 @@ const createRouterWithStubs = () => {
         recordControl: recordControl as any,
         dslControl: dslControl as any,
         checkpointControl: checkpointControl as any,
-        entityRulesControl: entityRulesControl as any,
         runnerControl: runnerControl as any,
         mcpControl: mcpControl as any
     };
@@ -98,7 +95,6 @@ const createRouterWithStubs = () => {
         recordControl: recordControl as any,
         dslControl: dslControl as any,
         checkpointControl: checkpointControl as any,
-        entityRulesControl: entityRulesControl as any,
         runnerControl: runnerControl as any,
         mcpControl: mcpControl as any
     };
@@ -304,15 +300,6 @@ test('checkpoint.* is forwarded to checkpointControl', async () => {
     assert.equal(checkpointControl.calls.length, 1);
 });
 
-test('entity_rules.* is forwarded to entityRulesControl', async () => {
-    const { router, entityRulesControl } = createRouterWithStubs();
-    const workspace = createMinimalWorkspace('ws-1');
-    const registry = createMinimalRegistry();
-    const action = stubAction('entity_rules.list', { workspaceName: 'ws-1' });
-
-    await router.handle(action, workspace, registry);
-    assert.equal(entityRulesControl.calls.length, 1);
-});
 
 test('task.run.* is forwarded to runnerControl', async () => {
     const { router, runnerControl } = createRouterWithStubs();

@@ -161,7 +161,6 @@ runner step ref 不依赖 `ensureActivePage`。它只依赖当前 run 中已经�
 
 ## 3.10 明确不属于 checkpoint 架构的内容
 
-- entity-rules matcher 内部实现
 - pagination disabled 判断
 - browser action 的底层 Playwright 执行细节
 - DSL 编译

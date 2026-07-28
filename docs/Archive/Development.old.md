@@ -268,33 +268,21 @@ Extension 测试：
 
 规则目录（agent 内部产物目录）：
 
-- `agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/match.yaml`
-- `agent/.artifacts/workflows/<scene>/entity_rules/<rule_name>/annotation.yaml`
-- legacy fallback：`agent/.artifacts/entity_rules/profiles/<profile>/match.yaml`
-- legacy fallback：`agent/.artifacts/entity_rules/profiles/<profile>/annotation.yaml`
 
 运行时加载链路（snapshot）：
 
 1. 解析 YAML
 2. schema 校验（单文件）
 3. cross-file 校验（`within`/`ruleId`/`page.kind` 等）
-4. 规范化为 `NormalizedEntityRuleBundle`
-5. 在 snapshot pipeline 的 `applyBusinessEntityRules` 阶段生成 `BusinessEntityOverlay`
 
 测试入口（agent）：
 
-- `tests/runner/steps/snapshot_entity_rules_schema.test.ts`
-- `tests/runner/steps/snapshot_entity_rules_validate.test.ts`
-- `tests/runner/steps/snapshot_entity_rules_matcher_apply.test.ts`
-- `tests/runner/steps/snapshot_entity_rules_pipeline.test.ts`
 - `tests/config/resolve_target_enrichment.test.ts`（entity hint）
 - `tests/runner/checkpoint/checkpoint.test.ts`（businessTag entityExists）
-- `tests/entity_rules/**/*.test.ts`（golden verify）
 
 运行命令：
 
 ```bash
-pnpm -C agent test:entity-rules
 ```
 
 当前命令：

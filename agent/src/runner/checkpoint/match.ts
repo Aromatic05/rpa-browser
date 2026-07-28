@@ -134,7 +134,6 @@ const evalEntityExistsRule = async (
         collectBaseSnapshot: async (context) =>
             await generateSemanticSnapshot(binding.page, {
                 captureRuntimeState: context.fromDirty,
-                entityRulesProvider: ctx.failedCtx.deps.resolveEntityRulesProvider?.(ctx.failedCtx.workspaceName) || undefined,
             }),
     });
 

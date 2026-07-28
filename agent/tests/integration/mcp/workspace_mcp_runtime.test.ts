@@ -51,7 +51,6 @@ const createWorkspace = (service = createService()): { workspace: RuntimeWorkspa
         record: null,
         dsl: null,
         checkpoint: null,
-        entityRules: null,
         runner: null,
         mcp: control,
         router: null,

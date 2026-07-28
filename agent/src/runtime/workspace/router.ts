@@ -17,7 +17,6 @@ import type { ControlPlaneResult } from '../control_plane';
 import type { RecordControl } from '../../record/control';
 import type { DslControl } from '../../dsl/control';
 import type { CheckpointControl } from '../../checkpoint/control';
-import type { EntityRulesControl } from '../../entity_rules/control';
 import type { RunnerControl } from '../../runner/control';
 import type { TabsControl } from './tabs';
 import type { McpControl } from '../../mcp/control';
@@ -33,7 +32,6 @@ export type WorkspaceRouterDeps = {
     recordControl: RecordControl;
     dslControl: DslControl;
     checkpointControl: CheckpointControl;
-    entityRulesControl: EntityRulesControl;
     runnerControl: RunnerControl;
     mcpControl: McpControl;
 };
@@ -58,10 +56,6 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
 
         if (action.type.startsWith('checkpoint.')) {
             return await deps.checkpointControl.handle({ action, workspace, workspaceRegistry });
-        }
-
-        if (action.type.startsWith('entity_rules.')) {
-            return await deps.entityRulesControl.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('task.run.')) {

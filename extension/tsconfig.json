@@ -7,9 +7,19 @@
         "noEmitOnError": true,
         "rootDir": "src",
         "outDir": "dist",
-        "lib": ["ES2022", "DOM"],
-        "types": ["chrome"]
+        "lib": [
+            "ES2022",
+            "DOM"
+        ],
+        "types": [
+            "chrome"
+        ]
     },
-    "include": ["src/**/*.ts"],
-    "exclude": ["src/annotator/main.ts", "src/annotator/App.vue", "src/**/*.test.ts", "src/**/__tests__/**"]
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "src/**/*.test.ts",
+        "src/**/__tests__/**"
+    ]
 }

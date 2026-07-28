@@ -17,12 +17,6 @@ await log('workspace actions are classified correctly', async () => {
     assert.equal(classifyPanelAction('play.start'), 'workspace');
     assert.equal(classifyPanelAction('dsl.save'), 'workspace');
     assert.equal(classifyPanelAction('checkpoint.list'), 'workspace');
-    assert.equal(classifyPanelAction('entity_rules.delete'), 'workspace');
-    assert.equal(classifyPanelAction('entity_rules.annotator.open'), 'workspace');
-    assert.equal(classifyPanelAction('entity_rules.annotator.pick'), 'workspace');
-    assert.equal(classifyPanelAction('entity_rules.annotator.recognize'), 'workspace');
-    assert.equal(classifyPanelAction('entity_rules.annotator.check'), 'workspace');
-    assert.equal(classifyPanelAction('entity_rules.annotator.save'), 'workspace');
     assert.equal(classifyPanelAction('task.run.once'), 'workspace');
 });
 

@@ -24,7 +24,6 @@ const WORKSPACE_REQUIRED_PREFIXES = [
     'play.',
     'dsl.',
     'checkpoint.',
-    'entity_rules.',
     'task.run.',
 ];
 

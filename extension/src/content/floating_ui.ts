@@ -10,7 +10,6 @@ export type FloatingUIOptions = {
         address?: { workspaceName?: string; tabName?: string },
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
-    onEnterAnnotation?: () => void;
 };
 
 export type FloatingUIHandle = {
@@ -57,7 +56,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         unsavedStepCount: 0,
         dslRaw: '{}',
         checkpointRaw: '{}',
-        entityRulesRaw: '{}',
     };
 
     const host = document.createElement('div');
@@ -77,8 +75,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .launchers { display:flex; align-items:center; gap:8px; }
       .build-id { min-width:56px; height:24px; display:grid; place-items:center; border:1px solid #cbd5e1; border-radius:999px; padding:0 8px; background:rgba(255,255,255,.94); color:#475569; font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; box-shadow:0 4px 12px rgba(15,23,42,.10); }
       .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.22); }
-      .annotate-launch { height:38px; padding:0 14px; border:none; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(37,99,235,.28); }
-      .annotate-launch:hover { background:#1d4ed8; }
       .panel { width:420px; border-radius:12px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 12px 28px rgba(15,23,42,.24); display:none; overflow:hidden; }
       .panel.open { display:block; }
       .tabs { display:flex; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
@@ -105,10 +101,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     wrap.className = 'wrap';
     const launchers = document.createElement('div');
     launchers.className = 'launchers';
-    const annotateLaunch = document.createElement('button');
-    annotateLaunch.className = 'annotate-launch';
-    annotateLaunch.textContent = '标注页面';
-    annotateLaunch.setAttribute('aria-label', '打开页面语义标注器');
     const buildBadge = document.createElement('span');
     buildBadge.className = 'build-id';
     buildBadge.textContent = `#${buildLabel}`;
@@ -128,15 +120,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     footer.appendChild(out);
 
     panel.append(tabsBar, body, footer);
-    launchers.append(buildBadge, annotateLaunch, ball);
+    launchers.append(buildBadge, ball);
     wrap.append(launchers, panel);
     shadow.append(style, wrap);
     document.documentElement.appendChild(host);
 
     let isOpen = false;
-    annotateLaunch.addEventListener('click', () => {
-        opts.onEnterAnnotation?.();
-    });
     ball.addEventListener('click', () => {
         isOpen = !isOpen;
         panel.classList.toggle('open', isOpen);
@@ -532,20 +521,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 { label: 'checkpoint.save', type: 'checkpoint.save' },
                 { label: 'checkpoint.delete', type: 'checkpoint.delete' },
             ]),
-            renderSub('Entity Rules', state.entityRulesRaw, (v) => { state.entityRulesRaw = v; }, [
-                { label: 'entity_rules.list', type: 'entity_rules.list' },
-                { label: 'entity_rules.get', type: 'entity_rules.get' },
-                { label: 'entity_rules.save', type: 'entity_rules.save' },
-                { label: 'entity_rules.delete', type: 'entity_rules.delete' },
-            ]),
         );
-        if (opts.onEnterAnnotation) {
-            const annotateBox = document.createElement('div');
-            annotateBox.className = 'section';
-            annotateBox.appendChild(Object.assign(document.createElement('div'), { className: 'title', textContent: 'Entity Rules Annotator' }));
-            annotateBox.appendChild(createButton('进入标注模式', () => { opts.onEnterAnnotation?.(); }, true));
-            root.appendChild(annotateBox);
-        }
         return root;
     };
 

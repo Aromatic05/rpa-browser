@@ -31,32 +31,7 @@ type FloatingUIExports = {
         workspaceName: string;
         onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
         onEvent?: (handler: (action: ActionShape) => void) => void;
-        onEnterAnnotation?: () => void;
     }) => { scheduleRefresh: () => void };
-};
-
-type AnnotatorHandle = {
-    unmount: () => void;
-    show: () => void;
-    hide: () => void;
-    setState: (state: unknown) => void;
-    getState: () => unknown;
-    open: (result: unknown) => void;
-    exit: () => void;
-};
-
-type AnnotatorExports = {
-    startAnnotator: (
-        handlers: {
-            onExit: () => void;
-            onUndo: () => void;
-            onRedo: () => void;
-            onCheck: () => void;
-            onSave: () => void;
-            dispatch?: (type: string, payload?: Record<string, unknown>) => Promise<unknown>;
-        },
-        doc?: Document,
-    ) => AnnotatorHandle;
 };
 
 type TokenBridgeExports = {
@@ -129,17 +104,6 @@ const loadFloatingUI = (() => {
         if (!cached) {
             const url = chrome.runtime.getURL('content/floating_ui.js');
             cached = import(url) as Promise<FloatingUIExports>;
-        }
-        return cached;
-    };
-})();
-
-const loadAnnotator = (() => {
-    let cached: Promise<AnnotatorExports> | null = null;
-    return () => {
-        if (!cached) {
-            const url = chrome.runtime.getURL('annotator/annotator.js');
-            cached = import(url) as Promise<AnnotatorExports>;
         }
         return cached;
     };
@@ -286,7 +250,6 @@ const loadAnnotator = (() => {
     // UI 注入（浮层模块）
     let uiHandle: { scheduleRefresh: () => void } | null = null;
     let consumeActionEvent: ((action: ActionShape) => void) | null = null;
-    let annotatorHandle: AnnotatorHandle | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
@@ -294,21 +257,6 @@ const loadAnnotator = (() => {
         bindReportOnUrlChange();
         void sendReportIfUrlChanged(workspaceName, true);
         startHeartbeat();
-        const dispatchAnnotator = async (type: string, payload?: Record<string, unknown>): Promise<unknown> => {
-            const { send } = await loadSend();
-            const binding = await ensureToken();
-            const request: ActionShape = {
-                v: 1,
-                id: UUIDorUnsafe(),
-                type,
-                workspaceName: binding.workspaceName,
-                payload: payload ?? {},
-            };
-            consumeActionEvent?.(request);
-            const reply = await send.action(request) as ActionShape;
-            consumeActionEvent?.(reply);
-            return reply;
-        };
         uiHandle = mountFloatingUI({
             tabName,
             workspaceName,
@@ -339,56 +287,8 @@ const loadAnnotator = (() => {
             onEvent: (handler) => {
                 consumeActionEvent = handler;
             },
-            onEnterAnnotation: () => {
-                void (async () => {
-                    const binding = await ensureToken();
-                    if (!annotatorHandle) {
-                        try {
-                            const { startAnnotator } = await loadAnnotator();
-                            annotatorHandle = startAnnotator(
-                                {
-                                    onExit: () => {
-                                        annotatorHandle?.exit();
-                                        annotatorHandle?.hide();
-                                        const panel = document.getElementById('rpa-floating-panel');
-                                        if (panel) {
-                                            panel.style.display = '';
-                                        }
-                                    },
-                                    onUndo: () => undefined,
-                                    onRedo: () => undefined,
-                                    onCheck: () => undefined,
-                                    onSave: () => undefined,
-                                    dispatch: (type, payload) => dispatchAnnotator(type, payload),
-                                },
-                                document,
-                            );
-                        } catch (error) {
-                            console.error('[rpa] annotator mount failed:', error);
-                            return;
-                        }
-                    }
-                    const panel = document.getElementById('rpa-floating-panel');
-                    if (panel) {
-                        panel.style.display = 'none';
-                    }
-                    annotatorHandle.show();
-                    const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
-                        url: location.href,
-                    }) as ActionShape;
-                    if (openReply.type.endsWith('.failed')) {
-                        console.error('[rpa] annotator open failed:', openReply.payload);
-                        annotatorHandle.exit();
-                        return;
-                    }
-                    if (openReply && isRecord(openReply.payload)) {
-                        annotatorHandle.open(openReply.payload);
-                    }
-                })();
-            },
         });
         chrome.runtime.onMessage.addListener((message: unknown) => {
-            // annotator.* replies/events flow through the same log as Debug panel actions.
             if (!isRecord(message) || message.type !== MSG.ACTION_EVENT || !('action' in message)) {return;}
             consumeActionEvent?.(message.action as ActionShape);
         });

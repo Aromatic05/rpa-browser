@@ -29,3 +29,6 @@ agent/.mcp-hot
 .vscode/
 .VSCodeCounter/
 .dev/
+
+# generated form capture fixtures (large, local-only)
+agent/tests/fixtures/form-v2/

@@ -47,7 +47,6 @@ RuntimeWorkspace
 ├── record: RecordControl
 ├── dsl: DslControl
 ├── checkpoint: CheckpointControl
-├── entityRules: EntityRulesControl
 ├── runner: RunnerControl
 ├── mcp: McpControl
 ├── router: WorkspaceRouter
@@ -80,7 +79,6 @@ RuntimeWorkspace
 | `record.*` / `play.*` | RecordControl | 录制与回放 |
 | `dsl.*` | DslControl | DSL 读写与执行 |
 | `checkpoint.*` | CheckpointControl | checkpoint 管理 |
-| `entity_rules.*` | EntityRulesControl | 实体规则管理 |
 | `task.run.*` | RunnerControl | 任务运行 |
 
 Router 不负责 action 合法性判断——已由上层 `classifyActionRoute` 完成。router 收到不支持的 action 时返回 `ERR_UNSUPPORTED`。
@@ -168,7 +166,6 @@ MCP 通过 `workspace.mcp.start` 启动（非 `startMcpServer` 或 `createMcpSer
 ### 7.2 Router 与控制边界测试
 
 `agent/tests/runtime/workspace_router_boundary.test.ts` — 33 个测试用例：
-- 所有前缀转发正确（tab/mcp/record/play/dsl/checkpoint/entity_rules/task.run）
 - Router 拒绝 control action
 - Router 拒绝已删除 action
 - TabsControl 拒绝 tab.init

@@ -57,10 +57,6 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
             return runtimeWorkspace;
         },
         dispatchAction: async (action: any) => ({ ...action, id: crypto.randomUUID(), type: `${action.type}.result`, replyTo: action.id }),
-        resolveEntityRulesProvider: (name: string) => {
-            if (name !== workspaceName) {return null;}
-            return runtimeWorkspace.entityRules.getProvider(runtimeWorkspace.workflow);
-        },
     };
 
     const run = async (steps: StepUnion[]) => {

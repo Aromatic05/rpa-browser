@@ -6,7 +6,6 @@
 workspace
 ├─ workflow
 ├─ checkpoint
-├─ entityRules
 ├─ record
 ├─ dsl
 ├─ runner

@@ -68,4 +68,3 @@ extension/start_extension/mcp/control
 ## 限制
 
 - 入口层的 pageless 范围在 WS 主入口与 dispatcher 存在实现差异。
-- 语义质量受 snapshot 与 entity_rules 数据质量影响。

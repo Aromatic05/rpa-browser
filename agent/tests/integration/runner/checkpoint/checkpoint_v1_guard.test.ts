@@ -46,7 +46,7 @@ test('checkpoint fixture guard', async () => {
 
     for (const fileName of fileNames.filter((name) => name.endsWith('.checkpoints.yaml'))) {
         const source = await fs.readFile(path.join(fixturesDir, fileName), 'utf-8');
-        for (const forbidden of ['{{', '}}', 'rawContext', 'locatorCandidates', 'replayHints', 'preferredEntityRules', 'fallbacks', 'hint:']) {
+        for (const forbidden of ['{{', '}}', 'rawContext', 'locatorCandidates', 'replayHints', 'fallbacks', 'hint:']) {
             assert.equal(source.includes(forbidden), false, `${fileName} must not include ${forbidden}`);
         }
         for (const required of ['trigger:', 'matchRules:', 'ref: local.']) {
@@ -56,7 +56,7 @@ test('checkpoint fixture guard', async () => {
 
     for (const fileName of fileNames.filter((name) => name.endsWith('.checkpoint_hints.yaml'))) {
         const source = await fs.readFile(path.join(fixturesDir, fileName), 'utf-8');
-        for (const required of ['preferredEntityRules', 'fallbacks']) {
+        for (const required of ['fallbacks']) {
             assert.equal(source.includes(required), true, `${fileName} must include ${required}`);
         }
     }

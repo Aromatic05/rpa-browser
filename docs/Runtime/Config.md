@@ -9,7 +9,6 @@
 - `defaults.ts`：提供默认配置。
 - `loader.ts`：加载 `.rpa/runner_config.json` 并应用环境变量覆盖。
 - `config_schema.ts`：类型约束。
-- `entity_rules.ts`：entity rules 相关默认路径与策略。
 
 ## 覆盖优先级
 

@@ -8,10 +8,8 @@ and the Playwright browser.
 
 | Term | Meaning |
 |------|---------|
-| `RuntimeWorkspace` | Aggregate that bundles all domain controls (tabs, record, dsl, checkpoint, entityRules, runner, mcp) and their shared router. |
 | `WorkspaceTabs` | Tab bookkeeping for a single workspace: create, close, activate, report, ping, reassign. Holds the real `Page` handle. |
 | `WorkspaceRouter` | Per-workspace action dispatcher. Routes by action-type prefix to the correct domain control. |
-| `WorkspaceRouterDeps` | Dependencies injected into the router: `recordControl`, `dslControl`, `checkpointControl`, `entityRulesControl`, `runnerControl`, `mcpControl`, `tabsControl`. |
 | `WorkspaceRegistry` | Creates, caches, and enumerates `RuntimeWorkspace` instances. Owns the active-workspace pointer. |
 | `ExecutionBindings` | Maps `(workspaceName, tabName)` → `Page` + trace tooling. Used by step executors at run time. |
 | `PageRegistry` | Low-level Page binding infrastructure. Used by `WorkspaceTabs` internally. |
@@ -30,7 +28,6 @@ RuntimeWorkspace
 ├── record: RecordControl
 ├── dsl: DslControl
 ├── checkpoint: CheckpointControl
-├── entityRules: EntityRulesControl
 ├── runner: RunnerControl
 ├── mcp: McpControl
 ├── router: WorkspaceRouter
@@ -46,7 +43,6 @@ Each domain control is created eagerly when the workspace is constructed
 | `tab.*` | Router-internal (tabs) |
 | `record.*` / `play.*` | RecordControl |
 | `checkpoint.*` | CheckpointControl |
-| `entity_rules.*` | EntityRulesControl |
 | `dsl.*` | DslControl |
 | `task.run.*` | RunnerControl |
 | `mcp.*` | McpControl |

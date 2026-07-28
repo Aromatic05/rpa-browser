@@ -42,7 +42,6 @@ export type CheckpointHint = {
     scope?: {
         businessTag?: string;
     };
-    preferredEntityRules?: string[];
     fallbacks?: Array<{
         kind: string;
         text?: string;

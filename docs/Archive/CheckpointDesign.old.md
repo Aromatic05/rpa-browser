@@ -8,7 +8,6 @@ checkpoint 的内容仍由已有 step 和 `CheckpointAction` 组成。当前 `Ch
 
 checkpoint 的价值在于把失败处理、数据查询、动作重试变成可序列化过程。失败后的恢复逻辑不再散落在运行时代码里，而是落到 YAML 中，由 runner 读取并执行。当前实现仍然复用已有 step executor，checkpoint 不负责浏览器底层操作细节，也不向 `browser.click`、`browser.fill`、`browser.select_option` 注入业务目标对象。动作 step 依旧只消费 `nodeId`、`selector` 这一层参数。
 
-checkpoint 不替代 `browser.query`。checkpoint 里的查询动作是调用现有 `browser.query` 能力完成实体查询、分页查询、节点查询。checkpoint 不替代 entity-rules。实体识别、表格识别、分页识别、业务字段绑定仍由 snapshot 与 entity-rules 模块负责。checkpoint 也不替代 DSL。当前 v1 仅支持固定动作模型与已有 step 组合，没有实现新的声明式语言。
 
 ## 2.2 v1 能力边界
 
@@ -39,7 +38,6 @@ checkpoint 不替代 `browser.query`。checkpoint 里的查询动作是调用现
 - action 业务目标对象
 - browser action 内置业务语义解析
 
-`table.hasNextPage` 与 `table.nextPageTarget` 已属于 entity-rules query 能力，入口在 [agent/src/runner/steps/executors/query.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/query.ts) 与 [agent/src/runner/steps/executors/snapshot/core/business_entity_resolver.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/steps/executors/snapshot/core/business_entity_resolver.ts)。checkpoint 可以调用这些 query 获取分页信息，但 checkpoint 自身不实现 pagination loop。
 
 ## 2.3 数据模型
 
@@ -177,7 +175,6 @@ workflow artifact 根目录统一为 `agent/.artifacts/workflows/<scene>/`。当
 
 ### `checkpoint_hints.yaml`
 
-- 保存解释、`fallbacks`、`preferredEntityRules`、`notes`
 - 不参与核心执行语义
 - 文件位置：`checkpoints/<checkpoint-name>/checkpoint_hints.yaml`
 
@@ -225,7 +222,6 @@ hints:
     why: 订单提交按钮 DOM 结构不稳定时，通过业务实体重新定位 submit action
     scope:
       businessTag: order.form.main
-    preferredEntityRules:
       - order_form
       - order_form_submit
     fallbacks:
@@ -235,7 +231,6 @@ hints:
       - kind: text
         text: 提交
     notes:
-      - 优先使用 entity-rules 解析出的 form.action
 ```
 
 `hints` 不参与 checkpoint 核心执行。`hints` 可以被 AI 生成，也可以被人工修改，但不进入 `checkpoint.yaml`。相关类型定义位于 [agent/src/runner/serialization/types.ts](/home/aromatic/Applications/OwnProject/rpa-browser/agent/src/runner/serialization/types.ts)，新规范测试夹具位于 [agent/tests/fixtures/workflows/order-form/checkpoints/order-form-submit/checkpoint_hints.yaml](/home/aromatic/Applications/OwnProject/rpa-browser/agent/tests/fixtures/workflows/order-form/checkpoints/order-form-submit/checkpoint_hints.yaml)。
@@ -259,7 +254,6 @@ hints:
 ## 2.9 明确不属于 checkpoint 的内容
 
 - DSL
-- entity-rules 规则匹配实现
 - pagination 识别逻辑
 - browser action target 解析
 - full diagnostics UI
