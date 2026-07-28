@@ -9,6 +9,7 @@
 
 import type { BBox, EntityKind, SnapshotFilter } from './executors/snapshot/core/types';
 import type { SelectOptionKind } from './executors/select_option/types';
+import type { StepEntityRulesControl } from '../../snapshot/rules/model';
 
 export type StepName =
     | 'browser.goto'
@@ -394,6 +395,8 @@ export type Step<TName extends StepName = StepName> = {
     id: string;
     name: TName;
     args: StepArgsMap[TName];
+    /** Persisted per-step entity_rules selection and override. */
+    entityRules?: StepEntityRulesControl;
     /**
      * Runtime-only metadata. It is not serialized into core steps.yaml.
      */

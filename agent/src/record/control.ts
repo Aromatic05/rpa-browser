@@ -90,6 +90,7 @@ const stripStepForPersistence = (step: StepUnion): StepUnion => {
         id: step.id,
         name: step.name,
         args: step.args,
+        entityRules: step.entityRules,
     } as StepUnion;
 };
 

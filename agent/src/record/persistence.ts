@@ -169,6 +169,7 @@ export const saveWorkflowRecordingArtifacts = async (opts: SaveWorkflowRecording
             id: step.id,
             name: step.name,
             args: step.args,
+            entityRules: step.entityRules,
         })) as StepFile['steps'],
     };
     await fs.writeFile(path.join(recordsDir, 'steps.yaml'), YAML.stringify(stepsFile), 'utf8');

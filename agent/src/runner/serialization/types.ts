@@ -1,11 +1,13 @@
 import type { Checkpoint } from '../checkpoint/types';
 import type { StepArgsMap, StepName, StepResolve } from '../steps/types';
+import { assertStepEntityRulesControl, type StepEntityRulesControl } from '../../snapshot/rules/model';
 import { isValidStepResolve, normalizeStepResolve } from '../steps/resolve_utils';
 
 export type SerializedStep<TName extends StepName = StepName> = {
     id: string;
     name: TName;
     args: StepArgsMap[TName];
+    entityRules?: StepEntityRulesControl;
 };
 
 export type SerializedStepUnion = {
@@ -90,6 +92,7 @@ export const validateStepFileForSerialization = (file: StepFile): void => {
         if ('meta' in step) {
             throw new Error(`core yaml must not include steps[${index}].meta`);
         }
+        assertSerializedStepEntityRules(step, `steps[${index}]`);
         assertNoCoreHintFields(step, `steps[${index}]`);
         assertNoLegacyActionTargetFields(step, `steps[${index}]`);
     }
@@ -140,6 +143,7 @@ export const validateCheckpointFileForSerialization = (file: CheckpointFile): vo
             throw new Error(`checkpoint ${checkpoint.id} must keep trigger at checkpoint root`);
         }
         assertNoCoreHintFields(checkpoint, `checkpoints[${index}]`);
+        assertCheckpointActionsEntityRules(checkpoint.prepare, `checkpoints[${index}].prepare`);
         assertCheckpointContentUsesSerializedStepShape(checkpoint, `checkpoints[${index}]`);
     }
 };
@@ -228,9 +232,29 @@ const assertNoLegacyActionTargetFields = (step: { name: string; args: unknown },
     }
 };
 
+const assertSerializedStepEntityRules = (value: unknown, currentPath: string): void => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {return;}
+    const record = value as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(record, 'entityRules')) {return;}
+    record.entityRules = assertStepEntityRulesControl(record.entityRules, `${currentPath}.entityRules`);
+};
+
+const assertCheckpointActionsEntityRules = (
+    actions: Checkpoint['prepare'],
+    currentPath: string,
+): void => {
+    for (const [index, action] of (actions || []).entries()) {
+        assertSerializedStepEntityRules(action, `${currentPath}[${index}]`);
+        if (action.type === 'act') {
+            assertSerializedStepEntityRules(action.step, `${currentPath}[${index}].step`);
+        }
+    }
+};
+
 const assertCheckpointContentUsesSerializedStepShape = (checkpoint: Checkpoint, currentPath: string): void => {
     for (const [index, item] of (checkpoint.content || []).entries()) {
         if (!item || typeof item !== 'object' || !('name' in item)) {
+            assertSerializedStepEntityRules(item, `${currentPath}.content[${index}]`);
             if (item && typeof item === 'object' && 'type' in item && (item as { type?: string }).type === 'act') {
                 const step = (item as { step?: { name?: string; args?: unknown } }).step;
                 if (step && typeof step === 'object') {
@@ -240,6 +264,7 @@ const assertCheckpointContentUsesSerializedStepShape = (checkpoint: Checkpoint, 
                         );
                     }
                     assertNoCoreHintFields(step, `${currentPath}.content[${index}].step`);
+                    assertSerializedStepEntityRules(step, `${currentPath}.content[${index}].step`);
                     assertNoLegacyActionTargetFields(
                         { name: String(step.name || ''), args: step.args },
                         `${currentPath}.content[${index}].step`,
@@ -252,6 +277,7 @@ const assertCheckpointContentUsesSerializedStepShape = (checkpoint: Checkpoint, 
         if ('meta' in item) {
             throw new Error(`core yaml must not include ${currentPath}.content[${index}].meta`);
         }
+        assertSerializedStepEntityRules(item, `${currentPath}.content[${index}]`);
         assertNoLegacyActionTargetFields(
             { name: String((item as { name?: string }).name || ''), args: (item as { args?: unknown }).args },
             `${currentPath}.content[${index}]`,

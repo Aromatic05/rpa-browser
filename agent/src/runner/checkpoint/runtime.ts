@@ -115,6 +115,7 @@ const buildActionStep = (
                 id: stepId,
                 name: 'browser.snapshot',
                 args: resolved.value as Step<'browser.snapshot'>['args'],
+                entityRules: action.entityRules,
             },
         };
     }
@@ -127,6 +128,7 @@ const buildActionStep = (
                 id: stepId,
                 name: action.step.name,
                 args: resolved.value as never,
+                entityRules: action.step.entityRules,
             } as StepUnion,
         };
     }
@@ -139,6 +141,7 @@ const buildActionStep = (
                 id: stepId,
                 name: 'browser.query',
                 args: resolved.value as Step<'browser.query'>['args'],
+                entityRules: action.entityRules,
             },
         };
     }
@@ -151,6 +154,7 @@ const buildActionStep = (
                 id: stepId,
                 name: 'browser.compute',
                 args: resolved.value as Step<'browser.compute'>['args'],
+                entityRules: action.entityRules,
             },
         };
     }

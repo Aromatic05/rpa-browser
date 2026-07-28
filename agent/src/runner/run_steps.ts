@@ -23,6 +23,7 @@ import type {
 } from './run_steps_types';
 import type { StepResolve } from './steps/types';
 import { isValidStepResolve } from './steps/resolve_utils';
+import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
 
 export type {
     Checkpoint,
@@ -135,6 +136,41 @@ const executeOne = async (
         };
     }
 
+    const entityRules = resolveStepEntityRulesExecution(
+        runtimeStep.step.entityRules,
+        deps.config.entityRules,
+        deps.resolveEntityRulesProvider?.(workspaceName),
+    );
+    if (entityRules.status === 'invalid') {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `step ${step.id} has invalid entityRules control`,
+                details: { stepId: step.id, reason: entityRules.reason },
+            },
+        };
+    }
+    if (entityRules.status === 'not-implemented') {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: 'ERR_NOT_IMPLEMENTED',
+                message: `entity_rules is not implemented for step ${step.id}`,
+                details: {
+                    stepId: step.id,
+                    stepName: step.name,
+                    selection: entityRules.selection,
+                    profiles: entityRules.profiles,
+                    strict: entityRules.strict,
+                    reason: entityRules.reason,
+                },
+            },
+        };
+    }
+
     const fn = executors[step.name];
     return await fn(runtimeStep.step, deps, workspaceName);
 };
@@ -218,6 +254,7 @@ const injectStepResolve = (
             name: step.name,
             args: step.args,
             meta: step.meta,
+            entityRules: step.entityRules,
             resolve: stepResolves[resolveId],
         } as StepUnion,
     };
