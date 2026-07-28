@@ -152,13 +152,13 @@ const executeOne = async (
             },
         };
     }
-    if (entityRules.status === 'not-implemented') {
+    if (entityRules.status === 'unavailable') {
         return {
             stepId: step.id,
             ok: false,
             error: {
-                code: 'ERR_NOT_IMPLEMENTED',
-                message: `entity_rules is not implemented for step ${step.id}`,
+                code: 'ERR_NOT_FOUND',
+                message: `entity_rules provider is unavailable for step ${step.id}`,
                 details: {
                     stepId: step.id,
                     stepName: step.name,

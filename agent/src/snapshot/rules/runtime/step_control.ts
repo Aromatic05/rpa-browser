@@ -7,7 +7,7 @@ import {
 import type { WorkspaceEntityRulesProvider } from './contracts';
 
 export type StepEntityRulesExecutionResolution = {
-    status: 'disabled' | 'ready' | 'not-implemented' | 'invalid';
+    status: 'disabled' | 'ready' | 'unavailable' | 'invalid';
     selection: Exclude<StepEntityRulesSelection, 'inherit'>;
     profiles: string[];
     strict: boolean;
@@ -23,13 +23,7 @@ export const resolveStepEntityRulesExecution = (
     try {
         normalized = normalizeStepEntityRulesControl(control);
     } catch (error) {
-        return {
-            status: 'invalid',
-            selection: 'disabled',
-            profiles: [],
-            strict: config.strict,
-            reason: error instanceof Error ? error.message : String(error),
-        };
+        return invalidResolution(config.strict, error instanceof Error ? error.message : String(error));
     }
 
     const effective = normalized.selection === 'inherit'
@@ -48,15 +42,44 @@ export const resolveStepEntityRulesExecution = (
             strict: effective.strict,
         };
     }
+    if (!provider || provider.availability !== 'ready') {
+        return {
+            status: 'unavailable',
+            selection: effective.selection,
+            profiles: [...effective.profiles],
+            strict: effective.strict,
+            reason: 'Snapshot V2 entity_rules provider is unavailable',
+        };
+    }
 
+    const requestedProfiles = effective.selection === 'auto'
+        ? provider.listProfiles()
+        : unique(effective.profiles);
+    const missingProfiles = requestedProfiles.filter((profile) => provider.getProfile(profile) === null);
+    if (effective.strict && missingProfiles.length > 0) {
+        return {
+            status: 'invalid',
+            selection: effective.selection,
+            profiles: requestedProfiles,
+            strict: effective.strict,
+            reason: `entity_rules profiles are missing or invalid: ${missingProfiles.join(', ')}`,
+        };
+    }
     return {
-        status: 'not-implemented',
+        status: 'ready',
         selection: effective.selection,
-        profiles: [...effective.profiles],
+        profiles: requestedProfiles.filter((profile) => !missingProfiles.includes(profile)),
         strict: effective.strict,
-        reason: provider?.reason ?? 'Snapshot V2 entity_rules provider is unavailable',
     };
 };
+
+const invalidResolution = (strict: boolean, reason: string): StepEntityRulesExecutionResolution => ({
+    status: 'invalid',
+    selection: 'disabled',
+    profiles: [],
+    strict,
+    reason,
+});
 
 const fromConfig = (config: EntityRuleConfig): {
     selection: Exclude<StepEntityRulesSelection, 'inherit'>;

@@ -121,7 +121,12 @@ const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogIte
         };
     }
     if (artifact.kind === 'entity_rules') {
-        return { ...base, kind: 'entity_rules', enabled: false, summary: 'not-implemented' };
+        return {
+            ...base,
+            kind: 'entity_rules',
+            enabled: true,
+            summary: `rules=${artifact.match.rules.length}, bindings=${artifact.annotation.bindings.length}`,
+        };
     }
     if (artifact.kind === 'recording') {
         return { ...base, kind: 'recording', summary: `steps=${artifact.steps.length}` };
