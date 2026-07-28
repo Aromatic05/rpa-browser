@@ -20,6 +20,7 @@ import type { CheckpointControl } from '../../checkpoint/control';
 import type { RunnerControl } from '../../runner/control';
 import type { TabsControl } from './tabs';
 import type { McpControl } from '../../mcp/control';
+import type { EntityRulesRuntime } from '../../snapshot/rules';
 
 export type WorkspaceRouterInput = {
     action: Action;
@@ -32,6 +33,7 @@ export type WorkspaceRouterDeps = {
     recordControl: RecordControl;
     dslControl: DslControl;
     checkpointControl: CheckpointControl;
+    entityRulesRuntime: EntityRulesRuntime;
     runnerControl: RunnerControl;
     mcpControl: McpControl;
 };
@@ -56,6 +58,10 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
 
         if (action.type.startsWith('checkpoint.')) {
             return await deps.checkpointControl.handle({ action, workspace, workspaceRegistry });
+        }
+
+        if (action.type.startsWith('entity_rules.')) {
+            return await deps.entityRulesRuntime.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('task.run.')) {

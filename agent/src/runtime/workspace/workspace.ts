@@ -17,6 +17,7 @@ import { createWorkspaceMcpService } from '../../mcp/service';
 import { getLogger } from '../../logging/logger';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceBrowserSession } from '../browser/browser_session';
+import { createEntityRulesRuntime, type EntityRulesRuntime } from '../../snapshot/rules';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing';
 
@@ -28,6 +29,7 @@ export type RuntimeWorkspace = {
     record: RecordControl;
     dsl: DslControl;
     checkpoint: CheckpointControl;
+    entityRules: EntityRulesRuntime;
     runner: RunnerControl;
     mcp: McpControl;
     router: WorkspaceRouter;
@@ -105,6 +107,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
+    const entityRules = createEntityRulesRuntime();
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const tabsControl = createTabsControl({
         recordingState: deps.recordingState,
@@ -124,6 +127,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         recordControl: record,
         dslControl: dsl,
         checkpointControl: checkpoint,
+        entityRulesRuntime: entityRules,
         runnerControl: runner,
         mcpControl: mcp,
     });
@@ -136,6 +140,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         record,
         dsl,
         checkpoint,
+        entityRules,
         runner,
         mcp,
         router,

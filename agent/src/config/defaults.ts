@@ -3,6 +3,7 @@
  */
 
 import type { RunnerConfig } from './config_schema';
+import { defaultEntityRuleConfig } from './entity_rules';
 
 export const defaultRunnerConfig: RunnerConfig = {
     waitPolicy: {
@@ -74,6 +75,7 @@ export const defaultRunnerConfig: RunnerConfig = {
         filePath: '.artifacts/checkpoints/task_runs.json',
         flushIntervalMs: 1200,
     },
+    entityRules: defaultEntityRuleConfig,
     mcpPolicy: {
         enabledToolGroups: [],
         enableTools: [],

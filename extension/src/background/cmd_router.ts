@@ -31,6 +31,7 @@ const WORKSPACE_SCOPED_ACTION_PREFIXES = [
     'play.',
     'dsl.',
     'checkpoint.',
+    'entity_rules.',
     'task.run.',
 ];
 

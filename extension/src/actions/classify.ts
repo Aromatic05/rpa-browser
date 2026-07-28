@@ -44,6 +44,7 @@ export const classifyActionRoute = (action: Action): ActionRouteKind => {
         || action.type.startsWith('play.')
         || action.type.startsWith('dsl.')
         || action.type.startsWith('checkpoint.')
+        || action.type.startsWith('entity_rules.')
         || action.type.startsWith('task.run.');
 
     if (actionWN && payloadWN) {return 'invalid';}

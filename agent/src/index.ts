@@ -140,6 +140,10 @@ workspaceRegistry = createWorkspaceRegistry({
     onWsListening: (workspaceName, url) => { log('workspace WS listening', { workspaceName, url }); },
     wsTap,
 });
+runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
+    const workspace = workspaceRegistry.getWorkspace(workspaceName);
+    return workspace ? workspace.entityRules.getProvider(workspace.workflow) : null;
+};
 const lifecycle = createRuntimeLifecycle({
     workspaceRegistry,
     runtimeRegistry,

@@ -88,6 +88,10 @@ const workspaceRegistry = createWorkspaceRegistry({
     onWsError: (error) => { logError('action.dispatch.failed', error instanceof Error ? error.message : String(error)); },
     onWsListening: (workspaceName, url) => { logNotice('workspace WS listening', { workspaceName, url }); },
 });
+runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
+    const workspace = workspaceRegistry.getWorkspace(workspaceName);
+    return workspace ? workspace.entityRules.getProvider(workspace.workflow) : null;
+};
 onPageBoundHook = (page, tabName) => {
     const workspace = workspaceRegistry.listWorkspaces().find((item) => item.tabs.hasTab(tabName)) || null;
     if (!workspace) {

@@ -5,6 +5,7 @@ import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../config';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { Action } from '../actions/action_protocol';
+import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';
 
 export type StepEvent =
     | {
@@ -71,6 +72,7 @@ export type RunStepsDeps = {
     runtime: ExecutionBindings;
     resolveWorkspace: (workspaceName: string) => RuntimeWorkspace;
     dispatchAction: (action: Action) => Promise<Action>;
+    resolveEntityRulesProvider?: (workspaceName: string) => WorkspaceEntityRulesProvider | null;
     stepSinks?: StepSink[];
     config: RunnerConfig;
     pluginHost: RunnerPluginHost;
