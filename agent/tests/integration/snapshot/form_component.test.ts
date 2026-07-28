@@ -252,3 +252,59 @@ test('form invariant validator rejects duplicate field ownership and unknown con
     assert.equal(validation.diagnostics.some((item) => item.code === 'form.field.control-missing'), true);
     assert.equal(validation.diagnostics.some((item) => item.code === 'ownership.role.duplicate'), true);
 });
+
+test('fieldset groups independent fields without collapsing them into one composite field', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['form']),
+        node('form', 'form', 'body', ['fieldset']),
+        node('fieldset', 'fieldset', 'form', ['legend', 'name-label', 'name', 'email-label', 'email']),
+        node('legend', 'legend', 'fieldset', [], {}, 'Identity'),
+        node('name-label', 'label', 'fieldset', [], { for: 'Name' }, 'Name'),
+        node('name', 'input', 'fieldset', [], { id: 'Name', type: 'text' }),
+        node('email-label', 'label', 'fieldset', [], { for: 'Email' }, 'Email'),
+        node('email', 'input', 'fieldset', [], { id: 'Email', type: 'email' }),
+    ]);
+    const form = onlyForm(snapshot);
+    assert.equal(form.fields.length, 2);
+    assert.deepEqual(form.fields.map((field) => field.controlIds.length), [1, 1]);
+    assert.equal(form.groups.length, 1);
+    assert.equal(form.groups[0].fieldIds.length, 2);
+    assert.deepEqual(form.groups[0].labelNodeIds, [snapshot.observation.captureIdToNodeId.legend]);
+    assert.deepEqual(
+        form.fields.map((field) => field.labelNodeIds),
+        [
+            [snapshot.observation.captureIdToNodeId['name-label']],
+            [snapshot.observation.captureIdToNodeId['email-label']],
+        ],
+    );
+});
+
+test('native submit inputs and external form-owned actions belong to the target form', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['form', 'external-submit']),
+        node('form', 'form', 'body', ['label', 'input', 'inline-submit'], { id: 'TargetForm' }),
+        node('label', 'label', 'form', [], { for: 'Name' }, 'Name'),
+        node('input', 'input', 'form', [], { id: 'Name', type: 'text' }),
+        node('inline-submit', 'input', 'form', [], { type: 'submit', value: 'Save' }),
+        node('external-submit', 'button', 'body', [], { type: 'submit', form: 'TargetForm' }, 'Save outside'),
+    ]);
+    const form = onlyForm(snapshot);
+    assert.equal(form.fields.length, 1);
+    assert.equal(form.actions.length, 2);
+    assert.deepEqual(form.actions.map((action) => action.structuralRole), ['submit', 'submit']);
+    assert.equal(snapshot.forms.residualActionIds.length, 0);
+});
+
+test('ambiguous form attributes surface a form-level ownership diagnostic', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['form-a', 'form-b', 'external']),
+        node('form-a', 'form', 'body', [], { id: 'DuplicateForm' }),
+        node('form-b', 'form', 'body', [], { id: 'DuplicateForm' }),
+        node('external', 'input', 'body', [], { type: 'text', form: 'DuplicateForm', 'aria-label': 'External' }),
+    ]);
+    assert.equal(snapshot.forms.diagnostics.some((item) => item.code === 'form.owner.ambiguous'), true);
+    assert.equal(snapshot.forms.residualFieldIds.length, 1);
+});

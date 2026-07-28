@@ -28,12 +28,14 @@ export const matchFormComponentRules = (
 
         if (rule.source === 'node') {
             for (const nodeId of orderedNodeIds(snapshot.observation)) {
+                if (!isActiveNode(snapshot.observation, nodeId)) {continue;}
                 if (allowedNodeIds && !allowedNodeIds.has(nodeId)) {continue;}
                 if (matchesNode(snapshot.observation, nodeId, rule)) {matchedNodeIds.push(nodeId);}
             }
         } else {
             for (const form of orderedForms(snapshot)) {
                 const rootNodeId = form.location.structuralRootNodeId;
+                if (!isActiveNode(snapshot.observation, rootNodeId)) {continue;}
                 if (allowedNodeIds && !allowedNodeIds.has(rootNodeId)) {continue;}
                 if (!matchesForm(snapshot, form, rule)) {continue;}
                 matchedComponentIds.push(form.id);
@@ -41,8 +43,14 @@ export const matchFormComponentRules = (
             }
         }
 
-        const matchedFieldIds = fieldsForNodes(snapshot, matchedNodeIds);
-        const matchedActionIds = actionsForNodes(snapshot, matchedNodeIds);
+        const matchedFieldIds = rule.source === 'node'
+            ? fieldsForNodes(snapshot, matchedNodeIds)
+            : unique(matchedComponentIds.flatMap((componentId) =>
+                snapshot.forms.forms[componentId]?.fields.map((field) => field.id) ?? []));
+        const matchedActionIds = rule.source === 'node'
+            ? actionsForNodes(snapshot, matchedNodeIds)
+            : unique(matchedComponentIds.flatMap((componentId) =>
+                snapshot.forms.forms[componentId]?.actions.map((action) => action.id) ?? []));
         const count = rule.source === 'node' ? matchedNodeIds.length : matchedComponentIds.length;
         const ok = cardinalitySatisfied(rule.expect, count);
         const binding: FormComponentRuleBinding = {
@@ -130,7 +138,11 @@ const buildWithinNodeSet = (
     binding: FormComponentRuleBinding | undefined,
 ): Set<ObservationNodeId> => {
     if (!binding?.ok) {return new Set();}
-    const output = new Set<ObservationNodeId>(binding.matchedNodeIds);
+    const output = new Set<ObservationNodeId>();
+    for (const nodeId of binding.matchedNodeIds) {
+        output.add(nodeId);
+        for (const descendantId of descendants(snapshot.observation, nodeId)) {output.add(descendantId);}
+    }
     for (const componentId of binding.matchedComponentIds) {
         const form = snapshot.forms.forms[componentId];
         if (!form) {continue;}
@@ -156,6 +168,12 @@ const actionsForNodes = (snapshot: FormSnapshot, nodeIds: readonly ObservationNo
     return Object.values(snapshot.forms.actions)
         .filter((action) => nodeSet.has(action.nodeId))
         .map((action) => action.id);
+};
+
+const isActiveNode = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
+    const activity = observation.activity[nodeId];
+    return Boolean(activity && activity.rendered && !activity.hiddenByStyle && !activity.inert
+        && activity.subtreeActive && activity.ariaExposed !== false);
 };
 
 const cardinalityDiagnostic = (
