@@ -228,8 +228,8 @@ test('runtime rejects mixed-domain and unsupported profile conditions instead of
 
     assert.equal(result.status, 'invalid');
     assert.equal(result.ok, false);
-    assert.equal(result.diagnostics.some((item) => item.code === 'entity-rules.profile.domain.mixed'), true);
-    assert.equal(result.diagnostics.some((item) => item.code === 'entity-rules.profile.match.unsupported'), true);
+    assert.equal(result.diagnostics.some((item) => item.code === 'query-plan.domain.mixed'), true);
+    assert.equal(result.diagnostics.some((item) => item.code === 'query-plan.match.unsupported'), true);
 });
 
 

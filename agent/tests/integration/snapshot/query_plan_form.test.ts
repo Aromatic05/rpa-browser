@@ -6,11 +6,12 @@ import {
     buildLocatorIndex,
     buildPageObservation,
     buildRelationIndex,
-    matchFormComponentRules,
-    type FormComponentMatchRule,
+    compileEntityRuleQueryPlan,
+    executeEntityRuleQueryPlan,
     type RawCapturedNode,
     type RawPageCapture,
 } from '../../../src/snapshot';
+import type { EntityRuleMatchRecord } from '../../../src/workflow';
 
 const node = (
     captureId: string,
@@ -61,9 +62,16 @@ const build = () => {
     return buildFormSnapshot({ observation, relations, locators, controls });
 };
 
-test('form bridge preserves unique and one_or_more cardinality using only components and canonical nodes', () => {
+const executeFormRules = (snapshot: ReturnType<typeof build>, rules: EntityRuleMatchRecord[]) => {
+    const compiled = compileEntityRuleQueryPlan({ profileName: 'form-query-test', domain: 'form', rules });
+    assert.equal(compiled.ok, true, compiled.ok ? undefined : JSON.stringify(compiled.diagnostics, null, 2));
+    if (!compiled.ok) {throw new Error('query plan compilation failed');}
+    return executeEntityRuleQueryPlan(compiled.plan, { form: snapshot }, { purpose: 'runtime' });
+};
+
+test('form QueryPlan preserves unique and one_or_more cardinality using only components and canonical nodes', () => {
     const snapshot = build();
-    const rules: FormComponentMatchRule[] = [
+    const rules: EntityRuleMatchRecord[] = [
         {
             ruleId: 'all-forms',
             source: 'region',
@@ -84,7 +92,7 @@ test('form bridge preserves unique and one_or_more cardinality using only compon
             match: { idEquals: 'Buyer', nameEquals: 'BuyerCode' },
         },
     ];
-    const result = matchFormComponentRules(snapshot, rules);
+    const result = executeFormRules(snapshot, rules);
     assert.equal(result.byRuleId['all-forms'].ok, true);
     assert.equal(result.byRuleId['all-forms'].matchedComponentIds.length, 2);
     assert.equal(result.byRuleId['form-a'].ok, true);
@@ -94,9 +102,9 @@ test('form bridge preserves unique and one_or_more cardinality using only compon
     assert.equal(result.diagnostics.length, 0);
 });
 
-test('form bridge reports structural ambiguity at components and does not invent business semantics', () => {
+test('form QueryPlan reports structural ambiguity at components and does not invent business semantics', () => {
     const snapshot = build();
-    const result = matchFormComponentRules(snapshot, [{
+    const result = executeFormRules(snapshot, [{
         ruleId: 'ambiguous-form',
         source: 'region',
         expect: 'unique',
@@ -105,7 +113,7 @@ test('form bridge reports structural ambiguity at components and does not invent
     const binding = result.byRuleId['ambiguous-form'];
     assert.equal(binding.ok, false);
     assert.equal(binding.matchedComponentIds.length, 2);
-    assert.equal(result.diagnostics.some((item) => item.code === 'form.bridge.cardinality.multiple'), true);
+    assert.equal(result.diagnostics.some((item) => item.code === 'query-plan.cardinality.multiple'), true);
     for (const form of Object.values(snapshot.forms.forms)) {
         assert.equal(Object.prototype.hasOwnProperty.call(form, 'businessTag'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(form, 'fieldKey'), false);
@@ -114,7 +122,7 @@ test('form bridge reports structural ambiguity at components and does not invent
 
 test('node within scopes include descendants and component bindings expose member fields and actions', () => {
     const snapshot = build();
-    const result = matchFormComponentRules(snapshot, [
+    const result = executeFormRules(snapshot, [
         { ruleId: 'scope-node', source: 'node', expect: 'unique', match: { idEquals: 'FormA' } },
         { ruleId: 'child-node', source: 'node', expect: 'unique', within: 'scope-node', match: { idEquals: 'Buyer' } },
         { ruleId: 'form-a-members', source: 'region', expect: 'unique', match: { kind: 'form', idEquals: 'FormA' } },
@@ -126,7 +134,7 @@ test('node within scopes include descendants and component bindings expose membe
     assert.equal(result.byRuleId['form-a-members'].matchedActionIds.length, 1);
 });
 
-test('form bridge excludes hidden canonical nodes from cardinality', () => {
+test('form QueryPlan excludes hidden canonical nodes from cardinality', () => {
     const completeness = { dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete' } as const;
     const raw: RawPageCapture = {
         identity: { pageEpoch: 'bridge-hidden', captureRevision: 1 },
@@ -146,14 +154,14 @@ test('form bridge excludes hidden canonical nodes from cardinality', () => {
     const locators = buildLocatorIndex(observation);
     const controls = buildControlSnapshot({ observation, relations, locators }).controls;
     const snapshot = buildFormSnapshot({ observation, relations, locators, controls });
-    const result = matchFormComponentRules(snapshot, [{
+    const result = executeFormRules(snapshot, [{
         ruleId: 'visible-copy', source: 'node', expect: 'unique', match: { roleEquals: 'textbox' },
     }]);
     assert.equal(result.byRuleId['visible-copy'].ok, true);
     assert.deepEqual(result.byRuleId['visible-copy'].matchedNodeIds, [observation.captureIdToNodeId.visible]);
 });
 
-test('form bridge preserves legacy node name and subtree text matching', () => {
+test('form QueryPlan preserves legacy node name and subtree text matching', () => {
     const completeness = { dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete' } as const;
     const raw: RawPageCapture = {
         identity: { pageEpoch: 'bridge-text', captureRevision: 1 },
@@ -174,7 +182,7 @@ test('form bridge preserves legacy node name and subtree text matching', () => {
     const locators = buildLocatorIndex(observation);
     const controls = buildControlSnapshot({ observation, relations, locators }).controls;
     const snapshot = buildFormSnapshot({ observation, relations, locators, controls });
-    const result = matchFormComponentRules(snapshot, [
+    const result = executeFormRules(snapshot, [
         { ruleId: 'placeholder', source: 'node', expect: 'unique', match: { nameContains: 'Buyer code' } },
         { ruleId: 'name', source: 'node', expect: 'unique', match: { nameContains: 'buyerCode' } },
         { ruleId: 'subtree', source: 'node', expect: 'unique', match: { classContains: 'search-panel', textContains: 'Nested content' } },
@@ -184,27 +192,29 @@ test('form bridge preserves legacy node name and subtree text matching', () => {
     assert.deepEqual(result.byRuleId.subtree.matchedNodeIds, [observation.captureIdToNodeId.panel]);
 });
 
-test('form bridge validates rule graph before matching', () => {
+test('form QueryPlan validates rule graph before matching', () => {
     const snapshot = build();
-    const result = matchFormComponentRules(snapshot, [
+    const result = compileEntityRuleQueryPlan({ profileName: 'invalid-form-query', rules: [
         { ruleId: 'duplicate', source: 'node', expect: 'unique', match: { idEquals: 'Buyer' } },
         { ruleId: 'duplicate', source: 'node', expect: 'unique', match: { idEquals: 'Seller' } },
         { ruleId: 'missing-parent', source: 'node', expect: 'unique', within: 'unknown', match: { idEquals: 'Buyer' } },
         { ruleId: 'cycle-a', source: 'node', expect: 'unique', within: 'cycle-b', match: { idEquals: 'Buyer' } },
         { ruleId: 'cycle-b', source: 'node', expect: 'unique', within: 'cycle-a', match: { idEquals: 'Seller' } },
         { ruleId: 'empty', source: 'node', expect: 'unique', match: {} },
-    ]);
+        { ruleId: 'root', source: 'region', expect: 'unique', match: { kind: 'form' } },
+    ] });
+    assert.equal(result.ok, false);
+    if (result.ok) {throw new Error('invalid query plan unexpectedly compiled');}
     const codes = new Set(result.diagnostics.map((item) => item.code));
-    assert.equal(codes.has('form.bridge.rule.duplicate'), true);
-    assert.equal(codes.has('form.bridge.within.missing'), true);
-    assert.equal(codes.has('form.bridge.within.cycle'), true);
-    assert.equal(codes.has('form.bridge.match.empty'), true);
-    assert.equal(Object.values(result.byRuleId).every((binding) => binding.ok === false), true);
+    assert.equal(codes.has('query-plan.rule.duplicate'), true);
+    assert.equal(codes.has('query-plan.within.missing'), true);
+    assert.equal(codes.has('query-plan.within.cycle'), true);
+    assert.equal(codes.has('query-plan.match.empty'), true);
 });
 
-test('form bridge resolves forward within dependencies in graph order', () => {
+test('form QueryPlan resolves forward within dependencies in graph order', () => {
     const snapshot = build();
-    const result = matchFormComponentRules(snapshot, [
+    const result = executeFormRules(snapshot, [
         { ruleId: 'child', source: 'node', expect: 'unique', within: 'parent', match: { idEquals: 'Buyer' } },
         { ruleId: 'parent', source: 'node', expect: 'unique', match: { idEquals: 'FormA' } },
     ]);
@@ -212,7 +222,7 @@ test('form bridge resolves forward within dependencies in graph order', () => {
     assert.equal(result.byRuleId.child.ok, true);
 });
 
-test('form bridge rejects structurally ambiguous form bindings', () => {
+test('form QueryPlan rejects structurally ambiguous form bindings', () => {
     const completeness = { dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete' } as const;
     const raw: RawPageCapture = {
         identity: { pageEpoch: 'bridge-ambiguous', captureRevision: 1 },
@@ -238,9 +248,9 @@ test('form bridge rejects structurally ambiguous form bindings', () => {
     const snapshot = buildFormSnapshot({ observation, relations, locators, controls });
     const form = Object.values(snapshot.forms.forms)[0];
     assert.equal(form.status, 'ambiguous');
-    const result = matchFormComponentRules(snapshot, [{
+    const result = executeFormRules(snapshot, [{
         ruleId: 'form', source: 'region', expect: 'unique', match: { kind: 'form', idEquals: 'AmbiguousForm' },
     }]);
     assert.equal(result.byRuleId.form.ok, false);
-    assert.equal(result.diagnostics.some((item) => item.code === 'form.bridge.structure.ambiguous'), true);
+    assert.equal(result.diagnostics.some((item) => item.code === 'query-plan.structure.incomplete'), true);
 });

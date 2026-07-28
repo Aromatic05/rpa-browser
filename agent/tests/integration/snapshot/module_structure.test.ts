@@ -12,7 +12,7 @@ const expectedBranches: Record<string, readonly string[]> = {
     observation: ['analysis', 'capture', 'model', 'replay'],
     indexes: ['locator', 'ownership', 'relation'],
     components: ['control', 'form', 'shared', 'table'],
-    rules: ['matching', 'model', 'runtime'],
+    rules: ['model', 'query', 'runtime'],
     'components/control': ['action', 'assembly', 'capture', 'model'],
     'components/form': ['assembly', 'capture', 'model', 'replay'],
     'components/table': ['assembly', 'capture', 'model'],
@@ -39,7 +39,7 @@ const moduleRanks: Record<string, number> = {
     'components/table/assembly': 13,
     'components/table/capture': 14,
     'rules/model': 15,
-    'rules/matching': 16,
+    'rules/query': 16,
     'rules/runtime': 17,
 };
 

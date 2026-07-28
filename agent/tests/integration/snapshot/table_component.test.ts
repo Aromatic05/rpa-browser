@@ -6,10 +6,12 @@ import {
     buildPageObservation,
     buildRelationIndex,
     buildTableSnapshot,
-    matchTableComponentRules,
+    compileEntityRuleQueryPlan,
+    executeEntityRuleQueryPlan,
     type RawCapturedNode,
     type RawPageCapture,
 } from '../../../src/snapshot';
+import type { EntityRuleMatchRecord } from '../../../src/workflow';
 
 const active = () => ({ hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true });
 
@@ -68,6 +70,13 @@ const onlyTable = (snapshot: ReturnType<typeof build>) => {
     const tables = Object.values(snapshot.tables.tables);
     assert.equal(tables.length, 1);
     return tables[0];
+};
+
+const executeTableRules = (snapshot: ReturnType<typeof build>, rules: EntityRuleMatchRecord[]) => {
+    const compiled = compileEntityRuleQueryPlan({ profileName: 'table-query-test', domain: 'table', rules });
+    assert.equal(compiled.ok, true, compiled.ok ? undefined : JSON.stringify(compiled.diagnostics, null, 2));
+    if (!compiled.ok) {throw new Error('query plan compilation failed');}
+    return executeEntityRuleQueryPlan(compiled.plan, { table: snapshot }, { purpose: 'runtime' });
 };
 
 test('native table keeps canonical rows separate from FeatureCover and control templates', () => {
@@ -342,7 +351,7 @@ test('shared sibling pagination remains ambiguous when two logical tables are po
     assert.equal(tables.every((table) => table.status === 'ambiguous'), true);
 });
 
-test('table component rules bind only complete table components and canonical descendants', () => {
+test('table QueryPlan binds only complete table components and canonical descendants', () => {
     const snapshot = build([
         node('html', 'html', undefined, ['body']),
         node('body', 'body', 'html', ['table']),
@@ -354,7 +363,7 @@ test('table component rules bind only complete table components and canonical de
         node('row', 'tr', 'tbody', ['cell']),
         node('cell', 'td', 'row', [], {}, 'Alice'),
     ]);
-    const result = matchTableComponentRules(snapshot, [
+    const result = executeTableRules(snapshot, [
         {
             ruleId: 'orders',
             source: 'region',
