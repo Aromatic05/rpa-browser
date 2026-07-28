@@ -113,13 +113,13 @@ export const createDefaultControlCollectorRegistry = (): ControlCollectorRegistr
     new ControlCollectorRegistry()
         .register({
             id: 'radio-groups',
-            collect: ({ observation, locators, controls, consumedNodeIds }) =>
-                collectRadioGroups(observation, locators, controls, consumedNodeIds),
+            collect: ({ observation, relations, locators, controls, consumedNodeIds }) =>
+                collectRadioGroups(observation, relations, locators, controls, consumedNodeIds),
         })
         .register({
             id: 'checkbox-groups',
-            collect: ({ observation, locators, controls, consumedNodeIds }) =>
-                collectCheckboxGroups(observation, locators, controls, consumedNodeIds),
+            collect: ({ observation, relations, locators, controls, consumedNodeIds }) =>
+                collectCheckboxGroups(observation, relations, locators, controls, consumedNodeIds),
         })
         .register({
             id: 'custom-selects',
@@ -165,7 +165,7 @@ const collectNativeSelects = (
 ) => {
     for (const nodeId of orderedNodeIds(observation)) {
         if (observation.nodes[nodeId]?.tag !== 'select') {continue;}
-        const options = directDescendants(observation, nodeId)
+        const options = descendantIds(observation, nodeId)
             .filter((childId) => observation.nodes[childId]?.tag === 'option')
             .map((childId) => readOption(observation, childId));
         const component = baseComponent(observation, locators, {
@@ -188,22 +188,25 @@ const collectNativeSelects = (
 
 const collectRadioGroups = (
     observation: PageObservation,
+    relations: RelationIndex,
     locators: LocatorIndex,
     controls: Record<string, ControlComponent>,
     consumed: Set<ObservationNodeId>,
-) => collectChoiceGroups('radio_group', 'radio', observation, locators, controls, consumed);
+) => collectChoiceGroups('radio_group', 'radio', observation, relations, locators, controls, consumed);
 
 const collectCheckboxGroups = (
     observation: PageObservation,
+    relations: RelationIndex,
     locators: LocatorIndex,
     controls: Record<string, ControlComponent>,
     consumed: Set<ObservationNodeId>,
-) => collectChoiceGroups('checkbox_group', 'checkbox', observation, locators, controls, consumed);
+) => collectChoiceGroups('checkbox_group', 'checkbox', observation, relations, locators, controls, consumed);
 
 const collectChoiceGroups = (
     kind: 'radio_group' | 'checkbox_group',
     inputType: 'radio' | 'checkbox',
     observation: PageObservation,
+    relations: RelationIndex,
     locators: LocatorIndex,
     controls: Record<string, ControlComponent>,
     consumed: Set<ObservationNodeId>,
@@ -212,14 +215,17 @@ const collectChoiceGroups = (
     for (const nodeId of orderedNodeIds(observation)) {
         if (observation.nodes[nodeId]?.tag !== 'input') {continue;}
         if (lower(observation.attributes[nodeId]?.type) !== inputType) {continue;}
+        const name = observation.attributes[nodeId]?.name?.trim() ?? '';
+        if (kind === 'radio_group' && !name) {continue;}
         const boundary = findSafeBoundary(observation, nodeId, kind);
-        const name = observation.attributes[nodeId]?.name ?? '';
-        const key = `${boundary}\u0000${kind === 'radio_group' ? name : ''}`;
+        if (kind === 'checkbox_group' && !boundary) {continue;}
+        const owner = resolveNativeFormOwner(observation, relations, nodeId);
+        const key = `${boundary ?? observation.nodes[nodeId]?.scopeId ?? ''}\u0000${owner}\u0000${kind === 'radio_group' ? name : ''}`;
         (groups.get(key) ?? groups.set(key, []).get(key)!).push(nodeId);
     }
     for (const members of groups.values()) {
         if (members.length < 2) {continue;}
-        const rootNodeId = findSafeBoundary(observation, members[0], kind);
+        const rootNodeId = findSafeBoundary(observation, members[0], kind) ?? members[0];
         const options = members.map((nodeId) => readOption(observation, nodeId));
         const component = baseComponent(observation, locators, {
             kind,
@@ -360,6 +366,7 @@ const collectPopupAndOptions = (
     for (const nodeId of orderedNodeIds(observation)) {
         const role = resolveSemanticRole(observation, nodeId).value;
         if (POPUP_ROLES.has(role)) {
+            if (observation.nodes[nodeId]?.tag === 'select') {continue;}
             const options = descendantIds(observation, nodeId)
                 .filter((candidateId) => isOptionNode(observation, candidateId))
                 .map((candidateId) => readOption(observation, candidateId));
@@ -441,11 +448,21 @@ const baseComponent = (
     const locatorIds = unique(input.memberNodeIds.flatMap((nodeId) => locators.byNodeId[nodeId] ?? []));
     const ref = controlRef(observation, input.kind, input.rootNodeId, input.controlNodeId);
     const state = readControlState(observation, input.controlNodeId ?? input.rootNodeId, input.options, input.kind);
+    const inheritedCompleteness = scopeCompleteness(observation, input.rootNodeId);
+    const factsComplete = inheritedCompleteness.a11y === 'complete' && inheritedCompleteness.runtime === 'complete';
+    const diagnostics = [...(input.diagnostics ?? [])];
+    if (!factsComplete && !diagnostics.some((item) => item.code === 'control.completeness.inherited')) {
+        diagnostics.push(controlDiagnostic(
+            'control.completeness.inherited', 'warning', 'partial', input.memberNodeIds, [],
+            'control requires complete runtime and accessibility facts for executable capabilities',
+        ));
+    }
+    const status = input.status === 'complete' && !factsComplete ? 'partial' : input.status;
     return {
         id: `control:${input.kind}:${input.rootNodeId}`,
         ref,
         kind: input.kind,
-        status: input.status,
+        status,
         scopeId,
         rootNodeId: input.rootNodeId,
         ownerNodeId: input.ownerNodeId,
@@ -457,7 +474,7 @@ const baseComponent = (
         capabilities: [] as ControlCapability[],
         state,
         options: input.options,
-        inheritedCompleteness: scopeCompleteness(observation, input.rootNodeId),
+        inheritedCompleteness,
         locatorIds,
         evidence: [{
             code: `control.${input.kind}.collected`,
@@ -465,7 +482,7 @@ const baseComponent = (
             source: 'dom',
             nodeIds: unique(input.memberNodeIds),
         }],
-        diagnostics: [...(input.diagnostics ?? [])],
+        diagnostics,
     };
 };
 
@@ -539,17 +556,17 @@ const controlRef = (
     if (typeof controlAttrs['data-rpa-control-ref'] === 'string' && controlAttrs['data-rpa-control-ref'].length > 0) {
         return controlAttrs['data-rpa-control-ref'];
     }
+    const identityNodeId = kind === 'radio_group' || kind === 'checkbox_group'
+        ? rootNodeId
+        : controlNodeId ?? rootNodeId;
+    const identity = observation.domIdentity[identityNodeId];
+    if (identity?.backendNodeId) {return `backend:${observation.identity.pageEpoch}:${identity.backendNodeId}`;}
+    if (identity?.runtimeIdentityToken) {return `runtime:${observation.identity.pageEpoch}:${identity.runtimeIdentityToken}`;}
     if (typeof rootAttrs.id === 'string' && rootAttrs.id.length > 0) {return `scope:${scopeId}:dom-id:${rootAttrs.id}`;}
     if (kind !== 'radio_group' && kind !== 'checkbox_group'
         && typeof controlAttrs.id === 'string' && controlAttrs.id.length > 0) {
         return `scope:${scopeId}:dom-id:${controlAttrs.id}`;
     }
-    const identityNodeId = kind === 'radio_group' || kind === 'checkbox_group'
-        ? rootNodeId
-        : controlNodeId ?? rootNodeId;
-    const identity = observation.domIdentity[identityNodeId];
-    if (identity?.backendNodeId) {return `backend:${identity.backendNodeId}`;}
-    if (identity?.runtimeIdentityToken) {return `runtime:${identity.runtimeIdentityToken}`;}
     return `scope:${scopeId}:${kind}:${rootNodeId}`;
 };
 
@@ -598,7 +615,7 @@ export const validateControlIndex = (
 
 const canExecute = (component: ControlComponent, locators: LocatorIndex, observation: PageObservation): boolean => {
     if (component.status === 'ambiguous' || component.state.disabled
-        || component.inheritedCompleteness.runtime !== 'complete') {return false;}
+        || (component.inheritedCompleteness.runtime !== 'complete' || component.inheritedCompleteness.a11y !== 'complete')) {return false;}
     const candidateNodeIds = component.kind === 'radio_group' || component.kind === 'checkbox_group'
         ? component.options.filter((option) => !option.disabled).map((option) => option.nodeId)
         : [component.triggerNodeId ?? component.controlNodeId ?? component.rootNodeId];
@@ -691,7 +708,7 @@ const findSafeBoundary = (
     observation: PageObservation,
     nodeId: ObservationNodeId,
     kind: 'radio_group' | 'checkbox_group',
-): ObservationNodeId => {
+): ObservationNodeId | undefined => {
     let current = observation.parents[nodeId];
     while (current) {
         const node = observation.nodes[current];
@@ -700,13 +717,36 @@ const findSafeBoundary = (
         const role = lower(attrs.role);
         const classes = classTokens(attrs.class);
         const explicit = typeof attrs['data-rpa-control-group'] === 'string';
-        const tagBoundary = node.tag === 'fieldset' || node.tag === 'form';
+        const tagBoundary = node.tag === 'fieldset' || (kind === 'radio_group' && node.tag === 'form');
         const roleBoundary = role === 'group' || (kind === 'radio_group' && role === 'radiogroup');
         const classBoundary = classes.some((token) => SAFE_GROUP_CLASSES.has(token));
         if (explicit || tagBoundary || roleBoundary || classBoundary) {return current;}
         current = observation.parents[current];
     }
-    return observation.parents[nodeId] ?? nodeId;
+    return undefined;
+};
+
+const resolveNativeFormOwner = (
+    observation: PageObservation,
+    relations: RelationIndex,
+    nodeId: ObservationNodeId,
+): string => {
+    const edges = (relations.bySourceNodeId[nodeId] ?? [])
+        .map((index) => relations.edges[index])
+        .filter((edge) => edge?.kind === 'form-owner');
+    if (edges.length > 0) {
+        const resolved = unique(edges
+            .filter((edge) => edge.status === 'resolved')
+            .flatMap((edge) => edge.targetNodeIds)
+            .filter((targetId) => observation.nodes[targetId]?.tag === 'form'));
+        return resolved.length === 1 ? resolved[0] : `invalid:${nodeId}`;
+    }
+    let current = observation.parents[nodeId];
+    while (current) {
+        if (observation.nodes[current]?.tag === 'form') {return current;}
+        current = observation.parents[current];
+    }
+    return `scope:${observation.nodes[nodeId]?.scopeId ?? ''}`;
 };
 
 const scopeCompleteness = (observation: PageObservation, nodeId: ObservationNodeId): ObservationCompleteness => {

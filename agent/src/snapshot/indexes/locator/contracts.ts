@@ -4,6 +4,7 @@ import type {
     LocatorScopePath,
     ObservationIdentity,
     ObservationNodeId,
+    PageObservation,
 } from '../../observation/model/contracts';
 
 export type CanonicalLocatorStatus = 'resolved' | 'unresolved' | 'ambiguous';
@@ -25,6 +26,16 @@ export type LocatorIndex = {
     locators: Readonly<Record<string, CanonicalLocator>>;
     byNodeId: Readonly<Record<ObservationNodeId, readonly string[]>>;
     diagnostics: readonly AnalysisDiagnostic[];
+};
+
+
+export type LocatorExecutionRefresh = () => Promise<{
+    observation: PageObservation;
+    index: LocatorIndex;
+}>;
+
+export type LocatorExecutionOptions = {
+    refresh?: LocatorExecutionRefresh;
 };
 
 export type ExecutableLocatorResolution =

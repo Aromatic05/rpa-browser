@@ -330,3 +330,35 @@ test('control capabilities respect activity, completeness, input type, aria disa
     const partialInput = Object.values(partial.controls.controls).find((control) => control.kind === 'input');
     assert.deepEqual(partialInput?.capabilities, []);
 });
+
+test('choice grouping requires native radio identity or an explicit checkbox boundary', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['form-a', 'form-b', 'outside-a', 'outside-b']),
+        node('form-a', 'form', 'body', ['unnamed-a', 'unnamed-b', 'terms', 'news'], { id: 'FormA' }),
+        node('unnamed-a', 'input', 'form-a', [], { type: 'radio', value: 'A' }),
+        node('unnamed-b', 'input', 'form-a', [], { type: 'radio', value: 'B' }),
+        node('terms', 'input', 'form-a', [], { type: 'checkbox', name: 'terms', value: 'yes' }),
+        node('news', 'input', 'form-a', [], { type: 'checkbox', name: 'newsletter', value: 'yes' }),
+        node('form-b', 'form', 'body', [], { id: 'FormB' }),
+        node('outside-a', 'input', 'body', [], { type: 'radio', name: 'external', form: 'FormA', value: 'A' }),
+        node('outside-b', 'input', 'body', [], { type: 'radio', name: 'external', form: 'FormB', value: 'B' }),
+    ]);
+    const controls = Object.values(snapshot.controls.controls);
+    assert.equal(controls.filter((control) => control.kind === 'radio_group').length, 0);
+    assert.equal(controls.filter((control) => control.kind === 'checkbox_group').length, 0);
+    assert.equal(controls.filter((control) => control.kind === 'input').length, 6);
+});
+
+test('partial accessibility facts make atomic controls partial and non-executable', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['input']),
+        node('input', 'input', 'body', [], { id: 'PartialA11y', type: 'text' }),
+    ], { dom: 'complete', a11y: 'partial', runtime: 'complete', geometry: 'complete' });
+    const control = Object.values(snapshot.controls.controls).find((item) => item.kind === 'input');
+    assert.ok(control);
+    assert.equal(control.status, 'partial');
+    assert.deepEqual(control.capabilities, []);
+    assert.equal(control.diagnostics.some((item) => item.code === 'control.completeness.inherited'), true);
+});

@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 import {
     captureControlSnapshot,
     executeSelectOptionOnPage,
+    resolveControlRef,
 } from '../../../src/snapshot';
 
 const findControlByDomId = async (page: import('playwright').Page, id: string) => {
@@ -191,6 +192,91 @@ test('checkbox group restores original state when a later option action fails', 
 
         assert.equal(result.ok, false);
         assert.equal(await page.locator('#tx-a').isChecked(), false);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select_option rejects conflicting node selector and control ref targets', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <select id="TargetA"><option value="x">X</option><option value="y">Y</option></select>
+          <select id="TargetB"><option value="x">X</option><option value="y">Y</option></select>
+        `);
+        const a = await findControlByDomId(page, 'TargetA');
+        const b = await findControlByDomId(page, 'TargetB');
+        const result = await executeSelectOptionOnPage(page, {
+            kind: 'native_select',
+            nodeId: a.nodeId,
+            selector: '#TargetB',
+            controlRef: b.control.ref,
+            values: ['y'],
+        });
+        assert.equal(result.ok, false);
+        assert.equal(result.ok ? undefined : result.code, 'ERR_BAD_ARGS');
+        assert.equal(await page.locator('#TargetA').inputValue(), 'x');
+        assert.equal(await page.locator('#TargetB').inputValue(), 'x');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('native select supports optgroup and multiple selection without popup ref collision', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <select id="Grouped" multiple>
+            <optgroup label="Primary">
+              <option value="one">One</option>
+              <option value="two">Two</option>
+            </optgroup>
+          </select>
+        `);
+        const initial = await findControlByDomId(page, 'Grouped');
+        assert.equal(initial.control.kind, 'native_select');
+        assert.equal(initial.control.status, 'complete');
+        assert.equal(initial.control.options.length, 2);
+        assert.equal(initial.control.capabilities.includes('select_option'), true);
+        assert.equal(Object.values(initial.snapshot.controls.controls).some((control) =>
+            control.kind === 'popup' && control.controlNodeId === initial.nodeId), false);
+        const result = await executeSelectOptionOnPage(page, {
+            kind: 'native_select', nodeId: initial.nodeId, values: ['one', 'two'],
+        });
+        assert.equal(result.ok, true);
+        assert.deepEqual(await page.locator('#Grouped').evaluate((node: HTMLSelectElement) =>
+            Array.from(node.selectedOptions).map((option) => option.value)), ['one', 'two']);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('control refs remain bound to the same iframe node when sibling frame order changes', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <iframe id="before" srcdoc="<button id='other'>Other</button>"></iframe>
+          <iframe id="target" srcdoc="<button id='inside'>Target</button>"></iframe>
+          <iframe id="after" srcdoc="<button id='later'>Later</button>"></iframe>
+        `);
+        await page.locator('#target').contentFrame().locator('#inside').waitFor();
+        const first = await captureControlSnapshot(page);
+        const target = Object.values(first.controls.controls).find((control) =>
+            first.observation.attributes[control.controlNodeId ?? '']?.id === 'inside');
+        assert.ok(target);
+        await page.locator('#before').evaluate((node) => node.remove());
+        await page.locator('body').evaluate((body) => body.insertAdjacentHTML('beforeend',
+            `<iframe id="replacement" srcdoc="<button id='inside'>Replacement</button>"></iframe>`));
+        await page.locator('#replacement').contentFrame().locator('#inside').waitFor();
+        const second = await captureControlSnapshot(page);
+        const resolution = resolveControlRef(second.controls, target.ref);
+        assert.equal(resolution.status, 'resolved');
+        if (resolution.status === 'resolved') {
+            assert.equal(second.observation.text[resolution.value.controlNodeId ?? ''], 'Target');
+        }
     } finally {
         await browser.close();
     }

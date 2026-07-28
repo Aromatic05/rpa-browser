@@ -5,6 +5,7 @@ import {
     buildLocatorIndex,
     buildPageObservation,
     captureControlSnapshot,
+    captureLocatorExecutionSnapshot,
     resolveExecutableLocator,
     type RawPageCapture,
 } from '../../../src/snapshot';
@@ -88,8 +89,8 @@ test('live locator execution reaches iframe and shadow nodes without global fall
         assert.ok(frameNodeId);
         assert.ok(shadowNodeId);
 
-        const frameResult = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, snapshot.locators.byNodeId[frameNodeId][0]);
-        const shadowResult = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, snapshot.locators.byNodeId[shadowNodeId][0]);
+        const frameResult = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, snapshot.locators.byNodeId[frameNodeId][0], { refresh: () => captureLocatorExecutionSnapshot(page) });
+        const shadowResult = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, snapshot.locators.byNodeId[shadowNodeId][0], { refresh: () => captureLocatorExecutionSnapshot(page) });
         assert.equal(frameResult.status, 'resolved');
         assert.equal(shadowResult.status, 'resolved');
         if (frameResult.status === 'resolved') await frameResult.locator.click();
@@ -101,7 +102,7 @@ test('live locator execution reaches iframe and shadow nodes without global fall
     }
 });
 
-test('locator execution reports stale and ambiguous matches instead of clicking a fallback', async () => {
+test('locator execution reports stale identity instead of binding replacement nodes', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();
@@ -112,19 +113,19 @@ test('locator execution reports stale and ambiguous matches instead of clicking 
         const locatorId = snapshot.locators.byNodeId[nodeId][0];
 
         await page.locator('#target').evaluate((node) => node.remove());
-        const stale = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId);
+        const stale = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId, { refresh: () => captureLocatorExecutionSnapshot(page) });
         assert.equal(stale.status, 'stale');
 
         await page.setContent('<button id="target">A</button><button id="target">B</button>');
-        const ambiguous = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId);
-        assert.equal(ambiguous.status, 'ambiguous');
+        const replacement = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId, { refresh: () => captureLocatorExecutionSnapshot(page) });
+        assert.equal(replacement.status, 'stale');
     } finally {
         await browser.close();
     }
 });
 
 
-test('structural locator becomes stale when its identity drifts to a different sibling', async () => {
+test('structural locator remaps exact identity when a different sibling is inserted', async () => {
     const browser = await chromium.launch({ headless: true });
     try {
         const page = await browser.newPage();
@@ -136,8 +137,31 @@ test('structural locator becomes stale when its identity drifts to a different s
         assert.equal(snapshot.locators.locators[locatorId].strategy, 'structural');
 
         await page.locator('body').evaluate((body) => body.insertAdjacentHTML('afterbegin', '<button>NEW</button>'));
-        const result = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId);
-        assert.equal(result.status, 'stale');
+        const result = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId, { refresh: () => captureLocatorExecutionSnapshot(page) });
+        assert.equal(result.status, 'resolved');
+        if (result.status === 'resolved') {assert.equal(await result.locator.textContent(), 'B');}
+    } finally {
+        await browser.close();
+    }
+});
+
+test('structural locator remaps by exact identity when identical siblings shift', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<button>Same</button><button>Same</button><button>Other</button>');
+        const snapshot = await captureControlSnapshot(page);
+        const sameNodeIds = Object.keys(snapshot.observation.nodes)
+            .filter((nodeId) => snapshot.observation.text[nodeId] === 'Same');
+        assert.equal(sameNodeIds.length, 2);
+        const targetNodeId = sameNodeIds[1];
+        const locatorId = snapshot.locators.byNodeId[targetNodeId][0];
+        await page.locator('body').evaluate((body) => body.insertAdjacentHTML('afterbegin', '<button>Same</button>'));
+        const result = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorId, { refresh: () => captureLocatorExecutionSnapshot(page) });
+        assert.equal(result.status, 'resolved');
+        if (result.status === 'resolved') {
+            assert.equal(await result.locator.evaluate((node) => Array.from(node.parentElement?.children ?? []).indexOf(node)), 2);
+        }
     } finally {
         await browser.close();
     }

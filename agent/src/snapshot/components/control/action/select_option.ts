@@ -1,7 +1,7 @@
 import type { Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import type { LocatorIndex } from '../../../indexes/locator/contracts';
-import { captureControlSnapshot } from '../capture/browser';
+import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
 import { captureSelectorTarget } from './selector_capture';
 import { resolveControlRef } from '../assembly/build';
 import type {
@@ -318,41 +318,49 @@ const resolveRequestedControl = async (
     request: SelectOptionRequest,
     selectorNodeId?: string,
 ): Promise<{ ok: true; control: ControlComponent } | { ok: false; error: SelectOptionActionResult }> => {
+    const resolved: Array<{ source: string; control: ControlComponent }> = [];
     if (request.controlRef) {
         const resolution = resolveControlRef(snapshot.controls, request.controlRef);
-        if (resolution.status === 'resolved') {return { ok: true, control: resolution.value };}
-        return {
-            ok: false,
-            error: failure(
+        if (resolution.status !== 'resolved') {
+            return { ok: false, error: failure(
                 resolution.status === 'ambiguous' ? 'ERR_AMBIGUOUS' : 'ERR_NOT_FOUND',
                 resolution.status === 'ambiguous' ? 'control ref is ambiguous' : 'control ref not found',
                 { controlRef: request.controlRef },
-            ),
-        };
+            ) };
+        }
+        if (resolution.value.kind !== request.kind) {
+            return { ok: false, error: failure('ERR_BAD_ARGS', 'control ref kind does not match request', {
+                controlRef: request.controlRef, expectedKind: request.kind, actualKind: resolution.value.kind,
+            }) };
+        }
+        resolved.push({ source: 'controlRef', control: resolution.value });
     }
-
-    const nodeId = request.nodeId ?? selectorNodeId;
-
-    if (!nodeId) {
+    for (const [source, nodeId] of [['nodeId', request.nodeId], ['selector', selectorNodeId]] as const) {
+        if (!nodeId) {continue;}
+        const candidates = (snapshot.controls.byNodeId[nodeId] ?? [])
+            .map((id) => snapshot.controls.controls[id])
+            .filter((component): component is ControlComponent => Boolean(component) && component.kind === request.kind);
+        if (candidates.length === 0) {
+            return { ok: false, error: failure('ERR_NOT_FOUND', 'node is not owned by the requested control kind', {
+                source, nodeId, kind: request.kind,
+            }) };
+        }
+        if (candidates.length > 1) {
+            return { ok: false, error: failure('ERR_AMBIGUOUS', 'node belongs to multiple controls of the requested kind', {
+                source, nodeId, kind: request.kind, candidates: candidates.map(controlDetails),
+            }) };
+        }
+        resolved.push({ source, control: candidates[0] });
+    }
+    if (resolved.length === 0) {
         return { ok: false, error: failure('ERR_BAD_ARGS', 'nodeId, selector, or controlRef is required') };
     }
-    const candidates = (snapshot.controls.byNodeId[nodeId] ?? [])
-        .map((id) => snapshot.controls.controls[id])
-        .filter((component): component is ControlComponent => Boolean(component) && component.kind === request.kind);
-    if (candidates.length === 0) {
-        return { ok: false, error: failure('ERR_NOT_FOUND', 'node is not owned by the requested control kind', {
-            nodeId,
-            kind: request.kind,
+    if (new Set(resolved.map((item) => item.control.id)).size !== 1) {
+        return { ok: false, error: failure('ERR_BAD_ARGS', 'select_option targets do not identify the same control', {
+            targets: resolved.map((item) => ({ source: item.source, ...controlDetails(item.control) })),
         }) };
     }
-    if (candidates.length > 1) {
-        return { ok: false, error: failure('ERR_AMBIGUOUS', 'node belongs to multiple controls of the requested kind', {
-            nodeId,
-            kind: request.kind,
-            candidates: candidates.map(controlDetails),
-        }) };
-    }
-    return { ok: true, control: candidates[0] };
+    return { ok: true, control: resolved[0].control };
 };
 
 const executableNode = async (
@@ -367,7 +375,10 @@ const executableNode = async (
     if (locatorIds.length > 1) {
         return { ok: false, error: failure('ERR_AMBIGUOUS', 'control node has multiple canonical locators', { nodeId, locatorIds }) };
     }
-    const resolution = await resolveExecutableLocator(page, snapshot.observation, snapshot.locators, locatorIds[0]);
+    const resolution = await resolveExecutableLocator(
+        page, snapshot.observation, snapshot.locators, locatorIds[0],
+        { refresh: () => captureLocatorExecutionSnapshot(page) },
+    );
     if (resolution.status === 'resolved') {return { ok: true, locator: resolution.locator };}
     return {
         ok: false,

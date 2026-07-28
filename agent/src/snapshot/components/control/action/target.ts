@@ -1,6 +1,6 @@
 import type { Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
-import { captureControlSnapshot } from '../capture/browser';
+import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
 import { captureSelectorTarget } from './selector_capture';
 import type {
     AtomicActionFailure,
@@ -89,6 +89,7 @@ export const resolveAtomicActionTarget = async (
         snapshot.observation,
         snapshot.locators,
         locatorIds[0],
+        { refresh: () => captureLocatorExecutionSnapshot(page) },
     );
     if (executable.status !== 'resolved') {
         return failed(
