@@ -13,6 +13,7 @@ const entityKindSchema = z.enum(['form', 'table', 'dialog', 'list', 'panel', 'to
 const entityKindOrArraySchema = z.union([entityKindSchema, z.array(entityKindSchema).nonempty()]);
 const textOrArraySchema = z.union([z.string(), z.array(z.string()).nonempty()]);
 const snapshotRoleFilterSchema = z.union([z.string(), z.array(z.string()).nonempty()]);
+const snapshotProjectionModeSchema = z.enum(['overview', 'interaction', 'annotation', 'debug', 'full']);
 const snapshotFilterInputSchema = z
     .object({
         role: snapshotRoleFilterSchema.optional(),
@@ -93,6 +94,7 @@ export const browserListTabsInputSchema = z.object({
 
 export const browserSnapshotInputSchema = z.object({
     tabName: z.string().optional(),
+    mode: snapshotProjectionModeSchema.optional(),
     refresh: z.boolean().optional(),
     contain: z.string().optional(),
     depth: z.number().int().min(-1).optional(),
@@ -501,6 +503,7 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabName: { type: 'string' },
+            mode: { type: 'string', enum: ['overview', 'interaction', 'annotation', 'debug', 'full'] },
             refresh: { type: 'boolean' },
             contain: { type: 'string' },
             depth: { type: 'integer', minimum: -1 },

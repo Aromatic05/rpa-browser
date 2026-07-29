@@ -1,10 +1,17 @@
 import type {
     ActivityFacts,
     AnalysisDiagnostic,
+    Evidence,
+    GeometryRecord,
+    ObservationCompleteness,
     ObservationNodeId,
     RuntimeStateRecord,
+    TreeScopeKind,
+    TreeScopeStatus,
 } from '../observation/model/contracts';
 import type {PageSessionRefreshReason, PageSnapshotSessionEntry} from '../session/contracts';
+
+export type SnapshotProjectionViewMode = 'overview' | 'interaction' | 'annotation' | 'debug' | 'full';
 
 export type SnapshotProjectionFilter = {
     role?: string | string[];
@@ -13,6 +20,7 @@ export type SnapshotProjectionFilter = {
 };
 
 export type SnapshotProjectionOptions = {
+    mode?: SnapshotProjectionViewMode;
     contain?: string;
     depth?: number;
     filter?: SnapshotProjectionFilter;
@@ -28,6 +36,7 @@ export type SnapshotProjectionNode = {
     contentRef?: string;
     attributes?: Record<string, string>;
     runtimeState?: RuntimeStateRecord;
+    geometry?: GeometryRecord[];
     activity: ActivityFacts;
     identity: {
         backendNodeId?: string;
@@ -55,6 +64,11 @@ export type SnapshotProjectionFormAction = {
     structuralRole: 'submit' | 'reset' | 'button' | 'link';
 };
 
+export type SnapshotProjectionGeometry = {
+    nodeId: ObservationNodeId;
+    records: GeometryRecord[];
+};
+
 export type SnapshotProjectionForm = {
     id: string;
     rootNodeId: ObservationNodeId;
@@ -65,6 +79,7 @@ export type SnapshotProjectionForm = {
     fields: SnapshotProjectionFormField[];
     actions: SnapshotProjectionFormAction[];
     groups: Array<{id: string; rootNodeId: ObservationNodeId; fieldIds: string[]}>;
+    geometry: SnapshotProjectionGeometry[];
     validation: {ok: boolean; diagnosticCount: number};
 };
 
@@ -85,13 +100,23 @@ export type SnapshotProjectionTableRow = {
     }>;
 };
 
+export type SnapshotProjectionCollectionPolicy =
+    | 'full'
+    | 'contain-scope'
+    | 'depth-limit'
+    | 'projection-filter'
+    | 'feature-cover'
+    | 'interaction-context'
+    | 'annotation-targets'
+    | 'diff';
+
 export type SnapshotProjectionCollectionReport = {
     kind: 'nodes' | 'table-rows';
     collectionId: string;
     total: number;
     included: number;
     omitted: number;
-    policy: 'full' | 'contain-scope' | 'depth-limit' | 'projection-filter' | 'diff';
+    policy: SnapshotProjectionCollectionPolicy;
 };
 
 export type SnapshotProjectionTable = {
@@ -117,6 +142,7 @@ export type SnapshotProjectionTable = {
     }>;
     rowExceptions: Array<{rowId: string; controlIds: string[]}>;
     pagination?: {status: 'resolved' | 'ambiguous'; nodeIds: ObservationNodeId[]};
+    geometry: SnapshotProjectionGeometry[];
     validation: {ok: boolean; diagnosticCount: number};
 };
 
@@ -132,6 +158,24 @@ export type SnapshotProjectionSemanticBinding = {
     annotation: Record<string, unknown>;
 };
 
+export type SnapshotProjectionDebug = {
+    completeness: ObservationCompleteness;
+    scopes: Array<{
+        id: string;
+        kind: TreeScopeKind;
+        status: TreeScopeStatus;
+        parentScopeId?: string;
+        hostNodeId?: ObservationNodeId;
+        rootNodeId: ObservationNodeId;
+        unavailableReason?: string;
+        completeness: ObservationCompleteness;
+    }>;
+    componentEvidence: {
+        forms: Array<{id: string; evidence: Evidence[]; diagnostics: AnalysisDiagnostic[]}>;
+        tables: Array<{id: string; evidence: Evidence[]; diagnostics: AnalysisDiagnostic[]}>;
+    };
+};
+
 export type SnapshotProjectionMeta = {
     snapshotId: string;
     pageEpoch: string;
@@ -139,6 +183,7 @@ export type SnapshotProjectionMeta = {
     pageUrl: string;
     refreshReason: PageSessionRefreshReason;
     mode: 'full' | 'diff';
+    viewMode: SnapshotProjectionViewMode;
     containNodeIds: ObservationNodeId[];
     depth: number;
     filterSignature: string;
@@ -162,6 +207,7 @@ export type SnapshotProjection = {
     semantics: SnapshotProjectionSemanticBinding[];
     collections: SnapshotProjectionCollectionReport[];
     diagnostics: AnalysisDiagnostic[];
+    debug?: SnapshotProjectionDebug;
 };
 
 export type SnapshotProjectionBuildResult =

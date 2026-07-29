@@ -162,3 +162,34 @@ test('browser.get_content resolves epoch-bound V2 projection refs and rejects st
     assert.equal(stale.ok, false);
     assert.equal(stale.error?.code, 'ERR_STALE');
 });
+
+test('browser.snapshot isolates diff baselines by projection mode', async () => {
+    const {deps} = await createFixture();
+    const overview = await executeBrowserSnapshot(step('snapshot-overview-diff', {
+        mode: 'overview',
+        diff: true,
+    }), deps, 'ws-1');
+    assert.equal(overview.ok, true);
+    if (!overview.ok) {return;}
+    assert.equal((overview.data as any).meta.viewMode, 'overview');
+    assert.equal((overview.data as any).meta.diffSkipped, 'no_baseline');
+
+    const full = await executeBrowserSnapshot(step('snapshot-full-diff', {
+        mode: 'full',
+        diff: true,
+    }), deps, 'ws-1');
+    assert.equal(full.ok, true);
+    if (!full.ok) {return;}
+    assert.equal((full.data as any).meta.viewMode, 'full');
+    assert.equal((full.data as any).meta.diffSkipped, 'no_baseline');
+
+    const secondOverview = await executeBrowserSnapshot(step('snapshot-overview-diff-2', {
+        mode: 'overview',
+        diff: true,
+    }), deps, 'ws-1');
+    assert.equal(secondOverview.ok, true);
+    if (secondOverview.ok) {
+        assert.equal((secondOverview.data as any).meta.mode, 'diff');
+        assert.equal((secondOverview.data as any).meta.viewMode, 'overview');
+    }
+});

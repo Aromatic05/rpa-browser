@@ -10,6 +10,7 @@
 import type { Rect } from '../../snapshot/observation/model/contracts';
 import type { SelectOptionKind } from './executors/select_option/types';
 import type { StepEntityRulesControl } from '../../snapshot/rules/model';
+import type { SnapshotProjectionViewMode } from '../../snapshot/projection';
 
 export type BBox = Rect;
 
@@ -200,6 +201,7 @@ export type StepArgsMap = {
     'browser.get_page_info': Record<string, never>;
     'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
+        mode?: SnapshotProjectionViewMode;
         refresh?: boolean;
         contain?: string;
         depth?: number;

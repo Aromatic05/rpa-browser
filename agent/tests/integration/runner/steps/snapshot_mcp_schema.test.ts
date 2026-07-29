@@ -14,9 +14,17 @@ test('browser.snapshot MCP schema accepts scoped diff args', () => {
         },
         diff: true,
         refresh: true,
+        mode: 'interaction',
     });
 
     assert.equal(parsed.success, true);
+});
+
+test('browser.snapshot MCP schema accepts every V2 projection mode', () => {
+    for (const mode of ['overview', 'interaction', 'annotation', 'debug', 'full']) {
+        assert.equal(browserSnapshotInputSchema.safeParse({mode}).success, true);
+    }
+    assert.equal(browserSnapshotInputSchema.safeParse({mode: 'legacy'}).success, false);
 });
 
 test('browser.snapshot MCP schema rejects invalid depth', () => {
@@ -24,7 +32,7 @@ test('browser.snapshot MCP schema rejects invalid depth', () => {
     assert.equal(parsed.success, false);
 });
 
-test('browser.snapshot tool json schema exposes contain/depth/filter/diff', () => {
+test('browser.snapshot tool json schema exposes contain/depth/filter/diff/mode', () => {
     const schema = toolInputJsonSchemas['browser.snapshot'] as {
         properties?: Record<string, unknown>;
     };
@@ -34,6 +42,7 @@ test('browser.snapshot tool json schema exposes contain/depth/filter/diff', () =
     assert.ok('depth' in properties);
     assert.ok('filter' in properties);
     assert.ok('diff' in properties);
+    assert.deepEqual((properties.mode as {enum?: string[]}).enum, ['overview', 'interaction', 'annotation', 'debug', 'full']);
 });
 
 test('browser.batch schema accepts label-driven form actions', () => {

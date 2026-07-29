@@ -8,10 +8,10 @@ import {
 } from '../../../src/snapshot';
 import {createV2BusinessPage} from '../../helpers/v2_business_page';
 
-const createEntry = async (): Promise<PageSnapshotSessionEntry> => {
+const createEntry = async (options: {rowCount?: number; withGeometry?: boolean} = {}): Promise<PageSnapshotSessionEntry> => {
     const store = new PageSnapshotSessionStore<object>();
     const pageKey = {};
-    const {capture} = createV2BusinessPage();
+    const {capture} = createV2BusinessPage(options);
     return await store.ensureFresh({
         pageKey,
         pageUrl: 'https://example.test/orders',
@@ -119,4 +119,73 @@ test('SnapshotProjection rejects unknown contain ids', async () => {
     assert.equal(result.ok, false);
     if (result.ok) {return;}
     assert.equal(result.error.code, 'ERR_NOT_FOUND');
+});
+
+
+test('overview mode uses FeatureCover and reports omitted rows explicitly', async () => {
+    const entry = await createEntry({rowCount: 3});
+    const built = buildSnapshotProjection(entry, {mode: 'overview'});
+    assert.equal(built.ok, true);
+    if (!built.ok) {return;}
+
+    assert.equal(built.projection.meta.viewMode, 'overview');
+    const table = built.projection.components.tables[0];
+    assert.equal(table.rows.length, 1);
+    assert.deepEqual(table.rows.map((row) => row.id), entry.capture.table.tables.tables[table.id].featureCover.representativeRowIds);
+    assert.equal(table.rowCollection.total, 3);
+    assert.equal(table.rowCollection.included, 1);
+    assert.equal(table.rowCollection.omitted, 2);
+    assert.equal(table.rowCollection.policy, 'feature-cover');
+});
+
+test('interaction mode retains every executable control and omits unrelated detail', async () => {
+    const entry = await createEntry();
+    const built = buildSnapshotProjection(entry, {mode: 'interaction'});
+    assert.equal(built.ok, true);
+    if (!built.ok) {return;}
+
+    assert.equal(built.projection.meta.viewMode, 'interaction');
+    const projectedNodeIds = new Set(collectNodeIds(built.projection.roots));
+    const executableRoots = Object.values(entry.capture.control.controls.controls)
+        .filter((control) => control.capabilities.length > 0)
+        .map((control) => control.rootNodeId);
+    assert.ok(executableRoots.length > 0);
+    for (const nodeId of executableRoots) {
+        assert.equal(projectedNodeIds.has(nodeId), true, `missing executable control root ${nodeId}`);
+    }
+    assert.equal(projectedNodeIds.has(entry.capture.control.observation.captureIdToNodeId.panel), false);
+    assert.equal(built.projection.components.tables[0].rowCollection.policy, 'interaction-context');
+});
+
+test('annotation mode exposes binding targets and component geometry', async () => {
+    const entry = await createEntry({withGeometry: true});
+    const built = buildSnapshotProjection(entry, {mode: 'annotation'});
+    assert.equal(built.ok, true);
+    if (!built.ok) {return;}
+
+    assert.equal(built.projection.meta.viewMode, 'annotation');
+    const projectedNodeIds = new Set(collectNodeIds(built.projection.roots));
+    const semanticTargetNodeIds = Object.values(entry.semanticBindingsByProfile)
+        .flatMap((bindings) => Object.values(bindings.byId))
+        .flatMap((binding) => binding.target.nodeIds);
+    for (const nodeId of semanticTargetNodeIds) {
+        assert.equal(projectedNodeIds.has(nodeId), true, `missing semantic target ${nodeId}`);
+    }
+    assert.ok(built.projection.components.forms[0].geometry.length > 0);
+    assert.ok(built.projection.components.tables[0].geometry.length > 0);
+    assert.equal(built.projection.components.tables[0].rowCollection.policy, 'annotation-targets');
+});
+
+test('debug mode exposes scope completeness evidence and node geometry', async () => {
+    const entry = await createEntry({withGeometry: true});
+    const built = buildSnapshotProjection(entry, {mode: 'debug'});
+    assert.equal(built.ok, true);
+    if (!built.ok) {return;}
+
+    assert.equal(built.projection.meta.viewMode, 'debug');
+    assert.deepEqual(built.projection.debug?.completeness, entry.capture.control.observation.completeness);
+    assert.equal(built.projection.debug?.scopes.length, 1);
+    assert.ok((built.projection.debug?.componentEvidence.forms.length ?? 0) > 0);
+    const nodes = built.projection.roots.flatMap((root) => [root, ...root.children]);
+    assert.equal(nodes.some((node) => (node.geometry?.length ?? 0) > 0), true);
 });

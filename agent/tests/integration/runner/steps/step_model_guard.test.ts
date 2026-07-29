@@ -253,6 +253,14 @@ test('protocol lock: kind is required, kind must be valid, controlRef/searchText
     assert.equal(Boolean(withKind || withoutKind || withInvalidKind || withCR || withST), true);
 });
 
+test('protocol lock: browser.snapshot accepts only V2 projection modes', () => {
+    const step: Step<'browser.snapshot'> = {id: 'snapshot-mode', name: 'browser.snapshot', args: {mode: 'annotation'}};
+    // @ts-expect-error legacy mode is not a V2 projection mode
+    const invalid: Step<'browser.snapshot'> = {id: 'snapshot-mode-invalid', name: 'browser.snapshot', args: {mode: 'legacy'}};
+    assert.equal(step.args.mode, 'annotation');
+    assert.equal(Boolean(invalid), true);
+});
+
 test('protocol lock: includeA11y and focus_only removed from browser.snapshot', () => {
     // @ts-expect-error includeA11y is removed from browser.snapshot
     const withA11y: Step<'browser.snapshot'> = { id: 's1', name: 'browser.snapshot', args: { includeA11y: true } };

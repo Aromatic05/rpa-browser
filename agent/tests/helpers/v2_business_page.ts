@@ -69,11 +69,25 @@ const profileResult = (
     };
 };
 
-export const createV2BusinessPage = (): {
+export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?: boolean} = {}): {
     capture: PageSnapshotCapture;
     nodeIds: Record<string, string>;
 } => {
     const completeness = {dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete'} as const;
+    const rowCount = Math.max(1, options.rowCount ?? 1);
+    const rowCaptureIds = Array.from({length: rowCount}, (_, index) => `row-${index + 1}`);
+    const tableRows = rowCaptureIds.flatMap((rowId, index) => {
+        const ordinal = index + 1;
+        const orderCellId = ordinal === 1 ? 'cell-order' : `cell-order-${ordinal}`;
+        const operationCellId = ordinal === 1 ? 'cell-operation' : `cell-operation-${ordinal}`;
+        const approveId = ordinal === 1 ? 'approve' : `approve-${ordinal}`;
+        return [
+            node(rowId, 'tr', 'tbody', [orderCellId, operationCellId], {'data-row-key': `SO-${String(ordinal).padStart(3, '0')}`}),
+            node(orderCellId, 'td', rowId, [], {}, `SO-${String(ordinal).padStart(3, '0')}`),
+            node(operationCellId, 'td', rowId, [approveId]),
+            node(approveId, 'button', operationCellId, [], {id: `Approve${ordinal}`}, '审核'),
+        ];
+    });
     const raw: RawPageCapture = {
         identity: {pageEpoch: 'v2-business', captureRevision: 1},
         metadata: {schemaVersion: 1, source: 'fixed-fixture', capturedAt: '2026-07-29T00:00:00.000Z'},
@@ -87,17 +101,16 @@ export const createV2BusinessPage = (): {
             node('header-row', 'tr', 'thead', ['header-order', 'header-operation']),
             node('header-order', 'th', 'header-row', [], {}, '订单编号'),
             node('header-operation', 'th', 'header-row', [], {}, '操作'),
-            node('tbody', 'tbody', 'orders-table', ['row-1']),
-            node('row-1', 'tr', 'tbody', ['cell-order', 'cell-operation'], {'data-row-key': 'SO-001'}),
-            node('cell-order', 'td', 'row-1', [], {}, 'SO-001'),
-            node('cell-operation', 'td', 'row-1', ['approve']),
-            node('approve', 'button', 'cell-operation', [], {id: 'Approve'}, '审核'),
+            node('tbody', 'tbody', 'orders-table', rowCaptureIds),
+            ...tableRows,
             node('orders-form', 'form', 'body', ['buyer-label', 'buyer', 'submit'], {id: 'OrdersForm'}),
             node('buyer-label', 'label', 'orders-form', [], {for: 'Buyer'}, '订单编号'),
             node('buyer', 'input', 'orders-form', [], {id: 'Buyer', name: 'orderNo'}),
             node('submit', 'button', 'orders-form', [], {id: 'Submit', type: 'submit'}, '提交'),
             node('panel', 'section', 'body', [], {id: 'Panel'}, '辅助面板'),
-        ],
+        ].map((item, index) => options.withGeometry
+            ? {...item, geometry: {x: index * 3, y: index * 5, width: 120, height: 24}, geometrySource: 'live-dom' as const}
+            : item),
         accessibility: [],
         runtimeState: {},
         diagnostics: [],

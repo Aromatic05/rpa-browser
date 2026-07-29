@@ -29,6 +29,7 @@ export const executeBrowserSnapshot = async (
         explicit: step.args.refresh === true,
     });
     const built = buildSnapshotProjection(entry, {
+        mode: step.args.mode,
         contain: step.args.contain,
         depth,
         filter: step.args.filter,
