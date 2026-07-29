@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Replay truth files are untrusted JSON; runtime schema checks intentionally repeat static constraints. */
 import type { FormSnapshot } from '../model/contracts';
 import type { FormFixture, FormFixtureExactTruth } from './contracts';
 

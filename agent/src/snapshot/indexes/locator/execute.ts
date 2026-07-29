@@ -13,10 +13,10 @@ export const resolveExecutableLocator = async (
     locatorId: string,
     options: LocatorExecutionOptions = {},
 ): Promise<ExecutableLocatorResolution> => {
-    const canonical = index.locators[locatorId];
-    if (!canonical) {
+    if (!Object.hasOwn(index.locators, locatorId)) {
         return unresolved('locator is not present in the canonical index', locatorEvidence('locator.execution.missing', []));
     }
+    const canonical = index.locators[locatorId];
     if (canonical.identity.pageEpoch !== observation.identity.pageEpoch
         || canonical.identity.captureRevision !== observation.identity.captureRevision) {
         return stale('locator belongs to a different observation revision', 'locator.execution.identity-stale', canonical.targetNodeId);
@@ -39,7 +39,9 @@ export const resolveExecutableLocator = async (
             };
         }
         const freshIndex = refreshed.index;
-        const freshLocatorId = freshIndex.byNodeId[remap.nodeId]?.[0];
+        const freshLocatorId = Object.hasOwn(freshIndex.byNodeId, remap.nodeId)
+            ? freshIndex.byNodeId[remap.nodeId][0]
+            : undefined;
         if (!freshLocatorId) {
             return unresolved(
                 'remapped canonical node has no executable locator',
@@ -61,10 +63,10 @@ const resolveCurrentLocator = async (
     index: LocatorIndex,
     locatorId: string,
 ): Promise<ExecutableLocatorResolution> => {
-    const canonical = index.locators[locatorId];
-    if (!canonical) {
+    if (!Object.hasOwn(index.locators, locatorId)) {
         return unresolved('locator is not present in the canonical index', locatorEvidence('locator.execution.missing', []));
     }
+    const canonical = index.locators[locatorId];
     if (canonical.status === 'ambiguous') {
         return { status: 'ambiguous', message: 'canonical locator is ambiguous', evidence: [...canonical.evidence] };
     }
@@ -74,7 +76,9 @@ const resolveCurrentLocator = async (
 
     let context: LocatorContext = page;
     for (const step of canonical.scopePath) {
-        const hostLocatorId = index.byNodeId[step.hostNodeId]?.[0];
+        const hostLocatorId = Object.hasOwn(index.byNodeId, step.hostNodeId)
+            ? index.byNodeId[step.hostNodeId][0]
+            : undefined;
         const hostCanonical = hostLocatorId ? index.locators[hostLocatorId] : undefined;
         if (hostCanonical?.status !== 'resolved' || !hostCanonical.selector) {
             return unresolved('scope host has no executable locator', locatorEvidence(

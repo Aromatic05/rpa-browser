@@ -12,14 +12,14 @@ export const resolveLocatorScopePath = (
     observation: PageObservation,
     nodeId: ObservationNodeId,
 ): Resolution<LocatorScopePath> => {
-    const node = observation.nodes[nodeId];
-    if (!node) {
+    if (!Object.hasOwn(observation.nodes, nodeId)) {
         return {
             status: 'missing',
             evidence: [scopeEvidence('locator.scope.node-missing', [nodeId])],
         };
     }
 
+    const node = observation.nodes[nodeId];
     const path: LocatorScopePath = [];
     const visited = new Set<TreeScopeId>();
     let scopeId: TreeScopeId | undefined = node.scopeId;
@@ -34,13 +34,13 @@ export const resolveLocatorScopePath = (
         }
         visited.add(scopeId);
 
-        const scope: TreeScope | undefined = observation.scopes.scopes[scopeId];
-        if (!scope) {
+        if (!Object.hasOwn(observation.scopes.scopes, scopeId)) {
             return {
                 status: 'missing',
                 evidence: [scopeEvidence('locator.scope.missing', [nodeId], { scopeId })],
             };
         }
+        const scope: TreeScope = observation.scopes.scopes[scopeId];
         if (scope.status === 'unavailable') {
             return {
                 status: 'missing',
@@ -51,7 +51,7 @@ export const resolveLocatorScopePath = (
             };
         }
         if (!scope.parentScopeId) {break;}
-        if (!scope.hostNodeId || !observation.nodes[scope.hostNodeId]) {
+        if (!scope.hostNodeId || !Object.hasOwn(observation.nodes, scope.hostNodeId)) {
             return {
                 status: 'missing',
                 evidence: [scopeEvidence('locator.scope.host-missing', [nodeId], { scopeId })],

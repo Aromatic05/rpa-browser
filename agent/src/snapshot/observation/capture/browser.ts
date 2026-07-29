@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- CDP responses are runtime data and may omit fields despite generated protocol typings. */
 import type { Frame, Page } from 'playwright';
 import {
     cleanupTaggedRuntimeState,

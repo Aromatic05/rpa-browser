@@ -283,7 +283,7 @@ const buildScopeForest = (
     const rootScopeIds: TreeScopeId[] = [];
 
     for (const rawScope of rawScopes) {
-        if (scopes[rawScope.id]) {
+        if (Object.hasOwn(scopes, rawScope.id)) {
             diagnostics.push({
                 code: 'observation.scope.duplicate',
                 severity: 'error',
@@ -452,11 +452,11 @@ const computeSubtreeActivity = (input: {
         if (visiting.has(nodeId)) {return false;}
         visiting.add(nodeId);
 
-        const facts = input.activity[nodeId];
-        if (!facts) {
+        if (!Object.hasOwn(input.activity, nodeId)) {
             visiting.delete(nodeId);
             return false;
         }
+        const facts = input.activity[nodeId];
         const hidden = inheritedHidden || facts.hiddenByStyle;
         const inert = inheritedInert || facts.inert;
         let hasActiveDescendant = false;
@@ -485,7 +485,9 @@ const computeSubtreeActivity = (input: {
     };
 
     for (const rootScopeId of input.scopes.rootScopeIds) {
-        const rootNodeId = input.scopes.scopes[rootScopeId]?.rootNodeId;
+        const rootNodeId = Object.hasOwn(input.scopes.scopes, rootScopeId)
+            ? input.scopes.scopes[rootScopeId].rootNodeId
+            : undefined;
         if (rootNodeId) {
             visit(rootNodeId, false, false);
         }

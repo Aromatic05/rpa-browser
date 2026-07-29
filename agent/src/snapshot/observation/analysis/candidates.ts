@@ -29,15 +29,15 @@ const classifyCandidate = (
     const facts = observation.activity[nodeId];
     const evidence: Evidence[] = [];
 
-    const structuralKinds = collectStructuralKinds(node?.tag, role, evidence, nodeId);
+    const structuralKinds = collectStructuralKinds(node.tag, role, evidence, nodeId);
     const hostKinds = collectHostKinds(classTokens, evidence, nodeId);
-    const partKinds = collectPartKinds(node?.tag, role, classTokens, evidence, nodeId);
+    const partKinds = collectPartKinds(node.tag, role, classTokens, evidence, nodeId);
     const entityKinds = new Set<CandidateKind>([...structuralKinds, ...hostKinds]);
     const allKinds = new Set<CandidateKind>([...entityKinds, ...partKinds]);
     const kind = allKinds.size === 1 ? [...allKinds][0] : undefined;
 
     let classification: CandidateEvidence['classification'];
-    if (!facts?.subtreeActive && allKinds.size > 0) {
+    if (!facts.subtreeActive && allKinds.size > 0) {
         classification = 'latent';
         evidence.push({
             code: 'candidate.activity.latent',
@@ -75,7 +75,7 @@ const classifyCandidate = (
 
     return {
         anchorNodeId: nodeId,
-        scopeId: node?.scopeId ?? 'unknown-scope',
+        scopeId: node.scopeId,
         kind,
         classification,
         evidence,

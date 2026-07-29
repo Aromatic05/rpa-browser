@@ -18,7 +18,7 @@ export const buildLocatorIndex = (observation: PageObservation): LocatorIndex =>
 
     for (const nodeId of orderedNodeIds(observation)) {
         const node = observation.nodes[nodeId];
-        if (!node || node.tag === '#shadow-root') {continue;}
+        if (node.tag === '#shadow-root') {continue;}
         const scopeResolution = resolveLocatorScopePath(observation, nodeId);
         const locatorId = `locator:${nodeId}`;
         const base = {
@@ -80,7 +80,6 @@ const buildScopeAttributeUniqueness = (observation: PageObservation): UniqueInde
     const result: UniqueIndex = new Map();
     for (const nodeId of orderedNodeIds(observation)) {
         const node = observation.nodes[nodeId];
-        if (!node) {continue;}
         const attrs = observation.attributes[nodeId] ?? {};
         for (const name of ['id', 'data-testid', 'name']) {
             const value = attrs[name];
@@ -102,8 +101,8 @@ const chooseSelector = (
     nodeId: ObservationNodeId,
     uniqueness: UniqueIndex,
 ): { selector: string; strategy: CanonicalLocatorStrategy; fingerprint?: string; evidence: Evidence } | undefined => {
+    if (!Object.hasOwn(observation.nodes, nodeId)) {return undefined;}
     const node = observation.nodes[nodeId];
-    if (!node) {return undefined;}
     const attrs = observation.attributes[nodeId] ?? {};
     const fingerprint = observationLocatorFingerprint(observation, nodeId);
     const unique = (name: string, value: string | undefined) =>
@@ -163,15 +162,15 @@ const buildStructuralPath = (observation: PageObservation, nodeId: ObservationNo
     while (current) {
         if (visited.has(current)) {return undefined;}
         visited.add(current);
+        if (!Object.hasOwn(observation.nodes, current)) {return undefined;}
         const node = observation.nodes[current];
-        if (!node) {return undefined;}
         const tag = normalizeTag(node.tag);
         if (tag) {
             segments.push(`${tag}:nth-of-type(${nthOfType(observation, current, tag)})`);
         }
         const parentId: ObservationNodeId | undefined = observation.parents[current];
         if (!parentId) {break;}
-        if (observation.nodes[parentId]?.scopeId !== node.scopeId) {break;}
+        if (observation.nodes[parentId].scopeId !== node.scopeId) {break;}
         current = parentId;
     }
     return segments.length > 0 ? segments.reverse().join(' > ') : undefined;
@@ -182,7 +181,7 @@ const nthOfType = (observation: PageObservation, nodeId: ObservationNodeId, tag:
     if (!parent) {return 1;}
     let position = 0;
     for (const sibling of observation.children[parent] ?? []) {
-        if (normalizeTag(observation.nodes[sibling]?.tag) !== tag) {continue;}
+        if (normalizeTag(observation.nodes[sibling].tag) !== tag) {continue;}
         position += 1;
         if (sibling === nodeId) {return position;}
     }

@@ -36,7 +36,7 @@ export const resolveAtomicActionTarget = async (
     }
     const snapshot = selectorCapture?.snapshot ?? await captureControlSnapshot(page);
     const nodeId = request.nodeId ?? selectorCapture?.nodeId;
-    if (!nodeId || !snapshot.observation.nodes[nodeId]) {
+    if (!nodeId || !Object.hasOwn(snapshot.observation.nodes, nodeId)) {
         return failed(
             request.nodeId ? 'ERR_STALE' : 'ERR_UNRESOLVED',
             request.nodeId ? 'canonical node no longer exists' : 'selector could not be mapped to a canonical node',
@@ -57,10 +57,8 @@ export const resolveAtomicActionTarget = async (
         return failed('ERR_UNRESOLVED', 'canonical node does not expose the required capability', {
             nodeId,
             requiredCapabilities: required,
-            owningControls: (snapshot.controls.byNodeId[nodeId] ?? []).map((id) => {
-                const control = snapshot.controls.controls[id];
-                return control ? controlSummary(control) : { id };
-            }),
+            owningControls: (snapshot.controls.byNodeId[nodeId] ?? [])
+                .map((id) => controlSummary(snapshot.controls.controls[id])),
         });
     }
     if (controls.length > 1) {
@@ -72,7 +70,7 @@ export const resolveAtomicActionTarget = async (
     }
 
     const control = controls[0];
-    const actionNodeId = control ? chooseActionNode(control, nodeId, required) : nodeId;
+    const actionNodeId = chooseActionNode(control, nodeId, required);
     const locatorIds = snapshot.locators.byNodeId[actionNodeId] ?? [];
     if (locatorIds.length === 0) {
         return failed('ERR_UNRESOLVED', 'action node has no canonical locator', { nodeId, actionNodeId });

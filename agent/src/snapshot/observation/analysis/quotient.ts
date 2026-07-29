@@ -97,7 +97,7 @@ const collectRelationEndpointIds = (
     }
     for (const edgeIndex of edgeIndexes) {
         if (counter) {counter.edgeVisits += 1;}
-        const edge = relations.edges[edgeIndex];
+        const edge = relations.edges.at(edgeIndex);
         if (!edge) {continue;}
         endpoints.add(edge.sourceNodeId);
         edge.targetNodeIds.forEach((nodeId) => endpoints.add(nodeId));
@@ -120,7 +120,7 @@ const selectRetainedNodes = (
         }
     }
     for (const endpointId of relationEndpointIds) {
-        if (observation.nodes[endpointId]) {retained.add(endpointId);}
+        if (Object.hasOwn(observation.nodes, endpointId)) {retained.add(endpointId);}
     }
     return retained;
 };
@@ -154,14 +154,14 @@ const buildQuotientNodes = (
     });
 
 const isSemanticallyRelevant = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
+    if (!Object.hasOwn(observation.nodes, nodeId)) {return false;}
     const node = observation.nodes[nodeId];
     const attributes = observation.attributes[nodeId] ?? {};
-    if (!node) {return false;}
     if (SEMANTIC_TAGS.has(node.tag)) {return true;}
     if (normalize(attributes.role) || normalize(attributes.id)) {return true;}
     if (observation.accessibility[nodeId] || observation.runtimeState[nodeId]) {return true;}
     const hasText = Boolean(normalize(observation.text[nodeId]));
-    return hasText && ((observation.children[nodeId]?.length ?? 0) === 0 || INTERACTIVE_TAGS.has(node.tag));
+    return hasText && (observation.children[nodeId].length === 0 || INTERACTIVE_TAGS.has(node.tag));
 };
 
 const isAncestorOrSelf = (

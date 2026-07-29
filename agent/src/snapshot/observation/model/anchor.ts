@@ -10,8 +10,10 @@ export const createObservationAnchor = (
     observation: PageObservation,
     nodeId: ObservationNodeId,
 ): ObservationAnchor | undefined => {
+    if (!Object.hasOwn(observation.nodes, nodeId) || !Object.hasOwn(observation.domIdentity, nodeId)) {
+        return undefined;
+    }
     const identity = observation.domIdentity[nodeId];
-    if (!observation.nodes[nodeId] || !identity) {return undefined;}
     return {
         pageEpoch: observation.identity.pageEpoch,
         captureRevision: observation.identity.captureRevision,
@@ -74,7 +76,8 @@ const findByIdentity = (
     key: 'backendNodeId' | 'runtimeIdentityToken',
     value: string,
 ): ObservationNodeId[] => Object.keys(observation.nodes)
-    .filter((nodeId) => observation.domIdentity[nodeId]?.[key] === value)
+    .filter((nodeId) => Object.hasOwn(observation.domIdentity, nodeId)
+        && observation.domIdentity[nodeId][key] === value)
     .sort((left, right) =>
         (observation.documentOrder[left] ?? Number.MAX_SAFE_INTEGER)
         - (observation.documentOrder[right] ?? Number.MAX_SAFE_INTEGER));

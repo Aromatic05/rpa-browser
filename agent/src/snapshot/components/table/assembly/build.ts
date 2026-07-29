@@ -242,7 +242,7 @@ const buildRowWindow = (
     const attributes = observation.attributes[rootNodeId] ?? {};
     const totalCount = positiveInteger(attributes['aria-rowcount'] ?? attributes['data-total']);
     const startIndex = positiveInteger(attributes['aria-rowindex'] ?? attributes['data-start-index']);
-    const virtualized = /virtual/i.test(attributes.class ?? '')
+    const virtualized = /virtual/i.test(attributes.class)
         || (totalCount !== undefined && totalCount > visibleCount);
     return {
         visibleCount,
@@ -258,7 +258,7 @@ const primaryKeySuggestions = (
     cells: Readonly<Record<string, TableCell>>,
 ): TableComponent['suggestions'] => columns.flatMap((column) => {
     const columnCells = rows
-        .map((row) => row.cellIds.map((cellId) => cells[cellId]).find((cell) => cell?.columnId === column.id))
+        .map((row) => row.cellIds.map((cellId) => cells[cellId]).find((cell) => cell.columnId === column.id))
         .filter((cell): cell is TableCell => Boolean(cell));
     const values = columnCells.map((cell) => cell.text.trim()).filter(Boolean);
     const containsControls = columnCells.some((cell) => cell.controlIds.length > 0);
@@ -297,7 +297,6 @@ const buildTableOwnership = (
     for (const row of Object.values(rows)) {
         row.cellIds.forEach((cellId) => {
             const cell = cells[cellId];
-            if (!cell) {return;}
             edges.push({
                 owner: { kind: 'table-row', id: row.id },
                 member: { kind: 'table-cell', id: cell.id },

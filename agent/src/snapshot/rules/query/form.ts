@@ -63,11 +63,11 @@ export const executeFormQueryPlan = (
         const matchedFieldIds = step.source === 'node'
             ? fieldsForNodes(snapshot, matchedNodeIds)
             : unique(matchedComponentIds.flatMap((componentId) =>
-                snapshot.forms.forms[componentId]?.fields.map((field) => field.id) ?? []));
+                snapshot.forms.forms[componentId].fields.map((field) => field.id)));
         const matchedActionIds = step.source === 'node'
             ? actionsForNodes(snapshot, matchedNodeIds)
             : unique(matchedComponentIds.flatMap((componentId) =>
-                snapshot.forms.forms[componentId]?.actions.map((action) => action.id) ?? []));
+                snapshot.forms.forms[componentId].actions.map((action) => action.id)));
         const count = step.source === 'node' ? matchedNodeIds.length : matchedComponentIds.length;
         const binding: EntityRuleQueryBinding = {
             planStepId: step.planStepId,
@@ -123,7 +123,6 @@ const buildWithinNodeSet = (
     }
     for (const componentId of binding.matchedComponentIds) {
         const form = snapshot.forms.forms[componentId];
-        if (!form) {continue;}
         output.add(form.location.structuralRootNodeId);
         descendants(snapshot.observation, form.location.structuralRootNodeId)
             .forEach((nodeId) => output.add(nodeId));

@@ -19,7 +19,7 @@ export const validateTableComponentIndex = (
     });
 
     for (const table of Object.values(index.tables)) {
-        if (!observation.nodes[table.location.structuralRootNodeId]) {
+        if (!Object.hasOwn(observation.nodes, table.location.structuralRootNodeId)) {
             add('table.root.missing', `table root is missing: ${table.id}`);
         }
         const columnIds = new Set(table.columns.map((column) => column.id));
@@ -31,24 +31,23 @@ export const validateTableComponentIndex = (
                 add('table.row.index-missing', `canonical row is missing from RowIndex: ${row.id}`, [row.nodeId]);
             }
             for (const cellId of row.cellIds) {
-                const cell = index.cells[cellId];
-                if (!cell) {
+                if (!Object.hasOwn(index.cells, cellId)) {
                     add('table.cell.index-missing', `cell is missing from CellIndex: ${cellId}`, [row.nodeId]);
                     continue;
                 }
+                const cell = index.cells[cellId];
                 if (!columnIds.has(cell.columnId)) {
                     add('table.cell.column-missing', `cell references unknown column: ${cell.id}`, [cell.nodeId]);
                 }
                 for (const controlId of cell.controlIds) {
-                    if (!controls.controls[controlId]) {
+                    if (!Object.hasOwn(controls.controls, controlId)) {
                         add('table.cell.control-missing', `cell references unknown control: ${controlId}`, [cell.nodeId]);
                     }
                 }
             }
         }
         for (const editor of table.editors) {
-            const cell = index.cells[editor.cellId];
-            if (!cell) {
+            if (!Object.hasOwn(index.cells, editor.cellId)) {
                 add('table.editor.cell-missing', `editor references unknown cell: ${editor.cellId}`, editor.sourceNodeIds);
                 continue;
             }
@@ -56,7 +55,7 @@ export const validateTableComponentIndex = (
                 add('table.editor.control-empty', `resolved editor has no controls: ${editor.cellId}`, editor.portalNodeIds);
             }
             for (const controlId of editor.controlIds) {
-                if (!controls.controls[controlId]) {
+                if (!Object.hasOwn(controls.controls, controlId)) {
                     add('table.editor.control-missing', `editor references unknown control: ${controlId}`, editor.portalNodeIds);
                 }
             }

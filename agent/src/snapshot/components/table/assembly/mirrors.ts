@@ -51,7 +51,7 @@ export const buildTableMirrors = (
                 mirrorCellNodeIds.forEach((mirrorNodeId) => {
                     const canonicalCell = canonicalRow.cellIds
                         .map((cellId) => cells[cellId])
-                        .find((cell) => cell?.nodeId === mirrorNodeId);
+                        .find((cell) => cell.nodeId === mirrorNodeId);
                     if (canonicalCell) {
                         mirrors.push(resolvedMirror(partKind, 'cell', mirrorNodeId, canonicalCell.id, 'table.mirror.fixed-source'));
                     }
@@ -63,7 +63,7 @@ export const buildTableMirrors = (
                 .filter((cell): cell is TableCell => Boolean(cell))
                 .sort((left, right) => left.columnIndex - right.columnIndex);
             mirrorCellNodeIds.forEach((mirrorNodeId, index) => {
-                const canonicalCell = canonicalCells[index];
+                const canonicalCell = canonicalCells.at(index);
                 mirrors.push(canonicalCell
                     ? resolvedMirror(partKind, 'cell', mirrorNodeId, canonicalCell.id, 'table.mirror.position')
                     : unresolvedMirror(partKind, 'cell', mirrorNodeId));
@@ -182,8 +182,10 @@ const unresolvedMirror = (
 
 const rowKey = (observation: PageObservation, rowNodeId: ObservationNodeId): string | undefined => {
     const attributes = observation.attributes[rowNodeId] ?? {};
-    return [attributes['data-row-key'], attributes['row-key'], attributes.key, attributes['aria-rowindex']]
-        .map((value) => value?.trim())
+    return ['data-row-key', 'row-key', 'key', 'aria-rowindex']
+        .map((name) => attributes[name])
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
         .find(Boolean);
 };
 

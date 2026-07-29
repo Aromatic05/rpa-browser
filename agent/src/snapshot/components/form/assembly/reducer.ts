@@ -9,7 +9,7 @@ export const reduceBottomUp = <T>(
     reducer: BottomUpReducer<T>,
     createEmpty: () => T,
 ): T[] => observation.scopes.rootScopeIds.map((scopeId) => {
-    const rootNodeId = observation.scopes.scopes[scopeId]?.rootNodeId;
+    const rootNodeId = observation.scopes.scopes[scopeId].rootNodeId;
     return rootNodeId ? reduceNode(observation, rootNodeId, reducer) : createEmpty();
 });
 

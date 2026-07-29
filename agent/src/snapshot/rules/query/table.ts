@@ -61,11 +61,11 @@ export const executeTableQueryPlan = (
         const matchedRowIds = step.source === 'node'
             ? rowsForNodes(snapshot, matchedNodeIds)
             : unique(matchedComponentIds.flatMap((componentId) =>
-                snapshot.tables.tables[componentId]?.body.visibleRows.map((row) => row.id) ?? []));
+                snapshot.tables.tables[componentId].body.visibleRows.map((row) => row.id)));
         const matchedColumnIds = step.source === 'node'
             ? columnsForNodes(snapshot, matchedNodeIds)
             : unique(matchedComponentIds.flatMap((componentId) =>
-                snapshot.tables.tables[componentId]?.columns.map((column) => column.id) ?? []));
+                snapshot.tables.tables[componentId].columns.map((column) => column.id)));
         const count = step.source === 'node' ? matchedNodeIds.length : matchedComponentIds.length;
         const binding: EntityRuleQueryBinding = {
             planStepId: step.planStepId,
@@ -162,7 +162,6 @@ const buildWithinNodeSet = (
     });
     binding.matchedComponentIds.forEach((componentId) => {
         const table = snapshot.tables.tables[componentId];
-        if (!table) {return;}
         output.add(table.location.structuralRootNodeId);
         descendants(snapshot.observation, table.location.structuralRootNodeId)
             .forEach((nodeId) => output.add(nodeId));
@@ -181,7 +180,7 @@ const rowsForNodes = (snapshot: TableSnapshot, nodeIds: readonly ObservationNode
     const nodeSet = new Set(nodeIds);
     return Object.values(snapshot.tables.rows)
         .filter((row) => nodeSet.has(row.nodeId)
-            || row.cellIds.some((cellId) => nodeSet.has(snapshot.tables.cells[cellId]?.nodeId)))
+            || row.cellIds.some((cellId) => nodeSet.has(snapshot.tables.cells[cellId].nodeId)))
         .map((row) => row.id);
 };
 

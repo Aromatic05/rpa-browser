@@ -9,8 +9,8 @@ export const observationLocatorFingerprint = (
     observation: PageObservation,
     nodeId: ObservationNodeId,
 ): string => JSON.stringify({
-    tag: observation.nodes[nodeId]?.tag ?? '',
-    attributes: ATTRIBUTE_NAMES.map((name) => observation.attributes[nodeId]?.[name] ?? ''),
+    tag: observation.nodes[nodeId].tag,
+    attributes: ATTRIBUTE_NAMES.map((name) => readAttribute(observation.attributes[nodeId], name)),
     text: normalizeText(observation.text[nodeId]),
 });
 
@@ -30,3 +30,6 @@ export const liveLocatorFingerprint = async (locator: Locator): Promise<string> 
 }, [...ATTRIBUTE_NAMES]);
 
 const normalizeText = (value: string | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim();
+
+const readAttribute = (attributes: Readonly<Record<string, string | undefined>>, name: string): string =>
+    attributes[name] ?? '';

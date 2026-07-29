@@ -113,12 +113,14 @@ const controlsWithinTarget = (
 const sourceIsCustomSelect = (controls: ControlIndex, sourceNodeId: ObservationNodeId): boolean =>
     (controls.byNodeId[sourceNodeId] ?? [])
         .map((controlId) => controls.controls[controlId])
-        .some((control) => control?.kind === 'custom_select');
+        .some((control) => control.kind === 'custom_select');
 
-const targetRole = (observation: PageObservation, nodeId: ObservationNodeId): string =>
-    (observation.attributes[nodeId]?.role
+const targetRole = (observation: PageObservation, nodeId: ObservationNodeId): string => {
+    const attributes: Readonly<Record<string, string | undefined>> = observation.attributes[nodeId];
+    return (attributes.role
         ?? observation.accessibility[nodeId]?.role
         ?? observation.runtimeState[nodeId]?.role
         ?? '').trim().toLowerCase();
+};
 
 const unique = <T>(values: readonly T[]): T[] => [...new Set(values)];

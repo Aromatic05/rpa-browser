@@ -154,7 +154,8 @@ const describeUnknown = (value: unknown): string => {
     if (value === undefined) {return 'undefined';}
     if (value === null) {return 'null';}
     try {
-        return JSON.stringify(value) ?? typeof value;
+        const serialized = JSON.stringify(value);
+        return typeof serialized === 'string' ? serialized : typeof value;
     } catch {
         return Object.prototype.toString.call(value);
     }

@@ -19,13 +19,15 @@ const walkScope = (
     parentPath: string | undefined,
     output: Record<string, string>,
 ) => {
+    if (!Object.hasOwn(observation.nodes, nodeId)) {return;}
     const node = observation.nodes[nodeId];
-    if (!node) {return;}
     const tag = normalizeTag(node.tag);
     const currentPath = tag
         ? appendPath(parentPath, `${tag}:nth-of-type(${computeNthOfType(observation, nodeId, tag)})`)
         : parentPath;
-    const backendNodeId = observation.domIdentity[nodeId]?.backendNodeId;
+    const backendNodeId = Object.hasOwn(observation.domIdentity, nodeId)
+        ? observation.domIdentity[nodeId].backendNodeId
+        : undefined;
     if (backendNodeId && currentPath) {
         output[backendNodeId] = currentPath;
     }
@@ -43,7 +45,7 @@ const computeNthOfType = (
     if (!parentNodeId) {return 1;}
     let position = 0;
     for (const siblingNodeId of observation.children[parentNodeId] ?? []) {
-        if (normalizeTag(observation.nodes[siblingNodeId]?.tag) !== tag) {continue;}
+        if (normalizeTag(observation.nodes[siblingNodeId].tag) !== tag) {continue;}
         position += 1;
         if (siblingNodeId === nodeId) {return position;}
     }

@@ -66,7 +66,7 @@ export const buildHeader = (
             .filter((candidate) => candidate.rowIndex < cell.rowIndex)
             .filter((candidate) => candidate.rowIndex + candidate.rowSpan === cell.rowIndex)
             .filter((candidate) => containsColumnRange(candidate, cell))
-            .sort((left, right) => right.rowIndex - left.rowIndex || left.columnSpan - right.columnSpan)[0];
+            .sort((left, right) => right.rowIndex - left.rowIndex || left.columnSpan - right.columnSpan).at(0);
         if (!parent) {continue;}
         cell.parentCellId = parent.id;
         parent.childCellIds.push(cell.id);

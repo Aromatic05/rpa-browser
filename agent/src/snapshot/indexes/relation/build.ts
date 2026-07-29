@@ -38,7 +38,6 @@ export const buildRelationIndex = (
         if (counter) {counter.nodeVisits += 1;}
         const attributes = observation.attributes[sourceNodeId] ?? {};
         const sourceNode = observation.nodes[sourceNodeId];
-        if (!sourceNode) {continue;}
         for (const definition of IDREF_RELATIONS) {
             if (definition.kind === 'label-for' && sourceNode.tag !== 'label') {continue;}
             const rawValue = normalize(attributes[definition.attribute]);
@@ -81,8 +80,7 @@ const buildScopeLocalDomIdIndex = (
     for (const nodeId of orderedNodeIds(observation)) {
         if (counter) {counter.nodeVisits += 1;}
         const node = observation.nodes[nodeId];
-        if (!node) {continue;}
-        const domId = normalize(observation.attributes[nodeId]?.id);
+        const domId = normalize(observation.attributes[nodeId].id);
         if (!domId) {continue;}
         const scopeIndex = result.get(node.scopeId) ?? new Map<string, ObservationNodeId[]>();
         const bucket = scopeIndex.get(domId) ?? [];

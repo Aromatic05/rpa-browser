@@ -169,8 +169,8 @@ export const descendants = (
 
 export const isActiveNode = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
     const activity = observation.activity[nodeId];
-    return Boolean(activity && activity.rendered && !activity.hiddenByStyle && !activity.inert
-        && activity.subtreeActive && activity.ariaExposed !== false);
+    return activity.rendered && !activity.hiddenByStyle && !activity.inert
+        && activity.subtreeActive && activity.ariaExposed !== false;
 };
 
 export const normalize = (value: string | undefined): string => (value ?? '').trim();

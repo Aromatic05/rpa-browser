@@ -143,7 +143,7 @@ const readEditableValue = async (locator: Locator): Promise<string> => await loc
     if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
         return node.value;
     }
-    if (node instanceof HTMLElement && node.isContentEditable) {return node.textContent ?? '';}
+    if (node instanceof HTMLElement && node.isContentEditable) {return node.textContent;}
     return '';
 });
 

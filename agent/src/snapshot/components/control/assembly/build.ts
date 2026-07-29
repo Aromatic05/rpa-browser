@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Canonical control assembly accepts partial browser and fixture indexes; defensive missing-entry checks must remain runtime-visible. */
 import type {
     AnalysisDiagnostic,
     Evidence,
@@ -629,9 +630,9 @@ const canExecute = (component: ControlComponent, locators: LocatorIndex, observa
         : [component.triggerNodeId ?? component.controlNodeId ?? component.rootNodeId];
     return candidateNodeIds.some((nodeId) => {
         const activity = observation.activity[nodeId];
-        return Boolean(activity && activity.rendered && !activity.hiddenByStyle && !activity.inert
+        return activity.rendered && !activity.hiddenByStyle && !activity.inert
             && activity.selfHasBox && activity.subtreeActive && activity.ariaExposed !== false
-            && (locators.byNodeId[nodeId] ?? []).some((locatorId) => locators.locators[locatorId]?.status === 'resolved'));
+            && (locators.byNodeId[nodeId] ?? []).some((locatorId) => locators.locators[locatorId]?.status === 'resolved');
     });
 };
 
@@ -678,8 +679,8 @@ const nearestAncestorWithClass = (
 
 const isNodeInteractable = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
     const activity = observation.activity[nodeId];
-    return Boolean(activity && activity.rendered && !activity.hiddenByStyle && !activity.inert
-        && activity.selfHasBox && activity.subtreeActive);
+    return activity.rendered && !activity.hiddenByStyle && !activity.inert
+        && activity.selfHasBox && activity.subtreeActive;
 };
 
 const hasControlForNodeKind = (

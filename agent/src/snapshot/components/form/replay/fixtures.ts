@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Replay files are untrusted JSON; runtime schema checks intentionally repeat constraints expressed by TypeScript types. */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { FormFixture } from './contracts';

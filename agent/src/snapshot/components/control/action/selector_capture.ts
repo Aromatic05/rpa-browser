@@ -38,7 +38,7 @@ export const captureSelectorTarget = async (
     try {
         const snapshot = await captureControlSnapshot(page);
         const nodeIds = Object.keys(snapshot.observation.nodes).filter((nodeId) =>
-            snapshot.observation.attributes[nodeId]?.[TARGET_ATTRIBUTE] === token);
+            snapshot.observation.attributes[nodeId][TARGET_ATTRIBUTE] === token);
         if (nodeIds.length !== 1) {
             return failure(
                 nodeIds.length > 1 ? 'ERR_AMBIGUOUS' : 'ERR_UNRESOLVED',

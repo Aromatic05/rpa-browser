@@ -117,12 +117,12 @@ const countJoinMissing = (
     for (const nodeId of Object.keys(observation.nodes)) {
         if (ambiguousNodeIds.has(nodeId)) {continue;}
         if (source === 'a11y') {
-            if (observation.domIdentity[nodeId]?.backendNodeId && !observation.accessibility[nodeId]) {
+            if (observation.domIdentity[nodeId].backendNodeId && !observation.accessibility[nodeId]) {
                 count += 1;
             }
             continue;
         }
-        if (observation.domIdentity[nodeId]?.runtimeIdentityToken && !observation.runtimeState[nodeId]) {
+        if (observation.domIdentity[nodeId].runtimeIdentityToken && !observation.runtimeState[nodeId]) {
             count += 1;
         }
     }

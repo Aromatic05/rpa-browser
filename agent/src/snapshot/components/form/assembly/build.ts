@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Form assembly accepts partial browser and fixture indexes; defensive missing-entry checks preserve diagnostics instead of throwing. */
 import type {
     AnalysisDiagnostic,
     AssemblyStatus,
@@ -867,10 +868,10 @@ const isActiveDialog = (observation: PageObservation, nodeId: ObservationNodeId)
     const role = resolveSemanticRole(observation, nodeId).value;
     const activity = observation.activity[nodeId];
     return (role === 'dialog' || role === 'alertdialog')
-        && Boolean(activity?.rendered)
-        && !activity?.hiddenByStyle
-        && !activity?.inert
-        && activity?.ariaExposed !== false;
+        && activity.rendered
+        && !activity.hiddenByStyle
+        && !activity.inert
+        && activity.ariaExposed !== false;
 };
 
 const hasBoundaryAncestor = (

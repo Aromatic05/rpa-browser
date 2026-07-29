@@ -29,10 +29,8 @@ export const buildControlSlots = (
     for (const row of rows) {
         for (const cellId of row.cellIds) {
             const cell = cells[cellId];
-            if (!cell) {continue;}
             cell.controlIds.forEach((controlId, structuralPosition) => {
                 const control = controls.controls[controlId];
-                if (!control) {return;}
                 const key = `${cell.columnId}|${structuralPosition}|${control.kind}`;
                 const bucket = occurrences.get(key) ?? [];
                 bucket.push({
@@ -68,11 +66,11 @@ export const buildControlSlots = (
 
     const rowExceptions = rows.flatMap((row) => {
         const controlIds = row.cellIds
-            .flatMap((cellId) => cells[cellId]?.controlIds ?? [])
+            .flatMap((cellId) => cells[cellId].controlIds)
             .filter((controlId) => !slottedControlIds.has(controlId));
         if (controlIds.length === 0) {return [];}
         const nodeIds = controlIds
-            .map((controlId) => controls.controls[controlId]?.rootNodeId)
+            .map((controlId) => controls.controls[controlId].rootNodeId)
             .filter((nodeId): nodeId is string => Boolean(nodeId));
         return [{
             rowId: row.id,

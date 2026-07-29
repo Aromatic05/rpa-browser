@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Observation fixtures are untrusted JSON; runtime schema checks intentionally repeat static constraints. */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ObservationFixture } from './contracts';

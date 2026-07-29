@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Page-evaluated runtime-state payloads are untrusted and require defensive shape checks. */
 import type {
     Frame,
     Page } from 'playwright'; import type { ObservationSourceStatus,

@@ -19,12 +19,12 @@ export const resolveSemanticRole = (
     if (accessibilityRole) {
         return { value: accessibilityRole, source: 'a11y', strength: 'strong' };
     }
-    const domRole = normalize(observation.attributes[nodeId]?.role).toLowerCase();
+    const domRole = normalize(observation.attributes[nodeId].role).toLowerCase();
     if (domRole) {
         return { value: domRole, source: 'dom', strength: 'strong' };
     }
     return {
-        value: normalize(observation.nodes[nodeId]?.tag).toLowerCase(),
+        value: normalize(observation.nodes[nodeId].tag).toLowerCase(),
         source: 'dom',
         strength: 'exact',
     };

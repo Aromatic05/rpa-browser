@@ -18,7 +18,7 @@ export const buildFeatureCover = (
                 row,
                 newlyCovered: [...(featuresByRow.get(row.id) ?? [])].filter((feature) => uncovered.has(feature)),
             }))
-            .sort((left, right) => right.newlyCovered.length - left.newlyCovered.length || left.row.index - right.row.index)[0];
+            .sort((left, right) => right.newlyCovered.length - left.newlyCovered.length || left.row.index - right.row.index).at(0);
         if (!candidate || candidate.newlyCovered.length === 0) {break;}
         representativeRowIds.push(candidate.row.id);
         candidate.newlyCovered.forEach((feature) => uncovered.delete(feature));
@@ -46,7 +46,7 @@ const rowFeatures = (
         result.add(`cell:${cell.columnIndex}:span:${cell.columnSpan}x${cell.rowSpan}`);
         const multiplicity = new Map<string, number>();
         cell.controlIds.forEach((controlId, position) => {
-            const kind = controls.controls[controlId]?.kind ?? 'unknown';
+            const kind = controls.controls[controlId].kind;
             result.add(`control:${cell.columnIndex}:${position}:${kind}`);
             multiplicity.set(kind, (multiplicity.get(kind) ?? 0) + 1);
         });

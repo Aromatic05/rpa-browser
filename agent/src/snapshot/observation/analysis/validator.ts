@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Invariant validation intentionally probes malformed and partial observations that violate the static happy-path contracts. */
 import type {
     ObservationPassCounter,
     AnalysisDiagnostic,
