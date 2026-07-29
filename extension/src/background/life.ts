@@ -105,7 +105,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             { tabName: bindingName, workspaceName },
             { timeoutMs: 1200 },
         );
-        return result.ok && result.data.ok === true;
+        return result.ok && result.data.ok;
     };
 
     const focusChromeTab = async (chromeTabNo: number) => {
@@ -184,7 +184,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             }
         }
         if (!urlHint) {
-            if (!tab) {tab = await chrome.tabs.get(chromeTabNo);}
+            tab ??= await chrome.tabs.get(chromeTabNo);
             urlHint = tab.url ?? '';
         }
 

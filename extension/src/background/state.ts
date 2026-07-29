@@ -132,7 +132,7 @@ export const createRouterState = (logger?: Logger): RouterState => {
         restore: (snapshot: RouterStateSnapshot) => {
             tabState.clear();
             bindingNameToWorkspaceTab.clear();
-            for (const tab of snapshot.tabs || []) {
+            for (const tab of snapshot.tabs) {
                 if (!Number.isInteger(tab.chromeTabNo) || !tab.bindingName) {continue;}
                 tabState.set(tab.chromeTabNo, {
                     bindingName: tab.bindingName,
@@ -141,7 +141,7 @@ export const createRouterState = (logger?: Logger): RouterState => {
                     updatedAt: typeof tab.updatedAt === 'number' ? tab.updatedAt : Date.now(),
                 });
             }
-            for (const binding of snapshot.bindings || []) {
+            for (const binding of snapshot.bindings) {
                 if (!binding.bindingName || !binding.workspaceName || !binding.tabName) {continue;}
                 bindingNameToWorkspaceTab.set(binding.bindingName, {
                     workspaceName: binding.workspaceName,

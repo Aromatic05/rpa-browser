@@ -37,7 +37,7 @@ export const mkActionDispatchFailed = (replyTo: string | undefined, code: string
 });
 
 export const mkRequestFailedReply = (requestType: string, requestId: string | undefined, code: string, message: string): Action =>
-    failedAction({ id: requestId || crypto.randomUUID(), type: requestType }, code, message);
+    failedAction({ id: requestId ?? crypto.randomUUID(), type: requestType }, code, message);
 
 export type ErrorResult = {
     ok: false;

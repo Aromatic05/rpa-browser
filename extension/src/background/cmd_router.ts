@@ -3,7 +3,7 @@ import type { Action } from '../shared/types.js';
 import { ACTION_TYPES } from '../actions/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import type { WsClient } from '../actions/ws_client.js';
-import { createRouterState } from './state.js';
+import { createRouterState, type RouterState } from './state.js';
 import { createLifecycleRuntime } from './life.js';
 import { dispatchActionRequest } from '../actions/dispatcher.js';
 import { projectInboundAction } from './projection.js';
@@ -13,6 +13,32 @@ export type CmdRouterOptions = {
     sessionWorkspaceName: string;
     onRefresh: () => void;
     logger?: Logger;
+};
+
+
+type LifecycleRuntime = ReturnType<typeof createLifecycleRuntime>;
+
+export type CmdRouter = {
+    handleInboundAction: (action: Action) => void;
+    handleTabClose: (action: Action) => Promise<void>;
+    resolveActionTargetTabName: (action: Action) => number | null;
+    handleMessage: (
+        message: unknown,
+        sender: chrome.runtime.MessageSender,
+        sendResponse: (payload?: unknown) => void,
+    ) => true | undefined;
+    onActivated: (info: chrome.tabs.TabActiveInfo) => void;
+    onRemoved: LifecycleRuntime['onRemoved'];
+    onUpdated: (chromeTabNo: number, changeInfo: chrome.tabs.TabChangeInfo, tab?: chrome.tabs.Tab) => void;
+    onCreated: (tab: chrome.tabs.Tab) => void;
+    onAttached: LifecycleRuntime['onAttached'];
+    onFocusChanged: LifecycleRuntime['onFocusChanged'];
+    onWindowRemoved: LifecycleRuntime['onWindowRemoved'];
+    onStartup: LifecycleRuntime['onStartup'];
+    onInstalled: LifecycleRuntime['onInstalled'];
+    bootstrapState: () => Promise<void>;
+    snapshotState: RouterState['snapshot'];
+    restoreState: RouterState['restore'];
 };
 
 type TypedRuntimeMessage = {
@@ -47,7 +73,7 @@ const shouldRefreshAfterContentAction = (action: Record<string, unknown>): boole
         && actionType === ACTION_TYPES.RECORD_SAVE;
 };
 
-export const createCmdRouter = (options: CmdRouterOptions) => {
+export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
     const log = options.logger ?? createLogger('sw');
     const state = createRouterState(log);
 
@@ -109,9 +135,9 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const handleTabClose = async (action: Action) => {
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
-        if (!tabName) return;
+        if (!tabName) {return;}
         const chromeTabNo = state.findChromeTabNoByBindingName(tabName);
-        if (typeof chromeTabNo !== 'number') return;
+        if (typeof chromeTabNo !== 'number') {return;}
         await chrome.tabs.remove(chromeTabNo);
     };
 
@@ -139,12 +165,12 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
             const url = typeof typedMessage.url === 'string' ? typedMessage.url : sender.tab?.url ?? '';
             (async () => {
-                let bindingName = state.getTabState(chromeTabNo)?.bindingName?.trim() ?? '';
+                let bindingName = state.getTabState(chromeTabNo)?.bindingName.trim() ?? '';
                 if (!bindingName) {
                     const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName.trim() : '';
                     const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
                     const ensured = inflight ? await inflight : await life.ensureBoundTabRef(chromeTabNo, windowId, preferredBindingName);
-                    bindingName = ensured?.bindingName?.trim() ?? '';
+                    bindingName = ensured?.bindingName.trim() ?? '';
                 }
                 if (bindingName) {
                     state.upsertTab(chromeTabNo, bindingName, url, windowId);

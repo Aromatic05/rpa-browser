@@ -88,7 +88,7 @@ const readSessionConfig = async (): Promise<SessionConfig> => {
     await persistSessionConfig(fromUrl);
     const values = await chrome.storage.local.get(['rpaWorkspaceName', 'rpaWsPort']);
     const workspaceName = typeof values.rpaWorkspaceName === 'string' ? values.rpaWorkspaceName.trim() : '';
-    const rawWsPort = values.rpaWsPort;
+    const rawWsPort = values.rpaWsPort as unknown;
     const wsPort = typeof rawWsPort === 'number' ? rawWsPort : typeof rawWsPort === 'string' ? Number(rawWsPort) : NaN;
     if (!workspaceName || !Number.isInteger(wsPort) || wsPort <= 0) {
         throw new Error('session config unavailable');
@@ -110,7 +110,7 @@ const parseWsReply = <TData = unknown>(value: unknown): ActionResult<TData> => {
     if (!isRecord(value)) {
         return { ok: false, error: { message: 'invalid action reply' } };
     }
-    const type = asString(value.type) || '';
+    const type = asString(value.type) ?? '';
     const payload = value.payload;
     if (type.endsWith('.result')) {
         return { ok: true, data: payload as TData };
@@ -120,7 +120,7 @@ const parseWsReply = <TData = unknown>(value: unknown): ActionResult<TData> => {
         return {
             ok: false,
             error: {
-                message: asString(errorPayload.message) || 'action failed',
+                message: asString(errorPayload.message) ?? 'action failed',
             },
         };
     }
@@ -336,9 +336,9 @@ const refreshWorkflowList = async (workspaceScoped?: boolean) => {
         renderWorkflowList([]);
         return;
     }
-    const workflows = Array.isArray(result.data?.workflows) ? result.data?.workflows : [];
-    renderWorkflowList(workflows || [], workspaceScoped);
-    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String((workflows || []).length)})`;}
+    const workflows = result.data && Array.isArray(result.data.workflows) ? result.data.workflows : [];
+    renderWorkflowList(workflows, workspaceScoped);
+    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String(workflows.length)})`;}
 };
 
 void (async () => {

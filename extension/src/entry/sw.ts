@@ -134,11 +134,11 @@ const initializeRuntime = async () => {
         });
     }
 
-    const buildId = chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version;
+    const buildId = chrome.runtime.getManifest().version_name ?? chrome.runtime.getManifest().version;
     (globalThis as DevWorkerGlobal).__rpaDevRuntime = {
         buildId,
         prepareReload: async () => {
-            const snapshot = router!.snapshotState();
+            const snapshot = router.snapshotState();
             await chrome.storage.local.set({[DEV_ROUTER_STATE_KEY]: snapshot});
             return {buildId, tabCount: snapshot.tabs.length, snapshot};
         },

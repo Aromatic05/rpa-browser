@@ -10,7 +10,7 @@ export type PreparedPanelAction = {
     address?: PanelActionAddress;
 };
 const UUIDorUnsafe = (): string => {
-    if (typeof globalThis.crypto?.randomUUID === 'function') {
+    if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
     }
     const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');

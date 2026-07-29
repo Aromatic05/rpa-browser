@@ -159,7 +159,7 @@ await log('annotator panel drives the session without DOM target recovery', asyn
         },
     };
     const session = {
-        getState: () => structuredClone(state),
+        getState: () => globalThis.structuredClone(state),
         setDraft: (draft) => {state = {...state, draft, profileName: draft.profileName}; calls.push(['setDraft', draft.profileName]);},
         open: async (name) => {calls.push(['open', name]);},
         recognize: async () => {calls.push(['recognize']);},

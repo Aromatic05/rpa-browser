@@ -8,10 +8,6 @@
  * - 仅处理 UI 与消息，不做持久化。
  */
 
-interface Window {
-    __rpaTokenInjected?: boolean;
-}
-
 type ActionScopeInput = {
     workspaceName?: string;
     tabName?: string;
@@ -55,7 +51,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isOrdinaryPageUrl = (url: string): boolean =>
     url.startsWith('http://') || url.startsWith('https://');
 const UUIDorUnsafe = (): string => {
-    if (typeof globalThis.crypto?.randomUUID === 'function') {
+    if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
     }
     const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
@@ -155,7 +151,7 @@ const loadFloatingUI = (() => {
                 });
                 return result;
             })();
-        return tokenReady!;
+        return tokenReady;
     };
     const bindReportOnUrlChange = () => {
         const emit = () => {
@@ -207,7 +203,7 @@ const loadFloatingUI = (() => {
                     sessionStorage.setItem('__rpa_tab_name', tabName);
                     sessionStorage.setItem('__rpa_tab_name_confirmed', '1');
                     window.name = `__RPA_TAB_NAME__:${tabName}`;
-                    (window as any).__rpa_tab_name = tabName;
+                    window.__rpa_tab_name = tabName;
                     currentBinding = {tabName, workspaceName};
                     tokenReady = Promise.resolve(currentBinding);
                     sendResponse({ ok: true, tabName, workspaceName, url: location.href });
@@ -263,7 +259,6 @@ const loadFloatingUI = (() => {
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
-                const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
                 const normalizedPayload =
                     type === 'record.event'
                         ? {
