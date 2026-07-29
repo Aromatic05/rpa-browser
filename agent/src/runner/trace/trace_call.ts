@@ -83,14 +83,17 @@ const mapTraceError = (error: unknown): ToolError => {
     return { code: 'ERR_UNKNOWN', message: 'unknown', phase: 'trace', details: error };
 };
 
-const isToolErrorLike = (error: unknown): error is ToolError => {
-    if (!error || typeof error !== 'object') {return false;}
-    const candidate = error as ToolError;
-    return typeof candidate.code === 'string' && typeof candidate.message === 'string' && candidate.phase === 'trace';
-};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
 
-const isAmbiguousError = (message: string) =>
+const isToolErrorLike = (error: unknown): error is ToolError =>
+    isRecord(error)
+    && typeof error.code === 'string'
+    && typeof error.message === 'string'
+    && error.phase === 'trace';
+
+const isAmbiguousError = (message: string): boolean =>
     /strict mode|multiple elements|ambiguous|matches\\s+\\d+\\s+elements/i.test(message);
 
-const isBadArgsError = (message: string) =>
+const isBadArgsError = (message: string): boolean =>
     /cannot be filled|not editable|not an? (input|textarea|select)|missing required/i.test(message);

@@ -499,7 +499,6 @@ const extractFrameSubtree = async (frame: Frame, idPrefix: string): Promise<DomT
                 };
 
                 const root = document.documentElement;
-                if (!root) {return null;}
                 return build(root, `${prefix}.0`);
             },
             { prefix: idPrefix },

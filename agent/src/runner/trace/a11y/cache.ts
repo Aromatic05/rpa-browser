@@ -3,7 +3,7 @@ import { getLogger } from '../../../logging/logger';
 
 const log = getLogger('trace');
 
-export const invalidateA11yCache = (cache: TraceCache, reason: string, tags?: TraceTags) => {
+export const invalidateA11yCache = (cache: TraceCache, reason: string, tags?: TraceTags): void => {
     delete cache.a11ySnapshotRaw;
     delete cache.a11yNodeMap;
     delete cache.a11yTree;
