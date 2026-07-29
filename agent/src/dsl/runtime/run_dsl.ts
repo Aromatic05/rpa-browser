@@ -199,7 +199,7 @@ const previewValue = (value: unknown): unknown => {
     }
     return {
         type: Array.isArray(value) ? 'array' : 'object',
-        keys: Object.keys(value as Record<string, unknown>),
+        keys: Object.keys(value),
     };
 };
 
@@ -220,5 +220,7 @@ const safeLog = (logger: Logger, level: 'debug' | 'error', event: string, payloa
             return;
         }
         logger.error(event, payload);
-    } catch {}
+    } catch {
+        // Logging must never affect DSL execution.
+    }
 };

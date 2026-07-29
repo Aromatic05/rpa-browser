@@ -54,11 +54,20 @@ const toTargetArgs = (target: unknown): Pick<Step<'browser.click'>['args'], 'nod
     throw new DslRuntimeError('action target did not resolve to nodeId/selector/resolveId');
 };
 
+const toActionText = (value: unknown): string => {
+    if (value === null || value === undefined) {return '';}
+    if (typeof value === 'string') {return value;}
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+        return String(value);
+    }
+    throw new DslRuntimeError('action value must resolve to a primitive');
+};
+
 export const buildFillStep = (target: unknown, value: unknown): Step<'browser.fill'> => {
     const targetArgs = toTargetArgs(target);
     return createStep('browser.fill', {
         ...targetArgs,
-        value: String(value ?? ''),
+        value: toActionText(value),
     });
 };
 
@@ -71,7 +80,7 @@ export const buildTypeStep = (target: unknown, value: unknown): Step<'browser.ty
     const targetArgs = toTargetArgs(target);
     return createStep('browser.type', {
         ...targetArgs,
-        text: String(value ?? ''),
+        text: toActionText(value),
     });
 };
 
@@ -80,7 +89,7 @@ export const buildSelectStep = (target: unknown, value: unknown): Step<'browser.
     return createStep('browser.select_option', {
         ...targetArgs,
         kind: 'native_select',
-        values: [String(value ?? '')],
+        values: [toActionText(value)],
     });
 };
 

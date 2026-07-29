@@ -1,4 +1,3 @@
-import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { WorkspaceServiceStatus } from '../runtime/service/types';
 import type { PortAllocator } from '../runtime/service/ports';
 import type { WorkspaceTabs } from '../runtime/workspace/tabs';
@@ -6,7 +5,7 @@ import type { RunStepsDeps } from '../runner/run_steps_types';
 import type { RunnerConfig } from '../config';
 import { createWorkspaceToolHandlers } from './tool_handlers';
 import { resolveEnabledToolNames, getToolSpecs } from './tool_registry';
-import { createMcpHttpServer, stopMcpHttpServer } from './server_runtime';
+import { createMcpHttpServer } from './server_runtime';
 import type { McpToolHandler } from './tool_handlers';
 
 export type WorkspaceMcpRuntime = {
@@ -27,7 +26,6 @@ const SERVICE_NAME = 'mcp';
 
 export const createWorkspaceMcpRuntime = (deps: WorkspaceMcpRuntimeDeps): WorkspaceMcpRuntime => {
     let currentStatus: WorkspaceServiceStatus = 'stopped';
-    let server: Server | null = null;
     let allocatedPort: number | null = null;
     let serverStop: (() => Promise<void>) | null = null;
 
@@ -40,13 +38,12 @@ export const createWorkspaceMcpRuntime = (deps: WorkspaceMcpRuntimeDeps): Worksp
             awaitTabPage: (tabName: string, timeoutMs: number) => deps.workspace.tabs.awaitTabPage(tabName, timeoutMs),
         });
         const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
-        if (!enabledTools) {return handlers;}
         return Object.fromEntries(
             Object.entries(handlers).filter(([name]) => enabledTools.has(name)),
         );
     };
 
-    const resolveTools = () => {
+    const resolveTools = (): ReturnType<typeof getToolSpecs> => {
         const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
         return getToolSpecs({ enabledTools });
     };
@@ -67,13 +64,12 @@ export const createWorkspaceMcpRuntime = (deps: WorkspaceMcpRuntimeDeps): Worksp
 
                 const handlers = resolveHandlers();
                 const tools = resolveTools();
-                const { server: mcpServer, stop } = await createMcpHttpServer({
+                const { stop } = await createMcpHttpServer({
                     handlers,
                     tools,
                     port,
                     log: deps.log,
                 });
-                server = mcpServer;
                 serverStop = stop;
                 currentStatus = 'running';
                 deps.log?.('workspace mcp server started', {
@@ -101,7 +97,6 @@ export const createWorkspaceMcpRuntime = (deps: WorkspaceMcpRuntimeDeps): Worksp
                     await serverStop();
                     serverStop = null;
                 }
-                server = null;
                 if (allocatedPort !== null) {
                     deps.portAllocator.release(deps.workspace.name, SERVICE_NAME);
                     allocatedPort = null;

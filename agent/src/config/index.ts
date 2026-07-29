@@ -7,14 +7,14 @@ import { loadRunnerConfig } from './loader';
 
 let cachedConfig: RunnerConfig | null = null;
 
-export const getRunnerConfig = () => {
+export const getRunnerConfig = (): RunnerConfig => {
     if (!cachedConfig) {
         cachedConfig = loadRunnerConfig();
     }
     return cachedConfig;
 };
 
-export const resolveRunnerConfig = (overrides?: Partial<RunnerConfig>) => {
+export const resolveRunnerConfig = (overrides?: Partial<RunnerConfig>): RunnerConfig => {
     const base = loadRunnerConfig();
     return { ...base, ...overrides };
 };

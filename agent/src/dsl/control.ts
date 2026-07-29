@@ -35,7 +35,7 @@ const resolveDefaultDslName = (workflow: Workflow): string => {
 
 const requireDsl = (workflow: Workflow, dslName: string): WorkflowDsl => {
     const artifact = workflow.get(dslName, DSL_DUMMY);
-    if (!artifact || artifact.kind !== 'dsl') {
+    if (artifact?.kind !== 'dsl') {
         throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `dsl not found: ${dslName}`);
     }
     return artifact;
