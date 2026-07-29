@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { BrowserContext, Page, Worker } from 'playwright';
+import {getLogger} from '../../logging/logger';
 import { createContextManager } from './context_manager';
 import { createPageRegistry, type PageRegistry } from './page_registry';
 import { startActionWsClient, type ActionWsClient, type ActionWsTap } from '../../actions/ws_client';
@@ -49,7 +50,7 @@ type ExtensionChromeApi = {
     };
 };
 
-const buildStartUrl = (workspaceName: string, wsPort: number): string => {
+const buildBootstrapStartUrl = (workspaceName: string, wsPort: number): string => {
     const params = new URLSearchParams({
         rpaWorkspaceName: workspaceName,
         rpaWsPort: String(wsPort),
@@ -57,12 +58,46 @@ const buildStartUrl = (workspaceName: string, wsPort: number): string => {
     return `chrome://newtab/?${params.toString()}`;
 };
 
+
+export const resolveInteractiveStartUrl = (wsPort: number): string => {
+    const configured = process.env.RPA_START_URL?.trim();
+    if (configured) {
+        if (!configured.startsWith('http://') && !configured.startsWith('https://')) {
+            throw new Error(`RPA_START_URL must be an http(s) URL so the extension can inject: ${configured}`);
+        }
+        return configured;
+    }
+    return `http://127.0.0.1:${String(wsPort)}/rpa-start`;
+};
+
+const waitForFloatingPanel = async (context: BrowserContext, wsPort: number): Promise<Page> => {
+    const startUrl = resolveInteractiveStartUrl(wsPort);
+    const page = context.pages()[0] ?? await context.newPage();
+    await page.goto(startUrl, {waitUntil: 'domcontentloaded', timeout: 15_000});
+    await page.waitForFunction(
+        () => Boolean(document.getElementById('rpa-floating-panel')?.shadowRoot),
+        undefined,
+        {timeout: 15_000},
+    );
+    await page.bringToFront();
+    return page;
+};
+
 const configureExtensionSession = async (context: BrowserContext, workspaceName: string, wsPort: number) => {
     const worker = await resolveExtensionServiceWorker(context);
     await worker.evaluate(
         async (config: { workspaceName: string; wsPort: number }) => {
-            const chromeApi = (globalThis as typeof globalThis & { chrome: ExtensionChromeApi }).chrome;
-            await chromeApi.storage.local.set({
+            const runtimeGlobal = globalThis as typeof globalThis & {
+                chrome: ExtensionChromeApi;
+                __rpaSessionRuntime?: {
+                    configure: (value: {workspaceName: string; wsPort: number}) => Promise<void>;
+                };
+            };
+            if (runtimeGlobal.__rpaSessionRuntime) {
+                await runtimeGlobal.__rpaSessionRuntime.configure(config);
+                return;
+            }
+            await runtimeGlobal.chrome.storage.local.set({
                 rpaWorkspaceName: config.workspaceName,
                 rpaWsPort: config.wsPort,
             });
@@ -165,7 +200,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                     cdpPort = await options.portAllocator.allocate(options.workspaceName, 'browser-cdp');
                 }
 
-                contextManager = createSessionContextManager(cdpPort, buildStartUrl(options.workspaceName, wsPort));
+                contextManager = createSessionContextManager(cdpPort, buildBootstrapStartUrl(options.workspaceName, wsPort));
                 wsClient = startActionWsClient({
                     port: wsPort,
                     host: '127.0.0.1',
@@ -180,6 +215,12 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                 const context = await contextManager.getContext();
                 await configureExtensionSession(context, options.workspaceName, wsPort);
                 await wsClient.waitForClient(10_000);
+                const interactivePage = await waitForFloatingPanel(context, wsPort);
+                getLogger('action').info('[RPA:agent]', 'workspace browser ready', {
+                    workspaceName: options.workspaceName,
+                    pageUrl: interactivePage.url(),
+                    floatingPanel: true,
+                });
                 if (extensionAutoReloadEnabled()) {
                     extensionDevReloader = startExtensionDevReloader({
                         stampPath: resolveExtensionBuildStampPath(options.extensionPaths),
@@ -192,7 +233,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                         },
                         startUrl: () => {
                             if (wsPort === null) {return 'chrome://newtab/';}
-                            return buildStartUrl(options.workspaceName, wsPort);
+                            return resolveInteractiveStartUrl(wsPort);
                         },
                         onError: options.onError,
                     });

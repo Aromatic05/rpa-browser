@@ -12,6 +12,7 @@ import { createWsClient, type WsClient } from '../actions/ws_client.js';
 import { createCmdRouter } from '../background/cmd_router.js';
 import { createActionBus } from '../background/action_bus.js';
 import { readSessionConfig, SESSION_CONFIG_KEYS } from '../background/session_config.js';
+import {createSessionRuntimeInitializer} from '../background/session_runtime_initializer.js';
 import type {RouterStateSnapshot} from '../background/state.js';
 
 const log = createLogger('sw');
@@ -27,8 +28,13 @@ type DevRuntimeBridge = {
     }>;
 };
 
+type SessionRuntimeBridge = {
+    configure: (config: {workspaceName: string; wsPort: number}) => Promise<void>;
+};
+
 type DevWorkerGlobal = typeof globalThis & {
     __rpaDevRuntime?: DevRuntimeBridge;
+    __rpaSessionRuntime?: SessionRuntimeBridge;
 };
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -37,8 +43,6 @@ let refreshQueued = false;
 let activeSessionKey = '';
 let activeWorkspaceName = '';
 let activeWsClient: WsClient | null = null;
-let initPromise: Promise<void> | null = null;
-let initGeneration = 0;
 
 const dispatchRefresh = () => {
     if (refreshInFlight) {
@@ -197,31 +201,30 @@ const initializeRuntime = async () => {
     chrome.runtime.onInstalled.addListener(() => { router.onInstalled(); });
 };
 
+const runtimeInitializer = createSessionRuntimeInitializer(initializeRuntime);
 const initRuntime = async (): Promise<void> => {
-    initGeneration += 1;
-    if (initPromise) {
-        await initPromise;
-        return;
-    }
-    initPromise = (async () => {
-        let completedGeneration = 0;
-        while (completedGeneration < initGeneration) {
-            const targetGeneration = initGeneration;
-            await initializeRuntime();
-            completedGeneration = targetGeneration;
-        }
-    })();
-    try {
-        await initPromise;
-    } finally {
-        initPromise = null;
-    }
+    await runtimeInitializer.request();
+};
+const reportInitializationFailure = (error: unknown): void => {
+    log.warning('session runtime initialization failed', {
+        message: error instanceof Error ? error.message : String(error),
+    });
+};
+
+(globalThis as DevWorkerGlobal).__rpaSessionRuntime = {
+    configure: async (config) => {
+        await chrome.storage.local.set({
+            rpaWorkspaceName: config.workspaceName,
+            rpaWsPort: config.wsPort,
+        });
+        await initRuntime();
+    },
 };
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') {return;}
     if (!Object.keys(changes).some((key) => SESSION_CONFIG_KEYS.has(key))) {return;}
-    void initRuntime();
+    void initRuntime().catch((error: unknown) => {reportInitializationFailure(error);});
 });
 
-void initRuntime();
+void initRuntime().catch(reportInitializationFailure);

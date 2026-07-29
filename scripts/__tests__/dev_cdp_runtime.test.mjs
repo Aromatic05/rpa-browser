@@ -88,3 +88,31 @@ test('terminating the managed process kills its descendants', {
     await terminateProcessTree(child, {signal: 'SIGINT', killAfterMs: 500});
     await waitFor(() => !isProcessAlive(child.pid) && !isProcessAlive(grandchildPid));
 });
+
+test('terminating a managed process still kills descendants after the group leader exits', {
+    skip: process.platform === 'win32',
+}, async () => {
+    const childSource = [
+        "const {spawn} = require('node:child_process');",
+        "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});",
+        'child.unref();',
+        'console.log(child.pid);',
+    ].join('\n');
+    const child = spawnManagedProcess(process.execPath, ['-e', childSource], {
+        stdio: ['ignore', 'pipe', 'inherit'],
+    });
+    const grandchildPid = await new Promise((resolve, reject) => {
+        let output = '';
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', (chunk) => {
+            output += chunk;
+            const value = Number(output.trim());
+            if (Number.isInteger(value) && value > 0) {resolve(value);}
+        });
+        child.once('error', reject);
+    });
+    await new Promise((resolve) => child.once('exit', resolve));
+    assert.equal(isProcessAlive(grandchildPid), true);
+    await terminateProcessTree(child, {signal: 'SIGTERM', killAfterMs: 500});
+    await waitFor(() => !isProcessAlive(grandchildPid));
+});

@@ -267,8 +267,10 @@ registerControlShutdown({
     }
     log(`Control RPC listening on ${controlServer.endpoint}`);
     log('Agent runtime initialized.');
+    process.stdout.write(`[rpa-agent] ready: control=${controlServer.endpoint}\n`);
 })().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     logError('Fatal startup error:', message);
-    throw error;
+    console.error(`[rpa-agent] startup failed: ${message}`);
+    process.exit(1);
 });

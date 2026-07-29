@@ -335,3 +335,38 @@ test('workflow lifecycle stops MCP services before removing or replacing runtime
         cleanup(renameTarget);
     }
 });
+
+test('workflow.open creates a live managed tab when bootstrap reporting left only an unbound placeholder', async () => {
+    const openedUrls: Array<string | undefined> = [];
+    const {registry} = createWorkspaceHarness({
+        getPage: async (_tabName, startUrl) => {
+            openedUrls.push(startUrl);
+            return {
+                url: () => startUrl || 'about:blank',
+                isClosed: () => false,
+                close: async () => undefined,
+            } as any;
+        },
+    });
+    const name = uniqueName('wf-bootstrap-placeholder');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        const workspace = registry.createWorkspace(name, workflow);
+        workspace.browserSession.start = async () => undefined;
+        workspace.tabs.createTab({tabName: 'bootstrap-placeholder'});
+
+        const opened = await handleRuntimeControlAction({
+            action: {v: 1, id: 'bootstrap-open', type: 'workflow.open', payload: {workflowName: name}},
+            workspaceRegistry: registry,
+        } as any);
+
+        assert.equal(opened.reply.type, 'workflow.open.result');
+        const tabs = workspace.tabs.listTabs();
+        assert.equal(tabs.length, 2);
+        assert.equal(tabs.some((tab) => tab.page && !tab.page.isClosed()), true);
+        assert.deepEqual(openedUrls, ['about:blank']);
+    } finally {
+        cleanup(name);
+    }
+});

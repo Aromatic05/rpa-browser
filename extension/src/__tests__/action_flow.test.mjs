@@ -171,3 +171,22 @@ await log('send.action returns failed action for transport errors', async () => 
         globalThis.chrome = originalChrome;
     }
 });
+
+await log('session runtime initializer retries the latest generation after stale connection failure', async () => {
+    const {createSessionRuntimeInitializer} = await import('../../dist/background/session_runtime_initializer.js');
+    const calls = [];
+    let releaseFirst;
+    const first = new Promise((resolve) => { releaseFirst = resolve; });
+    const initializer = createSessionRuntimeInitializer(async () => {
+        calls.push(calls.length + 1);
+        if (calls.length === 1) {
+            await first;
+            throw new Error('stale websocket port');
+        }
+    });
+    const initial = initializer.request();
+    const latest = initializer.request();
+    releaseFirst();
+    await Promise.all([initial, latest]);
+    assert.deepEqual(calls, [1, 2]);
+});

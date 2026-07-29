@@ -23,6 +23,43 @@ export type CdpLaunchResult = {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+
+export type BrowserProfileOwner = {
+    pid: number;
+    alive: boolean;
+    lockTarget: string;
+};
+
+const isProcessAlive = (pid: number): boolean => {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+};
+
+export const readBrowserProfileOwner = (userDataDir: string): BrowserProfileOwner | null => {
+    const lockPath = path.join(userDataDir, 'SingletonLock');
+    let lockTarget: string;
+    try {
+        lockTarget = fs.readlinkSync(lockPath);
+    } catch {
+        return null;
+    }
+    const match = lockTarget.match(/-(\d+)$/);
+    if (!match) {return null;}
+    const pid = Number(match[1]);
+    if (!Number.isInteger(pid) || pid <= 0) {return null;}
+    return {pid, alive: isProcessAlive(pid), lockTarget};
+};
+
+const clearStaleBrowserProfileLocks = (userDataDir: string): void => {
+    for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+        try {fs.rmSync(path.join(userDataDir, name), {force: true});} catch { /* ignore stale lock cleanup */ }
+    }
+};
+
 const managedChromeProcesses = new Set<ReturnType<typeof spawn>>();
 let agentExitHookInstalled = false;
 
@@ -112,6 +149,15 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
     const chromePath = resolveChromeExecutable(opts.chromePath);
     const startUrl = opts.startUrl?.trim() || process.env.RPA_START_URL?.trim() || 'chrome://newtab/';
     fs.mkdirSync(opts.userDataDir, { recursive: true });
+    const profileOwner = readBrowserProfileOwner(opts.userDataDir);
+    if (profileOwner?.alive) {
+        throw new Error(
+            `CDP browser profile is already in use by Chrome pid ${String(profileOwner.pid)}: ${opts.userDataDir}`,
+        );
+    }
+    if (profileOwner && !profileOwner.alive) {
+        clearStaleBrowserProfileLocks(opts.userDataDir);
+    }
 
     const args = [
         `--remote-debugging-port=${opts.port}`,
@@ -166,7 +212,16 @@ export const launchLocalChromeForCdp = async (opts: CdpLaunchOptions): Promise<C
         }); };
 
     try {
-        await waitForCdpReady(endpoint, timeoutMs);
+        await Promise.race([
+            waitForCdpReady(endpoint, timeoutMs),
+            new Promise<never>((_resolve, reject) => {
+                proc.once('exit', (code, signal) => {
+                    reject(new Error(
+                        `Chrome exited before CDP became ready: code=${String(code)} signal=${String(signal)}`,
+                    ));
+                });
+            }),
+        ]);
         opts.logger?.('cdp.launch.ready', { endpoint, pid: proc.pid });
     } catch (error) {
         await stop();

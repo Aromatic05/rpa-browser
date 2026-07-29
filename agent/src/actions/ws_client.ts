@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {createServer} from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { failedAction, isFailedAction, type Action } from './action_protocol';
 import { ERROR_CODES } from './results';
@@ -25,6 +26,13 @@ export type ActionWsClient = {
 };
 
 const DEFAULT_HOST = '127.0.0.1';
+
+const START_PAGE_HTML = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RPA Browser</title></head>
+<body data-rpa-start-page="true"><main><h1>RPA Browser</h1><p>The extension is connecting to the local agent.</p></main></body>
+</html>`;
+
 
 const summarizeActionEnvelope = (raw: unknown): Record<string, unknown> => {
     if (!raw || typeof raw !== 'object') {
@@ -207,15 +215,28 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
         }
     };
 
-    const wss = new WebSocketServer({ host, port: options.port });
+    const httpServer = createServer((request, response) => {
+        const requestUrl = new URL(request.url ?? '/', `http://${host}:${String(options.port)}`);
+        if (request.method === 'GET' && (requestUrl.pathname === '/' || requestUrl.pathname === '/rpa-start')) {
+            response.writeHead(200, {
+                'content-type': 'text/html; charset=utf-8',
+                'cache-control': 'no-store',
+            });
+            response.end(START_PAGE_HTML);
+            return;
+        }
+        response.writeHead(404, {'content-type': 'text/plain; charset=utf-8'});
+        response.end('not found');
+    });
+    const wss = new WebSocketServer({server: httpServer});
 
-    wss.on('listening', () => {
+    httpServer.on('listening', () => {
         listening = true;
         resolveListening();
         options.onListening?.(`ws://${host}:${options.port}`);
     });
 
-    wss.on('error', (error) => {
+    const handleServerError = (error: unknown) => {
         const normalized = error instanceof Error ? error : new Error(String(error));
         listeningError = normalized;
         if (!listening) {
@@ -223,7 +244,10 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
         }
         rejectClientWaiters(normalized);
         options.onError(normalized);
-    });
+    };
+    httpServer.on('error', handleServerError);
+    wss.on('error', handleServerError);
+    httpServer.listen(options.port, host);
 
     wss.on('connection', (socket) => {
         wsClients.add(socket);
@@ -322,24 +346,41 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
         });
     };
 
+    let closePromise: Promise<void> | null = null;
     const close = async () => {
-        closed = true;
-        const closeError = new Error('workspace action websocket server closed');
-        if (!listening) {
-            rejectListening(closeError);
+        if (closePromise) {
+            await closePromise;
+            return;
         }
-        rejectClientWaiters(closeError);
-        wsClients.forEach((client) => {
-            try { client.close(); } catch { /* ignore */ }
-        });
-        await new Promise<void>((resolve) => {
-            try {
-                wss.close(() => { resolve(); });
-            } catch {
-                resolve();
+        closePromise = (async () => {
+            closed = true;
+            const closeError = new Error('workspace action websocket server closed');
+            if (!listening) {
+                rejectListening(closeError);
             }
-        });
+            rejectClientWaiters(closeError);
+            wsClients.forEach((client) => {
+                try {client.terminate();} catch { /* ignore */ }
+            });
+            wsClients.clear();
+            await new Promise<void>((resolve) => {
+                try {
+                    wss.close(() => {resolve();});
+                } catch {
+                    resolve();
+                }
+            });
+            httpServer.closeAllConnections();
+            await new Promise<void>((resolve) => {
+                if (!httpServer.listening) {
+                    resolve();
+                    return;
+                }
+                httpServer.close(() => {resolve();});
+            });
+        })();
+        await closePromise;
     };
 
-    return { broadcastAction, waitForListening, waitForClient, close };
+    return {broadcastAction, waitForListening, waitForClient, close};
 };

@@ -124,7 +124,9 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
             }
             workspaceRegistry.setActiveWorkspace(workspace.name);
             await workspace.browserSession.start();
-            if (workspace.tabs.listTabs().length === 0) {
+            const hasLiveTab = workspace.tabs.listTabs().some((tab) =>
+                tab.page !== null && !tab.page.isClosed());
+            if (!hasLiveTab) {
                 const tabName = crypto.randomUUID();
                 workspace.tabs.createTab({ tabName });
                 await workspace.tabs.createTabPage(tabName, { startUrl: 'about:blank', newWindow: true });

@@ -37,7 +37,7 @@ const lockIsInitializing = async (lockDir) => {
 };
 
 export const acquireInstanceLock = async ({lockDir, pid = process.pid} = {}) => {
-    if (!lockDir) {throw new Error('dev:cdp lock directory is required');}
+    if (!lockDir) {throw new Error('development runtime lock directory is required');}
     await mkdir(path.dirname(lockDir), {recursive: true});
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -48,10 +48,10 @@ export const acquireInstanceLock = async ({lockDir, pid = process.pid} = {}) => 
             const owner = await readLockOwner(lockDir);
             if (owner && isProcessAlive(owner.pid)) {
                 const started = owner.startedAt ? `, started ${owner.startedAt}` : '';
-                throw new Error(`pnpm dev:cdp is already running (pid ${owner.pid}${started})`, {cause: error});
+                throw new Error(`RPA development runtime is already running (pid ${owner.pid}${started})`, {cause: error});
             }
             if (!owner && await lockIsInitializing(lockDir)) {
-                throw new Error('pnpm dev:cdp is already starting; lock owner is not available yet', {cause: error});
+                throw new Error('RPA development runtime is already starting; lock owner is not available yet', {cause: error});
             }
             await rm(lockDir, {recursive: true, force: true});
             continue;
@@ -84,27 +84,71 @@ export const acquireInstanceLock = async ({lockDir, pid = process.pid} = {}) => 
         return {lockDir, pid, release};
     }
 
-    throw new Error(`failed to acquire dev:cdp instance lock: ${lockDir}`);
+    throw new Error(`failed to acquire development runtime instance lock: ${lockDir}`);
 };
 
-export const spawnManagedProcess = (command, args, options = {}) =>
-    spawn(command, args, {
-        ...options,
-        detached: process.platform !== 'win32',
+const managedProcessDetached = new WeakMap();
+
+export const spawnManagedProcess = (command, args, options = {}) => {
+    const detached = options.detached ?? process.platform !== 'win32';
+    const {detached: _ignoredDetached, ...spawnOptions} = options;
+    const child = spawn(command, args, {
+        ...spawnOptions,
+        detached,
     });
+    managedProcessDetached.set(child, detached);
+    return child;
+};
+
+const descendantProcessIds = (rootPid) => {
+    if (!rootPid || process.platform === 'win32') {return [];}
+    const result = spawnSync('ps', ['-eo', 'pid=,ppid='], {encoding: 'utf8'});
+    if (result.status !== 0) {return [];}
+    const childrenByParent = new Map();
+    for (const line of result.stdout.split(/\r?\n/)) {
+        const match = line.trim().match(/^(\d+)\s+(\d+)$/);
+        if (!match) {continue;}
+        const pid = Number(match[1]);
+        const parentPid = Number(match[2]);
+        const children = childrenByParent.get(parentPid) ?? [];
+        children.push(pid);
+        childrenByParent.set(parentPid, children);
+    }
+    const descendants = [];
+    const visit = (pid) => {
+        for (const childPid of childrenByParent.get(pid) ?? []) {
+            visit(childPid);
+            descendants.push(childPid);
+        }
+    };
+    visit(rootPid);
+    return descendants;
+};
+
+const signalPid = (pid, signal) => {
+    try {process.kill(pid, signal);} catch (error) {
+        if (error?.code !== 'ESRCH') {throw error;}
+    }
+};
 
 const signalProcessTree = (child, signal) => {
-    if (!child?.pid || child.exitCode !== null) {return;}
+    if (!child?.pid) {return;}
     if (process.platform === 'win32') {
+        if (child.exitCode !== null) {return;}
         const args = ['/pid', String(child.pid), '/t'];
         if (signal === 'SIGKILL') {args.push('/f');}
         spawnSync('taskkill', args, {stdio: 'ignore'});
         return;
     }
+    if (managedProcessDetached.get(child) === false) {
+        for (const pid of descendantProcessIds(child.pid)) {signalPid(pid, signal);}
+        signalPid(child.pid, signal);
+        return;
+    }
     try {
         process.kill(-child.pid, signal);
     } catch (error) {
-        if (error?.code !== 'ESRCH') {
+        if (error?.code !== 'ESRCH' && child.exitCode === null) {
             try {child.kill(signal);} catch { /* process already exited */ }
         }
     }
@@ -128,30 +172,38 @@ export const terminateProcessTree = async (
     child,
     {signal = 'SIGTERM', killAfterMs = 3000} = {},
 ) => {
-    if (!child?.pid || child.exitCode !== null) {return;}
+    if (!child?.pid) {return;}
     const pid = child.pid;
-    let exited = false;
-    const exitPromise = new Promise((resolve) => {
-        child.once('exit', () => {
-            exited = true;
-            resolve();
-        });
-    });
+    if (process.platform === 'win32') {
+        if (child.exitCode !== null) {return;}
+        let exited = false;
+        child.once('exit', () => {exited = true;});
+        signalProcessTree(child, signal);
+        const deadline = Date.now() + killAfterMs;
+        while (!exited && Date.now() < deadline) {await sleep(25);}
+        if (!exited) {signalProcessTree(child, 'SIGKILL');}
+        return;
+    }
 
+    if (managedProcessDetached.get(child) === false) {
+        const targets = [...descendantProcessIds(pid), pid];
+        if (!targets.some(isProcessAlive)) {return;}
+        signalProcessTree(child, signal);
+        const deadline = Date.now() + killAfterMs;
+        while (targets.some(isProcessAlive) && Date.now() < deadline) {await sleep(25);}
+        if (targets.some(isProcessAlive)) {
+            for (const targetPid of targets) {signalPid(targetPid, 'SIGKILL');}
+        }
+        return;
+    }
+
+    if (!isProcessGroupAlive(pid)) {return;}
     signalProcessTree(child, signal);
     const deadline = Date.now() + killAfterMs;
-    while (Date.now() < deadline) {
-        if (process.platform === 'win32') {
-            if (exited) {break;}
-        } else if (!isProcessGroupAlive(pid)) {
-            break;
-        }
-        await sleep(25);
-    }
-
-    if ((process.platform === 'win32' && !exited) ||
-        (process.platform !== 'win32' && isProcessGroupAlive(pid))) {
+    while (isProcessGroupAlive(pid) && Date.now() < deadline) {await sleep(25);}
+    if (isProcessGroupAlive(pid)) {
         signalProcessTree(child, 'SIGKILL');
+        const killDeadline = Date.now() + Math.min(killAfterMs, 1000);
+        while (isProcessGroupAlive(pid) && Date.now() < killDeadline) {await sleep(25);}
     }
-    if (!exited) {await exitPromise;}
 };
