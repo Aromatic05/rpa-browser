@@ -6,6 +6,7 @@ import {
     readOptionRecordedValue,
     readSelectedValuesFromControl,
     resolveRecordTargetBinding,
+    type RecordTargetBinding,
 } from '../pipeline/target_binding';
 import type {
     PendingCheckboxGroupSession,
@@ -43,21 +44,21 @@ const isNativeSelectClickEvent = (event: RecorderEvent): boolean =>
     event.type === 'click' && String(event.targetHint || '').trim().toLowerCase() === 'select';
 
 const readExecutableLocatorSelector = (
-    binding: { snapshot: { locatorIndex?: Record<string, { direct?: { kind?: string; query?: string; fallback?: string } }> } },
+    binding: Pick<RecordTargetBinding, 'snapshot'>,
     nodeId: string | undefined,
 ): string | undefined => {
     if (!nodeId) {return undefined;}
-    const direct = binding.snapshot.locatorIndex?.[nodeId]?.direct;
-    if (!direct) {return undefined;}
-    const selector = direct.kind === 'role' ? direct.fallback : direct.query;
-    return normalizeSelector(selector) || undefined;
+    const locators = binding.snapshot.control.locators;
+    const locator = (locators.byNodeId[nodeId] ?? [])
+        .map((locatorId) => locators.locators[locatorId])
+        .find((candidate) => candidate?.status === 'resolved'
+            && candidate.scopePath.length === 0
+            && Boolean(candidate.selector));
+    return normalizeSelector(locator?.selector) || undefined;
 };
 
 const readControlAnchorSelector = (
-    binding: {
-        snapshot: { locatorIndex?: Record<string, { direct?: { kind?: string; query?: string; fallback?: string } }> };
-        component: { rootNodeId?: string; controlNodeId?: string };
-    },
+    binding: Pick<RecordTargetBinding, 'snapshot' | 'component'>,
     event: RecorderEvent,
 ): string | undefined => {
     return readExecutableLocatorSelector(binding, binding.component.rootNodeId)

@@ -42,6 +42,8 @@ export type RecordedStepEnhancement = {
             tabName: string;
             url: string;
         };
+        pageEpoch?: string;
+        captureRevision?: number;
         capturedAt: number;
     };
     target?: RecordedTargetFingerprint;

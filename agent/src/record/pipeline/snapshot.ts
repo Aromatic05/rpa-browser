@@ -1,11 +1,16 @@
-import type { Page } from 'playwright';
-import { getLogger } from '../../logging/logger';
-import { generateSemanticSnapshot } from '../../runner/steps/executors/snapshot/pipeline/snapshot';
-import type { SnapshotResult } from '../../runner/steps/executors/snapshot/core/types';
-import type { RecorderEvent } from '../capture/recorder';
+import type {Page} from 'playwright';
+import {getLogger} from '../../logging/logger';
+import {
+    buildEntityRuleComponentSnapshots,
+    captureControlSnapshot,
+    type PageSnapshotCapture,
+} from '../../snapshot';
+import type {RecorderEvent} from '../capture/recorder';
+
+export type RecordPageSnapshot = PageSnapshotCapture;
 
 export type RecordSnapshotCacheEntry = {
-    snapshot: SnapshotResult;
+    snapshot: RecordPageSnapshot;
     capturedAt: number;
     pageUrl: string;
 };
@@ -27,15 +32,20 @@ const safePageUrl = (page: Page): string => {
     }
 };
 
+export const recordSnapshotId = (snapshot: RecordPageSnapshot): string => {
+    const identity = snapshot.control.observation.identity;
+    return `${identity.pageEpoch}:${identity.captureRevision}`;
+};
+
 export const resolveRecordSnapshotForEvent = async (input: {
     event: RecorderEvent;
     page?: Page;
     snapshotCache: Map<string, RecordSnapshotCacheEntry>;
     cacheKey: string;
     forceFresh?: boolean;
-}): Promise<SnapshotResult | undefined> => {
+}): Promise<RecordPageSnapshot | undefined> => {
     const recordLog = getLogger('record');
-    const { event, page, snapshotCache, cacheKey } = input;
+    const {event, page, snapshotCache, cacheKey} = input;
     if (!shouldUseSnapshotForEvent(event)) {
         recordLog('record_snapshot_resolve', {
             result: 'skipped',
@@ -57,7 +67,7 @@ export const resolveRecordSnapshotForEvent = async (input: {
                 eventType: event.type,
                 selector: event.selector,
                 cacheKey,
-                snapshotId: cached.snapshot.snapshotMeta?.snapshotId,
+                snapshotId: recordSnapshotId(cached.snapshot),
                 pageUrl,
             });
             return cached.snapshot;
@@ -77,13 +87,16 @@ export const resolveRecordSnapshotForEvent = async (input: {
     const pageUrl = safePageUrl(page);
 
     try {
-        const snapshot = await generateSemanticSnapshot(page, {
-            captureRuntimeState: true,
-            waitMode: 'interaction',
-        });
+        const control = await captureControlSnapshot(page, {captureRuntimeState: true});
+        const components = buildEntityRuleComponentSnapshots(control);
+        const snapshot: RecordPageSnapshot = {
+            control,
+            form: components.form,
+            table: components.table,
+        };
         snapshotCache.set(cacheKey, {
             snapshot,
-            capturedAt: now,
+            capturedAt: Date.now(),
             pageUrl,
         });
         recordLog('record_snapshot_resolve', {
@@ -91,13 +104,11 @@ export const resolveRecordSnapshotForEvent = async (input: {
             eventType: event.type,
             selector: event.selector,
             cacheKey,
-            snapshotId: snapshot.snapshotMeta?.snapshotId,
+            snapshotId: recordSnapshotId(snapshot),
             pageUrl,
         });
         return snapshot;
     } catch (error) {
-        const errorName = error instanceof Error ? error.name : typeof error;
-        const errorMessage = error instanceof Error ? error.message : String(error);
         recordLog('record_snapshot_resolve', {
             result: 'failed',
             eventType: event.type,
@@ -105,8 +116,8 @@ export const resolveRecordSnapshotForEvent = async (input: {
             cacheKey,
             pageUrl,
             reason: 'capture_failed',
-            errorName,
-            errorMessage,
+            errorName: error instanceof Error ? error.name : typeof error,
+            errorMessage: error instanceof Error ? error.message : String(error),
         });
         return undefined;
     }

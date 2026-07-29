@@ -1,12 +1,21 @@
-import type { Page } from 'playwright';
-import { getLogger } from '../../logging/logger';
-import type { BaseControlComponent } from '../../runner/steps/executors/snapshot/control/types';
-import type { SnapshotResult } from '../../runner/steps/executors/snapshot/core/types';
-import type { RecorderEvent } from '../capture/recorder';
-import type { RecordSnapshotCacheEntry } from './snapshot';
-import { resolveRecordSnapshotForEvent } from './snapshot';
+import type {Page} from 'playwright';
+import {getLogger} from '../../logging/logger';
+import {
+    resolveSemanticRole,
+    type CanonicalLocator,
+    type ControlComponent,
+    type ControlOption,
+    type ObservationNodeId,
+} from '../../snapshot';
+import type {RecorderEvent} from '../capture/recorder';
+import {
+    recordSnapshotId,
+    resolveRecordSnapshotForEvent,
+    type RecordPageSnapshot,
+    type RecordSnapshotCacheEntry,
+} from './snapshot';
 
-type SelectOptionKind = 'native_select' | 'radio_group' | 'checkbox_group' | 'custom_select';
+export type SelectOptionKind = 'native_select' | 'radio_group' | 'checkbox_group' | 'custom_select';
 
 const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
     'native_select',
@@ -26,26 +35,16 @@ export const setRecordTargetSnapshotResolverForTest = (resolver: SnapshotResolve
 const selectorEquals = (left: string | undefined, right: string | undefined): boolean => {
     const a = normalize(left);
     const b = normalize(right);
-    if (!a || !b) {return false;}
-    return a === b;
+    return Boolean(a && b && a === b);
 };
 
-const isSelectOptionComponent = (component: BaseControlComponent): boolean => {
-    return component.owner === 'browser.select_option'
-        && Array.isArray(component.capabilities)
-        && component.capabilities.includes('select_option')
-        && SUPPORTED_KINDS.has(component.kind);
-};
-
-const readComponentKind = (component: BaseControlComponent): SelectOptionKind | undefined => {
-    if (!SUPPORTED_KINDS.has(component.kind)) {return undefined;}
-    return component.kind as SelectOptionKind;
-};
+const isSelectOptionComponent = (component: ControlComponent): component is ControlComponent & {kind: SelectOptionKind} =>
+    SUPPORTED_KINDS.has(component.kind) && component.capabilities.includes('select_option');
 
 export type RecordTargetBinding = {
-    snapshot: SnapshotResult;
-    snapshotId?: string;
-    targetNodeId: string;
+    snapshot: RecordPageSnapshot;
+    snapshotId: string;
+    targetNodeId: ObservationNodeId;
     matchedBy:
         | 'locator.direct.query'
         | 'locator.direct.fallback'
@@ -59,215 +58,174 @@ export type RecordTargetBinding = {
         | 'candidate.attr'
         | 'candidate.css';
     controlRef: string;
-    component: BaseControlComponent;
+    component: ControlComponent & {kind: SelectOptionKind};
     componentKind: SelectOptionKind;
-    controlRootNodeId: string;
+    controlRootNodeId: ObservationNodeId;
 };
 
+type MatchedNode = {nodeId: ObservationNodeId; matchedBy: RecordTargetBinding['matchedBy']};
+
+const orderedNodeIds = (snapshot: RecordPageSnapshot): ObservationNodeId[] => {
+    const observation = snapshot.control.observation;
+    return Object.keys(observation.nodes).sort((left, right) =>
+        (observation.documentOrder[left] ?? Number.MAX_SAFE_INTEGER)
+        - (observation.documentOrder[right] ?? Number.MAX_SAFE_INTEGER));
+};
+
+const nodeRole = (snapshot: RecordPageSnapshot, nodeId: ObservationNodeId): string =>
+    normalize(resolveSemanticRole(snapshot.control.observation, nodeId).value);
+
+const nodeName = (snapshot: RecordPageSnapshot, nodeId: ObservationNodeId): string => {
+    const observation = snapshot.control.observation;
+    return normalize(
+        new Map(Object.entries(observation.accessibility)).get(nodeId)?.name
+        || new Map(Object.entries(observation.attributes)).get(nodeId)?.['aria-label']
+        || observation.text[nodeId],
+    );
+};
+
+const locatorSelectors = (snapshot: RecordPageSnapshot, nodeId: ObservationNodeId): string[] => {
+    const index = snapshot.control.locators;
+    const locators = new Map(Object.entries(index.locators));
+    return (index.byNodeId[nodeId] ?? [])
+        .map((locatorId) => locators.get(locatorId))
+        .filter((locator): locator is CanonicalLocator =>
+            locator?.status === 'resolved' && typeof locator.selector === 'string' && locator.selector.length > 0)
+        .map((locator) => locator.selector as string);
+};
+
+const matchUnique = (
+    nodeIds: readonly ObservationNodeId[],
+    matchedBy: RecordTargetBinding['matchedBy'],
+): MatchedNode[] => nodeIds.map((nodeId) => ({nodeId, matchedBy}));
+
+const matchByRoleAndName = (
+    snapshot: RecordPageSnapshot,
+    role: string,
+    name: string,
+    exact: boolean,
+): ObservationNodeId[] => orderedNodeIds(snapshot).filter((nodeId) => {
+    const candidateRole = nodeRole(snapshot, nodeId);
+    const candidateName = nodeName(snapshot, nodeId);
+    if (candidateRole !== role || !candidateName) {return false;}
+    return exact ? candidateName === name : candidateName.includes(name);
+});
+
+const matchByText = (
+    snapshot: RecordPageSnapshot,
+    text: string,
+    role: string,
+    exact: boolean,
+): ObservationNodeId[] => orderedNodeIds(snapshot).filter((nodeId) => {
+    if (role && nodeRole(snapshot, nodeId) !== role) {return false;}
+    const candidate = nodeName(snapshot, nodeId);
+    return exact ? candidate === text : candidate.includes(text);
+});
+
 const collectMatchedNodeIds = (
-    snapshot: SnapshotResult,
+    snapshot: RecordPageSnapshot,
     event: RecorderEvent,
-): Array<{ nodeId: string; matchedBy: RecordTargetBinding['matchedBy'] }> => {
+): MatchedNode[] => {
+    const observation = snapshot.control.observation;
     const selector = normalize(event.selector);
-    const matched: Array<{ nodeId: string; matchedBy: RecordTargetBinding['matchedBy'] }> = [];
     if (selector) {
-        for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
-            if (selectorEquals(locator.direct?.query, selector)) {
-                matched.push({ nodeId, matchedBy: 'locator.direct.query' });
-            }
-        }
-        if (matched.length > 0) {return matched;}
+        const locatorMatches = orderedNodeIds(snapshot)
+            .filter((nodeId) => locatorSelectors(snapshot, nodeId).some((candidate) => selectorEquals(candidate, selector)));
+        if (locatorMatches.length > 0) {return matchUnique(locatorMatches, 'locator.direct.query');}
 
-        for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
-            if (selectorEquals(locator.direct?.fallback, selector)) {
-                matched.push({ nodeId, matchedBy: 'locator.direct.fallback' });
-            }
-        }
-        if (matched.length > 0) {return matched;}
+        const idMatches = orderedNodeIds(snapshot).filter((nodeId) => {
+            const id = normalize(new Map(Object.entries(observation.attributes)).get(nodeId)?.id);
+            return Boolean(id && (selectorEquals(`#${id}`, selector) || selectorEquals(`[id="${id}"]`, selector)));
+        });
+        if (idMatches.length > 0) {return matchUnique(idMatches, 'attr.id');}
 
-        for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-            const idValue = normalize(attrs.id);
-            if (!idValue) {continue;}
-            if (selectorEquals(`#${idValue}`, selector)) {
-                matched.push({ nodeId, matchedBy: 'attr.id' });
-            }
-        }
-        if (matched.length > 0) {return matched;}
-
-        for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-            const testId = normalize(attrs['data-testid']);
-            if (!testId) {continue;}
-            if (selectorEquals(`[data-testid="${testId}"]`, selector)) {
-                matched.push({ nodeId, matchedBy: 'attr.data-testid' });
-            }
-        }
-        if (matched.length > 0) {return matched;}
+        const testIdMatches = orderedNodeIds(snapshot).filter((nodeId) => {
+            const testId = normalize(new Map(Object.entries(observation.attributes)).get(nodeId)?.['data-testid']);
+            return Boolean(testId && selectorEquals(`[data-testid="${testId}"]`, selector));
+        });
+        if (testIdMatches.length > 0) {return matchUnique(testIdMatches, 'attr.data-testid');}
     }
 
-    const roleHint = normalize(event.a11yHint?.role);
-    const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
-    const roleCandidateHint = (() => {
-        for (const candidate of candidates) {
-            if (!candidate || candidate.kind !== 'role') {continue;}
-            const role = normalize(candidate.role);
-            if (role) {return role;}
-        }
-        return '';
-    })();
-    const preferredRole = roleHint || roleCandidateHint;
+    const candidates = event.locatorCandidates ?? [];
+    const roleHint = normalize(event.a11yHint?.role)
+        || normalize(candidates.find((candidate) => candidate.kind === 'role')?.role);
     const nameHint = normalize(event.a11yHint?.name || event.a11yHint?.text);
-    if (preferredRole && nameHint) {
-        const roleMatched: string[] = [];
-        for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
-            const nodeRole = normalize(node.role);
-            const nodeName = normalize(node.name);
-            if (!nodeRole || !nodeName) {continue;}
-            if (nodeRole === preferredRole && nodeName.includes(nameHint)) {
-                roleMatched.push(nodeId);
-            }
-        }
-        if (roleMatched.length === 1) {
-            return [{ nodeId: roleMatched[0], matchedBy: 'hint.role_name' }];
-        }
+    if (roleHint && nameHint) {
+        const matches = matchByRoleAndName(snapshot, roleHint, nameHint, false);
+        if (matches.length === 1) {return matchUnique(matches, 'hint.role_name');}
     }
+
     for (const candidate of candidates) {
-        if (!candidate || typeof candidate.kind !== 'string') {continue;}
         if (candidate.kind === 'role') {
-            const roleNeedle = normalize(candidate.role);
-            const nameNeedle = normalize(candidate.name || candidate.text);
-            if (!roleNeedle || !nameNeedle) {continue;}
-            const roleMatched: string[] = [];
-            for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
-                const nodeRole = normalize(node.role);
-                const nodeName = normalize(node.name);
-                if (!nodeRole || !nodeName) {continue;}
-                const nameOk = candidate.exact === true ? nodeName === nameNeedle : nodeName.includes(nameNeedle);
-                if (nodeRole === roleNeedle && nameOk) {
-                    roleMatched.push(nodeId);
-                }
-            }
-            if (roleMatched.length === 1) {
-                return [{ nodeId: roleMatched[0], matchedBy: 'candidate.role' }];
-            }
+            const role = normalize(candidate.role);
+            const name = normalize(candidate.name || candidate.text);
+            if (!role || !name) {continue;}
+            const matches = matchByRoleAndName(snapshot, role, name, candidate.exact === true);
+            if (matches.length === 1) {return matchUnique(matches, 'candidate.role');}
             continue;
         }
         if (candidate.kind === 'label' || candidate.kind === 'text') {
-            const textNeedle = normalize(candidate.text || candidate.name);
-            if (!textNeedle) {continue;}
-            const textMatched: string[] = [];
-            for (const [nodeId, node] of Object.entries(snapshot.nodeIndex || {})) {
-                if (preferredRole) {
-                    const nodeRole = normalize(node.role);
-                    if (!nodeRole || nodeRole !== preferredRole) {continue;}
-                }
-                const nodeName = normalize(node.name);
-                if (!nodeName) {continue;}
-                const nameOk = candidate.exact === true ? nodeName === textNeedle : nodeName.includes(textNeedle);
-                if (nameOk) {
-                    textMatched.push(nodeId);
-                }
-            }
-            if (textMatched.length === 1) {
-                return [{ nodeId: textMatched[0], matchedBy: candidate.kind === 'label' ? 'candidate.label' : 'candidate.text' }];
+            const text = normalize(candidate.text || candidate.name);
+            if (!text) {continue;}
+            const matches = matchByText(snapshot, text, roleHint, candidate.exact === true);
+            if (matches.length === 1) {
+                return matchUnique(matches, candidate.kind === 'label' ? 'candidate.label' : 'candidate.text');
             }
             continue;
         }
         if (candidate.kind === 'testid') {
-            const testIdNeedle = normalize(candidate.testId);
-            if (!testIdNeedle) {continue;}
-            const testIdMatched: string[] = [];
-            for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-                if (normalize(attrs['data-testid']) === testIdNeedle) {
-                    testIdMatched.push(nodeId);
-                }
-            }
-            if (testIdMatched.length === 1) {
-                return [{ nodeId: testIdMatched[0], matchedBy: 'candidate.testid' }];
-            }
+            const testId = normalize(candidate.testId);
+            if (!testId) {continue;}
+            const matches = orderedNodeIds(snapshot)
+                .filter((nodeId) => normalize(
+                    new Map(Object.entries(observation.attributes)).get(nodeId)?.['data-testid'],
+                ) === testId);
+            if (matches.length === 1) {return matchUnique(matches, 'candidate.testid');}
             continue;
         }
-        if (candidate.kind === 'css' && candidate.selector) {
+        if (candidate.kind === 'css') {
             const css = normalize(candidate.selector);
             if (!css) {continue;}
-            const attrMatch = css.match(/^\[([^=\]]+)=\"([^\"]+)\"\]$/);
-            if (attrMatch) {
-                const attrName = normalize(attrMatch[1]);
-                const attrValue = normalize(attrMatch[2]);
-                if (!attrName || !attrValue) {continue;}
-                const attrMatched: string[] = [];
-                for (const [nodeId, attrs] of Object.entries(snapshot.attrIndex || {})) {
-                    if (normalize(attrs[attrName]) === attrValue) {
-                        attrMatched.push(nodeId);
-                    }
-                }
-                if (attrMatched.length === 1) {
-                    return [{ nodeId: attrMatched[0], matchedBy: 'candidate.attr' }];
-                }
-                continue;
-            }
-            const cssMatched: string[] = [];
-            for (const [nodeId, locator] of Object.entries(snapshot.locatorIndex || {})) {
-                if (selectorEquals(locator.direct?.query, css) || selectorEquals(locator.direct?.fallback, css)) {
-                    cssMatched.push(nodeId);
-                }
-            }
-            if (cssMatched.length === 1) {
-                return [{ nodeId: cssMatched[0], matchedBy: 'candidate.css' }];
-            }
+            const locatorMatches = orderedNodeIds(snapshot)
+                .filter((nodeId) => locatorSelectors(snapshot, nodeId).some((selectorValue) => selectorEquals(selectorValue, css)));
+            if (locatorMatches.length === 1) {return matchUnique(locatorMatches, 'candidate.css');}
+            const attributeMatch = css.match(/^\[([^=\]]+)=["'](.+)["']\]$/);
+            if (!attributeMatch) {continue;}
+            const [, name, value] = attributeMatch;
+            const attrMatches = orderedNodeIds(snapshot)
+                .filter((nodeId) => normalize(
+                    new Map(Object.entries(observation.attributes)).get(nodeId)?.[name],
+                ) === normalize(value));
+            if (attrMatches.length === 1) {return matchUnique(attrMatches, 'candidate.attr');}
         }
     }
-
     return [];
 };
 
 export const findControlByNodeId = (
-    snapshot: SnapshotResult,
-    targetNodeId: string,
-): { controlRef: string; component: BaseControlComponent; componentKind: SelectOptionKind; controlRootNodeId: string } | undefined => {
-    for (const [controlRef, component] of Object.entries(snapshot.controlIndex || {})) {
-        if (!isSelectOptionComponent(component)) {continue;}
-        const kind = readComponentKind(component);
-        if (!kind) {continue;}
-        if (component.rootNodeId === targetNodeId
-            || component.controlNodeId === targetNodeId
-            || component.triggerNodeId === targetNodeId
-            || component.optionNodeIds.includes(targetNodeId)) {
-            return {
-                controlRef,
-                component,
-                componentKind: kind,
-                controlRootNodeId: component.rootNodeId,
-            };
-        }
-    }
-    return undefined;
-};
-
-type ControlOption = {
-    nodeId: string;
-    value?: string;
-    label?: string;
-    text?: string;
-    selected?: boolean;
-};
-
-const readControlOptions = (component: BaseControlComponent): ControlOption[] => {
-    const rawOptions = component.data?.options;
-    if (!Array.isArray(rawOptions)) {return [];}
-    const options: ControlOption[] = [];
-    for (const item of rawOptions) {
-        if (!item || typeof item !== 'object') {continue;}
-        const entry = item as Record<string, unknown>;
-        if (typeof entry.nodeId !== 'string') {continue;}
-        options.push({
-            nodeId: entry.nodeId,
-            value: typeof entry.value === 'string' ? entry.value : undefined,
-            label: typeof entry.label === 'string' ? entry.label : undefined,
-            text: typeof entry.text === 'string' ? entry.text : undefined,
-            selected: typeof entry.selected === 'boolean' ? entry.selected : undefined,
-        });
-    }
-    return options;
+    snapshot: RecordPageSnapshot,
+    targetNodeId: ObservationNodeId,
+): {
+    controlRef: string;
+    component: ControlComponent & {kind: SelectOptionKind};
+    componentKind: SelectOptionKind;
+    controlRootNodeId: ObservationNodeId;
+} | undefined => {
+    const controls = snapshot.control.controls;
+    const componentIds = controls.byNodeId[targetNodeId] ?? [];
+    const components = new Map(Object.entries(controls.controls));
+    const matches = componentIds
+        .map((componentId) => components.get(componentId))
+        .filter((component): component is ControlComponent & {kind: SelectOptionKind} =>
+            component !== undefined && isSelectOptionComponent(component));
+    if (matches.length !== 1) {return undefined;}
+    const component = matches[0];
+    return {
+        controlRef: component.ref,
+        component,
+        componentKind: component.kind,
+        controlRootNodeId: component.rootNodeId,
+    };
 };
 
 export const readOptionRecordedValue = (option: {
@@ -280,27 +238,20 @@ export const readOptionRecordedValue = (option: {
     const fromLabel = normalize(option.label);
     if (fromLabel) {return fromLabel;}
     const fromText = normalize(option.text);
-    if (fromText) {return fromText;}
-    return undefined;
+    return fromText || undefined;
 };
 
 export const readControlOptionByNodeId = (
-    component: BaseControlComponent,
-    nodeId: string,
-): ControlOption | undefined => {
-    return readControlOptions(component).find((option) => option.nodeId === nodeId);
-};
+    component: ControlComponent,
+    nodeId: ObservationNodeId,
+): ControlOption | undefined =>
+    component.options.find((option) => option.nodeId === nodeId || option.semanticNodeId === nodeId);
 
-export const readSelectedValuesFromControl = (component: BaseControlComponent): string[] => {
-    const values: string[] = [];
-    for (const option of readControlOptions(component)) {
-        if (option.selected !== true) {continue;}
-        const value = readOptionRecordedValue(option);
-        if (!value) {continue;}
-        values.push(value);
-    }
-    return values;
-};
+export const readSelectedValuesFromControl = (component: ControlComponent): string[] =>
+    component.options
+        .filter((option) => option.selected)
+        .map(readOptionRecordedValue)
+        .filter((value): value is string => Boolean(value));
 
 export const resolveRecordTargetBinding = async (input: {
     event: RecorderEvent;
@@ -310,129 +261,35 @@ export const resolveRecordTargetBinding = async (input: {
     forceFreshSnapshot?: boolean;
 }): Promise<RecordTargetBinding | undefined> => {
     const recordLog = getLogger('record');
-    recordLog('record_target_binding_start', {
-        eventType: input.event.type,
-        selector: input.event.selector,
-    });
     const selector = normalize(input.event.selector);
     if (!selector && !normalize(input.event.a11yHint?.role)) {
-        recordLog('record_target_binding_result', { result: 'no_selector' });
+        recordLog('record_target_binding_result', {result: 'no_selector'});
         return undefined;
     }
-    const snapshot = await snapshotResolver({
-        ...input,
-        forceFresh: input.forceFreshSnapshot,
-    });
+    const snapshot = await snapshotResolver({...input, forceFresh: input.forceFreshSnapshot});
     if (!snapshot) {
-        recordLog('record_target_binding_result', {
-            result: 'no_snapshot',
-            selector,
-        });
+        recordLog('record_target_binding_result', {result: 'no_snapshot', selector});
         return undefined;
     }
 
     const matched = collectMatchedNodeIds(snapshot, input.event);
-    if (matched.length === 0) {
-        recordLog('record_target_binding_result', {
-            result: 'no_node',
-            selector,
-            matchedNodeCount: 0,
-        });
-        return undefined;
-    }
     if (matched.length !== 1) {
         recordLog('record_target_binding_result', {
-            result: 'ambiguous_node',
+            result: matched.length === 0 ? 'no_node' : 'ambiguous_node',
             selector,
-            matchedBy: matched[0]?.matchedBy,
             matchedNodeCount: matched.length,
         });
         return undefined;
     }
 
     const targetNodeId = matched[0].nodeId;
-    const nodeControlRef = snapshot.nodeIndex[targetNodeId]?.control?.ref;
-
-    if (nodeControlRef) {
-        const component = snapshot.controlIndex[nodeControlRef];
-        const kind = component ? readComponentKind(component) : undefined;
-        if (!component) {
-            recordLog('record_target_binding_result', {
-                result: 'no_control',
-                selector,
-                matchedBy: matched[0].matchedBy,
-                matchedNodeCount: matched.length,
-                targetNodeId,
-                controlRef: nodeControlRef,
-            });
-            return undefined;
-        }
-        if (component.owner !== 'browser.select_option') {
-            recordLog('record_target_binding_result', {
-                result: 'invalid_owner',
-                selector,
-                matchedBy: matched[0].matchedBy,
-                matchedNodeCount: matched.length,
-                targetNodeId,
-                controlRef: nodeControlRef,
-            });
-            return undefined;
-        }
-        if (!component.capabilities.includes('select_option')) {
-            recordLog('record_target_binding_result', {
-                result: 'invalid_capability',
-                selector,
-                matchedBy: matched[0].matchedBy,
-                matchedNodeCount: matched.length,
-                targetNodeId,
-                controlRef: nodeControlRef,
-            });
-            return undefined;
-        }
-        if (!kind) {
-            recordLog('record_target_binding_result', {
-                result: 'unsupported_kind',
-                selector,
-                matchedBy: matched[0].matchedBy,
-                matchedNodeCount: matched.length,
-                targetNodeId,
-                controlRef: nodeControlRef,
-                componentKind: component.kind,
-            });
-            return undefined;
-        }
-        if (isSelectOptionComponent(component)) {
-            recordLog('record_target_binding_result', {
-                result: 'bound',
-                selector,
-                matchedBy: matched[0].matchedBy,
-                matchedNodeCount: matched.length,
-                targetNodeId,
-                controlRef: nodeControlRef,
-                componentKind: kind,
-                controlRootNodeId: component.rootNodeId,
-            });
-            return {
-                snapshot,
-                snapshotId: snapshot.snapshotMeta?.snapshotId,
-                targetNodeId,
-                matchedBy: matched[0].matchedBy,
-                controlRef: nodeControlRef,
-                component,
-                componentKind: kind,
-                controlRootNodeId: component.rootNodeId,
-            };
-        }
-    }
-
     const byNode = findControlByNodeId(snapshot, targetNodeId);
     if (!byNode) {
         recordLog('record_target_binding_result', {
             result: 'no_control',
             selector,
-            matchedBy: matched[0].matchedBy,
-            matchedNodeCount: matched.length,
             targetNodeId,
+            matchedBy: matched[0].matchedBy,
         });
         return undefined;
     }
@@ -440,22 +297,17 @@ export const resolveRecordTargetBinding = async (input: {
     recordLog('record_target_binding_result', {
         result: 'bound',
         selector,
-        matchedBy: matched[0].matchedBy,
-        matchedNodeCount: matched.length,
         targetNodeId,
+        matchedBy: matched[0].matchedBy,
         controlRef: byNode.controlRef,
         componentKind: byNode.componentKind,
         controlRootNodeId: byNode.controlRootNodeId,
     });
-
     return {
         snapshot,
-        snapshotId: snapshot.snapshotMeta?.snapshotId,
+        snapshotId: recordSnapshotId(snapshot),
         targetNodeId,
         matchedBy: matched[0].matchedBy,
-        controlRef: byNode.controlRef,
-        component: byNode.component,
-        componentKind: byNode.componentKind,
-        controlRootNodeId: byNode.controlRootNodeId,
+        ...byNode,
     };
 };

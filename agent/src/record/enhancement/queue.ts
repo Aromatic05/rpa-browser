@@ -18,7 +18,7 @@ export const setStepEnhancement = (
     recordingToken: string,
     stepId: string,
     enhancement: RecordedStepEnhancement,
-) => {
+): void => {
     const current = state.recordingEnhancements.get(recordingToken) || {};
     current[stepId] = enhancement;
     state.recordingEnhancements.set(recordingToken, current);
@@ -60,6 +60,8 @@ export const startRecordedStepEnrichment = (input: StartRecordedStepEnrichmentIn
             page: input.page,
             snapshotCache: input.snapshotCache,
             cacheKey: input.cacheKey,
+            workspaceName: input.workspaceName,
+            tabName: input.tabName,
         });
         setStepEnhancement(input.state, input.recordingToken, input.stepId, enriched);
         recordLog('enrichment_done', {
@@ -97,6 +99,6 @@ export const awaitRecordingEnhancements = async (
 ): Promise<void> => {
     const token = getWorkspaceUnsavedToken(state, workspaceName);
     const pending = state.pendingEnhancements.get(token);
-    if (!pending || !pending.size) {return;}
+    if (!pending?.size) {return;}
     await Promise.allSettled(Array.from(pending));
 };
