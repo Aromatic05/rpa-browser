@@ -55,7 +55,7 @@ const isRawRecorderEventPayload = (payload: StepUnion | RecorderEvent): payload 
 
 const readPageUrl = (page: Page | null | undefined): string => {
     try {
-        return page?.url?.() || '';
+        return page?.url() ?? '';
     } catch {
         return '';
     }

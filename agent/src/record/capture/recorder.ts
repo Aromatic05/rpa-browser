@@ -9,7 +9,7 @@
  * - 同一 Page 只安装一次，避免重复监听
  * - 事件会尽量携带 selector/语义提示，locatorCandidates 仅作辅助信息
  */
-import type { Page } from 'playwright';
+import type { Frame, Page } from 'playwright';
 import type { LocatorCandidate, ScopeHint } from '../../runner/locator_candidates';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,7 +23,7 @@ const payloadBundlePath = path.join(recordDir, 'payload.bundle.js');
 
 let payloadReady: Promise<void> | null = null;
 
-const resolvePayloadInputs = () => {
+const resolvePayloadInputs = (): string[] => {
     if (!fs.existsSync(payloadDir)) {return [];}
     const entries = fs.readdirSync(payloadDir, { withFileTypes: true });
     const files: string[] = [];
@@ -43,7 +43,7 @@ const resolvePayloadInputs = () => {
     return files;
 };
 
-const shouldBuildPayload = () => {
+const shouldBuildPayload = (): boolean => {
     if (!fs.existsSync(payloadBundlePath)) {return true;}
     const bundleStat = fs.statSync(payloadBundlePath);
     const inputs = resolvePayloadInputs();
@@ -55,7 +55,7 @@ const shouldBuildPayload = () => {
     return newest > bundleStat.mtimeMs;
 };
 
-const ensurePayloadBundle = async () => {
+const ensurePayloadBundle = async (): Promise<void> => {
     if (payloadReady) {await payloadReady; return;}
     payloadReady = (async () => {
         if (!shouldBuildPayload()) {return;}
@@ -130,7 +130,7 @@ export const installRecorder = async (
     page: Page,
     tabName: string,
     onEvent: (event: RecorderEvent) => void | Promise<void>,
-) => {
+): Promise<void> => {
     if (installedPages.has(page)) {return;}
     installedPages.add(page);
 
@@ -140,7 +140,7 @@ export const installRecorder = async (
         await page.exposeBinding(bindingName, (source, event: RecorderEvent) => {
             void onEvent({
                 ...event,
-                pageUrl: source.page?.url?.() || null,
+                pageUrl: source.page.url() || null,
             });
         });
     } catch {
@@ -153,10 +153,10 @@ export const installRecorder = async (
     for (const frame of page.frames()) {
         try {
             await frame.evaluate((name) => {
-                (window as any).__rpa_recorder_binding = name;
+                (window as Window & { __rpa_recorder_binding?: string }).__rpa_recorder_binding = name;
             }, bindingName);
             await frame.evaluate((name) => {
-                (window as any).__rpa_tab_token = name;
+                (window as Window & { __rpa_tab_token?: string }).__rpa_tab_token = name;
             }, tabName);
             await frame.addScriptTag({ path: payloadBundlePath });
         } catch {
@@ -166,7 +166,7 @@ export const installRecorder = async (
 };
 
 export const setRecorderRuntimeEnabled = async (page: Page, enabled: boolean): Promise<void> => {
-    const applyFlag = async (target: { evaluate: (fn: (value: boolean) => void, value: boolean) => Promise<unknown> }) => {
+    const applyFlag = async (target: Page | Frame): Promise<void> => {
         try {
             await target.evaluate((value: boolean) => {
                 (window as Window & { __rpa_recorder_enabled?: boolean }).__rpa_recorder_enabled = value;
@@ -177,6 +177,6 @@ export const setRecorderRuntimeEnabled = async (page: Page, enabled: boolean): P
     };
     await applyFlag(page);
     for (const frame of page.frames()) {
-        await applyFlag(frame as unknown as { evaluate: (fn: (value: boolean) => void, value: boolean) => Promise<unknown> });
+        await applyFlag(frame);
     }
 };

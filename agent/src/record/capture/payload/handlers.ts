@@ -23,8 +23,7 @@ const markEventHandled = (event: Event) => {
     return false;
 };
 
-const inPanel = (path: EventTarget[]) => {
-    if (!path) {return false;}
+const inPanel = (path: EventTarget[]): boolean => {
     for (const node of path) {
         if (node instanceof HTMLElement && node.id === 'rpa-floating-panel') {return true;}
     }

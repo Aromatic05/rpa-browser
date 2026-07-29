@@ -49,13 +49,13 @@ const hydrateState = (state: RecordingState, persisted: PersistedRecordingStateV
 
     for (const bundle of persisted.bundles) {
         state.recordings.set(bundle.recordingToken, Array.isArray(bundle.steps) ? bundle.steps : []);
-        state.recordingEnhancements.set(bundle.recordingToken, bundle.enrichments || {});
+        state.recordingEnhancements.set(bundle.recordingToken, bundle.enrichments ?? {});
         if (bundle.manifest) {
             state.recordingManifests.set(bundle.recordingToken, bundle.manifest);
         }
     }
 
-    for (const [workspaceName, recordingToken] of Object.entries(persisted.workspaceUnsavedRecording || {})) {
+    for (const [workspaceName, recordingToken] of Object.entries(persisted.workspaceUnsavedRecording)) {
         if (
             typeof workspaceName === 'string' &&
             typeof recordingToken === 'string' &&
@@ -195,7 +195,9 @@ export const resolveWorkflowRecordingDir = async (
         if (stat.isDirectory()) {
             return recordsDir;
         }
-    } catch {}
+    } catch {
+        // Missing or inaccessible directories are reported uniformly below.
+    }
 
     throw new Error(`workflow recording not found: scene=${scene} recording=${recordingName}`);
 };

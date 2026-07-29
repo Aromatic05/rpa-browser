@@ -1,7 +1,6 @@
 import type { Page } from 'playwright';
 import { installRecorder, type RecorderEvent } from './capture/recorder';
-import type { StepUnion } from '../runner/steps/types';
-import type { RecordingEnhancementMap } from './types';
+import type { StepName } from '../runner/steps/types';
 import {
     appendWorkspaceRecordingEvent,
     appendWorkspaceRecordingStep,
@@ -83,14 +82,14 @@ const flushWorkspacePendingRecordEvents = (
             event: RecorderEvent;
             page?: Page;
             workspaceName: string;
-            stepName: import('../runner/steps/types').StepName;
+            stepName: StepName;
             ts?: number;
             tabName?: string;
-        }) => startRecordedStepEnrichment({
+        }) => { startRecordedStepEnrichment({
             ...input,
             snapshotCache: state.recordSnapshotCache,
             cacheKey: token,
-        }),
+        }); },
     };
     flushPendingChoiceEvents(state, token, {
         state,
@@ -107,7 +106,6 @@ const flushWorkspacePendingRecordEvents = (
 };
 
 export const disableWorkspaceRecording = (state: RecordingState, workspaceName: string): void => {
-    const token = getWorkspaceUnsavedToken(state, workspaceName);
     flushWorkspacePendingRecordEvents(state, workspaceName, '', undefined);
     disableWorkspaceRecordingState(state, workspaceName);
 };

@@ -22,8 +22,11 @@ const getRecordedSteps = (state: RecordingState, workspaceName: string): StepUni
 };
 
 const isSameTab = (step: StepUnion, tabRef: string): boolean => {
-    const args = (step.args || {}) as Record<string, unknown>;
-    const stepTabName = typeof args.tabName === 'string' ? args.tabName : undefined;
+    const stepTabName = step.name === 'browser.create_tab'
+        || step.name === 'browser.switch_tab'
+        || step.name === 'browser.close_tab'
+        ? step.args.tabName
+        : undefined;
     const metaTabName = typeof step.meta?.tabName === 'string' ? step.meta.tabName : undefined;
     return stepTabName === tabRef || metaTabName === tabRef;
 };
@@ -118,8 +121,9 @@ export const recordTabNavigation = (state: RecordingState, input: FirstPageUrlIn
         if (step.name === 'browser.create_tab') {break;}
         if (step.name === 'browser.switch_tab') {continue;}
         if (step.name === 'browser.goto') {
-            const args = (step.args || {}) as Record<string, unknown>;
-            if (typeof args.url === 'string' && args.url === input.url) {return { accepted: false };}
+            if (step.args.url === input.url) {
+                return { accepted: false };
+            }
             break;
         }
     }

@@ -186,9 +186,9 @@ export const buildTargetAttrs = (el: Element): Record<string, string> | undefine
         ['data-qa', 'dataQa'],
     ];
     for (const [attr, key] of pairs) {
-        const value = el.getAttribute(attr);
-        if (value && value.trim()) {
-            out[key] = value.trim();
+        const value = el.getAttribute(attr)?.trim();
+        if (value) {
+            out[key] = value;
         }
     }
     return Object.keys(out).length ? out : undefined;
@@ -215,14 +215,14 @@ export const buildTargetState = (el: Element): {
         ariaDisabled?: string;
     } = {};
     if (el instanceof HTMLInputElement) {
-        out.checked = Boolean(el.checked);
+        out.checked = el.checked;
     }
     out.focused = document.activeElement === el;
     if ('disabled' in el) {
-        out.disabled = Boolean((el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled);
+        out.disabled = (el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled;
     }
     if ('readOnly' in el) {
-        out.readonly = Boolean((el as HTMLInputElement | HTMLTextAreaElement).readOnly);
+        out.readonly = (el as HTMLInputElement | HTMLTextAreaElement).readOnly;
     }
     const ariaPairs: Array<[string, 'ariaChecked' | 'ariaSelected' | 'ariaExpanded' | 'ariaDisabled']> = [
         ['aria-checked', 'ariaChecked'],
@@ -231,9 +231,9 @@ export const buildTargetState = (el: Element): {
         ['aria-disabled', 'ariaDisabled'],
     ];
     for (const [attr, key] of ariaPairs) {
-        const value = el.getAttribute(attr);
-        if (value && value.trim()) {
-            out[key] = value.trim();
+        const value = el.getAttribute(attr)?.trim();
+        if (value) {
+            out[key] = value;
         }
     }
     return Object.keys(out).length ? out : undefined;
@@ -300,13 +300,10 @@ export const pickClickTarget = (element: Element): Element => {
         }
 
         if (!candidate) {
-            const classList = (node as HTMLElement).classList;
-            if (classList) {
-                for (const cls of Array.from(classList)) {
-                    if (FRAMEWORK_BUTTON_CLASSES.has(cls)) {
-                        candidate = node;
-                        break;
-                    }
+            for (const cls of Array.from(node.classList)) {
+                if (FRAMEWORK_BUTTON_CLASSES.has(cls)) {
+                    candidate = node;
+                    break;
                 }
             }
         }

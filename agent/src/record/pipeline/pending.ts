@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { RecorderEvent } from '../capture/recorder';
 import type { RecordingState } from './state';
-import type { StepUnion } from '../../runner/steps/types';
+import type { StepName, StepUnion } from '../../runner/steps/types';
 import type { NormalizeContext } from '../normalizer';
 import { flushPendingChoiceEvents as flushChoiceEventsFromNormalizer } from '../normalizer/select_option';
 import { insertRecordingStepByRecordedTs } from './order';
@@ -18,7 +18,7 @@ type PendingFlushHooks = {
         event: RecorderEvent;
         page?: Page;
         workspaceName: string;
-        stepName: import('../../runner/steps/types').StepName;
+        stepName: StepName;
         ts?: number;
         tabName?: string;
     }) => void;

@@ -3,7 +3,7 @@ import type { RecordSnapshotCacheEntry } from './snapshot';
 import type { RecordingEnhancementMap } from '../types';
 import type { RecordingManifest, WorkspaceSavedSnapshot } from './manifest';
 import { flushPendingFillEvents } from './pending';
-import type { StepResolve } from '../../runner/steps/types';
+import type { StepResolve, StepUnion } from '../../runner/steps/types';
 
 export type PendingCheckboxGroupSession = {
     kind: 'checkbox_group';
@@ -42,7 +42,7 @@ export type PendingSuppressedClick = {
 
 export type RecordingState = {
     recordingEnabled: Set<string>;
-    recordings: Map<string, import('../../runner/steps/types').StepUnion[]>;
+    recordings: Map<string, StepUnion[]>;
     recordingEnhancements: Map<string, RecordingEnhancementMap>;
     recordingManifests: Map<string, RecordingManifest>;
     workspaceUnsavedRecording: Map<string, string>;
@@ -163,7 +163,7 @@ export const getWorkspaceUnsavedRecordingBundle = (
     workspaceName: string,
 ): {
     recordingToken: string;
-    steps: import('../../runner/steps/types').StepUnion[];
+    steps: StepUnion[];
     manifest: RecordingManifest | undefined;
     enrichments: RecordingEnhancementMap;
 } => {
