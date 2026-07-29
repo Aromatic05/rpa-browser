@@ -1,5 +1,8 @@
 export type {
     AnnotatorAnchor,
+    AnnotatorApplyPayload,
+    AnnotatorApplyReply,
+    AnnotatorSemanticInput,
     AnnotatorComponent,
     AnnotatorDraft,
     AnnotatorOpenPayload,

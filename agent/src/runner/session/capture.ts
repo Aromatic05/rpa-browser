@@ -46,9 +46,9 @@ export const ensurePageSessionForPage = async (
 export const ensureFreshPageSession = async (
     deps: RunStepsDeps,
     workspaceName: string,
-    options: {explicit?: boolean} = {},
+    options: {explicit?: boolean; tabName?: string} = {},
 ): Promise<FreshPageSessionContext> => {
-    const binding = await awaitPageBoundBinding(deps, workspaceName);
+    const binding = await awaitPageBoundBinding(deps, workspaceName, options.tabName);
     const entry = await ensurePageSessionForPage(deps, workspaceName, binding.page, options);
     return {entry, binding};
 };

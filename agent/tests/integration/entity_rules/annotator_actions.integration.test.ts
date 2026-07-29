@@ -380,3 +380,234 @@ test('annotator visualize preserves canonical selection across real scroll and p
         await browser.close();
     }
 });
+
+test('annotator apply materializes canonical targets into a valid editable form profile', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <form id="OrderForm">
+            <label for="Buyer">Buyer</label>
+            <input id="Buyer" name="buyer">
+            <button id="Save" type="submit">Save order</button>
+          </form>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+
+        const opened = await invoke(runtime, 'entity_rules.annotator.open');
+        const projection = (opened.reply.payload as AnnotatorProjectionReply).projection;
+        const root = projection.targets.find((target) =>
+            target.kind === 'structural-root' && target.domain === 'form');
+        const field = projection.targets.find((target) => target.kind === 'field' && target.label === 'Buyer');
+        const submit = projection.targets.find((target) => target.kind === 'action' && target.label === 'Save order');
+        assert.ok(root);
+        assert.ok(field);
+        assert.ok(submit);
+
+        let draft: AnnotatorDraft = {
+            profileName: 'order-form',
+            page: {kind: 'form', urlPattern: '/orders'},
+            match: {version: 2, rules: []},
+            annotation: {version: 2, bindings: []},
+        };
+        const apply = async (targetId: string, semantic: Record<string, unknown>) => {
+            const result = await invoke(runtime, 'entity_rules.annotator.apply', {draft, targetId, semantic});
+            const payload = result.reply.payload as {
+                draft: AnnotatorDraft;
+                validation: {ok: boolean};
+                projection: AnnotatorProjectionReply['projection'];
+            };
+            draft = payload.draft;
+            return payload;
+        };
+
+        const entity = await apply(root.id, {
+            kind: 'entity',
+            businessTag: 'order.form',
+            displayName: 'Order form',
+        });
+        assert.equal(entity.validation.ok, true);
+        assert.deepEqual(draft.match.rules[0], {
+            ruleId: 'entity-order-form',
+            source: 'region',
+            expect: 'unique',
+            match: {kind: 'form', idEquals: 'OrderForm'},
+        });
+        assert.equal(draft.annotation.bindings[0].businessTag, 'order.form');
+
+        const fieldResult = await apply(field.id, {kind: 'field', fieldKey: 'buyer'});
+        assert.equal(fieldResult.validation.ok, true);
+        const fieldRule = draft.match.rules.find((rule) => rule.ruleId === 'field-buyer');
+        assert.deepEqual(fieldRule, {
+            ruleId: 'field-buyer',
+            source: 'node',
+            expect: 'unique',
+            within: 'entity-order-form',
+            match: {idEquals: 'Buyer'},
+        });
+        assert.equal(
+            draft.annotation.bindings.find((binding) => binding.ruleId === 'field-buyer')?.fieldKey,
+            'buyer',
+        );
+
+        const actionResult = await apply(submit.id, {kind: 'action', actionIntent: 'submit'});
+        assert.equal(actionResult.validation.ok, true);
+        assert.equal(
+            draft.annotation.bindings.find((binding) => binding.ruleId === 'action-submit')?.actionIntent,
+            'submit',
+        );
+        assert.equal(actionResult.projection.semanticBindings.some((binding) =>
+            binding.annotation.actionIntent === 'submit'), true);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('annotator apply materializes table columns primary keys and row actions', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <table id="Orders">
+            <thead><tr><th>Order ID</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td>A-1</td><td><button>Approve</button></td></tr>
+              <tr><td>A-2</td><td><button>Approve</button></td></tr>
+            </tbody>
+          </table>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const opened = await invoke(runtime, 'entity_rules.annotator.open');
+        const projection = (opened.reply.payload as AnnotatorProjectionReply).projection;
+        const root = projection.targets.find((target) =>
+            target.kind === 'structural-root' && target.domain === 'table');
+        const idColumn = projection.targets.find((target) => target.kind === 'column' && target.label === 'Order ID');
+        const approve = projection.targets.find((target) =>
+            target.kind === 'action' && target.domain === 'table' && target.label === 'Approve');
+        assert.ok(root);
+        assert.ok(idColumn);
+        assert.ok(approve);
+
+        let draft: AnnotatorDraft = {
+            profileName: 'orders-table',
+            page: {kind: 'table', urlPattern: '/orders'},
+            match: {version: 2, rules: []},
+            annotation: {version: 2, bindings: []},
+        };
+        const apply = async (targetId: string, semantic: Record<string, unknown>) => {
+            const result = await invoke(runtime, 'entity_rules.annotator.apply', {draft, targetId, semantic});
+            const payload = result.reply.payload as {draft: AnnotatorDraft; validation: {ok: boolean}};
+            draft = payload.draft;
+            assert.equal(payload.validation.ok, true);
+        };
+        await apply(root.id, {kind: 'entity', businessTag: 'orders.table'});
+        await apply(idColumn.id, {kind: 'column', fieldKey: 'orderId'});
+        await apply(idColumn.id, {kind: 'primary-key', fieldKey: 'orderId'});
+        await apply(approve.id, {kind: 'table-action', actionIntent: 'approve'});
+
+        const rootBinding = draft.annotation.bindings.find((binding) =>
+            binding.ruleId === 'entity-orders-table');
+        assert.deepEqual(rootBinding?.primaryKey, {
+            fieldKey: 'orderId',
+            columns: ['Order ID'],
+            source: 'annotation',
+        });
+        const columns = rootBinding?.columns as Array<Record<string, unknown>>;
+        assert.equal(columns.find((column) => column.fieldKey === 'orderId')?.name, 'Order ID');
+        assert.deepEqual(
+            columns.find((column) => column.name === 'Action')?.actions,
+            [{actionIntent: 'approve', text: 'Approve'}],
+        );
+    } finally {
+        await browser.close();
+    }
+});
+
+test('annotator apply creates a generic entity rule from confirmed canonical selection', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <dialog id="ConfirmDialog" open style="width:300px;height:160px">
+            <h2>Confirm order</h2>
+            <button>Confirm</button>
+          </dialog>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const rect = await page.locator('#ConfirmDialog').boundingBox();
+        assert.ok(rect);
+        const picked = await invoke(runtime, 'entity_rules.annotator.pick', {
+            point: {x: rect.x + 4, y: rect.y + 4},
+        });
+        const projection = (picked.reply.payload as AnnotatorPickReply).projection;
+        const selected = projection.targets.find((target) => target.id === 'selection:confirmed');
+        assert.ok(selected);
+        const draft: AnnotatorDraft = {
+            profileName: 'confirm-dialog',
+            page: {kind: 'dialog', urlPattern: '/confirm'},
+            match: {version: 2, rules: []},
+            annotation: {version: 2, bindings: []},
+        };
+        const result = await invoke(runtime, 'entity_rules.annotator.apply', {
+            draft,
+            targetId: selected.id,
+            semantic: {kind: 'entity', entityKind: 'dialog', businessTag: 'order.confirm'},
+        });
+        const payload = result.reply.payload as {draft: AnnotatorDraft; validation: {ok: boolean}};
+        assert.equal(payload.validation.ok, true);
+        assert.deepEqual(payload.draft.match.rules[0], {
+            ruleId: 'entity-confirm-dialog',
+            source: 'node',
+            expect: 'unique',
+            match: {kind: 'dialog', idEquals: 'ConfirmDialog'},
+        });
+    } finally {
+        await browser.close();
+    }
+});
+
+test('annotator apply rejects unknown or structurally invalid semantic payloads', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<form id="OrderForm"><label for="Buyer">Buyer</label><input id="Buyer"><button id="Save">Save</button></form>');
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({annotator: createRunnerAnnotatorController({runStepsDeps: deps})});
+        const opened = await invoke(runtime, 'entity_rules.annotator.open');
+        const target = (opened.reply.payload as AnnotatorProjectionReply).projection.targets.find((item) =>
+            item.kind === 'structural-root' && item.domain === 'form');
+        assert.ok(target);
+        const draft: AnnotatorDraft = {
+            profileName: 'order-form',
+            match: {version: 2, rules: []},
+            annotation: {version: 2, bindings: []},
+        };
+        await assert.rejects(
+            async () => await invoke(runtime, 'entity_rules.annotator.apply', {
+                draft,
+                targetId: target.id,
+                semantic: {kind: 'unknown', businessTag: 'order.form'},
+            }),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_ARGS,
+        );
+        await assert.rejects(
+            async () => await invoke(runtime, 'entity_rules.annotator.apply', {
+                draft,
+                targetId: target.id,
+                semantic: {kind: 'entity', businessTag: 'order.form', selector: '#OrderForm'},
+            }),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_ARGS,
+        );
+    } finally {
+        await browser.close();
+    }
+});

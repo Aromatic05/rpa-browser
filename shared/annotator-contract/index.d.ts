@@ -80,12 +80,20 @@ export type AnnotatorDraft = {
     match: {version: 2; rules: Array<Record<string, unknown>>};
     annotation: {version: 2; bindings: Array<Record<string, unknown>>};
 };
-export type AnnotatorOpenPayload = {profileName?: string};
-export type AnnotatorPickPayload = {point: AnnotatorPoint};
-export type AnnotatorRecognizePayload = {profileName?: string; refresh?: boolean};
-export type AnnotatorVisualizePayload = {profileName?: string};
-export type AnnotatorCheckPayload = {draft: AnnotatorDraft};
-export type AnnotatorSavePayload = {draft: AnnotatorDraft};
+export type AnnotatorOpenPayload = {profileName?: string; tabName?: string};
+export type AnnotatorPickPayload = {point: AnnotatorPoint; tabName?: string};
+export type AnnotatorRecognizePayload = {profileName?: string; refresh?: boolean; tabName?: string};
+export type AnnotatorVisualizePayload = {profileName?: string; tabName?: string};
+export type AnnotatorSemanticInput =
+    | {kind: 'entity'; businessTag: string; displayName?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'}
+    | {kind: 'field'; fieldKey: string; displayName?: string}
+    | {kind: 'action'; actionIntent: string; displayName?: string}
+    | {kind: 'column'; fieldKey: string; displayName?: string; columnKind?: 'text' | 'number' | 'date' | 'status'}
+    | {kind: 'primary-key'; fieldKey: string}
+    | {kind: 'table-action'; actionIntent: string; displayName?: string};
+export type AnnotatorApplyPayload = {draft: AnnotatorDraft; targetId: string; semantic: AnnotatorSemanticInput; tabName?: string};
+export type AnnotatorCheckPayload = {draft: AnnotatorDraft; tabName?: string};
+export type AnnotatorSavePayload = {draft: AnnotatorDraft; tabName?: string};
 export type AnnotatorProjectionReply = {
     projection: AnnotatorProjection;
     profile?: unknown;
@@ -111,6 +119,11 @@ export type AnnotatorValidation = {
     diagnostics: AnnotatorDiagnostic[];
     bindingIds: string[];
     suggestionIds: string[];
+};
+export type AnnotatorApplyReply = {
+    draft: AnnotatorDraft;
+    projection: AnnotatorProjection;
+    validation: AnnotatorValidation;
 };
 export type AnnotatorCheckReply = {
     projection: AnnotatorProjection;

@@ -5,6 +5,8 @@ import type {WorkspaceRouterInput} from '../../runtime/workspace/router';
 import {
     buildAnnotatorProjection,
     resolveAnnotatorPoint,
+    type AnnotatorApplyPayload,
+    type AnnotatorApplyReply,
     type AnnotatorCheckReply,
     type AnnotatorDraft,
     type AnnotatorPickPayload,
@@ -21,6 +23,7 @@ import {
     projectAnnotatorEvaluation,
     workflowProfileToAnnotatorDraft,
 } from './draft';
+import {materializeAnnotatorTarget} from './materialize';
 
 export type CreateRunnerAnnotatorControllerInput = {
     runStepsDeps: RunStepsDeps;
@@ -33,24 +36,65 @@ export const createRunnerAnnotatorController = (
         const payload = requirePayload(action.payload);
         switch (action.type) {
             case 'entity_rules.annotator.open':
-                assertAllowedKeys(payload, ['profileName']);
-                return await projectReply(input.runStepsDeps, {action, workspace}, false, optionalProfileName(payload));
+                assertAllowedKeys(payload, ['profileName', 'tabName']);
+                return await projectReply(
+                    input.runStepsDeps,
+                    {action, workspace},
+                    false,
+                    optionalProfileName(payload),
+                    optionalTabName(payload),
+                );
             case 'entity_rules.annotator.visualize':
-                assertAllowedKeys(payload, ['profileName']);
-                return await projectReply(input.runStepsDeps, {action, workspace}, true, optionalProfileName(payload));
+                assertAllowedKeys(payload, ['profileName', 'tabName']);
+                return await projectReply(
+                    input.runStepsDeps,
+                    {action, workspace},
+                    true,
+                    optionalProfileName(payload),
+                    optionalTabName(payload),
+                );
             case 'entity_rules.annotator.recognize':
-                assertAllowedKeys(payload, ['profileName', 'refresh']);
+                assertAllowedKeys(payload, ['profileName', 'refresh', 'tabName']);
                 assertOptionalBoolean(payload.refresh, 'refresh');
-                return await projectReply(input.runStepsDeps, {action, workspace}, true, optionalProfileName(payload));
+                return await projectReply(
+                    input.runStepsDeps,
+                    {action, workspace},
+                    true,
+                    optionalProfileName(payload),
+                    optionalTabName(payload),
+                );
             case 'entity_rules.annotator.pick':
-                assertAllowedKeys(payload, ['point']);
-                return await pickReply(input.runStepsDeps, {action, workspace}, requirePoint(payload));
+                assertAllowedKeys(payload, ['point', 'tabName']);
+                return await pickReply(
+                    input.runStepsDeps,
+                    {action, workspace},
+                    requirePoint(payload),
+                    optionalTabName(payload),
+                );
+            case 'entity_rules.annotator.apply':
+                assertAllowedKeys(payload, ['draft', 'targetId', 'semantic', 'tabName']);
+                return await applyReply(
+                    input.runStepsDeps,
+                    {action, workspace},
+                    requireApply(payload),
+                    optionalTabName(payload),
+                );
             case 'entity_rules.annotator.check':
-                assertAllowedKeys(payload, ['draft']);
-                return await checkReply(input.runStepsDeps, {action, workspace}, requireDraft(payload));
+                assertAllowedKeys(payload, ['draft', 'tabName']);
+                return await checkReply(
+                    input.runStepsDeps,
+                    {action, workspace},
+                    requireDraft(payload),
+                    optionalTabName(payload),
+                );
             case 'entity_rules.annotator.save':
-                assertAllowedKeys(payload, ['draft']);
-                return await saveReply(input.runStepsDeps, {action, workspace}, requireDraft(payload));
+                assertAllowedKeys(payload, ['draft', 'tabName']);
+                return await saveReply(
+                    input.runStepsDeps,
+                    {action, workspace},
+                    requireDraft(payload),
+                    optionalTabName(payload),
+                );
             default:
                 throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported annotator action: ${action.type}`);
         }
@@ -62,8 +106,9 @@ const projectReply = async (
     input: Pick<WorkspaceRouterInput, 'action' | 'workspace'>,
     explicit: boolean,
     profileName: string | undefined,
+    tabName: string | undefined,
 ): Promise<ControlPlaneResult> => {
-    const {entry, binding} = await ensureFreshPageSession(deps, input.workspace.name, {explicit});
+    const {entry, binding} = await ensureFreshPageSession(deps, input.workspace.name, {explicit, tabName});
     const profile = profileName
         ? requireProfile(input.workspace.workflow.get(profileName, {kind: 'entity_rules'}), profileName)
         : undefined;
@@ -83,12 +128,48 @@ const projectReply = async (
     return {reply: replyAction(input.action, payload), events: []};
 };
 
+const applyReply = async (
+    deps: RunStepsDeps,
+    input: Pick<WorkspaceRouterInput, 'action' | 'workspace'>,
+    payload: AnnotatorApplyPayload,
+    tabName: string | undefined,
+): Promise<ControlPlaneResult> => {
+    const current = await ensureFreshPageSession(deps, input.workspace.name, {tabName});
+    let materialized;
+    try {
+        materialized = materializeAnnotatorTarget({
+            entry: current.entry,
+            draft: payload.draft,
+            targetId: payload.targetId,
+            semantic: payload.semantic,
+            selection: deps.pageSession.readSelection(current.binding.page),
+        });
+    } catch (error) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, errorMessage(error));
+    }
+    if (!materialized.ok) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, materialized.message, materialized.details);
+    }
+    const evaluation = evaluateAnnotatorDraft(current.entry, materialized.draft, 'check');
+    const projection = buildAnnotatorProjection(
+        projectAnnotatorEvaluation(current.entry, evaluation),
+        deps.pageSession.readSelection(current.binding.page),
+    );
+    const replyPayload: AnnotatorApplyReply = {
+        draft: materialized.draft,
+        projection,
+        validation: evaluation.validation,
+    };
+    return {reply: replyAction(input.action, replyPayload), events: []};
+};
+
 const checkReply = async (
     deps: RunStepsDeps,
     input: Pick<WorkspaceRouterInput, 'action' | 'workspace'>,
     draft: AnnotatorDraft,
+    tabName: string | undefined,
 ): Promise<ControlPlaneResult> => {
-    const {entry, binding} = await ensureFreshPageSession(deps, input.workspace.name);
+    const {entry, binding} = await ensureFreshPageSession(deps, input.workspace.name, {tabName});
     const evaluation = evaluateAnnotatorDraft(entry, draft, 'check');
     const projection = buildAnnotatorProjection(
         projectAnnotatorEvaluation(entry, evaluation),
@@ -102,8 +183,9 @@ const saveReply = async (
     deps: RunStepsDeps,
     input: Pick<WorkspaceRouterInput, 'action' | 'workspace'>,
     draft: AnnotatorDraft,
+    tabName: string | undefined,
 ): Promise<ControlPlaneResult> => {
-    const current = await ensureFreshPageSession(deps, input.workspace.name);
+    const current = await ensureFreshPageSession(deps, input.workspace.name, {tabName});
     const checked = evaluateAnnotatorDraft(current.entry, draft, 'save');
     if (!checked.validation.ok || !checked.profile) {
         throw new ActionError(
@@ -117,7 +199,7 @@ const saveReply = async (
         throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'workflow returned a non-entity_rules artifact');
     }
 
-    const refreshed = await ensureFreshPageSession(deps, input.workspace.name, {explicit: true});
+    const refreshed = await ensureFreshPageSession(deps, input.workspace.name, {explicit: true, tabName});
     const reopened = evaluateAnnotatorDraft(
         refreshed.entry,
         workflowProfileToAnnotatorDraft(saved),
@@ -139,8 +221,9 @@ const pickReply = async (
     deps: RunStepsDeps,
     input: Pick<WorkspaceRouterInput, 'action' | 'workspace'>,
     payload: AnnotatorPickPayload,
+    tabName: string | undefined,
 ): Promise<ControlPlaneResult> => {
-    const current = await ensureFreshPageSession(deps, input.workspace.name);
+    const current = await ensureFreshPageSession(deps, input.workspace.name, {tabName});
     const pointResolution = resolveAnnotatorPoint(current.entry, payload.point);
     if (pointResolution.status !== 'resolved') {
         const projection = buildAnnotatorProjection(
@@ -172,7 +255,7 @@ const pickReply = async (
         return {reply: replyAction(input.action, replyPayload), events: []};
     }
 
-    const refreshed = await ensureFreshPageSession(deps, input.workspace.name, {explicit: true});
+    const refreshed = await ensureFreshPageSession(deps, input.workspace.name, {explicit: true, tabName});
     const projection = buildAnnotatorProjection(
         refreshed.entry,
         deps.pageSession.readSelection(refreshed.binding.page),
@@ -216,6 +299,14 @@ const optionalProfileName = (payload: Readonly<Record<string, unknown>>): string
     return payload.profileName.trim();
 };
 
+const optionalTabName = (payload: Readonly<Record<string, unknown>>): string | undefined => {
+    if (payload.tabName === undefined) {return undefined;}
+    if (typeof payload.tabName !== 'string' || !payload.tabName.trim()) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'tabName must be a non-empty string');
+    }
+    return payload.tabName.trim();
+};
+
 const requirePoint = (payload: Readonly<Record<string, unknown>>): AnnotatorPickPayload => {
     if (!payload.point || typeof payload.point !== 'object' || Array.isArray(payload.point)) {
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator pick requires point');
@@ -245,6 +336,111 @@ const requireDraft = (payload: Readonly<Record<string, unknown>>): AnnotatorDraf
         annotation: structuredClone(draft.annotation) as AnnotatorDraft['annotation'],
     };
 };
+
+const requireApply = (payload: Readonly<Record<string, unknown>>): AnnotatorApplyPayload => {
+    const draft = requireDraft(payload);
+    if (typeof payload.targetId !== 'string' || !payload.targetId.trim()) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator apply requires targetId');
+    }
+    if (!payload.semantic || typeof payload.semantic !== 'object' || Array.isArray(payload.semantic)) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator apply requires semantic');
+    }
+    return {
+        draft,
+        targetId: payload.targetId.trim(),
+        semantic: requireSemantic(payload.semantic),
+    };
+};
+
+const requireSemantic = (value: unknown): AnnotatorApplyPayload['semantic'] => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator apply semantic must be an object');
+    }
+    const semantic = value as Record<string, unknown>;
+    const displayName = optionalString(semantic.displayName, 'semantic.displayName');
+    switch (semantic.kind) {
+        case 'entity': {
+            assertAllowedKeys(semantic, ['kind', 'businessTag', 'displayName', 'entityKind']);
+            const entityKind = semantic.entityKind === undefined
+                ? undefined
+                : requireEntityKind(semantic.entityKind);
+            return {
+                kind: 'entity',
+                businessTag: requiredString(semantic.businessTag, 'semantic.businessTag'),
+                ...(displayName ? {displayName} : {}),
+                ...(entityKind ? {entityKind} : {}),
+            };
+        }
+        case 'field':
+            assertAllowedKeys(semantic, ['kind', 'fieldKey', 'displayName']);
+            return {
+                kind: 'field',
+                fieldKey: requiredString(semantic.fieldKey, 'semantic.fieldKey'),
+                ...(displayName ? {displayName} : {}),
+            };
+        case 'action':
+            assertAllowedKeys(semantic, ['kind', 'actionIntent', 'displayName']);
+            return {
+                kind: 'action',
+                actionIntent: requiredString(semantic.actionIntent, 'semantic.actionIntent'),
+                ...(displayName ? {displayName} : {}),
+            };
+        case 'column': {
+            assertAllowedKeys(semantic, ['kind', 'fieldKey', 'displayName', 'columnKind']);
+            const columnKind = semantic.columnKind === undefined
+                ? undefined
+                : requireColumnKind(semantic.columnKind);
+            return {
+                kind: 'column',
+                fieldKey: requiredString(semantic.fieldKey, 'semantic.fieldKey'),
+                ...(displayName ? {displayName} : {}),
+                ...(columnKind ? {columnKind} : {}),
+            };
+        }
+        case 'primary-key':
+            assertAllowedKeys(semantic, ['kind', 'fieldKey']);
+            return {kind: 'primary-key', fieldKey: requiredString(semantic.fieldKey, 'semantic.fieldKey')};
+        case 'table-action':
+            assertAllowedKeys(semantic, ['kind', 'actionIntent', 'displayName']);
+            return {
+                kind: 'table-action',
+                actionIntent: requiredString(semantic.actionIntent, 'semantic.actionIntent'),
+                ...(displayName ? {displayName} : {}),
+            };
+        default:
+            throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator apply semantic.kind is invalid');
+    }
+};
+
+const requiredString = (value: unknown, field: string): string => {
+    if (typeof value !== 'string' || !value.trim()) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `${field} must be a non-empty string`);
+    }
+    return value.trim();
+};
+
+const optionalString = (value: unknown, field: string): string | undefined => {
+    if (value === undefined) {return undefined;}
+    return requiredString(value, field);
+};
+
+const requireEntityKind = (value: unknown): NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'entity'}>['entityKind']> => {
+    const kinds = new Set(['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv']);
+    if (typeof value !== 'string' || !kinds.has(value)) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'semantic.entityKind is invalid');
+    }
+    return value as NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'entity'}>['entityKind']>;
+};
+
+const requireColumnKind = (value: unknown): NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'column'}>['columnKind']> => {
+    const kinds = new Set(['text', 'number', 'date', 'status']);
+    if (typeof value !== 'string' || !kinds.has(value)) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'semantic.columnKind is invalid');
+    }
+    return value as NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'column'}>['columnKind']>;
+};
+
+const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
 const assertOptionalBoolean = (value: unknown, field: string): void => {
     if (value !== undefined && typeof value !== 'boolean') {

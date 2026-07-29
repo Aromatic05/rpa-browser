@@ -59,6 +59,7 @@ export const REQUEST_ACTION_TYPES = {
     ENTITY_RULE_ANNOTATOR_PICK: 'entity_rules.annotator.pick',
     ENTITY_RULE_ANNOTATOR_RECOGNIZE: 'entity_rules.annotator.recognize',
     ENTITY_RULE_ANNOTATOR_VISUALIZE: 'entity_rules.annotator.visualize',
+    ENTITY_RULE_ANNOTATOR_APPLY: 'entity_rules.annotator.apply',
     ENTITY_RULE_ANNOTATOR_CHECK: 'entity_rules.annotator.check',
     ENTITY_RULE_ANNOTATOR_SAVE: 'entity_rules.annotator.save',
     MCP_START: 'mcp.start',
