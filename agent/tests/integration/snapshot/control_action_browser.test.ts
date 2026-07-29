@@ -281,3 +281,41 @@ test('control refs remain bound to the same iframe node when sibling frame order
         await browser.close();
     }
 });
+
+test('select_option preserves canonical validation errors for empty missing wrong-kind and stale targets', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <select id="Target"><option value="A">A</option><option value="B">B</option></select>
+        `);
+        const initial = await findControlByDomId(page, 'Target');
+
+        const empty = await executeSelectOptionOnPage(page, {
+            kind: 'native_select', nodeId: initial.nodeId, values: [],
+        });
+        assert.equal(empty.ok, false);
+        assert.equal(empty.ok ? undefined : empty.code, 'ERR_BAD_ARGS');
+
+        const missing = await executeSelectOptionOnPage(page, {
+            kind: 'native_select', selector: '#Missing', values: ['B'],
+        });
+        assert.equal(missing.ok, false);
+        assert.equal(missing.ok ? undefined : missing.code, 'ERR_NOT_FOUND');
+
+        const wrongKind = await executeSelectOptionOnPage(page, {
+            kind: 'radio_group', nodeId: initial.nodeId, values: ['B'],
+        });
+        assert.equal(wrongKind.ok, false);
+        assert.equal(wrongKind.ok ? undefined : wrongKind.code, 'ERR_BAD_ARGS');
+
+        await page.locator('#Target').evaluate((node) => node.remove());
+        const stale = await executeSelectOptionOnPage(page, {
+            kind: 'native_select', nodeId: initial.nodeId, values: ['B'],
+        });
+        assert.equal(stale.ok, false);
+        assert.equal(stale.ok ? undefined : stale.code, 'ERR_STALE');
+    } finally {
+        await browser.close();
+    }
+});

@@ -1,6 +1,5 @@
 import type { Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
-import type { LocatorIndex } from '../../../indexes/locator/contracts';
 import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
 import { captureSelectorTarget } from './selector_capture';
 import { resolveControlRef } from '../assembly/build';
@@ -108,7 +107,7 @@ const waitForCustomSelectComplete = async (
 > => {
     const deadline = Date.now() + Math.max(0, timeoutMs);
     let lastControl: ControlComponent | undefined;
-    do {
+    for (;;) {
         const snapshot = await captureControlSnapshot(page);
         const resolution = resolveControlRef(snapshot.controls, controlRef);
         if (resolution.status === 'ambiguous') {
@@ -128,7 +127,7 @@ const waitForCustomSelectComplete = async (
         }
         if (Date.now() >= deadline) {break;}
         await page.waitForTimeout(50);
-    } while (true);
+    }
     return { ok: false, error: failure(
         lastControl ? 'ERR_UNRESOLVED' : 'ERR_STALE',
         lastControl
@@ -337,13 +336,30 @@ const resolveRequestedControl = async (
     }
     for (const [source, nodeId] of [['nodeId', request.nodeId], ['selector', selectorNodeId]] as const) {
         if (!nodeId) {continue;}
-        const candidates = (snapshot.controls.byNodeId[nodeId] ?? [])
+        if (!Object.hasOwn(snapshot.observation.nodes, nodeId)) {
+            return {ok: false, error: failure(
+                source === 'nodeId' ? 'ERR_STALE' : 'ERR_NOT_FOUND',
+                source === 'nodeId' ? 'canonical node no longer exists' : 'selector node was not captured',
+                {source, nodeId, kind: request.kind},
+            )};
+        }
+        const owningControls = (snapshot.controls.byNodeId[nodeId] ?? [])
             .map((id) => snapshot.controls.controls[id])
-            .filter((component): component is ControlComponent => Boolean(component) && component.kind === request.kind);
+            .filter((component): component is ControlComponent => Boolean(component));
+        const candidates = owningControls.filter((component) => component.kind === request.kind);
         if (candidates.length === 0) {
-            return { ok: false, error: failure('ERR_NOT_FOUND', 'node is not owned by the requested control kind', {
-                source, nodeId, kind: request.kind,
-            }) };
+            return {ok: false, error: failure(
+                owningControls.length > 0 ? 'ERR_BAD_ARGS' : 'ERR_NOT_FOUND',
+                owningControls.length > 0
+                    ? 'node control kind does not match request'
+                    : 'node is not owned by a selectable control',
+                {
+                    source,
+                    nodeId,
+                    expectedKind: request.kind,
+                    actualKinds: [...new Set(owningControls.map((component) => component.kind))],
+                },
+            )};
         }
         if (candidates.length > 1) {
             return { ok: false, error: failure('ERR_AMBIGUOUS', 'node belongs to multiple controls of the requested kind', {
