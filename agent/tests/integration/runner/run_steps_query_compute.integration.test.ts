@@ -8,76 +8,35 @@ import {
     readResultPipe,
     runSteps,
 } from '../../../src/runner/run_steps';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
-import { executeBrowserCompute } from '../../../src/runner/steps/executors/compute';
-import { executeBrowserQuery } from '../../../src/runner/steps/executors/query';
-import type { SnapshotResult, UnifiedNode } from '../../../src/runner/steps/executors/snapshot/core/types';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import {executeBrowserCompute} from '../../../src/runner/steps/executors/compute';
+import {executeBrowserQuery} from '../../../src/runner/steps/executors/query';
+import type {StepUnion} from '../../../src/runner/steps/types';
+import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
+import {createV2BusinessPage} from '../../helpers/v2_business_page';
 
-const createNode = (id: string, role: string, name?: string): UnifiedNode => ({
-    id,
-    role,
-    name,
-    children: [],
-});
-
-const createTableFixtureSnapshot = (): SnapshotResult => {
-    const root = createNode('root', 'root');
-    const table = createNode('table_1', 'table');
-    const row1 = createNode('row_1', 'row', 'Row A');
-    const row2 = createNode('row_2', 'row', 'Row B');
-    const nextPage = createNode('next_page', 'button', 'Next');
-    root.children.push(table, nextPage);
-    table.children.push(row1, row2);
-
-    return {
-        root,
-        nodeIndex: {
-            root,
-            table_1: table,
-            row_1: row1,
-            row_2: row2,
-            next_page: nextPage,
-        },
-        entityIndex: { entities: {}, byNodeId: {} },
-        locatorIndex: {},
-        bboxIndex: {},
-        attrIndex: {
-            table_1: { tag: 'table' },
-            row_1: { tag: 'tr' },
-            row_2: { tag: 'tr' },
-            next_page: { tag: 'button' },
-        },
-        controlIndex: {},
-        contentStore: {},
-    };
-};
-
-const createDeps = (snapshot: SnapshotResult): RunStepsDeps => completeRunStepsDeps({
-    runtime: (() => {
-        const binding = {
-            workspaceName: 'ws-1',
-            tabName: 'tk-1',
-            traceCtx: {
-                cache: {
-                    latestSnapshot: snapshot,
-                },
-            },
-        };
-        return {
-            ensureActivePage: async () => binding,
-        };
-    })() as any,
-    config: {} as any,
-    pluginHost: {
-        getExecutors: () =>
-            ({
+const createDeps = async () => {
+    const page = {url: () => 'https://example.test/orders'};
+    const deps = completeRunStepsDeps({
+        config: {} as never,
+        pluginHost: {
+            getExecutors: () => ({
                 'browser.query': executeBrowserQuery,
                 'browser.compute': executeBrowserCompute,
-            }) as any,
-    } as any,
-});
+            }) as never,
+        } as never,
+    }, {
+        workspaceName: 'ws-1',
+        tabName: 'tab-1',
+        page,
+    });
+    const fixture = createV2BusinessPage({rowCount: 2});
+    await deps.pageSession.ensureFresh({
+        pageKey: page,
+        pageUrl: page.url(),
+        capture: async () => fixture.capture,
+    });
+    return deps;
+};
 
 const runWithSteps = async (steps: StepUnion[]) => {
     const queue = createStepsQueue(steps);
@@ -91,21 +50,18 @@ const runWithSteps = async (steps: StepUnion[]) => {
         resultPipe: pipe,
         signalChannel: signals,
         stopOnError: true,
-    } as any,
-    createDeps(createTableFixtureSnapshot()));
-    return { checkpoint, results: readResultPipe(pipe).items };
+    }, await createDeps());
+    return {checkpoint, results: readResultPipe(pipe).items};
 };
 
-test('runSteps can consume query rows in compute(len)', async () => {
-    const { checkpoint, results } = await runWithSteps([
+test('runSteps can consume V2 query rows in compute(len)', async () => {
+    const {checkpoint, results} = await runWithSteps([
         {
             id: 'q_rows',
             name: 'browser.query',
             args: {
                 from: 'snapshot',
-                where: {
-                    role: 'row',
-                },
+                where: {role: 'tr', attrs: {'data-row-key': 'SO-001'}},
             },
         } as StepUnion,
         {
@@ -114,7 +70,7 @@ test('runSteps can consume query rows in compute(len)', async () => {
             args: {
                 expr: {
                     op: 'len',
-                    args: [{ ref: { path: 'steps.q_rows.data.nodeIds' } }],
+                    args: [{ref: {path: 'steps.q_rows.data.nodeIds'}}],
                 },
             },
         } as StepUnion,
@@ -123,19 +79,19 @@ test('runSteps can consume query rows in compute(len)', async () => {
     assert.equal(checkpoint.status, 'completed');
     assert.equal(results[0].ok, true);
     assert.equal(results[1].ok, true);
-    assert.equal((results[1].data as any).value, 2);
+    assert.equal((results[1].data as {value: number}).value, 1);
 });
 
-test('runSteps supports query next button and compute(exists)', async () => {
-    const { checkpoint, results } = await runWithSteps([
+test('runSteps supports V2 query action and compute(exists)', async () => {
+    const {checkpoint, results} = await runWithSteps([
         {
-            id: 'q_next',
+            id: 'q_submit',
             name: 'browser.query',
             args: {
                 from: 'snapshot',
                 where: {
                     role: 'button',
-                    text: { contains: 'next' },
+                    text: {contains: '提交'},
                 },
                 limit: 1,
             },
@@ -146,19 +102,20 @@ test('runSteps supports query next button and compute(exists)', async () => {
             args: {
                 expr: {
                     op: 'exists',
-                    args: [{ ref: { path: 'steps.q_next.data.nodeIds' } }],
+                    args: [{ref: {path: 'steps.q_submit.data.nodeIds'}}],
                 },
             },
         } as StepUnion,
     ]);
 
     assert.equal(checkpoint.status, 'completed');
+    assert.equal(results[0].ok, true);
     assert.equal(results[1].ok, true);
-    assert.equal((results[1].data as any).value, true);
+    assert.equal((results[1].data as {value: boolean}).value, true);
 });
 
 test('runSteps returns stable failure for invalid compute op', async () => {
-    const { checkpoint, results } = await runWithSteps([
+    const {checkpoint, results} = await runWithSteps([
         {
             id: 'c_bad',
             name: 'browser.compute',
