@@ -17,4 +17,8 @@ export type {
     AnnotatorTargetKind,
     AnnotatorVisualizePayload,
     AnnotatorCheckPayload,
+    AnnotatorCheckReply,
+    AnnotatorDiagnostic,
+    AnnotatorSaveReply,
+    AnnotatorValidation,
 } from '../../../../shared/annotator-contract/index.js';

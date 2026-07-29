@@ -6,10 +6,13 @@ import {createRunnerAnnotatorController} from '../../../src/runner/annotator';
 import {createEntityRulesRuntime} from '../../../src/snapshot/rules/runtime';
 import {ActionError, ERROR_CODES} from '../../../src/actions/results';
 import type {Action} from '../../../src/actions/action_protocol';
-import type {Workflow} from '../../../src/workflow';
+import type {Workflow, WorkflowArtifact, WorkflowEntityRules} from '../../../src/workflow';
 import type {
+    AnnotatorCheckReply,
+    AnnotatorDraft,
     AnnotatorPickReply,
     AnnotatorProjectionReply,
+    AnnotatorSaveReply,
 } from '../../../../shared/annotator-contract/index.js';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 
@@ -33,9 +36,10 @@ const invoke = async (
     runtime: ReturnType<typeof createEntityRulesRuntime>,
     type: string,
     payload?: Record<string, unknown>,
+    targetWorkflow: Workflow = workflow,
 ) => await runtime.handle({
     action: action(type, payload),
-    workspace: {name: 'ws-1', workflow} as never,
+    workspace: {name: 'ws-1', workflow: targetWorkflow} as never,
     workspaceRegistry: {} as never,
 });
 
@@ -120,6 +124,120 @@ test('annotator pick rejects selector-based extension recovery payloads', async 
             }),
             (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_ARGS,
         );
+    } finally {
+        await browser.close();
+    }
+});
+
+
+const createMemoryWorkflow = (): {workflow: Workflow; profiles: Map<string, WorkflowEntityRules>} => {
+    const profiles = new Map<string, WorkflowEntityRules>();
+    const memoryWorkflow: Workflow = {
+        name: 'ws-1',
+        save: (artifact: WorkflowArtifact) => {
+            if (artifact.kind === 'entity_rules') {profiles.set(artifact.name, structuredClone(artifact));}
+            return structuredClone(artifact);
+        },
+        get: (name, dummy) => dummy.kind === 'entity_rules' ? structuredClone(profiles.get(name) ?? null) : null,
+        list: (dummy) => dummy.kind === 'entity_rules'
+            ? [...profiles.values()].map((profile) => ({
+                kind: 'entity_rules' as const,
+                name: profile.name,
+                title: profile.name,
+                summary: 'entity_rules',
+                createdAt: 1,
+                updatedAt: 1,
+                enabled: true,
+            }))
+            : [],
+        delete: (name, dummy) => dummy.kind === 'entity_rules' && profiles.delete(name),
+    };
+    return {workflow: memoryWorkflow, profiles};
+};
+
+const validDraft = (): AnnotatorDraft => ({
+    profileName: 'order-form',
+    match: {
+        version: 2,
+        rules: [
+            {ruleId: 'form-root', source: 'region', expect: 'unique', match: {kind: 'form', idEquals: 'OrderForm'}},
+            {ruleId: 'buyer', source: 'node', expect: 'unique', within: 'form-root', match: {idEquals: 'Buyer'}},
+            {ruleId: 'submit', source: 'node', expect: 'unique', within: 'form-root', match: {idEquals: 'Save'}},
+        ],
+    },
+    annotation: {
+        version: 2,
+        bindings: [
+            {ruleId: 'form-root', businessTag: 'order.form'},
+            {ruleId: 'buyer', fieldKey: 'buyer'},
+            {ruleId: 'submit', actionIntent: 'submit'},
+        ],
+    },
+});
+
+test('annotator check save and reopen share QueryPlan semantics without check-time writes', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <form id="OrderForm">
+            <label for="Buyer">Buyer</label>
+            <input id="Buyer" name="buyer">
+            <button id="Save" type="submit">Save order</button>
+          </form>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const memory = createMemoryWorkflow();
+        const draft = validDraft();
+
+        const checkedResult = await invoke(runtime, 'entity_rules.annotator.check', {draft}, memory.workflow);
+        const checked = checkedResult.reply.payload as AnnotatorCheckReply;
+        assert.equal(checked.validation.ok, true);
+        assert.equal(checked.validation.domain, 'form');
+        assert.equal(memory.profiles.size, 0);
+        assert.equal(checked.projection.semanticBindings.some((binding) =>
+            binding.annotation.businessTag === 'order.form'), true);
+
+        const savedResult = await invoke(runtime, 'entity_rules.annotator.save', {draft}, memory.workflow);
+        const saved = savedResult.reply.payload as AnnotatorSaveReply;
+        assert.equal(saved.validation.ok, true);
+        assert.equal(memory.profiles.has('order-form'), true);
+        assert.equal((saved.profile as WorkflowEntityRules).name, 'order-form');
+
+        const reopenedResult = await invoke(runtime, 'entity_rules.annotator.open', {
+            profileName: 'order-form',
+        }, memory.workflow);
+        const reopened = reopenedResult.reply.payload as AnnotatorProjectionReply;
+        assert.equal(reopened.validation?.ok, true);
+        assert.equal(reopened.projection.semanticBindings.some((binding) =>
+            binding.annotation.fieldKey === 'buyer'), true);
+        const submitTarget = reopened.projection.targets.find((target) =>
+            target.kind === 'semantic-binding' && target.label === 'submit');
+        assert.ok(submitTarget);
+        assert.ok(submitTarget.geometry.length > 0);
+
+        const invalid = validDraft();
+        invalid.match.rules[0] = {
+            ruleId: 'form-root',
+            source: 'region',
+            expect: 'unique',
+            match: {kind: 'form', idEquals: 'MissingForm'},
+        };
+        const invalidCheckResult = await invoke(runtime, 'entity_rules.annotator.check', {
+            draft: invalid,
+        }, memory.workflow);
+        const invalidCheck = invalidCheckResult.reply.payload as AnnotatorCheckReply;
+        assert.equal(invalidCheck.validation.ok, false);
+        assert.equal(memory.profiles.get('order-form')?.match.rules[0].match.idEquals, 'OrderForm');
+
+        await assert.rejects(
+            async () => await invoke(runtime, 'entity_rules.annotator.save', {draft: invalid}, memory.workflow),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_ARGS,
+        );
+        assert.equal(memory.profiles.get('order-form')?.match.rules[0].match.idEquals, 'OrderForm');
     } finally {
         await browser.close();
     }

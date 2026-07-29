@@ -85,10 +85,38 @@ export type AnnotatorRecognizePayload = {profileName?: string; refresh?: boolean
 export type AnnotatorVisualizePayload = {profileName?: string};
 export type AnnotatorCheckPayload = {draft: AnnotatorDraft};
 export type AnnotatorSavePayload = {draft: AnnotatorDraft};
-export type AnnotatorProjectionReply = {projection: AnnotatorProjection; profile?: unknown};
+export type AnnotatorProjectionReply = {
+    projection: AnnotatorProjection;
+    profile?: unknown;
+    validation?: AnnotatorValidation;
+};
 export type AnnotatorPickReply = {
     projection: AnnotatorProjection;
     picked: {status: 'resolved'; nodeId: string; anchor: AnnotatorAnchor}
         | {status: 'ambiguous'; candidateNodeIds: string[]}
         | {status: 'not_found'};
+};
+export type AnnotatorDiagnostic = {
+    code: string;
+    severity: string;
+    message: string;
+    nodeIds: string[];
+    ruleId?: string;
+    planStepId?: string;
+};
+export type AnnotatorValidation = {
+    ok: boolean;
+    domain?: 'form' | 'table';
+    diagnostics: AnnotatorDiagnostic[];
+    bindingIds: string[];
+    suggestionIds: string[];
+};
+export type AnnotatorCheckReply = {
+    projection: AnnotatorProjection;
+    validation: AnnotatorValidation;
+};
+export type AnnotatorSaveReply = {
+    projection: AnnotatorProjection;
+    validation: AnnotatorValidation;
+    profile: unknown;
 };
