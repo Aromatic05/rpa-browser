@@ -323,7 +323,7 @@ export type StepArgsMap = {
         urlIncludes?: string;
         textVisible?: string;
         entityExists?: {
-            query: string;
+            query?: string;
             kind?: EntityKind | EntityKind[];
             businessTag?: string | string[];
         };

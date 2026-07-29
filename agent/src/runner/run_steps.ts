@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { StepName, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { resolveStepArgsRefs } from './step_refs';
-import { runCheckpoint, setCheckpoints } from './checkpoint';
+import { runCheckpoint, setCheckpoints, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {shouldMarkPageSessionDirtyByStep} from './session';
@@ -562,7 +562,14 @@ export const runStepList = async (
     workspaceName: string,
     steps: StepUnion[],
     deps?: RunStepsDeps,
-    opts?: { stopOnError?: boolean; runId?: string; stepResolves?: Record<string, StepResolve> },
+    opts?: {
+        stopOnError?: boolean;
+        runId?: string;
+        stepResolves?: Record<string, StepResolve>;
+        checkpoints?: RunnerCheckpoint[];
+        checkpointEnabled?: boolean;
+        checkpointMaxAttempts?: number;
+    },
 ): Promise<{ checkpoint: Checkpoint; pipe: ResultPipe }> => {
     const queue = createStepsQueue(steps, { closed: true });
     const pipe = createResultPipe();
@@ -575,6 +582,9 @@ export const runStepList = async (
             resultPipe: pipe,
             signalChannel: signals,
             stepResolves: opts?.stepResolves,
+            checkpoints: opts?.checkpoints,
+            checkpointEnabled: opts?.checkpointEnabled,
+            checkpointMaxAttempts: opts?.checkpointMaxAttempts,
             stopOnError: opts?.stopOnError,
         },
         deps,
