@@ -42,8 +42,26 @@ const toError = (error: unknown): { name: string; message: string; stack: string
             stack: error.stack || `${error.name || 'Error'}: ${error.message}`,
         };
     }
-    const message = typeof error === 'string' ? error : String(error);
+    const message = unknownText(error);
     return { name: 'Error', message, stack: `Error: ${message}` };
+};
+
+
+const unknownText = (value: unknown): string => {
+    if (typeof value === 'string') {return value;}
+    if (value instanceof Error) {return value.message;}
+    if (value === null) {return 'null';}
+    if (value === undefined) {return 'undefined';}
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+        return `${value}`;
+    }
+    if (typeof value === 'symbol') {return value.description ?? 'symbol';}
+    try {
+        const serialized = JSON.stringify(value);
+        return typeof serialized === 'string' ? serialized : Object.prototype.toString.call(value);
+    } catch {
+        return Object.prototype.toString.call(value);
+    }
 };
 
 const toSummaryString = (value: unknown): string => {
@@ -54,7 +72,7 @@ const toSummaryString = (value: unknown): string => {
     return `[unserializable ${tag}]`;
 };
 
-const toJsonSafe = (value: unknown, seen = new WeakSet<object>(), depth = 0): unknown => {
+const toJsonSafe = (value: unknown, seen = new WeakSet(), depth = 0): unknown => {
     if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
         return value;
     }
@@ -84,7 +102,7 @@ const toJsonSafe = (value: unknown, seen = new WeakSet<object>(), depth = 0): un
         }
         return out;
     }
-    return String(value);
+    return '[unknown]';
 };
 
 const resolveWorkspaceName = (request: ControlEvalRequest): string => request.workspaceName || 'default';
@@ -94,7 +112,9 @@ const runWithTimeout = async <T>(task: Promise<T>, timeoutMs?: number): Promise<
         return await task;
     }
     return await new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error(`eval timeout after ${timeoutMs}ms`)), timeoutMs);
+        const timer = setTimeout(() => {
+            reject(new Error(`eval timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
         void task.then(
             (value) => {
                 clearTimeout(timer);
@@ -102,7 +122,7 @@ const runWithTimeout = async <T>(task: Promise<T>, timeoutMs?: number): Promise<
             },
             (error) => {
                 clearTimeout(timer);
-                reject(error);
+                reject(error instanceof Error ? error : new Error('control eval task failed', {cause: error}));
             },
         );
     });
@@ -137,7 +157,7 @@ export const runControlEval = async (
             const result = await runStepList(workspaceName || resolveWorkspaceName(request), [step], contextDeps.deps, {
                 stopOnError: true,
             });
-            return result.pipe.items[0] as StepResult;
+            return result.pipe.items[0];
         },
         runDsl: async (source, input, workspaceName) => {
             const runResult = await runDslSource(source, {
@@ -163,18 +183,24 @@ export const runControlEval = async (
                 .join(' ');
             logs.push(line);
         },
-        sleep: async (ms) => await new Promise<void>((resolve) => setTimeout(resolve, ms)),
+        sleep: async (ms) => {
+            await new Promise<void>((resolve) => {
+                setTimeout(() => {
+                    resolve();
+                }, ms);
+            });
+        },
         state: evalState,
         input: request.input,
         workspaceName: request.workspaceName,
     };
 
-    const AsyncFunction = Object.getPrototypeOf(async function () {
-        return undefined;
-    }).constructor as new (...args: string[]) => (...fnArgs: unknown[]) => Promise<unknown>;
-
     try {
-        const fn = new AsyncFunction('ctx', 'input', `"use strict";\n${request.source}`);
+        const fn = new Function(
+            'ctx',
+            'input',
+            `"use strict"; return (async () => {\n${request.source}\n})();`,
+        ) as (ctx: ControlEvalRuntimeContext, input: unknown) => Promise<unknown>;
         const value = await runWithTimeout(fn(ctx, request.input), request.timeoutMs);
         return {
             id: request.id,

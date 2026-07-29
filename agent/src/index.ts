@@ -49,6 +49,7 @@ const wsTap = (stage: string, data: Record<string, unknown>) => {
     if (!WS_TAP_ENABLED) {return;}
     actionLog.warning('[RPA:ws.tap]', { ts: Date.now(), stage, ...data });
 };
+// eslint-disable-next-line prefer-const -- assigned after dependency construction and captured by earlier closures.
 let workspaceRegistry: ReturnType<typeof createWorkspaceRegistry>;
 let dispatchActionForTrace: (action: Action) => Promise<Action> = async () => {
     throw new Error('dispatchAction not initialized');
@@ -130,13 +131,19 @@ workspaceRegistry = createWorkspaceRegistry({
     recordingState,
     replayOptions: REPLAY_OPTIONS,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-    emit: (action) => emitAction(action),
+    emit: (action) => {
+        emitAction(action);
+    },
     runStepsDeps,
     runnerConfig: config,
     portAllocator: createPortAllocator(),
     dispatchAction: async (action) => await handleAction(action),
-    onPageBound: (page, bindingName) => onPageBoundHook(page, bindingName),
-    onBindingClosed: (bindingName) => onBindingClosedHook(bindingName),
+    onPageBound: (page, bindingName) => {
+        onPageBoundHook(page, bindingName);
+    },
+    onBindingClosed: (bindingName) => {
+        onBindingClosedHook(bindingName);
+    },
     onWsError: (error) => {
         const message = error instanceof Error ? error.message : String(error);
         logError('action.dispatch.failed', { message });
@@ -155,7 +162,9 @@ const lifecycle = createRuntimeLifecycle({
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
     pingTimeoutMs: TAB_PING_TIMEOUT_MS,
     pingWatchdogIntervalMs: TAB_PING_WATCHDOG_INTERVAL_MS,
-    emit: (action) => emitAction(action),
+    emit: (action) => {
+        emitAction(action);
+    },
     ensureWorkflow: ensureWorkflowOnFs,
     ensureRecorder,
     setRecorderRuntimeEnabled,
@@ -170,7 +179,9 @@ lifecycle.startWatchdog();
 installRecorderEventSink({
     recordingState,
     navDedupeWindowMs: NAV_DEDUPE_WINDOW_MS,
-    emit: (action) => emitAction(action),
+    emit: (action) => {
+        emitAction(action);
+    },
     findWorkspaceNameByTabName: lifecycle.findWorkspaceNameByTabName,
     wsTap,
 });
@@ -179,7 +190,9 @@ const runnerScope = createRunnerScopeRegistry(2);
 const actionDispatcher = createActionDispatcher({
     workspaceRegistry,
     log: actionLogger,
-    emit: (action) => emitAction(action),
+    emit: (action) => {
+        emitAction(action);
+    },
 });
 dispatchActionForTrace = async (action) => await actionDispatcher.dispatch(action);
 runStepsDeps.dispatchAction = async (action) => await actionDispatcher.dispatch(action);
@@ -192,13 +205,13 @@ const handleAction = async (action: Action) => {
         payload: action.payload ?? null,
         payloadKeys:
             action.payload && typeof action.payload === 'object'
-                ? Object.keys(action.payload as Record<string, unknown>)
+                ? Object.keys(action.payload)
                 : [],
     });
 
     try {
         if (action.workspaceName) {
-            return await runnerScope.run(action.workspaceName, async () => await actionDispatcher.dispatch(action));
+            return await runnerScope.run(action.workspaceName, async () => actionDispatcher.dispatch(action));
         }
         return await actionDispatcher.dispatch(action);
     } catch (error) {
