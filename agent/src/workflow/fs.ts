@@ -26,7 +26,15 @@ export const writeTextFile = (filePath: string, content: string): void => {
     fs.writeFileSync(filePath, content, 'utf8');
 };
 
-export const readYamlFile = <T>(filePath: string): T => YAML.parse(readTextFile(filePath)) as T;
+export const readYamlFile = (filePath: string): unknown => YAML.parse(readTextFile(filePath));
+export const readValidatedYamlFile = <T>(
+    filePath: string,
+    validate: (value: T) => void,
+): T => {
+    const value = readYamlFile(filePath) as T;
+    validate(value);
+    return value;
+};
 export const writeYamlFile = (filePath: string, value: unknown): void => {
     writeTextFile(filePath, YAML.stringify(value));
 };

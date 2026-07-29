@@ -108,8 +108,8 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
             return importWorkflowEntityRules({
                 kind: 'entity_rules',
                 name: profileName,
-                match: readYamlFile<unknown>(path.join(directory, 'match.yaml')),
-                annotation: readYamlFile<unknown>(path.join(directory, 'annotation.yaml')),
+                match: readYamlFile(path.join(directory, 'match.yaml')),
+                annotation: readYamlFile(path.join(directory, 'annotation.yaml')),
             });
         } catch {
             return null;
