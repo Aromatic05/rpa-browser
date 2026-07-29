@@ -415,7 +415,7 @@ normalizer 与 enhancement 共享同一绑定过程：
 
 select_option normalizer 的边界如下：
 
-- 只依赖 snapshot `locatorIndex/attrIndex/node.control.ref/controlIndex`
+- 只依赖共享 PageSession 中的 canonical observation、LocatorIndex 与 ControlIndex
 - 仅当 `owner=browser.select_option` 且 `capabilities` 包含 `select_option` 才命中
 - 仅处理 `native_select`、`radio_group`、`checkbox_group`、`custom_select`
 - normalizer 产出的 `browser.select_option` args 仅含 `selector/values`（协议仍只允许 `nodeId/selector/resolveId/values`）

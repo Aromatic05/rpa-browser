@@ -132,15 +132,21 @@ test('Stage 6 acceptance documents match the current release evidence', () => {
     );
     const combined = `${plan}\n${handoff}`;
 
-    for (const staleClaim of ['610 findings', '156 errors', '454 warnings', 'Snapshot：129/129']) {
+    for (const staleClaim of [
+        '610 findings', '156 errors', '454 warnings', 'Snapshot：129/129',
+        'Snapshot：135/135', '614 tests / 612 pass', 'entity-rules              31/31',
+    ]) {
         assert.equal(combined.includes(staleClaim), false, `stale acceptance claim remains: ${staleClaim}`);
     }
     for (const requiredEvidence of [
-        'Snapshot：135/135',
+        'Snapshot：136/136',
         'SnapshotV2Stage45PerformanceBaseline.json',
         'table_required_matrix_browser.test.ts',
         'record 与 runner 共享 PageSession',
         '0 errors / 0 warnings',
+        'SnapshotV2V1ParityAudit.md',
+        'V1 snapshot JSON shape',
+        'Step/Checkpoint/task.run/DSL',
     ]) {
         assert.equal(combined.includes(requiredEvidence), true, `acceptance evidence missing: ${requiredEvidence}`);
     }

@@ -3,13 +3,23 @@
 ## 状态
 
 - 阶段：6 — V1 删除与发行级验收
-- 结果：accepted（复审修复后重新验收）
+- 结果：accepted（两轮独立复审修复后重新验收）
 - 日期：2026-07-29
 - 分支：`feat/canvas`
-- 复审代码基线：`be727535`
+- 当前代码基线：`031b7310`
 - V1 归档 tag：`archive/snapshot-entity-recognition-v1`（`9ed0d958`）
 
-初次 handoff 后的独立审查重新打开了 Stage 5/6，发现 record 双快照生命周期、真实浏览器矩阵证据不足、完整性能门禁缺失、失败诊断不完整和文档漂移。以下修复完成后，Stage 5/6 才重新 accepted：
+本报告只描述 Snapshot/实体识别 V2 迁移。未运行发布构建或发布门禁。
+
+完整 V1 能力对照和 wire migration 边界见：
+
+```text
+docs/Development/reports/SnapshotV2V1ParityAudit.md
+```
+
+## 两轮复审修复
+
+第一轮复审修复：
 
 ```text
 b0aa68ae refactor(record): share page session lifecycle
@@ -17,115 +27,193 @@ e5faa3e4 test(snapshot): cover required browser table matrix
 e749a742 test(snapshot): add full pipeline performance gate
 0e67141c fix(runner): attach semantic failure diagnostics
 be727535 test(snapshot): complete browser fault matrix
+a87fe842 docs(snapshot): reaccept stage6 after review
 ```
 
-本报告只描述 Snapshot/实体识别 V2 迁移验收；未运行发布构建或发布门禁。
-
-## 生产入口与生命周期
-
-### 唯一事实与生命周期入口
-
-- 页面事实：`captureControlSnapshot()` / `buildPageObservation()`。
-- 页面生命周期：`PageSnapshotSessionStore`。
-- 结构组件：canonical Control/Form/Table V2 assemblers。
-- 业务规则：QueryPlan + SemanticBindings。
-- snapshot：`buildSnapshotProjection()` / `diffSnapshotProjection()`。
-- runtime query：canonical observation 与 component indexes。
-- annotator：agent projection/picking/check/save；extension 只发送事件、坐标和 draft。
-- record、checkpoint、assert、entity、query：统一消费 V2 PageSession。
-
-record 与 runner 共享 PageSession。以下私有生命周期已删除：
-
-- `recordSnapshotCache`；
-- 1500ms TTL；
-- URL 私有判鲜；
-- record 直接重复执行 `captureControlSnapshot + Form/Table assembly`。
-
-record 现在通过 `RecordingSnapshotPort` 进入同一 dirty/navigation/explicit freshness、并发 refresh 合并、selection remap 与 semantic composition。Stage 6 静态守卫禁止 `recordSnapshotCache` 和 `SNAPSHOT_CACHE_TTL_MS` 返回生产源码。
-
-## 已删除旧入口
-
-- `runner/steps/executors/snapshot/*`；
-- V1 region/group、candidate score/select/prune、LCA ownership；
-- family-limit、nested-drop、pre-index mutating compression；
-- V1 scoped diff、stable-id projection fallback；
-- `FinalEntityView`；
-- `businessEntityOverlay` / `ruleEntityOverlay`；
-- `latestSnapshot` / `snapshotSessionStore` Trace cache bridge；
-- extension DOM entity recovery 与重复 matcher；
-- V1 keyslot/Ant acceptance/bulk/dump/repro 脚本；
-- 只验证退休实现细节的 V1 测试套件。
-
-`agent/tests/integration/snapshot/stage6_legacy_boundary.test.ts` 持续验证退休路径、token、相对导入、record 私有 cache 和验收文档状态。
-
-## 复审修复结果
-
-### Record PageSession 统一
-
-`page_session_capture.test.ts` 验证：
-
-- runner 首次 capture 与 record enrichment 读取同一个 PageSession capture 对象；
-- DOM 重渲染后 record 标记共享 session dirty；
-- capture revision 增加；
-- runner 随后读取同一个刷新结果；
-- refresh reason 为 `dirty-interaction`。
-
-多标签录制回放 E2E 在删除私有 TTL cache 后重新通过。
-
-### 真实浏览器矩阵
-
-`table_required_matrix_browser.test.ts` 使用 Playwright 实际 DOM，而不是手工 `RawPageCapture`，覆盖：
-
-- 旧版 clone-based fixed-left/fixed-right；
-- outer `role=table` host 去重；
-- fixed mirror row/cell mapping；
-- 大量重复 links/controls 的 CellControlSlot 有界性；
-- multi-level header；
-- body rowspan/colspan；
-- nested table；
-- expanded tree 与无 `aria-level` hierarchy unknown；
-- virtualization 与 `aria-rowcount`；
-- loading、empty；
-- 同 host 两表与 ambiguous pagination；
-- responsive hidden column 与 row selection。
-
-该矩阵先暴露出真实 bug：12 个重复链接会生成 12 个 slot。修复后每列每 control kind 最多使用 4 个 structural-position buckets，同时完整保留 occurrence/control IDs，不再随单行 control 数量线性增长。
-
-其他真实浏览器证据：
-
-| Required fixture | 证据 |
-| --- | --- |
-| native/Element/Ant form | `form_framework_browser.test.ts`、native form browser/step tests |
-| Element 23 logical tables | `table_framework_browser.test.ts`，23 个 `.el-table` 严格组装为 23 个 TableComponent |
-| Ant sticky/fixed/summary/pagination | `table_framework_browser.test.ts` |
-| editable cell/portal editor | `table_editor_browser.test.ts` |
-| opened/multiple select popup | `control_action_browser.test.ts`、`control_framework_browser.test.ts` |
-| shadow duplicate ID、zero-box、controller mismatch、captured-without-candidate iframe | `observation_browser_acceptance.test.ts` |
-| iframe scope geometry | `observation_browser_regressions.test.ts`、control iframe action tests |
-| partial observation source failure | `observation_browser_regressions.test.ts`：真实浏览器页面 + 单一 runtime source 故障注入，DOM facts 保持 complete |
-| zoom/scroll/visual viewport | annotator browser tests 与 extension live geometry tests |
-| filter/modal/rerender | `dynamic_page_browser.test.ts` |
-| SessionAnchor exact/stale/ambiguous | PageSession 与 annotator lifecycle tests |
-| entity_rules import/check/save/reopen/runtime | entity_rules 与 annotator integration tests |
-| snapshot mode/contain/filter/diff | projection、runner snapshot、MCP schema tests |
-| Step/Checkpoint/DSL | integration suite 与 4 个 E2E spec |
-
-未完成 required fixture：0。
-
-### 完整性能门禁
-
-Stage 1 frozen corpus 门禁继续验证 work-set 与 canonical node 数量；容差从 8 倍收紧为：
+第二轮复审发现并修复：
 
 ```text
-max(baseline × 1.2, baseline + 0.5ms)
+125ad3a4 fix(snapshot): preserve exact control slot positions
+922bbaa0 fix(record): enforce one page session snapshot per event
+85f87539 fix(runner): complete semantic failure diagnostics
+235cbb6a test(snapshot): benchmark large-page assembly
+39b142ab fix(checkpoint): reuse step runtime contracts
+f636d9cc fix(runner): retain v2 task context
+bfd98309 fix(dsl): preserve select control kinds
+a75dd86c feat(entity-rules): preserve v1 profile semantics
+d0fd1c2a test(runner): verify v2 orchestration stack
+7bc59c53 refactor(debug): migrate snapshot viewer to v2
+6548b1b9 fix(checkpoint): support supplied checkpoint sets
+031b7310 test(snapshot): stabilize full pipeline performance gate
 ```
 
-新增 `SnapshotV2Stage45PerformanceBaseline.json`，冻结结构：
+## 生产架构
+
+唯一事实和执行链：
+
+```text
+browser capture
+  -> PageObservation / ScopeForest / sidecar indexes
+  -> ControlIndex
+  -> FormComponentIndex / TableComponentIndex
+  -> QueryPlan / SemanticBindings
+  -> PageSnapshotSessionStore
+  -> SnapshotProjection / RuntimeQuery / AnnotatorProjection
+  -> Step / task.run / Checkpoint / DSL / MCP
+```
+
+以下入口全部使用 V2：
+
+- browser.snapshot、browser.query、browser.capture_resolve、browser.get_content；
+- record enhancement 和 select_option normalizer；
+- browser.entity、browser.assert、business query/target；
+- Step result refs 和 ResolveHint；
+- task.run start/push/resume；
+- workflow Checkpoint 和调用方 supplied checkpoint sets；
+- DSL snapshot/query/action/checkpoint；
+- annotator open/check/save/reopen；
+- extension panel/session 和 live geometry；
+- trace；
+- Snapshot V2 viewer。
+
+## PageSession 与 Record
+
+record 与 runner 共享同一个 `PageSnapshotSessionStore`：
+
+- `recordSnapshotCache` 已删除；
+- 1500ms TTL 与 URL 私有判鲜已删除；
+- RecordingSnapshotPort 是 RecordingState 强制依赖；
+- 同一 recorder event 最多解析一次 canonical snapshot；
+- custom-select pending comparison 和最终 step 使用同一 capture revision；
+- 多标签录制与回放 E2E 重新通过。
+
+## TableComponent 与真实浏览器矩阵
+
+`table_required_matrix_browser.test.ts` 覆盖：
+
+- clone-based fixed-left/fixed-right；
+- outer `role=table` host 去重；
+- fixed mirror row/cell mapping；
+- multi-level header 和 body rowspan/colspan；
+- nested/expanded/treegrid 与 hierarchy unknown；
+- virtualization、loading、empty；
+- ambiguous sibling pagination；
+- responsive hidden column 与 row selection；
+- 大量 links/controls。
+
+第二轮复审纠正了 CellControlSlot 的错误限流实现：
+
+- 不再把第 4 个之后的 controls 截断并合并到同一个位置；
+- 只为最多 4 个**精确相对位置**建立跨行 slot；
+- overflow controls 作为逐行 exceptions 保留；
+- invariant 禁止一个 slot 在同一行出现多个 controls。
+
+其他真实浏览器场景：
+
+- Element 页面 23 个 `.el-table` -> 23 个 logical TableComponent；
+- Ant fixed/sticky/summary/pagination；
+- Form、custom select、portal editor；
+- shadow duplicate ID、zero-box、controller mismatch；
+- iframe geometry、scroll/zoom/visual viewport；
+- filter/modal/rerender；
+- partial runtime source failure；
+- SessionAnchor exact/stale/ambiguous。
+
+required browser matrix 未完成项：0。
+
+## Step、Checkpoint 与 DSL
+
+顶层和嵌套 Step 统一通过 `executeStepWithRuntimeContracts()`：
+
+1. Step result ref；
+2. resolveId sidecar 注入；
+3. entity_rules step control；
+4. executor；
+5. PageSession dirty marking；
+6. structured diagnostics。
+
+Checkpoint：
+
+- 加载 workflow checkpoint 和 `checkpoint_resolve.yaml`；
+- 支持 `runSteps(checkpoints)` supplied definitions；
+- query/compute/act/content/output 和 nested refs 保持；
+- 无效 nested entity_rules 在 executor 前失败。
+
+`task.run.start/push/resume` 保存并合并：
+
+- stepResolves；
+- checkpoint definitions；
+- queue/cursor/checkpoint state。
+
+DSL target 会携带 V2 canonical control kind，select 可生成：
+
+- native_select；
+- custom_select；
+- radio_group；
+- checkbox_group。
+
+`v2_orchestration_stack.test.ts` 在同一 PageSession 验证：
+
+```text
+business target query
+  -> Step ref
+  -> snapshot contain
+  -> contentRef/get_content
+  -> manual entity add/find/rename/assert/delete
+  -> click
+  -> Checkpoint nested click
+  -> DSL snapshot/query/click
+```
+
+## V1 entity_rules 迁移
+
+legacy importer 保留并执行：
+
+- page.kind：form/table/dialog/list/panel/toolbar/kv；
+- page.urlPattern 与 auto URL filtering；
+- Form/Table QueryPlan；
+- generic canonical node QueryPlan；
+- businessName/displayName；
+- fields/controlRuleId/labelRuleId；
+- actions/nodeRuleId；
+- primaryKey、columns、row action；
+- pagination nodeRuleId/disabledRuleId。
+
+已通过端到端测试：
+
+- V1 form artifact -> fields query、field target、action target；
+- V1 table artifact -> primary key、current rows、row target、row action、next page；
+- dialog/list/panel/toolbar/kv generic profiles；
+- annotator page metadata save/load/check/reopen；
+- extension JSON panel/session page metadata 往返。
+
+通用实体只使用明确 ARIA role/HTML tag，不恢复 V1 candidate score、LCA 或 region/group 猜测。list/KV 可输出 canonical `itemNodeIds/keySlot`。
+
+## 发行诊断
+
+失败详情覆盖：
+
+- page epoch / capture revision；
+- root scopes；
+- active node 与 candidate count；
+- 完整 ResolveHint；
+- structural query relation/from；
+- business operation/businessTag/query/target；
+- semantic profiles 和 available business tags；
+- component/ownership/locator/QueryPlan diagnostics。
+
+不再存在仅返回“未找到实体”而没有 PageSession 语境的 business query 分支。
+
+## 性能门禁
+
+Stage 1 frozen corpus 门禁继续验证 work-set 和 canonical node 数量。
+
+Stage 4/5 完整门禁：
 
 ```text
 observation fixtures: 10
-business cases: 3
-input nodes: 267
+business cases: 3 (1 / 25 / 100 rows)
+input nodes: 810
 controls: 160
 forms: 7
 tables: 8
@@ -134,7 +222,7 @@ projected nodes: 543
 annotator targets: 284
 ```
 
-14 个独立 pass：
+14 个 pass：
 
 ```text
 observation
@@ -153,73 +241,91 @@ semantic-diff
 annotator-projection
 ```
 
-结构计数必须与 baseline 精确一致，避免通过删除 canonical nodes、rows、components 或 targets 换取性能。Stage 1 与 Stage 4/5 两个显式性能门禁均通过。
+规则：
 
-### 发行诊断
+- 1/25/100-row pages 均真实经过 observation/control/form/table assembly；
+- 40 次 measured iterations，之前有 assembly warmup；
+- 使用 `process.cpuUsage()` 进程 CPU 时间，避免其他编译任务抢占导致 wall-time 假回归；
+- aggregate p50/p95 不超过 `max(baseline × 1.2, baseline + 0.5ms)`；
+- 25→100 rows 的 table assembly 同次运行增长不超过 8 倍；
+- 结构计数必须与 baseline 精确一致。
 
-`capture_resolve` 未命中现在返回：
+Stage 1 与 Stage 4/5 两个性能门禁均通过。
 
-- workspace；
-- page epoch / capture revision；
-- root scope IDs；
-- active node count；
-- candidate count；
-- 实际查询输入。
+## V1 删除与工具链
 
-structural `browser.query` 参数失败现在返回：
+生产和工具链中不存在：
 
-- page epoch / capture revision；
-- root scope IDs；
-- relation；
-- `from` 输入。
+- `runner/steps/executors/snapshot/*` V1 pipeline；
+- V1 region/group/candidate score/compress；
+- FinalEntityView；
+- businessEntityOverlay/ruleEntityOverlay；
+- latestSnapshot/snapshotSessionStore bridge；
+- extension DOM entity recovery；
+- record 私有 snapshot cache；
+- 双 entity_rules matcher。
 
-这些路径由测试直接断言 `error.details`，不再只有 `ERR_NOT_FOUND` 或泛化 message。既有 component、ownership、QueryPlan、locator、projection diagnostics 继续保留 canonical node、evidence 与 plan step 信息。
+Snapshot viewer 已重写为 V2：
+
+```text
+captureControlSnapshot
+  -> PageSnapshotSessionStore
+  -> buildSnapshotProjection
+```
+
+Stage 6 静态测试禁止 viewer 再出现 V1 pipeline/import/index/overlay token。
 
 ## 最终验证
 
 ```text
-pnpm -C agent test:integration               614 tests / 612 pass / 0 fail / 2 skipped
-pnpm -C agent test:snapshot                  135/135
-pnpm -C agent test:entity-rules              31/31
+pnpm -C agent test:integration               630 tests / 628 pass / 0 fail / 2 skipped
+pnpm -C agent test:snapshot                  136/136
+pnpm -C agent test:entity-rules              37/37
 pnpm -C agent test:trace                     7/7
 pnpm -C agent test:e2e                       4/4
-pnpm -C agent test:unit                      254 tests / 252 pass / 0 fail / 2 skipped
+pnpm -C agent test:unit                      259 tests / 257 pass / 0 fail / 2 skipped
 pnpm -C agent test:unit:snapshot:perf         1/1
 pnpm -C agent test:unit:snapshot:full-perf    1/1
 pnpm -C agent typecheck                      pass
 pnpm --filter ./extension test               pass
+pnpm -C agent/debug/snapshot-viewer build    pass
 pnpm lint                                    0 errors / 0 warnings
 ```
 
-普通 integration/unit 中跳过的两项就是显式 Stage 1 与 Stage 4/5 性能门禁，已分别执行通过。
+普通 integration/unit 跳过的两项就是两个显式性能门禁，均已单独通过。
 
-E2E 覆盖：
+## 功能替代与 wire 边界
 
-- 多标签录制与回放；
-- fill/type/select/checkbox/radio/press/hover/scroll/click/snapshot/screenshot；
-- workflow MCP 生命周期与 workspace 隔离；
-- workflow save/load 与 recording 隔离。
+结论：
 
-## 依赖、归档与工作区
+- 仓库内 Snapshot/entity_rules **生产功能替代完成**；
+- Step、task.run、Checkpoint、DSL **可由 V2 完整支撑**；
+- V1 entity_rules artifact **可迁移并运行**；
+- V1 snapshot JSON shape **不提供 drop-in wire compatibility**。
 
-- 生产 legacy token/path 扫描：0 命中。
-- record 私有 snapshot cache token：0 命中。
-- `agent/src`、`extension/src`、`start_extension/src`、`shared` 相对导入：0 个未解析。
-- Snapshot V1 runtime/implementation 仅保留于 tag：`archive/snapshot-entity-recognition-v1`。
-- legacy entity_rules artifact importer 只把旧制品转换为 V2 QueryPlan，不执行 V1 matcher。
-- `pnpm lint`：0 errors / 0 warnings。
-- 最终提交前工作区必须保持干净。
+以下旧引用需要显式迁移：
+
+```text
+snapshot.data.root
+snapshot.data.nodeIndex
+snapshot.data.entityIndex
+snapshot.data.contentStore
+```
+
+应改用 V2 Projection、browser.query、browser.capture_resolve、contentRef 和 typed business target。仓库当前未发现生产 workflow/Step/Checkpoint/DSL 使用上述旧路径。
 
 ## 退出检查
 
-- [x] 全部 production consumer 使用 V2 canonical facts/components
+- [x] 全部 production consumer 使用 V2 facts/components
 - [x] record 与 runner 共享 PageSession
-- [x] 无 runtime flag、V1 fallback、双 matcher 或私有 record TTL cache
+- [x] 同一 recorder event 单一 capture revision
+- [x] CellControlSlot 保持精确相对位置
+- [x] Step/Checkpoint/task.run/DSL 共享 runtime contracts
+- [x] V1 entity_rules artifact 保留可执行语义
 - [x] required browser matrix 未完成项为 0
-- [x] Stage 1 与完整 Stage 4/5 性能门禁通过
-- [x] 关键失败路径提供结构化诊断
-- [x] 文档、contracts、实现和测试一致
-- [x] 全仓 lint clean
-- [x] V1 仅通过归档 tag 查看
-
-Snapshot/实体识别 V2 分阶段迁移至此结束。后续功能应作为独立任务，不再扩展本迁移计划。
+- [x] 两套性能门禁通过
+- [x] 关键失败路径结构化诊断完整
+- [x] debug viewer 使用 V2
+- [x] lint/typecheck clean
+- [x] V1 runtime 只存在于归档 tag
+- [x] wire compatibility 边界已明确记录
