@@ -34,6 +34,9 @@ import { getLogger } from '../logging/logger';
 
 const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
 export type RecordControlServices = {
     recordingState: RecordingState;
     replayOptions: ReplayOptions;
@@ -44,24 +47,20 @@ export type RecordControlServices = {
     log: Logger | ((...args: unknown[]) => void);
 };
 
-const logWarning = (log: RecordControlServices['log'], ...args: unknown[]) => {
-    if (typeof log === 'function' && 'warning' in log && typeof (log as Logger).warning === 'function') {
-        (log as Logger).warning(...args);
+const logWarning = (log: RecordControlServices['log'], ...args: unknown[]): void => {
+    if ('warning' in log && typeof log.warning === 'function') {
+        log.warning(...args);
         return;
     }
-    if (typeof log === 'function') {
-        log(...args);
-    }
+    log(...args);
 };
 
-const logError = (log: RecordControlServices['log'], ...args: unknown[]) => {
-    if (typeof log === 'function' && 'error' in log && typeof (log as Logger).error === 'function') {
-        (log as Logger).error(...args);
+const logError = (log: RecordControlServices['log'], ...args: unknown[]): void => {
+    if ('error' in log && typeof log.error === 'function') {
+        log.error(...args);
         return;
     }
-    if (typeof log === 'function') {
-        log(...args);
-    }
+    log(...args);
 };
 
 export type RecordControl = {
@@ -81,7 +80,7 @@ const toSavedRecordingList = (workspace: WorkspaceRouterInput['workspace']) =>
         .list(RECORDING_DUMMY)
         .map((item) => {
             const loaded = workspace.workflow.get(item.name, RECORDING_DUMMY);
-            const steps = loaded && loaded.kind === 'recording' ? loaded.steps : [];
+            const steps = loaded?.kind === 'recording' ? loaded.steps : [];
             return { recordingName: item.name, stepCount: steps.length };
         });
 
@@ -101,7 +100,6 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
         if (action.type === 'record.start') {
             requireWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
-            const tabs = workspace.tabs.listTabs();
             const activeTab = workspace.tabs.getActiveTab();
             if (!activeTab) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
@@ -193,15 +191,17 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const stepResolves: Record<string, StepResolve> = {};
             if (payload.includeStepResolve === true) {
                 for (const step of orderedSteps) {
-                    const fromEnrichment = bundle.enrichments?.[step.id]
+                    const enhancement = Object.hasOwn(bundle.enrichments, step.id)
+                        ? bundle.enrichments[step.id]
+                        : undefined;
+                    const candidate: StepResolve | undefined = enhancement
                         ? {
-                              hint: bundle.enrichments[step.id].resolveHint,
-                              policy: bundle.enrichments[step.id].resolvePolicy,
+                              hint: enhancement.resolveHint,
+                              policy: enhancement.resolvePolicy,
                           }
                         : undefined;
-                    const candidate = fromEnrichment;
-                    if (!isValidStepResolve(candidate)) {continue;}
-                    stepResolves[step.id] = candidate as StepResolve;
+                    if (!candidate || !isValidStepResolve(candidate)) {continue;}
+                    stepResolves[step.id] = candidate;
                 }
             }
             if (!bundle.manifest?.activeTabRef) {
@@ -215,16 +215,16 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     recordingName,
                     workspaceName,
                     activeTabRef: bundle.manifest.activeTabRef,
-                    initialTabs: bundle.manifest.initialTabs || [],
-                    entryUrl: bundle.manifest?.entryUrl,
-                    tabs: (bundle.manifest?.tabs || []).map((item) => ({
-                        tabName: item.tabName || item.tabRef,
+                    initialTabs: bundle.manifest.initialTabs,
+                    entryUrl: bundle.manifest.entryUrl,
+                    tabs: bundle.manifest.tabs.map((item) => ({
+                        tabName: item.tabName,
                         url: item.lastSeenUrl || item.firstSeenUrl,
                     })),
                     createdAt: Date.now(),
                     stepCount: orderedSteps.length,
                 },
-                steps: orderedSteps,
+                steps: persistedSteps,
                 stepResolves,
             };
             workflow.save(artifact);
@@ -279,7 +279,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     return { ...getWorkspaceUnsavedRecordingBundle(services.recordingState, currentWorkspaceName), stepResolves: {} };
                 }
                 const loaded = workspace.workflow.get(sourceRecordingName, RECORDING_DUMMY);
-                if (!loaded || loaded.kind !== 'recording') {
+                if (loaded?.kind !== 'recording') {
                     throw new ActionError(ERROR_CODES.ERR_RECORDING_NOT_FOUND, `recording not found: ${sourceRecordingName}`);
                 }
                 if (!loaded.recording.activeTabRef) {
@@ -308,7 +308,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         })),
                     },
                     enrichments: {},
-                    stepResolves: loaded.stepResolves || {},
+                    stepResolves: loaded.stepResolves,
                 };
             })();
 
@@ -328,7 +328,9 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             if (bundle.manifest?.entryUrl && initialBinding.page.url() !== bundle.manifest.entryUrl) {
                 try {
                     await initialBinding.page.goto(bundle.manifest.entryUrl, { waitUntil: 'domcontentloaded' });
-                } catch {}
+                } catch {
+                    // Replay continues from the current page when entry navigation fails.
+                }
             }
 
             enterWorkspaceState(workspace, 'playing', action.type);
@@ -383,7 +385,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         logWarning(services.log, '[RPA:play]', 'replay canceled', {
                             workspaceName: replayWorkspaceName,
                             tabName: initialTabName,
-                            reason: replayed.error?.message || 'canceled',
+                            reason: replayed.error.message || 'canceled',
                         });
                         emitPlayEvent(ACTION_TYPES.PLAY_CANCELED, { workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results });
                         return;
@@ -391,23 +393,26 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     if (!replayed.ok && stopOnError) {
                         const firstFailed = replayed.results.find((item) => !item.ok);
                         const failedStep = bundle.steps.find((step) => step.id === firstFailed?.stepId);
+                        const failureDetails = isRecord(firstFailed?.error?.details)
+                            ? firstFailed.error.details
+                            : {};
                         logError(services.log, '[RPA:play]', 'replay failed', {
                             workspaceName: replayWorkspaceName,
                             tabName: initialTabName,
                             stepId: firstFailed?.stepId,
                             stepName: failedStep?.name,
-                            confidence: (firstFailed?.error?.details as any)?.confidence,
-                            chosenPath: (firstFailed?.error?.details as any)?.chosenPath,
-                            failedPath: (firstFailed?.error?.details as any)?.failedPath,
-                            failedReason: (firstFailed?.error?.details as any)?.failedReason,
-                            finalSelector: (firstFailed?.error?.details as any)?.finalSelector,
-                            snapshotRequired: (firstFailed?.error?.details as any)?.snapshotRequired,
-                            snapshotRefreshed: (firstFailed?.error?.details as any)?.snapshotRefreshed,
-                            snapshotRefreshReason: (firstFailed?.error?.details as any)?.snapshotRefreshReason,
-                            snapshotId: (firstFailed?.error?.details as any)?.snapshotId,
-                            snapshotUrl: (firstFailed?.error?.details as any)?.snapshotUrl,
-                            attempts: (firstFailed?.error?.details as any)?.attempts,
-                            warnings: (firstFailed?.error?.details as any)?.warnings,
+                            confidence: failureDetails.confidence,
+                            chosenPath: failureDetails.chosenPath,
+                            failedPath: failureDetails.failedPath,
+                            failedReason: failureDetails.failedReason,
+                            finalSelector: failureDetails.finalSelector,
+                            snapshotRequired: failureDetails.snapshotRequired,
+                            snapshotRefreshed: failureDetails.snapshotRefreshed,
+                            snapshotRefreshReason: failureDetails.snapshotRefreshReason,
+                            snapshotId: failureDetails.snapshotId,
+                            snapshotUrl: failureDetails.snapshotUrl,
+                            attempts: failureDetails.attempts,
+                            warnings: failureDetails.warnings,
                             message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
                             error: firstFailed?.error || replayed.error,
                         });
