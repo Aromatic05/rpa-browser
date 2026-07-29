@@ -209,14 +209,15 @@ await log('annotator live geometry refresh coalesces viewport events through vis
     });
     let active = true;
     let refreshes = 0;
+    const visualViewport = new dom.window.EventTarget();
     const live = createAnnotatorLiveGeometryRefresh({
-        eventTargets: [dom.window],
+        eventTargets: [dom.window, visualViewport],
         isActive: () => active,
         refresh: async () => {refreshes += 1;},
     });
 
     dom.window.dispatchEvent(new dom.window.Event('scroll'));
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    visualViewport.dispatchEvent(new dom.window.Event('resize'));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(refreshes, 1);
 
@@ -227,7 +228,7 @@ await log('annotator live geometry refresh coalesces viewport events through vis
 
     live.dispose();
     active = true;
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    visualViewport.dispatchEvent(new dom.window.Event('resize'));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(refreshes, 1);
 });

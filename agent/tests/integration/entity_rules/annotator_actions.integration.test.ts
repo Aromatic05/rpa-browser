@@ -307,3 +307,73 @@ test('annotator visualize refreshes live geometry and preserves only exact selec
         await browser.close();
     }
 });
+
+test('annotator visualize preserves canonical selection across real scroll and page zoom', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <div style="height:300px"></div>
+          <form id="OrderForm">
+            <label for="Buyer">Buyer</label>
+            <input id="Buyer" name="buyer">
+            <button id="Save" type="submit">Save order</button>
+          </form>
+          <div style="height:1800px"></div>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+
+        const openedResult = await invoke(runtime, 'entity_rules.annotator.open');
+        const opened = openedResult.reply.payload as AnnotatorProjectionReply;
+        const initialTarget = opened.projection.targets.find((target) =>
+            target.kind === 'action' && target.label === 'Save order');
+        assert.ok(initialTarget?.geometry[0]);
+        const initialRect = initialTarget.geometry[0];
+        const pickedResult = await invoke(runtime, 'entity_rules.annotator.pick', {
+            point: {
+                x: initialRect.x + initialRect.width / 2,
+                y: initialRect.y + initialRect.height / 2,
+            },
+        });
+        const picked = pickedResult.reply.payload as AnnotatorPickReply;
+        assert.equal(picked.picked.status, 'resolved');
+        if (picked.picked.status !== 'resolved') {return;}
+        const backendNodeId = picked.picked.anchor.backendNodeId;
+
+        await page.evaluate(() => window.scrollTo(0, 220));
+        const scrolledResult = await invoke(runtime, 'entity_rules.annotator.visualize');
+        const scrolled = scrolledResult.reply.payload as AnnotatorProjectionReply;
+        const scrolledTarget = scrolled.projection.targets.find((target) =>
+            target.kind === 'action' && target.label === 'Save order');
+        assert.ok(scrolledTarget?.geometry[0]);
+        assert.ok(scrolledTarget.geometry[0].y < initialRect.y - 150);
+        assert.equal(scrolled.projection.selection.status, 'resolved');
+        if (scrolled.projection.selection.status === 'resolved') {
+            assert.equal(scrolled.projection.selection.anchor.backendNodeId, backendNodeId);
+        }
+
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Emulation.setPageScaleFactor', {pageScaleFactor: 1.5});
+        const scale = await page.evaluate(() => window.visualViewport?.scale ?? 1);
+        assert.ok(scale >= 1.4);
+        const zoomedResult = await invoke(runtime, 'entity_rules.annotator.visualize');
+        const zoomed = zoomedResult.reply.payload as AnnotatorProjectionReply;
+        assert.ok(zoomed.projection.identity.captureRevision > scrolled.projection.identity.captureRevision);
+        assert.equal(zoomed.projection.identity.pageEpoch, opened.projection.identity.pageEpoch);
+        assert.equal(zoomed.projection.selection.status, 'resolved');
+        if (zoomed.projection.selection.status === 'resolved') {
+            assert.equal(zoomed.projection.selection.anchor.backendNodeId, backendNodeId);
+        }
+        const zoomedTarget = zoomed.projection.targets.find((target) =>
+            target.kind === 'action' && target.label === 'Save order');
+        assert.ok(zoomedTarget?.geometry[0]);
+        for (const value of Object.values(zoomedTarget.geometry[0])) {
+            assert.equal(Number.isFinite(value), true);
+        }
+    } finally {
+        await browser.close();
+    }
+});
