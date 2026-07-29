@@ -566,3 +566,103 @@ test('duplicate portal editor ids stay ambiguous and never attach either control
     assert.equal(table.status, 'ambiguous');
     assert.equal(table.diagnostics.some((item) => item.code === 'table.editor.target.ambiguous'), true);
 });
+
+test('body merged cells preserve rowspan and colspan without shifting canonical columns', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table']),
+        node('table', 'table', 'body', ['thead', 'tbody']),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['group-header', 'name-header', 'status-header']),
+        node('group-header', 'th', 'header-row', [], {}, 'Group'),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('status-header', 'th', 'header-row', [], {}, 'Status'),
+        node('tbody', 'tbody', 'table', ['row-a', 'row-b', 'row-c']),
+        node('row-a', 'tr', 'tbody', ['group-a', 'name-a', 'status-a']),
+        node('group-a', 'td', 'row-a', [], {rowspan: '2'}, 'Admin'),
+        node('name-a', 'td', 'row-a', [], {}, 'Alice'),
+        node('status-a', 'td', 'row-a', [], {}, 'Active'),
+        node('row-b', 'tr', 'tbody', ['name-b', 'status-b']),
+        node('name-b', 'td', 'row-b', [], {}, 'Bob'),
+        node('status-b', 'td', 'row-b', [], {}, 'Disabled'),
+        node('row-c', 'tr', 'tbody', ['summary-c']),
+        node('summary-c', 'td', 'row-c', [], {colspan: '3'}, 'Total 2'),
+    ]);
+
+    const table = onlyTable(snapshot);
+    const cells = Object.values(snapshot.tables.cells);
+    const mergedGroup = cells.find((cell) => cell.nodeId === snapshot.observation.captureIdToNodeId['group-a']);
+    const mergedSummary = cells.find((cell) => cell.nodeId === snapshot.observation.captureIdToNodeId['summary-c']);
+    const nameB = cells.find((cell) => cell.nodeId === snapshot.observation.captureIdToNodeId['name-b']);
+    const statusB = cells.find((cell) => cell.nodeId === snapshot.observation.captureIdToNodeId['status-b']);
+
+    assert.equal(mergedGroup?.columnIndex, 0);
+    assert.equal(mergedGroup?.rowSpan, 2);
+    assert.equal(nameB?.columnIndex, 1);
+    assert.equal(statusB?.columnIndex, 2);
+    assert.equal(mergedSummary?.columnIndex, 0);
+    assert.equal(mergedSummary?.columnSpan, 3);
+    assert.equal(table.columns.length, 3);
+    assert.equal(snapshot.tables.validation.ok, true, JSON.stringify(snapshot.tables.validation.diagnostics, null, 2));
+});
+
+test('expandable rows retain expanded state and hierarchy evidence', () => {
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table']),
+        node('table', 'table', 'body', ['thead', 'tbody'], {role: 'treegrid'}),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('tbody', 'tbody', 'table', ['parent-row', 'child-row']),
+        node('parent-row', 'tr', 'tbody', ['parent-cell'], {'aria-level': '1', 'aria-expanded': 'true'}),
+        node('parent-cell', 'td', 'parent-row', [], {}, 'Parent'),
+        node('child-row', 'tr', 'tbody', ['child-cell'], {'aria-level': '2'}),
+        node('child-cell', 'td', 'child-row', [], {}, 'Child'),
+    ]);
+
+    const table = onlyTable(snapshot);
+    const parent = table.body.visibleRows.find((row) => row.nodeId === snapshot.observation.captureIdToNodeId['parent-row']);
+    const child = table.body.visibleRows.find((row) => row.nodeId === snapshot.observation.captureIdToNodeId['child-row']);
+    assert.equal(parent?.expanded, true);
+    assert.equal(parent?.level, 1);
+    assert.equal(child?.level, 2);
+    assert.equal(table.hierarchy?.parentRowIdByRowId[child!.id], parent?.id);
+    assert.equal(table.featureCover.coveredFeatures.includes('expanded:true'), true);
+});
+
+test('empty and loading tables remain explicit without fabricating canonical rows', () => {
+    const empty = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table-root']),
+        node('table-root', 'div', 'body', ['table', 'empty-state'], {class: 'ant-table-wrapper'}),
+        node('table', 'table', 'table-root', ['thead', 'tbody']),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('tbody', 'tbody', 'table', []),
+        node('empty-state', 'div', 'table-root', [], {class: 'ant-empty', role: 'status'}, 'No data'),
+    ]);
+    const loading = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table-root']),
+        node('table-root', 'div', 'body', ['table', 'spinner'], {class: 'el-table', 'aria-busy': 'true'}),
+        node('table', 'table', 'table-root', ['thead', 'tbody']),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['name-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('tbody', 'tbody', 'table', []),
+        node('spinner', 'div', 'table-root', [], {class: 'el-loading-mask', role: 'progressbar'}, 'Loading'),
+    ]);
+
+    const emptyTable = onlyTable(empty);
+    const loadingTable = onlyTable(loading);
+    assert.equal(emptyTable.body.visibleRows.length, 0);
+    assert.equal(loadingTable.body.visibleRows.length, 0);
+    assert.equal(Object.keys(empty.tables.rows).length, 0);
+    assert.equal(Object.keys(loading.tables.rows).length, 0);
+    assert.equal(emptyTable.body.rowWindow.visibleCount, 0);
+    assert.equal(loadingTable.body.rowWindow.visibleCount, 0);
+    assert.equal(empty.tables.validation.ok, true);
+    assert.equal(loading.tables.validation.ok, true);
+});

@@ -27,10 +27,15 @@ export const buildRows = (
 ): RowBuildResult => {
     const rowNodeIds = unique(canonicalPartNodeIds.flatMap((partNodeId) =>
         directOwnedRows(observation, ownerRootId, partNodeId, allRootIds)));
-    const maximumCellCount = Math.max(0, ...rowNodeIds.map((rowNodeId) =>
-        expandedColumnCount(observation, rowCellNodeIds(observation, rowNodeId, allRootIds, ownerRootId))));
+    const maximumCellCount = measureColumnCount(
+        observation,
+        rowNodeIds,
+        allRootIds,
+        ownerRootId,
+    );
     const resolvedColumns = ensureColumnCount(tableId, columns, maximumCellCount);
     const cells: Record<string, TableCell> = {};
+    const occupancy: boolean[][] = [];
     const rows = rowNodeIds.map((rowNodeId, index) => buildRow(
         observation,
         controls,
@@ -42,6 +47,7 @@ export const buildRows = (
         index,
         0,
         cells,
+        occupancy,
     ));
     return { rows, cells, columns: resolvedColumns };
 };
@@ -61,9 +67,10 @@ export const mergeFixedRows = (
     const fixedRowNodeIds = unique(partNodeIds.flatMap((partNodeId) =>
         directOwnedRows(observation, ownerRootId, partNodeId, allRootIds)));
     const rowsByKey = new Map(rows.filter((row) => row.key).map((row) => [row.key!, row]));
+    const occupancy: boolean[][] = [];
     fixedRowNodeIds.forEach((fixedRowNodeId, index) => {
         const key = rowKey(observation, fixedRowNodeId);
-        const targetRow = (key ? rowsByKey.get(key) : undefined) ?? rows[index];
+        const targetRow = (key ? rowsByKey.get(key) : undefined) ?? rows.at(index);
         if (!targetRow) {return;}
         const fixedCellNodeIds = rowCellNodeIds(observation, fixedRowNodeId, allRootIds, ownerRootId);
         appendCells(
@@ -76,6 +83,8 @@ export const mergeFixedRows = (
             fixedCellNodeIds,
             columnOffset,
             cells,
+            index,
+            occupancy,
         );
     });
 };
@@ -91,6 +100,7 @@ const buildRow = (
     index: number,
     columnOffset: number,
     cells: Record<string, TableCell>,
+    occupancy: boolean[][],
 ): TableRow => {
     const attributes = observation.attributes[rowNodeId] ?? {};
     const row: TableRow = {
@@ -116,6 +126,8 @@ const buildRow = (
         rowCellNodeIds(observation, rowNodeId, allRootIds, ownerRootId),
         columnOffset,
         cells,
+        index,
+        occupancy,
     );
     return row;
 };
@@ -130,14 +142,20 @@ const appendCells = (
     cellNodeIds: readonly ObservationNodeId[],
     columnOffset: number,
     cells: Record<string, TableCell>,
+    rowIndex: number,
+    occupancy: boolean[][],
 ): void => {
+    occupancy[rowIndex] ??= [];
     let columnIndex = columnOffset;
     for (const cellNodeId of cellNodeIds) {
-        while (row.cellIds.some((cellId) => cells[cellId]?.columnIndex === columnIndex)) {columnIndex += 1;}
+        while (occupancy[rowIndex][columnIndex]
+            || row.cellIds.some((cellId) => cells[cellId].columnIndex === columnIndex)) {
+            columnIndex += 1;
+        }
         const attributes = observation.attributes[cellNodeId] ?? {};
         const columnSpan = positiveInteger(attributes.colspan) ?? 1;
         const rowSpan = positiveInteger(attributes.rowspan) ?? 1;
-        const column = columns[columnIndex];
+        const column = columns.at(columnIndex);
         if (!column) {break;}
         const controlIds = controlsInCell(observation, controls, cellNodeId, allRootIds, ownerRootId)
             .map((control) => control.id);
@@ -155,6 +173,7 @@ const appendCells = (
             evidence: [evidence('table.cell.canonical', 'exact', 'dom', [cellNodeId], { columnIndex })],
         };
         row.cellIds.push(cellId);
+        occupy(occupancy, rowIndex, columnIndex, rowSpan, columnSpan);
         columnIndex += columnSpan;
     }
 };
@@ -185,14 +204,54 @@ const nearestRoot = (
     return undefined;
 };
 
-const expandedColumnCount = (observation: PageObservation, cellNodeIds: readonly ObservationNodeId[]): number =>
-    cellNodeIds.reduce((sum, nodeId) => sum + (positiveInteger(observation.attributes[nodeId]?.colspan) ?? 1), 0);
+const measureColumnCount = (
+    observation: PageObservation,
+    rowNodeIds: readonly ObservationNodeId[],
+    allRootIds: ReadonlySet<ObservationNodeId>,
+    ownerRootId: ObservationNodeId,
+): number => {
+    const occupancy: boolean[][] = [];
+    let maximumColumn = 0;
+    rowNodeIds.forEach((rowNodeId, rowIndex) => {
+        occupancy[rowIndex] ??= [];
+        let columnIndex = 0;
+        for (const cellNodeId of rowCellNodeIds(observation, rowNodeId, allRootIds, ownerRootId)) {
+            while (occupancy[rowIndex][columnIndex]) {columnIndex += 1;}
+            const attributes = observation.attributes[cellNodeId] ?? {};
+            const columnSpan = positiveInteger(attributes.colspan) ?? 1;
+            const rowSpan = positiveInteger(attributes.rowspan) ?? 1;
+            occupy(occupancy, rowIndex, columnIndex, rowSpan, columnSpan);
+            columnIndex += columnSpan;
+            maximumColumn = Math.max(maximumColumn, columnIndex);
+        }
+    });
+    return maximumColumn;
+};
+
+const occupy = (
+    occupancy: boolean[][],
+    rowStart: number,
+    columnStart: number,
+    rowSpan: number,
+    columnSpan: number,
+): void => {
+    for (let rowIndex = rowStart; rowIndex < rowStart + rowSpan; rowIndex += 1) {
+        occupancy[rowIndex] ??= [];
+        for (let columnIndex = columnStart; columnIndex < columnStart + columnSpan; columnIndex += 1) {
+            occupancy[rowIndex][columnIndex] = true;
+        }
+    }
+};
 
 const rowKey = (observation: PageObservation, rowNodeId: ObservationNodeId): string | undefined => {
     const attributes = observation.attributes[rowNodeId] ?? {};
-    return [attributes['data-row-key'], attributes['row-key'], attributes.key, attributes['aria-rowindex']]
-        .map((value) => value?.trim())
-        .find(Boolean);
+    const candidates: Array<string | undefined> = [
+        attributes['data-row-key'],
+        attributes['row-key'],
+        attributes.key,
+        attributes['aria-rowindex'],
+    ];
+    return candidates.map((value) => value?.trim()).find(Boolean);
 };
 
 const positiveInteger = (value: string | undefined): number | undefined => {
