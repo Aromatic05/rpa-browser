@@ -36,6 +36,7 @@
             "resources": [
                 "shared/*.js",
                 "content/*.js",
+                "annotator/*.js",
                 "rpa-build.json"
             ],
             "matches": [
