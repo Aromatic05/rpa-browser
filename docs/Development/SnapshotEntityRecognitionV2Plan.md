@@ -4,7 +4,7 @@
 
 本文是 Snapshot、实体识别、entity_rules、annotator 与 runtime query 的实施计划，不是概念草案。
 
-当前状态：**阶段 1 至阶段 4 已验收；阶段 5 的 Checkpoint 5A、5B、5C 已验收，Checkpoint 5D 待实施。QueryPlan、SemanticBindings、PageSession、confirmed selection、SnapshotProjection、RuntimeQuery、SemanticDiff、record/checkpoint/query/assert/entity 消费方切换均已进入生产路径。`browser.snapshot` 支持 overview/interaction/annotation/debug/full 五种 V2 projection mode；生产代码中已无 V1 snapshot、entity overlay、旧 session cache 或 V1 compress 调用点。下一检查点是 AnnotatorProjection 与 extension 协议切换。**
+当前状态：**阶段 1 至阶段 5 已验收；Checkpoint 5A、5B、5C、5D 均 accepted。QueryPlan、SemanticBindings、PageSession、confirmed selection、SnapshotProjection、RuntimeQuery、SemanticDiff、record/checkpoint/query/assert/entity 与 annotator 消费方均已进入生产路径。`browser.snapshot` 支持 overview/interaction/annotation/debug/full 五种 V2 projection mode；extension 只发送事件、坐标与 draft，并渲染 agent 返回的 canonical geometry。生产代码中已无 V1 snapshot、entity overlay、旧 session cache、V1 compress、extension DOM entity recovery 或双 entity_rules matcher 调用点。下一阶段是阶段 6 的死代码删除与发行级验收。**
 
 归档基线：
 
@@ -21,7 +21,7 @@
 | 2 | Atomic Control 与可执行 Locator | accepted | 唯一 ControlIndex、control 状态机、canonical locator |
 | 3 | FormComponent 组装与表单规则迁移 | accepted | FormComponent、ownership、artifact/profile selection 与真实页面 runtime matcher |
 | 4 | TableComponent 组装与表格规则迁移 | accepted | logical table、canonical row/cell、mirror/editor、table rule runtime |
-| 5 | SemanticBindings、Projection 与消费方切换 | in progress（5D pending；5A–5C accepted） | 新 snapshot/query/annotator/session/diff 全链路 |
+| 5 | SemanticBindings、Projection 与消费方切换 | accepted | 新 snapshot/query/annotator/session/diff 全链路 |
 | 6 | V1 删除与发行级验收 | pending | 无 V1 runtime、完整真实页面验收、文档一致 |
 
 只有当前阶段通过退出门槛后，下一阶段才允许开始。某个阶段可以跨多次会话实施，但不得同时开始后续阶段。
@@ -29,7 +29,7 @@
 当前工程边界：
 
 - `pnpm --filter ./agent test:snapshot`：120/120 通过（含五种 projection mode、PageSession、action/locator 与真实浏览器用例）。
-- `pnpm --filter ./agent test:entity-rules`：22/22 通过。
+- `pnpm --filter ./agent test:entity-rules`：30/30 通过，包含真实 Element Plus/Ant Design annotator 页面。
 - `pnpm --filter ./agent typecheck:snapshot`：0 项诊断。
 - `pnpm --filter ./agent test:trace`：7/7 通过，真实浏览器 trace integrity 已切换到 V2 capture/projection/content ref。
 - 生产代码中无 `runner/steps/executors/snapshot/*` V1 导入、`ruleEntityOverlay/businessEntityOverlay`、`latestSnapshot/snapshotSessionStore` 或 V1 compress 调用点。
@@ -1642,6 +1642,20 @@ Checkpoint 退出：
 - extension 不执行 entity_rules。
 - agent 与 extension 不再维护两套 entity root/ownership。
 
+当前实施状态：
+
+- 已完成：仓库级共享 `annotator-contract`，agent 与 extension 使用同一 projection/draft/validation 协议。
+- 已完成：点击只上传 top CSS viewport 坐标，由 agent canonical observation geometry 解析为 SessionAnchor；selector/element recovery payload 被拒绝。
+- 已完成：AnnotatorProjection 分离 selection scope、outer host、structural root、field、form action、table control-slot action、row、column、control 与 semantic binding。
+- 已完成：open/pick/recognize/visualize/check/save/reopen 全部经过 PageSession、QueryPlan 与 SemanticBindings。
+- 已完成：check 不写盘；save 仅在同一 QueryPlan 验证成功后持久化，无效 draft 不覆盖既有 profile。
+- 已完成：extension client/session/panel/overlay 只发送 Action、编辑 draft、捕获坐标并渲染 agent geometry，不导入 QueryPlan 或 entity_rules 执行器。
+- 已完成：scroll、resize 与 visual viewport 事件只触发 agent visualize；agent 显式重采集 geometry，不改变 structural identity。
+- 已完成：同一 canonical DOM 节点移动后 exact anchor 保持 resolved；节点替换后明确 stale；ambiguous exact identity 由 PageSession 既有验收覆盖。
+- 已完成：真实 Element Plus 与 Ant Design 页面验证 form field、submit action、table slot action、Ant dialog host、canonical picking 与 recognize 后 selection 保持。
+- 已完成：生产源码无 `resolveEntityElement()`、extension DOM entity matcher、V1 annotator picking/recognize 或重复 entity root/ownership 调用点。
+- Checkpoint 5D 状态：accepted。
+
 ### 12.7 阶段 5 总退出门槛
 
 - browser.snapshot、browser.query、annotator、check/save/runtime query 全部走 V2。
@@ -1650,6 +1664,13 @@ Checkpoint 退出：
 - diff correlation ambiguous 时不伪造局部 diff。
 - selection 生命周期在 same-epoch/new-epoch fixture 中通过。
 - extension 只负责事件、编辑 UI、geometry rendering 和 diagnostics 展示。
+
+当前验收结果：
+
+- browser.snapshot、browser.query、record、checkpoint、assert、entity、annotator、check/save/runtime query 均使用 V2 PageSession/canonical indexes。
+- Snapshot：120/120；entity_rules/annotator：30/30；trace：7/7；extension typecheck 与完整测试通过。
+- `typecheck:snapshot` 为 0 项诊断，相关新增源码严格 lint 为 0。
+- Stage 5 状态：accepted。
 
 ### 12.8 交接重点
 
