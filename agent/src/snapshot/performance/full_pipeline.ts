@@ -1,4 +1,3 @@
-import {performance} from 'node:perf_hooks';
 import {buildControlSnapshot} from '../components/control/assembly/build';
 import {buildFormSnapshot} from '../components/form/assembly/build';
 import {buildTableSnapshot} from '../components/table/assembly/build';
@@ -41,6 +40,7 @@ export type SnapshotFullPipelineBenchmarkReport = {
     schemaVersion: 1;
     generatedAt: string;
     corpusVersion: string;
+    timingBasis: 'process-cpu';
     iterations: number;
     structure: {
         observationFixtureCount: number;
@@ -91,6 +91,7 @@ export const runSnapshotFullPipelineBenchmark = async (
 
     for (const fixture of input.observationFixtures) {
         structure.inputNodeCount += fixture.capture.nodes.length;
+        warmAssembly(fixture.capture);
         let finalCapture: PageSnapshotCapture | undefined;
         for (let iteration = 0; iteration < iterations; iteration += 1) {
             const observation = measure(samples, 'observation', () => buildPageObservation(fixture.capture));
@@ -120,6 +121,7 @@ export const runSnapshotFullPipelineBenchmark = async (
 
     for (const businessCase of input.businessCases) {
         structure.inputNodeCount += businessCase.raw.nodes.length;
+        warmAssembly(businessCase.raw);
         const caseSamples = new Map<SnapshotAssemblyPass, number[]>(
             SNAPSHOT_ASSEMBLY_PASSES.map((pass) => [pass, []]),
         );
@@ -221,6 +223,7 @@ export const runSnapshotFullPipelineBenchmark = async (
         schemaVersion: 1,
         generatedAt: input.generatedAt ?? new Date().toISOString(),
         corpusVersion: input.corpusVersion ?? 'snapshot-v2-stage45-v1',
+        timingBasis: 'process-cpu',
         iterations,
         structure,
         timing: Object.fromEntries(SNAPSHOT_FULL_PIPELINE_PASSES.map((pass) => [
@@ -233,15 +236,28 @@ export const runSnapshotFullPipelineBenchmark = async (
 
 
 
+
+
+const warmAssembly = (raw: RawPageCapture): void => {
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+        const observation = buildPageObservation(raw);
+        const relations = buildRelationIndex(observation);
+        const locators = buildLocatorIndex(observation);
+        const control = buildControlSnapshot({observation, relations, locators});
+        buildFormSnapshot({observation, relations, locators, controls: control.controls});
+        buildTableSnapshot({observation, relations, locators, controls: control.controls});
+    }
+};
+
 const measureBoth = <T>(
     allSamples: Map<SnapshotFullPipelinePass, number[]>,
     caseSamples: Map<SnapshotAssemblyPass, number[]>,
     pass: SnapshotAssemblyPass,
     operation: () => T,
 ): T => {
-    const startedAt = performance.now();
+    const startedAt = process.cpuUsage();
     const result = operation();
-    const duration = performance.now() - startedAt;
+    const duration = cpuElapsedMs(startedAt);
     appendSample(allSamples, pass, duration);
     caseSamples.get(pass)?.push(duration);
     return result;
@@ -252,9 +268,9 @@ const measure = <T>(
     pass: SnapshotFullPipelinePass,
     operation: () => T,
 ): T => {
-    const startedAt = performance.now();
+    const startedAt = process.cpuUsage();
     const result = operation();
-    appendSample(samples, pass, performance.now() - startedAt);
+    appendSample(samples, pass, cpuElapsedMs(startedAt));
     return result;
 };
 
@@ -263,10 +279,16 @@ const measureAsync = async <T>(
     pass: SnapshotFullPipelinePass,
     operation: () => Promise<T>,
 ): Promise<T> => {
-    const startedAt = performance.now();
+    const startedAt = process.cpuUsage();
     const result = await operation();
-    appendSample(samples, pass, performance.now() - startedAt);
+    appendSample(samples, pass, cpuElapsedMs(startedAt));
     return result;
+};
+
+
+const cpuElapsedMs = (startedAt: NodeJS.CpuUsage): number => {
+    const elapsed = process.cpuUsage(startedAt);
+    return (elapsed.user + elapsed.system) / 1000;
 };
 
 const appendSample = (

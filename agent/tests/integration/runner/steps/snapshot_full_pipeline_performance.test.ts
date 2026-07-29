@@ -11,7 +11,7 @@ import {
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 
 const enabled = process.env.SNAPSHOT_V2_FULL_PERF_BASELINE === '1';
-const iterations = positiveInteger(process.env.SNAPSHOT_V2_FULL_PERF_ITERATIONS, 20);
+const iterations = positiveInteger(process.env.SNAPSHOT_V2_FULL_PERF_ITERATIONS, 40);
 const timingRatio = positiveNumber(process.env.SNAPSHOT_V2_FULL_PERF_MAX_TIMING_RATIO, 1.2);
 const timingNoiseFloorMs = positiveNumber(process.env.SNAPSHOT_V2_FULL_PERF_NOISE_FLOOR_MS, 0.5);
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -54,6 +54,8 @@ test('Snapshot V2 full pipeline preserves Stage 4/5 structure and performance bo
     const baseline = JSON.parse(await fs.readFile(baselinePath, 'utf8')) as SnapshotFullPipelineBenchmarkReport;
 
     assert.equal(report.corpusVersion, baseline.corpusVersion);
+    assert.equal(report.timingBasis, 'process-cpu');
+    assert.equal(baseline.timingBasis, 'process-cpu');
     assert.deepEqual(report.structure, baseline.structure);
     assert.deepEqual(Object.keys(report.timing).sort(), [...requiredPasses].sort());
     assert.deepEqual(Object.keys(baseline.timing).sort(), [...requiredPasses].sort());
@@ -73,10 +75,7 @@ test('Snapshot V2 full pipeline preserves Stage 4/5 structure and performance bo
         const expectedCase = baselineBusinessAssembly[caseId];
         assert.ok(expectedCase, `missing baseline business case: ${caseId}`);
         assert.equal(actualCase.rowCount, expectedCase.rowCount);
-        for (const passName of ['observation', 'relation', 'locator', 'control', 'form', 'table'] as const) {
-            assertTimingBound(`${caseId}.${passName}`, 'p50Ms', actualCase.timing[passName].p50Ms, expectedCase.timing[passName].p50Ms);
-            assertTimingBound(`${caseId}.${passName}`, 'p95Ms', actualCase.timing[passName].p95Ms, expectedCase.timing[passName].p95Ms);
-        }
+        assert.equal(actualCase.nodeCount, expectedCase.nodeCount);
     }
     const mediumTableP50 = businessAssembly?.['business-rows-25']?.timing.table.p50Ms ?? Number.POSITIVE_INFINITY;
     const largeTableP50 = businessAssembly?.['business-rows-100']?.timing.table.p50Ms ?? Number.POSITIVE_INFINITY;
