@@ -22,6 +22,7 @@ const node = (
     childCaptureIds: string[],
     attributes: Record<string, string> = {},
     ownText?: string,
+    activity = active(),
 ): RawCapturedNode => ({
     captureId,
     scopeId: 'main',
@@ -30,7 +31,7 @@ const node = (
     tag,
     attributes,
     ownText,
-    activity: active(),
+    activity,
 });
 
 const capture = (nodes: RawCapturedNode[]): RawPageCapture => ({
@@ -665,4 +666,32 @@ test('empty and loading tables remain explicit without fabricating canonical row
     assert.equal(loadingTable.body.rowWindow.visibleCount, 0);
     assert.equal(empty.tables.validation.ok, true);
     assert.equal(loading.tables.validation.ok, true);
+});
+
+
+test('row selection is canonical while responsive hidden columns stay out of the visible schema', () => {
+    const hidden = {hiddenByStyle: true, inert: false, selfHasBox: false, rendered: false};
+    const snapshot = build([
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table']),
+        node('table', 'table', 'body', ['thead', 'tbody']),
+        node('thead', 'thead', 'table', ['header-row']),
+        node('header-row', 'tr', 'thead', ['name-header', 'email-header']),
+        node('name-header', 'th', 'header-row', [], {}, 'Name'),
+        node('email-header', 'th', 'header-row', [], {class: 'responsive-hidden'}, 'Email', hidden),
+        node('tbody', 'tbody', 'table', ['row-a', 'row-b']),
+        node('row-a', 'tr', 'tbody', ['name-a', 'email-a'], {'aria-selected': 'true'}),
+        node('name-a', 'td', 'row-a', [], {}, 'Alice'),
+        node('email-a', 'td', 'row-a', [], {class: 'responsive-hidden'}, 'alice@example.test', hidden),
+        node('row-b', 'tr', 'tbody', ['name-b', 'email-b'], {'aria-selected': 'false'}),
+        node('name-b', 'td', 'row-b', [], {}, 'Bob'),
+        node('email-b', 'td', 'row-b', [], {class: 'responsive-hidden'}, 'bob@example.test', hidden),
+    ]);
+
+    const table = onlyTable(snapshot);
+    assert.deepEqual(table.columns.map((column) => column.name), ['Name']);
+    assert.equal(table.body.visibleRows[0].selected, true);
+    assert.equal(table.body.visibleRows[1].selected, false);
+    assert.deepEqual(table.body.visibleRows.map((row) => row.cellIds.length), [1, 1]);
+    assert.equal(Object.values(snapshot.tables.cells).some((cell) => cell.text.includes('@')), false);
 });

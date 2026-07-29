@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Table adapters defensively handle incomplete browser facts. */
 import type { Evidence, ObservationNodeId, PageObservation } from '../../../observation/model/contracts';
 import { resolveSemanticRole } from '../../../observation/model/semantic';
 import type { LogicalTableRoot, TablePartKind, TableParts } from '../model/contracts';
@@ -88,6 +89,7 @@ export const directOwnedRows = (
     allRootIds: ReadonlySet<ObservationNodeId>,
 ): ObservationNodeId[] => descendantsOrSelf(observation, partNodeId)
     .filter((nodeId) => isRowNode(observation, nodeId))
+    .filter((nodeId) => isStructurallyActive(observation, nodeId))
     .filter((nodeId) => nearestLogicalRoot(observation, nodeId, allRootIds) === ownerRootId)
     .filter((nodeId) => !isHeaderRow(observation, nodeId) && !isFooterRow(observation, nodeId))
     .sort((left, right) => compareNodeOrder(observation, left, right));
@@ -110,6 +112,7 @@ export const rowCellNodeIds = (
     ownerRootId: ObservationNodeId,
 ): ObservationNodeId[] => (observation.children[rowNodeId] ?? [])
     .filter((nodeId) => isCellNode(observation, nodeId))
+    .filter((nodeId) => isStructurallyActive(observation, nodeId))
     .filter((nodeId) => nearestLogicalRoot(observation, nodeId, allRootIds) === ownerRootId);
 
 export const footerRows = (
@@ -119,9 +122,11 @@ export const footerRows = (
     allRootIds: ReadonlySet<ObservationNodeId>,
 ): ObservationNodeId[] => unique([
     ...(parts.nodeIdsByKind.footer ?? []).flatMap((partId) => descendantsOrSelf(observation, partId)
-        .filter((nodeId) => isRowNode(observation, nodeId))),
+        .filter((nodeId) => isRowNode(observation, nodeId))
+        .filter((nodeId) => isStructurallyActive(observation, nodeId))),
     ...descendantsOrSelf(observation, ownerRootId)
         .filter((nodeId) => isRowNode(observation, nodeId))
+        .filter((nodeId) => isStructurallyActive(observation, nodeId))
         .filter((nodeId) => isFooterRow(observation, nodeId)),
 ]).filter((nodeId) => nearestLogicalRoot(observation, nodeId, allRootIds) === ownerRootId)
     .sort((left, right) => compareNodeOrder(observation, left, right));
@@ -202,6 +207,10 @@ export const evidence = (
     nodeIds: ObservationNodeId[],
     detail?: Record<string, unknown>,
 ): Evidence => ({ code, strength, source, nodeIds, detail });
+
+
+const isStructurallyActive = (observation: PageObservation, nodeId: ObservationNodeId): boolean =>
+    observation.activity[nodeId].subtreeActive;
 
 const classifyPhysicalTable = (
     observation: PageObservation,
