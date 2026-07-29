@@ -117,6 +117,18 @@ export const buildAnnotatorProjection = (
                 label: column.name,
             });
         }
+        for (const slot of table.controlSlots) {
+            addTarget({
+                id: `action:${slot.id}`,
+                kind: 'action',
+                domain: 'table',
+                componentId: table.id,
+                memberId: slot.id,
+                nodeIds: [...slot.exemplarNodeIds],
+                status: slot.occurrenceCount > 0 ? 'complete' : 'partial',
+                label: readNodeLabel(entry, slot.exemplarNodeIds[0]),
+            });
+        }
     }
 
     for (const control of Object.values(entry.capture.control.controls.controls)) {

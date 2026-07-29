@@ -125,7 +125,17 @@ await log('annotator source does not recover page structure from DOM', async () 
     const files = fs.readdirSync(new URL('../annotator', import.meta.url), {withFileTypes: true})
         .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
         .map((entry) => new URL(`../annotator/${entry.name}`, import.meta.url));
-    const forbidden = ['elementFromPoint', '.closest(', '.matches(', 'querySelector(', 'parentElement', 'parentNode'];
+    const forbidden = [
+        'elementFromPoint',
+        '.closest(',
+        '.matches(',
+        'querySelector(',
+        'parentElement',
+        'parentNode',
+        'compileEntityRuleQueryPlan',
+        'executeEntityRuleQueryPlan',
+        'executeEntityRules',
+    ];
     for (const file of files) {
         const source = fs.readFileSync(file, 'utf8');
         for (const token of forbidden) {
@@ -189,4 +199,35 @@ await log('floating UI exposes the versioned annotator source module', async () 
     assert.equal(source.includes("../annotator/index.js"), true);
     assert.equal(source.includes("'Rules'"), true);
     assert.equal(resources.includes('annotator/*.js'), true);
+});
+
+await log('annotator live geometry refresh coalesces viewport events through visualize only', async () => {
+    const {createAnnotatorLiveGeometryRefresh} = await import('../../dist/annotator/live_geometry.js');
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+        url: 'https://example.test',
+        pretendToBeVisual: true,
+    });
+    let active = true;
+    let refreshes = 0;
+    const live = createAnnotatorLiveGeometryRefresh({
+        eventTargets: [dom.window],
+        isActive: () => active,
+        refresh: async () => {refreshes += 1;},
+    });
+
+    dom.window.dispatchEvent(new dom.window.Event('scroll'));
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(refreshes, 1);
+
+    active = false;
+    dom.window.dispatchEvent(new dom.window.Event('scroll'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(refreshes, 1);
+
+    live.dispose();
+    active = true;
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(refreshes, 1);
 });

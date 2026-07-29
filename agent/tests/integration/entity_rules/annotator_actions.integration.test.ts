@@ -242,3 +242,68 @@ test('annotator check save and reopen share QueryPlan semantics without check-ti
         await browser.close();
     }
 });
+
+test('annotator visualize refreshes live geometry and preserves only exact selection identity', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <form id="OrderForm" style="padding:24px">
+            <label for="Buyer">Buyer</label>
+            <input id="Buyer" name="buyer">
+            <button id="Save" type="submit">Save order</button>
+          </form>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+
+        const opened = await invoke(runtime, 'entity_rules.annotator.open');
+        const initial = opened.reply.payload as AnnotatorProjectionReply;
+        const initialTarget = initial.projection.targets.find((target) =>
+            target.kind === 'action' && target.label === 'Save order');
+        assert.ok(initialTarget?.geometry[0]);
+        const initialRect = initialTarget.geometry[0];
+
+        const pickedResult = await invoke(runtime, 'entity_rules.annotator.pick', {
+            point: {
+                x: initialRect.x + initialRect.width / 2,
+                y: initialRect.y + initialRect.height / 2,
+            },
+        });
+        const picked = pickedResult.reply.payload as AnnotatorPickReply;
+        assert.equal(picked.picked.status, 'resolved');
+        if (picked.picked.status !== 'resolved') {return;}
+        const backendNodeId = picked.picked.anchor.backendNodeId;
+
+        await page.locator('#Save').evaluate((element) => {
+            (element as HTMLElement).style.marginLeft = '240px';
+        });
+        const visualizedResult = await invoke(runtime, 'entity_rules.annotator.visualize');
+        const visualized = visualizedResult.reply.payload as AnnotatorProjectionReply;
+        assert.equal(visualized.projection.identity.pageEpoch, initial.projection.identity.pageEpoch);
+        assert.ok(
+            visualized.projection.identity.captureRevision > picked.projection.identity.captureRevision,
+            'visualize must recapture current geometry',
+        );
+        assert.equal(visualized.projection.selection.status, 'resolved');
+        if (visualized.projection.selection.status === 'resolved') {
+            assert.equal(visualized.projection.selection.anchor.backendNodeId, backendNodeId);
+        }
+        const movedTarget = visualized.projection.targets.find((target) =>
+            target.kind === 'action' && target.label === 'Save order');
+        assert.ok(movedTarget?.geometry[0]);
+        assert.ok(movedTarget.geometry[0].x > initialRect.x + 200);
+
+        await page.locator('#Save').evaluate((element) => {
+            element.replaceWith(element.cloneNode(true));
+        });
+        const replacedResult = await invoke(runtime, 'entity_rules.annotator.visualize');
+        const replaced = replacedResult.reply.payload as AnnotatorProjectionReply;
+        assert.equal(replaced.projection.identity.pageEpoch, initial.projection.identity.pageEpoch);
+        assert.equal(replaced.projection.selection.status, 'stale');
+    } finally {
+        await browser.close();
+    }
+});

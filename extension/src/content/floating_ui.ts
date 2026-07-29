@@ -1,5 +1,6 @@
 import {
     createAnnotatorClient,
+    createAnnotatorLiveGeometryRefresh,
     createAnnotatorOverlay,
     createAnnotatorPanel,
     createAnnotatorSession,
@@ -186,6 +187,16 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         overlay: annotatorOverlay,
     });
     annotatorSessionRef.current = annotatorSession;
+    const annotatorLiveGeometry = createAnnotatorLiveGeometryRefresh({
+        eventTargets: [
+            window,
+            ...(window.visualViewport ? [window.visualViewport] : []),
+        ],
+        isActive: () => annotatorSession.getState().projection !== undefined,
+        refresh: async () => {
+            await annotatorSession.visualize();
+        },
+    });
 
     const refreshWorkspaces = async () => {
         await sendPanelAction('workspace.list', {});
@@ -644,6 +655,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     return {
         unmount: () => {
+            annotatorLiveGeometry.dispose();
             annotatorSession.dispose();
             host.remove();
         },

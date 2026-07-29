@@ -10,7 +10,7 @@ import {createV2BusinessPage} from '../../helpers/v2_business_page';
 test('AnnotatorProjection separates selection scope, host and structural root with agent geometry', async () => {
     const store = new PageSnapshotSessionStore<object>();
     const pageKey = {};
-    const fixture = createV2BusinessPage({withGeometry: true});
+    const fixture = createV2BusinessPage({withGeometry: true, rowCount: 2});
     const entry = await store.ensureFresh({
         pageKey,
         pageUrl: 'https://example.test/orders',
@@ -43,6 +43,15 @@ test('AnnotatorProjection separates selection scope, host and structural root wi
     assert.ok(projection.targets.some((target) => target.kind === 'row'));
     assert.ok(projection.targets.some((target) => target.kind === 'column'));
     assert.ok(projection.targets.some((target) => target.kind === 'semantic-binding'));
+    const tableComponent = Object.values(entry.capture.table.tables.tables)[0];
+    const tableAction = projection.targets.find((target) =>
+        target.kind === 'action'
+        && target.domain === 'table'
+        && target.componentId === tableComponent.id
+        && target.label === '审核');
+    assert.ok(tableAction, 'table control slot must project as a typed action target');
+    assert.equal(tableAction.memberId, tableComponent.controlSlots[0].id);
+    assert.ok(tableAction.geometry.length > 0);
 });
 
 test('annotator point picking resolves the deepest canonical node without DOM selectors', async () => {

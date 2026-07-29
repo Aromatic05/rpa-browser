@@ -37,7 +37,7 @@ export const createRunnerAnnotatorController = (
                 return await projectReply(input.runStepsDeps, {action, workspace}, false, optionalProfileName(payload));
             case 'entity_rules.annotator.visualize':
                 assertAllowedKeys(payload, ['profileName']);
-                return await projectReply(input.runStepsDeps, {action, workspace}, false, optionalProfileName(payload));
+                return await projectReply(input.runStepsDeps, {action, workspace}, true, optionalProfileName(payload));
             case 'entity_rules.annotator.recognize':
                 assertAllowedKeys(payload, ['profileName', 'refresh']);
                 assertOptionalBoolean(payload.refresh, 'refresh');
