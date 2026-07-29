@@ -13,6 +13,14 @@ import { createWorkspaceEntityRulesProvider } from './provider';
 import { executeEntityRules, type ExecuteEntityRulesInput, type EntityRulesExecutionResult } from './matcher';
 import { executeEntityRulesOnPage } from './capture';
 
+export type EntityRulesAnnotatorPort = {
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+};
+
+export type CreateEntityRulesRuntimeOptions = {
+    annotator?: EntityRulesAnnotatorPort;
+};
+
 export type EntityRulesRuntime = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
     getProvider: (workflow: Workflow) => WorkspaceEntityRulesProvider;
@@ -20,11 +28,14 @@ export type EntityRulesRuntime = {
     executePage: typeof executeEntityRulesOnPage;
 };
 
-export const createEntityRulesRuntime = (): EntityRulesRuntime => ({
+export const createEntityRulesRuntime = (
+    options: CreateEntityRulesRuntimeOptions = {},
+): EntityRulesRuntime => ({
     getProvider: (workflow) => createWorkspaceEntityRulesProvider(workflow),
     execute: executeEntityRules,
     executePage: executeEntityRulesOnPage,
-    handle: async ({ action, workspace }) => {
+    handle: async (routerInput) => {
+        const {action, workspace} = routerInput;
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         switch (action.type) {
             case 'entity_rules.list':
@@ -37,7 +48,7 @@ export const createEntityRulesRuntime = (): EntityRulesRuntime => ({
             case 'entity_rules.get': {
                 const profileName = requireProfileName(payload);
                 const profile = workspace.workflow.get(profileName, { kind: 'entity_rules' });
-                if (!profile || profile.kind !== 'entity_rules') {
+                if (profile?.kind !== 'entity_rules') {
                     throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `entity_rules profile not found: ${profileName}`);
                 }
                 return {
@@ -75,11 +86,14 @@ export const createEntityRulesRuntime = (): EntityRulesRuntime => ({
             }
             default:
                 if (action.type.startsWith('entity_rules.annotator.')) {
-                    throw new ActionError(
-                        ERROR_CODES.ERR_NOT_IMPLEMENTED,
-                        `entity_rules annotator action is reserved for Stage 5: ${action.type}`,
-                        { actionType: action.type },
-                    );
+                    if (!options.annotator) {
+                        throw new ActionError(
+                            ERROR_CODES.ERR_NOT_IMPLEMENTED,
+                            `entity_rules annotator controller is unavailable: ${action.type}`,
+                            {actionType: action.type},
+                        );
+                    }
+                    return await options.annotator.handle(routerInput);
                 }
                 throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
         }

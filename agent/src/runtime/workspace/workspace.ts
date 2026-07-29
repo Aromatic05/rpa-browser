@@ -18,6 +18,7 @@ import { getLogger } from '../../logging/logger';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceBrowserSession } from '../browser/browser_session';
 import { createEntityRulesRuntime, type EntityRulesRuntime } from '../../snapshot/rules';
+import {createRunnerAnnotatorController} from '../../runner/annotator';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing';
 
@@ -107,7 +108,9 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
-    const entityRules = createEntityRulesRuntime();
+    const entityRules = createEntityRulesRuntime({
+        annotator: createRunnerAnnotatorController({runStepsDeps: deps.runStepsDeps}),
+    });
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const tabsControl = createTabsControl({
         recordingState: deps.recordingState,
