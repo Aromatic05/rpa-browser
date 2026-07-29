@@ -8,7 +8,7 @@ const agentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const snapshotRoot = path.join(agentRoot, 'src/snapshot');
 
 const expectedBranches: Record<string, readonly string[]> = {
-    '.': ['components', 'indexes', 'observation', 'projection', 'rules', 'session'],
+    '.': ['annotator', 'components', 'indexes', 'observation', 'projection', 'rules', 'session'],
     observation: ['analysis', 'capture', 'model', 'replay'],
     indexes: ['locator', 'ownership', 'relation'],
     components: ['control', 'form', 'shared', 'table'],
@@ -44,6 +44,7 @@ const moduleRanks: Record<string, number> = {
     'rules/runtime': 18,
     session: 19,
     projection: 20,
+    annotator: 21,
 };
 
 const legacyDirectoryNames = new Set([
@@ -86,6 +87,7 @@ const moduleOf = (filePath: string): string | null => {
     if (relative[0] === 'rules' && relative.length >= 3) {return relative.slice(0, 2).join('/');}
     if (relative[0] === 'session' && relative.length >= 2) {return 'session';}
     if (relative[0] === 'projection' && relative.length >= 2) {return 'projection';}
+    if (relative[0] === 'annotator' && relative.length >= 2) {return 'annotator';}
     if (relative[0] === 'components' && relative[1] === 'shared') {return 'components/shared';}
     if (relative[0] === 'components'
         && (relative[1] === 'control' || relative[1] === 'form' || relative[1] === 'table')
@@ -97,7 +99,16 @@ const moduleOf = (filePath: string): string | null => {
 
 const resolveRelativeImport = (sourceFile: string, specifier: string): string | null => {
     const base = path.resolve(path.dirname(sourceFile), specifier);
-    for (const candidate of [base, `${base}.ts`, path.join(base, 'index.ts')]) {
+    const sourceBase = /\.js$/u.test(base) ? base.slice(0, -3) : base;
+    for (const candidate of [
+        base,
+        `${base}.ts`,
+        `${base}.d.ts`,
+        `${sourceBase}.ts`,
+        `${sourceBase}.d.ts`,
+        path.join(base, 'index.ts'),
+        path.join(base, 'index.d.ts'),
+    ]) {
         if (fs.existsSync(candidate)) {return candidate;}
     }
     return null;
@@ -139,6 +150,23 @@ test('snapshot dependencies point inward and never reverse layer direction', () 
             assert.ok(targetFile, `${path.relative(snapshotRoot, sourceFile)} has unresolved import ${specifier}`);
 
             if (!targetFile.startsWith(snapshotRoot + path.sep)) {
+                const sharedAnnotatorContract = path.resolve(
+                    agentRoot,
+                    '../shared/annotator-contract/index.d.ts',
+                );
+                if (targetFile === sharedAnnotatorContract) {
+                    assert.equal(
+                        path.relative(snapshotRoot, sourceFile),
+                        'annotator/contracts.ts',
+                        'only annotator/contracts.ts may import the shared annotator contract',
+                    );
+                    assert.match(
+                        source,
+                        /export type\s*\{[\s\S]*?\}\s*from\s*['"]\.\.\/\.\.\/\.\.\/\.\.\/shared\/annotator-contract\/index\.js['"]/u,
+                        'shared annotator contract import must remain type-only',
+                    );
+                    continue;
+                }
                 assert.equal(sourceModule, 'rules/runtime', `${sourceModule} must not import project code outside snapshot`);
                 continue;
             }
