@@ -313,3 +313,96 @@ test('browser.checkpoint fails on invalid compute ref in content action', async 
     assert.equal(results[0].ok, false);
     assert.equal(results[0].error?.code, 'ERR_CHECKPOINT_REF_NOT_FOUND');
 });
+
+test('browser.checkpoint applies persisted V2 resolve sidecars to nested actions', async () => {
+    const {deps, nodeIds} = await createDeps();
+    let receivedResolve: StepUnion['resolve'];
+    const baseExecutors = deps.pluginHost.getExecutors();
+    deps.pluginHost.getExecutors = () => ({
+        ...baseExecutors,
+        'browser.click': async (nestedStep) => {
+            receivedResolve = nestedStep.resolve;
+            return {stepId: nestedStep.id, ok: true, data: {clicked: true}};
+        },
+    });
+    const checkpoint: Checkpoint = {
+        id: 'cp-resolve-sidecar',
+        kind: 'procedure',
+        content: [{
+            type: 'act',
+            step: {
+                name: 'browser.click',
+                args: {resolveId: 'approve-button'},
+            },
+        } as CheckpointAction],
+    };
+    const resolve = {hint: {target: {nodeId: nodeIds.next_page}}};
+    const workspace = deps.resolveWorkspace('ws-1');
+    deps.resolveWorkspace = () => ({
+        ...workspace,
+        workflow: {} as never,
+        checkpoint: {
+            getProvider: () => ({
+                getCheckpoint: (id: string) => id === checkpoint.id ? checkpoint : null,
+                getCheckpointResolves: (id: string) => id === checkpoint.id
+                    ? {'approve-button': resolve}
+                    : null,
+            }),
+        },
+    } as never);
+
+    const result = await executeBrowserCheckpoint({
+        id: 'cp-call-resolve',
+        name: 'browser.checkpoint',
+        args: {checkpointId: checkpoint.id},
+    }, deps, 'ws-1');
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(receivedResolve, resolve);
+});
+
+test('browser.checkpoint validates nested entity_rules before invoking executors', async () => {
+    const {deps} = await createDeps();
+    let executorCalled = false;
+    const baseExecutors = deps.pluginHost.getExecutors();
+    deps.pluginHost.getExecutors = () => ({
+        ...baseExecutors,
+        'browser.click': async (nestedStep) => {
+            executorCalled = true;
+            return {stepId: nestedStep.id, ok: true};
+        },
+    });
+    const checkpoint: Checkpoint = {
+        id: 'cp-invalid-entity-rules',
+        kind: 'procedure',
+        content: [{
+            type: 'act',
+            step: {
+                name: 'browser.click',
+                args: {nodeId: 'node-1'},
+                entityRules: {selection: 'explicit', profiles: []},
+            },
+        } as CheckpointAction],
+    };
+    const workspace = deps.resolveWorkspace('ws-1');
+    deps.resolveWorkspace = () => ({
+        ...workspace,
+        workflow: {} as never,
+        checkpoint: {
+            getProvider: () => ({
+                getCheckpoint: (id: string) => id === checkpoint.id ? checkpoint : null,
+                getCheckpointResolves: () => ({}),
+            }),
+        },
+    } as never);
+
+    const result = await executeBrowserCheckpoint({
+        id: 'cp-call-invalid-rules',
+        name: 'browser.checkpoint',
+        args: {checkpointId: checkpoint.id},
+    }, deps, 'ws-1');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_BAD_ARGS');
+    assert.equal(executorCalled, false);
+});

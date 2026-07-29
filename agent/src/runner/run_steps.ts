@@ -92,13 +92,18 @@ export type RunLocalStepResults = Record<
     }
 >;
 
-const executeOne = async (
+export type ExecuteStepRuntimeOptions = {
+    runLocalStepResults?: RunLocalStepResults;
+    stepResolves?: Record<string, StepResolve>;
+};
+
+export const executeStepWithRuntimeContracts = async (
     step: StepUnion,
     workspaceName: string,
-    runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
-    stepResolves?: Record<string, StepResolve>,
+    options: ExecuteStepRuntimeOptions = {},
 ): Promise<ExecStepResult> => {
+    const runLocalStepResults = options.runLocalStepResults ?? {};
     const executors = deps.pluginHost.getExecutors();
     if (!Object.prototype.hasOwnProperty.call(executors, step.name)) {
         stepLogger('[runner] missing executor', step.name);
@@ -124,7 +129,7 @@ const executeOne = async (
         };
     }
 
-    const runtimeStep = injectStepResolve(resolvedStep.step, stepResolves);
+    const runtimeStep = injectStepResolve(resolvedStep.step, options.stepResolves);
     if (!runtimeStep.ok) {
         return {
             stepId: step.id,
@@ -169,7 +174,48 @@ const executeOne = async (
     }
 
     const fn = executors[step.name];
-    return await fn(runtimeStep.step, deps, workspaceName);
+    const result = await fn(runtimeStep.step, deps, workspaceName);
+    if (result.ok && shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args)) {
+        await markPageSessionDirtyAfterStep(deps, workspaceName, runtimeStep.step);
+    }
+    return result;
+};
+
+const executeOne = async (
+    step: StepUnion,
+    workspaceName: string,
+    runLocalStepResults: RunLocalStepResults,
+    deps: RunStepsDeps,
+    stepResolves?: Record<string, StepResolve>,
+): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
+    runLocalStepResults,
+    stepResolves,
+});
+
+const markPageSessionDirtyAfterStep = async (
+    deps: RunStepsDeps,
+    workspaceName: string,
+    step: StepUnion,
+): Promise<void> => {
+    try {
+        const workspace = deps.resolveWorkspace(workspaceName);
+        const tabName = workspace.tabs.getActiveTab()?.name;
+        if (!tabName) {
+            throw new Error(`active tab not found: ${workspaceName}`);
+        }
+        const binding = await deps.runtime.awaitExecutableTab({
+            workspace,
+            pageRegistry: workspace.browserSession.pageRegistry,
+            tabName,
+            timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
+        });
+        deps.pageSession.markDirty(binding.page, 'interaction');
+    } catch (error) {
+        stepLogger('[runner] snapshot dirty mark failed', {
+            step: step.name,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
 };
 
 const STEP_RESOLVE_STEP_NAMES: ReadonlySet<StepName> = new Set<StepName>([
@@ -433,27 +479,6 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             });
 
             const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
-            if (result.ok && shouldMarkPageSessionDirtyByStep(step.name, step.args)) {
-                try {
-                    const workspace = resolvedDeps.resolveWorkspace(req.workspaceName);
-                    const tabName = workspace.tabs.getActiveTab()?.name;
-                    if (!tabName) {
-                        throw new Error(`active tab not found: ${req.workspaceName}`);
-                    }
-                    const binding = await resolvedDeps.runtime.awaitExecutableTab({
-                        workspace,
-                        pageRegistry: workspace.browserSession.pageRegistry,
-                        tabName,
-                        timeoutMs: resolvedDeps.config.waitPolicy.pageReadyTimeoutMs,
-                    });
-                    resolvedDeps.pageSession.markDirty(binding.page, 'interaction');
-                } catch (error) {
-                    stepLogger('[runner] snapshot dirty mark failed', {
-                        step: step.name,
-                        error: error instanceof Error ? error.message : String(error),
-                    });
-                }
-            }
 
             await writeStepEvent(resolvedDeps.stepSinks, {
                 type: 'step.end',
