@@ -312,7 +312,17 @@ export const normalizeSelectOption = async (
     event: RecorderEvent,
 ): Promise<RecordNormalizerResult> => {
     const recordLog = getLogger('record');
-    const forceFreshSnapshot = event.type === 'check' || event.type === 'select' || event.type === 'click';
+    let bindingPromise: ReturnType<typeof resolveRecordTargetBinding> | undefined;
+    const resolveBinding = (): ReturnType<typeof resolveRecordTargetBinding> => {
+        bindingPromise ??= resolveRecordTargetBinding({
+            event,
+            page: context.page,
+            state: context.state,
+            workspaceName: context.workspaceName,
+            resolveSnapshot: context.resolveSnapshot,
+        });
+        return bindingPromise;
+    };
 
     if (consumeSuppressedNativeSelectClick(context, event)) {
         recordLog('record_select_suppress_hit', {
@@ -381,13 +391,7 @@ export const normalizeSelectOption = async (
             const pendingCustom = Array.from(sessions.values()).find(isPendingCustomSelectSession);
 
             if (pendingCustom) {
-                const clickBinding = await resolveRecordTargetBinding({
-                    event,
-                    page: context.page,
-                    state: context.state,
-                    workspaceName: context.workspaceName,
-                    forceFreshSnapshot,
-                });
+                const clickBinding = await resolveBinding();
 
                 const sameControl = Boolean(
                     clickBinding
@@ -430,13 +434,7 @@ export const normalizeSelectOption = async (
         }
     }
 
-    const binding = await resolveRecordTargetBinding({
-        event,
-        page: context.page,
-        state: context.state,
-        workspaceName: context.workspaceName,
-        forceFreshSnapshot,
-    });
+    const binding = await resolveBinding();
 
     if (!binding) {
         if (event.type === 'click') {

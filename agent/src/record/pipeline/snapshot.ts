@@ -43,7 +43,6 @@ export const resolveRecordSnapshotForEvent = async (input: {
     workspaceName: string;
     event: RecorderEvent;
     page?: Page;
-    forceFresh?: boolean;
 }): Promise<RecordPageSnapshot | undefined> => {
     const recordLog = getLogger('record');
     const {event, page, state, workspaceName} = input;
@@ -66,22 +65,7 @@ export const resolveRecordSnapshotForEvent = async (input: {
         });
         return undefined;
     }
-    if (!state.snapshotPort) {
-        recordLog('record_snapshot_resolve', {
-            result: 'failed',
-            eventType: event.type,
-            selector: event.selector,
-            workspaceName,
-            pageUrl: safePageUrl(page),
-            reason: 'missing_page_session_port',
-        });
-        return undefined;
-    }
-
     try {
-        if (input.forceFresh) {
-            state.snapshotPort.markDirty(page, 'interaction');
-        }
         const snapshot = await state.snapshotPort.ensureFresh({workspaceName, page});
         recordLog('record_snapshot_resolve', {
             result: 'page_session',

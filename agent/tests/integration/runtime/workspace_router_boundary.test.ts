@@ -162,7 +162,7 @@ test('WorkspaceRouter does not handle tab.init', async () => {
 });
 
 test('TabsControl rejects tab.init', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.init', { workspaceName: 'ws-1' });
@@ -329,10 +329,10 @@ test('unknown action returns unsupported action', async () => {
 // ---- TabsControl boundary tests ----
 import { createTabsControl } from '../../../src/runtime/workspace/tabs';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
-import { createRecordingState } from '../../../src/record/recording';
+import { createTestRecordingState } from '../../helpers/recording_state';
 
 test('TabsControl handles tab.list', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         awaitPageBinding: async () => {throw new Error('not implemented');},
         createPageBinding: async () => {throw new Error('not implemented');},
@@ -351,7 +351,7 @@ test('TabsControl handles tab.list', async () => {
 });
 
 test('TabsControl tab.activated sets tab active', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         awaitPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
         createPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
@@ -370,7 +370,7 @@ test('TabsControl tab.activated sets tab active', async () => {
 });
 
 test('TabsControl tab.reassigned errors on unknown tab', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         awaitPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
         createPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
@@ -389,7 +389,7 @@ test('TabsControl tab.reassigned errors on unknown tab', async () => {
 });
 
 test('TabsControl unknown tab action returns unsupported', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.unknown', { workspaceName: 'ws-1' });
@@ -401,7 +401,7 @@ test('TabsControl unknown tab action returns unsupported', async () => {
 });
 
 test('TabsControl rejects inbound tab.bind', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.bind', { workspaceName: 'ws-1', payload: { tabName: 't1', chromeTabNo: 1, windowId: 1 } });

@@ -198,7 +198,7 @@ export const appendWorkspaceRecordingEvent = async (
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
     const eventRecordSeq = nextRecordingSeq(state, effectiveToken);
     if (state.replaying.has(tabName)) {return { accepted: false };}
-    if (page) {state.snapshotPort?.markDirty(page, 'interaction');}
+    if (page) {state.snapshotPort.markDirty(page, 'interaction');}
     const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim()) : undefined;
     const buildNormalizeContext = () => ({
         state,

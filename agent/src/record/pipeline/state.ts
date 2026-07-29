@@ -51,7 +51,7 @@ export type RecordingState = {
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
     lastScrollY: Map<string, number>;
-    snapshotPort?: RecordingSnapshotPort;
+    snapshotPort: RecordingSnapshotPort;
     pendingEnhancements: Map<string, Set<Promise<void>>>;
     replaying: Set<string>;
     replayCancel: Set<string>;
@@ -60,7 +60,7 @@ export type RecordingState = {
     pendingSuppressedClicks: Map<string, PendingSuppressedClick[]>;
 };
 
-export const createRecordingState = (options: {snapshotPort?: RecordingSnapshotPort} = {}): RecordingState => ({
+export const createRecordingState = (options: {snapshotPort: RecordingSnapshotPort}): RecordingState => ({
     recordingEnabled: new Set(),
     recordings: new Map(),
     recordingEnhancements: new Map(),

@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { RecorderEvent } from '../capture/recorder';
 import type { RecordingState } from '../pipeline/state';
 import type { RecordPageSnapshot } from '../pipeline/snapshot';
+import type { RecordSnapshotResolver } from '../pipeline/target_binding';
 import type {
     Step,
     StepArgsMap,
@@ -17,6 +18,7 @@ export type NormalizeContext = {
     workspaceName: string;
     tabName: string;
     page?: Page;
+    resolveSnapshot?: RecordSnapshotResolver;
     createStep: <TName extends StepName>(
         name: TName,
         args: StepArgsMap[TName],

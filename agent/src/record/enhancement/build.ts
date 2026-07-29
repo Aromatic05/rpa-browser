@@ -10,7 +10,7 @@ import {normalizeResolveHint} from '../../runner/steps/resolve_utils';
 import type {RecorderEvent} from '../capture/recorder';
 import type {RecordingState} from '../pipeline/state';
 import type {RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint} from '../types';
-import {resolveRecordTargetBinding} from '../pipeline/target_binding';
+import {resolveRecordTargetBinding, type RecordSnapshotResolver} from '../pipeline/target_binding';
 import {
     recordSnapshotId,
     resolveRecordSnapshotForEvent,
@@ -25,11 +25,17 @@ export const enrichRecordedStepWithSnapshot = async (input: {
     state: RecordingState;
     workspaceName?: string;
     tabName?: string;
+    resolveSnapshot?: RecordSnapshotResolver;
 }): Promise<RecordedStepEnhancement> => {
     const recordLog = getLogger('record');
     const {event, page, state} = input;
     if (isPageLevelEvent(event)) {
-        const snapshot = await resolveRecordSnapshotForEvent({event, page, state, workspaceName: input.workspaceName || ''});
+        const snapshot = await (input.resolveSnapshot ?? resolveRecordSnapshotForEvent)({
+            event,
+            page,
+            state,
+            workspaceName: input.workspaceName || '',
+        });
         return snapshot
             ? withRawContext(event, {
                 version: 1,
@@ -46,7 +52,13 @@ export const enrichRecordedStepWithSnapshot = async (input: {
         }));
     }
 
-    const binding = await resolveRecordTargetBinding({event, page, state, workspaceName: input.workspaceName || ''});
+    const binding = await resolveRecordTargetBinding({
+        event,
+        page,
+        state,
+        workspaceName: input.workspaceName || '',
+        resolveSnapshot: input.resolveSnapshot,
+    });
     if (!binding) {
         recordLog('record_enhancement_binding', {
             result: 'raw_only',

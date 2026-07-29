@@ -1,6 +1,9 @@
 import type { Page } from 'playwright';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
 import { createRecordingState, type RecordingState } from '../../src/record/recording';
+import {createRecordingSnapshotPort} from '../../src/record/pipeline/snapshot';
+import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
+import {PageSnapshotSessionStore} from '../../src/snapshot';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
 import type { Action } from '../../src/actions/action_protocol';
@@ -18,7 +21,6 @@ export type WorkspaceHarnessOptions = {
 };
 
 export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) => {
-    const recordingState = options.recordingState || createRecordingState();
     const getPage = options.getPage || (async (_tabName, startUrl) => ({
         url: () => startUrl || 'about:blank',
         isClosed: () => false,
@@ -52,6 +54,8 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
     const runtime = createExecutionBindings({ pageRegistry: testPageRegistry });
     const runStepsDeps = options.runStepsDeps || ({
         runtime,
+        pageSession: new PageSnapshotSessionStore(),
+        snapshotProjection: new SnapshotProjectionBaselineStore(),
         resolveWorkspace: () => {
             throw new Error('resolveWorkspace is not configured in test helper');
         },
@@ -67,6 +71,9 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
             replyTo: action.id,
         }),
     } as unknown as RunStepsDeps);
+    const recordingState = options.recordingState || createRecordingState({
+        snapshotPort: createRecordingSnapshotPort(runStepsDeps),
+    });
     const registry = createWorkspaceRegistry({
         tabNameKey: '__rpa_tab_name',
         extensionPaths: [],

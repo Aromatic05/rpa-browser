@@ -14,10 +14,9 @@ import {
     readControlOptionByNodeId,
     readSelectedValuesFromControl,
     resolveRecordTargetBinding,
-    setRecordTargetSnapshotResolverForTest,
 } from '../../../src/record/pipeline/target_binding';
 import type {RecorderEvent} from '../../../src/record/capture/recorder';
-import {createRecordingState} from '../../../src/record/pipeline/state';
+import {createTestRecordingState} from '../../helpers/recording_state';
 
 const active = () => ({hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true});
 
@@ -94,12 +93,12 @@ const event = (selector: string): RecorderEvent => ({
 
 test('record target binding resolves V2 custom-select trigger and option nodes', async () => {
     const {capture, nodeIds} = createCapture();
-    setRecordTargetSnapshotResolverForTest(async () => capture);
-    try {
+    const resolveSnapshot = async () => capture;
         const trigger = await resolveRecordTargetBinding({
             event: event('#Status'),
-            state: createRecordingState(),
+            state: createTestRecordingState(),
             workspaceName: 'ws-1',
+            resolveSnapshot,
         });
         assert.ok(trigger);
         assert.equal(trigger.componentKind, 'custom_select');
@@ -108,28 +107,26 @@ test('record target binding resolves V2 custom-select trigger and option nodes',
 
         const option = await resolveRecordTargetBinding({
             event: event('#OpenOption'),
-            state: createRecordingState(),
+            state: createTestRecordingState(),
             workspaceName: 'ws-1',
+            resolveSnapshot,
         });
         assert.ok(option);
         assert.equal(option.component.id, trigger.component.id);
         assert.equal(option.targetNodeId, nodeIds.open);
         assert.equal(readControlOptionByNodeId(option.component, nodeIds.open)?.value, 'open');
         assert.deepEqual(readSelectedValuesFromControl(option.component), ['open']);
-    } finally {
-        setRecordTargetSnapshotResolverForTest(null);
-    }
 });
 
 test('record enhancement emits V2 identity and canonical target facts', async () => {
     const {capture, nodeIds} = createCapture();
-    setRecordTargetSnapshotResolverForTest(async () => capture);
-    try {
+    const resolveSnapshot = async () => capture;
         const {enrichRecordedStepWithSnapshot} = await import('../../../src/record/enhancement/build');
         const enhancement = await enrichRecordedStepWithSnapshot({
             event: event('#Status'),
-            state: createRecordingState(),
+            state: createTestRecordingState(),
             workspaceName: 'ws-1',
+            resolveSnapshot,
             tabName: 'tab-1',
         });
         assert.equal(enhancement.snapshot?.snapshotId, 'record-target:1');
@@ -145,7 +142,4 @@ test('record enhancement emits V2 identity and canonical target facts', async ()
         assert.equal(enhancement.resolveHint?.target?.nodeId, nodeIds.trigger);
         assert.equal(enhancement.resolveHint?.raw?.selector, '#Status');
         assert.equal(enhancement.resolveHint?.capture?.source, 'record_enrichment');
-    } finally {
-        setRecordTargetSnapshotResolverForTest(null);
-    }
 });

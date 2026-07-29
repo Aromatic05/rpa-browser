@@ -25,12 +25,7 @@ const SUPPORTED_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 const normalize = (value: string | undefined): string => (value || '').trim();
-type SnapshotResolver = typeof resolveRecordSnapshotForEvent;
-let snapshotResolver: SnapshotResolver = resolveRecordSnapshotForEvent;
-
-export const setRecordTargetSnapshotResolverForTest = (resolver: SnapshotResolver | null): void => {
-    snapshotResolver = resolver || resolveRecordSnapshotForEvent;
-};
+export type RecordSnapshotResolver = typeof resolveRecordSnapshotForEvent;
 
 const selectorEquals = (left: string | undefined, right: string | undefined): boolean => {
     const a = normalize(left);
@@ -258,7 +253,7 @@ export const resolveRecordTargetBinding = async (input: {
     page?: Page;
     state: RecordingState;
     workspaceName: string;
-    forceFreshSnapshot?: boolean;
+    resolveSnapshot?: RecordSnapshotResolver;
 }): Promise<RecordTargetBinding | undefined> => {
     const recordLog = getLogger('record');
     const selector = normalize(input.event.selector);
@@ -266,12 +261,11 @@ export const resolveRecordTargetBinding = async (input: {
         recordLog('record_target_binding_result', {result: 'no_selector'});
         return undefined;
     }
-    const snapshot = await snapshotResolver({
+    const snapshot = await (input.resolveSnapshot ?? resolveRecordSnapshotForEvent)({
         state: input.state,
         workspaceName: input.workspaceName,
         event: input.event,
         page: input.page,
-        forceFresh: input.forceFreshSnapshot,
     });
     if (!snapshot) {
         recordLog('record_target_binding_result', {result: 'no_snapshot', selector});
