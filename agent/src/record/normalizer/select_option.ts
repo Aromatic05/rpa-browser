@@ -37,11 +37,14 @@ const customSessionKey = (
 const NATIVE_SELECT_CLICK_SUPPRESS_WINDOW_MS = 1200;
 const CUSTOM_SELECT_PENDING_WINDOW_MS = 1200;
 
+const isPendingCustomSelectSession = (session: PendingChoiceSession): session is PendingCustomSelectSession =>
+    session.kind === 'custom_select';
+
 const normalizeSelector = (selector: string | undefined): string =>
     (selector || '').replace(/\s+/g, ' ').trim();
 
 const isNativeSelectClickEvent = (event: RecorderEvent): boolean =>
-    event.type === 'click' && String(event.targetHint || '').trim().toLowerCase() === 'select';
+    event.type === 'click' && event.targetHint?.trim().toLowerCase() === 'select';
 
 const readExecutableLocatorSelector = (
     binding: Pick<RecordTargetBinding, 'snapshot'>,
@@ -51,7 +54,7 @@ const readExecutableLocatorSelector = (
     const locators = binding.snapshot.control.locators;
     const locator = (locators.byNodeId[nodeId] ?? [])
         .map((locatorId) => locators.locators[locatorId])
-        .find((candidate) => candidate?.status === 'resolved'
+        .find((candidate) => candidate.status === 'resolved'
             && candidate.scopePath.length === 0
             && Boolean(candidate.selector));
     return normalizeSelector(locator?.selector) || undefined;
@@ -73,7 +76,7 @@ const hasRoleCandidate = (event: RecorderEvent, role: string): boolean => {
 
     const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
     return candidates.some((candidate) =>
-        candidate?.kind === 'role' && String(candidate.role || '').trim() === expectedRole);
+        candidate.kind === 'role' && candidate.role?.trim() === expectedRole);
 };
 
 const hasRoleOptionCandidate = (event: RecorderEvent): boolean =>
@@ -88,14 +91,14 @@ const readOptionTextFromEvent = (event: RecorderEvent): string | undefined => {
 
     const candidates = Array.isArray(event.locatorCandidates) ? event.locatorCandidates : [];
     for (const candidate of candidates) {
-        if (!candidate || candidate.kind !== 'role') {continue;}
-        if (String(candidate.role || '').trim() !== 'option') {continue;}
+        if (candidate.kind !== 'role') {continue;}
+        if (candidate.role?.trim() !== 'option') {continue;}
         const name = normalizeSelector(candidate.name);
         if (name) {return name;}
     }
 
     for (const candidate of candidates) {
-        if (!candidate || candidate.kind !== 'text') {continue;}
+        if (candidate.kind !== 'text') {continue;}
         const text = normalizeSelector(candidate.text);
         if (text) {return text;}
     }
@@ -111,7 +114,7 @@ const isComboboxSemanticTriggerEvent = (event: RecorderEvent): boolean => {
     if (event.type !== 'click') {return false;}
     if (!normalizeSelector(event.selector)) {return false;}
 
-    const hintRole = String(event.a11yHint?.role || '').trim();
+    const hintRole = event.a11yHint?.role?.trim() ?? '';
     return hintRole === 'combobox' || hasRoleCandidate(event, 'combobox');
 };
 
@@ -280,17 +283,16 @@ export const flushPendingChoiceEvents = (input: {
             continue;
         }
 
-        if (session.kind === 'custom_select' && input.reason === 'navigate') {
+        if (input.reason === 'navigate') {
             deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
             continue;
         }
 
-        if (session.kind === 'custom_select' && input.reason === 'click') {
+        if (input.reason === 'click') {
             continue;
         }
 
-        if (session.kind === 'custom_select') {
-            const step = input.context.createStep(
+        const step = input.context.createStep(
                 'browser.click',
                 { selector: session.selector },
                 session.triggerEvent.ts,
@@ -298,9 +300,8 @@ export const flushPendingChoiceEvents = (input: {
                 session.resolve,
             );
 
-            emitted.push({ step, event: session.triggerEvent });
-            deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
-        }
+        emitted.push({ step, event: session.triggerEvent });
+        deleteChoiceSession(input.state, input.recordingToken, session.sessionKey);
     }
 
     return emitted;
@@ -377,8 +378,7 @@ export const normalizeSelectOption = async (
     if (event.type === 'click') {
         const sessions = context.state.pendingChoiceEvents.get(context.recordingToken);
         if (sessions && sessions.size > 0) {
-            const pendingCustom = Array.from(sessions.values())
-                .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+            const pendingCustom = Array.from(sessions.values()).find(isPendingCustomSelectSession);
 
             if (pendingCustom) {
                 const clickBinding = await resolveRecordTargetBinding({
@@ -441,13 +441,11 @@ export const normalizeSelectOption = async (
     if (!binding) {
         if (event.type === 'click') {
             const sessions = readChoiceSessions(context.state, context.recordingToken);
-            let pendingCustom = Array.from(sessions.values())
-                .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+            let pendingCustom = Array.from(sessions.values()).find(isPendingCustomSelectSession);
 
             if (!pendingCustom) {
                 const selector = normalizeSelector(event.selector);
-                const validSemanticTrigger = event.type === 'click'
-                    && Boolean(selector)
+                const validSemanticTrigger = Boolean(selector)
                     && isComboboxSemanticTriggerEvent(event)
                     && Boolean(context.tabName);
 
@@ -485,12 +483,12 @@ export const normalizeSelectOption = async (
                 }
             }
 
-            pendingCustom = Array.from(sessions.values())
-                .find((item) => item.kind === 'custom_select') as PendingCustomSelectSession | undefined;
+            pendingCustom = Array.from(sessions.values()).find(isPendingCustomSelectSession);
 
             const optionText = readOptionTextFromEvent(event);
-            const withinWindow = Boolean(pendingCustom && event.ts - pendingCustom.ts <= CUSTOM_SELECT_PENDING_WINDOW_MS);
-            const sameTab = Boolean(pendingCustom && pendingCustom.tabName === context.tabName);
+            const withinWindow = pendingCustom !== undefined
+                && event.ts - pendingCustom.ts <= CUSTOM_SELECT_PENDING_WINDOW_MS;
+            const sameTab = pendingCustom?.tabName === context.tabName;
             const semanticOption = isCustomSelectSemanticOptionEvent(event);
 
             if (pendingCustom && semanticOption && optionText && withinWindow && sameTab) {
@@ -654,8 +652,7 @@ export const normalizeSelectOption = async (
         return { status: 'pending' };
     }
 
-    if (binding.componentKind === 'custom_select') {
-        if (event.type !== 'click') {
+    if (event.type !== 'click') {
             return { status: 'pass' };
         }
 
@@ -694,7 +691,7 @@ export const normalizeSelectOption = async (
         }
 
         const pendingSession = sessions.get(sessionKey);
-        if (!pendingSession || pendingSession.kind !== 'custom_select') {
+        if (pendingSession?.kind !== 'custom_select') {
             recordLog('record_select_option_normalizer', {
                 eventType: event.type,
                 selector: event.selector,
@@ -742,17 +739,4 @@ export const normalizeSelectOption = async (
             values: [value.slice(0, 32)],
         });
         return result;
-    }
-
-    recordLog('record_select_option_normalizer', {
-        eventType: event.type,
-        selector: event.selector,
-        result: 'pass',
-        reason: 'kind_not_matched',
-        componentKind: binding.componentKind,
-        targetNodeId: binding.targetNodeId,
-        controlRootNodeId: binding.controlRootNodeId,
-        values: [],
-    });
-    return { status: 'pass' };
 };
