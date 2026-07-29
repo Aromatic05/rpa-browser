@@ -1,120 +1,113 @@
-export type SourceKind = 'unifiedGraph';
-
-export type Content = string | { ref: string };
-
-export type TreeNodeLike = {
-  id: string;
-  role?: string;
-  name?: string;
-  content?: Content;
-  target?: {
-    ref?: string;
-    kind?: string;
-  };
-  children: TreeNodeLike[];
+export type ProjectionGeometryRecord = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  coordinateSpace?: string;
+  source?: string;
 };
 
-export type RegionEntityLike = {
-  id: string;
-  type: 'region';
-  kind: string;
+export type ProjectionNode = {
   nodeId: string;
-  name?: string;
-  bbox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-};
-
-export type GroupEntityLike = {
-  id: string;
-  type: 'group';
-  kind: string;
-  containerId: string;
-  itemIds: string[];
-  keySlot: number;
-};
-
-export type EntityRecordLike = RegionEntityLike | GroupEntityLike;
-
-export type NodeEntityRefLike = {
-  type: 'region' | 'group';
-  entityId: string;
-  role: 'container' | 'item' | 'descendant';
-  itemId?: string;
-  slotIndex?: number;
-};
-
-export type EntityIndexLike = {
-  entities: Record<string, EntityRecordLike>;
-  byNodeId: Record<string, NodeEntityRefLike[] | undefined>;
-};
-
-export type LocatorLike = {
-  origin: {
-    primaryDomId: string;
-    sourceDomIds?: string[];
-  };
-  direct?: {
-    kind: string;
-    query: string;
-    source: string;
-    fallback?: string;
-  };
-  scope?: {
-    id: string;
-    kind: string;
-  };
-  policy?: {
-    preferDirect?: boolean;
-    preferScopedSearch?: boolean;
-    requireVisible?: boolean;
-    allowIndexDrift?: boolean;
-    allowFuzzy?: boolean;
-  };
-};
-
-export type SnapshotGraphLike = {
-  root: TreeNodeLike;
-  nodeIndex?: Record<string, TreeNodeLike>;
-  entityIndex?: EntityIndexLike;
-  locatorIndex?: Record<string, LocatorLike>;
-  bboxIndex?: Record<string, { x: number; y: number; width: number; height: number }>;
-  attrIndex?: Record<string, Record<string, unknown>>;
-  contentStore?: Record<string, string>;
-  cacheStats?: {
-    bucketTotal: number;
-    bucketHit: number;
-    bucketMiss: number;
-  };
-};
-
-export type RawDomNodeLike = {
-  id: string;
+  scopeId: string;
   tag: string;
+  role: string;
+  name?: string;
   text?: string;
-  backendDOMNodeId?: string | number;
-  attrs?: Record<string, unknown>;
-  children: RawDomNodeLike[];
+  contentRef?: string;
+  attributes?: Record<string, string>;
+  runtimeState?: Record<string, unknown>;
+  geometry?: ProjectionGeometryRecord[];
+  activity: Record<string, unknown>;
+  identity: {backendNodeId?: string; runtimeIdentityToken?: string};
+  controlIds: string[];
+  componentIds: string[];
+  children: ProjectionNode[];
 };
 
-export type DataPack = {
-  snapshot: SnapshotGraphLike | null;
-  rawDomTree?: RawDomNodeLike | null;
+export type ProjectionForm = {
+  id: string;
+  rootNodeId: string;
+  hostNodeId?: string;
+  selectionScopeNodeId?: string;
+  status: string;
+  boundaryKind: string;
+  fields: Array<Record<string, unknown>>;
+  actions: Array<Record<string, unknown>>;
+  groups: Array<Record<string, unknown>>;
+  geometry: Array<Record<string, unknown>>;
+  validation: {ok: boolean; diagnosticCount: number};
+};
+
+export type ProjectionTable = {
+  id: string;
+  rootNodeId: string;
+  hostNodeId?: string;
+  selectionScopeNodeId?: string;
+  status: string;
+  columns: Array<Record<string, unknown>>;
+  rows: Array<Record<string, unknown>>;
+  rowCollection: Record<string, unknown>;
+  controlSlots: Array<Record<string, unknown>>;
+  rowExceptions: Array<Record<string, unknown>>;
+  pagination?: Record<string, unknown>;
+  geometry: Array<Record<string, unknown>>;
+  validation: {ok: boolean; diagnosticCount: number};
+};
+
+export type ProjectionSemanticBinding = {
+  id: string;
+  profileName: string;
+  origin: string;
+  disposition: string;
+  status: string;
+  domain: 'form' | 'table' | 'node';
+  nodeIds: string[];
+  componentIds: string[];
+  annotation: Record<string, unknown>;
+};
+
+export type ProjectionDiagnostic = {
+  code: string;
+  severity: string;
+  stage: string;
+  status: string;
+  message: string;
+  nodeIds?: string[];
+};
+
+export type SnapshotProjection = {
+  schemaVersion: 2;
+  meta: {
+    snapshotId: string;
+    pageEpoch: string;
+    captureRevision: number;
+    pageUrl: string;
+    refreshReason: string;
+    mode: 'full' | 'diff';
+    viewMode: string;
+    containNodeIds: string[];
+    depth: number;
+    filterSignature: string;
+    totalNodeCount: number;
+    includedNodeCount: number;
+    baseSnapshotId?: string;
+    diffSkipped?: string;
+    changedNodeCount: number;
+    changedComponentIds: string[];
+    removedNodeKeys: string[];
+  };
+  roots: ProjectionNode[];
+  components: {forms: ProjectionForm[]; tables: ProjectionTable[]};
+  semantics: ProjectionSemanticBinding[];
+  collections: Array<Record<string, unknown>>;
+  diagnostics: ProjectionDiagnostic[];
+  debug?: Record<string, unknown>;
 };
 
 export type SnapshotApiResponse = {
   ok: boolean;
-  data?: {
-    url: string;
-    unifiedGraph: SnapshotGraphLike | TreeNodeLike | unknown;
-    raw?: {
-      domTree?: unknown;
-      a11yTree?: unknown;
-    };
-  };
+  data?: {url: string; projection: SnapshotProjection};
   error?: string;
 };
 
@@ -136,20 +129,14 @@ export type CaptureEnvelope = {
   sourceUrl?: string;
   finalUrl?: string;
   title?: string;
-  raw?: {
-    domTree?: unknown;
-    a11yTree?: unknown;
-  };
+  raw?: unknown;
   snapshot?: unknown;
   meta?: Record<string, unknown>;
 };
 
 export type CaptureListApiResponse = {
   ok: boolean;
-  data?: {
-    storeDir: string;
-    items: CaptureListItem[];
-  };
+  data?: {storeDir: string; items: CaptureListItem[]};
   error?: string;
 };
 

@@ -1,81 +1,42 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import type { TreeNodeLike } from '../types';
+import {computed, ref} from 'vue';
+import type {ProjectionNode} from '../types';
 
-defineOptions({ name: 'TreeNode' });
-
-const props = withDefaults(
-  defineProps<{
-    node: TreeNodeLike;
-    depth?: number;
-    selectedId?: string;
-    highlightIdMap?: Record<string, boolean>;
-  }>(),
-  {
-    depth: 0,
-    selectedId: '',
-    highlightIdMap: () => ({}),
-  },
-);
-
-const emit = defineEmits<{
-  (e: 'select', value: TreeNodeLike): void;
-  (e: 'contextmenu-node', value: { node: TreeNodeLike; x: number; y: number }): void;
-}>();
-
-const open = ref(props.depth < 2);
-
+defineOptions({name: 'TreeNode'});
+const props = withDefaults(defineProps<{
+  node: ProjectionNode;
+  depth?: number;
+  selectedNodeId?: string;
+}>(), {depth: 0, selectedNodeId: ''});
+const emit = defineEmits<{(event: 'select', node: ProjectionNode): void}>();
+const expanded = ref(props.depth < 2);
 const hasChildren = computed(() => props.node.children.length > 0);
-const isSelected = computed(() => props.selectedId === props.node.id);
-const isHighlighted = computed(() => Boolean(props.highlightIdMap?.[props.node.id]));
-const roleLabel = computed(() => props.node.role || 'node');
-const nodeLabel = computed(() => {
-  if (props.node.name) return props.node.name;
-  if (typeof props.node.content === 'string') return props.node.content;
-  if (props.node.content?.ref) return props.node.content.ref;
-  return '';
-});
-
-const toggle = (event: MouseEvent) => {
-  event.stopPropagation();
-  if (!hasChildren.value) return;
-  open.value = !open.value;
-};
-
-const selectNode = () => {
-  emit('select', props.node);
-};
-
-const openContextMenu = (event: MouseEvent) => {
-  event.preventDefault();
-  event.stopPropagation();
-  emit('select', props.node);
-  emit('contextmenu-node', {
-    node: props.node,
-    x: event.clientX,
-    y: event.clientY,
-  });
-};
+const label = computed(() => props.node.name || props.node.text || props.node.contentRef || '');
 </script>
 
 <template>
   <div class="tree-node">
-    <div class="tree-line" :class="{ selected: isSelected, highlighted: isHighlighted }" @click="selectNode" @contextmenu="openContextMenu">
-      <span class="badge" @click="toggle">{{ hasChildren ? (open ? '-' : '+') : '·' }}</span>
-      <span>{{ roleLabel }}</span>
-      <span v-if="nodeLabel" class="muted">[{{ nodeLabel }}]</span>
-    </div>
-
-    <div v-if="hasChildren && open" class="tree-children">
+    <button
+      class="tree-row"
+      :class="{selected: selectedNodeId === node.nodeId}"
+      type="button"
+      @click="emit('select', node)"
+    >
+      <span class="tree-toggle" @click.stop="expanded = !expanded">
+        {{ hasChildren ? (expanded ? '−' : '+') : '·' }}
+      </span>
+      <code>{{ node.role || node.tag }}</code>
+      <span v-if="label" class="tree-label">{{ label }}</span>
+      <span class="tree-id">{{ node.nodeId }}</span>
+    </button>
+    <div v-if="expanded && hasChildren" class="tree-children">
       <TreeNode
         v-for="child in node.children"
-        :key="child.id"
+        :key="child.nodeId"
         :node="child"
         :depth="depth + 1"
-        :selected-id="selectedId"
-        :highlight-id-map="highlightIdMap"
+        :selected-node-id="selectedNodeId"
         @select="emit('select', $event)"
-        @contextmenu-node="emit('contextmenu-node', $event)"
       />
     </div>
   </div>

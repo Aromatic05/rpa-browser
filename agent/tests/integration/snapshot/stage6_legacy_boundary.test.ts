@@ -87,6 +87,43 @@ test('Stage 6 production relative imports resolve to tracked source modules', ()
 });
 
 
+
+
+test('Snapshot viewer consumes only V2 projection contracts', () => {
+    const viewerRoot = path.join(agentDirectory, 'debug/snapshot-viewer');
+    const viewerFiles = [
+        path.join(viewerRoot, 'server/snapshotApi.ts'),
+        path.join(viewerRoot, 'src/App.vue'),
+        path.join(viewerRoot, 'src/types.ts'),
+    ];
+    const forbidden = [
+        'executors/snapshot/stages',
+        'executors/snapshot/pipeline',
+        'generateSemanticSnapshot',
+        'unifiedGraph',
+        'nodeIndex',
+        'entityIndex',
+        'locatorIndex',
+        'bboxIndex',
+        'attrIndex',
+        'contentStore',
+        'businessEntityOverlay',
+        'ruleEntityOverlay',
+    ];
+    for (const file of viewerFiles) {
+        const source = fs.readFileSync(file, 'utf8');
+        for (const token of forbidden) {
+            assert.equal(source.includes(token), false, `${relative(file)} contains V1 viewer token ${token}`);
+        }
+    }
+    const types = fs.readFileSync(path.join(viewerRoot, 'src/types.ts'), 'utf8');
+    assert.equal(types.includes('schemaVersion: 2'), true);
+    const server = fs.readFileSync(path.join(viewerRoot, 'server/snapshotApi.ts'), 'utf8');
+    for (const required of ['captureControlSnapshot', 'PageSnapshotSessionStore', 'buildSnapshotProjection']) {
+        assert.equal(server.includes(required), true, `viewer server is missing V2 entry ${required}`);
+    }
+});
+
 test('Stage 6 acceptance documents match the current release evidence', () => {
     const plan = fs.readFileSync(path.join(repositoryDirectory, 'docs/Development/SnapshotEntityRecognitionV2Plan.md'), 'utf8');
     const handoff = fs.readFileSync(
