@@ -4,7 +4,7 @@
 
 本文是 Snapshot、实体识别、entity_rules、annotator 与 runtime query 的实施计划，不是概念草案。
 
-当前状态：**阶段 1 至阶段 6 均已验收，Snapshot/实体识别 V2 分阶段迁移完成。QueryPlan、SemanticBindings、PageSession、confirmed selection、SnapshotProjection、RuntimeQuery、SemanticDiff、record/checkpoint/query/assert/entity 与 annotator 消费方均使用 V2 生产路径。`browser.snapshot` 支持 overview/interaction/annotation/debug/full 五种 projection mode；extension 只发送事件、坐标与 draft，并渲染 agent 返回的 canonical geometry。生产代码中无 V1 snapshot runtime、entity overlay、旧 session cache、V1 compress、extension DOM entity recovery、runtime flag 或双 entity_rules matcher。Stage 6 发行级验收记录见 `docs/Development/reports/SnapshotV2Stage6Handoff.md`。**
+当前状态：**阶段 1 至阶段 6 已在复审修复后重新验收，Snapshot/实体识别 V2 分阶段迁移完成。QueryPlan、SemanticBindings、PageSession、confirmed selection、SnapshotProjection、RuntimeQuery、SemanticDiff、record/checkpoint/query/assert/entity 与 annotator 消费方均使用 V2 生产路径。record 与 runner 共享 PageSession，不存在 record 私有 TTL snapshot cache。`browser.snapshot` 支持 overview/interaction/annotation/debug/full 五种 projection mode；extension 只发送事件、坐标与 draft，并渲染 agent 返回的 canonical geometry。生产代码中无 V1 snapshot runtime、entity overlay、旧 session cache、V1 compress、extension DOM entity recovery、runtime flag 或双 entity_rules matcher。Stage 6 复审重新验收记录见 `docs/Development/reports/SnapshotV2Stage6Handoff.md`。**
 
 归档基线：
 
@@ -24,17 +24,18 @@
 | 5 | SemanticBindings、Projection 与消费方切换 | accepted | 新 snapshot/query/annotator/session/diff 全链路 |
 | 6 | V1 删除与发行级验收 | accepted | 无 V1 runtime、完整真实页面验收、文档一致 |
 
-六个计划阶段均已通过退出门槛。后续功能、维护和全仓 lint 治理作为独立任务处理。
+六个计划阶段均已通过退出门槛。2026-07-29 的独立复审曾重新打开 Stage 5/6，并在修复 record 双生命周期、真实浏览器矩阵、全管线性能门禁、发行诊断和文档漂移后重新 accepted。
 
 当前工程边界：
 
-- `pnpm --filter ./agent test:snapshot`：129/129 通过（含五种 projection mode、PageSession、action/locator、动态页面与 Stage 6 边界守卫）。
+- `pnpm --filter ./agent test:snapshot`：135/135 通过，包含真实 clone fixed、merged/nested/tree/virtual/loading/empty、ambiguous pagination、responsive hidden column、partial source fault、PageSession、projection 与 Stage 6 边界守卫。
 - `pnpm --filter ./agent test:entity-rules`：31/31 通过，包含真实 Element Plus/Ant Design annotator、scroll/zoom 与 check/save/reopen。
-- `pnpm --filter ./agent typecheck:snapshot`：0 项诊断。
-- `pnpm --filter ./agent test:trace`：7/7 通过，真实浏览器 trace integrity 已切换到 V2 capture/projection/content ref。
-- `pnpm --filter ./agent test:integration`：606 项，605 通过、0 失败、1 个显式性能测试跳过；该性能测试单独执行通过。
+- `pnpm --filter ./agent typecheck:snapshot`：0 项诊断；完整 agent typecheck 通过。
+- `pnpm --filter ./agent test:trace`：7/7 通过，真实浏览器 trace integrity 使用 V2 capture/projection/content ref。
+- `pnpm --filter ./agent test:integration`：614 项，612 通过、0 失败、2 个显式性能测试跳过；两个性能门禁单独执行均通过。
 - `pnpm --filter ./agent test:e2e`：4/4 通过。
-- 生产代码中无 `runner/steps/executors/snapshot/*` V1 导入、`ruleEntityOverlay/businessEntityOverlay`、`latestSnapshot/snapshotSessionStore`、V1 compress、runtime flag 或双 matcher。
+- `pnpm lint`：0 errors / 0 warnings。
+- 生产代码中无 `runner/steps/executors/snapshot/*` V1 导入、`ruleEntityOverlay/businessEntityOverlay`、`latestSnapshot/snapshotSessionStore`、`recordSnapshotCache`、V1 compress、runtime flag 或双 matcher。
 
 ## 2. 从 V1 与实验中冻结的结论
 
@@ -1359,7 +1360,7 @@ Observation query helpers
 
 当前验收结果：
 
-- 当前全量 Snapshot V2 测试 101 项全部通过；entity_rules 集成测试 11 项全部通过。
+- 当前全量 Snapshot V2 测试 135/135；entity_rules 集成测试 31/31。
 - Element Plus 与 Ant Design 的 list、create、dialog、Form.List 和 date-range 页面通过精确浏览器验收；字段、composite、required、actions、residual 均使用固定预期，不再只检查下限。
 - Stage 3 baseline 使用 4 个被 Git 跟踪的代码生成紧凑语料，不依赖 `agent/tests/fixtures/form-v2/` 的本地大型 capture。
 - 紧凑语料 × 50 iterations：47 nodes、4 forms、8 fields、1 composite field、2 residual fields、5 owned actions、1 residual action、22 ownership edges，exact truth error 为 0。
@@ -1477,12 +1478,12 @@ Observation query helpers
 
 当前验收结果：
 
-- 当前全量 Snapshot V2 测试 101 项全部通过；entity_rules 集成测试 11 项全部通过。
+- 当前全量 Snapshot V2 测试 135/135；entity_rules 集成测试 31/31。
 - 真实 Element Plus 页面包含 23 个 `.el-table`，组装结果严格为 23 个 TableComponent；DOM physical `<table>` 数量高于逻辑表数量，但不会重复产生 entity。
 - 真实 Ant Design sticky/fixed/summary/pagination 页面组装为一个 TableComponent，top/bottom pagination 归属同一逻辑表。
-- native、Element、Ant、多级 header、nested table、treegrid、virtualized row window、footer、pagination ambiguity、FeatureCover 与 CellControlSlot 均有确定性验收。
+- native、Element、Ant、多级 header、merged body cell、nested/expanded/treegrid、virtualized row window、loading/empty、footer、pagination ambiguity、responsive hidden column、FeatureCover 与 CellControlSlot 均有真实浏览器或确定性验收。`table_required_matrix_browser.test.ts` 专门保护 required browser matrix。
 - canonical RowIndex 保存全部当前可见行，FeatureCover 只保存有界代表行；二者不混用。
-- 旧版 Element clone-based fixed fixture 将 fixed-left row/cell 映射到 canonical row/cell，fixed-right 独有 action 只形成一个 canonical action column 和一个重复 control slot。
+- 真实浏览器旧版 Element clone-based fixed fixture 将 fixed-left row/cell 映射到 canonical row/cell；outer `role=table` host 不重复成逻辑表。大量重复 links/controls 通过最多 4 个 structural-position buckets 表达，CellControlSlot 数量不再随单行 control 数量线性增长。
 - mirror mapper 优先使用 exact row key；重复 row key 明确返回 ambiguous，不按位置选择第一个。只有双方无 key 且行数相等时才允许带 weak evidence 的序号映射。
 - editable cell 只通过 exact `aria-controls`/`aria-owns` IDREF 建立 portal editor ownership；不根据 class、文本或邻近关系猜测。
 - 真实浏览器 closed/open editor revision 验证同一 page epoch 下 capture revision 递增，table 从 partial/unresolved 转为 complete/resolved，并将 editor control 归属 canonical cell。
@@ -1668,9 +1669,10 @@ Checkpoint 退出：
 当前验收结果：
 
 - browser.snapshot、browser.query、record、checkpoint、assert、entity、annotator、check/save/runtime query 均使用 V2 PageSession/canonical indexes。
-- Snapshot：129/129；entity_rules/annotator：31/31；trace：7/7；extension typecheck 与完整测试通过。
-- `typecheck:snapshot` 为 0 项诊断，相关新增源码严格 lint 为 0。
-- Stage 5 状态：accepted。
+- record 与 runner 共享 PageSession；`recordSnapshotCache`、1500ms TTL 和 URL 私有判鲜已删除。录制事件通过同一 dirty/navigation freshness、并发 refresh 和 semantic composition 生命周期获取 capture。
+- Snapshot：135/135；entity_rules/annotator：31/31；trace：7/7；extension typecheck 与完整测试通过。
+- `typecheck:snapshot` 与完整 agent typecheck 均为 0 项诊断；全仓 lint 为 0 errors / 0 warnings。
+- Stage 5 状态：accepted（复审修复后重新验收）。
 
 ### 12.8 交接重点
 
@@ -1772,15 +1774,17 @@ projection omission/correlation
 
 当前验收结果：
 
-- Stage 6 状态：accepted。
-- 发行级 integration：606 项，605 通过、0 失败、1 个显式性能测试跳过；显式性能命令 1/1 通过。
+- Stage 6 状态：accepted（复审修复后重新验收）。
+- 发行级 integration：614 项，612 通过、0 失败、2 个显式性能测试跳过；Stage 1 与 Stage 4/5 两个性能门禁单独执行均通过。
 - E2E：4/4 通过。
-- Snapshot：129/129；entity_rules：31/31；trace：7/7；全量 typecheck 通过。
-- required browser matrix 未完成项：0。
-- 生产旧路径/token 与未解析相对导入：0。
+- Snapshot：135/135；entity_rules：31/31；trace：7/7；全量 typecheck 通过。
+- required browser matrix 未完成项：0；真实表格矩阵见 `table_required_matrix_browser.test.ts`，partial source 使用真实浏览器页面加单一 runtime source 故障注入。
+- Stage 4/5 完整性能基线：`docs/Development/reports/SnapshotV2Stage45PerformanceBaseline.json`，冻结 14 个 pass 和结构计数；默认回退阈值为 baseline × 1.2，并保留 0.5ms 噪声裕量。
+- `capture_resolve` 未命中与 structural query 参数错误返回 page epoch、capture revision、scope、输入条件与候选统计。
+- 生产旧路径/token、record 私有 cache 与未解析相对导入：0。
 - Snapshot V1 runtime/implementation 归档：`archive/snapshot-entity-recognition-v1`；legacy entity_rules artifact importer 仅转换到 V2 QueryPlan。
+- `pnpm lint`：0 errors / 0 warnings。
 - 完整 handoff：`docs/Development/reports/SnapshotV2Stage6Handoff.md`。
-- 全仓 `pnpm lint` 仍有既有 610 项债务；这不属于 Stage 6 显式退出条件，但禁止宣称仓库整体 lint clean。
 
 ## 14. 可观测性与阶段报告
 

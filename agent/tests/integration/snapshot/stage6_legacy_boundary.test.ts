@@ -86,6 +86,29 @@ test('Stage 6 production relative imports resolve to tracked source modules', ()
     assert.deepEqual(missing, []);
 });
 
+
+test('Stage 6 acceptance documents match the current release evidence', () => {
+    const plan = fs.readFileSync(path.join(repositoryDirectory, 'docs/Development/SnapshotEntityRecognitionV2Plan.md'), 'utf8');
+    const handoff = fs.readFileSync(
+        path.join(repositoryDirectory, 'docs/Development/reports/SnapshotV2Stage6Handoff.md'),
+        'utf8',
+    );
+    const combined = `${plan}\n${handoff}`;
+
+    for (const staleClaim of ['610 findings', '156 errors', '454 warnings', 'Snapshot：129/129']) {
+        assert.equal(combined.includes(staleClaim), false, `stale acceptance claim remains: ${staleClaim}`);
+    }
+    for (const requiredEvidence of [
+        'Snapshot：135/135',
+        'SnapshotV2Stage45PerformanceBaseline.json',
+        'table_required_matrix_browser.test.ts',
+        'record 与 runner 共享 PageSession',
+        '0 errors / 0 warnings',
+    ]) {
+        assert.equal(combined.includes(requiredEvidence), true, `acceptance evidence missing: ${requiredEvidence}`);
+    }
+});
+
 const productionFiles = (): string[] => productionRoots
     .filter((root) => fs.existsSync(root))
     .flatMap(walkTypescript)
