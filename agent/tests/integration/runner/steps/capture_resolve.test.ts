@@ -239,6 +239,32 @@ test('capture_resolve returns ERR_NOT_FOUND when no canonical node matches', asy
     });
 });
 
+
+
+test('capture_resolve preserves the complete semantic resolve hint in not-found diagnostics', async () => {
+    const step: Step<'browser.capture_resolve'> = {
+        id: 'capture-semantic-none',
+        name: 'browser.capture_resolve',
+        args: {},
+        resolve: {
+            hint: {
+                entity: {businessTag: 'orders.missing', actionIntent: 'approve'},
+                target: {role: 'button', name: 'Approve'},
+                locator: {direct: {kind: 'css', query: '#missing-approve'}},
+            },
+            policy: {preferDirect: true, requireVisible: true},
+        },
+    };
+    const {deps} = await createDeps();
+    const result = await executeBrowserCaptureResolve(step, deps, 'ws-1');
+    assert.equal(result.ok, false);
+    if (result.ok) {return;}
+    assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+    assert.deepEqual((result.error?.details as {query?: unknown})?.query, {
+        resolve: step.resolve,
+    });
+});
+
 test('capture_resolve accepts limit up to 20 and rejects larger values', async () => {
     const withinLimit: Step<'browser.capture_resolve'> = {
         id: 'capture-limit-ok',

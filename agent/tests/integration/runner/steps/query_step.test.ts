@@ -121,3 +121,26 @@ test('browser.query returns ERR_BAD_ARGS on invalid relation or unsupported from
         from: 'x',
     });
 });
+
+
+test('browser.query business failures include page and semantic resolution diagnostics', async () => {
+    const {deps} = await createDeps();
+    const result = await executeBrowserQuery({
+        id: 'q-business-missing',
+        name: 'browser.query',
+        args: {op: 'entity', businessTag: 'missing.entity', query: 'table.rowCount'},
+    }, deps, 'ws-1');
+    assert.equal(result.ok, false);
+    if (result.ok) {return;}
+    assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+    assert.deepEqual(result.error?.details, {
+        pageEpoch: 'v2-business',
+        captureRevision: 1,
+        scopeIds: ['main'],
+        operation: 'entity',
+        businessTag: 'missing.entity',
+        query: 'table.rowCount',
+        semanticProfiles: ['orders-form', 'orders-table'],
+        availableBusinessTags: ['order.form.main', 'order.table.main'],
+    });
+});

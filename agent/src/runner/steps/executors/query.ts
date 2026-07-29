@@ -6,6 +6,7 @@ import {
 import type {RunStepsDeps} from '../../run_steps';
 import {
     ensureFreshPageSession,
+    buildPageSessionEntityView,
     queryPageSessionBusinessEntity,
     resolvePageSessionBusinessTarget,
 } from '../../session';
@@ -38,7 +39,14 @@ export const executeBrowserQuery = async (
             );
         return result.ok
             ? {stepId: step.id, ok: true, data: result.data}
-            : {stepId: step.id, ok: false, error: result.error};
+            : {
+                stepId: step.id,
+                ok: false,
+                error: {
+                    ...result.error,
+                    details: businessQueryDiagnosticDetails(entry, step.args, result.error.details),
+                },
+            };
     }
 
     const args = step.args;
@@ -242,6 +250,31 @@ const normalizeRelation = (value: unknown):
 };
 
 
+
+
+
+const businessQueryDiagnosticDetails = (
+    entry: Awaited<ReturnType<typeof ensureFreshPageSession>>['entry'],
+    args: Extract<Step<'browser.query'>['args'], {op: unknown}>,
+    resolutionDetails: unknown,
+): Record<string, unknown> => {
+    const observation = entry.capture.control.observation;
+    const availableBusinessTags = buildPageSessionEntityView(entry).entities
+        .map((entity) => entity.businessTag)
+        .filter((businessTag): businessTag is string => Boolean(businessTag))
+        .sort();
+    return {
+        pageEpoch: observation.identity.pageEpoch,
+        captureRevision: observation.identity.captureRevision,
+        scopeIds: [...observation.scopes.rootScopeIds],
+        operation: args.op,
+        businessTag: args.businessTag,
+        ...('query' in args ? {query: args.query} : {target: structuredClone(args.target)}),
+        semanticProfiles: Object.keys(entry.semanticBindingsByProfile).sort(),
+        availableBusinessTags,
+        ...(resolutionDetails === undefined ? {} : {resolution: structuredClone(resolutionDetails)}),
+    };
+};
 
 const queryDiagnosticDetails = (
     observation: PageObservation,

@@ -114,7 +114,7 @@ const captureResolveQuery = (
     if (text) {query.text = text;}
     if (role) {query.role = role;}
     if (name) {query.name = name;}
-    if (step.resolve) {query.resolve = true;}
+    if (step.resolve) {query.resolve = structuredClone(step.resolve);}
     return query;
 };
 
