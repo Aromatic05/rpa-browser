@@ -1,5 +1,5 @@
-export * from './contracts';
-export * from './raw_capture';
+export type * from './contracts';
+export type * from './raw_capture';
 export * from './runtime_state';
 export * from './identity';
 export * from './anchor';

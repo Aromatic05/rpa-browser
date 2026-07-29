@@ -49,7 +49,7 @@ export const buildRowHierarchy = (
         } else {
             while (stack.length > 0 && (stack.at(-1)?.level ?? 0) >= level) {stack.pop();}
             const parent = stack.at(-1);
-            parentRowIdByRowId[row.id] = parent && parent.level === level - 1 ? parent.id : undefined;
+            parentRowIdByRowId[row.id] = parent?.level === level - 1 ? parent.id : undefined;
         }
         stack.push(row);
         previousLevel = level;

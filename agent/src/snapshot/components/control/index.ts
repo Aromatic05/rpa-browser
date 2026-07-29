@@ -1,4 +1,4 @@
-export * from './model/contracts';
+export type * from './model/contracts';
 export * from './assembly/build';
 export * from './assembly/registry';
 export * from './capture/browser';

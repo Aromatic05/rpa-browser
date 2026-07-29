@@ -60,7 +60,6 @@ const resolveCurrentLocator = async (
     observation: PageObservation,
     index: LocatorIndex,
     locatorId: string,
-    options: LocatorExecutionOptions = {},
 ): Promise<ExecutableLocatorResolution> => {
     const canonical = index.locators[locatorId];
     if (!canonical) {
@@ -77,7 +76,7 @@ const resolveCurrentLocator = async (
     for (const step of canonical.scopePath) {
         const hostLocatorId = index.byNodeId[step.hostNodeId]?.[0];
         const hostCanonical = hostLocatorId ? index.locators[hostLocatorId] : undefined;
-        if (!hostCanonical || hostCanonical.status !== 'resolved' || !hostCanonical.selector) {
+        if (hostCanonical?.status !== 'resolved' || !hostCanonical.selector) {
             return unresolved('scope host has no executable locator', locatorEvidence(
                 'locator.execution.scope-host-unresolved',
                 [canonical.targetNodeId, step.hostNodeId],

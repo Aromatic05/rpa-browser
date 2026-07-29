@@ -42,7 +42,7 @@ export const resolveStepEntityRulesExecution = (
             strict: effective.strict,
         };
     }
-    if (!provider || provider.availability !== 'ready') {
+    if (provider?.availability !== 'ready') {
         return {
             status: 'unavailable',
             selection: effective.selection,

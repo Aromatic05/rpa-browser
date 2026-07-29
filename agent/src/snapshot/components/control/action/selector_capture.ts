@@ -13,14 +13,15 @@ export const captureSelectorTarget = async (
     page: Page,
     selector: string,
 ): Promise<SelectorCaptureResult> => {
-    let handle: ElementHandle<Element> | null = null;
+    let handle: ElementHandle<HTMLElement | SVGElement>;
     try {
         const locator = page.locator(selector);
         const count = await locator.count();
         if (count === 0) {return failure('ERR_NOT_FOUND', 'selector did not match a node', { selector });}
         if (count > 1) {return failure('ERR_AMBIGUOUS', 'selector matched multiple nodes', { selector, count });}
-        handle = await locator.elementHandle() as ElementHandle<Element> | null;
-        if (!handle) {return failure('ERR_STALE', 'selector target disappeared before capture', { selector });}
+        const candidate = await locator.elementHandle();
+        if (!candidate) {return failure('ERR_STALE', 'selector target disappeared before capture', { selector });}
+        handle = candidate;
     } catch (error) {
         return failure('ERR_BAD_ARGS', 'selector is invalid', {
             selector,

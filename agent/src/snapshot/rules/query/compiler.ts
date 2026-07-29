@@ -2,7 +2,6 @@ import { deepFreeze } from '../../observation/model/freeze';
 import type {
     EntityRuleQueryDomain,
     EntityRuleQueryInputRule,
-    EntityRuleQueryMatch,
     EntityRuleQueryPlan,
     QueryPlanCompileResult,
     QueryPlanDiagnostic,
@@ -143,10 +142,22 @@ export const compileEntityRuleQueryPlan = (
             expect: rule.expect,
             withinRuleId: rule.within,
             withinPlanStepId: rule.within ? stepId(profileName, rule.within) : undefined,
-            match: structuredClone(rule.match) as EntityRuleQueryMatch,
+            match: structuredClone(rule.match),
         })),
     };
     return deepFreeze({ ok: true, plan, diagnostics: [] });
+};
+
+
+const describeUnknown = (value: unknown): string => {
+    if (typeof value === 'string') {return value;}
+    if (value === undefined) {return 'undefined';}
+    if (value === null) {return 'null';}
+    try {
+        return JSON.stringify(value) ?? typeof value;
+    } catch {
+        return Object.prototype.toString.call(value);
+    }
 };
 
 const validateMatch = (
@@ -169,7 +180,7 @@ const validateMatch = (
         diagnostics.push(compileDiagnostic(
             profileName,
             'query-plan.domain.mixed',
-            `rule ${profileName}/${rule.ruleId} targets ${String(rule.match.kind)} inside a ${domain} plan`,
+            `rule ${profileName}/${rule.ruleId} targets ${describeUnknown(rule.match.kind)} inside a ${domain} plan`,
             rule,
         ));
     }

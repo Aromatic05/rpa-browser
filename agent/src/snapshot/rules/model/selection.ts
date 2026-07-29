@@ -14,7 +14,7 @@ export const normalizeStepEntityRulesControl = (
     }
     const selection = value.selection;
     if (!['inherit', 'disabled', 'auto', 'explicit'].includes(selection)) {
-        throw new Error(`invalid entityRules selection: ${String(selection)}`);
+        throw new Error(`invalid entityRules selection: ${selection}`);
     }
     if (value.strict !== undefined && typeof value.strict !== 'boolean') {
         throw new Error('entityRules.strict must be a boolean');
@@ -43,7 +43,8 @@ export const assertStepEntityRulesControl = (
     try {
         return normalizeStepEntityRulesControl(value as StepEntityRulesControl);
     } catch (error) {
-        throw new Error(`${path} is invalid: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : 'unknown error';
+        throw new Error(`${path} is invalid: ${message}`, {cause: error});
     }
 };
 

@@ -566,12 +566,29 @@ const captureDiagnostic = (
     message: error ? `${message}: ${errorMessage(error)}` : message,
 });
 
-const errorMessage = (error: unknown): string =>
-    error instanceof Error ? error.message : String(error ?? 'unknown error');
+const errorMessage = (error: unknown): string => {
+    if (error instanceof Error) {return error.message;}
+    return unknownText(error, 'unknown error');
+};
+
+const unknownText = (value: unknown, fallback: string): string => {
+    if (value === undefined) {return fallback;}
+    if (value === null) {return 'null';}
+    if (typeof value === 'string') {return value;}
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+        return `${value}`;
+    }
+    if (typeof value === 'symbol') {return value.description ?? fallback;}
+    try {
+        return JSON.stringify(value) ?? fallback;
+    } catch {
+        return Object.prototype.toString.call(value);
+    }
+};
 
 const normalizeUnknown = (value: unknown): string | undefined => {
     if (value === undefined || value === null) {return undefined;}
-    const normalized = String(value).trim();
+    const normalized = unknownText(value, '').trim();
     return normalized || undefined;
 };
 

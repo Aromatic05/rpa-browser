@@ -127,7 +127,7 @@ const buildWithinNodeSet = (
         output.add(form.location.structuralRootNodeId);
         descendants(snapshot.observation, form.location.structuralRootNodeId)
             .forEach((nodeId) => output.add(nodeId));
-        form.fields.forEach((field) => field.memberNodeIds.forEach((nodeId) => output.add(nodeId)));
+        form.fields.forEach((field) => { field.memberNodeIds.forEach((nodeId) => output.add(nodeId)); });
         form.actions.forEach((action) => output.add(action.nodeId));
     }
     return output;

@@ -19,7 +19,7 @@ export const diagnoseActivityConsistency = (
         const controllerState = readControllerState(observation, edge.sourceNodeId);
         if (controllerState !== 'inactive') {continue;}
         const activeTargets = edge.targetNodeIds.filter((targetNodeId) =>
-            observation.activity[targetNodeId]?.subtreeActive === true);
+            observation.activity[targetNodeId]?.subtreeActive);
         if (activeTargets.length === 0) {continue;}
         diagnostics.push({
             code: 'activity.controller-state-mismatch',

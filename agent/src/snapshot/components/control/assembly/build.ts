@@ -19,6 +19,7 @@ import type {
     ControlComponent,
     ControlIndex,
     ControlInvariantValidation,
+    ControlCollectorRegistryPort,
     ControlKind,
     ControlOption,
     ControlRefResolution,
@@ -37,7 +38,7 @@ export const buildControlIndex = (
     observation: PageObservation,
     relations: RelationIndex,
     locators: LocatorIndex,
-    registry: import('../model/contracts').ControlCollectorRegistryPort = createDefaultControlCollectorRegistry(),
+    registry: ControlCollectorRegistryPort = createDefaultControlCollectorRegistry(),
 ): ControlIndex => {
     const controls: Record<string, ControlComponent> = {};
     const byNodeId: Record<ObservationNodeId, string[]> = {};
@@ -114,32 +115,32 @@ export const createDefaultControlCollectorRegistry = (): ControlCollectorRegistr
         .register({
             id: 'radio-groups',
             collect: ({ observation, relations, locators, controls, consumedNodeIds }) =>
-                collectRadioGroups(observation, relations, locators, controls, consumedNodeIds),
+                { collectRadioGroups(observation, relations, locators, controls, consumedNodeIds); },
         })
         .register({
             id: 'checkbox-groups',
             collect: ({ observation, relations, locators, controls, consumedNodeIds }) =>
-                collectCheckboxGroups(observation, relations, locators, controls, consumedNodeIds),
+                { collectCheckboxGroups(observation, relations, locators, controls, consumedNodeIds); },
         })
         .register({
             id: 'custom-selects',
             collect: ({ observation, relations, locators, controls, consumedNodeIds }) =>
-                collectCustomSelects(observation, relations, locators, controls, consumedNodeIds),
+                { collectCustomSelects(observation, relations, locators, controls, consumedNodeIds); },
         })
         .register({
             id: 'native-selects',
             collect: ({ observation, locators, controls, consumedNodeIds }) =>
-                collectNativeSelects(observation, locators, controls, consumedNodeIds),
+                { collectNativeSelects(observation, locators, controls, consumedNodeIds); },
         })
         .register({
             id: 'popup-options',
             collect: ({ observation, locators, controls }) =>
-                collectPopupAndOptions(observation, locators, controls),
+                { collectPopupAndOptions(observation, locators, controls); },
         })
         .register({
             id: 'atomic-controls',
             collect: ({ observation, locators, controls, consumedNodeIds }) =>
-                collectAtomicControls(observation, locators, controls, consumedNodeIds),
+                { collectAtomicControls(observation, locators, controls, consumedNodeIds); },
         });
 
 export const resolveControlRef = (index: ControlIndex, ref: string): ControlRefResolution => {
@@ -192,7 +193,7 @@ const collectRadioGroups = (
     locators: LocatorIndex,
     controls: Record<string, ControlComponent>,
     consumed: Set<ObservationNodeId>,
-) => collectChoiceGroups('radio_group', 'radio', observation, relations, locators, controls, consumed);
+) => { collectChoiceGroups('radio_group', 'radio', observation, relations, locators, controls, consumed); };
 
 const collectCheckboxGroups = (
     observation: PageObservation,
@@ -200,7 +201,7 @@ const collectCheckboxGroups = (
     locators: LocatorIndex,
     controls: Record<string, ControlComponent>,
     consumed: Set<ObservationNodeId>,
-) => collectChoiceGroups('checkbox_group', 'checkbox', observation, relations, locators, controls, consumed);
+) => { collectChoiceGroups('checkbox_group', 'checkbox', observation, relations, locators, controls, consumed); };
 
 const collectChoiceGroups = (
     kind: 'radio_group' | 'checkbox_group',
@@ -772,9 +773,6 @@ const isOptionNode = (observation: PageObservation, nodeId: ObservationNodeId): 
     observation.nodes[nodeId]?.tag === 'option'
     || resolveSemanticRole(observation, nodeId).value === 'option'
     || typeof observation.attributes[nodeId]?.['aria-selected'] === 'string';
-
-const directDescendants = (observation: PageObservation, nodeId: ObservationNodeId): ObservationNodeId[] =>
-    [...(observation.children[nodeId] ?? [])];
 
 const descendantIds = (observation: PageObservation, nodeId: ObservationNodeId): ObservationNodeId[] => {
     const result: ObservationNodeId[] = [];

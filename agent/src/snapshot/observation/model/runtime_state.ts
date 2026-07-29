@@ -138,8 +138,25 @@ const stringValue = (value: unknown): string | undefined => {
     return normalized || undefined;
 };
 
-const errorMessage = (error: unknown): string =>
-    error instanceof Error ? error.message : String(error ?? 'unknown error');
+const errorMessage = (error: unknown): string => {
+    if (error instanceof Error) {return error.message;}
+    return unknownText(error, 'unknown error');
+};
+
+const unknownText = (value: unknown, fallback: string): string => {
+    if (value === undefined) {return fallback;}
+    if (value === null) {return 'null';}
+    if (typeof value === 'string') {return value;}
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+        return `${value}`;
+    }
+    if (typeof value === 'symbol') {return value.description ?? fallback;}
+    try {
+        return JSON.stringify(value) ?? fallback;
+    } catch {
+        return Object.prototype.toString.call(value);
+    }
+};
 
 const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
   const STATE_ATTR = '${RUNTIME_STATE_ATTRIBUTE}';

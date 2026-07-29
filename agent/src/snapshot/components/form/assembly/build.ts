@@ -12,7 +12,6 @@ import type {
 import { deepFreeze } from '../../../observation/model/freeze';
 import { resolveSemanticRole } from '../../../observation/model/semantic';
 import type { ControlComponent, ControlIndex } from '../../control/model/contracts';
-import type { LocatorIndex } from '../../../indexes/locator/contracts';
 import {
     buildOwnershipIndex,
     ownershipEndpointKey,
@@ -208,7 +207,7 @@ export const buildFormComponentIndex = (input: BuildFormSnapshotInput): FormComp
             actionIds,
         });
     }
-    const ownershipEdges = buildFormOwnership(forms, fields, groups, actions);
+    const ownershipEdges = buildFormOwnership(forms, fields, groups);
     const ownership = buildOwnershipIndex(ownershipEdges);
     diagnostics.push(...ownership.diagnostics);
     const byNodeId = buildFormNodeIndex(forms, fields, groups, actions);
@@ -470,7 +469,6 @@ const buildFormOwnership = (
     forms: Readonly<Record<string, FormComponent>>,
     fields: Readonly<Record<string, FormField>>,
     groups: Readonly<Record<string, FormGroup>>,
-    actions: Readonly<Record<string, FormAction>>,
 ): OwnershipEdge[] => {
     const edges: OwnershipEdge[] = [];
     for (const field of Object.values(fields)) {
@@ -590,11 +588,11 @@ const collectLabelEvidence = (
     ]);
     const labelNodeIds = explicitLabelNodeIds.length > 0 ? explicitLabelNodeIds : unique(legendIds);
     const evidence: Evidence[] = [];
-    if (exactLabelFor.length > 0) evidence.push({ code: 'form.field.label-for', strength: 'exact', source: 'dom', nodeIds: [...exactLabelFor, ...controlNodeIds] });
-    if (labelledBy.length > 0) evidence.push({ code: 'form.field.aria-labelledby', strength: 'exact', source: 'dom', nodeIds: [...controlNodeIds, ...labelledBy] });
-    if (explicitLabelNodeIds.length === 0 && legendIds.length > 0) evidence.push({ code: 'form.field.fieldset-legend', strength: 'strong', source: 'platform', nodeIds: [fieldsetId!, ...legendIds] });
-    if (adapterLabels.length > 0) evidence.push({ code: 'form.field.adapter-label', strength: 'strong', source: 'adapter', nodeIds: [anchorNodeId, ...adapterLabels] });
-    if (wrappedLabel) evidence.push({ code: 'form.field.wrapped-label', strength: 'strong', source: 'platform', nodeIds: [wrappedLabel, ...controlNodeIds] });
+    if (exactLabelFor.length > 0) {evidence.push({ code: 'form.field.label-for', strength: 'exact', source: 'dom', nodeIds: [...exactLabelFor, ...controlNodeIds] });}
+    if (labelledBy.length > 0) {evidence.push({ code: 'form.field.aria-labelledby', strength: 'exact', source: 'dom', nodeIds: [...controlNodeIds, ...labelledBy] });}
+    if (explicitLabelNodeIds.length === 0 && legendIds.length > 0) {evidence.push({ code: 'form.field.fieldset-legend', strength: 'strong', source: 'platform', nodeIds: [fieldsetId!, ...legendIds] });}
+    if (adapterLabels.length > 0) {evidence.push({ code: 'form.field.adapter-label', strength: 'strong', source: 'adapter', nodeIds: [anchorNodeId, ...adapterLabels] });}
+    if (wrappedLabel) {evidence.push({ code: 'form.field.wrapped-label', strength: 'strong', source: 'platform', nodeIds: [wrappedLabel, ...controlNodeIds] });}
     return { labelNodeIds, evidence };
 };
 
@@ -714,8 +712,8 @@ const boundaryEvidence = (
     kind: FormBoundaryKind,
 ): Evidence[] => {
     const tokens = classTokens(observation.attributes[nodeId]?.class);
-    if (tokens.includes('el-form')) return [{ code: 'form.boundary.adapter.element-form', strength: 'strong', source: 'adapter', nodeIds: [nodeId] }];
-    if (tokens.includes('ant-form')) return [{ code: 'form.boundary.adapter.ant-form', strength: 'strong', source: 'adapter', nodeIds: [nodeId] }];
+    if (tokens.includes('el-form')) {return [{ code: 'form.boundary.adapter.element-form', strength: 'strong', source: 'adapter', nodeIds: [nodeId] }];}
+    if (tokens.includes('ant-form')) {return [{ code: 'form.boundary.adapter.ant-form', strength: 'strong', source: 'adapter', nodeIds: [nodeId] }];}
     return [{
         code: kind === 'explicit-form'
             ? 'form.boundary.native-form'
@@ -894,7 +892,10 @@ const ownershipEndpointExists = (
         case 'form-group': return Boolean(index.groups[endpoint.id]);
         case 'form-action': return Boolean(index.actions[endpoint.id]);
         case 'form': return Boolean(index.forms[endpoint.id]);
-        default: return true;
+        case 'table-cell':
+        case 'table-row':
+        case 'table-column':
+        case 'table': return false;
     }
 };
 

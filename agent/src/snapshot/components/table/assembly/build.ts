@@ -368,17 +368,17 @@ const buildNodeIndex = (
     Object.values(tables).forEach((table) => {
         add(table.location.structuralRootNodeId, table.id);
         add(table.location.hostNodeId, table.id);
-        table.parts.physicalTableNodeIds.forEach((nodeId) => add(nodeId, table.id));
-        table.pagination?.nodeIds.forEach((nodeId) => add(nodeId, table.id));
+        table.parts.physicalTableNodeIds.forEach((nodeId) => { add(nodeId, table.id); });
+        table.pagination?.nodeIds.forEach((nodeId) => { add(nodeId, table.id); });
         table.editors.forEach((editor) => {
-            editor.sourceNodeIds.forEach((nodeId) => add(nodeId, editor.cellId));
-            editor.portalNodeIds.forEach((nodeId) => add(nodeId, editor.cellId));
+            editor.sourceNodeIds.forEach((nodeId) => { add(nodeId, editor.cellId); });
+            editor.portalNodeIds.forEach((nodeId) => { add(nodeId, editor.cellId); });
         });
-        table.mirrors.forEach((mirror) => add(mirror.mirrorNodeId, mirror.canonicalId ?? table.id));
+        table.mirrors.forEach((mirror) => { add(mirror.mirrorNodeId, mirror.canonicalId ?? table.id); });
     });
-    Object.values(rows).forEach((row) => add(row.nodeId, row.id));
-    Object.values(cells).forEach((cell) => add(cell.nodeId, cell.id));
-    Object.values(columns).forEach((column) => column.sourceNodeIds.forEach((nodeId) => add(nodeId, column.id)));
+    Object.values(rows).forEach((row) => { add(row.nodeId, row.id); });
+    Object.values(cells).forEach((cell) => { add(cell.nodeId, cell.id); });
+    Object.values(columns).forEach((column) => { column.sourceNodeIds.forEach((nodeId) => { add(nodeId, column.id); }); });
     return result;
 };
 
