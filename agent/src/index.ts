@@ -29,6 +29,7 @@ import { createPortAllocator } from './runtime/service/ports';
 import type { RunStepsDeps } from './runner/run_steps_types';
 import {PageSnapshotSessionStore} from './snapshot/session';
 import {SnapshotProjectionBaselineStore} from './runner/session';
+import {createRecordingSnapshotPort} from './record/pipeline/snapshot';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_PING_TIMEOUT_MS = 45000;
@@ -66,7 +67,6 @@ const emitAction = (action: Action) => {
 };
 
 const paths = resolvePaths();
-const recordingState = createRecordingState();
 
 let onPageBoundHook: (page: Page, bindingName: string) => void = () => undefined;
 let onBindingClosedHook: (bindingName: string) => void = () => undefined;
@@ -122,6 +122,7 @@ const runStepsDeps: RunStepsDeps = {
     pluginHost: runnerPluginHost,
 };
 setRunStepsDeps(runStepsDeps);
+const recordingState = createRecordingState({snapshotPort: createRecordingSnapshotPort(runStepsDeps)});
 
 workspaceRegistry = createWorkspaceRegistry({
     tabNameKey: TAB_NAME_KEY,

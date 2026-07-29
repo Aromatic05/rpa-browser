@@ -384,8 +384,8 @@ export const normalizeSelectOption = async (
                 const clickBinding = await resolveRecordTargetBinding({
                     event,
                     page: context.page,
-                    snapshotCache: context.snapshotCache,
-                    cacheKey: context.cacheKey,
+                    state: context.state,
+                    workspaceName: context.workspaceName,
                     forceFreshSnapshot,
                 });
 
@@ -433,8 +433,8 @@ export const normalizeSelectOption = async (
     const binding = await resolveRecordTargetBinding({
         event,
         page: context.page,
-        snapshotCache: context.snapshotCache,
-        cacheKey: context.cacheKey,
+        state: context.state,
+        workspaceName: context.workspaceName,
         forceFreshSnapshot,
     });
 

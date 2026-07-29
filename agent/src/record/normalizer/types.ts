@@ -1,6 +1,5 @@
 import type { Page } from 'playwright';
 import type { RecorderEvent } from '../capture/recorder';
-import type { RecordSnapshotCacheEntry } from '../pipeline/snapshot';
 import type { RecordingState } from '../pipeline/state';
 import type { RecordPageSnapshot } from '../pipeline/snapshot';
 import type {
@@ -18,8 +17,6 @@ export type NormalizeContext = {
     workspaceName: string;
     tabName: string;
     page?: Page;
-    snapshotCache: Map<string, RecordSnapshotCacheEntry>;
-    cacheKey: string;
     createStep: <TName extends StepName>(
         name: TName,
         args: StepArgsMap[TName],

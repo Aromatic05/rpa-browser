@@ -8,11 +8,11 @@ import {
     type ObservationNodeId,
 } from '../../snapshot';
 import type {RecorderEvent} from '../capture/recorder';
+import type {RecordingState} from './state';
 import {
     recordSnapshotId,
     resolveRecordSnapshotForEvent,
     type RecordPageSnapshot,
-    type RecordSnapshotCacheEntry,
 } from './snapshot';
 
 export type SelectOptionKind = 'native_select' | 'radio_group' | 'checkbox_group' | 'custom_select';
@@ -256,8 +256,8 @@ export const readSelectedValuesFromControl = (component: ControlComponent): stri
 export const resolveRecordTargetBinding = async (input: {
     event: RecorderEvent;
     page?: Page;
-    snapshotCache: Map<string, RecordSnapshotCacheEntry>;
-    cacheKey: string;
+    state: RecordingState;
+    workspaceName: string;
     forceFreshSnapshot?: boolean;
 }): Promise<RecordTargetBinding | undefined> => {
     const recordLog = getLogger('record');
@@ -266,7 +266,13 @@ export const resolveRecordTargetBinding = async (input: {
         recordLog('record_target_binding_result', {result: 'no_selector'});
         return undefined;
     }
-    const snapshot = await snapshotResolver({...input, forceFresh: input.forceFreshSnapshot});
+    const snapshot = await snapshotResolver({
+        state: input.state,
+        workspaceName: input.workspaceName,
+        event: input.event,
+        page: input.page,
+        forceFresh: input.forceFreshSnapshot,
+    });
     if (!snapshot) {
         recordLog('record_target_binding_result', {result: 'no_snapshot', selector});
         return undefined;

@@ -85,11 +85,7 @@ const flushWorkspacePendingRecordEvents = (
             stepName: StepName;
             ts?: number;
             tabName?: string;
-        }) => { startRecordedStepEnrichment({
-            ...input,
-            snapshotCache: state.recordSnapshotCache,
-            cacheKey: token,
-        }); },
+        }) => { startRecordedStepEnrichment(input); },
     };
     flushPendingChoiceEvents(state, token, {
         state,
@@ -97,8 +93,6 @@ const flushWorkspacePendingRecordEvents = (
         workspaceName,
         tabName,
         page,
-        snapshotCache: state.recordSnapshotCache,
-        cacheKey: token,
         createStep,
         buildResolveFromEvent,
     }, hooks, { workspaceName, page, reason: 'save' });

@@ -1,21 +1,30 @@
 import type {Page} from 'playwright';
 import {getLogger} from '../../logging/logger';
-import {
-    buildEntityRuleComponentSnapshots,
-    captureControlSnapshot,
-    type PageSnapshotCapture,
-} from '../../snapshot';
+import type {RunStepsDeps} from '../../runner/run_steps_types';
+import {ensurePageSessionForPage} from '../../runner/session/capture';
+import type {PageSnapshotCapture} from '../../snapshot';
 import type {RecorderEvent} from '../capture/recorder';
+import type {RecordingState} from './state';
 
 export type RecordPageSnapshot = PageSnapshotCapture;
 
-export type RecordSnapshotCacheEntry = {
-    snapshot: RecordPageSnapshot;
-    capturedAt: number;
-    pageUrl: string;
+export type RecordingSnapshotPort = {
+    markDirty: (page: Page, reason: 'interaction') => void;
+    ensureFresh: (input: {
+        workspaceName: string;
+        page: Page;
+        explicit?: boolean;
+    }) => Promise<RecordPageSnapshot>;
 };
 
-const SNAPSHOT_CACHE_TTL_MS = 1500;
+export const createRecordingSnapshotPort = (deps: RunStepsDeps): RecordingSnapshotPort => ({
+    markDirty: (page, reason) => {
+        deps.pageSession.markDirty(page, reason);
+    },
+    ensureFresh: async (input) => (
+        await ensurePageSessionForPage(deps, input.workspaceName, input.page, {explicit: input.explicit})
+    ).capture,
+});
 
 const isPageLevelEvent = (event: RecorderEvent): boolean => event.type === 'navigate' || event.type === 'scroll';
 
@@ -24,88 +33,63 @@ const shouldUseSnapshotForEvent = (event: RecorderEvent): boolean => {
     return true;
 };
 
-const safePageUrl = (page: Page): string => {
-    try {
-        return page.url();
-    } catch {
-        return '';
-    }
-};
-
 export const recordSnapshotId = (snapshot: RecordPageSnapshot): string => {
     const identity = snapshot.control.observation.identity;
     return `${identity.pageEpoch}:${identity.captureRevision}`;
 };
 
 export const resolveRecordSnapshotForEvent = async (input: {
+    state: RecordingState;
+    workspaceName: string;
     event: RecorderEvent;
     page?: Page;
-    snapshotCache: Map<string, RecordSnapshotCacheEntry>;
-    cacheKey: string;
     forceFresh?: boolean;
 }): Promise<RecordPageSnapshot | undefined> => {
     const recordLog = getLogger('record');
-    const {event, page, snapshotCache, cacheKey} = input;
+    const {event, page, state, workspaceName} = input;
     if (!shouldUseSnapshotForEvent(event)) {
         recordLog('record_snapshot_resolve', {
             result: 'skipped',
             eventType: event.type,
             selector: event.selector,
-            cacheKey,
+            workspaceName,
         });
         return undefined;
     }
-
-    const now = Date.now();
-    const cached = snapshotCache.get(cacheKey);
-    if (!input.forceFresh && cached && now - cached.capturedAt <= SNAPSHOT_CACHE_TTL_MS) {
-        if (!page) {return cached.snapshot;}
-        const pageUrl = safePageUrl(page);
-        if (cached.pageUrl === pageUrl) {
-            recordLog('record_snapshot_resolve', {
-                result: 'hit_cache',
-                eventType: event.type,
-                selector: event.selector,
-                cacheKey,
-                snapshotId: recordSnapshotId(cached.snapshot),
-                pageUrl,
-            });
-            return cached.snapshot;
-        }
-    }
-
     if (!page) {
         recordLog('record_snapshot_resolve', {
             result: 'failed',
             eventType: event.type,
             selector: event.selector,
-            cacheKey,
+            workspaceName,
             reason: 'missing_page',
         });
         return undefined;
     }
-    const pageUrl = safePageUrl(page);
-
-    try {
-        const control = await captureControlSnapshot(page, {captureRuntimeState: true});
-        const components = buildEntityRuleComponentSnapshots(control);
-        const snapshot: RecordPageSnapshot = {
-            control,
-            form: components.form,
-            table: components.table,
-        };
-        snapshotCache.set(cacheKey, {
-            snapshot,
-            capturedAt: Date.now(),
-            pageUrl,
-        });
+    if (!state.snapshotPort) {
         recordLog('record_snapshot_resolve', {
-            result: 'captured',
+            result: 'failed',
             eventType: event.type,
             selector: event.selector,
-            cacheKey,
+            workspaceName,
+            pageUrl: safePageUrl(page),
+            reason: 'missing_page_session_port',
+        });
+        return undefined;
+    }
+
+    try {
+        if (input.forceFresh) {
+            state.snapshotPort.markDirty(page, 'interaction');
+        }
+        const snapshot = await state.snapshotPort.ensureFresh({workspaceName, page});
+        recordLog('record_snapshot_resolve', {
+            result: 'page_session',
+            eventType: event.type,
+            selector: event.selector,
+            workspaceName,
             snapshotId: recordSnapshotId(snapshot),
-            pageUrl,
+            pageUrl: safePageUrl(page),
         });
         return snapshot;
     } catch (error) {
@@ -113,12 +97,20 @@ export const resolveRecordSnapshotForEvent = async (input: {
             result: 'failed',
             eventType: event.type,
             selector: event.selector,
-            cacheKey,
-            pageUrl,
-            reason: 'capture_failed',
+            workspaceName,
+            pageUrl: safePageUrl(page),
+            reason: 'page_session_failed',
             errorName: error instanceof Error ? error.name : typeof error,
             errorMessage: error instanceof Error ? error.message : String(error),
         });
         return undefined;
+    }
+};
+
+const safePageUrl = (page: Page): string => {
+    try {
+        return page.url();
+    } catch {
+        return '';
     }
 };

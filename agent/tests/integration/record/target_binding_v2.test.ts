@@ -17,6 +17,7 @@ import {
     setRecordTargetSnapshotResolverForTest,
 } from '../../../src/record/pipeline/target_binding';
 import type {RecorderEvent} from '../../../src/record/capture/recorder';
+import {createRecordingState} from '../../../src/record/pipeline/state';
 
 const active = () => ({hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true});
 
@@ -97,8 +98,8 @@ test('record target binding resolves V2 custom-select trigger and option nodes',
     try {
         const trigger = await resolveRecordTargetBinding({
             event: event('#Status'),
-            snapshotCache: new Map(),
-            cacheKey: 'ws::tab',
+            state: createRecordingState(),
+            workspaceName: 'ws-1',
         });
         assert.ok(trigger);
         assert.equal(trigger.componentKind, 'custom_select');
@@ -107,8 +108,8 @@ test('record target binding resolves V2 custom-select trigger and option nodes',
 
         const option = await resolveRecordTargetBinding({
             event: event('#OpenOption'),
-            snapshotCache: new Map(),
-            cacheKey: 'ws::tab',
+            state: createRecordingState(),
+            workspaceName: 'ws-1',
         });
         assert.ok(option);
         assert.equal(option.component.id, trigger.component.id);
@@ -127,8 +128,7 @@ test('record enhancement emits V2 identity and canonical target facts', async ()
         const {enrichRecordedStepWithSnapshot} = await import('../../../src/record/enhancement/build');
         const enhancement = await enrichRecordedStepWithSnapshot({
             event: event('#Status'),
-            snapshotCache: new Map(),
-            cacheKey: 'ws-1::tab-1',
+            state: createRecordingState(),
             workspaceName: 'ws-1',
             tabName: 'tab-1',
         });

@@ -32,6 +32,8 @@ const forbiddenProductionTokens = [
     'TABLE_PER_FAMILY_LIMIT',
     'RUNNER_CONFIDENCE_',
     'focus_only',
+    'recordSnapshotCache',
+    'SNAPSHOT_CACHE_TTL_MS',
 ];
 
 const forbiddenImportFragments = [

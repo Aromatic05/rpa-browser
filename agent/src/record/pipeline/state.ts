@@ -1,5 +1,5 @@
 import type { RecorderEvent } from '../capture/recorder';
-import type { RecordSnapshotCacheEntry } from './snapshot';
+import type { RecordingSnapshotPort } from './snapshot';
 import type { RecordingEnhancementMap } from '../types';
 import type { RecordingManifest, WorkspaceSavedSnapshot } from './manifest';
 import { flushPendingFillEvents } from './pending';
@@ -51,7 +51,7 @@ export type RecordingState = {
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
     lastScrollY: Map<string, number>;
-    recordSnapshotCache: Map<string, RecordSnapshotCacheEntry>;
+    snapshotPort?: RecordingSnapshotPort;
     pendingEnhancements: Map<string, Set<Promise<void>>>;
     replaying: Set<string>;
     replayCancel: Set<string>;
@@ -60,7 +60,7 @@ export type RecordingState = {
     pendingSuppressedClicks: Map<string, PendingSuppressedClick[]>;
 };
 
-export const createRecordingState = (): RecordingState => ({
+export const createRecordingState = (options: {snapshotPort?: RecordingSnapshotPort} = {}): RecordingState => ({
     recordingEnabled: new Set(),
     recordings: new Map(),
     recordingEnhancements: new Map(),
@@ -71,7 +71,7 @@ export const createRecordingState = (): RecordingState => ({
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
     lastScrollY: new Map(),
-    recordSnapshotCache: new Map(),
+    snapshotPort: options.snapshotPort,
     pendingEnhancements: new Map(),
     replaying: new Set(),
     replayCancel: new Set(),
@@ -113,7 +113,6 @@ export const resetWorkspaceUnsavedRecording = (
     state.lastNavigateTs.set(token, 0);
     state.lastClickTs.set(token, 0);
     state.lastScrollY.set(token, 0);
-    state.recordSnapshotCache.delete(token);
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
     state.pendingChoiceEvents.delete(token);
@@ -151,7 +150,6 @@ export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceN
     state.lastNavigateTs.set(token, 0);
     state.lastClickTs.set(token, 0);
     state.lastScrollY.set(token, 0);
-    state.recordSnapshotCache.delete(token);
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
     state.pendingChoiceEvents.delete(token);

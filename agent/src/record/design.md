@@ -382,7 +382,7 @@ record 内部新增 `RecordTargetBinding`，作为 RecorderEvent 命中 snapshot
 
 normalizer 与 enhancement 共享同一绑定过程：
 
-1. 先获取 record snapshot（复用 recordSnapshotCache，TTL 1500ms）。
+1. 通过共享 PageSession 获取 record snapshot；record 不维护独立 TTL cache。
 2. 用事件 selector 在 locator/attr 上定位唯一 targetNodeId。
 3. 优先读 node.control.ref，缺失则通过 controlIndex 反查所属 control。
 4. 仅接受 `owner=browser.select_option` 且 `capabilities` 含 `select_option` 的组件。

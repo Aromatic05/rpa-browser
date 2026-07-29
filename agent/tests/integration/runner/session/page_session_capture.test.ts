@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {ensureFreshPageSession} from '../../../../src/runner/session/capture';
+import {
+    createRecordingSnapshotPort,
+    resolveRecordSnapshotForEvent,
+} from '../../../../src/record/pipeline/snapshot';
+import {createRecordingState} from '../../../../src/record/pipeline/state';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 
 test('runner page session captures one V2 component bundle and refreshes it after dirty interaction', async () => {
@@ -56,6 +61,48 @@ test('runner page session captures one V2 component bundle and refreshes it afte
         const form = Object.values(refreshed.entry.capture.form.forms.forms)[0];
         assert.equal(form.location.selectionScopeNodeId, selection.nodeId);
         assert.notEqual(form.location.structuralRootNodeId, selection.nodeId);
+    } finally {
+        await browser.close();
+    }
+});
+
+
+test('record snapshot enrichment reuses the runner PageSession instead of a private TTL cache', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<button id="save" type="button">Save</button>');
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {page});
+        const state = createRecordingState({snapshotPort: createRecordingSnapshotPort(deps)});
+
+        const runnerFirst = await ensureFreshPageSession(deps, 'ws-1');
+        const recordFirst = await resolveRecordSnapshotForEvent({
+            state,
+            workspaceName: 'ws-1',
+            event: {tabName: 'tab-1', ts: 1, type: 'click', selector: '#save'},
+            page,
+        });
+        assert.equal(recordFirst, runnerFirst.entry.capture);
+
+        await page.locator('#save').evaluate((button) => {
+            button.textContent = 'Save now';
+        });
+        state.snapshotPort?.markDirty(page, 'interaction');
+        const recordRefreshed = await resolveRecordSnapshotForEvent({
+            state,
+            workspaceName: 'ws-1',
+            event: {tabName: 'tab-1', ts: 2, type: 'click', selector: '#save'},
+            page,
+        });
+        assert.ok(recordRefreshed);
+        assert.equal(
+            recordRefreshed.control.observation.identity.captureRevision,
+            runnerFirst.entry.identity.captureRevision + 1,
+        );
+
+        const runnerRefreshed = await ensureFreshPageSession(deps, 'ws-1');
+        assert.equal(runnerRefreshed.entry.capture, recordRefreshed);
+        assert.equal(runnerRefreshed.entry.refreshReason, 'dirty-interaction');
     } finally {
         await browser.close();
     }
