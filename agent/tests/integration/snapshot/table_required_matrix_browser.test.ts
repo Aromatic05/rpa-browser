@@ -75,6 +75,7 @@ test('real browser preserves merged, nested, hierarchy, virtual, loading and emp
           </table>
           <table id="outer"><tbody><tr><td>Outer<table id="inner"><tbody><tr><td>Inner</td></tr></tbody></table></td></tr></tbody></table>
           <div id="tree-unknown" role="treegrid"><div role="row"><div role="columnheader">Name</div></div><div role="row"><div role="gridcell">Root</div></div></div>
+          <div id="tree-expanded" role="treegrid"><div role="row"><div role="columnheader">Name</div></div><div role="row" aria-level="1" aria-expanded="true"><div role="gridcell">Parent</div></div><div role="row" aria-level="2"><div role="gridcell">Child</div></div></div>
           <div id="virtual" role="grid" aria-rowcount="100"><div role="row"><div role="columnheader">Name</div></div><div role="row"><div role="gridcell">A</div></div><div role="row"><div role="gridcell">B</div></div></div>
           <div id="empty" class="ant-table-wrapper"><table><thead><tr><th>Name</th></tr></thead><tbody></tbody></table><div class="ant-empty" role="status">No data</div></div>
           <div id="loading" class="el-table"><div class="el-table__header-wrapper"><table><thead><tr><th>Name</th></tr></thead></table></div><div class="el-table__body-wrapper"><table><tbody></tbody></table></div><div class="el-loading-mask" role="progressbar">Loading</div></div>
@@ -90,6 +91,10 @@ test('real browser preserves merged, nested, hierarchy, virtual, loading and emp
         assert.equal(tableByRootId(snapshot, 'outer').body.visibleRows.length, 1);
         assert.equal(tableByRootId(snapshot, 'inner').body.visibleRows.length, 1);
         assert.equal(tableByRootId(snapshot, 'tree-unknown').hierarchy?.source, 'unknown');
+        const expanded = tableByRootId(snapshot, 'tree-expanded');
+        const [parentRow, childRow] = expanded.body.visibleRows;
+        assert.equal(parentRow.expanded, true);
+        assert.equal(expanded.hierarchy?.parentRowIdByRowId[childRow.id], parentRow.id);
 
         const virtual = tableByRootId(snapshot, 'virtual');
         assert.equal(virtual.body.visibleRows.length, 2);
