@@ -70,6 +70,7 @@ const profileResult = (
 };
 
 export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?: boolean} = {}): {
+    raw: RawPageCapture;
     capture: PageSnapshotCapture;
     nodeIds: Record<string, string>;
 } => {
@@ -188,6 +189,7 @@ export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?:
     };
 
     return {
+        raw,
         capture: {...baseCapture, entityRules},
         nodeIds: Object.fromEntries(Object.entries(observation.captureIdToNodeId)),
     };

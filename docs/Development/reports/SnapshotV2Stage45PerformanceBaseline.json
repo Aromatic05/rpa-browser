@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-29T10:37:45.963Z",
+  "generatedAt": "2026-07-29T13:19:11.888Z",
   "corpusVersion": "snapshot-v2-stage45-v1",
   "iterations": 40,
   "structure": {
     "observationFixtureCount": 10,
     "businessCaseCount": 3,
-    "inputNodeCount": 267,
+    "inputNodeCount": 810,
     "controlCount": 160,
     "formCount": 7,
     "tableCount": 8,
@@ -16,88 +16,216 @@
   },
   "timing": {
     "observation": {
-      "samples": 400,
-      "p50Ms": 0.037,
-      "p95Ms": 0.616,
-      "maxMs": 1.393
+      "samples": 520,
+      "p50Ms": 0.038,
+      "p95Ms": 1.662,
+      "maxMs": 2.945
     },
     "relation": {
-      "samples": 400,
-      "p50Ms": 0.007,
-      "p95Ms": 0.047,
-      "maxMs": 0.131
+      "samples": 520,
+      "p50Ms": 0.011,
+      "p95Ms": 0.124,
+      "maxMs": 0.353
     },
     "locator": {
-      "samples": 400,
-      "p50Ms": 0.033,
-      "p95Ms": 0.717,
-      "maxMs": 1.96
+      "samples": 520,
+      "p50Ms": 0.041,
+      "p95Ms": 1.992,
+      "maxMs": 3.878
     },
     "control": {
-      "samples": 400,
-      "p50Ms": 0.027,
-      "p95Ms": 0.149,
-      "maxMs": 0.424
+      "samples": 520,
+      "p50Ms": 0.035,
+      "p95Ms": 0.687,
+      "maxMs": 1.905
     },
     "form": {
-      "samples": 400,
-      "p50Ms": 0.039,
-      "p95Ms": 0.622,
-      "maxMs": 1.231
+      "samples": 520,
+      "p50Ms": 0.055,
+      "p95Ms": 1.121,
+      "maxMs": 2.927
     },
     "table": {
-      "samples": 400,
-      "p50Ms": 0.009,
-      "p95Ms": 0.488,
-      "maxMs": 1.197
+      "samples": 520,
+      "p50Ms": 0.029,
+      "p95Ms": 6.898,
+      "maxMs": 12.853
     },
     "query-plan-compile": {
       "samples": 120,
-      "p50Ms": 0.013,
-      "p95Ms": 0.032,
-      "maxMs": 0.474
+      "p50Ms": 0.021,
+      "p95Ms": 0.034,
+      "maxMs": 0.433
     },
     "query-plan-execute": {
       "samples": 120,
-      "p50Ms": 0.012,
-      "p95Ms": 0.033,
-      "maxMs": 0.309
+      "p50Ms": 0.016,
+      "p95Ms": 0.026,
+      "maxMs": 0.3
     },
     "semantic-bindings": {
       "samples": 120,
-      "p50Ms": 0.014,
-      "p95Ms": 0.05,
-      "maxMs": 0.078
+      "p50Ms": 0.018,
+      "p95Ms": 0.045,
+      "maxMs": 0.061
     },
     "page-session-compose": {
       "samples": 120,
-      "p50Ms": 0.008,
+      "p50Ms": 0.012,
       "p95Ms": 0.019,
-      "maxMs": 0.191
+      "maxMs": 0.174
     },
     "projection-full": {
       "samples": 120,
-      "p50Ms": 3.94,
-      "p95Ms": 48.624,
-      "maxMs": 59.471
+      "p50Ms": 3.982,
+      "p95Ms": 45.325,
+      "maxMs": 54.411
     },
     "projection-overview": {
       "samples": 120,
-      "p50Ms": 0.332,
-      "p95Ms": 1.25,
-      "maxMs": 1.656
+      "p50Ms": 0.348,
+      "p95Ms": 1.124,
+      "maxMs": 2.657
     },
     "semantic-diff": {
       "samples": 120,
-      "p50Ms": 1.465,
-      "p95Ms": 5.937,
-      "maxMs": 6.839
+      "p50Ms": 1.412,
+      "p95Ms": 5.326,
+      "maxMs": 6.775
     },
     "annotator-projection": {
       "samples": 120,
-      "p50Ms": 0.205,
-      "p95Ms": 0.847,
-      "maxMs": 1.054
+      "p50Ms": 0.216,
+      "p95Ms": 0.746,
+      "maxMs": 1.549
+    }
+  },
+  "businessAssembly": {
+    "business-rows-1": {
+      "nodeCount": 17,
+      "rowCount": 1,
+      "timing": {
+        "observation": {
+          "samples": 40,
+          "p50Ms": 0.056,
+          "p95Ms": 0.071,
+          "maxMs": 0.109
+        },
+        "relation": {
+          "samples": 40,
+          "p50Ms": 0.01,
+          "p95Ms": 0.015,
+          "maxMs": 0.024
+        },
+        "locator": {
+          "samples": 40,
+          "p50Ms": 0.064,
+          "p95Ms": 0.096,
+          "maxMs": 0.442
+        },
+        "control": {
+          "samples": 40,
+          "p50Ms": 0.038,
+          "p95Ms": 0.06,
+          "maxMs": 0.078
+        },
+        "form": {
+          "samples": 40,
+          "p50Ms": 0.085,
+          "p95Ms": 0.115,
+          "maxMs": 0.131
+        },
+        "table": {
+          "samples": 40,
+          "p50Ms": 0.113,
+          "p95Ms": 0.18,
+          "maxMs": 0.274
+        }
+      }
+    },
+    "business-rows-25": {
+      "nodeCount": 113,
+      "rowCount": 25,
+      "timing": {
+        "observation": {
+          "samples": 40,
+          "p50Ms": 0.462,
+          "p95Ms": 0.707,
+          "maxMs": 1.155
+        },
+        "relation": {
+          "samples": 40,
+          "p50Ms": 0.039,
+          "p95Ms": 0.059,
+          "maxMs": 0.071
+        },
+        "locator": {
+          "samples": 40,
+          "p50Ms": 0.496,
+          "p95Ms": 0.786,
+          "maxMs": 1.289
+        },
+        "control": {
+          "samples": 40,
+          "p50Ms": 0.218,
+          "p95Ms": 0.28,
+          "maxMs": 0.299
+        },
+        "form": {
+          "samples": 40,
+          "p50Ms": 0.367,
+          "p95Ms": 0.571,
+          "maxMs": 0.594
+        },
+        "table": {
+          "samples": 40,
+          "p50Ms": 1.087,
+          "p95Ms": 1.726,
+          "maxMs": 2.052
+        }
+      }
+    },
+    "business-rows-100": {
+      "nodeCount": 413,
+      "rowCount": 100,
+      "timing": {
+        "observation": {
+          "samples": 40,
+          "p50Ms": 1.692,
+          "p95Ms": 2.248,
+          "maxMs": 2.945
+        },
+        "relation": {
+          "samples": 40,
+          "p50Ms": 0.126,
+          "p95Ms": 0.145,
+          "maxMs": 0.184
+        },
+        "locator": {
+          "samples": 40,
+          "p50Ms": 2.008,
+          "p95Ms": 3.108,
+          "maxMs": 3.878
+        },
+        "control": {
+          "samples": 40,
+          "p50Ms": 0.696,
+          "p95Ms": 0.974,
+          "maxMs": 1.905
+        },
+        "form": {
+          "samples": 40,
+          "p50Ms": 1.141,
+          "p95Ms": 1.657,
+          "maxMs": 2.927
+        },
+        "table": {
+          "samples": 40,
+          "p50Ms": 6.949,
+          "p95Ms": 7.437,
+          "maxMs": 12.853
+        }
+      }
     }
   }
 }

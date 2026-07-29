@@ -6,6 +6,7 @@ import {buildLocatorIndex} from '../indexes/locator/build';
 import {buildRelationIndex} from '../indexes/relation/build';
 import {buildPageObservation} from '../observation/model/build';
 import type {ObservationFixture, TimingDistribution} from '../observation/replay/contracts';
+import type {RawPageCapture} from '../observation/model/raw_capture';
 import {buildAnnotatorProjection} from '../annotator/projection';
 import {buildSnapshotProjection} from '../projection/build';
 import {diffSnapshotProjection} from '../projection/diff';
@@ -33,6 +34,8 @@ export const SNAPSHOT_FULL_PIPELINE_PASSES = [
 ] as const;
 
 export type SnapshotFullPipelinePass = typeof SNAPSHOT_FULL_PIPELINE_PASSES[number];
+export const SNAPSHOT_ASSEMBLY_PASSES = ['observation', 'relation', 'locator', 'control', 'form', 'table'] as const;
+export type SnapshotAssemblyPass = typeof SNAPSHOT_ASSEMBLY_PASSES[number];
 
 export type SnapshotFullPipelineBenchmarkReport = {
     schemaVersion: 1;
@@ -51,11 +54,16 @@ export type SnapshotFullPipelineBenchmarkReport = {
         annotatorTargetCount: number;
     };
     timing: Record<SnapshotFullPipelinePass, TimingDistribution>;
+    businessAssembly: Record<string, {
+        nodeCount: number;
+        rowCount: number;
+        timing: Record<SnapshotAssemblyPass, TimingDistribution>;
+    }>;
 };
 
 export type SnapshotFullPipelineBenchmarkInput = {
     observationFixtures: readonly ObservationFixture[];
-    businessCases: ReadonlyArray<{id: string; capture: PageSnapshotCapture}>;
+    businessCases: ReadonlyArray<{id: string; raw: RawPageCapture; capture: PageSnapshotCapture}>;
     iterations?: number;
     corpusVersion?: string;
     generatedAt?: string;
@@ -68,6 +76,7 @@ export const runSnapshotFullPipelineBenchmark = async (
     const samples = new Map<SnapshotFullPipelinePass, number[]>(
         SNAPSHOT_FULL_PIPELINE_PASSES.map((pass) => [pass, []]),
     );
+    const businessAssembly: SnapshotFullPipelineBenchmarkReport['businessAssembly'] = {};
     const structure = {
         observationFixtureCount: input.observationFixtures.length,
         businessCaseCount: input.businessCases.length,
@@ -110,12 +119,36 @@ export const runSnapshotFullPipelineBenchmark = async (
     }
 
     for (const businessCase of input.businessCases) {
-        structure.controlCount += Object.keys(businessCase.capture.control.controls.controls).length;
-        structure.formCount += Object.keys(businessCase.capture.form.forms.forms).length;
-        structure.tableCount += Object.keys(businessCase.capture.table.tables.tables).length;
-        structure.rowCount += Object.keys(businessCase.capture.table.tables.rows).length;
+        structure.inputNodeCount += businessCase.raw.nodes.length;
+        const caseSamples = new Map<SnapshotAssemblyPass, number[]>(
+            SNAPSHOT_ASSEMBLY_PASSES.map((pass) => [pass, []]),
+        );
+        let finalCapture: PageSnapshotCapture | undefined;
 
         for (let iteration = 0; iteration < iterations; iteration += 1) {
+            const observation = measureBoth(samples, caseSamples, 'observation', () => buildPageObservation(businessCase.raw));
+            const relations = measureBoth(samples, caseSamples, 'relation', () => buildRelationIndex(observation));
+            const locators = measureBoth(samples, caseSamples, 'locator', () => buildLocatorIndex(observation));
+            const control = measureBoth(samples, caseSamples, 'control', () => buildControlSnapshot({observation, relations, locators}));
+            const form = measureBoth(samples, caseSamples, 'form', () => buildFormSnapshot({
+                observation,
+                relations,
+                locators,
+                controls: control.controls,
+            }));
+            const table = measureBoth(samples, caseSamples, 'table', () => buildTableSnapshot({
+                observation,
+                relations,
+                locators,
+                controls: control.controls,
+            }));
+            const assembledCapture: PageSnapshotCapture = {
+                control,
+                form,
+                table,
+                entityRules: businessCase.capture.entityRules,
+            };
+            finalCapture = assembledCapture;
             const compiled = measure(samples, 'query-plan-compile', () => compileEntityRuleQueryPlan({
                 profileName: `${businessCase.id}-table`,
                 domain: 'table',
@@ -131,7 +164,7 @@ export const runSnapshotFullPipelineBenchmark = async (
             }
             const execution = measure(samples, 'query-plan-execute', () => executeEntityRuleQueryPlan(
                 compiled.plan,
-                {table: businessCase.capture.table},
+                {table: assembledCapture.table},
                 {purpose: 'runtime'},
             ));
             if (!execution.ok) {
@@ -144,7 +177,7 @@ export const runSnapshotFullPipelineBenchmark = async (
                     origin: 'confirmed',
                     businessTag: `benchmark.${businessCase.id}`,
                 }],
-                snapshots: {table: businessCase.capture.table},
+                snapshots: {table: assembledCapture.table},
             }));
 
             const store = new PageSnapshotSessionStore();
@@ -152,7 +185,7 @@ export const runSnapshotFullPipelineBenchmark = async (
             const entry = await measureAsync(samples, 'page-session-compose', async () => await store.ensureFresh({
                 pageKey,
                 pageUrl: `https://benchmark.invalid/${businessCase.id}`,
-                capture: async () => businessCase.capture,
+                capture: async () => assembledCapture,
             }));
             const full = measure(samples, 'projection-full', () => requireProjection(
                 buildSnapshotProjection(entry, {mode: 'full'}),
@@ -169,6 +202,19 @@ export const runSnapshotFullPipelineBenchmark = async (
                 structure.annotatorTargetCount += annotator.targets.length;
             }
         }
+        if (!finalCapture) {throw new Error(`business case produced no samples: ${businessCase.id}`);}
+        structure.controlCount += Object.keys(finalCapture.control.controls.controls).length;
+        structure.formCount += Object.keys(finalCapture.form.forms.forms).length;
+        structure.tableCount += Object.keys(finalCapture.table.tables.tables).length;
+        structure.rowCount += Object.keys(finalCapture.table.tables.rows).length;
+        businessAssembly[businessCase.id] = {
+            nodeCount: businessCase.raw.nodes.length,
+            rowCount: Object.keys(finalCapture.table.tables.rows).length,
+            timing: Object.fromEntries(SNAPSHOT_ASSEMBLY_PASSES.map((pass) => [
+                pass,
+                distribution(caseSamples.get(pass) ?? []),
+            ])) as Record<SnapshotAssemblyPass, TimingDistribution>,
+        };
     }
 
     return {
@@ -181,7 +227,24 @@ export const runSnapshotFullPipelineBenchmark = async (
             pass,
             distribution(samples.get(pass) ?? []),
         ])) as Record<SnapshotFullPipelinePass, TimingDistribution>,
+        businessAssembly,
     };
+};
+
+
+
+const measureBoth = <T>(
+    allSamples: Map<SnapshotFullPipelinePass, number[]>,
+    caseSamples: Map<SnapshotAssemblyPass, number[]>,
+    pass: SnapshotAssemblyPass,
+    operation: () => T,
+): T => {
+    const startedAt = performance.now();
+    const result = operation();
+    const duration = performance.now() - startedAt;
+    appendSample(allSamples, pass, duration);
+    caseSamples.get(pass)?.push(duration);
+    return result;
 };
 
 const measure = <T>(

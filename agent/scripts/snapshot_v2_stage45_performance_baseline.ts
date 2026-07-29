@@ -11,10 +11,10 @@ const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const repositoryDirectory = path.resolve(agentDirectory, '..');
 const iterations = positiveInteger(process.env.SNAPSHOT_V2_FULL_PERF_ITERATIONS, 40);
 const fixtures = await loadObservationFixtures(path.join(agentDirectory, 'tests/fixtures/observation-v2'));
-const businessCases = [1, 25, 100].map((rowCount) => ({
-    id: `business-rows-${rowCount}`,
-    capture: createV2BusinessPage({rowCount, withGeometry: true}).capture,
-}));
+const businessCases = [1, 25, 100].map((rowCount) => {
+    const fixture = createV2BusinessPage({rowCount, withGeometry: true});
+    return {id: `business-rows-${rowCount}`, raw: fixture.raw, capture: fixture.capture};
+});
 const report = await runSnapshotFullPipelineBenchmark({
     observationFixtures: fixtures,
     businessCases,
