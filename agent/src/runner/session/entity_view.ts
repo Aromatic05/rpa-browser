@@ -270,7 +270,10 @@ export const resolvePageSessionBusinessTarget = (
         const nodeIds = matches
             .map((record) => readString(record.controlNodeId) ?? readString(record.nodeId))
             .filter((nodeId): nodeId is string => Boolean(nodeId));
-        return uniqueNodeTarget(nodeIds, meta, `${target.kind} ${expected}`);
+        const targetMeta = target.kind === 'form.field'
+            ? {...meta, ...selectOptionControlMeta(entry, nodeIds)}
+            : meta;
+        return uniqueNodeTarget(nodeIds, targetMeta, `${target.kind} ${expected}`);
     }
 
     if (entity.kind !== 'table' || !entity.componentId) {
@@ -293,6 +296,31 @@ export const resolvePageSessionBusinessTarget = (
                 && normalizeLower(readNodeSearchText(entry, nodeId)).includes(normalizeLower(actionText));
         });
     return uniqueNodeTarget(candidates, meta, `table row action ${target.actionIntent}`);
+};
+
+
+
+const SELECT_OPTION_CONTROL_KINDS = new Set([
+    'native_select',
+    'radio_group',
+    'checkbox_group',
+    'custom_select',
+]);
+
+const selectOptionControlMeta = (
+    entry: PageSnapshotSessionEntry,
+    nodeIds: readonly ObservationNodeId[],
+): Record<string, unknown> => {
+    const controlKinds = new Set<string>();
+    for (const nodeId of nodeIds) {
+        for (const controlId of entry.capture.control.controls.byNodeId[nodeId] ?? []) {
+            const control = entry.capture.control.controls.controls[controlId];
+            if (control.capabilities.includes('select_option') && SELECT_OPTION_CONTROL_KINDS.has(control.kind)) {
+                controlKinds.add(control.kind);
+            }
+        }
+    }
+    return controlKinds.size === 1 ? {controlKind: [...controlKinds][0]} : {};
 };
 
 const resolveBusinessEntity = (

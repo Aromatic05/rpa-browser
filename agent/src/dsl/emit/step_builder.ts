@@ -54,6 +54,30 @@ const toTargetArgs = (target: unknown): Pick<Step<'browser.click'>['args'], 'nod
     throw new DslRuntimeError('action target did not resolve to nodeId/selector/resolveId');
 };
 
+
+
+const SELECT_OPTION_KINDS = new Set<Step<'browser.select_option'>['args']['kind']>([
+    'native_select',
+    'radio_group',
+    'checkbox_group',
+    'custom_select',
+]);
+
+const toSelectOptionKind = (target: unknown): Step<'browser.select_option'>['args']['kind'] => {
+    if (!target || typeof target !== 'object') {return 'native_select';}
+    const targetRecord = target as Record<string, unknown>;
+    const directKind = targetRecord.controlKind;
+    const meta = targetRecord.meta;
+    const metaKind = meta && typeof meta === 'object' && !Array.isArray(meta)
+        ? (meta as Record<string, unknown>).controlKind
+        : undefined;
+    const candidate = typeof directKind === 'string' ? directKind : metaKind;
+    return typeof candidate === 'string'
+        && SELECT_OPTION_KINDS.has(candidate as Step<'browser.select_option'>['args']['kind'])
+        ? candidate as Step<'browser.select_option'>['args']['kind']
+        : 'native_select';
+};
+
 const toActionText = (value: unknown): string => {
     if (value === null || value === undefined) {return '';}
     if (typeof value === 'string') {return value;}
@@ -88,7 +112,7 @@ export const buildSelectStep = (target: unknown, value: unknown): Step<'browser.
     const targetArgs = toTargetArgs(target);
     return createStep('browser.select_option', {
         ...targetArgs,
-        kind: 'native_select',
+        kind: toSelectOptionKind(target),
         values: [toActionText(value)],
     });
 };

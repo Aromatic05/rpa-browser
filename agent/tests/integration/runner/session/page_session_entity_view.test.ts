@@ -54,3 +54,42 @@ test('V2 business target resolves a row action from primary key and action inten
     assert.equal(resolved.data.nodeId, fixture.nodeIds.approve);
     assert.equal(resolved.data.meta.targetKind, 'table.row_action');
 });
+
+test('V2 form target exposes canonical select-option control kind for DSL actions', async () => {
+    const fixture = createV2BusinessPage();
+    const buyerNodeId = fixture.nodeIds.buyer;
+    const controlId = fixture.capture.control.controls.byNodeId[buyerNodeId]?.[0];
+    assert.ok(controlId);
+    const control = fixture.capture.control.controls.controls[controlId];
+    const customSelectControl: typeof control = {
+        ...control,
+        kind: 'custom_select',
+        capabilities: ['click', 'focus', 'open_popup', 'select_option'],
+    };
+    const capture = {
+        ...fixture.capture,
+        control: {
+            ...fixture.capture.control,
+            controls: {
+                ...fixture.capture.control.controls,
+                controls: {
+                    ...fixture.capture.control.controls.controls,
+                    [controlId]: customSelectControl,
+                },
+            },
+        },
+    };
+    const store = new PageSnapshotSessionStore<object>();
+    const entry = await store.ensureFresh({
+        pageKey: {},
+        pageUrl: '/orders',
+        capture: async () => capture,
+    });
+    const resolved = resolvePageSessionBusinessTarget(entry, 'order.form.main', {
+        kind: 'form.field',
+        fieldKey: 'orderNo',
+    });
+    assert.equal(resolved.ok, true);
+    if (!resolved.ok) {return;}
+    assert.equal(resolved.data.meta.controlKind, 'custom_select');
+});

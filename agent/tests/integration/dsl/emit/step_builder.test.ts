@@ -13,6 +13,11 @@ test('step_builder maps DSL statements to browser steps', () => {
     const click = buildClickStep({ nodeId: 'submit-btn' });
     const type = buildTypeStep({ nodeId: 'buyer-input' }, 'alice');
     const select = buildSelectStep({ nodeId: 'buyer-input' }, 'approved');
+    const customSelect = buildSelectStep({
+        kind: 'nodeId',
+        nodeId: 'status-trigger',
+        meta: {controlKind: 'custom_select'},
+    }, 'approved');
     const snapshot = buildSnapshotStep();
 
     assert.equal(query.name, 'browser.query');
@@ -29,6 +34,11 @@ test('step_builder maps DSL statements to browser steps', () => {
     assert.deepEqual(type.args, { nodeId: 'buyer-input', text: 'alice' });
     assert.equal(select.name, 'browser.select_option');
     assert.deepEqual(select.args, { nodeId: 'buyer-input', kind: 'native_select', values: ['approved'] });
+    assert.deepEqual(customSelect.args, {
+        nodeId: 'status-trigger',
+        kind: 'custom_select',
+        values: ['approved'],
+    });
     assert.equal(snapshot.name, 'browser.snapshot');
     assert.deepEqual(snapshot.args, {});
 });
