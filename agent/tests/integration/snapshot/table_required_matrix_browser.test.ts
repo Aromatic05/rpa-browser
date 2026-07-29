@@ -52,8 +52,18 @@ test('real clone-based fixed table keeps one logical root and bounds repeated li
         assert.equal(table.body.visibleRows.length, 2);
         assert.equal(table.mirrors.filter((mirror) => mirror.partKind === 'fixed-left-body' && mirror.kind === 'row').length, 2);
         assert.equal(table.mirrors.every((mirror) => mirror.status === 'resolved'), true);
-        assert.ok(table.controlSlots.length <= 5, `control slots grew with link count: ${table.controlSlots.length}`);
-        assert.equal(table.controlSlots.reduce((sum, slot) => sum + slot.occurrenceCount, 0), 26);
+        assert.equal(table.controlSlots.length, 5, 'four exact link positions plus one fixed-right action slot');
+        const linkSlots = table.controlSlots.filter((slot) => slot.controlKind === 'link');
+        assert.deepEqual(linkSlots.map((slot) => slot.structuralPosition), [0, 1, 2, 3]);
+        assert.deepEqual(linkSlots.map((slot) => slot.occurrenceCount), [2, 2, 2, 2]);
+        assert.equal(linkSlots.every((slot) => new Set(slot.controlIds.map((controlId) =>
+            snapshot.tables.rows[Object.values(snapshot.tables.rows).find((row) => row.cellIds.some((cellId) =>
+                snapshot.tables.cells[cellId].controlIds.includes(controlId)))?.id ?? '']?.id)).size <= 2), true);
+        assert.deepEqual(
+            table.rowExceptions.map((item) => item.controlIds.length).sort((left, right) => left - right),
+            [8, 8],
+            'overflow controls remain exact per-row facts instead of being merged into a false slot',
+        );
         assert.equal(snapshot.tables.validation.ok, true, JSON.stringify(snapshot.tables.validation.diagnostics, null, 2));
     } finally {
         await browser.close();

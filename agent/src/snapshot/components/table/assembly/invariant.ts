@@ -71,12 +71,32 @@ export const validateTableComponentIndex = (
                 add('table.mirror.canonical-missing', `mirror references unknown canonical ${mirror.kind}: ${mirror.canonicalId}`, [mirror.mirrorNodeId]);
             }
         }
+        const rowIdByControlId = new Map<string, string>();
+        for (const row of table.body.visibleRows) {
+            for (const cellId of row.cellIds) {
+                for (const controlId of index.cells[cellId].controlIds) {
+                    rowIdByControlId.set(controlId, row.id);
+                }
+            }
+        }
         for (const slot of table.controlSlots) {
             if (slot.occurrenceCount < 2) {
                 add('table.slot.under-repeated', `slot must repeat across rows: ${slot.id}`);
             }
             if (!columnIds.has(slot.columnId)) {
                 add('table.slot.column-missing', `slot references unknown column: ${slot.id}`);
+            }
+            const occurrenceCountByRow = new Map<string, number>();
+            for (const controlId of slot.controlIds) {
+                const rowId = rowIdByControlId.get(controlId);
+                if (!rowId) {
+                    add('table.slot.control-row-missing', `slot control is not owned by a canonical row: ${controlId}`);
+                    continue;
+                }
+                occurrenceCountByRow.set(rowId, (occurrenceCountByRow.get(rowId) ?? 0) + 1);
+            }
+            if ([...occurrenceCountByRow.values()].some((count) => count > 1)) {
+                add('table.slot.multiple-per-row', `slot merges different relative positions within a row: ${slot.id}`);
             }
         }
         if (table.featureCover.uncoveredFeatures.length > 0) {

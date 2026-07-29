@@ -32,16 +32,16 @@ export const buildControlSlots = (
         for (const cellId of row.cellIds) {
             const cell = cells[cellId];
             cell.controlIds.forEach((controlId, structuralPosition) => {
+                if (structuralPosition >= MAX_STRUCTURAL_SLOT_BUCKETS) {return;}
                 const control = controls.controls[controlId];
-                const slotPosition = Math.min(structuralPosition, MAX_STRUCTURAL_SLOT_BUCKETS - 1);
-                const key = `${cell.columnId}|${slotPosition}|${control.kind}`;
+                const key = `${cell.columnId}|${structuralPosition}|${control.kind}`;
                 const bucket = occurrences.get(key) ?? [];
                 bucket.push({
                     rowId: row.id,
                     controlId,
                     nodeId: control.controlNodeId ?? control.rootNodeId,
                     columnId: cell.columnId,
-                    structuralPosition: slotPosition,
+                    structuralPosition,
                     kind: control.kind,
                 });
                 occurrences.set(key, bucket);
