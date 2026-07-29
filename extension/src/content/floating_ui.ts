@@ -1,3 +1,9 @@
+import {
+    createAnnotatorClient,
+    createAnnotatorOverlay,
+    createAnnotatorPanel,
+    createAnnotatorSession,
+} from '../annotator/index.js';
 import type { Action } from '../shared/types.js';
 import { preparePanelAction, pushPanelLog, type PanelLogEntry } from './panel_actions.js';
 
@@ -20,9 +26,9 @@ export type FloatingUIHandle = {
 type WorkspaceItem = { workspaceName: string; activeTabName?: string; tabCount: number };
 type TabItem = { tabName: string; url: string; title: string; active: boolean };
 
-type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'Log';
+type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'Rules' | 'Log';
 const UUIDorUnsafe = (): string => {
-    if (typeof globalThis.crypto?.randomUUID === 'function') {
+    if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
     }
     const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
@@ -36,12 +42,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return { unmount: () => undefined, scheduleRefresh: () => undefined };
     }
     const manifest = chrome.runtime.getManifest();
-    const buildId = manifest.version_name || manifest.version;
+    const buildId = manifest.version_name ?? manifest.version;
     const buildLabel = buildId.includes('-') ? buildId.slice(buildId.lastIndexOf('-') + 1) : buildId;
 
     const state = {
         activeView: 'Conn' as ViewKey,
-        activeWorkspaceName: opts.workspaceName || '',
+        activeWorkspaceName: opts.workspaceName,
         activeTabName: '',
         workspaces: [] as WorkspaceItem[],
         tabs: [] as TabItem[],
@@ -164,6 +170,23 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return reply;
     };
 
+    const annotatorSessionRef: {current: ReturnType<typeof createAnnotatorSession> | null} = {current: null};
+    const annotatorOverlay = createAnnotatorOverlay({
+        document,
+        onPick: async (point) => {
+            const session = annotatorSessionRef.current;
+            if (!session) {return;}
+            await session.pick(point);
+        },
+    });
+    const annotatorClient = createAnnotatorClient(async (type, payload) =>
+        await sendPanelAction(type, payload));
+    const annotatorSession = createAnnotatorSession({
+        client: annotatorClient,
+        overlay: annotatorOverlay,
+    });
+    annotatorSessionRef.current = annotatorSession;
+
     const refreshWorkspaces = async () => {
         await sendPanelAction('workspace.list', {});
     };
@@ -176,7 +199,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const parseJsonOrErr = (raw: string): Record<string, unknown> | null => {
         try {
-            const parsed = JSON.parse(raw || '{}');
+            const parsed = JSON.parse(raw.trim() ? raw : '{}') as unknown;
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
                 setOutput({ code: 'ERR_BAD_ARGS', message: 'JSON must be object' });
                 return null;
@@ -210,7 +233,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (Array.isArray(payload.tabs)) {
             state.tabs = payload.tabs as TabItem[];
             const activeTab = state.tabs.find((t) => t.active);
-            state.activeTabName = activeTab?.tabName || '';
+            state.activeTabName = activeTab?.tabName ?? '';
         }
         if (Array.isArray(payload.recordings)) {
             state.savedRecordings = payload.recordings
@@ -218,15 +241,19 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 .map((item) => {
                     const row = item as Record<string, unknown>;
                     return {
-                        recordingName: String(row.recordingName || ''),
-                        stepCount: Number(row.stepCount || 0),
+                        recordingName: typeof row.recordingName === 'string' ? row.recordingName : '',
+                        stepCount: typeof row.stepCount === 'number' && Number.isFinite(row.stepCount)
+                            ? row.stepCount
+                            : 0,
                     };
                 })
                 .filter((item) => Boolean(item.recordingName));
         }
         if (payload.unsaved && typeof payload.unsaved === 'object') {
             const unsaved = payload.unsaved as Record<string, unknown>;
-            state.unsavedStepCount = Number(unsaved.stepCount || 0);
+            state.unsavedStepCount = typeof unsaved.stepCount === 'number' && Number.isFinite(unsaved.stepCount)
+                ? unsaved.stepCount
+                : 0;
         }
         if (requestType === 'workspace.setActive' && !action.type.endsWith('.failed')) {
             const workspaceName = typeof payload.workspaceName === 'string' ? payload.workspaceName : '';
@@ -266,7 +293,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         addPlayEvent(action);
     };
 
-    const createButton = (label: string, onClick: () => unknown | Promise<unknown>, primary = false) => {
+    const createButton = (label: string, onClick: () => unknown, primary = false): HTMLButtonElement => {
         const btn = document.createElement('button');
         btn.textContent = label;
         if (primary) {btn.classList.add('primary');}
@@ -312,7 +339,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const wsList = document.createElement('div');
         wsList.className = 'list';
         state.workspaces.forEach((ws) => {
-            wsList.appendChild(createButton(`${ws.workspaceName} (${ws.tabCount})`, async () => {
+            wsList.appendChild(createButton(`${ws.workspaceName} (${String(ws.tabCount)})`, async () => {
                 state.activeWorkspaceName = ws.workspaceName;
                 await sendPanelAction('workspace.setActive', { workspaceName: ws.workspaceName });
             }, ws.workspaceName === state.activeWorkspaceName));
@@ -431,12 +458,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         list.className = 'list';
         const unsaved = document.createElement('div');
         unsaved.className = 'hint';
-        unsaved.textContent = `unsaved stepCount: ${state.unsavedStepCount}`;
+        unsaved.textContent = `unsaved stepCount: ${String(state.unsavedStepCount)}`;
         list.append(unsaved);
         state.savedRecordings.forEach((item) => {
             const line = document.createElement('div');
             line.className = 'hint';
-            line.textContent = `${item.recordingName} (${item.stepCount})`;
+            line.textContent = `${item.recordingName} (${String(item.stepCount)})`;
             list.append(line);
         });
         box.append(row1, row2, row3, list);
@@ -457,7 +484,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         state.savedRecordings.forEach((item) => {
             const option = document.createElement('option');
             option.value = item.recordingName;
-            option.textContent = `${item.recordingName} (${item.stepCount})`;
+            option.textContent = `${item.recordingName} (${String(item.stepCount)})`;
             source.appendChild(option);
         });
         source.value = state.replaySource;
@@ -525,6 +552,17 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return root;
     };
 
+    const renderRules = () => {
+        const box = document.createElement('div');
+        box.className = 'section';
+        box.appendChild(Object.assign(document.createElement('div'), {
+            className: 'title',
+            textContent: 'Entity Rules Annotator',
+        }));
+        box.appendChild(createAnnotatorPanel({document, session: annotatorSession}));
+        return box;
+    };
+
     const renderLog = () => {
         const root = document.createElement('div');
         const box = document.createElement('div');
@@ -535,7 +573,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         row.append(
             createButton('Clear Log', () => { state.logs = []; renderActiveView(); }),
             createButton('Copy Last', async () => {
-                const last = state.logs[state.logs.length - 1];
+                const last = state.logs.at(-1);
                 if (!last) {return;}
                 await navigator.clipboard.writeText(JSON.stringify(last.action));
             }),
@@ -547,7 +585,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             const el = document.createElement('div');
             el.className = 'log-item';
             const p = (item.action.payload && typeof item.action.payload === 'object') ? JSON.stringify(item.action.payload).slice(0, 100) : '';
-            el.textContent = `[${item.kind}] ${item.action.type} ws=${item.action.workspaceName || '-'} replyTo=${item.action.replyTo || '-'} payload=${p}`;
+            el.textContent = `[${item.kind}] ${item.action.type} ws=${item.action.workspaceName ?? '-'} replyTo=${item.action.replyTo ?? '-'} payload=${p}`;
             list.appendChild(el);
         });
         box.append(list);
@@ -563,10 +601,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (state.activeView === 'Rec') {body.appendChild(renderRec());}
         if (state.activeView === 'Play') {body.appendChild(renderPlay());}
         if (state.activeView === 'Flow') {body.appendChild(renderFlow());}
+        if (state.activeView === 'Rules') {body.appendChild(renderRules());}
         if (state.activeView === 'Log') {body.appendChild(renderLog());}
     };
 
-    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'Log'];
+    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'Rules', 'Log'];
     views.forEach((name) => {
         const btn = document.createElement('button');
         btn.textContent = name;
@@ -603,5 +642,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         });
     };
 
-    return { unmount: () => { host.remove(); }, scheduleRefresh };
+    return {
+        unmount: () => {
+            annotatorSession.dispose();
+            host.remove();
+        },
+        scheduleRefresh,
+    };
 };

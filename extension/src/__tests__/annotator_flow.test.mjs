@@ -1,0 +1,192 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {JSDOM} from 'jsdom';
+import {
+    createAnnotatorClient,
+    createAnnotatorOverlay,
+    createAnnotatorSession,
+} from '../../dist/annotator/index.js';
+
+const log = async (name, fn) => {
+    try {
+        await fn();
+        console.warn(`ok - ${name}`);
+    } catch (error) {
+        console.error(`fail - ${name}`);
+        throw error;
+    }
+};
+
+const projection = {
+    schemaVersion: 1,
+    identity: {pageEpoch: 'epoch-1', captureRevision: 3},
+    pageUrl: 'https://example.test/orders',
+    selection: {status: 'none'},
+    components: [],
+    targets: [{
+        id: 'target:submit',
+        kind: 'action',
+        domain: 'form',
+        componentId: 'form:orders',
+        memberId: 'action:submit',
+        nodeIds: ['node:submit'],
+        geometry: [{x: 100, y: 120, width: 80, height: 32}],
+        label: '提交',
+    }],
+    semanticBindings: [],
+    suggestions: [],
+    diagnostics: [],
+};
+
+await log('annotator client sends only canonical action payloads', async () => {
+    const sent = [];
+    const client = createAnnotatorClient(async (type, payload) => {
+        sent.push({type, payload});
+        return {
+            v: 1,
+            id: `reply-${sent.length}`,
+            type: `${type}.result`,
+            payload: type === 'entity_rules.annotator.pick'
+                ? {projection, picked: {status: 'resolved', nodeId: 'node:submit', anchor: {
+                    pageEpoch: 'epoch-1', captureRevision: 3, nodeId: 'node:submit', backendNodeId: 'submit',
+                }}}
+                : {projection},
+        };
+    });
+
+    await client.open('orders');
+    await client.pick({x: 140, y: 136});
+    await client.recognize('orders');
+
+    assert.deepEqual(sent, [
+        {type: 'entity_rules.annotator.open', payload: {profileName: 'orders'}},
+        {type: 'entity_rules.annotator.pick', payload: {point: {x: 140, y: 136}}},
+        {type: 'entity_rules.annotator.recognize', payload: {profileName: 'orders', refresh: true}},
+    ]);
+    assert.equal(JSON.stringify(sent).includes('selector'), false);
+    assert.equal(JSON.stringify(sent).includes('element'), false);
+});
+
+await log('annotator overlay renders agent geometry and captures viewport coordinates', async () => {
+    const dom = new JSDOM('<!doctype html><html><body><main>page</main></body></html>', {url: 'https://example.test'});
+    const points = [];
+    const overlay = createAnnotatorOverlay({
+        document: dom.window.document,
+        onPick: async (point) => {points.push(point);},
+    });
+    overlay.render(projection);
+
+    const root = dom.window.document.getElementById('rpa-annotator-overlay');
+    assert.ok(root);
+    assert.equal(root?.getAttribute('data-page-epoch'), 'epoch-1');
+    const box = root?.querySelector('[data-annotator-target-id="target:submit"]');
+    assert.ok(box);
+    assert.equal(box?.getAttribute('style')?.includes('left: 100px'), true);
+
+    overlay.startPicking();
+    const surface = dom.window.document.getElementById('rpa-annotator-pick-surface');
+    assert.ok(surface);
+    surface?.dispatchEvent(new dom.window.MouseEvent('click', {
+        bubbles: true,
+        clientX: 140,
+        clientY: 136,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(points, [{x: 140, y: 136}]);
+    assert.equal(dom.window.document.getElementById('rpa-annotator-pick-surface'), null);
+    overlay.dispose();
+    assert.equal(dom.window.document.getElementById('rpa-annotator-overlay'), null);
+});
+
+await log('annotator session updates projection without local structural recovery', async () => {
+    const calls = [];
+    const client = createAnnotatorClient(async (type, payload) => {
+        calls.push({type, payload});
+        return {v: 1, id: `reply-${calls.length}`, type: `${type}.result`, payload: {projection}};
+    });
+    const rendered = [];
+    const session = createAnnotatorSession({
+        client,
+        overlay: {
+            render: (value) => rendered.push(value.identity.captureRevision),
+            startPicking: () => undefined,
+            stopPicking: () => undefined,
+            dispose: () => undefined,
+        },
+    });
+
+    await session.open('orders');
+    assert.equal(session.getState().projection?.identity.pageEpoch, 'epoch-1');
+    assert.deepEqual(rendered, [3]);
+    assert.equal(session.getState().status, 'ready');
+});
+
+await log('annotator source does not recover page structure from DOM', async () => {
+    const files = fs.readdirSync(new URL('../annotator', import.meta.url), {withFileTypes: true})
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
+        .map((entry) => new URL(`../annotator/${entry.name}`, import.meta.url));
+    const forbidden = ['elementFromPoint', '.closest(', '.matches(', 'querySelector(', 'parentElement', 'parentNode'];
+    for (const file of files) {
+        const source = fs.readFileSync(file, 'utf8');
+        for (const token of forbidden) {
+            assert.equal(source.includes(token), false, `${file.pathname} contains ${token}`);
+        }
+    }
+});
+
+await log('annotator panel drives the session without DOM target recovery', async () => {
+    const {createAnnotatorPanel} = await import('../../dist/annotator/panel.js');
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    const calls = [];
+    let state = {
+        status: 'ready',
+        profileName: 'orders',
+        projection,
+        draft: {
+            profileName: 'orders',
+            match: {version: 2, rules: [{ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form'}}]},
+            annotation: {version: 2, bindings: []},
+        },
+    };
+    const session = {
+        getState: () => structuredClone(state),
+        setDraft: (draft) => {state = {...state, draft, profileName: draft.profileName}; calls.push(['setDraft', draft.profileName]);},
+        open: async (name) => {calls.push(['open', name]);},
+        recognize: async () => {calls.push(['recognize']);},
+        visualize: async () => {calls.push(['visualize']);},
+        check: async () => {calls.push(['check']);},
+        save: async () => {calls.push(['save']);},
+        startPicking: () => {calls.push(['pick']);},
+        stopPicking: () => undefined,
+        dispose: () => undefined,
+    };
+    const panel = createAnnotatorPanel({document: dom.window.document, session});
+    dom.window.document.body.appendChild(panel);
+
+    const click = async (label) => {
+        const button = [...panel.getElementsByTagName('button')].find((item) => item.textContent === label);
+        assert.ok(button, label);
+        button.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    await click('Open');
+    await click('Pick');
+    await click('Recognize');
+    await click('Visualize');
+    await click('Check');
+    await click('Save');
+
+    assert.deepEqual(calls.map((item) => item[0]), [
+        'open', 'pick', 'recognize', 'visualize', 'setDraft', 'check', 'setDraft', 'save',
+    ]);
+    assert.equal(panel.textContent.includes('epoch-1'), true);
+});
+
+await log('floating UI exposes the versioned annotator source module', async () => {
+    const source = fs.readFileSync(new URL('../content/floating_ui.ts', import.meta.url), 'utf8');
+    const manifest = JSON.parse(fs.readFileSync(new URL('../../manifest.json', import.meta.url), 'utf8'));
+    const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources || []);
+    assert.equal(source.includes("../annotator/index.js"), true);
+    assert.equal(source.includes("'Rules'"), true);
+    assert.equal(resources.includes('annotator/*.js'), true);
+});
