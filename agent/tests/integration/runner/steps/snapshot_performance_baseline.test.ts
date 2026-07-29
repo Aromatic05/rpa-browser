@@ -11,8 +11,8 @@ import {
 
 const enabled = process.env.SNAPSHOT_V2_PERF_BASELINE === '1';
 const iterations = positiveInteger(process.env.SNAPSHOT_V2_PERF_ITERATIONS, 20);
-const timingRatio = positiveNumber(process.env.SNAPSHOT_V2_PERF_MAX_TIMING_RATIO, 8);
-const timingFloorMs = positiveNumber(process.env.SNAPSHOT_V2_PERF_TIMING_FLOOR_MS, 2);
+const timingRatio = positiveNumber(process.env.SNAPSHOT_V2_PERF_MAX_TIMING_RATIO, 1.2);
+const timingNoiseFloorMs = positiveNumber(process.env.SNAPSHOT_V2_PERF_NOISE_FLOOR_MS, 0.5);
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const repositoryDirectory = path.resolve(agentDirectory, '..');
 const fixtureDirectory = path.join(agentDirectory, 'tests/fixtures/observation-v2');
@@ -65,7 +65,7 @@ test('Snapshot V2 frozen corpus preserves work-set and p50/p95 performance bound
         workSet: report.aggregate.workSet,
         timing: report.aggregate.timing,
         timingRatio,
-        timingFloorMs,
+        timingNoiseFloorMs,
     }));
 });
 
@@ -83,7 +83,7 @@ const assertTimingBound = (
     actual: number,
     expected: number,
 ): void => {
-    const maximum = Math.max(timingFloorMs, expected * timingRatio);
+    const maximum = Math.max(expected * timingRatio, expected + timingNoiseFloorMs);
     assert.ok(
         actual <= maximum,
         `${passName}.${metric} regression: ${actual.toFixed(3)}ms > ${maximum.toFixed(3)}ms `

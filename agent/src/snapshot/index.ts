@@ -5,3 +5,4 @@ export * from './rules';
 export * from './session';
 export * from './projection';
 export * from './annotator';
+export * from './performance';

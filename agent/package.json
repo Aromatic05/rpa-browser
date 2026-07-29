@@ -43,7 +43,9 @@
         "snapshot:v2:stage2-baseline": "tsx scripts/snapshot_v2_stage2_baseline.ts",
         "snapshot:v2:capture-form-fixtures": "tsx scripts/snapshot_v2_capture_form_fixtures.ts",
         "snapshot:v2:stage3-baseline": "tsx scripts/snapshot_v2_stage3_baseline.ts",
-        "test:entity-rules": "node --import tsx --test --test-concurrency=1 \"tests/integration/entity_rules/**/*.test.ts\""
+        "test:entity-rules": "node --import tsx --test --test-concurrency=1 \"tests/integration/entity_rules/**/*.test.ts\"",
+        "test:unit:snapshot:full-perf": "SNAPSHOT_V2_FULL_PERF_BASELINE=1 node --import tsx --test tests/integration/runner/steps/snapshot_full_pipeline_performance.test.ts",
+        "snapshot:v2:stage45-perf-baseline": "tsx scripts/snapshot_v2_stage45_performance_baseline.ts"
     },
     "dependencies": {
         "@axe-core/playwright": "^4.10.2",

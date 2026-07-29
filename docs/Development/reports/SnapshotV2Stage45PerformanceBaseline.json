@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-29T10:37:45.963Z",
+  "corpusVersion": "snapshot-v2-stage45-v1",
+  "iterations": 40,
+  "structure": {
+    "observationFixtureCount": 10,
+    "businessCaseCount": 3,
+    "inputNodeCount": 267,
+    "controlCount": 160,
+    "formCount": 7,
+    "tableCount": 8,
+    "rowCount": 132,
+    "projectedNodeCount": 543,
+    "annotatorTargetCount": 284
+  },
+  "timing": {
+    "observation": {
+      "samples": 400,
+      "p50Ms": 0.037,
+      "p95Ms": 0.616,
+      "maxMs": 1.393
+    },
+    "relation": {
+      "samples": 400,
+      "p50Ms": 0.007,
+      "p95Ms": 0.047,
+      "maxMs": 0.131
+    },
+    "locator": {
+      "samples": 400,
+      "p50Ms": 0.033,
+      "p95Ms": 0.717,
+      "maxMs": 1.96
+    },
+    "control": {
+      "samples": 400,
+      "p50Ms": 0.027,
+      "p95Ms": 0.149,
+      "maxMs": 0.424
+    },
+    "form": {
+      "samples": 400,
+      "p50Ms": 0.039,
+      "p95Ms": 0.622,
+      "maxMs": 1.231
+    },
+    "table": {
+      "samples": 400,
+      "p50Ms": 0.009,
+      "p95Ms": 0.488,
+      "maxMs": 1.197
+    },
+    "query-plan-compile": {
+      "samples": 120,
+      "p50Ms": 0.013,
+      "p95Ms": 0.032,
+      "maxMs": 0.474
+    },
+    "query-plan-execute": {
+      "samples": 120,
+      "p50Ms": 0.012,
+      "p95Ms": 0.033,
+      "maxMs": 0.309
+    },
+    "semantic-bindings": {
+      "samples": 120,
+      "p50Ms": 0.014,
+      "p95Ms": 0.05,
+      "maxMs": 0.078
+    },
+    "page-session-compose": {
+      "samples": 120,
+      "p50Ms": 0.008,
+      "p95Ms": 0.019,
+      "maxMs": 0.191
+    },
+    "projection-full": {
+      "samples": 120,
+      "p50Ms": 3.94,
+      "p95Ms": 48.624,
+      "maxMs": 59.471
+    },
+    "projection-overview": {
+      "samples": 120,
+      "p50Ms": 0.332,
+      "p95Ms": 1.25,
+      "maxMs": 1.656
+    },
+    "semantic-diff": {
+      "samples": 120,
+      "p50Ms": 1.465,
+      "p95Ms": 5.937,
+      "maxMs": 6.839
+    },
+    "annotator-projection": {
+      "samples": 120,
+      "p50Ms": 0.205,
+      "p95Ms": 0.847,
+      "maxMs": 1.054
+    }
+  }
+}
