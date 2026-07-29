@@ -4,7 +4,7 @@
 
 本文是 Snapshot、实体识别、entity_rules、annotator 与 runtime query 的实施计划，不是概念草案。
 
-当前状态：**阶段 1 至阶段 4 已验收；阶段 5 的 Checkpoint 5A 已验收，Checkpoint 5B 实施中。QueryPlan、SemanticBindings、SemanticSuggestions、protective merge 与旧 artifact importer 已进入生产 runtime；旧 `resolve_target` 已删除，生产代码不再读取 `ruleEntityOverlay/businessEntityOverlay`。PageSession、CaptureRevision、dirty/navigation/explicit refresh、并发去重与 exact anchor remap 已接入 runner，但 selection state 以及 entity/query/assert/checkpoint/record 等消费方迁移尚未完成。该迁移缺口必须通过 V2 消费方切换解决，不恢复 V1。**
+当前状态：**阶段 1 至阶段 4 已验收；阶段 5 的 Checkpoint 5A、5B、5C 已验收，Checkpoint 5D 待实施。QueryPlan、SemanticBindings、PageSession、confirmed selection、SnapshotProjection、RuntimeQuery、SemanticDiff、record/checkpoint/query/assert/entity 消费方切换均已进入生产路径。`browser.snapshot` 支持 overview/interaction/annotation/debug/full 五种 V2 projection mode；生产代码中已无 V1 snapshot、entity overlay、旧 session cache 或 V1 compress 调用点。下一检查点是 AnnotatorProjection 与 extension 协议切换。**
 
 归档基线：
 
@@ -21,17 +21,18 @@
 | 2 | Atomic Control 与可执行 Locator | accepted | 唯一 ControlIndex、control 状态机、canonical locator |
 | 3 | FormComponent 组装与表单规则迁移 | accepted | FormComponent、ownership、artifact/profile selection 与真实页面 runtime matcher |
 | 4 | TableComponent 组装与表格规则迁移 | accepted | logical table、canonical row/cell、mirror/editor、table rule runtime |
-| 5 | SemanticBindings、Projection 与消费方切换 | in progress（5B；5A accepted） | 新 snapshot/query/annotator/session/diff 全链路 |
+| 5 | SemanticBindings、Projection 与消费方切换 | in progress（5D pending；5A–5C accepted） | 新 snapshot/query/annotator/session/diff 全链路 |
 | 6 | V1 删除与发行级验收 | pending | 无 V1 runtime、完整真实页面验收、文档一致 |
 
 只有当前阶段通过退出门槛后，下一阶段才允许开始。某个阶段可以跨多次会话实施，但不得同时开始后续阶段。
 
 当前工程边界：
 
-- Snapshot 分组回归：109/109 通过（含 PageSession、action/locator 与真实浏览器用例）。
+- `pnpm --filter ./agent test:snapshot`：120/120 通过（含五种 projection mode、PageSession、action/locator 与真实浏览器用例）。
 - `pnpm --filter ./agent test:entity-rules`：22/22 通过。
-- `pnpm --filter ./agent typecheck:snapshot`：仍有 63 项诊断，集中在尚未迁移的 record、entity/query/assert、checkpoint 消费方及其连锁 unknown 类型；当前 Stage 3/4、Checkpoint 5A 与 PageSession 新增模块无 TypeScript 诊断。
-- 不允许通过恢复 `runner/steps/executors/snapshot/*` V1 实现来消除这些诊断；应在阶段 5 完成调用方切换。
+- `pnpm --filter ./agent typecheck:snapshot`：0 项诊断。
+- `pnpm --filter ./agent test:trace`：7/7 通过，真实浏览器 trace integrity 已切换到 V2 capture/projection/content ref。
+- 生产代码中无 `runner/steps/executors/snapshot/*` V1 导入、`ruleEntityOverlay/businessEntityOverlay`、`latestSnapshot/snapshotSessionStore` 或 V1 compress 调用点。
 
 ## 2. 从 V1 与实验中冻结的结论
 
@@ -1573,9 +1574,10 @@ Checkpoint 退出：
 - 已完成：exact anchor 在同 epoch 重映射，跨 epoch stale，重复 exact identity 返回 ambiguous。
 - 已完成：PageSession composition 对 SemanticBindings 执行 protective merge。
 - 已完成：runner 注入 PageSession，写操作 dirty policy 与单次 Control/Form/Table/entity_rules capture bundle。
-- 未完成：confirmed selection state 与 selection scope 的 session 化。
-- 未完成：entity/query/assert/checkpoint/record 等剩余 V1 snapshot 消费方切换。
-- Checkpoint 5B 状态：in progress。
+- 已完成：confirmed selection state 与 selection scope 进入 PageSession；recognize 只读重映射，不改写确认 anchor。
+- 已完成：entity/query/assert/checkpoint/record/capture_resolve/get_content 等消费方全部切换到 V2 PageSession。
+- 已完成：URL 仅作为 navigation freshness 信号，page identity 使用 PageEpoch/CaptureRevision 与 exact anchor identity。
+- Checkpoint 5B 状态：accepted。
 
 ### 12.5 Checkpoint 5C：SnapshotProjection、RuntimeQuery 与 SemanticDiff
 
@@ -1603,6 +1605,17 @@ Checkpoint 退出：
 
 - stage 1 从未建立 `PageObservation -> V1-compatible tree` bridge。
 - V1 compress 不再是 snapshot/query/recognition 的生产依赖。
+
+当前实施状态：
+
+- 已完成：SnapshotProjection 直接消费 canonical observation、Control/Form/Table indexes 与 SemanticBindings。
+- 已完成：overview/interaction/annotation/debug/full 五种 mode；interaction mode 显式保护全部 executable controls。
+- 已完成：overview 使用 FeatureCover 进行 recognition-driven row cover，并以 `{total,included,omitted,policy}` 报告省略。
+- 已完成：full/contain/depth/filter、Form validation、Table schema/actions/pagination 与 component geometry projection。
+- 已完成：SemanticDiff 使用 exact identity correlation；ambiguous/navigation/no-baseline 明确回退 full。
+- 已完成：mode-scoped diff baseline、epoch-bound content ref、V2 RuntimeQuery adapter 与 DebugProjection。
+- 已完成：生产代码无 V1 presentation tree、compress、entity view 或旧 snapshot cache 依赖。
+- Checkpoint 5C 状态：accepted。
 
 ### 12.6 Checkpoint 5D：AnnotatorProjection 与 extension 切换
 
