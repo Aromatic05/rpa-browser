@@ -32,8 +32,8 @@
 - `pnpm --filter ./agent test:entity-rules`：37/37 通过，包含真实 Element Plus/Ant Design annotator、scroll/zoom 与 check/save/reopen。
 - `pnpm --filter ./agent typecheck:snapshot`：0 项诊断；完整 agent typecheck 通过。
 - `pnpm --filter ./agent test:trace`：7/7 通过，真实浏览器 trace integrity 使用 V2 capture/projection/content ref。
-- `pnpm --filter ./agent test:integration`：630 项，628 通过、0 失败、2 个显式性能测试跳过；两个性能门禁单独执行均通过。
-- `pnpm --filter ./agent test:e2e`：4/4 通过。
+- `pnpm --filter ./agent test:integration`：638 项，636 通过、0 失败、2 个显式性能测试跳过；两个性能门禁单独执行均通过。
+- `pnpm --filter ./agent test:e2e`：5/5 通过。
 - `pnpm lint`：0 errors / 0 warnings。
 - `pnpm -C agent/debug/snapshot-viewer build`：通过，viewer 只消费 SnapshotProjection schemaVersion 2。
 - V1 功能替代和 wire migration 边界见 `docs/Development/reports/SnapshotV2V1ParityAudit.md`。
@@ -1777,8 +1777,8 @@ projection omission/correlation
 当前验收结果：
 
 - Stage 6 状态：accepted（复审修复后重新验收）。
-- 发行级 integration：630 项，628 通过、0 失败、2 个显式性能测试跳过；Stage 1 与 Stage 4/5 两个性能门禁单独执行均通过。
-- E2E：4/4 通过。
+- 发行级 integration：638 项，636 通过、0 失败、2 个显式性能测试跳过；Stage 1 与 Stage 4/5 两个性能门禁单独执行均通过。
+- E2E：5/5 通过。
 - Snapshot：136/136；entity_rules：37/37；trace：7/7；全量 typecheck 通过。
 - required browser matrix 未完成项：0；真实表格矩阵见 `table_required_matrix_browser.test.ts`，partial source 使用真实浏览器页面加单一 runtime source 故障注入。
 - Stage 4/5 完整性能基线：`docs/Development/reports/SnapshotV2Stage45PerformanceBaseline.json`，冻结 14 个 pass、810 个 raw nodes、132 rows 与结构计数；1/25/100-row business pages 均真实经过 assembly。完整门禁使用 40 次预热后进程 CPU 时间，默认阈值为 baseline × 1.2 或 baseline + 0.5ms，并约束 25→100 行 table assembly 同次运行增长不超过 8 倍。

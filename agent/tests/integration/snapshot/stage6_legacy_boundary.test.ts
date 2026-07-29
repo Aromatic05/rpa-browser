@@ -134,12 +134,15 @@ test('Stage 6 acceptance documents match the current release evidence', () => {
 
     for (const staleClaim of [
         '610 findings', '156 errors', '454 warnings', 'Snapshot：129/129',
-        'Snapshot：135/135', '614 tests / 612 pass', 'entity-rules              31/31',
+        'Snapshot：135/135', '614 tests / 612 pass', '630 tests / 628 pass',
+        'E2E：4/4', 'entity-rules              31/31',
     ]) {
         assert.equal(combined.includes(staleClaim), false, `stale acceptance claim remains: ${staleClaim}`);
     }
     for (const requiredEvidence of [
         'Snapshot：136/136',
+        '638 tests / 636 pass / 0 fail / 2 skipped',
+        'E2E：5/5',
         'SnapshotV2Stage45PerformanceBaseline.json',
         'table_required_matrix_browser.test.ts',
         'record 与 runner 共享 PageSession',
