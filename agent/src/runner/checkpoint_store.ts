@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Checkpoint } from './run_steps_types';
+import type { Checkpoint, RunStatus } from './run_steps_types';
 
 export type TaskRunCheckpoint = Checkpoint & {
     workspaceName: string;
@@ -11,8 +11,23 @@ export type TaskRunCheckpoint = Checkpoint & {
 type PersistedTaskRunCheckpointsV1 = {
     version: 1;
     savedAt: number;
-    checkpoints: Record<string, TaskRunCheckpoint>;
+    checkpoints: Record<string, unknown>;
 };
+
+export type TaskCheckpointStore = {
+    checkpoints: Map<string, TaskRunCheckpoint>;
+    load: () => Promise<Map<string, TaskRunCheckpoint>>;
+    flush: () => Promise<void>;
+    stop: () => void;
+};
+
+const RUN_STATUSES = new Set<RunStatus>(['running', 'suspended', 'completed', 'failed', 'halted']);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+const isRunStatus = (value: unknown): value is RunStatus =>
+    typeof value === 'string' && RUN_STATUSES.has(value as RunStatus);
 
 const toPayload = (checkpoints: Map<string, TaskRunCheckpoint>): PersistedTaskRunCheckpointsV1 => ({
     version: 1,
@@ -23,17 +38,21 @@ const toPayload = (checkpoints: Map<string, TaskRunCheckpoint>): PersistedTaskRu
 const readPayload = async (filePath: string): Promise<PersistedTaskRunCheckpointsV1 | null> => {
     try {
         const raw = await fs.readFile(filePath, 'utf8');
-        const parsed = JSON.parse(raw) as PersistedTaskRunCheckpointsV1;
-        if (parsed?.version !== 1 || !parsed.checkpoints || typeof parsed.checkpoints !== 'object') {
+        const parsed: unknown = JSON.parse(raw);
+        if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.checkpoints)) {
             return null;
         }
-        return parsed;
+        return {
+            version: 1,
+            savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : 0,
+            checkpoints: parsed.checkpoints,
+        };
     } catch {
         return null;
     }
 };
 
-const persist = async (filePath: string, checkpoints: Map<string, TaskRunCheckpoint>) => {
+const persist = async (filePath: string, checkpoints: Map<string, TaskRunCheckpoint>): Promise<void> => {
     const dir = path.dirname(filePath);
     await fs.mkdir(dir, { recursive: true });
     const tmpPath = `${filePath}.tmp`;
@@ -42,33 +61,39 @@ const persist = async (filePath: string, checkpoints: Map<string, TaskRunCheckpo
     await fs.rename(tmpPath, filePath);
 };
 
-export const createTaskCheckpointStore = (filePath: string, opts?: { flushIntervalMs?: number }) => {
+export const createTaskCheckpointStore = (
+    filePath: string,
+    opts?: { flushIntervalMs?: number },
+): TaskCheckpointStore => {
     const checkpoints = new Map<string, TaskRunCheckpoint>();
     const intervalMs = opts?.flushIntervalMs && opts.flushIntervalMs > 0 ? Math.floor(opts.flushIntervalMs) : 1200;
     let writing = false;
     let lastSnapshot = '';
 
-    const load = async () => {
+    const load = async (): Promise<Map<string, TaskRunCheckpoint>> => {
         const payload = await readPayload(filePath);
         checkpoints.clear();
         if (!payload) {return checkpoints;}
-        for (const [runId, cp] of Object.entries(payload.checkpoints)) {
-            if (!runId || !cp || typeof cp !== 'object') {continue;}
-            if (!cp.workspaceName || typeof cp.cursor !== 'number') {continue;}
+        for (const [runId, rawCheckpoint] of Object.entries(payload.checkpoints)) {
+            if (!runId || !isRecord(rawCheckpoint)) {continue;}
+            if (typeof rawCheckpoint.workspaceName !== 'string' || !rawCheckpoint.workspaceName) {continue;}
+            if (typeof rawCheckpoint.cursor !== 'number' || !isRunStatus(rawCheckpoint.status)) {continue;}
             checkpoints.set(runId, {
                 runId,
-                workspaceName: cp.workspaceName,
-                status: cp.status,
-                cursor: cp.cursor,
-                nextSeq: typeof cp.nextSeq === 'number' ? cp.nextSeq : cp.cursor,
-                lastAckSeq: typeof cp.lastAckSeq === 'number' ? cp.lastAckSeq : Math.max(-1, cp.cursor - 1),
-                updatedAt: cp.updatedAt || Date.now(),
+                workspaceName: rawCheckpoint.workspaceName,
+                status: rawCheckpoint.status,
+                cursor: rawCheckpoint.cursor,
+                nextSeq: typeof rawCheckpoint.nextSeq === 'number' ? rawCheckpoint.nextSeq : rawCheckpoint.cursor,
+                lastAckSeq: typeof rawCheckpoint.lastAckSeq === 'number'
+                    ? rawCheckpoint.lastAckSeq
+                    : Math.max(-1, rawCheckpoint.cursor - 1),
+                updatedAt: typeof rawCheckpoint.updatedAt === 'number' ? rawCheckpoint.updatedAt : Date.now(),
             });
         }
         return checkpoints;
     };
 
-    const flush = async () => {
+    const flush = async (): Promise<void> => {
         if (writing) {return;}
         const snapshot = JSON.stringify(toPayload(checkpoints));
         if (snapshot === lastSnapshot) {return;}
@@ -84,7 +109,7 @@ export const createTaskCheckpointStore = (filePath: string, opts?: { flushInterv
     const timer = setInterval(() => {
         void flush();
     }, intervalMs);
-    timer.unref?.();
+    timer.unref();
 
     return {
         checkpoints,

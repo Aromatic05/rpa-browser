@@ -44,7 +44,7 @@ export const executeBrowserPressKey = async (
 };
 
 export const normalizeBrowserPressKey = (rawKey: string, platform: NodeJS.Platform = process.platform): string => {
-    const key = String(rawKey || '').trim();
+    const key = rawKey.trim();
     if (!key) {return key;}
     const normalized = key
         .split('+')

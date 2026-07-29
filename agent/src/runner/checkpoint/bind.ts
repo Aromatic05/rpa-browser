@@ -54,7 +54,7 @@ export const maybeBindCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
     if (!ctx.active || !ctx.checkpoint) {return ctx;}
     if (!ctx.checkpoint.content || ctx.checkpoint.content.length === 0) {return ctx;}
 
-    const hasActionModel = ctx.checkpoint.content.some((item) => item && typeof item === 'object' && 'type' in item);
+    const hasActionModel = ctx.checkpoint.content.some((item) => typeof item === 'object' && 'type' in item);
     if (hasActionModel || ctx.checkpoint.prepare || ctx.checkpoint.output || ctx.checkpoint.kind === 'procedure') {
         return ctx;
     }

@@ -1,3 +1,4 @@
+import type { Page } from 'playwright';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps_types';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
@@ -32,7 +33,7 @@ export const executeBrowserFill = async (
     };
 };
 
-const humanDelay = async (page: import('playwright').Page, deps: RunStepsDeps) => {
+const humanDelay = async (page: Page, deps: RunStepsDeps): Promise<void> => {
     if (!deps.config.humanPolicy.enabled) {return;}
     const delayMs = pickDelayMs(
         deps.config.humanPolicy.typeDelayMsRange.min,

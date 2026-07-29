@@ -46,7 +46,7 @@ export const executeBrowserCreateTab = async (
         }
     }
 
-    const boundTimeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
+    const boundTimeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs || 3000;
     const activeBinding = await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: workspace.browserSession.pageRegistry,

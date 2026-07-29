@@ -76,7 +76,7 @@ const executeAction = async (
     stepId: string,
 ): Promise<CheckpointProcedureOutput> => {
     if (action.type === 'wait') {
-        const ms = Number(action.args?.ms || 0);
+        const ms = action.args.ms;
         if (!Number.isFinite(ms) || ms < 0) {
             return { ok: false, error: { code: 'ERR_BAD_ARGS', message: 'wait ms must be >= 0' } };
         }
@@ -226,7 +226,7 @@ export const resolveCheckpointValue = (
 };
 
 const isCheckpointAction = (value: SerializedStepUnion | CheckpointAction): value is CheckpointAction => {
-    return Boolean(value && typeof value === 'object' && 'type' in value);
+    return 'type' in value;
 };
 
 const isRefObject = (value: unknown): value is { ref: string } => {

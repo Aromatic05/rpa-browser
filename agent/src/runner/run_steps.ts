@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
+import type { StepName, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { resolveStepArgsRefs } from './step_refs';
 import { runCheckpoint, setCheckpoints } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
@@ -172,7 +172,7 @@ const executeOne = async (
     return await fn(runtimeStep.step, deps, workspaceName);
 };
 
-const STEP_RESOLVE_STEP_NAMES = new Set([
+const STEP_RESOLVE_STEP_NAMES: ReadonlySet<StepName> = new Set<StepName>([
     'browser.take_screenshot',
     'browser.click',
     'browser.fill',
@@ -182,14 +182,19 @@ const STEP_RESOLVE_STEP_NAMES = new Set([
     'browser.scroll',
     'browser.press_key',
     'browser.drag_and_drop',
-] as const);
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
 
 const injectStepResolve = (
     step: StepUnion,
     stepResolves?: Record<string, StepResolve>,
 ): { ok: true; step: StepUnion } | { ok: false; error: ExecStepResult['error'] } => {
-    const argsRecord = step.args as Record<string, unknown>;
-    const resolveId = typeof argsRecord.resolveId === 'string' ? argsRecord.resolveId : undefined;
+    const argsRecord: unknown = step.args;
+    const resolveId = isRecord(argsRecord) && typeof argsRecord.resolveId === 'string'
+        ? argsRecord.resolveId
+        : undefined;
 
     if (!resolveId) {
         if (step.resolve && !isValidStepResolve(step.resolve)) {
@@ -213,7 +218,7 @@ const injectStepResolve = (
             },
         };
     }
-    if (!STEP_RESOLVE_STEP_NAMES.has(step.name as any)) {
+    if (!STEP_RESOLVE_STEP_NAMES.has(step.name)) {
         return {
             ok: false,
             error: {
@@ -233,7 +238,8 @@ const injectStepResolve = (
             },
         };
     }
-    if (!isValidStepResolve(stepResolves[resolveId])) {
+    const resolve = stepResolves[resolveId];
+    if (!isValidStepResolve(resolve)) {
         return {
             ok: false,
             error: {
@@ -246,14 +252,7 @@ const injectStepResolve = (
 
     return {
         ok: true,
-        step: {
-            id: step.id,
-            name: step.name,
-            args: step.args,
-            meta: step.meta,
-            entityRules: step.entityRules,
-            resolve: stepResolves[resolveId],
-        } as StepUnion,
+        step: { ...step, resolve },
     };
 };
 
@@ -343,9 +342,9 @@ export const pushResultPipe = (pipe: ResultPipe, result: StepResult): void => {
 };
 
 export const waitForResultPipe = async (pipe: ResultPipe): Promise<void> =>
-    await new Promise<void>((resolve) => {
+    { await new Promise<void>((resolve) => {
         pipe.waiters.add(resolve);
-    });
+    }); };
 
 export const createSignalChannel = (): SignalChannel => ({ items: [], cursor: 0 });
 

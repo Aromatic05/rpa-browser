@@ -1,3 +1,4 @@
+import type { Page } from 'playwright';
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps_types';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
@@ -55,7 +56,7 @@ export const executeBrowserScroll = async (
         const delta = index === steps - 1 ? remaining : Math.floor(amount / steps);
         remaining -= delta;
         if (delta <= 0) {continue;}
-        await binding.page.evaluate((value) => window.scrollBy(0, value), sign * delta);
+        await binding.page.evaluate((value) => { window.scrollBy(0, value); }, sign * delta);
         const delayMs = deps.config.humanPolicy.enabled
             ? pickDelayMs(
                 deps.config.humanPolicy.scrollDelayMsRange.min,
@@ -67,7 +68,7 @@ export const executeBrowserScroll = async (
     return { stepId: step.id, ok: true, data: { resolver: 'page-scroll' } };
 };
 
-const humanDelay = async (page: import('playwright').Page, deps: RunStepsDeps) => {
+const humanDelay = async (page: Page, deps: RunStepsDeps): Promise<void> => {
     if (!deps.config.humanPolicy.enabled) {return;}
     const delayMs = pickDelayMs(
         deps.config.humanPolicy.scrollDelayMsRange.min,

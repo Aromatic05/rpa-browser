@@ -25,8 +25,8 @@ export const executeBrowserCheckpoint = async (
         input: step.args.input,
         stepIdPrefix: `checkpoint:${step.id}`,
         executeStep: async (nestedStep) => {
-            const fn = deps.pluginHost.getExecutors()[nestedStep.name];
-            if (!fn) {
+            const executors = deps.pluginHost.getExecutors();
+            if (!Object.hasOwn(executors, nestedStep.name)) {
                 return {
                     stepId: nestedStep.id,
                     ok: false,
@@ -36,7 +36,7 @@ export const executeBrowserCheckpoint = async (
                     },
                 };
             }
-            return await fn(nestedStep, deps, workspaceName);
+            return await executors[nestedStep.name](nestedStep, deps, workspaceName);
         },
     });
 

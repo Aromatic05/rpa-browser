@@ -24,7 +24,7 @@ export const executeBrowserSwitchTab = async (
             error: { code: 'ERR_TAB_NOT_FOUND', message: `browser.switch_tab target tab not found: ${tabName}` },
         };
     }
-    const timeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
+    const timeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs || 3000;
     const binding = await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: workspace.browserSession.pageRegistry,

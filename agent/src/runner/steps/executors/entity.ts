@@ -27,7 +27,7 @@ export const executeBrowserEntity = async (
         const filtered = filterPageSessionEntities(
             buildPageSessionEntityView(context.entry).entities,
             {
-                kind: args.kind as RuntimeEntityKind | RuntimeEntityKind[] | undefined,
+                kind: args.kind,
                 businessTag: args.businessTag,
                 query: args.query,
             },
