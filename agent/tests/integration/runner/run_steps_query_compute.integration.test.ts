@@ -31,7 +31,7 @@ const createDeps = async () => {
     });
     const fixture = createV2BusinessPage({rowCount: 2});
     await deps.pageSession.ensureFresh({
-        pageKey: page,
+        pageKey: page as never,
         pageUrl: page.url(),
         capture: async () => fixture.capture,
     });

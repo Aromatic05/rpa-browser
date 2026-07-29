@@ -74,7 +74,7 @@ const createDepsWithBusinessEntity = async () => {
     );
     const { capture } = createV2BusinessPage();
     await deps.pageSession.ensureFresh({
-        pageKey: page,
+        pageKey: page as never,
         pageUrl: url,
         capture: async () => capture,
     });

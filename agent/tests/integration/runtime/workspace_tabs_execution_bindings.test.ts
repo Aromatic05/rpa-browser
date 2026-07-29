@@ -232,7 +232,7 @@ test('awaitExecutableTab reuses the existing binding and preserves trace cache f
         tabName: 'tab',
         timeoutMs: 100,
     });
-    first.traceCtx.cache.latestSnapshot = { marker: 'keep-me' };
+    first.traceCtx.cache.a11yCacheGen = 42;
 
     const second = await bindings.awaitExecutableTab({
         workspace,
@@ -242,7 +242,7 @@ test('awaitExecutableTab reuses the existing binding and preserves trace cache f
     });
 
     assert.equal(second, first);
-    assert.deepEqual(second.traceCtx.cache.latestSnapshot, { marker: 'keep-me' });
+    assert.equal(second.traceCtx.cache.a11yCacheGen, 42);
 });
 
 test('createExecutableTab makes the new tab active when other tabs already exist', async () => {

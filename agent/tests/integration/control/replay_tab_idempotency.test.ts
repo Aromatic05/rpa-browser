@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { StepUnion } from '../../../src/runner/steps/types';
 import { replayRecording } from '../../../src/record/replay';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
+import { getRunnerConfig } from '../../../src/config';
 
 type FakePage = {
     url: () => string;
@@ -59,7 +60,7 @@ const createHarness = () => {
     const deps: any = {
         runtime: {},
         pageRegistry: {},
-        config: {},
+        config: getRunnerConfig(),
         pluginHost: {
             getExecutors: () => ({
                 'browser.create_tab': async (s: Extract<StepUnion, { name: 'browser.create_tab' }>) => {

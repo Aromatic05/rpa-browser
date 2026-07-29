@@ -75,6 +75,7 @@ const createRouterWithStubs = () => {
     const recordControl = createStubControl();
     const dslControl = createStubControl();
     const checkpointControl = createStubControl();
+    const entityRulesRuntime = createStubControl();
     const runnerControl = createStubControl();
     const mcpControl = createStubControl();
 
@@ -83,6 +84,7 @@ const createRouterWithStubs = () => {
         recordControl: recordControl as any,
         dslControl: dslControl as any,
         checkpointControl: checkpointControl as any,
+        entityRulesRuntime: entityRulesRuntime as any,
         runnerControl: runnerControl as any,
         mcpControl: mcpControl as any
     };
@@ -95,6 +97,7 @@ const createRouterWithStubs = () => {
         recordControl: recordControl as any,
         dslControl: dslControl as any,
         checkpointControl: checkpointControl as any,
+        entityRulesRuntime: entityRulesRuntime as any,
         runnerControl: runnerControl as any,
         mcpControl: mcpControl as any
     };

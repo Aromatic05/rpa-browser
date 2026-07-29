@@ -120,7 +120,7 @@ const createDeps = async () => {
         } as any,
     }, {workspaceName, tabName, page});
     await deps.pageSession.ensureFresh({
-        pageKey: page,
+        pageKey: page as never,
         pageUrl: url,
         capture: async () => capture,
     });

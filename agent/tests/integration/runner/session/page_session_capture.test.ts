@@ -55,7 +55,7 @@ test('runner page session captures one V2 component bundle and refreshes it afte
         assert.deepEqual(selection.anchor, confirmedAnchor);
         const form = Object.values(refreshed.entry.capture.form.forms.forms)[0];
         assert.equal(form.location.selectionScopeNodeId, selection.nodeId);
-        assert.notEqual(form.rootNodeId, selection.nodeId);
+        assert.notEqual(form.location.structuralRootNodeId, selection.nodeId);
     } finally {
         await browser.close();
     }

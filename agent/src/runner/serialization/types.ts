@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Runtime YAML validators intentionally defend against untyped input. */
 import type { Checkpoint } from '../checkpoint/types';
 import type { StepArgsMap, StepName, StepResolve } from '../steps/types';
 import { assertStepEntityRulesControl, type StepEntityRulesControl } from '../../snapshot/rules/model';
@@ -236,6 +237,10 @@ const assertSerializedStepEntityRules = (value: unknown, currentPath: string): v
     if (!value || typeof value !== 'object' || Array.isArray(value)) {return;}
     const record = value as Record<string, unknown>;
     if (!Object.prototype.hasOwnProperty.call(record, 'entityRules')) {return;}
+    if (record.entityRules === undefined) {
+        delete record.entityRules;
+        return;
+    }
     record.entityRules = assertStepEntityRulesControl(record.entityRules, `${currentPath}.entityRules`);
 };
 
@@ -266,7 +271,7 @@ const assertCheckpointContentUsesSerializedStepShape = (checkpoint: Checkpoint, 
                     assertNoCoreHintFields(step, `${currentPath}.content[${index}].step`);
                     assertSerializedStepEntityRules(step, `${currentPath}.content[${index}].step`);
                     assertNoLegacyActionTargetFields(
-                        { name: String(step.name || ''), args: step.args },
+                        {name: step.name ?? '', args: step.args},
                         `${currentPath}.content[${index}].step`,
                     );
                 }
@@ -279,7 +284,7 @@ const assertCheckpointContentUsesSerializedStepShape = (checkpoint: Checkpoint, 
         }
         assertSerializedStepEntityRules(item, `${currentPath}.content[${index}]`);
         assertNoLegacyActionTargetFields(
-            { name: String((item as { name?: string }).name || ''), args: (item as { args?: unknown }).args },
+            {name: (item as {name?: string}).name ?? '', args: (item as {args?: unknown}).args},
             `${currentPath}.content[${index}]`,
         );
     }

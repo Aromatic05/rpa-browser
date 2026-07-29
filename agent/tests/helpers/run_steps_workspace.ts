@@ -75,14 +75,6 @@ export const completeRunStepsDeps = (
     } as ExecutionBinding;
     const pageRegistry = input.pageRegistry || createPageRegistryStub(provisional);
     const binding: ExecutionBinding = { ...provisional, pageRegistry };
-    const latestSnapshot = (binding.traceCtx.cache as any)?.latestSnapshot;
-    if (latestSnapshot && !latestSnapshot.snapshotMeta) {
-        latestSnapshot.snapshotMeta = {
-            snapshotId: 'test-snapshot',
-            pageIdentity: { workspaceName, tabName, url: page.url?.() || '' },
-        };
-    }
-
     const normalizeBinding = (value?: Partial<ExecutionBinding>): ExecutionBinding => ({
         ...binding,
         ...value,
