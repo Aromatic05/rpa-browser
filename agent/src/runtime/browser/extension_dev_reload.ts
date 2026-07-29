@@ -179,7 +179,7 @@ const verifyContentPageBuild = async (page: Page, buildId: string): Promise<void
         if (page.isClosed()) {throw new Error(`content page closed while verifying build ${buildId}`);}
         const value = await page.evaluate(() =>
             document.querySelector('#rpa-floating-panel')?.shadowRoot
-                ?.querySelector('.build-id')?.textContent?.trim() || '',
+                ?.querySelector('.build-id')?.textContent.trim() || '',
         );
         if (value === badge) {return;}
         await sleep(100);
@@ -251,7 +251,7 @@ export const reloadExtensionsForBuild = async (
         const newWorker = await resolveMainWorker(context, buildInfo.buildId);
         await options.configureMainExtension(context);
         const contentPages = await reloadContentPages(context);
-        await Promise.all(contentPages.map(async (page) => await verifyContentPageBuild(page, buildInfo.buildId)));
+        await Promise.all(contentPages.map((page) => verifyContentPageBuild(page, buildInfo.buildId)));
         const startExtensionId = loaded[1]?.id;
         const startPages = await restoreStartPages(
             context,
