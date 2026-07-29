@@ -85,19 +85,6 @@
 
 环境变量同名映射为 `RUNNER_TRACE_*`、`RUNNER_ACTION_*`、`RUNNER_RECORD_*`、`RUNNER_STEP_LOG_LEVEL`。
 
-## confidencePolicy
-
-用于目标解析评分：
-
-- `enabled`
-- `minScore`
-- `roleWeight`
-- `nameWeight`
-- `textWeight`
-- `selectorBonus`
-
-环境变量：`RUNNER_CONFIDENCE_*`。
-
 ## checkpointPolicy
 
 用于 task.run checkpoint 持久化：

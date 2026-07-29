@@ -32,6 +32,7 @@ const mergeDeep = <T extends Record<string, unknown>>(base: T, patch?: Partial<T
     if (!patch) {return base;}
     const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
     for (const [key, value] of Object.entries(patch)) {
+        if (!Object.hasOwn(base, key)) {continue;}
         if (value && typeof value === 'object' && !Array.isArray(value)) {
             out[key] = mergeDeep(asRecord(out[key]), value as Record<string, unknown>);
         } else if (value !== undefined) {
@@ -115,12 +116,6 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['observability', 'dslConsoleEnabled'], envBool('RUNNER_DSL_CONSOLE_ENABLED'));
     set(['observability', 'dslFileEnabled'], envBool('RUNNER_DSL_FILE_ENABLED'));
     set(['observability', 'dslFilePath'], process.env.RUNNER_DSL_FILE_PATH);
-    set(['confidencePolicy', 'enabled'], envBool('RUNNER_CONFIDENCE_ENABLED'));
-    set(['confidencePolicy', 'minScore'], envNumber('RUNNER_CONFIDENCE_MIN_SCORE'));
-    set(['confidencePolicy', 'roleWeight'], envNumber('RUNNER_CONFIDENCE_ROLE_WEIGHT'));
-    set(['confidencePolicy', 'nameWeight'], envNumber('RUNNER_CONFIDENCE_NAME_WEIGHT'));
-    set(['confidencePolicy', 'textWeight'], envNumber('RUNNER_CONFIDENCE_TEXT_WEIGHT'));
-    set(['confidencePolicy', 'selectorBonus'], envNumber('RUNNER_CONFIDENCE_SELECTOR_BONUS'));
     set(['checkpointPolicy', 'enabled'], envBool('RUNNER_CHECKPOINT_ENABLED'));
     set(['checkpointPolicy', 'filePath'], process.env.RUNNER_CHECKPOINT_FILE_PATH);
     set(['checkpointPolicy', 'flushIntervalMs'], envNumber('RUNNER_CHECKPOINT_FLUSH_INTERVAL_MS'));
