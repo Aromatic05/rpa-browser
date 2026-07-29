@@ -7,6 +7,8 @@ import type {
 } from '../model/contracts';
 import { evidence } from './dom';
 
+const MAX_STRUCTURAL_SLOT_BUCKETS = 4;
+
 export type ControlSlotBuildResult = {
     slots: CellControlSlot[];
     rowExceptions: TableRowException[];
@@ -31,14 +33,15 @@ export const buildControlSlots = (
             const cell = cells[cellId];
             cell.controlIds.forEach((controlId, structuralPosition) => {
                 const control = controls.controls[controlId];
-                const key = `${cell.columnId}|${structuralPosition}|${control.kind}`;
+                const slotPosition = Math.min(structuralPosition, MAX_STRUCTURAL_SLOT_BUCKETS - 1);
+                const key = `${cell.columnId}|${slotPosition}|${control.kind}`;
                 const bucket = occurrences.get(key) ?? [];
                 bucket.push({
                     rowId: row.id,
                     controlId,
                     nodeId: control.controlNodeId ?? control.rootNodeId,
                     columnId: cell.columnId,
-                    structuralPosition,
+                    structuralPosition: slotPosition,
                     kind: control.kind,
                 });
                 occurrences.set(key, bucket);
