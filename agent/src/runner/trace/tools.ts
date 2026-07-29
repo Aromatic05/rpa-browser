@@ -50,7 +50,6 @@ export type BrowserAutomationTools = {
     'trace.page.reload': (args: { timeout?: number }) => Promise<ToolResult>;
     'trace.page.getInfo': () => Promise<ToolResult<{ url: string; title: string; tabName?: string; tabs?: Array<{ tabName: string; url?: string; title?: string }> }>>;
     'trace.page.snapshotA11y': (args: { includeA11y: boolean; focusOnly: boolean }) => Promise<ToolResult<{ snapshotId: string; a11y?: string }>>;
-    'trace.page.getContent': (args: { ref: string }) => Promise<ToolResult<{ ref: string; content: string }>>;
     'trace.page.readConsole': (args?: { limit?: number }) => Promise<ToolResult<ConsoleEntry[]>>;
     'trace.page.readNetwork': (args?: { limit?: number }) => Promise<ToolResult<NetworkEntry[]>>;
     'trace.page.evaluate': (args: { expression: string; arg?: unknown }) => Promise<ToolResult<unknown>>;

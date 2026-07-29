@@ -16,7 +16,6 @@ export type TraceOpName =
     | 'trace.page.reload'
     | 'trace.page.getInfo'
     | 'trace.page.snapshotA11y'
-    | 'trace.page.getContent'
     | 'trace.page.readConsole'
     | 'trace.page.readNetwork'
     | 'trace.page.evaluate'
@@ -91,9 +90,6 @@ export type TraceCache = {
     a11yTree?: unknown;
     lastSnapshotId?: string;
     a11yCacheGen?: number;
-    latestSnapshot?: unknown;
-    latestSnapshotAt?: number;
-    snapshotSessionStore?: unknown;
     consoleEntries?: ConsoleEntry[];
     networkEntries?: NetworkEntry[];
 };

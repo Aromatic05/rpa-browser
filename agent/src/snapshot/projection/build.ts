@@ -1,6 +1,7 @@
 import {resolveSemanticRole} from '../observation/model/semantic';
 import type {ObservationNodeId, PageObservation} from '../observation/model/contracts';
 import type {PageSnapshotSessionEntry} from '../session/contracts';
+import {buildSnapshotContentRef} from './content';
 import type {
     SnapshotProjection,
     SnapshotProjectionBuildResult,
@@ -227,6 +228,7 @@ const buildNode = (
         role: resolveSemanticRole(observation, nodeId).value,
         name: clean(observation.accessibility[nodeId]?.name ?? attrs['aria-label']),
         text: clean(observation.text[nodeId]),
+        contentRef: buildSnapshotContentRef(entry, nodeId),
         attributes: Object.keys(attrs).length > 0 ? {...attrs} : undefined,
         runtimeState: runtime ? {...runtime} : undefined,
         activity: {...observation.activity[nodeId]},

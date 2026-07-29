@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {executeBrowserSnapshot} from '../../../../src/runner/steps/executors/snapshot';
+import {executeBrowserGetContent} from '../../../../src/runner/steps/executors/get_content';
 import type {Step} from '../../../../src/runner/steps/types';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
@@ -114,4 +115,50 @@ test('browser.snapshot diff falls back to full after navigation', async () => {
     if (!result.ok) {return;}
     assert.equal((result.data as any).meta.mode, 'full');
     assert.equal((result.data as any).meta.diffSkipped, 'navigation');
+});
+
+
+test('browser.get_content resolves epoch-bound V2 projection refs and rejects stale refs', async () => {
+    const {deps, page, url, fixture} = await createFixture();
+    const snapshot = await executeBrowserSnapshot(step('snapshot-content', {}), deps, 'ws-1');
+    assert.equal(snapshot.ok, true);
+    if (!snapshot.ok) {return;}
+    const submitNodeId = fixture.nodeIds.submit;
+    const findNode = (nodes: any[]): any => {
+        for (const node of nodes) {
+            if (node.nodeId === submitNodeId) {return node;}
+            const found = findNode(node.children || []);
+            if (found) {return found;}
+        }
+        return undefined;
+    };
+    const submit = findNode((snapshot.data as any).roots);
+    assert.equal(typeof submit?.contentRef, 'string');
+
+    const content = await executeBrowserGetContent({
+        id: 'content-current',
+        name: 'browser.get_content',
+        args: {ref: submit.contentRef},
+    }, deps, 'ws-1');
+    assert.equal(content.ok, true);
+    if (content.ok) {assert.match((content.data as any).content, /提交/);}
+
+    const next = structuredClone(fixture.capture) as PageSnapshotCapture;
+    (next.control.observation.identity as any).pageEpoch = 'content-next-page';
+    (next.form.observation.identity as any).pageEpoch = 'content-next-page';
+    (next.table.observation.identity as any).pageEpoch = 'content-next-page';
+    url.value = 'https://example.test/orders/next';
+    await deps.pageSession.ensureFresh({
+        pageKey: page as never,
+        pageUrl: url.value,
+        capture: async () => next,
+    });
+
+    const stale = await executeBrowserGetContent({
+        id: 'content-stale',
+        name: 'browser.get_content',
+        args: {ref: submit.contentRef},
+    }, deps, 'ws-1');
+    assert.equal(stale.ok, false);
+    assert.equal(stale.error?.code, 'ERR_STALE');
 });

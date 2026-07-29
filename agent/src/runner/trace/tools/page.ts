@@ -4,9 +4,13 @@ import { adoptA11yNode } from '../a11y/adopt';
 import { invalidateA11yCache } from '../a11y/cache';
 import { getA11yTree } from '../a11y/getA11yTree';
 import type { ConsoleEntry, NetworkEntry } from '../types';
+import type { BrowserAutomationTools } from '../tools';
 import type { ToolsBuildContext } from './context';
 
-export const createPageTools = (base: ToolsBuildContext): any => ({
+type PageToolName = Extract<keyof BrowserAutomationTools, `trace.page.${string}`>;
+type PageTools = Pick<BrowserAutomationTools, PageToolName>;
+
+export const createPageTools = (base: ToolsBuildContext): PageTools => ({
     'trace.page.goto': async (args: { url: string; timeout?: number }) => {
         const result = await base.run('trace.page.goto', args, async () => {
             await base.getCurrentPage().goto(args.url, { timeout: args.timeout });
@@ -49,22 +53,6 @@ export const createPageTools = (base: ToolsBuildContext): any => ({
             return { snapshotId, a11y: tree ? JSON.stringify(tree) : undefined };
         }),
 
-    'trace.page.getContent': async (args: { ref: string }) =>
-        await base.run('trace.page.getContent', args, async () => {
-            const snapshot = base.ctx.cache.latestSnapshot as
-                | { contentStore?: Record<string, string> }
-                | undefined;
-            const content = snapshot?.contentStore?.[args.ref];
-            if (typeof content !== 'string') {
-                throw {
-                    code: 'ERR_NOT_FOUND',
-                    message: 'content ref not found in latest snapshot',
-                    phase: 'trace',
-                    details: { ref: args.ref },
-                };
-            }
-            return { ref: args.ref, content };
-        }),
 
     'trace.page.readConsole': async (args?: { limit?: number }) =>
         await base.run('trace.page.readConsole', args, async () => {
@@ -105,7 +93,7 @@ export const createPageTools = (base: ToolsBuildContext): any => ({
                 return buffer.toString('base64');
             }
             if (args.role) {
-                const escapedRole = String(args.role).replace(/"/g, '\\"');
+                const escapedRole = args.role.replace(/"/g, '\\"');
                 let locator = currentPage.locator(`[role="${escapedRole}"]`);
                 if (args.name) {
                     locator = locator.filter({ hasText: args.name });

@@ -25,6 +25,7 @@ export type SnapshotProjectionNode = {
     role: string;
     name?: string;
     text?: string;
+    contentRef?: string;
     attributes?: Record<string, string>;
     runtimeState?: RuntimeStateRecord;
     activity: ActivityFacts;
