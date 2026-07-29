@@ -1,10 +1,3 @@
-import {
-    createAnnotatorClient,
-    createAnnotatorLiveGeometryRefresh,
-    createAnnotatorOverlay,
-    createAnnotatorPanel,
-    createAnnotatorSession,
-} from '../annotator/index.js';
 import type { Action } from '../shared/types.js';
 import { preparePanelAction, pushPanelLog, type PanelLogEntry } from './panel_actions.js';
 
@@ -17,6 +10,7 @@ export type FloatingUIOptions = {
         address?: { workspaceName?: string; tabName?: string },
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
+    onEnterAnnotation?: () => void;
 };
 
 export type FloatingUIHandle = {
@@ -27,7 +21,7 @@ export type FloatingUIHandle = {
 type WorkspaceItem = { workspaceName: string; activeTabName?: string; tabCount: number };
 type TabItem = { tabName: string; url: string; title: string; active: boolean };
 
-type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'Rules' | 'Log';
+type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'Log';
 const UUIDorUnsafe = (): string => {
     if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
@@ -82,6 +76,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .launchers { display:flex; align-items:center; gap:8px; }
       .build-id { min-width:56px; height:24px; display:grid; place-items:center; border:1px solid #cbd5e1; border-radius:999px; padding:0 8px; background:rgba(255,255,255,.94); color:#475569; font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; box-shadow:0 4px 12px rgba(15,23,42,.10); }
       .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.22); }
+      .annotate-launch { height:38px; padding:0 14px; border:none; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(37,99,235,.28); }
+      .annotate-launch:hover { background:#1d4ed8; }
       .panel { width:420px; border-radius:12px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 12px 28px rgba(15,23,42,.24); display:none; overflow:hidden; }
       .panel.open { display:block; }
       .tabs { display:flex; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
@@ -102,22 +98,16 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .footer pre { margin:0; max-height:120px; overflow:auto; white-space:pre-wrap; font-size:11px; }
       .log-list { display:flex; flex-direction:column; gap:6px; }
       .log-item { font-size:11px; border:1px solid #e2e8f0; border-radius:6px; padding:6px; }
-      .annotator-section { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; padding:8px; border:1px solid #e2e8f0; border-radius:8px; }
-      .annotator-actions { display:flex; flex-wrap:wrap; gap:6px; }
-      .annotator-actions button { flex:1 1 110px; }
-      .annotator-binding { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px; border:1px solid #e2e8f0; border-radius:6px; font-size:11px; }
-      .annotator-binding span { min-width:0; overflow-wrap:anywhere; }
-      .annotator-diagnostic { padding:6px; border-radius:6px; font-size:11px; background:#f8fafc; }
-      .annotator-diagnostic.error { background:#fee2e2; color:#991b1b; }
-      .annotator-diagnostic.warning { background:#fef3c7; color:#92400e; }
-      details > summary { cursor:pointer; font-size:11px; font-weight:700; color:#475569; margin-bottom:6px; }
-      [data-rpa-annotator-panel] { display:block; }
     `;
 
     const wrap = document.createElement('div');
     wrap.className = 'wrap';
     const launchers = document.createElement('div');
     launchers.className = 'launchers';
+    const annotateLaunch = document.createElement('button');
+    annotateLaunch.className = 'annotate-launch';
+    annotateLaunch.textContent = '标注页面';
+    annotateLaunch.setAttribute('aria-label', '打开页面语义标注器');
     const buildBadge = document.createElement('span');
     buildBadge.className = 'build-id';
     buildBadge.textContent = `#${buildLabel}`;
@@ -137,12 +127,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     footer.appendChild(out);
 
     panel.append(tabsBar, body, footer);
-    launchers.append(buildBadge, ball);
+    launchers.append(buildBadge, annotateLaunch, ball);
     wrap.append(launchers, panel);
     shadow.append(style, wrap);
     document.documentElement.appendChild(host);
 
     let isOpen = false;
+    annotateLaunch.addEventListener('click', () => {
+        opts.onEnterAnnotation?.();
+    });
     ball.addEventListener('click', () => {
         isOpen = !isOpen;
         panel.classList.toggle('open', isOpen);
@@ -180,34 +173,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         renderActiveView();
         return reply;
     };
-
-    const annotatorSessionRef: {current: ReturnType<typeof createAnnotatorSession> | null} = {current: null};
-    const annotatorOverlay = createAnnotatorOverlay({
-        document,
-        onPick: async (point) => {
-            const session = annotatorSessionRef.current;
-            if (!session) {return;}
-            await session.pick(point);
-        },
-    });
-    const annotatorClient = createAnnotatorClient(async (type, payload) =>
-        await sendPanelAction(type, payload));
-    const annotatorSession = createAnnotatorSession({
-        client: annotatorClient,
-        overlay: annotatorOverlay,
-    });
-    annotatorSessionRef.current = annotatorSession;
-    const annotatorPanel = createAnnotatorPanel({document, session: annotatorSession});
-    const annotatorLiveGeometry = createAnnotatorLiveGeometryRefresh({
-        eventTargets: [
-            window,
-            ...(window.visualViewport ? [window.visualViewport] : []),
-        ],
-        isActive: () => annotatorSession.getState().projection !== undefined,
-        refresh: async () => {
-            await annotatorSession.visualize();
-        },
-    });
 
     const refreshWorkspaces = async () => {
         await sendPanelAction('workspace.list', {});
@@ -574,17 +539,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return root;
     };
 
-    const renderRules = () => {
-        const box = document.createElement('div');
-        box.className = 'section';
-        box.appendChild(Object.assign(document.createElement('div'), {
-            className: 'title',
-            textContent: 'Entity Rules Annotator',
-        }));
-        box.appendChild(annotatorPanel);
-        return box;
-    };
-
     const renderLog = () => {
         const root = document.createElement('div');
         const box = document.createElement('div');
@@ -623,11 +577,10 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (state.activeView === 'Rec') {body.appendChild(renderRec());}
         if (state.activeView === 'Play') {body.appendChild(renderPlay());}
         if (state.activeView === 'Flow') {body.appendChild(renderFlow());}
-        if (state.activeView === 'Rules') {body.appendChild(renderRules());}
         if (state.activeView === 'Log') {body.appendChild(renderLog());}
     };
 
-    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'Rules', 'Log'];
+    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'Log'];
     views.forEach((name) => {
         const btn = document.createElement('button');
         btn.textContent = name;
@@ -666,8 +619,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     return {
         unmount: () => {
-            annotatorLiveGeometry.dispose();
-            annotatorSession.dispose();
             host.remove();
         },
         scheduleRefresh,

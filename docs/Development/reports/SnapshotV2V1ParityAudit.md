@@ -160,7 +160,7 @@ V2 target metadata 会携带 canonical control kind，因此 `select` 能生成�
 
 此外：
 
-- integration：638 tests / 636 pass / 0 fail / 2 explicit perf skipped；
+- integration：640 tests / 638 pass / 0 fail / 2 explicit perf skipped；
 - Snapshot：136/136；
 - entity_rules：37/37；
 - trace：7/7；

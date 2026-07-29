@@ -46,6 +46,9 @@ type TypedRuntimeMessage = {
     tabName?: string;
     url?: string;
     action?: unknown;
+    operation?: unknown;
+    key?: unknown;
+    value?: unknown;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -155,6 +158,37 @@ export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
     const handleMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (payload?: unknown) => void) => {
         if (!isRecord(message) || typeof message.type !== 'string') {return;}
         const typedMessage = message as TypedRuntimeMessage;
+
+        if (typedMessage.type === MSG.ANNOTATOR_SESSION_STORAGE) {
+            const key = typeof typedMessage.key === 'string' ? typedMessage.key : '';
+            const operation = typedMessage.operation;
+            if (!key.startsWith('rpa.entity_rules.annotator.draft:')) {
+                sendResponse({ok: false, error: 'invalid annotator draft key'});
+                return;
+            }
+            (async () => {
+                if (operation === 'get') {
+                    const stored = await chrome.storage.session.get(key);
+                    const storedValue: unknown = stored[key];
+                    sendResponse({ok: true, value: storedValue ?? null});
+                    return;
+                }
+                if (operation === 'set') {
+                    await chrome.storage.session.set({[key]: typedMessage.value});
+                    sendResponse({ok: true});
+                    return;
+                }
+                if (operation === 'remove') {
+                    await chrome.storage.session.remove(key);
+                    sendResponse({ok: true});
+                    return;
+                }
+                sendResponse({ok: false, error: 'unsupported annotator storage operation'});
+            })().catch((error: unknown) => {
+                sendResponse({ok: false, error: error instanceof Error ? error.message : String(error)});
+            });
+            return true;
+        }
 
         if (typedMessage.type === MSG.HELLO) {
             const chromeTabNo = sender.tab?.id;

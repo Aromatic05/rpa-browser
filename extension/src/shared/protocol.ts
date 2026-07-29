@@ -14,6 +14,7 @@ export const MSG = {
     REFRESH: 'RPA_REFRESH',
     ACTION: 'ACTION',
     ACTION_EVENT: 'ACTION_EVENT',
+    ANNOTATOR_SESSION_STORAGE: 'RPA_ANNOTATOR_SESSION_STORAGE',
 } as const;
 
 export type ErrorCode =

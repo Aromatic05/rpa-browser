@@ -19,6 +19,8 @@
         "src/**/*.ts"
     ],
     "exclude": [
+        "src/annotator/App.vue",
+        "src/annotator/main.ts",
         "src/**/*.test.ts",
         "src/**/__tests__/**"
     ]

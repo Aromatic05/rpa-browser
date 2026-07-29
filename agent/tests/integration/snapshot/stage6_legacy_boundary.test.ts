@@ -26,7 +26,6 @@ const forbiddenProductionTokens = [
     'ruleEntityOverlay',
     'latestSnapshot',
     'snapshotSessionStore',
-    'resolveEntityElement',
     'FinalEntityView',
     'SAME_KIND_NEST_DROP',
     'TABLE_PER_FAMILY_LIMIT',
@@ -69,6 +68,23 @@ test('Stage 6 production sources contain no V1 cache overlay or matcher contract
                     `${relative(file)} imports retired V1 module ${specifier}`,
                 );
             }
+        }
+    }
+});
+
+test('extension DOM entity resolution remains a visual projection helper, not a runtime matcher', () => {
+    const users = productionFiles()
+        .filter((file) => fs.readFileSync(file, 'utf8').includes('resolveEntityElement'))
+        .map(relative);
+    assert.deepEqual(users, [
+        'extension/src/annotator/__tests__/dom_geometry.test.ts',
+        'extension/src/annotator/state/dom_geometry.ts',
+        'extension/src/annotator/state/dom_markers.ts',
+    ]);
+    for (const file of users) {
+        const source = fs.readFileSync(path.join(repositoryDirectory, file), 'utf8');
+        for (const forbidden of ['compileEntityRuleQueryPlan', 'executeEntityRuleQueryPlan', 'executeEntityRules']) {
+            assert.equal(source.includes(forbidden), false, `${file} contains runtime matcher ${forbidden}`);
         }
     }
 });
@@ -134,14 +150,14 @@ test('Stage 6 acceptance documents match the current release evidence', () => {
 
     for (const staleClaim of [
         '610 findings', '156 errors', '454 warnings', 'Snapshot：129/129',
-        'Snapshot：135/135', '614 tests / 612 pass', '630 tests / 628 pass',
+        'Snapshot：135/135', '614 tests / 612 pass', '630 tests / 628 pass', '638 tests / 636 pass', '639 tests / 637 pass',
         'E2E：4/4', 'entity-rules              31/31',
     ]) {
         assert.equal(combined.includes(staleClaim), false, `stale acceptance claim remains: ${staleClaim}`);
     }
     for (const requiredEvidence of [
         'Snapshot：136/136',
-        '638 tests / 636 pass / 0 fail / 2 skipped',
+        '640 tests / 638 pass / 0 fail / 2 skipped',
         'E2E：5/5',
         'SnapshotV2Stage45PerformanceBaseline.json',
         'table_required_matrix_browser.test.ts',

@@ -278,9 +278,9 @@ Stage 6 静态测试禁止 viewer 再出现 V1 pipeline/import/index/overlay tok
 ## 最终验证
 
 ```text
-pnpm -C agent test:integration               638 tests / 636 pass / 0 fail / 2 skipped
+pnpm -C agent test:integration               640 tests / 638 pass / 0 fail / 2 skipped
 pnpm -C agent test:snapshot                  136/136
-pnpm -C agent test:entity-rules              37/37
+pnpm -C agent test:entity-rules              42/42
 pnpm -C agent test:trace                     7/7
 pnpm -C agent test:e2e                       5/5
 pnpm -C agent test:unit                      259 tests / 257 pass / 0 fail / 2 skipped

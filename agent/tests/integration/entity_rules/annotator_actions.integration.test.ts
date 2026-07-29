@@ -611,3 +611,100 @@ test('annotator apply rejects unknown or structurally invalid semantic payloads'
         await browser.close();
     }
 });
+
+test('legacy canvas annotator protocol is adapted to the V2 PageSession and QueryPlan runtime', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <form id="OrderForm">
+            <label for="Buyer">Buyer</label>
+            <input id="Buyer" name="buyer">
+            <button id="Save" type="submit">Save order</button>
+          </form>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const memory = createMemoryWorkflow();
+
+        const opened = await invoke(runtime, 'entity_rules.annotator.open', {
+            workspaceName: 'ws-1',
+            tabName: 'tab-1',
+            url: page.url(),
+        }, memory.workflow);
+        const openPayload = opened.reply.payload as {
+            workspaceName: string;
+            tabName: string;
+            canvasDraft: unknown;
+            visualTargetRefs: unknown[];
+        };
+        assert.equal(openPayload.workspaceName, 'ws-1');
+        assert.equal(openPayload.tabName, 'tab-1');
+        assert.equal(openPayload.canvasDraft, null);
+
+        const button = await page.locator('#Save').boundingBox();
+        assert.ok(button);
+        const picked = await invoke(runtime, 'entity_rules.annotator.pick', {
+            purpose: 'entity',
+            fingerprint: {
+                point: {x: button.x + button.width / 2, y: button.y + button.height / 2},
+                selectorCandidates: ['#Save'],
+                tagName: 'button',
+                classTokens: [],
+                rect: button,
+                ancestors: [],
+            },
+        }, memory.workflow);
+        const pickPayload = picked.reply.payload as {candidateChain: Array<{entityRef?: unknown}>};
+        assert.ok(pickPayload.candidateChain.some((candidate) => candidate.entityRef));
+
+        const entityCandidate = [...pickPayload.candidateChain].reverse()
+            .find((candidate: {entityRef?: unknown}) => candidate.entityRef) as {
+            entityRef: {kind: 'form'};
+            proposedTargets: Array<Record<string, unknown>>;
+            text?: string;
+        };
+        const scopedDraft = {
+            version: 1,
+            profileName: 'order-form',
+            page: {kind: 'form'},
+            entities: [{
+                id: 'e0',
+                source: 'region',
+                kind: 'form',
+                name: entityCandidate.text || 'Order form',
+                businessTag: 'order.form',
+                target: entityCandidate.proposedTargets[0],
+                expect: 'unique',
+                annotations: [],
+                columns: [],
+                origin: 'manual',
+            }],
+            preserved: {},
+        };
+        const recognized = await invoke(runtime, 'entity_rules.annotator.recognize', {
+            canvasDraft: scopedDraft,
+        }, memory.workflow);
+        const recognizedDraft = (recognized.reply.payload as {canvasDraft: {
+            entities: Array<{annotations: unknown[]}>;
+        }}).canvasDraft;
+        assert.ok(recognizedDraft.entities[0].annotations.length > 0);
+
+        const checked = await invoke(runtime, 'entity_rules.annotator.check', {
+            canvasDraft: recognizedDraft,
+        }, memory.workflow);
+        assert.equal((checked.reply.payload as {stale: boolean}).stale, false);
+
+        const saved = await invoke(runtime, 'entity_rules.annotator.save', {
+            canvasDraft: recognizedDraft,
+            profileName: 'order-form',
+            expectedRevision: null,
+        }, memory.workflow);
+        assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
+        assert.equal(memory.profiles.has('order-form'), true);
+    } finally {
+        await browser.close();
+    }
+});

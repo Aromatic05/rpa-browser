@@ -225,12 +225,16 @@ await log('annotator panel drives the session without DOM target recovery', asyn
     assert.deepEqual(state.draft.page, {kind: 'form', urlPattern: '/orders'});
 });
 
-await log('floating UI exposes the versioned annotator source module', async () => {
+await log('floating UI restores the original standalone annotator launcher', async () => {
     const source = fs.readFileSync(new URL('../content/floating_ui.ts', import.meta.url), 'utf8');
+    const contentSource = fs.readFileSync(new URL('../entry/content.ts', import.meta.url), 'utf8');
     const manifest = JSON.parse(fs.readFileSync(new URL('../../manifest.json', import.meta.url), 'utf8'));
     const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources || []);
-    assert.equal(source.includes("../annotator/index.js"), true);
-    assert.equal(source.includes("'Rules'"), true);
+    assert.equal(source.includes('.annotate-launch'), true);
+    assert.equal(source.includes("annotateLaunch.textContent = '标注页面'"), true);
+    assert.equal(source.includes("'Rules'"), false);
+    assert.equal(contentSource.includes("annotator/annotator.js"), true);
+    assert.equal(contentSource.includes('startAnnotator'), true);
     assert.equal(resources.includes('annotator/*.js'), true);
 });
 

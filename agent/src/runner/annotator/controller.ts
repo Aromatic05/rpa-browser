@@ -24,6 +24,7 @@ import {
     workflowProfileToAnnotatorDraft,
 } from './draft';
 import {materializeAnnotatorTarget} from './materialize';
+import {handleLegacyAnnotatorAction, isLegacyAnnotatorPayload} from './legacy';
 
 export type CreateRunnerAnnotatorControllerInput = {
     runStepsDeps: RunStepsDeps;
@@ -34,6 +35,13 @@ export const createRunnerAnnotatorController = (
 ): EntityRulesAnnotatorPort => ({
     handle: async ({action, workspace}) => {
         const payload = requirePayload(action.payload);
+        if (isLegacyAnnotatorPayload(payload)) {
+            return await handleLegacyAnnotatorAction(
+                input.runStepsDeps,
+                {action, workspace},
+                payload,
+            );
+        }
         switch (action.type) {
             case 'entity_rules.annotator.open':
                 assertAllowedKeys(payload, ['profileName', 'tabName']);

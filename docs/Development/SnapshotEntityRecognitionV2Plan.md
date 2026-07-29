@@ -29,7 +29,7 @@
 当前工程边界：
 
 - `pnpm --filter ./agent test:snapshot`：136/136 通过，包含真实 clone fixed、merged/nested/tree/virtual/loading/empty、ambiguous pagination、responsive hidden column、partial source fault、PageSession、projection 与 Stage 6 边界守卫。
-- `pnpm --filter ./agent test:entity-rules`：37/37 通过，包含真实 Element Plus/Ant Design annotator、scroll/zoom 与 check/save/reopen。
+- `pnpm --filter ./agent test:entity-rules`：42/42 通过，包含真实 Element Plus/Ant Design annotator、scroll/zoom 与 check/save/reopen。
 - `pnpm --filter ./agent typecheck:snapshot`：0 项诊断；完整 agent typecheck 通过。
 - `pnpm --filter ./agent test:trace`：7/7 通过，真实浏览器 trace integrity 使用 V2 capture/projection/content ref。
 - `pnpm --filter ./agent test:integration`：638 项，636 通过、0 失败、2 个显式性能测试跳过；两个性能门禁单独执行均通过。
@@ -1672,7 +1672,7 @@ Checkpoint 退出：
 
 - browser.snapshot、browser.query、record、checkpoint、assert、entity、annotator、check/save/runtime query 均使用 V2 PageSession/canonical indexes。顶层 Step、Checkpoint 内嵌 Step 与 task.run 均通过统一 runtime contracts 执行 resolve、entity_rules 校验、refs 和 dirty marking；DSL 生成相同普通 Step。
 - record 与 runner 共享 PageSession；`recordSnapshotCache`、1500ms TTL 和 URL 私有判鲜已删除。录制事件通过同一 dirty/navigation freshness、并发 refresh 和 semantic composition 生命周期获取 capture。
-- Snapshot：136/136；entity_rules/annotator：37/37；trace：7/7；extension typecheck 与完整测试通过。
+- Snapshot：136/136；entity_rules/annotator：42/42；trace：7/7；extension typecheck 与完整测试通过。
 - `typecheck:snapshot` 与完整 agent typecheck 均为 0 项诊断；全仓 lint 为 0 errors / 0 warnings。
 - Stage 5 状态：accepted（复审修复后重新验收）。
 
