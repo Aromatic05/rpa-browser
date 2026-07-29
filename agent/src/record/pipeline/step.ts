@@ -224,7 +224,9 @@ export const appendWorkspaceRecordingEvent = async (
             stepName: StepName;
             ts?: number;
             tabName?: string;
-        }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
+        }) => {
+            startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey });
+        },
     };
     const removeRecordedStep = (stepId: string) => {
         const list = state.recordings.get(effectiveToken) || [];
@@ -286,7 +288,7 @@ export const appendWorkspaceRecordingEvent = async (
     let provisionalClickStep: StepUnion | undefined;
     if (event.type === 'click') {
         const provisional = toStep(event);
-        if (provisional && provisional.name === 'browser.click') {
+        if (provisional?.name === 'browser.click') {
             const normalized = enrichRecordedStep(state, effectiveToken, tabName, provisional);
             normalized.meta = { ...(normalized.meta || { source: 'record' }), recordSeq: eventRecordSeq };
             const list = state.recordings.get(effectiveToken) || [];
@@ -296,8 +298,8 @@ export const appendWorkspaceRecordingEvent = async (
             recordLog('step_queued', {
                 stepId: normalized.id,
                 stepName: normalized.name,
-                ts: normalized.meta?.ts,
-                tabName: normalized.meta?.tabName || tabName,
+                ts: normalized.meta.ts,
+                tabName: normalized.meta.tabName || tabName,
                 workspaceName,
                 provisional: true,
             });
@@ -311,13 +313,13 @@ export const appendWorkspaceRecordingEvent = async (
                 cacheKey: tabScopedCacheKey,
                 workspaceName,
                 stepName: normalized.name,
-                ts: normalized.meta?.ts,
-                tabName: normalized.meta?.tabName || tabName,
+                ts: normalized.meta.ts,
+                tabName: normalized.meta.tabName || tabName,
             });
         }
     }
 
-    let currentEvent = event;
+    const currentEvent = event;
     for (let round = 0; round < 3; round += 1) {
         recordLog('record_normalizer_enter', {
             workspaceName,
@@ -333,8 +335,9 @@ export const appendWorkspaceRecordingEvent = async (
             reason: normalizedEvent.status === 'pass' ? 'pass' : undefined,
             stepName: normalizedEvent.status === 'handled' ? normalizedEvent.step.name : undefined,
             selector: currentEvent.selector,
-            valuesLength: normalizedEvent.status === 'handled' && Array.isArray((normalizedEvent.step.args as any).values)
-                ? (normalizedEvent.step.args as any).values.length
+            valuesLength: normalizedEvent.status === 'handled'
+                && normalizedEvent.step.name === 'browser.select_option'
+                ? normalizedEvent.step.args.values.length
                 : undefined,
         });
         if (normalizedEvent.status === 'pending') {
@@ -352,15 +355,15 @@ export const appendWorkspaceRecordingEvent = async (
                     {
                         ...normalizedEvent.step,
                         id: provisionalClickStep.id,
-                    } as StepUnion,
+                    },
                 );
                 merged.meta = { ...(merged.meta || { source: 'record' }), recordSeq: eventRecordSeq };
                 replaceRecordedStep(provisionalClickStep.id, merged);
                 recordLog('step_updated', {
                     stepId: merged.id,
                     stepName: merged.name,
-                    ts: merged.meta?.ts,
-                    tabName: merged.meta?.tabName || tabName,
+                    ts: merged.meta.ts,
+                    tabName: merged.meta.tabName || tabName,
                     workspaceName,
                 });
                 if (normalizedEvent.continueCurrentEvent) {
@@ -380,7 +383,7 @@ export const appendWorkspaceRecordingEvent = async (
                 {
                     ...normalizedEvent.step,
                     meta: { ...(normalizedEvent.step.meta || { source: 'record' }), recordSeq: eventRecordSeq },
-                } as StepUnion,
+                },
                 normalizedEvent.enhancementEvent,
                 hooks,
                 { workspaceName, page },
@@ -461,7 +464,9 @@ export const appendWorkspaceRecordingStep = (
                 stepName: StepName;
                 ts?: number;
                 tabName?: string;
-            }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
+            }) => {
+            startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey });
+        },
         };
         flushPendingChoiceEvents(state, effectiveToken, {
             state,
