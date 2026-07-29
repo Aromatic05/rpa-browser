@@ -158,6 +158,9 @@ const draftFromProfile = (value: unknown): AnnotatorDraft | undefined => {
     }
     return {
         profileName: profile.name.trim(),
+        page: profile.page === undefined
+            ? undefined
+            : structuredClone(profile.page) as AnnotatorDraft['page'],
         match: structuredClone(match) as AnnotatorDraft['match'],
         annotation: structuredClone(annotation) as AnnotatorDraft['annotation'],
     };

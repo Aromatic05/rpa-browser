@@ -25,7 +25,7 @@ export type AnnotatorTargetKind =
 export type AnnotatorTarget = {
     id: string;
     kind: AnnotatorTargetKind;
-    domain?: 'form' | 'table';
+    domain?: 'form' | 'table' | 'node';
     componentId?: string;
     memberId?: string;
     nodeIds: string[];
@@ -76,6 +76,7 @@ export type AnnotatorProjection = {
 };
 export type AnnotatorDraft = {
     profileName: string;
+    page?: {kind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'; urlPattern?: string};
     match: {version: 2; rules: Array<Record<string, unknown>>};
     annotation: {version: 2; bindings: Array<Record<string, unknown>>};
 };
@@ -106,7 +107,7 @@ export type AnnotatorDiagnostic = {
 };
 export type AnnotatorValidation = {
     ok: boolean;
-    domain?: 'form' | 'table';
+    domain?: 'form' | 'table' | 'node';
     diagnostics: AnnotatorDiagnostic[];
     bindingIds: string[];
     suggestionIds: string[];

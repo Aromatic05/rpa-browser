@@ -234,12 +234,13 @@ const requireDraft = (payload: Readonly<Record<string, unknown>>): AnnotatorDraf
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator check/save requires draft');
     }
     const draft = payload.draft as Record<string, unknown>;
-    assertAllowedKeys(draft, ['profileName', 'match', 'annotation']);
+    assertAllowedKeys(draft, ['profileName', 'page', 'match', 'annotation']);
     if (typeof draft.profileName !== 'string' || !draft.profileName.trim()) {
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'draft.profileName must be a non-empty string');
     }
     return {
         profileName: draft.profileName.trim(),
+        page: draft.page === undefined ? undefined : structuredClone(draft.page) as AnnotatorDraft['page'],
         match: structuredClone(draft.match) as AnnotatorDraft['match'],
         annotation: structuredClone(draft.annotation) as AnnotatorDraft['annotation'],
     };

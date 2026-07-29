@@ -1,3 +1,4 @@
+import type {ControlSnapshot} from '../../components/control/model/contracts';
 import type { FormSnapshot } from '../../components/form/model/contracts';
 import type { TableSnapshot } from '../../components/table/model/contracts';
 import type {
@@ -5,7 +6,8 @@ import type {
     ObservationNodeId,
 } from '../../observation/model/contracts';
 
-export type EntityRuleQueryDomain = 'form' | 'table';
+export type EntityRuleQueryDomain = 'form' | 'table' | 'node';
+export type EntityRuleQueryEntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 export type EntityRuleQuerySource = 'region' | 'group' | 'node';
 export type EntityRuleQueryExpect = 'unique' | 'one_or_more';
 export type EntityRuleQueryInputRule = {
@@ -24,7 +26,7 @@ export type EntityRuleQueryKeyHint = {
 };
 
 export type EntityRuleQueryMatch = {
-    kind?: EntityRuleQueryDomain;
+    kind?: EntityRuleQueryEntityKind;
     nameContains?: string;
     idEquals?: string;
     nameEquals?: string;
@@ -67,6 +69,7 @@ export type QueryPlanCompileResult =
     | { ok: false; diagnostics: readonly QueryPlanDiagnostic[] };
 
 export type QueryPlanSnapshots = {
+    control?: ControlSnapshot;
     form?: FormSnapshot;
     table?: TableSnapshot;
 };

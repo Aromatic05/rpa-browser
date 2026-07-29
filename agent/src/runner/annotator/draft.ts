@@ -33,6 +33,7 @@ export const evaluateAnnotatorDraft = (
         profile = validateWorkflowEntityRules({
             kind: 'entity_rules',
             name: draft.profileName,
+            page: draft.page,
             match: draft.match,
             annotation: draft.annotation,
         });
@@ -42,6 +43,7 @@ export const evaluateAnnotatorDraft = (
 
     const compiled = compileEntityRuleQueryPlan({
         profileName: profile.name,
+        domain: profileDomain(profile),
         rules: profile.match.rules,
     });
     if (!compiled.ok) {
@@ -58,7 +60,9 @@ export const evaluateAnnotatorDraft = (
 
     const snapshots = compiled.plan.domain === 'form'
         ? {form: entry.capture.form}
-        : {table: entry.capture.table};
+        : compiled.plan.domain === 'table'
+            ? {table: entry.capture.table}
+            : {control: entry.capture.control};
     const execution = executeEntityRuleQueryPlan(compiled.plan, snapshots, {purpose});
     const semanticLayer = buildSemanticLayer({
         execution,
@@ -107,6 +111,7 @@ export const workflowProfileToAnnotatorDraft = (
     profile: WorkflowEntityRules,
 ): AnnotatorDraft => ({
     profileName: profile.name,
+    page: profile.page ? structuredClone(profile.page) : undefined,
     match: structuredClone(profile.match),
     annotation: structuredClone(profile.annotation),
 });
@@ -156,4 +161,12 @@ const errorMessage = (error: unknown): string => error instanceof Error ? error.
 export type AnnotatorSemanticProjection = {
     bindings: SemanticBindings;
     suggestions: SemanticSuggestions;
+};
+
+const profileDomain = (profile: WorkflowEntityRules): 'form' | 'table' | 'node' => {
+    if (profile.page?.kind === 'form' || profile.page?.kind === 'table') {return profile.page.kind;}
+    if (profile.page) {return 'node';}
+    if (profile.match.rules.some((rule) => rule.match.kind === 'table')) {return 'table';}
+    if (profile.match.rules.some((rule) => rule.match.kind === 'form')) {return 'form';}
+    return 'node';
 };

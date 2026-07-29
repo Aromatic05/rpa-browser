@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import type {RunStepsDeps} from '../../../../src/runner/run_steps';
 import {executeBrowserEntity} from '../../../../src/runner/steps/executors/entity';
@@ -133,4 +134,44 @@ test('browser.entity rejects unknown canonical node ids', async () => {
     }), deps, 'ws-1');
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+});
+
+
+test('browser.entity exposes explicit generic structures and canonical list/KV members', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        await page.setContent(`
+          <dialog id="ConfirmDialog" open aria-label="Confirm"></dialog>
+          <ul id="TaskList" aria-label="Tasks"><li id="TaskA">A</li><li id="TaskB">B</li></ul>
+          <section id="Summary" role="region" aria-label="Summary">Summary content</section>
+          <div id="Actions" role="toolbar" aria-label="Actions"><button>Save</button></div>
+          <dl id="Details"><dt id="NameKey">Name</dt><dd>Alice</dd><dt id="StatusKey">Status</dt><dd>Open</dd></dl>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {
+            workspaceName: 'ws-1',
+            tabName: 'tab-1',
+            page,
+        });
+        const listed = await executeBrowserEntity(entityStep('generic-list', {op: 'list'}), deps, 'ws-1');
+        assert.equal(listed.ok, true);
+        if (!listed.ok) {return;}
+        const entities = (listed.data as {entities: Array<{
+            kind: string;
+            itemNodeIds?: string[];
+            keySlot?: number;
+        }>}).entities;
+        assert.deepEqual(
+            entities.map((entity) => entity.kind).sort(),
+            ['dialog', 'kv', 'list', 'panel', 'toolbar'],
+        );
+        const list = entities.find((entity) => entity.kind === 'list');
+        const kv = entities.find((entity) => entity.kind === 'kv');
+        assert.equal(list?.itemNodeIds?.length, 2);
+        assert.equal(list?.keySlot, 0);
+        assert.equal(kv?.itemNodeIds?.length, 2);
+        assert.equal(kv?.keySlot, 0);
+    } finally {
+        await browser.close();
+    }
 });

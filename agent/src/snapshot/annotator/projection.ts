@@ -155,9 +155,7 @@ export const buildAnnotatorProjection = (
             addTarget({
                 id: `semantic:${binding.id}`,
                 kind: 'semantic-binding',
-                domain: binding.domain === 'form' || binding.domain === 'table'
-                    ? binding.domain
-                    : undefined,
+                domain: binding.domain,
                 componentId: binding.target.componentIds[0],
                 memberId: binding.id,
                 nodeIds: [...binding.target.nodeIds],

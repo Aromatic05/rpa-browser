@@ -122,11 +122,19 @@ test('workflow entity_rules artifacts persist through the workflow facade', () =
     const workflowName = `step-rules-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     try {
         const workflow = createWorkflowOnFs(workflowName);
-        const saved = workflow.save(profile('orders', 'table'));
+        const saved = workflow.save({
+            ...profile('orders', 'table'),
+            page: {kind: 'table', urlPattern: '/orders'},
+        });
 
         assert.equal(saved.name, 'orders');
         assert.deepEqual(workflow.list({ kind: 'entity_rules' }).map((item) => item.name), ['orders']);
-        assert.equal(workflow.get('orders', { kind: 'entity_rules' })?.name, 'orders');
+        const loaded = workflow.get('orders', {kind: 'entity_rules'});
+        assert.equal(loaded?.name, 'orders');
+        assert.equal(loaded?.kind, 'entity_rules');
+        if (loaded?.kind === 'entity_rules') {
+            assert.deepEqual(loaded.page, {kind: 'table', urlPattern: '/orders'});
+        }
         assert.equal(createWorkspaceEntityRulesProvider(workflow).getProfile('orders')?.name, 'orders');
     } finally {
         deleteWorkflowFromFs(workflowName);
@@ -156,15 +164,23 @@ test('workspace entity_rules actions persist and expose profiles through the run
             workspace,
             workspaceRegistry: {} as any,
         });
-        const rules = profile('orders', 'table');
+        const rules = {
+            ...profile('orders', 'table'),
+            page: {kind: 'table' as const, urlPattern: '/orders'},
+        };
 
         const saved = await invoke('entity_rules.save', {
             profileName: rules.name,
+            page: rules.page,
             match: rules.match,
             annotation: rules.annotation,
         });
         assert.equal(saved.reply.type, 'entity_rules.save.result');
         assert.equal((saved.reply.payload as { profileName: string }).profileName, 'orders');
+        assert.deepEqual(
+            (saved.reply.payload as {profile: WorkflowEntityRules}).profile.page,
+            {kind: 'table', urlPattern: '/orders'},
+        );
 
         const listed = await invoke('entity_rules.list');
         assert.deepEqual(

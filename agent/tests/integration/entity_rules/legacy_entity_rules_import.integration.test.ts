@@ -49,6 +49,7 @@ test('legacy entity_rules import into the V2 artifact and compile through the si
         legacyMatch.entities,
     );
     assert.deepEqual(imported.annotation.bindings, legacyAnnotation.annotations);
+    assert.deepEqual(imported.page, {kind: 'table', urlPattern: '/orders$'});
     assert.equal(Object.prototype.hasOwnProperty.call(imported.match, 'page'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(imported.annotation, 'page'), false);
 
@@ -101,4 +102,35 @@ test('V2 publication validation remains strict and does not accept legacy artifa
         match: legacyMatch,
         annotation: legacyAnnotation,
     }), /version=2/);
+});
+
+
+test('legacy dialog profiles preserve page applicability and compile to the generic node domain', () => {
+    const imported = importWorkflowEntityRules({
+        kind: 'entity_rules',
+        name: 'legacy-dialog',
+        match: {
+            version: 1,
+            page: {kind: 'dialog', urlPattern: '/orders'},
+            entities: [{
+                ruleId: 'confirm-dialog',
+                source: 'node',
+                expect: 'unique',
+                match: {kind: 'dialog', roleEquals: 'dialog', nameContains: 'Confirm'},
+            }],
+        },
+        annotation: {
+            version: 1,
+            page: {kind: 'dialog'},
+            annotations: [{ruleId: 'confirm-dialog', businessTag: 'order.confirm'}],
+        },
+    });
+    assert.deepEqual(imported.page, {kind: 'dialog', urlPattern: '/orders'});
+    const compiled = compileEntityRuleQueryPlan({
+        profileName: imported.name,
+        domain: 'node',
+        rules: imported.match.rules,
+    });
+    assert.equal(compiled.ok, true);
+    if (compiled.ok) {assert.equal(compiled.plan.domain, 'node');}
 });

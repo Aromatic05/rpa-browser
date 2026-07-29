@@ -9,6 +9,13 @@ import {
 } from './fs';
 import type { WorkflowCodec } from './store';
 
+export type EntityRulePageKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+
+export type EntityRulePageApplicability = {
+    kind: EntityRulePageKind;
+    urlPattern?: string;
+};
+
 export type EntityRuleMatchRecord = {
     ruleId: string;
     source: 'region' | 'group' | 'node';
@@ -35,12 +42,14 @@ export type EntityRuleAnnotationArtifact = {
 export type WorkflowEntityRules = {
     kind: 'entity_rules';
     name: string;
+    page?: EntityRulePageApplicability;
     match: EntityRuleMatchArtifact;
     annotation: EntityRuleAnnotationArtifact;
 };
 
 export type EntityRuleBundle = {
     id: string;
+    page?: EntityRulePageApplicability;
     match: EntityRuleMatchArtifact;
     annotation: EntityRuleAnnotationArtifact;
 };
@@ -55,11 +64,13 @@ export const validateWorkflowEntityRules = (value: unknown): WorkflowEntityRules
         throw invalidArtifact('artifact kind must be entity_rules');
     }
     const name = requireProfileName(value.name);
+    const page = value.page === undefined ? undefined : validatePageApplicability(value.page, 'page');
     const match = validateMatchArtifact(value.match);
     const annotation = validateAnnotationArtifact(value.annotation, new Set(match.rules.map((rule) => rule.ruleId)));
     return {
         kind: 'entity_rules',
         name,
+        page,
         match,
         annotation,
     };
@@ -76,8 +87,10 @@ export const importWorkflowEntityRules = (value: unknown): WorkflowEntityRules =
     if (!isLegacyMatchArtifact(value.match) || !isLegacyAnnotationArtifact(value.annotation)) {
         throw invalidArtifact('legacy artifacts must contain match.version=1 entities[] and annotation.version=1 annotations[]');
     }
-    const matchPageKind = requireLegacyPageKind(value.match.page, 'match.page');
-    const annotationPageKind = requireLegacyPageKind(value.annotation.page, 'annotation.page');
+    const matchPage = validatePageApplicability(value.match.page, 'match.page');
+    const annotationPage = validatePageApplicability(value.annotation.page, 'annotation.page');
+    const matchPageKind = matchPage.kind;
+    const annotationPageKind = annotationPage.kind;
     if (matchPageKind !== annotationPageKind) {
         throw invalidArtifact(`legacy page kind mismatch: ${matchPageKind} != ${annotationPageKind}`);
     }
@@ -85,10 +98,10 @@ export const importWorkflowEntityRules = (value: unknown): WorkflowEntityRules =
     const match = validateMatchArtifact({version: 2, rules: value.match.entities});
     assertLegacyPageKindPreserved(match.rules, matchPageKind);
     const annotation = validateAnnotationArtifact(
-        {version: 2, bindings: value.annotation.annotations},
+        {version: 2, bindings: normalizeLegacyAnnotations(value.annotation.annotations, match.rules)},
         new Set(match.rules.map((rule) => rule.ruleId)),
     );
-    return {kind: 'entity_rules', name, match, annotation};
+    return {kind: 'entity_rules', name, page: matchPage, match, annotation};
 };
 
 export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<WorkflowEntityRules> => ({
@@ -105,9 +118,16 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
         const profileName = requireProfileName(name);
         const directory = entityRuleDirectory(workflowName, profileName);
         try {
+            let page: unknown;
+            try {
+                page = readYamlFile(path.join(directory, 'page.yaml'));
+            } catch {
+                page = undefined;
+            }
             return importWorkflowEntityRules({
                 kind: 'entity_rules',
                 name: profileName,
+                page,
                 match: readYamlFile(path.join(directory, 'match.yaml')),
                 annotation: readYamlFile(path.join(directory, 'annotation.yaml')),
             });
@@ -121,6 +141,11 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
     save: (value) => {
         const validated = validateWorkflowEntityRules(value);
         const directory = entityRuleDirectory(workflowName, validated.name);
+        if (validated.page) {
+            writeYamlFile(path.join(directory, 'page.yaml'), validated.page);
+        } else {
+            removePath(path.join(directory, 'page.yaml'));
+        }
         writeYamlFile(path.join(directory, 'match.yaml'), validated.match);
         writeYamlFile(path.join(directory, 'annotation.yaml'), validated.annotation);
         return validated;
@@ -135,10 +160,74 @@ export const toEntityRuleBundle = (value: WorkflowEntityRules): EntityRuleBundle
     const validated = validateWorkflowEntityRules(value);
     return {
         id: validated.name,
+        page: validated.page ? structuredClone(validated.page) : undefined,
         match: structuredClone(validated.match),
         annotation: structuredClone(validated.annotation),
     };
 };
+
+
+
+const normalizeLegacyAnnotations = (
+    annotations: unknown[],
+    rules: readonly EntityRuleMatchRecord[],
+): Array<Record<string, unknown>> => {
+    const byRuleId = new Map<string, Record<string, unknown>>();
+    for (const value of annotations) {
+        if (!isRecord(value) || typeof value.ruleId !== 'string') {continue;}
+        const normalized = structuredClone(value);
+        if (typeof normalized.businessName === 'string' && normalized.displayName === undefined) {
+            normalized.displayName = normalized.businessName;
+        }
+        byRuleId.set(value.ruleId, normalized);
+    }
+    const ruleById = new Map(rules.map((rule) => [rule.ruleId, rule]));
+    const merge = (ruleId: unknown, values: Record<string, unknown>): void => {
+        if (typeof ruleId !== 'string' || !ruleById.has(ruleId)) {return;}
+        byRuleId.set(ruleId, {...(byRuleId.get(ruleId) ?? {ruleId}), ...values, ruleId});
+    };
+    for (const root of [...byRuleId.values()]) {
+        for (const field of arrayRecords(root.fields)) {
+            merge(field.controlRuleId, {
+                fieldKey: field.fieldKey,
+                fieldName: field.name,
+                controlKind: field.kind,
+                optionSource: field.optionSource,
+            });
+            if (field.labelRuleId) {merge(field.labelRuleId, {fieldKey: field.fieldKey, fieldRole: 'label'});}
+        }
+        for (const action of arrayRecords(root.actions)) {
+            merge(action.nodeRuleId, {actionIntent: action.actionIntent, actionText: action.text});
+        }
+        const pagination = isRecord(root.pagination) ? root.pagination : undefined;
+        const nextAction = pagination && isRecord(pagination.nextAction) ? pagination.nextAction : undefined;
+        if (nextAction) {
+            merge(nextAction.nodeRuleId, {
+                actionIntent: nextAction.actionIntent,
+                paginationRole: 'next',
+            });
+            if (nextAction.disabledRuleId) {
+                merge(nextAction.disabledRuleId, {paginationRole: 'next-disabled'});
+            }
+        }
+        for (const column of arrayRecords(root.columns)) {
+            for (const action of arrayRecords(column.actions)) {
+                const existing = [...byRuleId.values()].find((binding) => binding.actionIntent === action.actionIntent);
+                if (existing) {continue;}
+                const matchedRule = rules.find((rule) => rule.within === root.ruleId
+                    && typeof action.text === 'string'
+                    && rule.match.textContains === action.text);
+                if (matchedRule) {
+                    merge(matchedRule.ruleId, {actionIntent: action.actionIntent, actionText: action.text});
+                }
+            }
+        }
+    }
+    return [...byRuleId.values()];
+};
+
+const arrayRecords = (value: unknown): Array<Record<string, unknown>> =>
+    Array.isArray(value) ? value.filter(isRecord) : [];
 
 const validateMatchArtifact = (value: unknown): EntityRuleMatchArtifact => {
     if (!isRecord(value) || value.version !== 2 || !Array.isArray(value.rules)) {
@@ -224,20 +313,35 @@ const isLegacyAnnotationArtifact = (value: unknown): value is {
     annotations: unknown[];
 } => isRecord(value) && value.version === 1 && Array.isArray(value.annotations);
 
-const requireLegacyPageKind = (value: unknown, field: string): 'form' | 'table' => {
-    if (!isRecord(value) || (value.kind !== 'form' && value.kind !== 'table')) {
-        throw invalidArtifact(`${field}.kind must be form or table`);
+
+
+
+const ENTITY_RULE_PAGE_KINDS = new Set<EntityRulePageKind>([
+    'form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv',
+]);
+
+const validatePageApplicability = (value: unknown, field: string): EntityRulePageApplicability => {
+    if (!isRecord(value) || typeof value.kind !== 'string'
+        || !ENTITY_RULE_PAGE_KINDS.has(value.kind as EntityRulePageKind)) {
+        throw invalidArtifact(`${field}.kind is invalid`);
     }
-    return value.kind;
+    const urlPattern = value.urlPattern === undefined
+        ? undefined
+        : requireNonEmptyString(value.urlPattern, `${field}.urlPattern`);
+    if (urlPattern) {
+        try {new RegExp(urlPattern);}
+        catch {throw invalidArtifact(`${field}.urlPattern must be a valid regular expression`);}
+    }
+    return {kind: value.kind as EntityRulePageKind, urlPattern};
 };
 
 const assertLegacyPageKindPreserved = (
     rules: readonly EntityRuleMatchRecord[],
-    pageKind: 'form' | 'table',
+    pageKind: EntityRulePageKind,
 ): void => {
     const explicitDomains = new Set(rules
         .map((rule) => rule.match.kind)
-        .filter((kind): kind is 'form' | 'table' => kind === 'form' || kind === 'table'));
+        .filter((kind): kind is EntityRulePageKind => ENTITY_RULE_PAGE_KINDS.has(kind as EntityRulePageKind)));
     if (explicitDomains.size !== 1 || !explicitDomains.has(pageKind)) {
         throw invalidArtifact(`legacy import cannot preserve ${pageKind} page kind without a matching V2 root rule`);
     }

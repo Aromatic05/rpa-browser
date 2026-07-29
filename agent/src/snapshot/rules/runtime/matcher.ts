@@ -3,6 +3,7 @@ import type {
     EntityRuleAnnotationBinding,
     WorkflowEntityRules,
 } from '../../../workflow';
+import type {ControlSnapshot} from '../../components/control/model/contracts';
 import type { FormSnapshot } from '../../components/form/model/contracts';
 import type { TableSnapshot } from '../../components/table/model/contracts';
 import type { AnalysisDiagnostic } from '../../observation/model/contracts';
@@ -27,6 +28,7 @@ import { resolveStepEntityRulesExecution } from './step_control';
 export type EntityRuleProfileDomain = EntityRuleQueryDomain;
 
 export type EntityRuleComponentSnapshots = {
+    control?: ControlSnapshot;
     form?: FormSnapshot;
     table?: TableSnapshot;
 };
@@ -60,6 +62,7 @@ export type ExecuteEntityRulesInput = {
     config: EntityRuleConfig;
     provider?: WorkspaceEntityRulesProvider | null;
     snapshots: EntityRuleComponentSnapshots;
+    pageUrl?: string;
 };
 
 export const executeEntityRules = (input: ExecuteEntityRulesInput): EntityRulesExecutionResult => {
@@ -101,10 +104,14 @@ export const executeEntityRules = (input: ExecuteEntityRulesInput): EntityRulesE
         });
     }
 
+    const applicableProfiles = resolution.profiles.filter((profileName) => {
+        const profile = provider.getProfile(profileName);
+        return profile !== null && profileAppliesToUrl(profile, input.pageUrl);
+    });
     const profiles: Record<string, EntityRuleProfileMatchResult> = {};
     const diagnostics: AnalysisDiagnostic[] = [];
     let invalid = false;
-    for (const profileName of resolution.profiles) {
+    for (const profileName of applicableProfiles) {
         const profile = provider.getProfile(profileName);
         if (!profile) {
             invalid = true;
@@ -123,7 +130,7 @@ export const executeEntityRules = (input: ExecuteEntityRulesInput): EntityRulesE
     return deepFreeze({
         status: invalid ? 'invalid' : 'ready',
         selection: resolution.selection,
-        selectedProfiles: resolution.profiles,
+        selectedProfiles: applicableProfiles,
         strict: resolution.strict,
         profiles,
         diagnostics,
@@ -137,6 +144,7 @@ const executeEntityRuleProfile = (
 ): { result: EntityRuleProfileMatchResult; invalid: boolean } => {
     const compiled = compileEntityRuleQueryPlan({
         profileName: profile.name,
+        domain: inferProfileDomain(profile),
         rules: profile.match.rules,
     });
     if (!compiled.ok) {
@@ -166,7 +174,9 @@ const executeEntityRuleProfile = (
         annotations: profile.annotation.bindings.map(toSemanticAnnotation),
         snapshots: compiled.plan.domain === 'form'
             ? {form: snapshots.form}
-            : {table: snapshots.table},
+            : compiled.plan.domain === 'table'
+                ? {table: snapshots.table}
+                : {control: snapshots.control},
     });
     const snapshotMissing = execution.diagnostics.some((diagnostic) => diagnostic.code === 'query-plan.snapshot.missing');
     const semanticInvalid = Object.values(semanticLayer.bindings.byId).some((binding) =>
@@ -189,8 +199,20 @@ const executeEntityRuleProfile = (
     };
 };
 
-const inferProfileDomain = (profile: WorkflowEntityRules): EntityRuleProfileDomain =>
-    profile.match.rules.some((rule) => rule.match.kind === 'table') ? 'table' : 'form';
+const inferProfileDomain = (profile: WorkflowEntityRules): EntityRuleProfileDomain => {
+    if (profile.page?.kind === 'form' || profile.page?.kind === 'table') {return profile.page.kind;}
+    if (profile.page) {return 'node';}
+    if (profile.match.rules.some((rule) => rule.match.kind === 'table')) {return 'table';}
+    if (profile.match.rules.some((rule) => rule.match.kind === 'form')) {return 'form';}
+    return 'node';
+};
+
+const profileAppliesToUrl = (profile: WorkflowEntityRules, pageUrl: string | undefined): boolean => {
+    const pattern = profile.page?.urlPattern;
+    if (!pattern) {return true;}
+    if (!pageUrl) {return false;}
+    return new RegExp(pattern).test(pageUrl);
+};
 
 const toSemanticAnnotation = (annotation: EntityRuleAnnotationBinding): SemanticAnnotationRecord =>
     structuredClone(annotation);

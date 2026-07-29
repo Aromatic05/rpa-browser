@@ -10,10 +10,12 @@ import {
     buildTableSnapshot,
     executeEntityRules,
     type RawCapturedNode,
+    PageSnapshotSessionStore,
     type RawPageCapture,
 } from '../../../src/snapshot';
 import type { EntityRuleConfig } from '../../../src/config';
-import type { Workflow, WorkflowEntityRules } from '../../../src/workflow';
+import {importWorkflowEntityRules, type Workflow, type WorkflowEntityRules} from '../../../src/workflow';
+import {queryPageSessionBusinessEntity, resolvePageSessionBusinessTarget} from '../../../src/runner/session/entity_view';
 import { createEntityRulesRuntime, createWorkspaceEntityRulesProvider } from '../../../src/snapshot/rules/runtime';
 
 const config: EntityRuleConfig = {
@@ -62,8 +64,8 @@ const buildBase = (raw: RawPageCapture) => {
     const observation = buildPageObservation(raw);
     const relations = buildRelationIndex(observation);
     const locators = buildLocatorIndex(observation);
-    const controls = buildControlSnapshot({ observation, relations, locators }).controls;
-    return { observation, relations, locators, controls };
+    const control = buildControlSnapshot({ observation, relations, locators });
+    return { observation, relations, locators, controls: control.controls, control };
 };
 
 const formSnapshot = () => {
@@ -323,4 +325,297 @@ test('disabled workspace runtime returns without touching the browser page', asy
     assert.equal(result.status, 'disabled');
     assert.equal(result.ok, true);
     assert.deepEqual(result.selectedProfiles, []);
+});
+
+
+test('auto selection filters profiles by preserved page URL applicability', () => {
+    const orders = {
+        ...profile('orders-url', [
+            {ruleId: 'orders-root', source: 'region', expect: 'unique', match: {kind: 'table'}},
+        ], [{ruleId: 'orders-root', businessTag: 'orders'}]),
+        page: {kind: 'table' as const, urlPattern: '/orders(?:\\?|$)'},
+    };
+    const users = {
+        ...profile('users-url', [
+            {ruleId: 'users-root', source: 'region', expect: 'unique', match: {kind: 'table'}},
+        ], [{ruleId: 'users-root', businessTag: 'users'}]),
+        page: {kind: 'table' as const, urlPattern: '/users(?:\\?|$)'},
+    };
+    const provider = createWorkspaceEntityRulesProvider(workflowWithProfiles(orders, users));
+    const table = tableSnapshot();
+    const result = executeEntityRules({
+        control: {selection: 'auto', strict: true},
+        config,
+        provider,
+        pageUrl: 'https://example.test/orders?page=1',
+        snapshots: {table},
+    });
+    assert.deepEqual(result.selectedProfiles, ['orders-url']);
+    assert.deepEqual(Object.keys(result.profiles), ['orders-url']);
+});
+
+test('generic dialog profiles execute against canonical observation nodes', () => {
+    const base = buildBase(capture('entity-rules-dialog', [
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['dialog']),
+        node('dialog', 'div', 'body', ['confirm'], {role: 'dialog', 'aria-label': 'Confirm order'}),
+        node('confirm', 'button', 'dialog', [], {id: 'ConfirmOrder'}, 'Confirm'),
+    ]));
+    const rules: WorkflowEntityRules = {
+        ...profile('confirm-dialog', [
+            {
+                ruleId: 'dialog-root',
+                source: 'node',
+                expect: 'unique',
+                match: {kind: 'dialog', roleEquals: 'dialog', nameContains: 'Confirm order'},
+            },
+            {
+                ruleId: 'confirm-action',
+                source: 'node',
+                expect: 'unique',
+                within: 'dialog-root',
+                match: {idEquals: 'ConfirmOrder'},
+            },
+        ], [
+            {ruleId: 'dialog-root', businessTag: 'order.confirm', entityKind: 'dialog'},
+            {ruleId: 'confirm-action', actionIntent: 'confirm'},
+        ]),
+        page: {kind: 'dialog', urlPattern: '/orders'},
+    };
+    const provider = createWorkspaceEntityRulesProvider(workflowWithProfiles(rules));
+    const result = executeEntityRules({
+        control: explicit(['confirm-dialog']),
+        config,
+        provider,
+        pageUrl: 'https://example.test/orders',
+        snapshots: {control: base.control},
+    });
+    assert.equal(result.status, 'ready');
+    assert.equal(result.ok, true);
+    assert.equal(result.profiles['confirm-dialog'].domain, 'node');
+    assert.deepEqual(
+        result.profiles['confirm-dialog'].bindings['dialog-root'].matchedNodeIds,
+        [base.observation.captureIdToNodeId.dialog],
+    );
+    assert.equal(
+        result.profiles['confirm-dialog'].semanticBindings.nodes[base.observation.captureIdToNodeId.dialog]?.[0]
+            ?.annotation.businessTag,
+        'order.confirm',
+    );
+});
+
+
+test('legacy form fields and actions remain executable after V2 import', async () => {
+    const imported = importWorkflowEntityRules({
+        kind: 'entity_rules',
+        name: 'legacy-form-runtime',
+        match: {
+            version: 1,
+            page: {kind: 'form', urlPattern: '/orders'},
+            entities: [
+                {ruleId: 'form-root', source: 'region', expect: 'unique', match: {kind: 'form', idEquals: 'OrderForm'}},
+                {ruleId: 'buyer-control', source: 'node', expect: 'unique', within: 'form-root', match: {idEquals: 'Buyer'}},
+                {ruleId: 'submit-control', source: 'node', expect: 'unique', within: 'form-root', match: {classContains: 'ant-btn'}},
+            ],
+        },
+        annotation: {
+            version: 1,
+            page: {kind: 'form'},
+            annotations: [{
+                ruleId: 'form-root',
+                businessTag: 'order.form.legacy',
+                businessName: 'Legacy order form',
+                fields: [{fieldKey: 'buyer', name: 'Buyer', kind: 'input', controlRuleId: 'buyer-control'}],
+                actions: [{actionIntent: 'submit', text: 'Save order', nodeRuleId: 'submit-control'}],
+            }],
+        },
+    });
+    const provider = createWorkspaceEntityRulesProvider(workflowWithProfiles(imported));
+    const form = formSnapshot();
+    const control = {
+        observation: form.observation,
+        relations: form.relations,
+        locators: form.locators,
+        controls: form.controls,
+    };
+    const table = buildTableSnapshot(control);
+    const entityRules = executeEntityRules({
+        control: explicit([imported.name]),
+        config,
+        provider,
+        pageUrl: 'https://example.test/orders',
+        snapshots: {control, form, table},
+    });
+    assert.equal(entityRules.ok, true, JSON.stringify(entityRules.diagnostics));
+    const store = new PageSnapshotSessionStore<object>();
+    const entry = await store.ensureFresh({
+        pageKey: {},
+        pageUrl: 'https://example.test/orders',
+        capture: async () => ({control, form, table, entityRules}),
+    });
+    const fields = queryPageSessionBusinessEntity(entry, 'order.form.legacy', 'form.fields');
+    assert.equal(fields.ok, true);
+    if (fields.ok) {
+        assert.equal((fields.data.value as Array<{fieldKey: string}>)[0]?.fieldKey, 'buyer');
+    }
+    const buyer = resolvePageSessionBusinessTarget(entry, 'order.form.legacy', {
+        kind: 'form.field',
+        fieldKey: 'buyer',
+    });
+    assert.equal(buyer.ok, true);
+    if (buyer.ok) {assert.equal(buyer.data.nodeId, form.observation.captureIdToNodeId.input);}
+    const submit = resolvePageSessionBusinessTarget(entry, 'order.form.legacy', {
+        kind: 'form.action',
+        actionIntent: 'submit',
+    });
+    assert.equal(submit.ok, true);
+    if (submit.ok) {assert.equal(submit.data.nodeId, form.observation.captureIdToNodeId.submit);}
+});
+
+
+test('all V1 generic entity kinds execute through the canonical node domain', () => {
+    const base = buildBase(capture('entity-rules-generic-kinds', [
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['dialog', 'list', 'panel', 'toolbar', 'kv']),
+        node('dialog', 'dialog', 'body', [], {'aria-label': 'Confirm'}),
+        node('list', 'ul', 'body', [], {role: 'list', 'aria-label': 'Tasks'}),
+        node('panel', 'section', 'body', [], {role: 'region', 'aria-label': 'Summary'}),
+        node('toolbar', 'div', 'body', [], {role: 'toolbar', 'aria-label': 'Actions'}),
+        node('kv', 'dl', 'body', [], {id: 'Details'}),
+    ]));
+    const kinds = [
+        ['dialog', 'dialog', 'Confirm'],
+        ['list', 'list', 'Tasks'],
+        ['panel', 'region', 'Summary'],
+        ['toolbar', 'toolbar', 'Actions'],
+        ['kv', undefined, undefined],
+    ] as const;
+    for (const [kind, roleEquals, nameContains] of kinds) {
+        const match: Record<string, unknown> = {kind};
+        if (roleEquals) {match.roleEquals = roleEquals;}
+        if (nameContains) {match.nameContains = nameContains;}
+        if (kind === 'kv') {match.idEquals = 'Details';}
+        const rules: WorkflowEntityRules = {
+            kind: 'entity_rules',
+            name: `generic-${kind}`,
+            page: {kind, urlPattern: '/generic'},
+            match: {
+                version: 2,
+                rules: [{ruleId: `${kind}-root`, source: 'node', expect: 'unique', match}],
+            },
+            annotation: {
+                version: 2,
+                bindings: [{ruleId: `${kind}-root`, businessTag: `generic.${kind}`, entityKind: kind}],
+            },
+        };
+        const provider = createWorkspaceEntityRulesProvider(workflowWithProfiles(rules));
+        const result = executeEntityRules({
+            control: explicit([rules.name]),
+            config,
+            provider,
+            pageUrl: 'https://example.test/generic',
+            snapshots: {control: base.control},
+        });
+        assert.equal(result.ok, true, `${kind}: ${JSON.stringify(result.diagnostics)}`);
+        assert.equal(result.profiles[rules.name].domain, 'node');
+        assert.deepEqual(
+            result.profiles[rules.name].bindings[`${kind}-root`].matchedNodeIds,
+            [base.observation.captureIdToNodeId[kind]],
+        );
+    }
+});
+
+test('legacy table metadata, row actions and explicit pagination remain executable after V2 import', async () => {
+    const base = buildBase(capture('entity-rules-legacy-table', [
+        node('html', 'html', undefined, ['body']),
+        node('body', 'body', 'html', ['table', 'next']),
+        node('table', 'table', 'body', ['thead', 'tbody'], {id: 'LegacyOrders'}),
+        node('thead', 'thead', 'table', ['head-row']),
+        node('head-row', 'tr', 'thead', ['head-order', 'head-action']),
+        node('head-order', 'th', 'head-row', [], {}, '订单编号'),
+        node('head-action', 'th', 'head-row', [], {}, '操作'),
+        node('tbody', 'tbody', 'table', ['row']),
+        node('row', 'tr', 'tbody', ['order-cell', 'action-cell']),
+        node('order-cell', 'td', 'row', [], {}, 'A-1'),
+        node('action-cell', 'td', 'row', ['approve']),
+        node('approve', 'button', 'action-cell', [], {id: 'ApproveA1'}, '审核'),
+        node('next', 'button', 'body', [], {id: 'NextLegacy'}, '下一页'),
+    ]));
+    const form = buildFormSnapshot(base);
+    const table = buildTableSnapshot(base);
+    const imported = importWorkflowEntityRules({
+        kind: 'entity_rules',
+        name: 'legacy-table-runtime',
+        match: {
+            version: 1,
+            page: {kind: 'table', urlPattern: '/orders'},
+            entities: [
+                {ruleId: 'table-root', source: 'region', expect: 'unique', match: {kind: 'table', idEquals: 'LegacyOrders'}},
+                {ruleId: 'approve-action', source: 'node', expect: 'unique', within: 'table-root', match: {idEquals: 'ApproveA1'}},
+                {ruleId: 'next-action', source: 'node', expect: 'unique', match: {idEquals: 'NextLegacy'}},
+            ],
+        },
+        annotation: {
+            version: 1,
+            page: {kind: 'table'},
+            annotations: [{
+                ruleId: 'table-root',
+                businessTag: 'order.table.legacy',
+                businessName: 'Legacy orders',
+                primaryKey: {fieldKey: 'orderNo', columns: ['订单编号']},
+                columns: [
+                    {fieldKey: 'orderNo', name: '订单编号', kind: 'text'},
+                    {
+                        fieldKey: 'operation',
+                        name: '操作',
+                        kind: 'action_column',
+                        actions: [{actionIntent: 'approve', text: '审核'}],
+                    },
+                ],
+                pagination: {
+                    nextAction: {actionIntent: 'next_page', nodeRuleId: 'next-action'},
+                },
+            }],
+        },
+    });
+    const provider = createWorkspaceEntityRulesProvider(workflowWithProfiles(imported));
+    const entityRules = executeEntityRules({
+        control: explicit([imported.name]),
+        config,
+        provider,
+        pageUrl: 'https://example.test/orders',
+        snapshots: {control: base.control, form, table},
+    });
+    assert.equal(entityRules.ok, true, JSON.stringify(entityRules.diagnostics));
+    const store = new PageSnapshotSessionStore<object>();
+    const entry = await store.ensureFresh({
+        pageKey: {},
+        pageUrl: 'https://example.test/orders',
+        capture: async () => ({control: base.control, form, table, entityRules}),
+    });
+
+    const primaryKey = queryPageSessionBusinessEntity(entry, 'order.table.legacy', 'table.primaryKey');
+    assert.equal(primaryKey.ok, true);
+    if (primaryKey.ok) {
+        assert.deepEqual(primaryKey.data.value, {fieldKey: 'orderNo', columns: ['订单编号']});
+    }
+    const row = resolvePageSessionBusinessTarget(entry, 'order.table.legacy', {
+        kind: 'table.row',
+        primaryKey: {fieldKey: 'orderNo', value: 'A-1'},
+    });
+    assert.equal(row.ok, true);
+    if (row.ok) {assert.equal(row.data.nodeId, base.observation.captureIdToNodeId.row);}
+    const approve = resolvePageSessionBusinessTarget(entry, 'order.table.legacy', {
+        kind: 'table.row_action',
+        primaryKey: {fieldKey: 'orderNo', value: 'A-1'},
+        actionIntent: 'approve',
+    });
+    assert.equal(approve.ok, true);
+    if (approve.ok) {assert.equal(approve.data.nodeId, base.observation.captureIdToNodeId.approve);}
+    const hasNext = queryPageSessionBusinessEntity(entry, 'order.table.legacy', 'table.hasNextPage');
+    assert.equal(hasNext.ok, true);
+    if (hasNext.ok) {assert.equal(hasNext.data.value, true);}
+    const next = queryPageSessionBusinessEntity(entry, 'order.table.legacy', 'table.nextPageTarget');
+    assert.equal(next.ok, true);
+    if (next.ok) {assert.equal(next.data.nodeId, base.observation.captureIdToNodeId.next);}
 });

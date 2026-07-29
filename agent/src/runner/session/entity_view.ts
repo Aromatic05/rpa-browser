@@ -17,6 +17,8 @@ export type PageSessionEntityRecord = {
     source: 'structural' | 'inferred' | 'confirmed' | 'manual';
     bindingId?: string;
     bindingIds?: string[];
+    itemNodeIds?: ObservationNodeId[];
+    keySlot?: number;
     annotation?: Readonly<Record<string, unknown>>;
 };
 
@@ -74,19 +76,35 @@ export const buildPageSessionEntityView = (
                 preferredComponentBinding(bindings, form.id, 'form'),
                 preferredNodeDecorationBinding(bindings, nodeId),
             ),
+            memberBindings: formMemberBindings(bindings, form),
         }));
     }
     for (const table of Object.values(entry.capture.table.tables.tables)) {
         const nodeId = table.location.structuralRootNodeId;
+        const componentBindings = compactBindings(
+            preferredComponentBinding(bindings, table.id, 'table'),
+            preferredNodeDecorationBinding(bindings, nodeId),
+        );
         entities.push(componentEntity(entry, {
             id: `table:${table.id}`,
             nodeId,
             componentId: table.id,
             kind: 'table',
+            bindings: componentBindings,
+            memberBindings: tableMemberBindings(bindings, componentBindings),
+        }));
+    }
+    for (const generic of structuralGenericEntities(entry)) {
+        entities.push(componentEntity(entry, {
+            id: `node:${generic.kind}:${generic.nodeId}`,
+            nodeId: generic.nodeId,
+            kind: generic.kind,
             bindings: compactBindings(
-                preferredComponentBinding(bindings, table.id, 'table'),
-                preferredNodeDecorationBinding(bindings, nodeId),
+                preferredGenericBinding(bindings, generic.nodeId, generic.kind),
+                preferredNodeDecorationBinding(bindings, generic.nodeId),
             ),
+            itemNodeIds: generic.itemNodeIds,
+            keySlot: generic.keySlot,
         }));
     }
 
@@ -192,7 +210,7 @@ export const queryPageSessionBusinessEntity = (
         if (query === 'table.currentRows') {
             return {ok: true, data: {kind: 'value', value: currentRows(entry, entity.componentId, entity.annotation), meta}};
         }
-        const paginationNodeId = resolvedPaginationNode(entry, entity.componentId);
+        const paginationNodeId = resolvedPaginationNode(entry, entity.componentId, entity.annotation);
         if (query === 'table.hasNextPage') {
             return {ok: true, data: {kind: 'value', value: Boolean(paginationNodeId), meta}};
         }
@@ -353,6 +371,9 @@ const componentEntity = (
         componentId?: string;
         kind: RuntimeEntityKind;
         bindings?: SemanticBusinessBinding[];
+        memberBindings?: SemanticBusinessBinding[];
+        itemNodeIds?: ObservationNodeId[];
+        keySlot?: number;
     },
 ): PageSessionEntityRecord => {
     const bindings = [...(input.bindings ?? [])]
@@ -361,6 +382,8 @@ const componentEntity = (
         (merged, binding) => ({...merged, ...binding.annotation}),
         {},
     );
+    if (input.kind === 'form') {enrichFormAnnotation(annotation, input.memberBindings ?? []);}
+    if (input.kind === 'table') {enrichTableAnnotation(annotation, input.memberBindings ?? []);}
     const preferred = bindings.at(-1);
     return {
         id: input.id,
@@ -368,14 +391,169 @@ const componentEntity = (
         componentId: input.componentId,
         kind: input.kind,
         name: readString(annotation.displayName)
+            ?? readString(annotation.businessName)
             ?? readString(annotation.name)
             ?? readNodeName(entry, input.nodeId),
         businessTag: readString(annotation.businessTag),
         source: preferred?.origin ?? 'structural',
         bindingId: preferred?.id,
-        bindingIds: bindings.map((binding) => binding.id),
+        bindingIds: [...bindings, ...(input.memberBindings ?? [])].map((binding) => binding.id),
+        itemNodeIds: input.itemNodeIds ? [...input.itemNodeIds] : undefined,
+        keySlot: input.keySlot,
         annotation: Object.keys(annotation).length > 0 ? annotation : undefined,
     };
+};
+
+
+
+
+
+type StructuralGenericEntity = {
+    nodeId: ObservationNodeId;
+    kind: Exclude<RuntimeEntityKind, 'form' | 'table'>;
+    itemNodeIds?: ObservationNodeId[];
+    keySlot?: number;
+};
+
+const structuralGenericEntities = (entry: PageSnapshotSessionEntry): StructuralGenericEntity[] => {
+    const observation = entry.capture.control.observation;
+    return Object.keys(observation.nodes)
+        .filter((nodeId) => isActiveObservationNode(entry, nodeId))
+        .sort((left, right) => observation.documentOrder[left] - observation.documentOrder[right])
+        .flatMap((nodeId) => {
+            const kind = explicitGenericKind(entry, nodeId);
+            if (!kind) {return [];}
+            const itemNodeIds = genericItemNodeIds(entry, nodeId, kind);
+            return [{
+                nodeId,
+                kind,
+                itemNodeIds: itemNodeIds.length > 0 ? itemNodeIds : undefined,
+                keySlot: kind === 'list' || kind === 'kv' ? 0 : undefined,
+            }];
+        });
+};
+
+const explicitGenericKind = (
+    entry: PageSnapshotSessionEntry,
+    nodeId: ObservationNodeId,
+): StructuralGenericEntity['kind'] | undefined => {
+    const observation = entry.capture.control.observation;
+    const role = normalizeLower(resolveSemanticRole(observation, nodeId).value);
+    const tag = normalizeLower(observation.nodes[nodeId].tag);
+    if (role === 'dialog' || role === 'alertdialog' || tag === 'dialog') {return 'dialog';}
+    if (role === 'toolbar') {return 'toolbar';}
+    if (role === 'list' || role === 'listbox' || role === 'menu' || role === 'tree' || tag === 'ul' || tag === 'ol') {
+        return 'list';
+    }
+    if (role === 'region' || role === 'main' || role === 'complementary' || tag === 'main') {return 'panel';}
+    if (tag === 'dl') {return 'kv';}
+    return undefined;
+};
+
+const genericItemNodeIds = (
+    entry: PageSnapshotSessionEntry,
+    rootNodeId: ObservationNodeId,
+    kind: StructuralGenericEntity['kind'],
+): ObservationNodeId[] => {
+    const observation = entry.capture.control.observation;
+    if (kind === 'kv') {
+        return observation.children[rootNodeId].filter((nodeId) =>
+            normalizeLower(observation.nodes[nodeId].tag) === 'dt');
+    }
+    if (kind !== 'list') {return [];}
+    const candidateItems = descendants(entry, rootNodeId).filter((nodeId) => {
+        const role = normalizeLower(resolveSemanticRole(observation, nodeId).value);
+        const tag = normalizeLower(observation.nodes[nodeId].tag);
+        return role === 'listitem' || role === 'option' || role === 'menuitem' || role === 'treeitem' || tag === 'li';
+    });
+    const candidateSet = new Set(candidateItems);
+    return candidateItems.filter((nodeId) => {
+        let parentId = observation.parents[nodeId];
+        while (parentId && parentId !== rootNodeId) {
+            if (candidateSet.has(parentId)) {return false;}
+            parentId = observation.parents[parentId];
+        }
+        return parentId === rootNodeId;
+    });
+};
+
+const isActiveObservationNode = (entry: PageSnapshotSessionEntry, nodeId: ObservationNodeId): boolean => {
+    const activity = entry.capture.control.observation.activity[nodeId];
+    return activity.rendered && activity.subtreeActive && !activity.hiddenByStyle && !activity.inert
+        && activity.ariaExposed !== false;
+};
+
+
+
+const tableMemberBindings = (
+    bindings: readonly SemanticBusinessBinding[],
+    componentBindings: readonly SemanticBusinessBinding[],
+): SemanticBusinessBinding[] => {
+    const profileNames = new Set(componentBindings.map((binding) => binding.profileName));
+    return bindings.filter((binding) => binding.domain === 'table' && profileNames.has(binding.profileName));
+};
+
+const enrichTableAnnotation = (
+    annotation: Record<string, unknown>,
+    bindings: readonly SemanticBusinessBinding[],
+): void => {
+    const next = bindings.find((binding) => binding.annotation.paginationRole === 'next'
+        && binding.target.nodeIds.length === 1);
+    const disabled = bindings.find((binding) => binding.annotation.paginationRole === 'next-disabled'
+        && binding.target.nodeIds.length === 1);
+    if (!next) {return;}
+    const currentPagination = isRecord(annotation.pagination) ? annotation.pagination : {};
+    const currentNext = isRecord(currentPagination.nextAction) ? currentPagination.nextAction : {};
+    annotation.pagination = {
+        ...currentPagination,
+        nextAction: {
+            ...currentNext,
+            actionIntent: readString(next.annotation.actionIntent) ?? readString(currentNext.actionIntent) ?? 'next_page',
+            nodeId: next.target.nodeIds[0],
+            ...(disabled ? {disabledNodeId: disabled.target.nodeIds[0]} : {}),
+        },
+    };
+};
+
+const formMemberBindings = (
+    bindings: readonly SemanticBusinessBinding[],
+    form: PageSnapshotSessionEntry['capture']['form']['forms']['forms'][string],
+): SemanticBusinessBinding[] => {
+    const fieldIds = new Set(form.fields.map((field) => field.id));
+    const actionIds = new Set(form.actions.map((action) => action.id));
+    return bindings.filter((binding) =>
+        binding.domain === 'form'
+        && (binding.target.fieldIds.some((fieldId) => fieldIds.has(fieldId))
+            || binding.target.actionIds.some((actionId) => actionIds.has(actionId))));
+};
+
+const enrichFormAnnotation = (
+    annotation: Record<string, unknown>,
+    bindings: readonly SemanticBusinessBinding[],
+): void => {
+    const formFields = bindings.flatMap((binding) => {
+        const fieldKey = readString(binding.annotation.fieldKey);
+        const nodeId = binding.target.nodeIds[0];
+        if (!fieldKey || !nodeId) {return [];}
+        return [{
+            fieldKey,
+            name: readString(binding.annotation.fieldName) ?? readString(binding.annotation.name),
+            kind: readString(binding.annotation.controlKind) ?? readString(binding.annotation.kind),
+            controlNodeId: nodeId,
+        }];
+    });
+    const formActions = bindings.flatMap((binding) => {
+        const actionIntent = readString(binding.annotation.actionIntent);
+        const nodeId = binding.target.nodeIds[0];
+        if (!actionIntent || !nodeId) {return [];}
+        return [{
+            actionIntent,
+            text: readString(binding.annotation.actionText) ?? readString(binding.annotation.text),
+            nodeId,
+        }];
+    });
+    if (formFields.length > 0) {annotation.formFields = formFields;}
+    if (formActions.length > 0) {annotation.formActions = formActions;}
 };
 
 const activeBindings = (entry: PageSnapshotSessionEntry): SemanticBusinessBinding[] =>
@@ -389,6 +567,17 @@ const preferredComponentBinding = (
     domain: 'form' | 'table',
 ): SemanticBusinessBinding | undefined => bindings
     .filter((binding) => binding.domain === domain && binding.target.componentIds.includes(componentId))
+    .sort((left, right) => bindingPriority(right) - bindingPriority(left) || left.id.localeCompare(right.id))[0];
+
+
+
+const preferredGenericBinding = (
+    bindings: readonly SemanticBusinessBinding[],
+    nodeId: ObservationNodeId,
+    kind: Exclude<RuntimeEntityKind, 'form' | 'table'>,
+): SemanticBusinessBinding | undefined => bindings
+    .filter((binding) => binding.target.nodeIds.includes(nodeId)
+        && readEntityKind(binding.annotation.entityKind ?? binding.annotation.kind) === kind)
     .sort((left, right) => bindingPriority(right) - bindingPriority(left) || left.id.localeCompare(right.id))[0];
 
 const preferredNodeDecorationBinding = (
@@ -438,16 +627,30 @@ const currentRows = (
 const resolvedPaginationNode = (
     entry: PageSnapshotSessionEntry,
     tableId: string,
+    annotation: Readonly<Record<string, unknown>> | undefined,
 ): ObservationNodeId | undefined => {
     const pagination = new Map(Object.entries(entry.capture.table.tables.tables)).get(tableId)?.pagination;
-    if (pagination?.status !== 'resolved') {return undefined;}
-    return pagination.nodeIds.find((nodeId) => {
-        const attrs = entry.capture.control.observation.attributes[nodeId];
-        const runtime = entry.capture.control.observation.runtimeState[nodeId];
-        return attrs.disabled !== '' && attrs.disabled !== 'true'
-            && attrs['aria-disabled'] !== 'true'
-            && runtime?.disabled !== 'true';
-    });
+    const structural = pagination?.status === 'resolved'
+        ? pagination.nodeIds.find((nodeId) => isEnabledNode(entry, nodeId))
+        : undefined;
+    if (structural) {return structural;}
+    const paginationAnnotation = isRecord(annotation?.pagination) ? annotation.pagination : undefined;
+    const nextAction = paginationAnnotation && isRecord(paginationAnnotation.nextAction)
+        ? paginationAnnotation.nextAction
+        : undefined;
+    const nodeId = readString(nextAction?.nodeId);
+    const disabledNodeId = readString(nextAction?.disabledNodeId);
+    if (!nodeId || !Object.hasOwn(entry.capture.control.observation.nodes, nodeId)) {return undefined;}
+    if (disabledNodeId && !isEnabledNode(entry, disabledNodeId)) {return undefined;}
+    return isEnabledNode(entry, nodeId) ? nodeId : undefined;
+};
+
+const isEnabledNode = (entry: PageSnapshotSessionEntry, nodeId: ObservationNodeId): boolean => {
+    const attrs = entry.capture.control.observation.attributes[nodeId];
+    const runtime = entry.capture.control.observation.runtimeState[nodeId];
+    return attrs.disabled !== '' && attrs.disabled !== 'true'
+        && attrs['aria-disabled'] !== 'true'
+        && runtime?.disabled !== 'true';
 };
 
 const resolveTableRow = (

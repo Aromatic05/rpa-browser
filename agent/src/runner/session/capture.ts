@@ -36,6 +36,7 @@ export const ensurePageSessionForPage = async (
             entityRules: executeEntityRules({
                 config: deps.config.entityRules,
                 provider: deps.resolveEntityRulesProvider?.(workspaceName) || undefined,
+                pageUrl: safePageUrl(page),
                 snapshots: components,
             }),
         };

@@ -87,6 +87,9 @@ const parseDraft = (raw: string, profileName: string): AnnotatorDraft => {
     }
     return {
         profileName: normalizedProfileName,
+        page: record.page === undefined
+            ? undefined
+            : structuredClone(record.page) as AnnotatorDraft['page'],
         match: structuredClone(record.match) as AnnotatorDraft['match'],
         annotation: structuredClone(record.annotation) as AnnotatorDraft['annotation'],
     };

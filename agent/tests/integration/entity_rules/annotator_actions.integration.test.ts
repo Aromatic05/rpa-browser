@@ -157,6 +157,7 @@ const createMemoryWorkflow = (): {workflow: Workflow; profiles: Map<string, Work
 
 const validDraft = (): AnnotatorDraft => ({
     profileName: 'order-form',
+    page: {kind: 'form', urlPattern: '.*'},
     match: {
         version: 2,
         rules: [
@@ -206,12 +207,14 @@ test('annotator check save and reopen share QueryPlan semantics without check-ti
         assert.equal(saved.validation.ok, true);
         assert.equal(memory.profiles.has('order-form'), true);
         assert.equal((saved.profile as WorkflowEntityRules).name, 'order-form');
+        assert.deepEqual((saved.profile as WorkflowEntityRules).page, {kind: 'form', urlPattern: '.*'});
 
         const reopenedResult = await invoke(runtime, 'entity_rules.annotator.open', {
             profileName: 'order-form',
         }, memory.workflow);
         const reopened = reopenedResult.reply.payload as AnnotatorProjectionReply;
         assert.equal(reopened.validation?.ok, true);
+        assert.deepEqual((reopened.profile as WorkflowEntityRules).page, {kind: 'form', urlPattern: '.*'});
         assert.equal(reopened.projection.semanticBindings.some((binding) =>
             binding.annotation.fieldKey === 'buyer'), true);
         const submitTarget = reopened.projection.targets.find((target) =>

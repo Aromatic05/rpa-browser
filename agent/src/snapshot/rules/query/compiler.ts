@@ -90,6 +90,9 @@ export const compileEntityRuleQueryPlan = (
     for (const rule of input.rules) {
         const kind = rule.match.kind;
         if (kind === 'form' || kind === 'table') {domains.add(kind);}
+        else if (kind === 'dialog' || kind === 'list' || kind === 'panel' || kind === 'toolbar' || kind === 'kv') {
+            domains.add('node');
+        }
     }
     if (domains.size === 0) {
         diagnostics.push(compileDiagnostic(
@@ -177,13 +180,19 @@ const validateMatch = (
             rule,
         ));
     }
-    if (rule.match.kind !== undefined && rule.match.kind !== domain) {
-        diagnostics.push(compileDiagnostic(
-            profileName,
-            'query-plan.domain.mixed',
-            `rule ${profileName}/${rule.ruleId} targets ${describeUnknown(rule.match.kind)} inside a ${domain} plan`,
-            rule,
-        ));
+    if (rule.match.kind !== undefined) {
+        const kind = rule.match.kind;
+        const compatible = typeof kind === 'string' && (domain === 'node'
+            ? kind !== 'form' && kind !== 'table'
+            : kind === domain);
+        if (!compatible) {
+            diagnostics.push(compileDiagnostic(
+                profileName,
+                'query-plan.domain.mixed',
+                `rule ${profileName}/${rule.ruleId} targets ${describeUnknown(rule.match.kind)} inside a ${domain} plan`,
+                rule,
+            ));
+        }
     }
     for (const key of STRING_MATCH_KEYS) {
         const value = rule.match[key];

@@ -61,6 +61,7 @@ export const createEntityRulesRuntime = (
                 const saved = workspace.workflow.save({
                     kind: 'entity_rules',
                     name: profileName,
+                    page: payload.page as WorkflowEntityRules['page'],
                     match: payload.match as EntityRuleMatchArtifact,
                     annotation: payload.annotation as EntityRuleAnnotationArtifact,
                 } satisfies WorkflowEntityRules);

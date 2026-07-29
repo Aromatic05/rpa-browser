@@ -8,13 +8,18 @@ import type {
 import { executeFormQueryPlan } from './form';
 import { queryDiagnostic } from './shared';
 import { executeTableQueryPlan } from './table';
+import {executeNodeQueryPlan} from './node';
 
 export const executeEntityRuleQueryPlan = (
     plan: EntityRuleQueryPlan,
     snapshots: QueryPlanSnapshots,
     options: { purpose: EntityRuleQueryPurpose },
 ): EntityRuleQueryExecutionResult => {
-    const snapshot = plan.domain === 'form' ? snapshots.form : snapshots.table;
+    const snapshot = plan.domain === 'form'
+        ? snapshots.form
+        : plan.domain === 'table'
+            ? snapshots.table
+            : snapshots.control;
     if (!snapshot) {
         const diagnostic = queryDiagnostic({
             profileName: plan.profileName,
@@ -34,7 +39,9 @@ export const executeEntityRuleQueryPlan = (
     }
     const execution = plan.domain === 'form'
         ? executeFormQueryPlan(plan, snapshots.form!)
-        : executeTableQueryPlan(plan, snapshots.table!);
+        : plan.domain === 'table'
+            ? executeTableQueryPlan(plan, snapshots.table!)
+            : executeNodeQueryPlan(plan, snapshots.control!);
     return deepFreeze({
         planId: plan.id,
         profileName: plan.profileName,

@@ -17,6 +17,7 @@ export const buildEntityRuleComponentSnapshots = (
     controlSnapshot: ControlSnapshot,
     selectionScopeNodeId?: ObservationNodeId,
 ): Required<EntityRuleComponentSnapshots> => ({
+    control: controlSnapshot,
     form: buildFormSnapshot({
         observation: controlSnapshot.observation,
         relations: controlSnapshot.relations,
@@ -56,6 +57,7 @@ export const executeEntityRulesOnPage = async (
             control: input.control,
             config: input.config,
             provider: input.provider,
+            pageUrl: safePageUrl(page),
             snapshots: {},
         });
     }
@@ -63,6 +65,12 @@ export const executeEntityRulesOnPage = async (
         control: input.control,
         config: input.config,
         provider: input.provider,
+        pageUrl: safePageUrl(page),
         snapshots: await captureEntityRuleComponentSnapshots(page, input.captureOptions),
     });
+};
+
+const safePageUrl = (page: Page): string => {
+    try {return page.url();}
+    catch {return '';}
 };

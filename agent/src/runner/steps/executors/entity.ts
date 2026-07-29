@@ -163,6 +163,8 @@ const toEntityOutputRecord = (entity: PageSessionEntityRecord) => ({
     source: entity.source,
     componentId: entity.componentId,
     bindingId: entity.bindingId,
+    itemNodeIds: entity.itemNodeIds ? [...entity.itemNodeIds] : undefined,
+    keySlot: entity.keySlot,
 });
 
 const buildNodeSummary = (

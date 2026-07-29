@@ -121,6 +121,35 @@ await log('annotator session updates projection without local structural recover
     assert.equal(session.getState().status, 'ready');
 });
 
+
+
+await log('annotator session preserves profile page applicability in the editable draft', async () => {
+    const profile = {
+        kind: 'entity_rules',
+        name: 'orders-page',
+        page: {kind: 'table', urlPattern: '/orders'},
+        match: {version: 2, rules: [{ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'table'}}]},
+        annotation: {version: 2, bindings: []},
+    };
+    const client = createAnnotatorClient(async (type) => ({
+        v: 1,
+        id: `reply-${type}`,
+        type: `${type}.result`,
+        payload: {projection, profile},
+    }));
+    const session = createAnnotatorSession({
+        client,
+        overlay: {
+            render: () => undefined,
+            startPicking: () => undefined,
+            stopPicking: () => undefined,
+            dispose: () => undefined,
+        },
+    });
+    await session.open('orders-page');
+    assert.deepEqual(session.getState().draft?.page, {kind: 'table', urlPattern: '/orders'});
+});
+
 await log('annotator source does not recover page structure from DOM', async () => {
     const files = fs.readdirSync(new URL('../annotator', import.meta.url), {withFileTypes: true})
         .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
@@ -154,6 +183,7 @@ await log('annotator panel drives the session without DOM target recovery', asyn
         projection,
         draft: {
             profileName: 'orders',
+            page: {kind: 'form', urlPattern: '/orders'},
             match: {version: 2, rules: [{ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form'}}]},
             annotation: {version: 2, bindings: []},
         },
@@ -190,6 +220,7 @@ await log('annotator panel drives the session without DOM target recovery', asyn
         'open', 'pick', 'recognize', 'visualize', 'setDraft', 'check', 'setDraft', 'save',
     ]);
     assert.equal(panel.textContent.includes('epoch-1'), true);
+    assert.deepEqual(state.draft.page, {kind: 'form', urlPattern: '/orders'});
 });
 
 await log('floating UI exposes the versioned annotator source module', async () => {
