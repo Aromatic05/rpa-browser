@@ -15,6 +15,7 @@ const MAX_LIMIT = 500;
 const ROOT_FROM_REFS = new Set(['snapshot', 'snapshot.latest']);
 
 type StructuralQueryArgs = Extract<Step<'browser.query'>['args'], {from: unknown}>;
+type StructuralQueryError = NonNullable<StepResult['error']>;
 
 export const executeBrowserQuery = async (
     step: Step<'browser.query'>,
@@ -41,19 +42,31 @@ export const executeBrowserQuery = async (
     }
 
     const args = step.args;
+    const observation = entry.capture.control.observation;
+    const diagnosticDetails = queryDiagnosticDetails(observation, args);
     const relationResult = normalizeRelation(args.relation);
     if (!relationResult.ok) {
-        return stepError(step.id, 'ERR_BAD_ARGS', relationResult.message);
+        return stepError(step.id, 'ERR_BAD_ARGS', relationResult.message, diagnosticDetails);
     }
     const relation = relationResult.value;
     if (args.limit !== undefined
         && (!Number.isInteger(args.limit) || args.limit <= 0 || args.limit > MAX_LIMIT)) {
-        return stepError(step.id, 'ERR_BAD_ARGS', `limit must be an integer between 1 and ${MAX_LIMIT}`);
+        return stepError(
+            step.id,
+            'ERR_BAD_ARGS',
+            `limit must be an integer between 1 and ${MAX_LIMIT}`,
+            diagnosticDetails,
+        );
     }
 
-    const observation = entry.capture.control.observation;
     const sources = resolveSourceNodeIds(observation, args.from);
-    if (!sources.ok) {return {stepId: step.id, ok: false, error: sources.error};}
+    if (!sources.ok) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {...sources.error, details: diagnosticDetails},
+        };
+    }
 
     const limit = args.limit ?? MAX_LIMIT;
     const nodeIds = collectCandidates(observation, sources.nodeIds, relation)
@@ -80,7 +93,7 @@ export const executeBrowserQuery = async (
 const resolveSourceNodeIds = (
     observation: PageObservation,
     from: StructuralQueryArgs['from'],
-): {ok: true; nodeIds: ObservationNodeId[]} | {ok: false; error: StepResult['error']} => {
+): {ok: true; nodeIds: ObservationNodeId[]} | {ok: false; error: StructuralQueryError} => {
     if (typeof from === 'string') {
         const normalized = normalizeText(from);
         if (!normalized) {return queryError('from is required');}
@@ -228,12 +241,26 @@ const normalizeRelation = (value: unknown):
     return {ok: false, message: 'relation must be child or descendant'};
 };
 
+
+
+const queryDiagnosticDetails = (
+    observation: PageObservation,
+    args: StructuralQueryArgs,
+): Record<string, unknown> => ({
+    pageEpoch: observation.identity.pageEpoch,
+    captureRevision: observation.identity.captureRevision,
+    scopeIds: [...observation.scopes.rootScopeIds],
+    relation: args.relation ?? 'descendant',
+    from: args.from,
+});
+
 const stepError = (
     stepId: string,
     code: 'ERR_BAD_ARGS' | 'ERR_NOT_FOUND',
     message: string,
-): StepResult => ({stepId, ok: false, error: {code, message}});
-const queryError = (message: string): {ok: false; error: StepResult['error']} => ({
+    details?: Record<string, unknown>,
+): StepResult => ({stepId, ok: false, error: {code, message, details}});
+const queryError = (message: string): {ok: false; error: StructuralQueryError} => ({
     ok: false,
     error: {code: 'ERR_BAD_ARGS', message},
 });

@@ -98,6 +98,13 @@ test('browser.query returns ERR_BAD_ARGS on invalid relation or unsupported from
     } as unknown as Step<'browser.query'>, deps, 'ws-1');
     assert.equal(invalidRelation.ok, false);
     assert.equal(invalidRelation.error?.code, 'ERR_BAD_ARGS');
+    assert.deepEqual(invalidRelation.error?.details, {
+        pageEpoch: 'v2-business',
+        captureRevision: 1,
+        scopeIds: ['main'],
+        relation: 'invalid',
+        from: 'snapshot',
+    });
 
     const unsupportedFrom = await executeBrowserQuery({
         id: 'q4',
@@ -106,4 +113,11 @@ test('browser.query returns ERR_BAD_ARGS on invalid relation or unsupported from
     } as unknown as Step<'browser.query'>, deps, 'ws-1');
     assert.equal(unsupportedFrom.ok, false);
     assert.equal(unsupportedFrom.error?.code, 'ERR_BAD_ARGS');
+    assert.deepEqual(unsupportedFrom.error?.details, {
+        pageEpoch: 'v2-business',
+        captureRevision: 1,
+        scopeIds: ['main'],
+        relation: 'descendant',
+        from: 'x',
+    });
 });

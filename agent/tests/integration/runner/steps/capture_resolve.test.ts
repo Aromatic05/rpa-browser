@@ -228,6 +228,15 @@ test('capture_resolve returns ERR_NOT_FOUND when no canonical node matches', asy
     assert.equal(result.ok, false);
     if (result.ok) {return;}
     assert.equal(result.error?.code, 'ERR_NOT_FOUND');
+    assert.deepEqual(result.error?.details, {
+        workspaceName: 'ws-1',
+        pageEpoch: 'capture-resolve',
+        captureRevision: 1,
+        scopeIds: ['main'],
+        activeNodeCount: 3,
+        candidateCount: 0,
+        query: {name: 'Missing target'},
+    });
 });
 
 test('capture_resolve accepts limit up to 20 and rejects larger values', async () => {

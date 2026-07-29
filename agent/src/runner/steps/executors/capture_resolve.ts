@@ -62,7 +62,11 @@ export const executeBrowserCaptureResolve = async (
         return {
             stepId: step.id,
             ok: false,
-            error: {code: 'ERR_NOT_FOUND', message: 'browser.capture_resolve target not found'},
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: 'browser.capture_resolve target not found',
+                details: captureResolveFailureDetails(entry, workspaceName, step, candidates.length),
+            },
         };
     }
 
@@ -81,6 +85,37 @@ export const executeBrowserCaptureResolve = async (
         warnings,
     };
     return {stepId: step.id, ok: true, data};
+};
+
+
+
+const captureResolveFailureDetails = (
+    entry: PageSnapshotSessionEntry,
+    workspaceName: string,
+    step: Step<'browser.capture_resolve'>,
+    candidateCount: number,
+): Record<string, unknown> => ({
+    workspaceName,
+    pageEpoch: entry.identity.pageEpoch,
+    captureRevision: entry.identity.captureRevision,
+    scopeIds: [...entry.capture.control.observation.scopes.rootScopeIds],
+    activeNodeCount: orderedActiveNodeIds(entry).length,
+    candidateCount,
+    query: captureResolveQuery(step),
+});
+
+const captureResolveQuery = (
+    step: Step<'browser.capture_resolve'>,
+): Record<string, unknown> => {
+    const query: Record<string, unknown> = {};
+    const {nodeId, selector, text, role, name} = step.args;
+    if (nodeId) {query.nodeId = nodeId;}
+    if (selector) {query.selector = selector;}
+    if (text) {query.text = text;}
+    if (role) {query.role = role;}
+    if (name) {query.name = name;}
+    if (step.resolve) {query.resolve = true;}
+    return query;
 };
 
 const findCandidates = (
