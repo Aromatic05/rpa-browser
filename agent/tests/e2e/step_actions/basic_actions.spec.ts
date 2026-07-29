@@ -116,8 +116,13 @@ test('E2E-1 step actions should work via agent + extension + workspace on real f
   const snapshotResult = await rs('s11-snapshot', st('s11-snapshot', 'browser.snapshot', {}));
   expect(snapshotResult.ok).toBeTruthy();
   expect(snapshotResult.data).toBeTruthy();
-  expect((snapshotResult.data as any).id).toBeTruthy();
-  expect(Array.isArray((snapshotResult.data as any).children)).toBeTruthy();
+  const snapshot = snapshotResult.data as any;
+  expect(snapshot.schemaVersion).toBe(2);
+  expect(snapshot.meta?.snapshotId).toBeTruthy();
+  expect(snapshot.meta?.pageEpoch).toBeTruthy();
+  expect(Array.isArray(snapshot.roots)).toBeTruthy();
+  expect(Array.isArray(snapshot.components?.forms)).toBeTruthy();
+  expect(Array.isArray(snapshot.components?.tables)).toBeTruthy();
 
   const screenshotResult = await rs('s12-screenshot', st('s12-screenshot', 'browser.take_screenshot', { inline: true }));
   expect(screenshotResult.ok).toBeTruthy();
