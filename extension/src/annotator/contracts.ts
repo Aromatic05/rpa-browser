@@ -1,6 +1,9 @@
 import type {Action} from '../shared/types.js';
 import type {
     AnnotatorAnchor,
+    AnnotatorApplyPayload,
+    AnnotatorApplyReply,
+    AnnotatorSemanticInput,
     AnnotatorCheckPayload,
     AnnotatorCheckReply,
     AnnotatorComponent,
@@ -26,6 +29,9 @@ import type {
 
 export type {
     AnnotatorAnchor,
+    AnnotatorApplyPayload,
+    AnnotatorApplyReply,
+    AnnotatorSemanticInput,
     AnnotatorCheckPayload,
     AnnotatorCheckReply,
     AnnotatorComponent,
@@ -59,6 +65,7 @@ export type AnnotatorClient = {
     pick: (point: AnnotatorPoint) => Promise<AnnotatorPickReply>;
     recognize: (profileName?: string) => Promise<AnnotatorProjectionReply>;
     visualize: (profileName?: string) => Promise<AnnotatorProjectionReply>;
+    apply: (payload: AnnotatorApplyPayload) => Promise<AnnotatorApplyReply>;
     check: (draft: AnnotatorDraft) => Promise<AnnotatorCheckReply>;
     save: (draft: AnnotatorDraft) => Promise<AnnotatorSaveReply>;
 };
@@ -70,7 +77,7 @@ export type AnnotatorOverlayPort = {
     dispose: () => void;
 };
 
-export type AnnotatorSessionStatus = 'idle' | 'loading' | 'ready' | 'checking' | 'saving' | 'error';
+export type AnnotatorSessionStatus = 'idle' | 'loading' | 'ready' | 'applying' | 'checking' | 'saving' | 'error';
 
 export type AnnotatorSessionState = {
     status: AnnotatorSessionStatus;
@@ -84,10 +91,12 @@ export type AnnotatorSessionState = {
 export type AnnotatorSession = {
     getState: () => AnnotatorSessionState;
     setDraft: (draft: AnnotatorDraft) => void;
+    subscribe: (listener: (state: AnnotatorSessionState) => void) => () => void;
     open: (profileName?: string) => Promise<void>;
     recognize: () => Promise<void>;
     visualize: () => Promise<void>;
     pick: (point: AnnotatorPoint) => Promise<void>;
+    apply: (payload: AnnotatorApplyPayload) => Promise<void>;
     check: (draft?: AnnotatorDraft) => Promise<void>;
     save: (draft?: AnnotatorDraft) => Promise<void>;
     startPicking: () => void;

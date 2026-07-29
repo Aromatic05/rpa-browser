@@ -1,4 +1,5 @@
 import type {
+    AnnotatorApplyPayload,
     AnnotatorClient,
     AnnotatorDraft,
     AnnotatorOverlayPort,
@@ -16,10 +17,15 @@ export type CreateAnnotatorSessionInput = {
 
 export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): AnnotatorSession => {
     let state: AnnotatorSessionState = {status: 'idle', profileName: ''};
+    const listeners = new Set<(state: AnnotatorSessionState) => void>();
 
     const publish = (patch: Partial<AnnotatorSessionState>): void => {
         state = {...state, ...patch};
-        input.onChange?.(structuredClone(state));
+        const snapshot = structuredClone(state);
+        input.onChange?.(snapshot);
+        listeners.forEach((listener) => {
+            listener(structuredClone(snapshot));
+        });
     };
 
     const applyProjection = (reply: AnnotatorProjectionReply): void => {
@@ -80,6 +86,29 @@ export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): Anno
         }
     };
 
+    const apply = async (payload: AnnotatorApplyPayload): Promise<void> => {
+        publish({
+            status: 'applying',
+            draft: structuredClone(payload.draft),
+            validation: undefined,
+            error: undefined,
+        });
+        try {
+            const reply = await input.client.apply(payload);
+            input.overlay.render(reply.projection);
+            publish({
+                status: 'ready',
+                profileName: reply.draft.profileName,
+                draft: structuredClone(reply.draft),
+                projection: structuredClone(reply.projection),
+                validation: structuredClone(reply.validation),
+            });
+        } catch (error) {
+            publish({status: 'error', error: errorMessage(error)});
+            throw error;
+        }
+    };
+
     const check = async (draft = requireDraft(state.draft)): Promise<void> => {
         publish({status: 'checking', draft: structuredClone(draft), error: undefined});
         try {
@@ -118,17 +147,26 @@ export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): Anno
             publish({
                 draft: structuredClone(draft),
                 profileName: draft.profileName,
+                validation: undefined,
             });
+        },
+        subscribe: (listener) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
         },
         open,
         recognize,
         visualize,
         pick,
+        apply,
         check,
         save,
         startPicking: input.overlay.startPicking,
         stopPicking: input.overlay.stopPicking,
-        dispose: input.overlay.dispose,
+        dispose: () => {
+            listeners.clear();
+            input.overlay.dispose();
+        },
     };
 };
 

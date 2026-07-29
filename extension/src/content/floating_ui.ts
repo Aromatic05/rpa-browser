@@ -94,7 +94,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .title { font-size:11px; color:#475569; margin-bottom:6px; font-weight:700; }
       button { padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; }
       button.primary { background:#2563eb; border-color:#2563eb; color:#fff; }
-      input, textarea { width:100%; box-sizing:border-box; padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid #cbd5e1; }
+      input, textarea, select { width:100%; box-sizing:border-box; padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; }
       textarea { min-height:72px; resize:vertical; }
       .hint { font-size:11px; color:#64748b; margin-bottom:6px; }
       .list { display:flex; flex-direction:column; gap:6px; }
@@ -102,6 +102,16 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .footer pre { margin:0; max-height:120px; overflow:auto; white-space:pre-wrap; font-size:11px; }
       .log-list { display:flex; flex-direction:column; gap:6px; }
       .log-item { font-size:11px; border:1px solid #e2e8f0; border-radius:6px; padding:6px; }
+      .annotator-section { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; padding:8px; border:1px solid #e2e8f0; border-radius:8px; }
+      .annotator-actions { display:flex; flex-wrap:wrap; gap:6px; }
+      .annotator-actions button { flex:1 1 110px; }
+      .annotator-binding { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px; border:1px solid #e2e8f0; border-radius:6px; font-size:11px; }
+      .annotator-binding span { min-width:0; overflow-wrap:anywhere; }
+      .annotator-diagnostic { padding:6px; border-radius:6px; font-size:11px; background:#f8fafc; }
+      .annotator-diagnostic.error { background:#fee2e2; color:#991b1b; }
+      .annotator-diagnostic.warning { background:#fef3c7; color:#92400e; }
+      details > summary { cursor:pointer; font-size:11px; font-weight:700; color:#475569; margin-bottom:6px; }
+      [data-rpa-annotator-panel] { display:block; }
     `;
 
     const wrap = document.createElement('div');
@@ -187,6 +197,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         overlay: annotatorOverlay,
     });
     annotatorSessionRef.current = annotatorSession;
+    const annotatorPanel = createAnnotatorPanel({document, session: annotatorSession});
     const annotatorLiveGeometry = createAnnotatorLiveGeometryRefresh({
         eventTargets: [
             window,
@@ -570,7 +581,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             className: 'title',
             textContent: 'Entity Rules Annotator',
         }));
-        box.appendChild(createAnnotatorPanel({document, session: annotatorSession}));
+        box.appendChild(annotatorPanel);
         return box;
     };
 

@@ -190,10 +190,12 @@ await log('annotator panel drives the session without DOM target recovery', asyn
     };
     const session = {
         getState: () => globalThis.structuredClone(state),
+        subscribe: () => () => undefined,
         setDraft: (draft) => {state = {...state, draft, profileName: draft.profileName}; calls.push(['setDraft', draft.profileName]);},
         open: async (name) => {calls.push(['open', name]);},
         recognize: async () => {calls.push(['recognize']);},
         visualize: async () => {calls.push(['visualize']);},
+        apply: async () => {calls.push(['apply']);},
         check: async () => {calls.push(['check']);},
         save: async () => {calls.push(['save']);},
         startPicking: () => {calls.push(['pick']);},
@@ -262,4 +264,163 @@ await log('annotator live geometry refresh coalesces viewport events through vis
     visualViewport.dispatchEvent(new dom.window.Event('resize'));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(refreshes, 1);
+});
+
+await log('annotator panel reacts to session state and applies canonical target annotations', async () => {
+    const {createAnnotatorPanel} = await import('../../dist/annotator/panel.js');
+    const dom = new JSDOM('<!doctype html><html><body></body></html>');
+    const listeners = new Set();
+    const calls = [];
+    let state = {status: 'idle', profileName: ''};
+    const nextProjection = {
+        ...projection,
+        selection: {
+            status: 'resolved',
+            nodeId: 'node:submit',
+            anchor: {pageEpoch: 'epoch-1', captureRevision: 3, nodeId: 'node:submit'},
+        },
+        targets: [
+            {
+                id: 'structural-root:form:orders',
+                kind: 'structural-root',
+                domain: 'form',
+                componentId: 'form:orders',
+                nodeIds: ['node:form'],
+                geometry: [],
+                label: 'Order form',
+            },
+            {
+                id: 'action:submit',
+                kind: 'action',
+                domain: 'form',
+                componentId: 'form:orders',
+                memberId: 'action:submit',
+                nodeIds: ['node:submit'],
+                geometry: [],
+                label: 'Submit',
+            },
+        ],
+    };
+    const publish = () => listeners.forEach((listener) => listener(globalThis.structuredClone(state)));
+    const session = {
+        getState: () => globalThis.structuredClone(state),
+        subscribe: (listener) => {listeners.add(listener); return () => listeners.delete(listener);},
+        setDraft: (draft) => {state = {...state, draft, profileName: draft.profileName}; publish();},
+        open: async (name) => {
+            calls.push(['open', name]);
+            state = {
+                status: 'ready',
+                profileName: name,
+                projection: nextProjection,
+                draft: {
+                    profileName: name,
+                    page: {kind: 'form', urlPattern: '/orders'},
+                    match: {version: 2, rules: []},
+                    annotation: {version: 2, bindings: []},
+                },
+            };
+            publish();
+        },
+        apply: async (input) => {calls.push(['apply', input.targetId, input.semantic.kind]);},
+        recognize: async () => undefined,
+        visualize: async () => undefined,
+        check: async () => undefined,
+        save: async () => undefined,
+        startPicking: () => undefined,
+        stopPicking: () => undefined,
+        dispose: () => undefined,
+    };
+    const panel = createAnnotatorPanel({document: dom.window.document, session});
+    dom.window.document.body.appendChild(panel);
+
+    const profileInput = panel.querySelector('[data-annotator-profile]');
+    assert.ok(profileInput);
+    profileInput.value = 'orders';
+    const open = [...panel.getElementsByTagName('button')].find((item) => item.textContent === 'Open');
+    assert.ok(open);
+    open.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const target = panel.querySelector('[data-annotator-target]');
+    assert.ok(target);
+    assert.equal(target.options.length >= 2, true);
+    target.value = 'action:submit';
+    target.dispatchEvent(new dom.window.Event('change', {bubbles: true}));
+    const semantic = panel.querySelector('[data-annotator-semantic-kind]');
+    assert.ok(semantic);
+    semantic.value = 'action';
+    semantic.dispatchEvent(new dom.window.Event('change', {bubbles: true}));
+    const value = panel.querySelector('[data-annotator-semantic-value]');
+    assert.ok(value);
+    value.value = 'submit';
+    value.dispatchEvent(new dom.window.Event('input', {bubbles: true}));
+    const apply = [...panel.getElementsByTagName('button')].find((item) => item.textContent === 'Apply annotation');
+    assert.ok(apply);
+    apply.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(calls, [
+        ['open', 'orders'],
+        ['apply', 'action:submit', 'action'],
+    ]);
+    assert.equal(panel.textContent.includes('epoch-1'), true);
+    assert.equal(panel.querySelector('textarea')?.value.includes('"urlPattern": "/orders"'), true);
+});
+
+await log('annotator client and session apply canonical targets without extension-side matching', async () => {
+    const sent = [];
+    const appliedDraft = {
+        profileName: 'orders',
+        page: {kind: 'form', urlPattern: '/orders'},
+        match: {
+            version: 2,
+            rules: [{ruleId: 'action-submit', source: 'node', expect: 'unique', match: {idEquals: 'Submit'}}],
+        },
+        annotation: {version: 2, bindings: [{ruleId: 'action-submit', actionIntent: 'submit'}]},
+    };
+    const client = createAnnotatorClient(async (type, payload) => {
+        sent.push({type, payload});
+        return {
+            v: 1,
+            id: `reply-${sent.length}`,
+            type: `${type}.result`,
+            payload: {
+                draft: appliedDraft,
+                projection,
+                validation: {ok: true, domain: 'form', diagnostics: [], bindingIds: ['orders:action-submit'], suggestionIds: []},
+            },
+        };
+    });
+    const rendered = [];
+    const session = createAnnotatorSession({
+        client,
+        overlay: {
+            render: (value) => rendered.push(value.identity.captureRevision),
+            startPicking: () => undefined,
+            stopPicking: () => undefined,
+            dispose: () => undefined,
+        },
+    });
+    const draft = {
+        profileName: 'orders',
+        page: {kind: 'form', urlPattern: '/orders'},
+        match: {version: 2, rules: []},
+        annotation: {version: 2, bindings: []},
+    };
+    await session.apply({
+        draft,
+        targetId: 'action:submit',
+        semantic: {kind: 'action', actionIntent: 'submit'},
+    });
+    assert.deepEqual(sent, [{
+        type: 'entity_rules.annotator.apply',
+        payload: {
+            draft,
+            targetId: 'action:submit',
+            semantic: {kind: 'action', actionIntent: 'submit'},
+        },
+    }]);
+    assert.deepEqual(session.getState().draft, appliedDraft);
+    assert.equal(session.getState().validation?.ok, true);
+    assert.deepEqual(rendered, [3]);
 });

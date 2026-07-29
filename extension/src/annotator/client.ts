@@ -1,6 +1,7 @@
 import type {Action} from '../shared/types.js';
 import type {
     AnnotatorActionSender,
+    AnnotatorApplyReply,
     AnnotatorCheckReply,
     AnnotatorClient,
     AnnotatorPickReply,
@@ -29,6 +30,15 @@ export const createAnnotatorClient = (sendAction: AnnotatorActionSender): Annota
         sendAction,
         'entity_rules.annotator.visualize',
         profileName ? {profileName} : {},
+    ),
+    apply: async (payload) => await request<AnnotatorApplyReply>(
+        sendAction,
+        'entity_rules.annotator.apply',
+        {
+            draft: structuredClone(payload.draft),
+            targetId: payload.targetId,
+            semantic: structuredClone(payload.semantic),
+        },
     ),
     check: async (draft) => await request<AnnotatorCheckReply>(
         sendAction,
