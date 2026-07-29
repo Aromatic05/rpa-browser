@@ -8,7 +8,7 @@ const agentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const snapshotRoot = path.join(agentRoot, 'src/snapshot');
 
 const expectedBranches: Record<string, readonly string[]> = {
-    '.': ['components', 'indexes', 'observation', 'rules', 'session'],
+    '.': ['components', 'indexes', 'observation', 'projection', 'rules', 'session'],
     observation: ['analysis', 'capture', 'model', 'replay'],
     indexes: ['locator', 'ownership', 'relation'],
     components: ['control', 'form', 'shared', 'table'],
@@ -43,6 +43,7 @@ const moduleRanks: Record<string, number> = {
     'rules/semantic': 17,
     'rules/runtime': 18,
     session: 19,
+    projection: 20,
 };
 
 const legacyDirectoryNames = new Set([
@@ -84,6 +85,7 @@ const moduleOf = (filePath: string): string | null => {
     if (relative[0] === 'indexes' && relative.length >= 3) {return relative.slice(0, 2).join('/');}
     if (relative[0] === 'rules' && relative.length >= 3) {return relative.slice(0, 2).join('/');}
     if (relative[0] === 'session' && relative.length >= 2) {return 'session';}
+    if (relative[0] === 'projection' && relative.length >= 2) {return 'projection';}
     if (relative[0] === 'components' && relative[1] === 'shared') {return 'components/shared';}
     if (relative[0] === 'components'
         && (relative[1] === 'control' || relative[1] === 'form' || relative[1] === 'table')

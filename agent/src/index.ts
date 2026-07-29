@@ -28,6 +28,7 @@ import { installRecorderEventSink } from './record/sink';
 import { createPortAllocator } from './runtime/service/ports';
 import type { RunStepsDeps } from './runner/run_steps_types';
 import {PageSnapshotSessionStore} from './snapshot/session';
+import {SnapshotProjectionBaselineStore} from './runner/session';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_PING_TIMEOUT_MS = 45000;
@@ -104,6 +105,7 @@ const runtimeRegistry = createExecutionBindings({
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
     pageSession: new PageSnapshotSessionStore(),
+    snapshotProjection: new SnapshotProjectionBaselineStore(),
     resolveWorkspace: (workspaceName: string) => {
         const workspace = workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {

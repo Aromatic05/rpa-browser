@@ -3,3 +3,4 @@ export * from './indexes';
 export * from './components';
 export * from './rules';
 export * from './session';
+export * from './projection';
