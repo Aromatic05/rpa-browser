@@ -14,8 +14,9 @@ export const executeBrowserCheckpoint = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const workspace = deps.resolveWorkspace(workspaceName);
-    const provider = workspace.checkpoint.getProvider(workspace.workflow);
-    const persistedCheckpoint = provider.getCheckpoint(step.args.checkpointId);
+    const checkpointFacade = (workspace as Partial<typeof workspace>).checkpoint;
+    const provider = checkpointFacade?.getProvider(workspace.workflow);
+    const persistedCheckpoint = provider?.getCheckpoint(step.args.checkpointId) ?? null;
     const checkpoint = persistedCheckpoint
         ?? listCheckpoints().find((item) => item.id === step.args.checkpointId);
     if (!checkpoint) {
@@ -29,7 +30,7 @@ export const executeBrowserCheckpoint = async (
         };
     }
     const stepResolves: Record<string, StepResolve> = persistedCheckpoint
-        ? provider.getCheckpointResolves?.(step.args.checkpointId) ?? {}
+        ? provider?.getCheckpointResolves?.(step.args.checkpointId) ?? {}
         : {};
     const nestedResults: RunLocalStepResults = {};
 
