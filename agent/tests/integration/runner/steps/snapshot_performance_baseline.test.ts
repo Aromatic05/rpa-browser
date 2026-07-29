@@ -1,321 +1,102 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { performance } from 'node:perf_hooks';
-import { compress } from '../../../../src/runner/steps/executors/snapshot/stages/compress';
-import { buildStructureEntityIndex } from '../../../../src/runner/steps/executors/snapshot/stages/entity_index';
-import { cloneTreeWithRuntime, normalizeText, setNodeAttrs, setNodeContent } from '../../../../src/runner/steps/executors/snapshot/core/runtime_store';
-import type { EntityIndex, UnifiedNode } from '../../../../src/runner/steps/executors/snapshot/core/types';
+import {promises as fs} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {
+    loadObservationFixtures,
+    runObservationReplayBenchmark,
+    type ObservationReplayBenchmarkReport,
+} from '../../../../src/snapshot';
 
-type PerfPoint = {
-    size: number;
-    nodeCount: number;
-    compressMs: number;
-    entityIndexMs: number;
-    entityCount: number;
-};
+const enabled = process.env.SNAPSHOT_V2_PERF_BASELINE === '1';
+const iterations = positiveInteger(process.env.SNAPSHOT_V2_PERF_ITERATIONS, 20);
+const timingRatio = positiveNumber(process.env.SNAPSHOT_V2_PERF_MAX_TIMING_RATIO, 8);
+const timingFloorMs = positiveNumber(process.env.SNAPSHOT_V2_PERF_TIMING_FLOOR_MS, 2);
+const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const repositoryDirectory = path.resolve(agentDirectory, '..');
+const fixtureDirectory = path.join(agentDirectory, 'tests/fixtures/observation-v2');
+const baselinePath = path.join(
+    repositoryDirectory,
+    'docs/Development/reports/SnapshotV2Stage1Baseline.json',
+);
 
-const ENABLE_PERF_BASELINE = process.env.SNAPSHOT_PERF_BASELINE === '1';
-const BASELINE_SIZES = [1000, 5000, 10000] as const;
+test('Snapshot V2 frozen corpus preserves work-set and p50/p95 performance bounds', {skip: !enabled}, async () => {
+    const fixtures = await loadObservationFixtures(fixtureDirectory);
+    const report = runObservationReplayBenchmark(fixtures, {
+        iterations,
+        corpusVersion: 'snapshot-v2-stage1-v2',
+    });
+    const baseline = await readBaseline();
 
-const WARMUP_ROUNDS = parsePositiveInt(process.env.SNAPSHOT_PERF_WARMUP_ROUNDS, 1);
-const BENCH_ROUNDS = parsePositiveInt(process.env.SNAPSHOT_PERF_BENCH_ROUNDS, 3);
+    assert.equal(report.corpusVersion, baseline.corpusVersion);
+    assert.equal(report.fixtureCount, baseline.fixtureCount);
+    assert.ok(report.fixtureCount > 0);
+    assert.equal(report.fixtures.every((fixture) => fixture.decision.invariantOk), true);
+    assert.deepEqual(report.fixtures.flatMap((fixture) => fixture.truthErrors), []);
 
-const MAX_COMPRESS_RATIO_5K = parsePositiveFloat(process.env.SNAPSHOT_PERF_MAX_COMPRESS_RATIO_5K, 12);
-const MAX_COMPRESS_RATIO_10K = parsePositiveFloat(process.env.SNAPSHOT_PERF_MAX_COMPRESS_RATIO_10K, 24);
-const MAX_ENTITY_INDEX_RATIO_5K = parsePositiveFloat(process.env.SNAPSHOT_PERF_MAX_ENTITY_INDEX_RATIO_5K, 12);
-const MAX_ENTITY_INDEX_RATIO_10K = parsePositiveFloat(process.env.SNAPSHOT_PERF_MAX_ENTITY_INDEX_RATIO_10K, 24);
+    assert.deepEqual(report.aggregate.candidateCounts, baseline.aggregate.candidateCounts);
+    assert.deepEqual(report.aggregate.workSet, baseline.aggregate.workSet);
+    assert.equal(report.aggregate.workSet.orphanCount, 0);
+    assert.ok(report.aggregate.workSet.maximumUnionRatio <= 1);
 
-test('snapshot perf baseline keeps near-linear scaling on 1k/5k/10k trees', { skip: !ENABLE_PERF_BASELINE }, () => {
-    const points: PerfPoint[] = [];
-
-    for (const size of BASELINE_SIZES) {
-        const baseTree = buildSyntheticTableTree(size);
-        const nodeCount = countNodes(baseTree);
-
-        const compressMs = measureMedianMs(
-            () => cloneTreeWithRuntime(baseTree),
-            (tree) => {
-                const out = compress(tree);
-                assert.ok(out, 'compress should produce non-null tree');
-            },
+    for (const fixture of report.fixtures) {
+        assert.ok(fixture.workSet.maxSize <= fixture.input.nodeCount);
+        assert.ok(fixture.workSet.p50Size <= fixture.workSet.p95Size);
+        assert.ok(fixture.workSet.p95Size <= fixture.workSet.maxSize);
+        assert.ok(fixture.workSet.unionRatio <= 1);
+        assert.ok(
+            fixture.workSet.peakRetainedIndexEntries <= fixture.input.nodeCount * 20,
+            `${fixture.id} retained too many index entries`,
         );
-
-        let entityCount = 0;
-        const entityIndexMs = measureMedianMs(
-            () => cloneTreeWithRuntime(baseTree),
-            (tree) => {
-                const index = buildStructureEntityIndex(tree);
-                entityCount = countEntities(index);
-            },
-        );
-
-        points.push({
-            size,
-            nodeCount,
-            compressMs,
-            entityIndexMs,
-            entityCount,
-        });
     }
 
-    const point1k = mustFindPoint(points, 1000);
-    const point5k = mustFindPoint(points, 5000);
-    const point10k = mustFindPoint(points, 10000);
-
-    const compressRatio5k = safeRatio(point5k.compressMs, point1k.compressMs);
-    const compressRatio10k = safeRatio(point10k.compressMs, point1k.compressMs);
-    const entityRatio5k = safeRatio(point5k.entityIndexMs, point1k.entityIndexMs);
-    const entityRatio10k = safeRatio(point10k.entityIndexMs, point1k.entityIndexMs);
-
-    assert.ok(
-        compressRatio5k <= MAX_COMPRESS_RATIO_5K,
-        `compress 5k/1k ratio too high: ${compressRatio5k.toFixed(2)} > ${MAX_COMPRESS_RATIO_5K.toFixed(2)}`,
-    );
-    assert.ok(
-        compressRatio10k <= MAX_COMPRESS_RATIO_10K,
-        `compress 10k/1k ratio too high: ${compressRatio10k.toFixed(2)} > ${MAX_COMPRESS_RATIO_10K.toFixed(2)}`,
-    );
-    assert.ok(
-        entityRatio5k <= MAX_ENTITY_INDEX_RATIO_5K,
-        `entity_index 5k/1k ratio too high: ${entityRatio5k.toFixed(2)} > ${MAX_ENTITY_INDEX_RATIO_5K.toFixed(2)}`,
-    );
-    assert.ok(
-        entityRatio10k <= MAX_ENTITY_INDEX_RATIO_10K,
-        `entity_index 10k/1k ratio too high: ${entityRatio10k.toFixed(2)} > ${MAX_ENTITY_INDEX_RATIO_10K.toFixed(2)}`,
-    );
-
-    for (const point of points) {
-        assert.ok(point.entityCount > 0, `size=${point.size} should produce entity candidates`);
+    for (const [passName, timing] of Object.entries(report.aggregate.timing)) {
+        const expected = baseline.aggregate.timing[passName];
+        assert.ok(expected, `baseline timing missing pass: ${passName}`);
+        assertTimingBound(passName, 'p50Ms', timing.p50Ms, expected.p50Ms);
+        assertTimingBound(passName, 'p95Ms', timing.p95Ms, expected.p95Ms);
     }
 
-    // 输出量化基线，便于后续回归对比。
-    console.info(
-        '[snapshot-perf-baseline]',
-        JSON.stringify(
-            {
-                config: {
-                    warmupRounds: WARMUP_ROUNDS,
-                    benchRounds: BENCH_ROUNDS,
-                },
-                ratios: {
-                    compress5kOver1k: Number(compressRatio5k.toFixed(4)),
-                    compress10kOver1k: Number(compressRatio10k.toFixed(4)),
-                    entityIndex5kOver1k: Number(entityRatio5k.toFixed(4)),
-                    entityIndex10kOver1k: Number(entityRatio10k.toFixed(4)),
-                },
-                points: points.map((point) => ({
-                    ...point,
-                    compressMs: Number(point.compressMs.toFixed(3)),
-                    entityIndexMs: Number(point.entityIndexMs.toFixed(3)),
-                })),
-            },
-            null,
-            2,
-        ),
-    );
+    console.info('[snapshot-v2-perf]', JSON.stringify({
+        iterations,
+        fixtureCount: report.fixtureCount,
+        inputNodeCount: report.aggregate.inputNodeCount,
+        workSet: report.aggregate.workSet,
+        timing: report.aggregate.timing,
+        timingRatio,
+        timingFloorMs,
+    }));
 });
 
-const measureMedianMs = <T>(
-    createInput: () => T,
-    run: (input: T) => void,
-): number => {
-    for (let i = 0; i < WARMUP_ROUNDS; i += 1) {
-        run(createInput());
-    }
-
-    const samples: number[] = [];
-    for (let i = 0; i < BENCH_ROUNDS; i += 1) {
-        const input = createInput();
-        const start = performance.now();
-        run(input);
-        const end = performance.now();
-        samples.push(end - start);
-    }
-
-    return median(samples);
+const readBaseline = async (): Promise<ObservationReplayBenchmarkReport> => {
+    const content = JSON.parse(await fs.readFile(baselinePath, 'utf8')) as {
+        fixedCorpus?: ObservationReplayBenchmarkReport;
+    };
+    assert.ok(content.fixedCorpus, 'Stage 1 fixed corpus baseline is missing');
+    return content.fixedCorpus;
 };
 
-const median = (values: number[]): number => {
-    if (values.length === 0) {return 0;}
-    const sorted = [...values].sort((left, right) => left - right);
-    const middle = Math.floor(sorted.length / 2);
-    if (sorted.length % 2 === 1) {
-        return sorted[middle] || 0;
-    }
-    return ((sorted[middle - 1] || 0) + (sorted[middle] || 0)) / 2;
+const assertTimingBound = (
+    passName: string,
+    metric: 'p50Ms' | 'p95Ms',
+    actual: number,
+    expected: number,
+): void => {
+    const maximum = Math.max(timingFloorMs, expected * timingRatio);
+    assert.ok(
+        actual <= maximum,
+        `${passName}.${metric} regression: ${actual.toFixed(3)}ms > ${maximum.toFixed(3)}ms `
+            + `(baseline=${expected.toFixed(3)}ms ratio=${timingRatio})`,
+    );
 };
 
-const buildSyntheticTableTree = (targetNodes: number): UnifiedNode => {
-    let idSeq = 0;
-    const createNode = (role: string, children: UnifiedNode[] = []): UnifiedNode => ({
-        id: `perf-${idSeq++}`,
-        role,
-        children,
-    });
-
-    const root = createNode('root');
-    const main = createNode('main');
-    const table = createNode('table');
-    root.children.push(main);
-    main.children.push(table);
-
-    setNodeAttrs(root, { tag: 'body' });
-    setNodeAttrs(main, { tag: 'main', class: 'perf-main' });
-    setNodeAttrs(table, { tag: 'table', class: 'perf-table dataset-table' });
-
-    while (idSeq < targetNodes) {
-        const rowIndex = table.children.length;
-        const row = createNode('row');
-        setNodeAttrs(row, { tag: 'tr', class: rowIndex % 2 === 0 ? 'row-even' : 'row-odd' });
-        table.children.push(row);
-
-        appendCell(row, createTextCell(createNode, rowIndex, 0));
-        if (idSeq >= targetNodes) {break;}
-
-        appendCell(row, createLinkCell(createNode, rowIndex, 1));
-        if (idSeq >= targetNodes) {break;}
-
-        appendCell(row, createButtonCell(createNode, rowIndex, 2));
-        if (idSeq >= targetNodes) {break;}
-
-        appendCell(row, createTextboxCell(createNode, rowIndex, 3));
-        if (idSeq >= targetNodes) {break;}
-
-        if (rowIndex % 20 === 0 && idSeq < targetNodes) {
-            appendCell(row, createDecorativeCell(createNode));
-        }
-    }
-
-    return root;
-};
-
-const appendCell = (row: UnifiedNode, cell: UnifiedNode) => {
-    row.children.push(cell);
-};
-
-const createTextCell = (
-    createNode: (role: string, children?: UnifiedNode[]) => UnifiedNode,
-    rowIndex: number,
-    colIndex: number,
-): UnifiedNode => {
-    const cell = createNode('cell');
-    setNodeAttrs(cell, { tag: 'td', class: `col-${colIndex}` });
-    setNodeContent(cell, normalizeText(`item-${rowIndex}`));
-    return cell;
-};
-
-const createLinkCell = (
-    createNode: (role: string, children?: UnifiedNode[]) => UnifiedNode,
-    rowIndex: number,
-    colIndex: number,
-): UnifiedNode => {
-    const cell = createNode('cell');
-    setNodeAttrs(cell, { tag: 'td', class: `col-${colIndex}` });
-
-    const link = createNode('link');
-    link.name = `detail-${rowIndex}`;
-    setNodeAttrs(link, {
-        tag: 'a',
-        href: `/perf/${rowIndex}`,
-        class: 'cell-link',
-    });
-
-    cell.children.push(link);
-    return cell;
-};
-
-const createButtonCell = (
-    createNode: (role: string, children?: UnifiedNode[]) => UnifiedNode,
-    rowIndex: number,
-    colIndex: number,
-): UnifiedNode => {
-    const cell = createNode('cell');
-    setNodeAttrs(cell, { tag: 'td', class: `col-${colIndex}` });
-
-    const shell = createNode('span');
-    setNodeAttrs(shell, { tag: 'span', class: 'btn-shell' });
-
-    const button = createNode('button');
-    button.name = rowIndex % 3 === 0 ? '编辑' : '查看';
-    setNodeAttrs(button, {
-        tag: 'button',
-        class: rowIndex % 3 === 0 ? 'btn-edit' : 'btn-open',
-    });
-
-    shell.children.push(button);
-    cell.children.push(shell);
-    return cell;
-};
-
-const createTextboxCell = (
-    createNode: (role: string, children?: UnifiedNode[]) => UnifiedNode,
-    rowIndex: number,
-    colIndex: number,
-): UnifiedNode => {
-    const cell = createNode('cell');
-    setNodeAttrs(cell, { tag: 'td', class: `col-${colIndex}` });
-
-    const textbox = createNode('textbox');
-    setNodeAttrs(textbox, {
-        tag: 'input',
-        type: 'text',
-        placeholder: `keyword-${rowIndex}`,
-        value: rowIndex % 2 === 0 ? `v-${rowIndex}` : '',
-    });
-
-    cell.children.push(textbox);
-    return cell;
-};
-
-const createDecorativeCell = (
-    createNode: (role: string, children?: UnifiedNode[]) => UnifiedNode,
-): UnifiedNode => {
-    const cell = createNode('cell');
-    setNodeAttrs(cell, { tag: 'td', class: 'col-decoration' });
-
-    const shell = createNode('div');
-    setNodeAttrs(shell, { tag: 'div', class: 'skeleton spinner' });
-
-    const icon = createNode('i');
-    setNodeAttrs(icon, { tag: 'i', class: 'icon loading' });
-
-    shell.children.push(icon);
-    cell.children.push(shell);
-    return cell;
-};
-
-const countNodes = (node: UnifiedNode): number => {
-    let total = 1;
-    for (const child of node.children) {
-        total += countNodes(child);
-    }
-    return total;
-};
-
-const countEntities = (entityIndex: EntityIndex): number => Object.keys(entityIndex.entities).length;
-
-const mustFindPoint = (points: PerfPoint[], size: number): PerfPoint => {
-    const hit = points.find((point) => point.size === size);
-    assert.ok(hit, `missing perf point for size=${size}`);
-    return hit;
-};
-
-const safeRatio = (numerator: number, denominator: number): number => {
-    if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) {return Number.POSITIVE_INFINITY;}
-    if (denominator <= 0) {return Number.POSITIVE_INFINITY;}
-    return numerator / denominator;
-};
-
-function parsePositiveInt(raw: string | undefined, fallback: number): number {
-    if (!raw) {return fallback;}
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {return fallback;}
-    return parsed;
+function positiveInteger(value: string | undefined, fallback: number): number {
+    const parsed = Number.parseInt(value ?? '', 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function parsePositiveFloat(raw: string | undefined, fallback: number): number {
-    if (!raw) {return fallback;}
-    const parsed = Number.parseFloat(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {return fallback;}
-    return parsed;
+function positiveNumber(value: string | undefined, fallback: number): number {
+    const parsed = Number.parseFloat(value ?? '');
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
