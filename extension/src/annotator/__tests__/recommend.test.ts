@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {recommendAnnotationTypes} from '../recommend/recommend_types.js';
+import {
+    filterCandidatesForAnnotationType,
+    recommendAnnotationTypes,
+} from '../recommend/recommend_types.js';
 import type {PickCandidate} from '../types.js';
 
 const baseCandidate = (overrides: Partial<PickCandidate>): PickCandidate => ({
@@ -91,4 +94,19 @@ test('group candidate yields entity/group recommendation', () => {
 test('generic container falls back to entity/group/ignore', () => {
     const candidate = baseCandidate({level: 'control', role: 'generic'});
     assert.deepEqual(recommendAnnotationTypes(candidate), ['entity', 'group', 'ignore']);
+});
+
+
+test('filterCandidatesForAnnotationType keeps only targets matching the user-selected business role', () => {
+    const field = baseCandidate({nodeId: 'field', role: 'textbox'});
+    const action = baseCandidate({nodeId: 'action', role: 'button'});
+    const region = baseCandidate({nodeId: 'region', level: 'region', role: 'region'});
+    assert.deepEqual(
+        filterCandidatesForAnnotationType([field, action, region], 'table', 'field').map((item) => item.nodeId),
+        ['field'],
+    );
+    assert.deepEqual(
+        filterCandidatesForAnnotationType([field, action, region], 'table', 'action').map((item) => item.nodeId),
+        ['action'],
+    );
 });

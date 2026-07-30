@@ -25,6 +25,40 @@ const elementText = (element: Element): string => normalize([
     .filter(Boolean)
     .join(' '));
 
+const semanticRole = (element: Element): string => {
+    const explicit = normalize(element.getAttribute('role'));
+    if (explicit) {return explicit;}
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'input') {
+        const type = normalize(element.getAttribute('type')) || 'text';
+        if (type === 'hidden') {return '';}
+        if (type === 'checkbox') {return 'checkbox';}
+        if (type === 'radio') {return 'radio';}
+        if (type === 'range') {return 'slider';}
+        if (type === 'number') {return 'spinbutton';}
+        if (type === 'search') {return 'searchbox';}
+        if (type === 'button' || type === 'submit' || type === 'reset' || type === 'image') {return 'button';}
+        return 'textbox';
+    }
+    if (tag === 'textarea') {return 'textbox';}
+    if (tag === 'select') {
+        const select = element as HTMLSelectElement;
+        return select.multiple || select.size > 1 ? 'listbox' : 'combobox';
+    }
+    if (tag === 'button') {return 'button';}
+    if ((tag === 'a' || tag === 'area') && element.hasAttribute('href')) {return 'link';}
+    if (tag === 'table') {return 'table';}
+    if (tag === 'tr') {return 'row';}
+    if (tag === 'th') {return normalize(element.getAttribute('scope')) === 'row' ? 'rowheader' : 'columnheader';}
+    if (tag === 'td') {return 'cell';}
+    if (tag === 'form') {return 'form';}
+    if (tag === 'nav') {return 'navigation';}
+    if (tag === 'dialog') {return 'dialog';}
+    if (tag === 'ul' || tag === 'ol') {return 'list';}
+    if (tag === 'li') {return 'listitem';}
+    return '';
+};
+
 const classCandidates = (root: ParentNode, classContains: string): Element[] => {
     const scope = root as Document | Element;
     const firstClass = classContains.split(/\s+/).find(Boolean);
@@ -43,14 +77,68 @@ const classCandidates = (root: ParentNode, classContains: string): Element[] => 
     return [...candidates];
 };
 
+const addQueryMatches = (target: Set<Element>, root: ParentNode, selector: string): void => {
+    const rootElement = root.nodeType === 1 ? root as Element : null;
+    if (rootElement?.matches(selector)) {target.add(rootElement);}
+    for (const element of Array.from(root.querySelectorAll(selector))) {target.add(element);}
+};
+
+const structuralSelector = (kind: PersistentTargetDraft['kind']): string | null => {
+    if (kind === 'table') {return 'table, [role="table"], [role="grid"]';}
+    if (kind === 'form') {return 'form, [role="form"]';}
+    if (kind === 'list') {return 'ul, ol, [role="list"]';}
+    if (kind === 'dialog') {return 'dialog, [role="dialog"]';}
+    if (kind === 'toolbar') {return '[role="toolbar"]';}
+    if (kind === 'panel') {return 'section, main, article, [role="region"]';}
+    return null;
+};
+
+const candidateElements = (
+    root: ParentNode,
+    target: PersistentTargetDraft,
+): Element[] => {
+    const candidates = new Set<Element>();
+    const isDocument = root.nodeType === 9;
+    const ownerDocument = isDocument ? root as Document : (root as Element).ownerDocument;
+    if (target.idEquals && ownerDocument) {
+        const element = ownerDocument.getElementById(target.idEquals);
+        if (element && (isDocument || root.contains(element))) {candidates.add(element);}
+    }
+    if (target.classContains) {
+        for (const element of classCandidates(root, target.classContains)) {candidates.add(element);}
+    }
+    if (target.placeholderEquals) {addQueryMatches(candidates, root, '[placeholder]');}
+    if (target.ariaContains) {
+        addQueryMatches(candidates, root, '[aria-label], [aria-labelledby], [aria-describedby], [title]');
+    }
+    if (target.nameEquals) {addQueryMatches(candidates, root, '[name]');}
+    if (target.nameContains) {
+        addQueryMatches(candidates, root, '[name], [aria-label], [title], [placeholder], label, button, a, th, td');
+    }
+    if (target.textContains) {
+        addQueryMatches(candidates, root, 'section, main, article, form, table, nav, button, a, label, th, td, [role], [aria-label], [title]');
+    }
+    if (target.roleEquals) {
+        addQueryMatches(candidates, root, '[role], input, select, textarea, button, a[href], table, tr, th, td, form, nav, dialog, ul, ol, li');
+    }
+    const structural = structuralSelector(target.kind);
+    if (structural) {addQueryMatches(candidates, root, structural);}
+    if (candidates.size === 0) {
+        addQueryMatches(candidates, root, 'input, select, textarea, button, a, th, td, table, form, section, main, article, nav, [role], [aria-label], [title]');
+    }
+    return [...candidates];
+};
+
 export const matchesDomTarget = (element: Element, target: PersistentTargetDraft): boolean => {
     if (target.idEquals && element.id !== target.idEquals) {return false;}
     if (target.classContains) {
         if (!normalize(element.getAttribute('class')).includes(normalize(target.classContains))) {return false;}
     }
-    if (target.roleEquals && normalize(element.getAttribute('role')) !== normalize(target.roleEquals)) {return false;}
+    if (target.roleEquals && semanticRole(element) !== normalize(target.roleEquals)) {return false;}
+    if (target.placeholderEquals
+        && normalize(element.getAttribute('placeholder')) !== normalize(target.placeholderEquals)) {return false;}
+    if (target.nameEquals && normalize(element.getAttribute('name')) !== normalize(target.nameEquals)) {return false;}
     const text = elementText(element);
-    if (target.nameEquals && text !== normalize(target.nameEquals)) {return false;}
     if (target.nameContains && !text.includes(normalize(target.nameContains))) {return false;}
     if (target.textContains && !normalize(element.textContent).includes(normalize(target.textContains))) {return false;}
     if (target.ariaContains && !normalize([
@@ -67,32 +155,8 @@ export const matchesDomTarget = (element: Element, target: PersistentTargetDraft
 export const resolveEntityElement = (
     entity: CanvasEntityDraft,
     documentRef: Document,
-): Element | null => {
-    const target = entity.target;
-    const candidates: Element[] = [];
-    if (target.idEquals) {
-        const element = documentRef.getElementById(target.idEquals);
-        if (element) {candidates.push(element);}
-    } else if (target.classContains) {
-        candidates.push(...classCandidates(documentRef, target.classContains));
-    } else if (target.roleEquals) {
-        candidates.push(...Array.from(documentRef.querySelectorAll(`[role="${target.roleEquals}"]`)));
-    } else if (target.kind === 'table') {
-        candidates.push(...Array.from(documentRef.querySelectorAll('[role="table"], [role="grid"]')));
-        candidates.push(...Array.from(documentRef.querySelectorAll('table')));
-    } else if (target.kind === 'form') {
-        candidates.push(...Array.from(documentRef.querySelectorAll('form, [role="form"]')));
-    } else if (target.kind === 'list') {
-        candidates.push(...Array.from(documentRef.querySelectorAll('[role="list"], ul, ol')));
-    } else if (target.kind === 'dialog') {
-        candidates.push(...Array.from(documentRef.querySelectorAll('dialog, [role="dialog"]')));
-    } else if (target.kind === 'toolbar') {
-        candidates.push(...Array.from(documentRef.querySelectorAll('[role="toolbar"]')));
-    } else if (target.kind === 'panel') {
-        candidates.push(...Array.from(documentRef.querySelectorAll('section, main, article, [role="region"]')));
-    }
-    return candidates.find((element) => matchesDomTarget(element, target)) ?? null;
-};
+): Element | null => candidateElements(documentRef, entity.target)
+    .find((element) => matchesDomTarget(element, entity.target)) ?? null;
 
 export const resolveColumnHeader = (
     entityElement: Element,
@@ -105,28 +169,11 @@ export const resolveColumnHeader = (
         .find((header) => expected.has(normalize(header.textContent))) ?? null;
 };
 
-
 export const resolveTargetElements = (
     target: PersistentTargetDraft,
     root: ParentNode,
-): Element[] => {
-    const candidates: Element[] = [];
-    const isDocument = root.nodeType === 9;
-    const ownerDocument = isDocument ? root as Document : (root as Element).ownerDocument;
-    if (target.idEquals && ownerDocument) {
-        const element = ownerDocument.getElementById(target.idEquals);
-        if (element && (isDocument || root.contains(element))) {candidates.push(element);}
-    } else if (target.classContains) {
-        candidates.push(...classCandidates(root, target.classContains));
-    } else if (target.roleEquals) {
-        candidates.push(...Array.from(root.querySelectorAll(`[role="${target.roleEquals}"]`)));
-    } else {
-        candidates.push(...Array.from(root.querySelectorAll(
-            'input, select, textarea, button, a, th, [role], [aria-label], [title]',
-        )));
-    }
-    return candidates.filter((element) => matchesDomTarget(element, target));
-};
+): Element[] => candidateElements(root, target)
+    .filter((element) => matchesDomTarget(element, target));
 
 export const enrichVisualBindingsFromDom = (
     draft: CanvasDraft,

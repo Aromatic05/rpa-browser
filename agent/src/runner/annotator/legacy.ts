@@ -118,6 +118,9 @@ export const isLegacyAnnotatorPayload = (payload: Readonly<Record<string, unknow
     || 'url' in payload
     || 'expectedRevision' in payload;
 
+const entityVisualId = (entityId: string): string => `entity:${entityId}`;
+const paginationVisualId = (entityId: string): string => `${entityId}_pgpage`;
+
 export const handleLegacyAnnotatorAction = async (
     deps: RunStepsDeps,
     input: Pick<WorkspaceRouterInput, 'action' | 'workspace'>,
@@ -733,7 +736,7 @@ const compileLegacyCanvas = (
     const ruleIdByCanvasId = new Map<string, string>();
     canvas.entities.forEach((entity, entityIndex) => {
         const rootRuleId = `entity-${slug(canvas.profileName)}-${String(entityIndex)}`;
-        ruleIdByCanvasId.set(entity.id, rootRuleId);
+        ruleIdByCanvasId.set(entityVisualId(entity.id), rootRuleId);
         const rootProjectionTarget = findProjectionTarget(
             entry,
             projection,
@@ -872,7 +875,7 @@ const compileLegacyCanvas = (
         });
         if (entity.pagination && hasTarget(entity.pagination.pageTarget)) {
             const ruleId = `${rootRuleId}-pagination-next`;
-            ruleIdByCanvasId.set(`pagination:${entity.id}:page`, ruleId);
+            ruleIdByCanvasId.set(paginationVisualId(entity.id), ruleId);
             const within = withinRuleForTarget(entity.pagination.pageTarget);
             rules.push({
                 ruleId,
@@ -903,14 +906,26 @@ const legacyCheckResults = (
     compiled: LegacyCompileResult,
     diagnostics: readonly {ruleId?: string; code: string; message: string}[],
 ): Array<Record<string, unknown>> => {
-    const canvasIds = canvas.entities.flatMap((entity) => [
-        entity.id,
-        ...entity.annotations.map((annotation) => annotation.id),
-        ...entity.columns.map((column) => column.id),
-        ...entity.columns.flatMap((column) => column.actions.map((action) => action.id)),
-        ...(entity.pagination ? [`pagination:${entity.id}:page`] : []),
+    const canvasItems = canvas.entities.flatMap((entity) => [
+        {canvasAnnotationId: entityVisualId(entity.id), expected: entity.expect ?? 'unique'},
+        ...entity.annotations.map((annotation) => ({
+            canvasAnnotationId: annotation.id,
+            expected: annotation.expect ?? 'unique',
+        })),
+        ...entity.columns.map((column) => ({
+            canvasAnnotationId: column.id,
+            expected: 'unique' as const,
+        })),
+        ...entity.columns.flatMap((column) => column.actions.map((action) => ({
+            canvasAnnotationId: action.id,
+            expected: 'one_or_more' as const,
+        }))),
+        ...(entity.pagination ? [{
+            canvasAnnotationId: paginationVisualId(entity.id),
+            expected: 'unique' as const,
+        }] : []),
     ]);
-    return canvasIds.map((canvasAnnotationId) => {
+    return canvasItems.map(({canvasAnnotationId, expected}) => {
         const ruleId = compiled.ruleIdByCanvasId.get(canvasAnnotationId);
         const issue = ruleId ? diagnostics.find((diagnostic) => diagnostic.ruleId === ruleId) : undefined;
         const status = issue ? diagnosticStatus(issue) : 'unique';
@@ -918,7 +933,7 @@ const legacyCheckResults = (
             canvasAnnotationId,
             status,
             matchCount: status === 'unique' ? 1 : status === 'multiple' ? 2 : 0,
-            expected: canvasAnnotationId.includes('action') ? 'one_or_more' : 'unique',
+            expected,
             message: issue?.message ?? 'unique',
             nodeIds: [],
         };
@@ -1021,7 +1036,7 @@ const visualRefs = (
                     kind: entity.kind,
                     role: 'pagination',
                     actionIntent: entity.pagination.actionIntent,
-                    canvasAnnotationId: `pagination:${entity.id}:page`,
+                    canvasAnnotationId: paginationVisualId(entity.id),
                     bbox: unionRects(boxes),
                     matchedNodeBoxes: boxes,
                 });

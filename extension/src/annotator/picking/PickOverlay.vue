@@ -10,6 +10,7 @@ const props = defineProps<{
     currentEntityKind: EntityKind | undefined;
     pointer: {x: number; y: number} | null;
     purpose: PickPurpose;
+    intentLabel?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +28,7 @@ const candidatePosition = computed(() => {
 });
 const objectType = computed(() => {
     if (props.purpose === 'entity') {return '业务区域';}
+    if (props.intentLabel) {return props.intentLabel;}
     switch (props.candidate?.level) {
         case 'field': return '字段';
         case 'control': return '操作';
@@ -53,7 +55,7 @@ const dockSide = computed<'top' | 'bottom'>(() => {
         <div class="scope-summary">
             <span class="scope-dot" aria-hidden="true"></span>
             <div>
-                <small>{{ purpose === 'entity' ? '当前实体范围' : '当前页面对象' }}</small>
+                <small>{{ purpose === 'entity' ? '当前实体范围' : (intentLabel ? `正在${intentLabel}` : '当前页面对象') }}</small>
                 <strong>{{ displayName }}</strong>
             </div>
             <em>{{ objectType }}<template v-if="candidatePosition"> · {{ candidatePosition }}</template></em>
@@ -81,7 +83,7 @@ const dockSide = computed<'top' | 'bottom'>(() => {
         <div class="scope-confirmation-actions">
             <button type="button" class="scope-cancel" @click.stop="emit('cancel')">退出</button>
             <button type="button" class="scope-confirm annotator-pick-confirm" @click.stop="emit('confirm')">
-                {{ purpose === 'entity' ? '确认范围' : '确认对象' }}
+                {{ purpose === 'entity' ? '确认范围' : (intentLabel ? '确认添加' : '确认对象') }}
             </button>
         </div>
     </section>

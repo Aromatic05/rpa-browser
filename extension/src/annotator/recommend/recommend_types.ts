@@ -119,3 +119,11 @@ export const recommendAnnotationTypes = (
 
     return ['entity', 'group', 'ignore'];
 };
+
+export const filterCandidatesForAnnotationType = (
+    candidates: readonly PickCandidate[],
+    currentEntityKind: EntityKind | undefined,
+    requestedType: 'field' | 'action',
+): PickCandidate[] => candidates.filter((candidate) =>
+    recommendAnnotationTypes(candidate, currentEntityKind).includes(requestedType),
+);

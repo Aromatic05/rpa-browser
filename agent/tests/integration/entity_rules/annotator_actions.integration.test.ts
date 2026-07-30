@@ -806,8 +806,8 @@ test('table module annotation keeps filter controls in the shared business scope
         }, memory.workflow);
         const canvasDraft = (recognized.reply.payload as {canvasDraft: {
             entities: Array<{
-                annotations: Array<{type: string; name?: string; businessKey: string; target: Record<string, unknown>}>;
-                columns: Array<{name?: string; kind?: string; actions: Array<{text?: string; actionIntent: string}>}>;
+                annotations: Array<{id: string; type: string; name?: string; businessKey: string; target: Record<string, unknown>}>;
+                columns: Array<{id: string; name?: string; kind?: string; actions: Array<{id: string; text?: string; actionIntent: string}>}>;
             }>;
         }}).canvasDraft;
         const entity = canvasDraft.entities[0];
@@ -829,10 +829,14 @@ test('table module annotation keeps filter controls in the shared business scope
         const checked = await invoke(runtime, 'entity_rules.annotator.check', {canvasDraft}, memory.workflow);
         const checkPayload = checked.reply.payload as {
             stale: boolean;
-            results: Array<{canvasAnnotationId: string; status: string}>;
+            results: Array<{canvasAnnotationId: string; status: string; expected: string}>;
         };
         assert.equal(checkPayload.stale, false);
         assert.equal(checkPayload.results.every((result) => result.status === 'unique'), true);
+        assert.equal(checkPayload.results.some((result) => result.canvasAnnotationId === 'entity:e0'), true);
+        assert.equal(checkPayload.results.some((result) => result.canvasAnnotationId === 'e0_pgpage'), true);
+        assert.equal(checkPayload.results.find((result) => result.canvasAnnotationId === entity.annotations[2].id)?.expected, 'unique');
+        assert.equal(checkPayload.results.find((result) => result.canvasAnnotationId === entity.columns[2].actions[0].id)?.expected, 'one_or_more');
 
         const saved = await invoke(runtime, 'entity_rules.annotator.save', {
             canvasDraft,

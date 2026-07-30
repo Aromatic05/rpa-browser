@@ -128,6 +128,10 @@ const selectedCanSetPrimaryKey = computed((): boolean =>
     selectedBox.value?.kind === 'column' && selectedEntity.value?.kind === 'table',
 );
 
+const selectedCanReselect = computed((): boolean =>
+    selectedBox.value?.kind !== 'column',
+);
+
 const selectedIsPrimaryKey = computed((): boolean =>
     Boolean(
         selectedCanSetPrimaryKey.value &&
@@ -267,6 +271,7 @@ const onReselect = (): void => {
                 :candidate-chain-length="candidateChainLength"
                 :can-change-type="selectedIsNativeAnnotation"
                 :can-delete="selectedBox?.kind !== 'entity'"
+                :can-reselect="selectedCanReselect"
                 :can-ignore="selectedBox?.kind !== 'entity' && selectedBox?.kind !== 'pagination'"
                 :can-set-primary-key="selectedCanSetPrimaryKey"
                 :is-primary-key="selectedIsPrimaryKey"

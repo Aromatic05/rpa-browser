@@ -9,6 +9,8 @@ import {
     resolveCheckIssueRecovery,
     summarizeEntityDraft,
     candidateDisplayName,
+    businessObjectAddOptions,
+    listEntityBusinessObjects,
 } from '../state/product_ui.js';
 import type {AnnotationBox} from '../layout/annotation_boxes.js';
 import type {CanvasEntityDraft, PickCandidate} from '../types.js';
@@ -127,6 +129,41 @@ test('summarizeEntityDraft reports user-facing object counts', () => {
         pagination: 1,
         total: 6,
     });
+});
+
+test('listEntityBusinessObjects exposes table semantics instead of generic DOM types', () => {
+    const items = listEntityBusinessObjects(entity(), [{
+        canvasAnnotationId: 'f1',
+        status: 'missing',
+        matchCount: 0,
+        expected: 'unique',
+        message: 'missing',
+        nodeIds: [],
+    }]);
+    assert.deepEqual(items.map((item) => [item.annotationId, item.roleLabel, item.name, item.businessKey]), [
+        ['f1', '筛选字段', '订单编号', 'orderNo'],
+        ['a1', '区域操作', '查询', 'search'],
+        ['c1', '表格列', '订单编号', 'orderNo'],
+        ['c2', '表格列', '操作', 'actions'],
+        ['edit', '行操作', '编辑', 'edit'],
+        ['e0_pgpage', '翻页操作', '下一页', 'nextPage'],
+    ]);
+    assert.equal(items[0].validation, 'missing');
+    assert.equal(items[1].validation, 'unchecked');
+    assert.equal(items.find((item) => item.annotationId === 'c1')?.canReselect, false);
+    assert.equal(items.find((item) => item.annotationId === 'edit')?.canReselect, true);
+});
+
+test('businessObjectAddOptions uses business roles for forms and tables', () => {
+    assert.deepEqual(businessObjectAddOptions(entity()).map((item) => [item.type, item.label]), [
+        ['field', '添加筛选字段'],
+        ['action', '添加区域操作'],
+    ]);
+    const form = {...entity(), kind: 'form' as const};
+    assert.deepEqual(businessObjectAddOptions(form).map((item) => [item.type, item.label]), [
+        ['field', '添加表单字段'],
+        ['action', '添加表单操作'],
+    ]);
 });
 
 test('groupAnnotationBoxes hides entity frame and groups business objects', () => {

@@ -116,6 +116,121 @@ export const summarizeEntityDraft = (entity: CanvasEntityDraft | null): EntityOb
     };
 };
 
+export type BusinessObjectRole =
+    | 'field'
+    | 'action'
+    | 'column'
+    | 'row_action'
+    | 'pagination';
+
+export type BusinessObjectItem = {
+    annotationId: string;
+    role: BusinessObjectRole;
+    roleLabel: string;
+    name: string;
+    businessKey: string;
+    origin: CanvasEntityDraft['origin'];
+    disposition: 'active' | 'ignored';
+    validation: CheckResultByAnnotation['status'] | 'unchecked';
+    canReselect: boolean;
+};
+
+const annotationRoleLabel = (entity: CanvasEntityDraft, type: 'field' | 'action'): string => {
+    if (entity.kind === 'table') {return type === 'field' ? '筛选字段' : '区域操作';}
+    if (entity.kind === 'form') {return type === 'field' ? '表单字段' : '表单操作';}
+    return type === 'field' ? '字段' : '操作';
+};
+
+export const listEntityBusinessObjects = (
+    entity: CanvasEntityDraft | null,
+    checks: readonly CheckResultByAnnotation[] | null = null,
+): BusinessObjectItem[] => {
+    if (!entity) {return [];}
+    const validation = new Map((checks ?? []).map((item) => [item.canvasAnnotationId, item.status]));
+    const result: BusinessObjectItem[] = [];
+    for (const annotation of entity.annotations) {
+        if (annotation.type === 'pagination') {continue;}
+        result.push({
+            annotationId: annotation.id,
+            role: annotation.type,
+            roleLabel: annotationRoleLabel(entity, annotation.type),
+            name: annotation.name?.trim() || annotation.businessKey,
+            businessKey: annotation.businessKey,
+            origin: annotation.origin,
+            disposition: annotation.disposition,
+            validation: validation.get(annotation.id) ?? 'unchecked',
+            canReselect: true,
+        });
+    }
+    for (const column of entity.columns) {
+        result.push({
+            annotationId: column.id,
+            role: 'column',
+            roleLabel: '表格列',
+            name: column.name?.trim() || column.fieldKey,
+            businessKey: column.fieldKey,
+            origin: column.origin,
+            disposition: column.disposition,
+            validation: validation.get(column.id) ?? 'unchecked',
+            canReselect: false,
+        });
+        for (const action of column.actions) {
+            result.push({
+                annotationId: action.id,
+                role: 'row_action',
+                roleLabel: '行操作',
+                name: action.text?.trim() || action.actionIntent,
+                businessKey: action.actionIntent,
+                origin: action.origin,
+                disposition: action.disposition,
+                validation: validation.get(action.id) ?? 'unchecked',
+                canReselect: true,
+            });
+        }
+    }
+    if (entity.pagination) {
+        const annotationId = paginationPageVisualId(entity.id);
+        result.push({
+            annotationId,
+            role: 'pagination',
+            roleLabel: '翻页操作',
+            name: '下一页',
+            businessKey: entity.pagination.actionIntent,
+            origin: entity.origin,
+            disposition: 'active',
+            validation: validation.get(annotationId) ?? 'unchecked',
+            canReselect: true,
+        });
+    }
+    return result;
+};
+
+export type BusinessObjectAddOption = {
+    type: 'field' | 'action';
+    label: string;
+    description: string;
+};
+
+export const businessObjectAddOptions = (entity: CanvasEntityDraft | null): BusinessObjectAddOption[] => {
+    if (!entity) {return [];}
+    if (entity.kind === 'table') {
+        return [
+            {type: 'field', label: '添加筛选字段', description: '用于向列表筛选条件输入内容'},
+            {type: 'action', label: '添加区域操作', description: '用于查询、下载等列表级操作'},
+        ];
+    }
+    if (entity.kind === 'form') {
+        return [
+            {type: 'field', label: '添加表单字段', description: '用于填写或选择表单值'},
+            {type: 'action', label: '添加表单操作', description: '用于提交、保存等表单操作'},
+        ];
+    }
+    return [
+        {type: 'field', label: '添加字段', description: '用于读取或填写页面内容'},
+        {type: 'action', label: '添加操作', description: '用于点击页面操作'},
+    ];
+};
+
 export type AnnotationBoxGroups = {
     fields: AnnotationBox[];
     actions: AnnotationBox[];

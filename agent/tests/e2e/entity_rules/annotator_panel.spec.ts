@@ -249,8 +249,8 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             dimmed: true,
             entityFocused: true,
             recognizeButton: false,
-            dockText: expect.stringContaining('检查标注'),
-            markers: {field: 2, column: 5, action: 0, pagination: 2},
+            dockText: expect.stringContaining('订单查询列表'),
+            markers: {field: 2, column: 5, action: 4, pagination: 2},
             labels: 0,
         });
 
@@ -294,17 +294,71 @@ test('selects an entity, recognizes presets automatically, and edits the page di
         `)).toBe(false);
         await closeEditCard(agent, workspaceName);
 
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '[data-annotator-action="business-objects"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const panel = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
+                ?.querySelector('.business-object-panel');
+            return {
+                open: Boolean(panel),
+                text: panel?.textContent?.replace(/\\s+/g, ' ').trim() || '',
+            };
+        `), {timeout: 10_000}).toEqual({
+            open: true,
+            text: expect.stringMatching(/筛选字段.*区域操作.*表格列.*行操作.*翻页操作/s),
+        });
+
+        const orderFieldPoint = await evaluate<Point | null>(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            const item = [...(root?.querySelectorAll('[data-business-object-role="field"]') || [])]
+                .find((candidate) => candidate.textContent?.includes('订单编号'));
+            const button = item?.querySelector('.object-main');
+            if (!(button instanceof HTMLButtonElement)) return null;
+            const rect = button.getBoundingClientRect();
+            return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+        `);
+        expect(orderFieldPoint).not.toBeNull();
+        await click(agent, workspaceName, orderFieldPoint!);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return {
+                panelOpen: Boolean(root?.querySelector('.business-object-panel')),
+                editText: root?.querySelector('.annotator-edit-card')?.textContent
+                    ?.replace(/\\s+/g, ' ').trim() || '',
+            };
+        `), {timeout: 10_000}).toEqual({
+            panelOpen: false,
+            editText: expect.stringContaining('筛选字段订单编号'),
+        });
+        await closeEditCard(agent, workspaceName);
+
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '[data-annotator-action="business-objects"]',
+        ));
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '[data-business-object-add="field"]',
+        ));
         await click(agent, workspaceName, await pageElementPoint(
             agent,
             workspaceName,
-            '#orderNoQuery',
+            '#searchOrders',
         ));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
-                ?.querySelector('.annotator-edit-card')?.textContent
-                ?.replace(/\\s+/g, ' ').trim() || '';
-        `), {timeout: 10_000}).toEqual(expect.stringContaining('字段订单编号'));
-        await closeEditCard(agent, workspaceName);
+                ?.querySelector('.pick-guide strong')?.textContent?.trim() || '';
+        `), {timeout: 10_000}).toContain('不能作为筛选字段');
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '.pick-guide button',
+        ));
 
         await click(agent, workspaceName, await shadowButtonPoint(
             agent,

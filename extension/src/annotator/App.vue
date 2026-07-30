@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue';
 import AnnotatorCanvas from './canvas/AnnotatorCanvas.vue';
+import BusinessObjectPanel from './canvas/BusinessObjectPanel.vue';
 import LabelLayer from './labels/LabelLayer.vue';
 import PickOverlay from './picking/PickOverlay.vue';
 import type {AnnotatorClient} from './protocol/annotator_client.js';
@@ -53,6 +54,7 @@ import {
 } from './picking/candidate_navigation.js';
 import {attachPickerListeners, type PickerDetach} from './picking/dom_adapter.js';
 import {planAnnotationFromCandidate} from './recommend/candidate_to_annotation.js';
+import {filterCandidatesForAnnotationType} from './recommend/recommend_types.js';
 import type {RecommendedType} from './recommend/recommend_types.js';
 import type {
     AnnotatorPickResult,
@@ -68,11 +70,15 @@ import type {
 } from './types.js';
 import {entityVisualId, paginationPageVisualId} from './visual_ids.js';
 import {
+    businessObjectAddOptions,
     checkIssueMessage,
     deriveCanvasPresentation,
     deriveProductStage,
+    listEntityBusinessObjects,
     resolveCheckIssueRecovery,
+    summarizeEntityDraft,
     type AnnotatorProductStage,
+    type BusinessObjectAddOption,
 } from './state/product_ui.js';
 import {enrichInferredFieldNamesFromDom} from './state/dom_labels.js';
 import {enrichVisualBindingsFromDom} from './state/dom_geometry.js';
@@ -102,6 +108,9 @@ const pickMode = ref(false);
 const pickPurpose = ref<PickPurpose>('annotation');
 const operation = ref<'recognize' | 'check' | 'save' | 'pick' | null>(null);
 const settingsOpen = ref(false);
+const objectPanelOpen = ref(false);
+const pickRequestedType = ref<BusinessObjectAddOption['type'] | null>(null);
+const pickError = ref<string | null>(null);
 const reviewPending = ref(false);
 const pickTargetEntityId = ref<string | null>(null);
 const pickTargetAnnotationId = ref<string | null>(null);
@@ -240,6 +249,7 @@ const labelBoxes = computed<AnnotationBox[]>(() => {
     );
     return annotationBoxes.value.filter((box) =>
         box.kind !== 'entity' && (
+            objectPanelOpen.value ||
             box.annotationId === props.state.currentAnnotationId ||
             failures.has(box.annotationId)
         ),
@@ -312,6 +322,13 @@ const currentEntity = computed<CanvasEntityDraft | null>(() => {
     if (!props.state.currentEntityId) {return null;}
     return entities.value.find((entity) => entity.id === props.state.currentEntityId) ?? null;
 });
+
+const currentEntitySummary = computed(() => summarizeEntityDraft(currentEntity.value));
+const currentBusinessObjects = computed(() =>
+    listEntityBusinessObjects(currentEntity.value, props.state.latestCheck));
+const currentAddOptions = computed(() => businessObjectAddOptions(currentEntity.value));
+const pickIntentLabel = computed(() =>
+    currentAddOptions.value.find((option) => option.type === pickRequestedType.value)?.label.replace(/^添加/u, '') ?? null);
 
 const hasInternalObjects = computed(() => {
     const entity = currentEntity.value;
@@ -493,6 +510,8 @@ const onSelectAnnotation = (annotationId: string): void => {
     const entityId = entityIdForAnnotation(annotationId);
     pickCandidates.value = [];
     pickCandidateIndex.value = 0;
+    pickRequestedType.value = null;
+    pickError.value = null;
     pickTargetAnnotationId.value = null;
     applyState(pickReceived(props.state, {annotationId, entityId}));
     if (decideSelectAction(annotationId, props.state.latestCheck).reselect) {
@@ -623,12 +642,17 @@ const ensurePickTargetEntity = (): string | null => {
     return first ? first.id : null;
 };
 
-const enterPickMode = (annotationId: string | null): void => {
+const enterPickMode = (
+    annotationId: string | null,
+    requestedType: BusinessObjectAddOption['type'] | null = null,
+): void => {
     if (!props.state.canvasDraft || !ensurePickTargetEntity()) {
         applyState(failed(props.state, '请先选择并确认实体区域。'));
         return;
     }
     pickPurpose.value = 'annotation';
+    pickRequestedType.value = annotationId ? null : requestedType;
+    pickError.value = null;
     pickTargetAnnotationId.value = annotationId;
     pickTargetEntityId.value = ensurePickTargetEntity();
     pickCandidates.value = [];
@@ -640,6 +664,8 @@ const enterPickMode = (annotationId: string | null): void => {
 
 const enterEntityPickMode = (): void => {
     pickPurpose.value = 'entity';
+    pickRequestedType.value = null;
+    pickError.value = null;
     pickTargetAnnotationId.value = null;
     pickTargetEntityId.value = null;
     pickCandidates.value = [];
@@ -648,6 +674,25 @@ const enterEntityPickMode = (): void => {
     pickMode.value = true;
     reviewPending.value = false;
     applyState({...props.state, error: null});
+};
+
+const selectBusinessObject = (annotationId: string): void => {
+    objectPanelOpen.value = false;
+    onSelectAnnotation(annotationId);
+};
+
+const startAddBusinessObject = (type: BusinessObjectAddOption['type']): void => {
+    objectPanelOpen.value = false;
+    enterPickMode(null, type);
+};
+
+const reselectBusinessObject = (annotationId: string): void => {
+    objectPanelOpen.value = false;
+    applyState(pickReceived(props.state, {
+        annotationId,
+        entityId: entityIdForAnnotation(annotationId),
+    }));
+    enterPickMode(annotationId);
 };
 
 const recoverFromError = (): void => {
@@ -684,6 +729,8 @@ const exitPickMode = (options: {keepChain?: boolean} = {}): void => {
         pickTargetAnnotationId.value = null;
     }
     pickPointer.value = null;
+    pickRequestedType.value = null;
+    pickError.value = null;
     hoverBox.value = null;
     pointer.value = null;
     if (!options.keepChain) {pickPurpose.value = 'annotation';}
@@ -712,12 +759,25 @@ const onPickEvent = async (event: {fingerprint: PickFingerprint; pointer: {x: nu
     } finally {
         operation.value = null;
     }
-    const candidates = candidatesForPurpose(result.candidateChain, pickPurpose.value);
+    let candidates = candidatesForPurpose(result.candidateChain, pickPurpose.value);
+    if (pickPurpose.value === 'annotation' && pickRequestedType.value) {
+        candidates = filterCandidatesForAnnotationType(
+            candidates,
+            currentEntity.value?.kind,
+            pickRequestedType.value,
+        );
+        if (candidates.length === 0) {
+            pickCandidates.value = [];
+            pickError.value = `所选对象不能作为${pickIntentLabel.value || '当前业务对象'}，请重新点击。`;
+            return;
+        }
+    }
     if (pickPurpose.value === 'entity' && candidates.length === 0) {
         exitPickMode();
         applyState(failed(props.state, '当前范围无法保存为业务区域，请点击区域内部的字段、表格或表单后重试。'));
         return;
     }
+    pickError.value = null;
     pickCandidates.value = candidates;
     pickCandidateIndex.value = defaultCandidateIndex(candidates, pickPurpose.value);
 };
@@ -773,7 +833,11 @@ const onPickConfirm = async (): Promise<void> => {
         applyState(failed(props.state, `entity not found: ${entityId}`));
         return;
     }
-    const plan = planAnnotationFromCandidate(candidate, entity);
+    const plan = planAnnotationFromCandidate(
+        candidate,
+        entity,
+        pickTargetAnnotationId.value ? undefined : pickRequestedType.value ?? undefined,
+    );
     if (!props.state.canvasDraft) {return;}
     let nextDraft: CanvasDraft;
     if (pickTargetAnnotationId.value) {
@@ -781,7 +845,7 @@ const onPickConfirm = async (): Promise<void> => {
             props.state.canvasDraft,
             entityId,
             pickTargetAnnotationId.value,
-            {target: plan.annotation.target, name: candidate.text},
+            {target: plan.annotation.target},
         );
     } else {
         nextDraft = addAnnotation(props.state.canvasDraft, entityId, plan.annotation);
@@ -820,7 +884,7 @@ const onNavigate = (direction: 'outer' | 'inner'): void => {
                 props.state.canvasDraft,
                 entityId,
                 pickTargetAnnotationId.value,
-                {target: plan.annotation.target, name: candidate.text},
+                {target: plan.annotation.target},
             );
             applyState(draftEdited(props.state, nextDraft));
         }
@@ -1158,16 +1222,36 @@ watch(
             <p>{{ busyLabel }}</p>
         </div>
 
+        <BusinessObjectPanel
+            v-if="objectPanelOpen && currentEntity && !pickMode"
+            :entity="currentEntity"
+            :items="currentBusinessObjects"
+            :summary="currentEntitySummary"
+            :add-options="currentAddOptions"
+            :selected-annotation-id="state.currentAnnotationId"
+            :busy="isBusy"
+            @select="selectBusinessObject"
+            @reselect="reselectBusinessObject"
+            @add="startAddBusinessObject"
+            @close="objectPanelOpen = false"
+        />
+
         <div
             v-if="(productStage === 'review' || productStage === 'edit') && !pickMode"
             class="floating-dock edit-dock dock-bottom"
         >
-            <strong class="dock-copy">检查标注</strong>
+            <strong class="dock-copy">{{ currentEntity?.name || '业务对象' }}</strong>
             <button type="button" aria-label="撤销" title="撤销" :disabled="state.history.past.length === 0 || isBusy" @click="applyUndo">↶</button>
             <button type="button" aria-label="重做" title="重做" :disabled="state.history.future.length === 0 || isBusy" @click="applyRedo">↷</button>
             <i></i>
-            <button type="button" :disabled="isBusy" @click="enterPickMode(null)">添加</button>
-            <button type="button" :disabled="isBusy" @click="enterEntityPickMode">调整</button>
+            <button
+                type="button"
+                data-annotator-action="business-objects"
+                :class="{active: objectPanelOpen}"
+                :disabled="isBusy"
+                @click="objectPanelOpen = !objectPanelOpen"
+            >业务对象 {{ currentEntitySummary.total }}</button>
+            <button type="button" :disabled="isBusy" @click="enterEntityPickMode">调整范围</button>
             <button
                 type="button"
                 class="dock-primary annotator-save-action"
@@ -1206,8 +1290,8 @@ watch(
         <div v-if="pickMode && !selectedCandidate" class="pick-guide">
             <span class="pick-guide-icon">⌖</span>
             <div>
-                <strong>{{ pickPurpose === 'entity' ? '点击业务区域内任意位置' : '点击要标注的页面对象' }}</strong>
-                <small>{{ pickPurpose === 'entity' ? '随后可以扩大或缩小范围，再确认整个区域。' : '随后确认字段、按钮或表格对象的范围。' }}</small>
+                <strong>{{ pickError || (pickPurpose === 'entity' ? '点击业务区域内任意位置' : `点击要作为${pickIntentLabel || '业务对象'}的页面元素`) }}</strong>
+                <small>{{ pickPurpose === 'entity' ? '随后可以扩大或缩小范围，再确认整个区域。' : '只修改页面绑定；已有对象的业务名称和标识不会改变。' }}</small>
             </div>
             <button type="button" @click="onPickCancel">退出选择</button>
         </div>
@@ -1260,6 +1344,7 @@ watch(
         :current-entity-kind="currentEntity?.kind as EntityKind | undefined"
         :pointer="pickPointer"
         :purpose="pickPurpose"
+        :intent-label="pickIntentLabel"
         @navigate="onNavigate"
         @confirm="onPickConfirm"
         @cancel="onPickCancel"

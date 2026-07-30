@@ -110,8 +110,8 @@ test('DOM markers resolve snapshot-normalized Ant classes and placeholder-backed
             target: {classContains: 'ant-pro-basiclayout-content'},
             expect: 'unique',
             annotations: [
-                {id: 'f0', type: 'field', name: '订单编号', businessKey: '订单编号', target: {classContains: 'ant-input', nameContains: '订单编号'}, expect: 'unique', origin: 'inferred', disposition: 'active'},
-                {id: 'f1', type: 'field', name: '商品名称', businessKey: '商品名称', target: {classContains: 'ant-input', nameContains: '商品名称'}, expect: 'unique', origin: 'inferred', disposition: 'active'},
+                {id: 'f0', type: 'field', name: '订单编号', businessKey: '订单编号', target: {roleEquals: 'textbox', placeholderEquals: '订单编号'}, expect: 'unique', origin: 'inferred', disposition: 'active'},
+                {id: 'f1', type: 'field', name: '商品名称', businessKey: '商品名称', target: {roleEquals: 'textbox', placeholderEquals: '商品名称'}, expect: 'unique', origin: 'inferred', disposition: 'active'},
             ],
             columns: [
                 {id: 'c0', fieldKey: '订单编号', name: '订单编号', actions: [], origin: 'inferred', disposition: 'active'},
@@ -172,4 +172,32 @@ test('Ant pagination scopes the shared link class to next and marks the previous
     assert.equal(documentRef.getElementById('previousLink')?.getAttribute('data-rpa-annotation-id'), 'e0_pgpage');
     assert.equal(documentRef.getElementById('nextLink')?.getAttribute('data-rpa-annotation-id'), 'e0_pgpage');
     assert.equal(documentRef.getElementById('quickJump')?.hasAttribute('data-rpa-annotation-id'), false);
+});
+
+
+test('DOM markers resolve an outer business scope even when its entity kind is table', () => {
+    const dom = new JSDOM(`
+        <main>
+            <section aria-label="订单查询列表">
+                <form><input id="orderNo"></form>
+                <table aria-label="订单结果"><thead><tr><th>订单编号</th></tr></thead></table>
+            </section>
+        </main>
+    `);
+    const draft = makeDraft();
+    draft.entities[0].target = {
+        kind: 'table',
+        ariaContains: '订单查询列表',
+        v2Match: {kind: 'table', ariaContains: '订单结果'},
+    };
+    draft.entities[0].annotations[0].target = {idEquals: 'orderNo'};
+    draft.entities[0].columns = [
+        {id: 'c0', fieldKey: 'orderNo', name: '订单编号', actions: [], origin: 'inferred', disposition: 'active'},
+    ];
+    draft.entities[0].pagination = undefined;
+
+    const documentRef = dom.window.document;
+    applyDomMarkers(draft, documentRef, null, null);
+    assert.equal(documentRef.getElementById('orderNo')?.getAttribute('data-rpa-annotation-kind'), 'field');
+    assert.equal(documentRef.querySelector('th')?.getAttribute('data-rpa-annotation-kind'), 'column');
 });

@@ -18,6 +18,7 @@ const props = defineProps<{
     candidateChainLength: number;
     canChangeType: boolean;
     canDelete: boolean;
+    canReselect: boolean;
     canIgnore: boolean;
     canSetPrimaryKey: boolean;
     isPrimaryKey: boolean;
@@ -35,11 +36,24 @@ const emit = defineEmits<{
     (e: 'close'): void;
 }>();
 
-const ANNOTATION_TYPES: Array<{value: CanvasAnnotationType; label: string}> = [
-    {value: 'field', label: '字段'},
-    {value: 'action', label: '操作'},
-    {value: 'pagination', label: '分页'},
-];
+const annotationTypes = computed<Array<{value: CanvasAnnotationType; label: string}>>(() => {
+    if (props.entity?.kind === 'table') {
+        return [
+            {value: 'field', label: '筛选字段'},
+            {value: 'action', label: '区域操作'},
+        ];
+    }
+    if (props.entity?.kind === 'form') {
+        return [
+            {value: 'field', label: '表单字段'},
+            {value: 'action', label: '表单操作'},
+        ];
+    }
+    return [
+        {value: 'field', label: '字段'},
+        {value: 'action', label: '操作'},
+    ];
+});
 
 const nameModel = computed({
     get: () => props.annotation?.name ?? '',
@@ -64,7 +78,7 @@ const typeLabel = computed(() => {
     if (props.annotationKind === 'pagination') {return '翻页';}
     if (props.entity?.kind === 'table' && typeModel.value === 'field') {return '筛选字段';}
     if (props.entity?.kind === 'table' && typeModel.value === 'action') {return '区域操作';}
-    return ANNOTATION_TYPES.find((item) => item.value === typeModel.value)?.label ?? '对象';
+    return annotationTypes.value.find((item) => item.value === typeModel.value)?.label ?? '对象';
 });
 </script>
 
@@ -80,7 +94,7 @@ const typeLabel = computed(() => {
 
         <div class="card-fields">
             <label>
-                <span>名称</span>
+                <span>业务名称</span>
                 <input v-model="nameModel" type="text" placeholder="例如：采购人" />
             </label>
             <label>
@@ -91,7 +105,7 @@ const typeLabel = computed(() => {
 
         <div v-if="canChangeType" class="type-choice" aria-label="对象类型">
             <button
-                v-for="item in ANNOTATION_TYPES"
+                v-for="item in annotationTypes"
                 :key="item.value"
                 type="button"
                 :class="{active: typeModel === item.value}"
@@ -122,7 +136,7 @@ const typeLabel = computed(() => {
 
         <footer>
             <div>
-                <button type="button" class="secondary" @click="emit('reselect')">重新选择</button>
+                <button v-if="canReselect" type="button" class="secondary" @click="emit('reselect')">重新选择位置</button>
                 <button v-if="canIgnore" type="button" class="secondary" @click="emit('ignore')">忽略</button>
             </div>
             <button v-if="canDelete" type="button" class="danger" @click="emit('delete')">删除</button>
@@ -194,7 +208,7 @@ const typeLabel = computed(() => {
 .type-choice,
 .range-actions {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 5px;
     padding: 4px;
     border-radius: 9px;

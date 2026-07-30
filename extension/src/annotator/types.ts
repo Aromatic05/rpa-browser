@@ -14,6 +14,7 @@ export type PersistentTargetDraft = {
     idEquals?: string;
     nameEquals?: string;
     roleEquals?: string;
+    placeholderEquals?: string;
     classContains?: string;
     textContains?: string;
     ariaContains?: string;

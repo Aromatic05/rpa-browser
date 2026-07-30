@@ -188,7 +188,7 @@ test('updateAnnotation returns same-shape draft when annotation is missing', () 
     assert.deepEqual(next.entities[0].annotations, original.entities[0].annotations);
 });
 
-test('replaceVisualItemSelection updates entity, column action and pagination targets', () => {
+test('replaceVisualItemSelection rebinds targets without changing business identity', () => {
     const original = makeDraft();
     original.entities[0].columns = [{
         id: 'col', fieldKey: 'actions', origin: 'inferred', disposition: 'active',
@@ -196,11 +196,12 @@ test('replaceVisualItemSelection updates entity, column action and pagination ta
     }];
     original.entities[0].pagination = {actionIntent: 'next', pageTarget: {classContains: 'old'}};
     const entity = replaceVisualItemSelection(original, 'e1', 'entity:e1', {target: {roleEquals: 'form'}});
-    const action = replaceVisualItemSelection(entity, 'e1', 'edit', {target: {textContains: '修改'}, name: '修改'});
+    const action = replaceVisualItemSelection(entity, 'e1', 'edit', {target: {textContains: '修改'}});
     const pagination = replaceVisualItemSelection(action, 'e1', 'e1_pgpage', {target: {classContains: 'next'}});
     assert.deepEqual(pagination.entities[0].target, {roleEquals: 'form'});
     assert.deepEqual(pagination.entities[0].columns[0].actions[0].target, {textContains: '修改'});
-    assert.equal(pagination.entities[0].columns[0].actions[0].text, '修改');
+    assert.equal(pagination.entities[0].columns[0].actions[0].text, '编辑');
+    assert.equal(pagination.entities[0].columns[0].actions[0].actionIntent, 'edit');
     assert.deepEqual(pagination.entities[0].pagination?.pageTarget, {classContains: 'next'});
 });
 

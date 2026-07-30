@@ -241,7 +241,7 @@ export const replaceVisualItemSelection = (
     draft: CanvasDraft,
     entityId: string,
     visualItemId: string,
-    selection: {target: CanvasAnnotationDraft['target']; name?: string},
+    selection: {target: CanvasAnnotationDraft['target']},
 ): CanvasDraft => {
     const entity = draft.entities.find((item) => item.id === entityId);
     if (!entity) {return cloneDraft(draft);}
@@ -250,14 +250,11 @@ export const replaceVisualItemSelection = (
     }
     const column = entity.columns.find((item) => item.id === visualItemId);
     if (column) {
-        return updateColumn(draft, entityId, visualItemId, {
-            ...(selection.name ? {name: selection.name} : {}),
-        });
+        return cloneDraft(draft);
     }
     if (entity.columns.some((item) => item.actions.some((action) => action.id === visualItemId))) {
         return updateColumnAction(draft, entityId, visualItemId, {
             target: selection.target,
-            ...(selection.name ? {text: selection.name} : {}),
         });
     }
     if (visualItemId === paginationPageVisualId(entityId)) {
