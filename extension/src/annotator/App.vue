@@ -118,6 +118,7 @@ const objectPanelOpen = ref(false);
 const exitConfirmOpen = ref(false);
 const entryChoiceOpen = ref(false);
 const entryChoiceBusy = ref(false);
+const entryDiscardConfirmOpen = ref(false);
 const recoverableSessionState = ref<AnnotatorState | null>(null);
 const selectedProfileName = ref('');
 const pickRequestedType = ref<BusinessObjectAddOption['type'] | null>(null);
@@ -430,6 +431,7 @@ const startFreshAnnotation = async (): Promise<void> => {
             error: null,
         };
         recoverableSessionState.value = null;
+        entryDiscardConfirmOpen.value = false;
         entryChoiceOpen.value = false;
         entryPreparedFor = entrySignatureForState(next);
         applyState(next);
@@ -440,6 +442,18 @@ const startFreshAnnotation = async (): Promise<void> => {
     } finally {
         entryChoiceBusy.value = false;
     }
+};
+
+const requestFreshAnnotation = (): void => {
+    if (recoverableSessionState.value?.canvasDraft) {
+        entryDiscardConfirmOpen.value = true;
+        return;
+    }
+    void startFreshAnnotation();
+};
+
+const cancelDiscardDraft = (): void => {
+    entryDiscardConfirmOpen.value = false;
 };
 
 const continueSessionDraft = (): void => {
@@ -546,6 +560,7 @@ const annotatorDebugJson = computed(() => JSON.stringify({
     detailEditorDirty: detailEditorDirty.value,
     settingsDirty: settingsDirty.value,
     entryChoiceOpen: entryChoiceOpen.value,
+    entryDiscardConfirmOpen: entryDiscardConfirmOpen.value,
     availableProfiles: props.state.availableProfiles,
     recoverableSessionDraft: Boolean(recoverableSessionState.value?.canvasDraft),
     exitConfirmOpen: exitConfirmOpen.value,
@@ -1348,6 +1363,8 @@ const onKeyDown = (event: KeyboardEvent): void => {
             let handled = true;
             if (exitConfirmOpen.value) {
                 exitConfirmOpen.value = false;
+            } else if (entryDiscardConfirmOpen.value) {
+                entryDiscardConfirmOpen.value = false;
             } else if (entryChoiceOpen.value) {
                 emit('exit');
             } else if (pickMode.value) {
@@ -1643,6 +1660,7 @@ watch(
         entryPrepareRequest += 1;
         entryChoiceOpen.value = false;
         entryChoiceBusy.value = false;
+        entryDiscardConfirmOpen.value = false;
         recoverableSessionState.value = null;
         selectedProfileName.value = '';
         exitPickMode();
@@ -1734,37 +1752,50 @@ watch(
             class="floating-dock entry-choice-dock dock-bottom"
             data-annotator-action="entry-choice"
         >
-            <strong>{{ entryChoiceMessage }}</strong>
-            <button
-                v-if="recoverableSessionState?.canvasDraft"
-                type="button"
-                data-annotator-action="continue-draft"
-                :disabled="entryChoiceBusy"
-                @click="continueSessionDraft"
-            >继续草稿</button>
-            <template v-if="state.availableProfiles.length">
-                <select v-model="selectedProfileName" aria-label="选择已有标注" :disabled="entryChoiceBusy">
-                    <option
-                        v-for="profile in state.availableProfiles"
-                        :key="profile.profileName"
-                        :value="profile.profileName"
-                    >{{ profile.label }}</option>
-                </select>
+            <template v-if="entryDiscardConfirmOpen">
+                <strong>舍弃未完成草稿？</strong>
+                <button type="button" data-annotator-action="keep-draft" :disabled="entryChoiceBusy" @click="cancelDiscardDraft">保留草稿</button>
                 <button
                     type="button"
-                    data-annotator-action="edit-existing"
-                    :disabled="entryChoiceBusy || !selectedProfileName"
-                    @click="editSelectedProfile"
-                >编辑已有</button>
+                    class="danger-inline"
+                    data-annotator-action="confirm-discard-draft"
+                    :disabled="entryChoiceBusy"
+                    @click="startFreshAnnotation"
+                >舍弃并新建</button>
             </template>
-            <button
-                type="button"
-                class="dock-primary"
-                data-annotator-action="start-fresh"
-                :disabled="entryChoiceBusy"
-                @click="startFreshAnnotation"
-            >新建标注</button>
-            <button type="button" aria-label="退出标注" :disabled="entryChoiceBusy" @click="emit('exit')">×</button>
+            <template v-else>
+                <strong>{{ entryChoiceMessage }}</strong>
+                <button
+                    v-if="recoverableSessionState?.canvasDraft"
+                    type="button"
+                    data-annotator-action="continue-draft"
+                    :disabled="entryChoiceBusy"
+                    @click="continueSessionDraft"
+                >继续草稿</button>
+                <template v-if="state.availableProfiles.length">
+                    <select v-model="selectedProfileName" aria-label="选择已有标注" :disabled="entryChoiceBusy">
+                        <option
+                            v-for="profile in state.availableProfiles"
+                            :key="profile.profileName"
+                            :value="profile.profileName"
+                        >{{ profile.label }}</option>
+                    </select>
+                    <button
+                        type="button"
+                        data-annotator-action="edit-existing"
+                        :disabled="entryChoiceBusy || !selectedProfileName"
+                        @click="editSelectedProfile"
+                    >编辑已有</button>
+                </template>
+                <button
+                    type="button"
+                    class="dock-primary"
+                    data-annotator-action="start-fresh"
+                    :disabled="entryChoiceBusy"
+                    @click="requestFreshAnnotation"
+                >新建标注</button>
+                <button type="button" aria-label="退出标注" :disabled="entryChoiceBusy" @click="emit('exit')">×</button>
+            </template>
         </div>
 
         <BusinessObjectPanel
@@ -2141,6 +2172,8 @@ watch(
     font-size: 11px;
     pointer-events: auto;
 }
+.entry-choice-dock .danger-inline { color: #b91c1c; background: #fef2f2; }
+.entry-choice-dock .danger-inline:hover:not(:disabled) { background: #fee2e2; color: #991b1b; }
 .entry-choice-dock select:focus-visible {
     outline: 2px solid #2563eb;
     outline-offset: 2px;

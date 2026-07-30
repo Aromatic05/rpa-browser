@@ -11,14 +11,19 @@ import {
 } from './pipeline/step';
 import {
     cleanupRecording,
+    clearCheckpointRecording,
     clearWorkspaceUnsavedRecording,
     createRecordingState,
     disableWorkspaceRecording as disableWorkspaceRecordingState,
     enableWorkspaceRecording,
+    finishCheckpointRecording,
+    getCheckpointRecordingSession,
+    getRecordingBundle,
     getWorkspaceUnsavedRecordingBundle,
     getWorkspaceUnsavedToken,
     isWorkspaceRecordingEnabled,
     resetWorkspaceUnsavedRecording,
+    startCheckpointRecording,
     type RecordingState,
 } from './pipeline/state';
 import {
@@ -36,7 +41,7 @@ import {
 } from './pipeline/manifest';
 import { normalizeRecordingStepOrder } from './pipeline/order';
 import { beginReplay, cancelReplay, endReplay } from './pipeline/replay_state';
-import { awaitRecordingEnhancements as awaitEnhancementsInternal, getRecordingEnhancements, setRecordedStepEnricherForTest, startRecordedStepEnrichment } from './enhancement/queue';
+import { awaitRecordingEnhancements as awaitEnhancementsInternal, awaitRecordingEnhancementsForToken, getRecordingEnhancements, setRecordedStepEnricherForTest, startRecordedStepEnrichment } from './enhancement/queue';
 import { flushPendingFillEvents } from './pipeline/pending';
 import { flushPendingChoiceEvents } from './pipeline/pending';
 
@@ -105,6 +110,7 @@ export const disableWorkspaceRecording = (state: RecordingState, workspaceName: 
 };
 
 const navListenerPages = new WeakSet<Page>();
+const lastMainFrameUrls = new WeakMap<Page, string>();
 const isOrdinaryPageUrl = (url: string): boolean => url.startsWith('http://') || url.startsWith('https://');
 
 export const installNavigationRecorder = (
@@ -116,11 +122,35 @@ export const installNavigationRecorder = (
 ): void => {
     if (navListenerPages.has(page)) {return;}
     navListenerPages.add(page);
+    lastMainFrameUrls.set(page, page.url());
     page.on('framenavigated', (frame) => {
         if (frame !== page.mainFrame()) {return;}
         const url = frame.url();
+        const previousUrl = lastMainFrameUrls.get(page) || '';
+        lastMainFrameUrls.set(page, url);
         if (!isOrdinaryPageUrl(url)) {return;}
         if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return;}
+        if (previousUrl === url) {
+            appendWorkspaceRecordingStep(
+                state,
+                workspaceName,
+                tabName,
+                {
+                    id: crypto.randomUUID(),
+                    name: 'browser.reload',
+                    args: {},
+                    meta: {
+                        source: 'record',
+                        ts: Date.now(),
+                        workspaceName,
+                        tabName,
+                        urlAtRecord: url,
+                    },
+                },
+                navDedupeWindowMs,
+            );
+            return;
+        }
         const event: RecorderEvent = {
             recorderVersion: 'payload-v2',
             tabName,
@@ -158,13 +188,17 @@ export {
     buildResolveFromEvent,
     cancelReplay,
     cleanupRecording,
+    clearCheckpointRecording,
     clearWorkspaceUnsavedRecording,
     createRecordingState,
     createStep,
     enableWorkspaceRecording,
     endReplay,
     enrichRecordedStep,
+    finishCheckpointRecording,
     flushWorkspacePendingRecordEvents,
+    getCheckpointRecordingSession,
+    getRecordingBundle,
     getRecordingEnhancements,
     getWorkspaceSnapshot,
     getWorkspaceUnsavedRecordingBundle,
@@ -174,7 +208,9 @@ export {
     normalizeRecordingStepOrder,
     resetWorkspaceUnsavedRecording,
     saveWorkspaceSnapshot,
+    startCheckpointRecording,
     setRecordedStepEnricherForTest,
     startRecordedStepEnrichment,
+    awaitRecordingEnhancementsForToken,
     toStep,
 };

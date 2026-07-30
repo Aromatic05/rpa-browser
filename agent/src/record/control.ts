@@ -8,25 +8,35 @@ import type { ControlPlaneResult } from '../runtime/control_plane';
 import { enterWorkspaceState, getWorkspaceState, leaveWorkspaceState, requireWorkspaceState } from '../runtime/workspace/workspace';
 import {
     awaitRecordingEnhancements,
+    awaitRecordingEnhancementsForToken,
     beginReplay,
     cancelReplay,
+    clearCheckpointRecording,
     clearWorkspaceUnsavedRecording,
     disableWorkspaceRecording,
     enableWorkspaceRecording,
+    finishCheckpointRecording,
     flushWorkspacePendingRecordEvents,
     endReplay,
     ensureRecorder,
+    getCheckpointRecordingSession,
+    getRecordingBundle,
     getWorkspaceUnsavedRecordingBundle,
     normalizeRecordingStepOrder,
     resetWorkspaceUnsavedRecording,
+    startCheckpointRecording,
     type RecordingState,
 } from './recording';
 import { setRecorderRuntimeEnabled, type RecorderEvent } from './capture/recorder';
 import { ingestRecordPayload } from './pipeline/input';
 import { replayRecording, type ReplayEvent, type ReplayOptions } from './replay';
 import type { StepResolve, StepUnion } from '../runner/steps/types';
-import { isValidStepResolve } from '../runner/steps/resolve_utils';
+import {isValidStepResolve} from '../runner/steps/resolve_utils';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
+import {
+    buildRecordedCheckpoint,
+    checkpointStepSummary,
+} from './checkpoint_recording';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
 import type { Logger } from '../logging/logger';
@@ -93,35 +103,93 @@ const stripStepForPersistence = (step: StepUnion): StepUnion => {
     } as StepUnion;
 };
 
+const listExecutableTabs = (workspace: WorkspaceRouterInput['workspace']) =>
+    workspace.tabs.listTabs().filter((tab) => Boolean(tab.page) && !tab.page?.isClosed());
+
+const setRecorderRuntimeForTabs = async (
+    tabs: ReturnType<typeof listExecutableTabs>,
+    enabled: boolean,
+): Promise<void> => {
+    await Promise.allSettled(tabs.map(async (tab) => {
+        if (!tab.page || tab.page.isClosed()) {return;}
+        await setRecorderRuntimeEnabled(tab.page, enabled);
+    }));
+};
+
+const startRecordingCapture = async (
+    services: RecordControlServices,
+    workspace: WorkspaceRouterInput['workspace'],
+    actionType: string,
+): Promise<{pageUrl: string}> => {
+    const tabs = listExecutableTabs(workspace);
+    enterWorkspaceState(workspace, 'recording', actionType);
+    enableWorkspaceRecording(services.recordingState, workspace.name);
+    try {
+        for (const tab of tabs) {
+            if (!tab.page) {continue;}
+            await ensureRecorder(services.recordingState, workspace.name, tab.page, tab.name, services.navDedupeWindowMs);
+            await setRecorderRuntimeEnabled(tab.page, true);
+        }
+    } catch (error) {
+        disableWorkspaceRecording(services.recordingState, workspace.name);
+        leaveWorkspaceState(workspace, 'recording', actionType);
+        await setRecorderRuntimeForTabs(tabs, false);
+        throw error;
+    }
+    return {pageUrl: workspace.tabs.getActiveTab()?.page?.url() || ''};
+};
+
+const stopRecordingCapture = async (
+    services: RecordControlServices,
+    workspace: WorkspaceRouterInput['workspace'],
+    actionType: string,
+): Promise<{pageUrl: string}> => {
+    const activeTab = workspace.tabs.getActiveTab();
+    const tabs = listExecutableTabs(workspace);
+    try {
+        flushWorkspacePendingRecordEvents(
+            services.recordingState,
+            workspace.name,
+            activeTab?.name || '',
+            activeTab?.page || undefined,
+        );
+    } catch (error) {
+        logWarning(services.log, 'record.stop.flush_failed', {
+            workspaceName: workspace.name,
+            message: error instanceof Error ? error.message : String(error),
+        });
+    }
+    disableWorkspaceRecording(services.recordingState, workspace.name);
+    leaveWorkspaceState(workspace, 'recording', actionType);
+    await setRecorderRuntimeForTabs(tabs, false);
+    return {pageUrl: activeTab?.page?.url() || ''};
+};
+
 export const createRecordControl = (services: RecordControlServices): RecordControl => ({
     handle: async (input) => {
         const { action, workspace } = input;
 
-        if (action.type === 'record.start') {
+        if (action.type === 'checkpoint.record.start') {
             requireWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
-            const activeTab = workspace.tabs.getActiveTab();
-            if (!activeTab) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');
+            if (getCheckpointRecordingSession(services.recordingState, workspaceName)) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '已有恢复步骤等待保存或取消');
             }
+            const activeTab = workspace.tabs.getActiveTab();
+            if (!activeTab) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');}
             const binding = await services.runtime.awaitExecutableTab({
                 workspace,
                 pageRegistry: services.pageRegistry,
                 tabName: activeTab.name,
                 timeoutMs: 1500,
             });
-            const executableTabs = workspace.tabs.listTabs().filter((tab) => Boolean(tab.page) && !tab.page?.isClosed());
-            if (!executableTabs.length) {
-                throw new ActionError(
-                    ERROR_CODES.ERR_BAD_ARGS,
-                    `record.start requires at least one bound page in workspace: ${workspaceName}`,
-                );
+            if (!listExecutableTabs(workspace).length) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '当前没有可录制的页面');
             }
-            const primaryPage = binding.page;
-            resetWorkspaceUnsavedRecording(services.recordingState, workspaceName, {
+            startCheckpointRecording(services.recordingState, workspaceName, {
                 entryTabRef: activeTab.name,
                 activeTabRef: activeTab.name,
-                entryUrl: primaryPage.url(),
+                entryUrl: binding.page.url(),
                 initialTabs: workspace.tabs.listTabs().map((tab) => ({
                     tabName: tab.name,
                     tabRef: tab.name,
@@ -130,28 +198,144 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     active: tab.name === activeTab.name,
                 })),
             });
-            enterWorkspaceState(workspace, 'recording', action.type);
-            enableWorkspaceRecording(services.recordingState, workspaceName);
-            for (const tab of executableTabs) {
-                if (!tab.page) {continue;}
-                await ensureRecorder(services.recordingState, workspaceName, tab.page, tab.name, services.navDedupeWindowMs);
-                await setRecorderRuntimeEnabled(tab.page, true);
+            try {
+                const started = await startRecordingCapture(services, workspace, action.type);
+                return {
+                    reply: replyAction(action, {status: 'recording', stepCount: 0, pageUrl: started.pageUrl}),
+                    events: [],
+                };
+            } catch (error) {
+                clearCheckpointRecording(services.recordingState, workspaceName);
+                throw error;
             }
-            return { reply: replyAction(action, { pageUrl: primaryPage.url() }), events: [] };
+        }
+
+        if (action.type === 'checkpoint.record.stop') {
+            requireWorkspaceState(workspace, 'recording', action.type);
+            const workspaceName = requireWorkspaceName(action, action.type);
+            const session = getCheckpointRecordingSession(services.recordingState, workspaceName);
+            if (session?.status !== 'recording') {
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '没有正在录制的恢复步骤');
+            }
+            await stopRecordingCapture(services, workspace, action.type);
+            await awaitRecordingEnhancementsForToken(services.recordingState, session.token);
+            const recordedBundle = getRecordingBundle(services.recordingState, session.token);
+            const ordered = normalizeRecordingStepOrder(
+                recordedBundle.steps,
+                services.navDedupeWindowMs,
+            );
+            services.recordingState.recordings.set(session.token, ordered);
+            finishCheckpointRecording(services.recordingState, workspaceName);
+            return {
+                reply: replyAction(action, {
+                    status: 'review',
+                    stepCount: ordered.length,
+                    steps: checkpointStepSummary(ordered),
+                }),
+                events: [],
+            };
+        }
+
+        if (action.type === 'checkpoint.record.get') {
+            const workspaceName = requireWorkspaceName(action, action.type);
+            const session = getCheckpointRecordingSession(services.recordingState, workspaceName);
+            if (!session) {
+                return {reply: replyAction(action, {status: 'idle', stepCount: 0, steps: []}), events: []};
+            }
+            const bundle = getRecordingBundle(services.recordingState, session.token);
+            return {
+                reply: replyAction(action, {
+                    status: session.status,
+                    stepCount: bundle.steps.length,
+                    steps: checkpointStepSummary(bundle.steps),
+                }),
+                events: [],
+            };
+        }
+
+        if (action.type === 'checkpoint.record.cancel') {
+            const workspaceName = requireWorkspaceName(action, action.type);
+            const session = getCheckpointRecordingSession(services.recordingState, workspaceName);
+            if (!session) {
+                return {reply: replyAction(action, {canceled: true}), events: []};
+            }
+            if (session.status === 'recording') {
+                requireWorkspaceState(workspace, 'recording', action.type);
+                await stopRecordingCapture(services, workspace, action.type);
+                finishCheckpointRecording(services.recordingState, workspaceName);
+            }
+            clearCheckpointRecording(services.recordingState, workspaceName);
+            return {reply: replyAction(action, {canceled: true}), events: []};
+        }
+
+        if (action.type === 'checkpoint.record.save') {
+            requireWorkspaceState(workspace, 'idle', action.type);
+            const workspaceName = requireWorkspaceName(action, action.type);
+            const session = getCheckpointRecordingSession(services.recordingState, workspaceName);
+            if (session?.status !== 'review') {
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '请先完成恢复步骤录制');
+            }
+            const bundle = getRecordingBundle(services.recordingState, session.token);
+            const artifact = buildRecordedCheckpoint(
+                workspace,
+                bundle.steps,
+                bundle.enrichments,
+                action.payload || {},
+            );
+            const saved = workspace.workflow.save(artifact);
+            if (saved.kind !== 'checkpoint') {
+                throw new ActionError(ERROR_CODES.ERR_INTERNAL, '保存恢复步骤失败');
+            }
+            clearCheckpointRecording(services.recordingState, workspaceName);
+            return {
+                reply: replyAction(action, {
+                    saved: true,
+                    checkpointId: saved.name,
+                    name: saved.checkpoint.name,
+                    stepCount: bundle.steps.length,
+                }),
+                events: [],
+            };
+        }
+
+        if (action.type === 'record.start') {
+            requireWorkspaceState(workspace, 'idle', action.type);
+            const workspaceName = requireWorkspaceName(action, action.type);
+            const activeTab = workspace.tabs.getActiveTab();
+            if (!activeTab) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');}
+            const binding = await services.runtime.awaitExecutableTab({
+                workspace,
+                pageRegistry: services.pageRegistry,
+                tabName: activeTab.name,
+                timeoutMs: 1500,
+            });
+            if (!listExecutableTabs(workspace).length) {
+                throw new ActionError(
+                    ERROR_CODES.ERR_BAD_ARGS,
+                    `record.start requires at least one bound page in workspace: ${workspaceName}`,
+                );
+            }
+            resetWorkspaceUnsavedRecording(services.recordingState, workspaceName, {
+                entryTabRef: activeTab.name,
+                activeTabRef: activeTab.name,
+                entryUrl: binding.page.url(),
+                initialTabs: workspace.tabs.listTabs().map((tab) => ({
+                    tabName: tab.name,
+                    tabRef: tab.name,
+                    url: tab.url,
+                    title: tab.title,
+                    active: tab.name === activeTab.name,
+                })),
+            });
+            const started = await startRecordingCapture(services, workspace, action.type);
+            return {reply: replyAction(action, {pageUrl: started.pageUrl}), events: []};
         }
 
         if (action.type === 'record.stop') {
             requireWorkspaceState(workspace, 'recording', action.type);
-            const workspaceName = requireWorkspaceName(action, action.type);
-            const tabs = workspace.tabs.listTabs();
-            const firstBoundPage = tabs.find((tab) => Boolean(tab.page))?.page;
-            disableWorkspaceRecording(services.recordingState, workspaceName);
-            leaveWorkspaceState(workspace, 'recording', action.type);
-            for (const tab of tabs) {
-                if (!tab.page) {continue;}
-                await setRecorderRuntimeEnabled(tab.page, false);
-            }
-            return { reply: replyAction(action, { pageUrl: firstBoundPage?.url() || '' }), events: [] };
+            requireWorkspaceName(action, action.type);
+            const stopped = await stopRecordingCapture(services, workspace, action.type);
+            return {reply: replyAction(action, {pageUrl: stopped.pageUrl}), events: []};
         }
 
         if (action.type === 'record.get') {

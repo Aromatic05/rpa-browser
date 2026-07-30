@@ -89,6 +89,15 @@ export const startRecordedStepEnrichment = (input: StartRecordedStepEnrichmentIn
     pending.add(promise);
 };
 
+export const awaitRecordingEnhancementsForToken = async (
+    state: RecordingState,
+    token: string,
+): Promise<void> => {
+    const pending = state.pendingEnhancements.get(token);
+    if (!pending?.size) {return;}
+    await Promise.allSettled(Array.from(pending));
+};
+
 export const awaitRecordingEnhancements = async (
     state: RecordingState,
     workspaceName: string,

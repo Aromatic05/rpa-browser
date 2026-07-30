@@ -48,7 +48,8 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
             return await deps.tabsControl.handle({ action, workspace, workspaceRegistry });
         }
 
-        if (action.type.startsWith('record.') || action.type.startsWith('play.')) {
+        if (action.type.startsWith('record.') || action.type.startsWith('play.')
+            || action.type.startsWith('checkpoint.record.')) {
             return await deps.recordControl.handle({ action, workspace, workspaceRegistry });
         }
 

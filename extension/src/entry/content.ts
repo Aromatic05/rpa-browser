@@ -329,10 +329,10 @@ const loadAnnotator = (() => {
             const panel = document.getElementById('rpa-floating-panel');
             if (!panel) {return;}
             panel.style.display = '';
-            const launcher = panel.shadowRoot?.querySelector('.annotate-launch');
-            if (launcher instanceof HTMLElement) {
-                launcher.hidden = !visible;
-            }
+            const launchers = panel.shadowRoot?.querySelectorAll('.annotate-launch, .checkpoint-launch');
+            launchers?.forEach((launcher) => {
+                if (launcher instanceof HTMLElement) {launcher.hidden = !visible;}
+            });
         };
 
         uiHandle = mountFloatingUI({

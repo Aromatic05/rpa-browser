@@ -226,6 +226,8 @@ test('agent and extension classify workspace routing is consistent', async () =>
         'task.run.checkpoint', 'task.run.halt', 'task.run.suspend',
         'task.run.continue', 'task.run.flush', 'task.run.resume',
         'checkpoint.list', 'checkpoint.get', 'checkpoint.save', 'checkpoint.delete',
+        'checkpoint.record.start', 'checkpoint.record.stop', 'checkpoint.record.get',
+        'checkpoint.record.save', 'checkpoint.record.cancel',
         'mcp.start', 'mcp.stop', 'mcp.status',
     ];
     for (const type of workspaceCases) {

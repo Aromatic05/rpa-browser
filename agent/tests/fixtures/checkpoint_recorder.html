@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Checkpoint Recorder Fixture</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 80px; background: #f8fafc; }
+    main { max-width: 720px; margin: auto; padding: 32px; border-radius: 16px; background: white; box-shadow: 0 12px 40px rgba(15,23,42,.12); }
+    button { min-height: 38px; padding: 0 16px; }
+    #session-alert { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 80px; padding: 18px; border: 1px solid #fca5a5; border-radius: 12px; background: #fef2f2; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>订单工作台</h1>
+    <button id="ordinary-action" type="button">普通操作</button>
+    <output id="ordinary-count">0</output>
+    <section id="session-alert">
+      <strong>登录已失效</strong>
+      <button id="dismiss-session" type="button">关闭提示</button>
+    </section>
+  </main>
+  <script>
+    const loadCount = Number(sessionStorage.getItem('checkpoint-fixture-load-count') || '0') + 1;
+    sessionStorage.setItem('checkpoint-fixture-load-count', String(loadCount));
+    document.body.dataset.loadCount = String(loadCount);
+    document.querySelector('#ordinary-action').addEventListener('click', () => {
+      const output = document.querySelector('#ordinary-count');
+      output.textContent = String(Number(output.textContent || '0') + 1);
+    });
+    document.querySelector('#dismiss-session').addEventListener('click', () => {
+      document.querySelector('#session-alert').style.display = 'none';
+    });
+  </script>
+</body>
+</html>

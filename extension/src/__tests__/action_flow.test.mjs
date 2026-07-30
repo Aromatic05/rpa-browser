@@ -29,6 +29,8 @@ await log('action bus dispatches by patterns', async () => {
 await log('action type classifier separates command/reply/event', async () => {
     assert.equal(classifyActionType('workspace.list'), 'command');
     assert.equal(classifyActionType('entity_rules.annotator.open'), 'command');
+    assert.equal(classifyActionType('checkpoint.record.start'), 'command');
+    assert.equal(classifyActionType('checkpoint.record.start.result'), 'reply');
     assert.equal(classifyActionType('entity_rules.annotator.open.result'), 'reply');
     assert.equal(classifyActionType('workspace.list.result'), 'reply');
     assert.equal(classifyActionType('workspace.list.failed'), 'reply');

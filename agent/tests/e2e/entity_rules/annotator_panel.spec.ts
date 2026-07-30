@@ -907,6 +907,29 @@ test('selects an entity, recognizes presets automatically, and edits the page di
         await click(agent, workspaceName, await shadowButtonPoint(
             agent,
             workspaceName,
+            '[data-annotator-action="start-fresh"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return {
+                confirm: root?.querySelector('[data-annotator-action="confirm-discard-draft"]')
+                    ?.textContent?.trim() || '',
+                continueDraft: Boolean(root?.querySelector('[data-annotator-action="continue-draft"]')),
+            };
+        `)).toEqual({confirm: '舍弃并新建', continueDraft: false});
+        expect(await entityRuleSnapshot(agent, workspaceName)).toBe(initialRules);
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
+            '[data-annotator-action="keep-draft"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            return Boolean(root?.querySelector('[data-annotator-action="continue-draft"]'));
+        `)).toBe(true);
+        await click(agent, workspaceName, await shadowButtonPoint(
+            agent,
+            workspaceName,
             '[data-annotator-action="continue-draft"]',
         ));
         await expect.poll(async () => await evaluate(agent, workspaceName, `

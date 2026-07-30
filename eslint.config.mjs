@@ -31,6 +31,7 @@ export default tseslint.config(
       // Keep its source unchanged instead of rewriting the historical interaction implementation
       // to satisfy rules introduced after the files were accidentally removed.
       "extension/src/annotator/__tests__/**",
+      "extension/src/content/__tests__/**",
       "extension/src/annotator/canvas/**",
       "extension/src/annotator/labels/**",
       "extension/src/annotator/layout/**",
