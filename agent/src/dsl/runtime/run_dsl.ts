@@ -115,8 +115,9 @@ const executeStmt = async (
             await emitStepAndWait(step, taskRunner, logger, stmtIndex);
             return;
         }
-        case 'form_act': {
-            throw new DslRuntimeError('form_act must be expanded before runtime', 'ERR_DSL_NOT_NORMALIZED');
+        case 'form_act':
+        case 'table_act': {
+            throw new DslRuntimeError(`${stmt.kind} must be expanded before runtime`, 'ERR_DSL_NOT_NORMALIZED');
         }
         case 'checkpoint': {
             const output = await runDslCheckpointCall({

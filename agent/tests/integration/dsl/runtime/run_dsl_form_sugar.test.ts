@@ -25,8 +25,15 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                 ({
                     'browser.query': async (step: StepUnion) => {
                         calls.push({ name: step.name, args: step.args as Record<string, unknown> });
-                        if ((step.args as any).target?.kind === 'form.field') {
+                        const targetKind = (step.args as any).target?.kind;
+                        if (targetKind === 'form.field') {
                             return { stepId: step.id, ok: true, data: { kind: 'nodeId', nodeId: 'buyer-input' } };
+                        }
+                        if (targetKind === 'table.filter') {
+                            return { stepId: step.id, ok: true, data: { kind: 'nodeId', nodeId: 'order-filter' } };
+                        }
+                        if (targetKind === 'table.module_action') {
+                            return { stepId: step.id, ok: true, data: { kind: 'nodeId', nodeId: 'table-search' } };
                         }
                         return { stepId: step.id, ok: true, data: { kind: 'nodeId', nodeId: 'submit-btn' } };
                     },
@@ -91,4 +98,39 @@ click form "order.form" action "submit"
     assert.deepEqual(calls[1].args, {
         nodeId: 'submit-btn',
     });
+});
+
+
+test('runDslSource executes table filter and module action sugar', async () => {
+    const calls: StubCall[] = [];
+    await runDslSource(
+        `
+fill table "orders.table" filter "订单编号" with input.orderNo
+click table "orders.table" action "search"
+        `,
+        {
+            workspaceName: 'ws-dsl-form',
+            deps: createDeps(calls),
+            input: {orderNo: 'U2021062310545'},
+        },
+    );
+
+    assert.deepEqual(calls.map((item) => item.name), [
+        'browser.query', 'browser.fill', 'browser.query', 'browser.click',
+    ]);
+    assert.deepEqual(calls[0].args, {
+        op: 'entity.target',
+        businessTag: 'orders.table',
+        target: {kind: 'table.filter', fieldKey: '订单编号'},
+    });
+    assert.deepEqual(calls[1].args, {
+        nodeId: 'order-filter',
+        value: 'U2021062310545',
+    });
+    assert.deepEqual(calls[2].args, {
+        op: 'entity.target',
+        businessTag: 'orders.table',
+        target: {kind: 'table.module_action', actionIntent: 'search'},
+    });
+    assert.deepEqual(calls[3].args, {nodeId: 'table-search'});
 });

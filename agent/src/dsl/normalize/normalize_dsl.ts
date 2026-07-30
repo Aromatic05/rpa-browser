@@ -1,4 +1,4 @@
-import type { DslExpr, DslProgram, DslStmt, FormActStmt, RefExpr } from '../ast/types';
+import type { DslExpr, DslProgram, DslStmt, FormActStmt, RefExpr, TableActStmt } from '../ast/types';
 
 type NormalizeContext = {
     nextTempId: number;
@@ -28,6 +28,9 @@ const normalizeStmt = (stmt: DslStmt, ctx: NormalizeContext): DslStmt[] => {
     }
     if (stmt.kind === 'form_act') {
         return expandFormActStmt(stmt, ctx);
+    }
+    if (stmt.kind === 'table_act') {
+        return expandTableActStmt(stmt, ctx);
     }
     if (stmt.kind === 'act') {
         return [{
@@ -109,6 +112,37 @@ const expandFormActStmt = (stmt: FormActStmt, ctx: NormalizeContext): DslStmt[] 
                   target: { kind: 'ref', ref: `vars.${tempName}` },
               };
 
+    return [letStmt, actStmt];
+};
+
+const expandTableActStmt = (stmt: TableActStmt, ctx: NormalizeContext): DslStmt[] => {
+    const tempName = `dslTableTarget${ctx.nextTempId}`;
+    ctx.nextTempId += 1;
+
+    const letStmt: DslStmt = {
+        kind: 'let',
+        name: tempName,
+        expr: {
+            kind: 'query',
+            op: 'entity.target',
+            businessTag: stmt.businessTag,
+            payload: stmt.target.kind === 'filter'
+                ? {kind: 'table.filter', fieldKey: stmt.target.fieldKey}
+                : {kind: 'table.module_action', actionIntent: stmt.target.actionIntent},
+        },
+    };
+    const actStmt: DslStmt = stmt.action === 'fill'
+        ? {
+            kind: 'act',
+            action: 'fill',
+            target: {kind: 'ref', ref: `vars.${tempName}`},
+            value: normalizeRef(stmt.value!),
+        }
+        : {
+            kind: 'act',
+            action: 'click',
+            target: {kind: 'ref', ref: `vars.${tempName}`},
+        };
     return [letStmt, actStmt];
 };
 

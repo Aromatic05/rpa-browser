@@ -45,10 +45,11 @@ const validateStmt = (
             validateAct(stmt, scope, diagnostics, path);
             return;
         case 'form_act':
+        case 'table_act':
             diagnostics.push(
                 createDiagnostic(
                     'ERR_DSL_NOT_NORMALIZED',
-                    'form_act must be expanded before validation',
+                    `${stmt.kind} must be expanded before validation`,
                     path,
                 ),
             );

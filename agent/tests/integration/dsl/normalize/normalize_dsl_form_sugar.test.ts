@@ -72,3 +72,44 @@ test('normalizeDsl removes form_act and allocates stable temp names', () => {
     assert.equal(normalized.body[0].kind === 'let' ? normalized.body[0].name : '', 'dslFormTarget1');
     assert.equal(normalized.body[2].kind === 'let' ? normalized.body[2].name : '', 'dslFormTarget2');
 });
+
+test('normalizeDsl expands table filter and module action syntax sugar', () => {
+    const normalized = normalizeDsl(parseDsl(`
+        fill table "orders.table" filter "订单编号" with input.orderNo
+        click table "orders.table" action "search"
+    `));
+
+    assert.deepEqual(normalized.body, [
+        {
+            kind: 'let',
+            name: 'dslTableTarget1',
+            expr: {
+                kind: 'query',
+                op: 'entity.target',
+                businessTag: 'orders.table',
+                payload: {kind: 'table.filter', fieldKey: '订单编号'},
+            },
+        },
+        {
+            kind: 'act',
+            action: 'fill',
+            target: {kind: 'ref', ref: 'vars.dslTableTarget1'},
+            value: {kind: 'ref', ref: 'input.orderNo'},
+        },
+        {
+            kind: 'let',
+            name: 'dslTableTarget2',
+            expr: {
+                kind: 'query',
+                op: 'entity.target',
+                businessTag: 'orders.table',
+                payload: {kind: 'table.module_action', actionIntent: 'search'},
+            },
+        },
+        {
+            kind: 'act',
+            action: 'click',
+            target: {kind: 'ref', ref: 'vars.dslTableTarget2'},
+        },
+    ]);
+});
