@@ -111,9 +111,6 @@ export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
         if (action.type === ACTION_TYPES.TAB_CLOSE) {
             void handleTabClose(action);
         }
-        if (action.type === ACTION_TYPES.WORKSPACE_SET_ACTIVE) {
-            void life.activateWorkspaceWindow();
-        }
     };
 
     const handleTabOpen = async (action: Action) => {

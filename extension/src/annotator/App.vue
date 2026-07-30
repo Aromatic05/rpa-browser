@@ -44,7 +44,10 @@ import {computeLabelPlacements, type LabelPlacement} from './layout/label_layout
 import {projectViewportRect} from './layout/box_geometry.js';
 import {createViewportScheduler} from './layout/viewport_tracker.js';
 import {
+    candidatesForPurpose,
     chooseCandidate,
+    defaultCandidateIndex,
+    isConfirmableEntityCandidate,
     selectInner,
     selectOuter,
 } from './picking/candidate_navigation.js';
@@ -670,16 +673,25 @@ const onPickEvent = async (event: {fingerprint: PickFingerprint; pointer: {x: nu
     } finally {
         operation.value = null;
     }
-    pickCandidates.value = result.candidateChain;
-    pickCandidateIndex.value = result.candidateChain.length > 0
-        ? (pickPurpose.value === 'entity' ? result.candidateChain.length - 1 : 0)
-        : -1;
+    const candidates = candidatesForPurpose(result.candidateChain, pickPurpose.value);
+    if (pickPurpose.value === 'entity' && candidates.length === 0) {
+        exitPickMode();
+        applyState(failed(props.state, '当前范围无法保存为业务区域，请点击区域内部的字段、表格或表单后重试。'));
+        return;
+    }
+    pickCandidates.value = candidates;
+    pickCandidateIndex.value = defaultCandidateIndex(candidates, pickPurpose.value);
 };
 
 const onPickConfirm = async (): Promise<void> => {
     const candidate = selectedCandidate.value;
     if (!candidate) {return;}
     if (pickPurpose.value === 'entity') {
+        if (!isConfirmableEntityCandidate(candidate)) {
+            exitPickMode();
+            applyState(failed(props.state, '当前范围缺少可持久化的业务区域目标，请重新选择。'));
+            return;
+        }
         try {
             const nextDraft = createEntityScopeDraft(candidate);
             const entityId = nextDraft.entities[0].id;
@@ -707,6 +719,7 @@ const onPickConfirm = async (): Promise<void> => {
             await nextTick();
             await runRecognizeFromState(scopedState);
         } catch (error) {
+            exitPickMode();
             applyState(failed(props.state, error instanceof Error ? error.message : String(error)));
         }
         return;
@@ -742,7 +755,11 @@ const onPickConfirm = async (): Promise<void> => {
 };
 
 const onPickCancel = (): void => {
+    const shouldExitAnnotator = pickPurpose.value === 'entity' && !props.state.canvasDraft;
     exitPickMode();
+    if (shouldExitAnnotator) {
+        emit('exit');
+    }
 };
 
 const onNavigate = (direction: 'outer' | 'inner'): void => {
@@ -924,7 +941,14 @@ const schedulePersist = (): void => {
     }, 400);
 };
 
+const sessionSignature = (): string | null => {
+    const pageIdentity = props.state.pageIdentity;
+    if (!pageIdentity) {return null;}
+    return `${pageIdentity.workspaceName}|${pageIdentity.tabName}|${pageIdentity.url}|${props.state.profileName ?? ''}`;
+};
+
 let sessionRestoredFor: string | null = null;
+let sessionRestoreRequest = 0;
 
 onMounted(() => {
     void nextTick().then(() => {
@@ -1025,6 +1049,15 @@ watch(
     (mode) => {
         if (mode === 'idle') {
             exitPickMode();
+            return;
+        }
+        if (
+            mode === 'editing'
+            && !props.state.canvasDraft
+            && !pickMode.value
+            && sessionRestoredFor === sessionSignature()
+        ) {
+            enterEntityPickMode();
         }
     },
 );
@@ -1039,10 +1072,17 @@ watch(
         if (sessionRestoredFor === sig) {
             return;
         }
-        sessionRestoredFor = sig;
+        const request = ++sessionRestoreRequest;
         void (async () => {
             const next = await restoreSessionDraft(props.state, props.sessionStore);
+            if (request !== sessionRestoreRequest || sessionSignature() !== sig) {
+                return;
+            }
             applyState(next);
+            sessionRestoredFor = sig;
+            if (next.mode === 'editing' && !next.canvasDraft && !pickMode.value) {
+                enterEntityPickMode();
+            }
         })();
     },
     {immediate: true},
@@ -1077,22 +1117,6 @@ watch(
             <span class="busy-spinner"></span>
             <p>{{ busyLabel }}</p>
         </div>
-
-        <section
-            v-if="productStage === 'scope' && !pickMode"
-            class="floating-guide scope-guide dock-bottom"
-        >
-            <div class="guide-copy">
-                <strong>选择页面范围</strong>
-            </div>
-            <button
-                type="button"
-                class="guide-primary"
-                data-annotator-action="select-entity"
-                :disabled="isBusy"
-                @click="enterEntityPickMode"
-            >开始选择</button>
-        </section>
 
         <div
             v-if="(productStage === 'review' || productStage === 'edit') && !pickMode"
@@ -1224,36 +1248,10 @@ watch(
     visibility: hidden;
     pointer-events: none;
 }
-.floating-guide,
 .floating-dock,
 .settings-popover,
 .annotator-toast,
 .pick-guide { pointer-events: auto; }
-.floating-guide {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    width: min(620px, calc(100vw - 28px));
-    min-height: 58px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 10px 11px 10px 14px;
-    border: 1px solid rgba(100, 116, 139, .26);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, .94);
-    box-shadow: 0 14px 36px rgba(15, 23, 42, .18);
-    backdrop-filter: blur(14px) saturate(1.2);
-    z-index: 7;
-}
-.floating-guide.dock-top { top: 14px; }
-.floating-guide.dock-bottom { bottom: 14px; }
-.guide-copy { min-width: 0; flex: 1; }
-.guide-copy small { display: block; color: #2563eb; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
-.guide-copy strong { display: block; margin-top: 2px; font-size: 12px; line-height: 1.3; }
-.guide-copy span { display: block; margin-top: 2px; color: #64748b; font-size: 9px; line-height: 1.35; }
-.guide-actions { display: flex; align-items: center; gap: 6px; }
-.guide-primary,
 .dock-primary {
     min-height: 36px;
     border: 1px solid #2563eb;
@@ -1267,9 +1265,7 @@ watch(
     cursor: pointer;
     white-space: nowrap;
 }
-.guide-primary:hover:not(:disabled),
 .dock-primary:hover:not(:disabled) { background: #1d4ed8; }
-.guide-primary:disabled,
 .dock-primary:disabled { opacity: .45; cursor: default; box-shadow: none; }
 .quiet-action {
     min-height: 34px;
@@ -1395,14 +1391,9 @@ watch(
 .pick-guide button { height: 30px; border: 0; border-radius: 8px; padding: 0 9px; background: #f1f5f9; color: #475569; font-size: 9px; font-weight: 700; cursor: pointer; }
 .pick-guide button:hover { background: #e2e8f0; }
 @media (max-width: 680px) {
-    .floating-guide { align-items: flex-start; gap: 8px; }
-    .guide-copy span { display: none; }
-    .guide-actions { flex-wrap: wrap; justify-content: flex-end; }
     .floating-dock { overflow-x: auto; justify-content: flex-start; }
 }
 @media (max-height: 520px) {
-    .guide-copy span { display: none; }
-    .floating-guide { min-height: 48px; padding-top: 7px; padding-bottom: 7px; }
     .floating-dock.dock-top { top: 54px; }
 }
 </style>

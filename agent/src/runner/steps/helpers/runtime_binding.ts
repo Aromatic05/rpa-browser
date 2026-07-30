@@ -68,6 +68,5 @@ export const awaitPageBoundBinding = async (
         timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
     });
     const binding = await deps.runtime.resolveBinding(workspaceName, resolvedTabName);
-    await binding.page.bringToFront().catch(() => undefined);
     return binding;
 };

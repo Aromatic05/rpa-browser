@@ -25,13 +25,12 @@ export const executeBrowserSwitchTab = async (
         };
     }
     const timeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs || 3000;
-    const binding = await deps.runtime.awaitExecutableTab({
+    await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: workspace.browserSession.pageRegistry,
         tabName,
         timeoutMs,
     });
-    await binding.page.bringToFront();
     workspace.tabs.setActiveTab(tabName);
     const activated = await deps.dispatchAction({
         v: 1,

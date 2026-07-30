@@ -1,9 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    candidatesForPurpose,
     selectInner,
     selectOuter,
     chooseCandidate,
+    defaultCandidateIndex,
+    isConfirmableEntityCandidate,
 } from '../picking/candidate_navigation.js';
 import type { PickCandidate } from '../types.js';
 
@@ -88,4 +91,37 @@ test('navigation stays within candidate chain and never exposes raw DOM nodes', 
     const chosen = chooseCandidate(chain, index);
     assert.ok(chosen !== null);
     assert.equal(chosen.level, 'region');
+});
+
+test('entity candidates exclude outer ranges that cannot be persisted', () => {
+    const valid: PickCandidate = {
+        level: 'region',
+        nodeId: 'valid-region',
+        score: 50,
+        entityRef: {entityId: 'form-1', nodeId: 'valid-region', kind: 'form', type: 'region'},
+        proposedTargets: [{css: '#order-form'}],
+    };
+    const invalidOuter: PickCandidate = {
+        level: 'region',
+        nodeId: 'invalid-outer',
+        score: 40,
+        proposedTargets: [{css: 'body'}],
+    };
+    const filtered = candidatesForPurpose([valid, invalidOuter], 'entity');
+    assert.deepEqual(filtered, [valid]);
+    assert.equal(defaultCandidateIndex(filtered, 'entity'), 0);
+    assert.equal(isConfirmableEntityCandidate(filtered[0]), true);
+});
+
+test('entity candidate requires a non-empty persistent target', () => {
+    const candidate: PickCandidate = {
+        level: 'region',
+        nodeId: 'region-without-target',
+        score: 10,
+        entityRef: {entityId: 'table-1', nodeId: 'region-without-target', kind: 'table', type: 'region'},
+        proposedTargets: [{}],
+    };
+    assert.equal(isConfirmableEntityCandidate(candidate), false);
+    assert.deepEqual(candidatesForPurpose([candidate], 'entity'), []);
+    assert.equal(defaultCandidateIndex([], 'entity'), -1);
 });

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import type { BrowserContext, Page } from 'playwright';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
 import { createExecutionBindings } from '../../../src/runtime/execution/bindings';
+import { awaitPageBoundBinding } from '../../../src/runner/steps/helpers/runtime_binding';
+import type { RunStepsDeps } from '../../../src/runner/run_steps_types';
 import type { PageRegistry } from '../../../src/runtime/browser/page_registry';
 import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
 
@@ -259,4 +261,30 @@ test('createExecutableTab makes the new tab active when other tabs already exist
     });
 
     assert.equal(tabs.getActiveTab()?.name, 'created');
+});
+
+test('page binding resolution never brings the browser window to the desktop foreground', async () => {
+    let bringToFrontCalls = 0;
+    const page = createStubPage({url: 'https://background.test'});
+    page.bringToFront = async () => { bringToFrontCalls += 1; };
+    const pages = {tab: page};
+    const {tabs, pageRegistry} = createTabs(pages);
+    tabs.createTab({tabName: 'tab'});
+    tabs.bindPage('tab', page);
+    const workspace = createWorkspace('ws', tabs, pageRegistry);
+    const bindings = createExecutionBindings({pageRegistry});
+    const binding = bindings.bindPage({workspaceName: 'ws', tabName: 'tab', page});
+    const deps = {
+        resolveWorkspace: () => workspace,
+        runtime: {
+            awaitExecutableTab: async () => binding,
+            resolveBinding: async () => binding,
+        },
+        config: {waitPolicy: {pageReadyTimeoutMs: 100}},
+    } as unknown as RunStepsDeps;
+
+    const resolved = await awaitPageBoundBinding(deps, 'ws', 'tab');
+
+    assert.equal(resolved, binding);
+    assert.equal(bringToFrontCalls, 0);
 });

@@ -126,7 +126,6 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             if (primary.url() !== startUrl) {
                 await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
             }
-            await primary.bringToFront();
             const toClose = context.pages().filter((page) => page !== primary);
             for (const page of toClose) {
                 if (!page.isClosed()) {
@@ -268,7 +267,6 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
             if (primary.url() !== startUrl) {
                 await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
             }
-            await primary.bringToFront();
             const toClose = context.pages().filter((page) => page !== primary);
             for (const page of toClose) {
                 if (!page.isClosed()) {

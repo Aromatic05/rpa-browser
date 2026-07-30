@@ -618,8 +618,8 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         const page = await browser.newPage({viewport: {width: 900, height: 700}});
         await page.setContent(`
           <form id="OrderForm">
-            <label for="Buyer">Buyer</label>
-            <input id="Buyer" name="buyer">
+            <label>订单编号<input class="ant-input"></label>
+            <label>采购人<input class="ant-input"></label>
             <button id="Save" type="submit">Save order</button>
           </form>
         `);
@@ -657,11 +657,20 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
                 ancestors: [],
             },
         }, memory.workflow);
-        const pickPayload = picked.reply.payload as {candidateChain: Array<{entityRef?: unknown}>};
-        assert.ok(pickPayload.candidateChain.some((candidate) => candidate.entityRef));
+        const pickPayload = picked.reply.payload as {candidateChain: Array<{
+            level?: unknown;
+            entityRef?: unknown;
+            proposedTargets?: unknown[];
+        }>};
+        assert.ok(pickPayload.candidateChain.length > 0);
+        assert.ok(pickPayload.candidateChain.every((candidate) =>
+            candidate.level === 'region'
+            && Boolean(candidate.entityRef)
+            && candidate.proposedTargets?.some((target) =>
+                target && typeof target === 'object' && Object.keys(target).length > 0),
+        ));
 
-        const entityCandidate = [...pickPayload.candidateChain].reverse()
-            .find((candidate: {entityRef?: unknown}) => candidate.entityRef) as {
+        const entityCandidate = pickPayload.candidateChain.at(-1) as {
             entityRef: {kind: 'form'};
             proposedTargets: Array<Record<string, unknown>>;
             text?: string;
@@ -688,9 +697,17 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
             canvasDraft: scopedDraft,
         }, memory.workflow);
         const recognizedDraft = (recognized.reply.payload as {canvasDraft: {
-            entities: Array<{annotations: unknown[]}>;
+            entities: Array<{annotations: Array<{name: string; target: Record<string, unknown>}>}>;
         }}).canvasDraft;
         assert.ok(recognizedDraft.entities[0].annotations.length > 0);
+        const orderNumber = recognizedDraft.entities[0].annotations.find((annotation) => annotation.name === '订单编号');
+        assert.ok(orderNumber);
+        assert.equal(orderNumber.target.roleEquals, 'textbox');
+        assert.equal(orderNumber.target.textContains, '订单编号');
+        assert.equal(orderNumber.target.classContains, undefined);
+        const v2TargetId = orderNumber.target.v2TargetId;
+        assert.equal(typeof v2TargetId, 'string');
+        orderNumber.target = {classContains: 'ant-input', v2TargetId};
 
         const checked = await invoke(runtime, 'entity_rules.annotator.check', {
             canvasDraft: recognizedDraft,

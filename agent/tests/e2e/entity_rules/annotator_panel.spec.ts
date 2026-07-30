@@ -184,28 +184,19 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             return {
                 mode: shell?.getAttribute('data-annotator-mode') || '',
                 draft: shell?.getAttribute('data-annotator-draft') || '',
-                selectText: root?.querySelector('[data-annotator-action="select-entity"]')
-                    ?.textContent?.trim() || '',
+                pickMode: shell?.getAttribute('data-pick-mode') || '',
+                selectAction: Boolean(root?.querySelector('[data-annotator-action="select-entity"]')),
                 recognizeButton: Boolean(root?.querySelector('[data-annotator-action="recognize"]')),
                 hostPointer: host ? getComputedStyle(host).pointerEvents : '',
             };
         `), {timeout: 20_000}).toEqual({
             mode: 'editing',
             draft: 'empty',
-            selectText: '开始选择',
+            pickMode: 'active',
+            selectAction: false,
             recognizeButton: false,
             hostPointer: 'none',
         });
-
-        await click(agent, workspaceName, await shadowButtonPoint(
-            agent,
-            workspaceName,
-            '[data-annotator-action="select-entity"]',
-        ));
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-            return root?.querySelector('.annotator-shell')?.getAttribute('data-pick-mode') || '';
-        `), {timeout: 10_000}).toBe('active');
 
         await click(agent, workspaceName, await pageElementPoint(
             agent,

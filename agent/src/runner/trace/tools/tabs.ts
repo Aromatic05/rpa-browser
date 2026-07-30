@@ -45,7 +45,6 @@ const buildTabsTools = (base: ToolsBuildContext) => ({
             }
             const page = await base.opts.pageRegistry.awaitPageBinding(args.tabName, { timeoutMs: 1500 });
             base.setCurrentPage(page);
-            await page.bringToFront().catch(() => undefined);
         }),
 
     'trace.tabs.close': async (args: { workspaceName: string; tabName?: string }) =>

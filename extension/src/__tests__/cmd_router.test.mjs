@@ -170,7 +170,7 @@ await log('window remove keeps router stable', async () => {
     assert.equal(Array.isArray(sent), true);
 });
 
-await log('inbound tab.setActive activates mapped chrome tab and window', async () => {
+await log('inbound tab.setActive activates the mapped tab without focusing its desktop window', async () => {
     const calls = [];
     globalThis.chrome = createChromeMock();
     chrome.tabs.update = async (tabId, updateInfo) => {
@@ -204,13 +204,10 @@ await log('inbound tab.setActive activates mapped chrome tab and window', async 
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.deepEqual(calls, [
-        ['tabs.update', 11, { active: true }],
-        ['windows.update', 7, { focused: true }],
-    ]);
+    assert.deepEqual(calls, [['tabs.update', 11, { active: true }]]);
 });
 
-await log('inbound workspace.setActive focuses current workspace window', async () => {
+await log('inbound workspace.setActive never focuses a desktop window', async () => {
     const calls = [];
     globalThis.chrome = createChromeMock();
     chrome.windows.update = async (windowId, updateInfo) => {
@@ -234,7 +231,7 @@ await log('inbound workspace.setActive focuses current workspace window', async 
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(calls.some((call) => call[0] === 'windows.update' && call[1] === 7 && call[2]?.focused === true), true);
+    assert.deepEqual(calls, []);
 });
 
 await log('workspace.create returns workspace shell without opening window', async () => {

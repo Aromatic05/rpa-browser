@@ -293,12 +293,14 @@ const legacyCheck = async (
     const current = await ensureFreshPageSession(deps, input.workspace.name, {
         tabName: optionalString(payload.tabName),
     });
-    const compiled = compileLegacyCanvas(canvasDraft);
+    const selection = deps.pageSession.readSelection(current.binding.page);
+    const projection = buildAnnotatorProjection(current.entry, selection);
+    const compiled = compileLegacyCanvas(canvasDraft, current.entry, projection);
     const evaluation = evaluateAnnotatorDraft(current.entry, compiled.draft, 'check');
     return {
         reply: replyAction(input.action, {
             results: legacyCheckResults(canvasDraft, compiled, evaluation.validation.diagnostics),
-            stale: deps.pageSession.readSelection(current.binding.page).status === 'stale',
+            stale: selection.status === 'stale',
         }),
         events: [],
     };
@@ -315,7 +317,9 @@ const legacySave = async (
     const current = await ensureFreshPageSession(deps, input.workspace.name, {
         tabName: optionalString(payload.tabName),
     });
-    const compiled = compileLegacyCanvas(canvasDraft);
+    const selection = deps.pageSession.readSelection(current.binding.page);
+    const projection = buildAnnotatorProjection(current.entry, selection);
+    const compiled = compileLegacyCanvas(canvasDraft, current.entry, projection);
     const evaluation = evaluateAnnotatorDraft(current.entry, compiled.draft, 'save');
     if (!evaluation.validation.ok || !evaluation.profile) {
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator draft validation failed', {
@@ -619,14 +623,45 @@ const pickCandidates = (
             });
         }
     }
-    return [...candidateById.values()].sort((left, right) => {
+    const candidates = [...candidateById.values()].sort((left, right) => {
         const leftArea = rectArea(left.bbox as Rect | undefined);
         const rightArea = rectArea(right.bbox as Rect | undefined);
         return leftArea - rightArea || Number(right.score) - Number(left.score);
     });
+    if (purpose !== 'entity') {return candidates;}
+    return candidates.filter((candidate) => {
+        if (!candidate.entityRef || (candidate.level !== 'region' && candidate.level !== 'group')) {
+            return false;
+        }
+        const targets = candidate.proposedTargets;
+        return Array.isArray(targets)
+            && targets.some((target: unknown) => target !== null
+                && typeof target === 'object'
+                && Reflect.ownKeys(target).length > 0);
+    });
 };
 
-const compileLegacyCanvas = (canvas: LegacyCanvasDraft): LegacyCompileResult => {
+const refreshPersistentTarget = (
+    entry: PageSnapshotSessionEntry,
+    projection: AnnotatorProjection,
+    target: LegacyTarget,
+    kind?: LegacyEntityKind,
+): LegacyTarget => {
+    if (!target.v2TargetId) {return target;}
+    const canonical = projection.targets.find((candidate) => candidate.id === target.v2TargetId);
+    const nodeId = canonical?.nodeIds[0];
+    if (!nodeId) {return target;}
+    return {
+        ...persistentTarget(entry, nodeId, kind ?? target.kind, target.v2TargetId),
+        ...(target.relation ? {relation: target.relation} : {}),
+    };
+};
+
+const compileLegacyCanvas = (
+    canvas: LegacyCanvasDraft,
+    entry: PageSnapshotSessionEntry,
+    projection: AnnotatorProjection,
+): LegacyCompileResult => {
     if (!canvas.profileName.trim()) {
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'profile name is required');
     }
@@ -636,7 +671,10 @@ const compileLegacyCanvas = (canvas: LegacyCanvasDraft): LegacyCompileResult => 
     canvas.entities.forEach((entity, entityIndex) => {
         const rootRuleId = `entity-${slug(canvas.profileName)}-${String(entityIndex)}`;
         ruleIdByCanvasId.set(entity.id, rootRuleId);
-        const rootMatch = cleanTarget(entity.target, entity.kind);
+        const rootMatch = cleanTarget(
+            refreshPersistentTarget(entry, projection, entity.target, entity.kind),
+            entity.kind,
+        );
         rules.push({
             ruleId: rootRuleId,
             source: entity.kind === 'form' || entity.kind === 'table' ? 'region' : 'node',
@@ -681,7 +719,8 @@ const compileLegacyCanvas = (canvas: LegacyCanvasDraft): LegacyCompileResult => 
                     ruleId,
                     source: 'node',
                     expect: annotation.expect ?? (annotation.type === 'action' ? 'one_or_more' : 'unique'),
-                    match: cleanTarget(annotation.target),
+                    within: rootRuleId,
+                    match: cleanTarget(refreshPersistentTarget(entry, projection, annotation.target)),
                 });
                 bindings.push({
                     ruleId,
@@ -704,7 +743,8 @@ const compileLegacyCanvas = (canvas: LegacyCanvasDraft): LegacyCompileResult => 
                         ruleId,
                         source: 'node',
                         expect: 'one_or_more',
-                        match: cleanTarget(action.target),
+                        within: rootRuleId,
+                        match: cleanTarget(refreshPersistentTarget(entry, projection, action.target)),
                     });
                     bindings.push({
                         ruleId,
@@ -720,7 +760,8 @@ const compileLegacyCanvas = (canvas: LegacyCanvasDraft): LegacyCompileResult => 
                 ruleId,
                 source: 'node',
                 expect: 'unique',
-                match: cleanTarget(entity.pagination.pageTarget),
+                within: rootRuleId,
+                match: cleanTarget(refreshPersistentTarget(entry, projection, entity.pagination.pageTarget)),
             });
             bindings.push({ruleId, actionIntent: entity.pagination.actionIntent, paginationRole: 'next'});
         }
@@ -920,11 +961,13 @@ const persistentTarget = (
         ...(attributes.id ? {idEquals: attributes.id} : {}),
         ...(!attributes.id && attributes.name ? {nameEquals: attributes.name} : {}),
         ...(!attributes.id && !attributes.name && attributes['aria-label'] ? {ariaContains: attributes['aria-label']} : {}),
-        ...(!attributes.id && !attributes.name && classToken
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && role && label
+            ? {roleEquals: role, textContains: label.slice(0, 80)} : {}),
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !(role && label) && classToken
             ? {classContains: classToken} : {}),
-        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !classToken && role
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !(role && label) && !classToken && role
             ? {roleEquals: role} : {}),
-        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !classToken && !role && label
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !(role && label) && !classToken && !role && label
             ? {textContains: label.slice(0, 80)} : {}),
         ...(v2TargetId ? {v2TargetId} : {}),
     };

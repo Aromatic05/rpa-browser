@@ -37,7 +37,6 @@ export type LifecycleRuntime = {
     onInstalled: () => void;
     handleBindCommand: (action: Action) => Promise<void>;
     activateTabByName: (tabName: string) => Promise<boolean>;
-    activateWorkspaceWindow: () => Promise<boolean>;
     ensureOpenedAndBound: (
         chromeTabNo: number,
         windowId: number,
@@ -117,27 +116,12 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         return result.ok && result.data.ok;
     };
 
-    const focusChromeTab = async (chromeTabNo: number) => {
-        let windowId = options.state.getTabState(chromeTabNo)?.windowId ?? null;
-        if (windowId === null) {
-            try {
-                const tab = await chrome.tabs.get(chromeTabNo);
-                windowId = typeof tab.windowId === 'number' ? tab.windowId : null;
-            } catch {
-                return false;
-            }
-        }
+    const activateChromeTab = async (chromeTabNo: number) => {
+        const windowId = options.state.getTabState(chromeTabNo)?.windowId ?? null;
         try {
             await chrome.tabs.update(chromeTabNo, { active: true });
         } catch {
             return false;
-        }
-        if (typeof windowId === 'number') {
-            try {
-                await chrome.windows.update(windowId, { focused: true });
-            } catch {
-                return false;
-            }
         }
         options.state.setActiveChromeTabNo(chromeTabNo);
         if (typeof windowId === 'number') {
@@ -149,28 +133,9 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     const activateTabByName = async (tabName: string) => {
         const chromeTabNo = options.state.findChromeTabNoByBindingName(tabName);
         if (typeof chromeTabNo !== 'number') {return false;}
-        const focused = await focusChromeTab(chromeTabNo);
-        if (focused) {options.onRefresh();}
-        return focused;
-    };
-
-    const activateWorkspaceWindow = async () => {
-        const activeChromeTabNo = options.state.getActiveChromeTabNo();
-        if (typeof activeChromeTabNo === 'number' && await focusChromeTab(activeChromeTabNo)) {
-            options.onRefresh();
-            return true;
-        }
-        const activeWindowId = options.state.getActiveWindowId();
-        if (typeof activeWindowId === 'number') {
-            try {
-                await chrome.windows.update(activeWindowId, { focused: true });
-                options.onRefresh();
-                return true;
-            } catch {
-                return false;
-            }
-        }
-        return false;
+        const activated = await activateChromeTab(chromeTabNo);
+        if (activated) {options.onRefresh();}
+        return activated;
     };
 
     const ensureBoundTabRefInternal = async (chromeTabNo: number, hintedWindowId?: number, preferredBindingName?: string): Promise<BoundTabRef | null> => {
@@ -468,7 +433,6 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
         onInstalled: () => { options.state.resetInstalledState(); },
         handleBindCommand,
         activateTabByName,
-        activateWorkspaceWindow,
         ensureOpenedAndBound,
         getOpenedAndBoundInflight: (chromeTabNo: number) => inflightOpenedAndBound.get(chromeTabNo) ?? null,
         bindExistingTabs,

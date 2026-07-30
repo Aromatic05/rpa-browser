@@ -164,8 +164,6 @@ const configureExtensionSession = async (
                 if (!bootstrapPage.isClosed()) {
                     await bootstrapPage.close();
                 }
-                const startPage = context.pages().find((page) => page.url().includes('/newtab.html'));
-                await startPage?.bringToFront();
                 return ready;
             }
         } catch {
@@ -231,7 +229,6 @@ const awaitStartExtensionBinding = async (input: {
             bound: boundPage === page,
         };
         if (page && tabName && hasRuntimeTab && boundPage === page) {
-            await page.bringToFront();
             return tabName;
         }
         await new Promise((resolve) => setTimeout(resolve, 50));
